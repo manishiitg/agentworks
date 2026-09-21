@@ -18,6 +18,7 @@ func TestCodingProviderManifestDefinesAdminInstallCommands(t *testing.T) {
 		"cursor-cli":  "https://cursor.com/install",
 		"pi-cli":      "npm install -g @earendil-works/pi-coding-agent@latest",
 		"muse-cli":    "https://dev.meta.ai/install.sh",
+		"agy-cli":     "antigravity.google/cli/install.sh",
 	}
 	for provider, fragment := range want {
 		command := providerInstallCommand(provider)

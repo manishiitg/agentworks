@@ -9,29 +9,31 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 )
 
-func codingAgentPersistentInteractiveFlags(provider string, allowPersistentInteractive, usesStructuredTransport bool) (claudeCode bool, codexCLI bool, cursorCLI bool, piCLI bool, museCLI bool) {
+func codingAgentPersistentInteractiveFlags(provider string, allowPersistentInteractive, usesStructuredTransport bool) (claudeCode bool, codexCLI bool, cursorCLI bool, piCLI bool, museCLI bool, agyCLI bool) {
 	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
 	if usesStructuredTransport {
-		return false, false, false, false, false
+		return false, false, false, false, false, false
 	}
 	if !allowPersistentInteractive ||
 		!llm.IsTmuxCodingAgentProvider(llm.Provider(normalizedProvider), "") {
-		return false, false, false, false, false
+		return false, false, false, false, false, false
 	}
 
 	switch normalizedProvider {
 	case strings.ToLower(string(llm.ProviderClaudeCode)):
-		return true, false, false, false, false
+		return true, false, false, false, false, false
 	case strings.ToLower(string(llm.ProviderCodexCLI)):
-		return false, true, false, false, false
+		return false, true, false, false, false, false
 	case strings.ToLower(string(llm.ProviderCursorCLI)):
-		return false, false, true, false, false
+		return false, false, true, false, false, false
 	case strings.ToLower(string(llm.ProviderPiCLI)):
-		return false, false, false, true, false
+		return false, false, false, true, false, false
 	case strings.ToLower(string(llm.ProviderMuseCLI)):
-		return false, false, false, false, true
+		return false, false, false, false, true, false
+	case strings.ToLower(string(llm.ProviderAgyCLI)):
+		return false, false, false, false, false, true
 	default:
-		return false, false, false, false, false
+		return false, false, false, false, false, false
 	}
 }
 

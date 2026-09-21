@@ -65,6 +65,7 @@ describe('CodingProvidersPanel', () => {
       'cursor-cli',
       'pi-cli',
       'muse-cli',
+      'agy-cli',
     ])
     for (const guide of Object.values(CODING_PROVIDER_GUIDES)) {
       expect(guide.authenticateNote).toBeTruthy()

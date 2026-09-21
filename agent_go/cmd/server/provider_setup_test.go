@@ -285,6 +285,7 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 		"cursor-cli":  {command: "cursor-agent", args: []string{"login"}},
 		"pi-cli":      {command: "pi"},
 		"muse-cli":    {command: "muse", args: []string{"login"}},
+		"agy-cli":     {command: "agy"},
 	}
 	for provider, expected := range want {
 		actions, ok := providerSetupCommands[provider]
@@ -306,6 +307,7 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 		"cursor-cli":  {command: "cursor-agent", args: []string{"--mode", "ask", "--sandbox", "enabled"}},
 		"pi-cli":      {command: "pi"},
 		"muse-cli":    {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
+		"agy-cli":     {command: "agy", args: []string{"--sandbox"}},
 	}
 	for provider, expected := range inspect {
 		actual, ok := providerSetupCommands[provider]["inspect"]

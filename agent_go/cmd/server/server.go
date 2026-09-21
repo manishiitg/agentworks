@@ -5377,7 +5377,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
-		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
+		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
 		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider)
 		if forceStructuredCodingAgent {
 			// A structured coding CLI is a one-shot native JSON process. There is
@@ -5388,6 +5388,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			cursorPersistentInteractive = false
 			piPersistentInteractive = false
 			musePersistentInteractive = false
+			agyPersistentInteractive = false
 			claudeCodeTransport = ""
 		}
 		chatWorkingFolder := perUserChatsFolder
@@ -5526,6 +5527,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			BridgeRoutingInstructionsOverride:      profileBridgeRoutingInstructions,
 			PiPersistentInteractiveSession:         piPersistentInteractive,
 			MusePersistentInteractiveSession:       musePersistentInteractive,
+			AgyPersistentInteractiveSession:        agyPersistentInteractive,
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,

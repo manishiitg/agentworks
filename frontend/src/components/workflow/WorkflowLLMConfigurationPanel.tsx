@@ -37,7 +37,7 @@ const ROLE_ROWS: RoleRow[] = [
   { key: 'pulse_llm', label: 'Pulse Goal Work', description: 'Goal Work: the Pulse pass that does work toward your goals. Pick your strongest model here.', group: 'Workflow agents' },
 ]
 
-const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli']
+const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']
 const codingAgentProviderRank = (provider: string) => {
   const index = CODING_AGENT_PROVIDER_ORDER.indexOf(provider)
   return index === -1 ? 999 : index

@@ -153,7 +153,7 @@ func TestRefreshLatestBuilderConversationFromCodexRollout(t *testing.T) {
 }
 
 func TestNativeTranscriptSyncSupportedProvider(t *testing.T) {
-	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "Codex-CLI": true, "cursor-cli": true, "pi-cli": true, "muse-cli": true, "Muse-CLI": true, "gemini-cli": false, "": false} {
+	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "Codex-CLI": true, "cursor-cli": true, "pi-cli": true, "muse-cli": true, "Muse-CLI": true, "agy-cli": true, "Agy-CLI": true, "gemini-cli": false, "": false} {
 		if got := nativeTranscriptSyncSupportedProvider(provider); got != want {
 			t.Fatalf("provider %q supported = %v, want %v", provider, got, want)
 		}

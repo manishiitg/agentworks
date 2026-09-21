@@ -74,7 +74,7 @@ const STATUS_STYLES: Record<ProviderStatus, { label: string; className: string }
   },
 }
 
-const GUIDED_SETUP_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
+const GUIDED_SETUP_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 
 const PROVIDER_INSPECTION: Record<string, { label: string; note: string }> = {
   'claude-code': {
@@ -96,6 +96,10 @@ const PROVIDER_INSPECTION: Record<string, { label: string; note: string }> = {
   'muse-cli': {
     label: 'Open terminal',
     note: 'Use Muse’s built-in commands to inspect the connected account. Shell and workspace writes are disabled in this terminal.',
+  },
+  'agy-cli': {
+    label: 'Open terminal',
+    note: 'Use Antigravity’s built-in commands to inspect the connected account and models. The terminal runs sandboxed with terminal restrictions enabled.',
   },
 }
 

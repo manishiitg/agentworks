@@ -44,7 +44,7 @@ export const LLM_INTEGRATION_DISPLAY_INFO: Record<LLMIntegrationKind, LLMIntegra
   },
 }
 
-export const CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
+export const CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 
 // Pi CLI routes to several different model backends via a `<backend>/<model>`
 // model id. Mirrors agent_go/cmd/server/llm_provider_manifest.go's
@@ -123,6 +123,7 @@ export const PROVIDER_ORDER: ProviderType[] = [
   'cursor-cli',
   'pi-cli',
   'muse-cli',
+  'agy-cli',
   'claude-code',
 ]
 

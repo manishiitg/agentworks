@@ -26,7 +26,7 @@ type TabType = 'library' | LLMProvider | PiCliGroupTab
 
 const piCliGroupTabId = (group: string): PiCliGroupTab => `pi-cli::${group}`
 
-const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli']
+const CODING_AGENT_PROVIDER_ORDER = ['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']
 const CODING_AGENT_PROVIDER_RANK = new Map<string, number>(
   CODING_AGENT_PROVIDER_ORDER.map((provider, index) => [provider, index])
 )
