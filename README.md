@@ -2,7 +2,7 @@
 
 **Give an AI agent a goal and a metric. It keeps working until it hits the target.**
 
-AgentWorks is an open-source platform for goal-driven AI agents. You describe an outcome, pick the number that proves it, and set a target. Agents plan the work, run it on a schedule, measure every run, and change their own plan until the metric moves. It runs on the coding-agent CLIs you already use: Claude Code, Codex, Cursor, and Pi.
+AgentWorks is an open-source platform for goal-driven AI agents. You describe an outcome, pick the number that proves it, and set a target. Agents plan the work, run it on a schedule, measure every run, and change their own plan until the metric moves. It runs on the coding-agent CLIs you already use: Claude Code, Codex, Cursor, Pi, and Muse.
 
 [![Latest Release](https://img.shields.io/github/v/release/manishiitg/coding-agent-loop?label=release)](https://github.com/manishiitg/coding-agent-loop/releases/latest)
 ![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
@@ -50,10 +50,11 @@ If macOS still complains, also run `xattr -cr ~/Downloads/AgentWorks-*.dmg`. No 
 
 ## Works with
 
-- **Coding-agent CLIs:** Claude Code, OpenAI Codex CLI, Cursor CLI, and Pi CLI (Gemini, OpenRouter, and other Pi providers). Use the subscription you already pay for.
+- **Coding-agent CLIs:** Claude Code, OpenAI Codex CLI, Cursor CLI, Pi CLI (Gemini, OpenRouter, and other Pi providers), and Muse. Use the subscription you already pay for.
 - **API providers:** OpenAI, Anthropic, Google Gemini and Vertex AI, AWS Bedrock, Azure AI Foundry, MiniMax, and OpenRouter. Keys are encrypted at rest.
 - **Channels:** Slack and WhatsApp for two-way conversations; Gmail for outbound updates.
 - **Tools:** any MCP server, workspace files, and a persistent, isolated browser per workflow ([browser docs](docs/core/browser.md)).
+- **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork), or any MCP client to check goals, read reports, and start runs from that chat. It can read and run, but not edit workflows ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
 
 Route each part of a workflow to the model that fits it: your strongest model for judgment, a cheaper one for routine steps.
 
