@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ExternalLink, KeyRound, PlugZap, ScrollText, UserRound, UsersRound } from 'lucide-react'
-import { gatewayAdminUrl, gatewayBaseUrl } from '../productSurfaceConfig'
+import { KeyRound, ScrollText, Server, UserRound, UsersRound } from 'lucide-react'
+import { gatewayBaseUrl } from '../productSurfaceConfig'
+import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
 import { GatewayMark } from './GatewayMark'
 import { listUsers } from './gatewayAdminApi'
-import { GatewayConnectionsPanel } from './GatewayConnectionsPanel'
+import { GatewayServersPanel } from './GatewayServersPanel'
 import { GatewayGrantsPanel } from './GatewayGrantsPanel'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
@@ -11,15 +12,15 @@ import { GatewayAuditPanel } from './GatewayAuditPanel'
 import { ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
 import { useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
-const TABS = [
-  { id: 'connections', label: 'Connections', icon: PlugZap },
+const SECTIONS = [
+  { id: 'servers', label: 'Servers', icon: Server },
   { id: 'grants', label: 'Tools & Grants', icon: KeyRound },
   { id: 'groups', label: 'Groups', icon: UsersRound },
   { id: 'users', label: 'Users', icon: UserRound },
   { id: 'audit', label: 'Audit', icon: ScrollText },
 ] as const
 
-type TabId = (typeof TABS)[number]['id']
+type SectionId = (typeof SECTIONS)[number]['id']
 
 /**
  * Embedded MCP Gateway console. The React UI talks to the gateway admin API
@@ -30,7 +31,7 @@ type TabId = (typeof TABS)[number]['id']
  */
 export function GatewaySurface() {
   const base = gatewayBaseUrl()
-  const [tab, setTab] = useState<TabId>('connections')
+  const [section, setSection] = useState<SectionId>('servers')
   const [attempt, bump] = useAttempt()
   const ping = useGatewayLoader(async () => {
     if (!base) throw new Error('No MCP Gateway is configured for this deployment.')
@@ -45,19 +46,20 @@ export function GatewaySurface() {
     )
   }
 
-  const adminUrl = gatewayAdminUrl()
-
   return (
     <div className="flex h-full flex-col bg-background" data-testid="gateway-surface">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-        <GatewayMark className="h-8 w-8" />
-        <div className="min-w-0">
-          <h1 className="text-base font-semibold text-foreground">MCP Gateway</h1>
-          <p className="truncate text-xs text-muted-foreground">
-            Clients connect at <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{`${base}/mcp`}</code>
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
+        <ProductSurfaceSwitcher />
+        <span className="flex items-center gap-2 border-l border-border pl-3">
+          <GatewayMark className="h-6 w-6" />
+          <span>
+            <h1 className="text-sm font-semibold leading-tight text-foreground">MCP Gateway</h1>
+            <p className="truncate text-xs leading-tight text-muted-foreground">
+              Clients connect at <code className="rounded bg-muted px-1 font-mono text-[11px]">{`${base}/mcp`}</code>
+            </p>
+          </span>
+        </span>
+        <div className="ml-auto flex items-center">
           {ping.loading ? (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" aria-hidden />
@@ -74,17 +76,6 @@ export function GatewaySurface() {
               Connected
             </span>
           )}
-          {adminUrl && (
-            <a
-              href={adminUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              Classic admin
-              <ExternalLink className="h-3 w-3" aria-hidden />
-            </a>
-          )}
         </div>
       </header>
 
@@ -97,18 +88,17 @@ export function GatewaySurface() {
           <ConsoleError message={ping.error} onRetry={bump} />
         </div>
       ) : (
-        <>
-          <nav className="flex gap-1 overflow-x-auto border-b border-border px-5" role="tablist" aria-label="Gateway sections">
-            {TABS.map(({ id, label, icon: Icon }) => (
+        <div className="flex min-h-0 flex-1">
+          <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r border-border p-3" aria-label="Gateway sections">
+            {SECTIONS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => setTab(id)}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium ${
-                  tab === id
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                onClick={() => setSection(id)}
+                aria-current={section === id ? 'page' : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium ${
+                  section === id
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 }`}
               >
                 <Icon className="h-4 w-4" aria-hidden />
@@ -116,16 +106,16 @@ export function GatewaySurface() {
               </button>
             ))}
           </nav>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5" role="tabpanel">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
             <div className="mx-auto w-full max-w-5xl">
-              {tab === 'connections' && <GatewayConnectionsPanel base={base} />}
-              {tab === 'grants' && <GatewayGrantsPanel base={base} />}
-              {tab === 'groups' && <GatewayGroupsPanel base={base} />}
-              {tab === 'users' && <GatewayUsersPanel base={base} />}
-              {tab === 'audit' && <GatewayAuditPanel base={base} />}
+              {section === 'servers' && <GatewayServersPanel base={base} />}
+              {section === 'grants' && <GatewayGrantsPanel base={base} />}
+              {section === 'groups' && <GatewayGroupsPanel base={base} />}
+              {section === 'users' && <GatewayUsersPanel base={base} />}
+              {section === 'audit' && <GatewayAuditPanel base={base} />}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

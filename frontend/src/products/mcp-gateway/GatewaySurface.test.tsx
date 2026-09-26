@@ -4,6 +4,23 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewaySurface } from './GatewaySurface'
 
+// The surface embeds the product switcher and the AgentWorks MCP store. Mock
+// the stores (notably useAuthStore, which pulls services/api's eager side
+// effect) the same way other component tests in this repo do.
+vi.mock('../../stores/useAuthStore', () => ({
+  useAuthStore: (selector: (state: Record<string, unknown>) => unknown) => selector({ user: undefined }),
+}))
+vi.mock('../../stores/useAppStore', () => ({
+  useAppStore: { getState: () => ({}) },
+}))
+vi.mock('../../stores/useProductSurfaceStore', () => ({
+  useProductSurfaceStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({ productSurface: 'mcp-gateway', setProductSurface: () => {} }),
+}))
+vi.mock('../../stores/useMCPStore', () => ({
+  useMCPStore: (selector: (state: Record<string, unknown>) => unknown) => selector({ toolList: [] }),
+}))
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const BASE = 'http://127.0.0.1:18161'
@@ -53,20 +70,23 @@ describe('GatewaySurface', () => {
     await act(async () => {})
   }
 
-  it('renders the console tabs with no token prompt when the gateway answers', async () => {
+  it('renders the console menu with no token prompt when the gateway answers', async () => {
     stubGatewayUrl(BASE)
     vi.stubGlobal('fetch', vi.fn(healthyFetch()))
 
     await renderSurface()
 
     expect(container!.querySelector('[data-testid="gateway-surface"]')).not.toBeNull()
-    expect(container!.textContent).toContain('Connections')
-    expect(container!.textContent).toContain('Tools & Grants')
-    expect(container!.textContent).toContain('Audit')
+    const menu = container!.querySelector('[aria-label="Gateway sections"]')
+    expect(menu).not.toBeNull()
+    expect(menu!.textContent).toContain('Servers')
+    expect(menu!.textContent).toContain('Tools & Grants')
+    expect(menu!.textContent).toContain('Audit')
     expect(container!.textContent).toContain(`${BASE}/mcp`)
     expect(container!.textContent).toContain('Connected')
     expect(container!.textContent).not.toContain('admin token')
     expect(container!.textContent).not.toContain('Sign in')
+    expect(container!.textContent).not.toContain('Classic admin')
   })
 
   it('shows an error with retry instead of hanging when the gateway is down', async () => {
