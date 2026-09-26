@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { KeyRound, ScrollText, Server, UserRound, UsersRound } from 'lucide-react'
+import { ScrollText, Server, UserRound, UsersRound } from 'lucide-react'
 import { gatewayBaseUrl } from '../productSurfaceConfig'
 import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
-import { GatewayMark } from './GatewayMark'
 import { listUsers } from './gatewayAdminApi'
 import { GatewayServersPanel } from './GatewayServersPanel'
-import { GatewayGrantsPanel } from './GatewayGrantsPanel'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
@@ -14,7 +12,6 @@ import { useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
 const SECTIONS = [
   { id: 'servers', label: 'Servers', icon: Server },
-  { id: 'grants', label: 'Tools & Grants', icon: KeyRound },
   { id: 'groups', label: 'Groups', icon: UsersRound },
   { id: 'users', label: 'Users', icon: UserRound },
   { id: 'audit', label: 'Audit', icon: ScrollText },
@@ -50,33 +47,9 @@ export function GatewaySurface() {
     <div className="flex h-full flex-col bg-background" data-testid="gateway-surface">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
         <ProductSurfaceSwitcher />
-        <span className="flex items-center gap-2 border-l border-border pl-3">
-          <GatewayMark className="h-6 w-6" />
-          <span>
-            <h1 className="text-sm font-semibold leading-tight text-foreground">MCP Gateway</h1>
-            <p className="truncate text-xs leading-tight text-muted-foreground">
-              Clients connect at <code className="rounded bg-muted px-1 font-mono text-[11px]">{`${base}/mcp`}</code>
-            </p>
-          </span>
-        </span>
-        <div className="ml-auto flex items-center">
-          {ping.loading ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" aria-hidden />
-              Connecting…
-            </span>
-          ) : ping.error ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden />
-              Unreachable
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />
-              Connected
-            </span>
-          )}
-        </div>
+        <h1 className="text-sm font-semibold text-foreground">
+          {SECTIONS.find((s) => s.id === section)?.label ?? 'Servers'}
+        </h1>
       </header>
 
       {ping.loading ? (
@@ -108,7 +81,6 @@ export function GatewaySurface() {
           </nav>
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
             {section === 'servers' && <GatewayServersPanel base={base} />}
-            {section === 'grants' && <GatewayGrantsPanel base={base} />}
             {section === 'groups' && <GatewayGroupsPanel base={base} />}
             {section === 'users' && <GatewayUsersPanel base={base} />}
             {section === 'audit' && <GatewayAuditPanel base={base} />}

@@ -57,6 +57,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
         {events.length === 0 ? (
           <ConsoleEmpty>No tool calls yet. Calls appear here as clients use the gateway.</ConsoleEmpty>
         ) : (
+          <div className="overflow-x-auto">
           <table className={tableClass}>
             <thead>
               <tr>
@@ -95,6 +96,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </SettingsCard>
     </div>

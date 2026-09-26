@@ -125,19 +125,23 @@ type MemoryStore struct {
 	tools       map[string]ToolSnapshot // by PublicName (unique per workspace in M0)
 	grants      map[string]map[string]bool
 	groupGrants map[string]map[string]bool // group ID -> public names
-	audit       []AuditEvent
+	// groupServers attaches whole connectors to groups (AWS-style): every
+	// tool of the connector, including tools discovered later.
+	groupServers map[string]map[string]bool // group ID -> connector IDs
+	audit        []AuditEvent
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		workspaces:  map[string]Workspace{},
-		users:       map[string]User{},
-		groups:      map[string]Group{},
-		members:     map[string]map[string]bool{},
-		connectors:  map[string]Connector{},
-		tools:       map[string]ToolSnapshot{},
-		grants:      map[string]map[string]bool{},
-		groupGrants: map[string]map[string]bool{},
+		workspaces:   map[string]Workspace{},
+		users:        map[string]User{},
+		groups:       map[string]Group{},
+		members:      map[string]map[string]bool{},
+		connectors:   map[string]Connector{},
+		tools:        map[string]ToolSnapshot{},
+		grants:       map[string]map[string]bool{},
+		groupGrants:  map[string]map[string]bool{},
+		groupServers: map[string]map[string]bool{},
 	}
 }
 
@@ -163,7 +167,7 @@ func (s *MemoryStore) GetUser(id string) (User, bool) {
 func (s *MemoryStore) ListUsers(workspaceID string) []User {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []User
+	out := []User{}
 	for _, u := range s.users {
 		if u.WorkspaceID == workspaceID {
 			out = append(out, u)
@@ -189,7 +193,7 @@ func (s *MemoryStore) GetGroup(id string) (Group, bool) {
 func (s *MemoryStore) ListGroups(workspaceID string) []Group {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []Group
+	out := []Group{}
 	for _, g := range s.groups {
 		if g.WorkspaceID == workspaceID {
 			out = append(out, g)
@@ -218,7 +222,7 @@ func (s *MemoryStore) RemoveMember(groupID, userID string) {
 func (s *MemoryStore) GroupsOf(userID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []string
+	out := []string{}
 	for gid, users := range s.members {
 		if users[userID] {
 			out = append(out, gid)
@@ -232,7 +236,7 @@ func (s *MemoryStore) GroupsOf(userID string) []string {
 func (s *MemoryStore) MembersOf(groupID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []string
+	out := []string{}
 	for uid := range s.members[groupID] {
 		out = append(out, uid)
 	}
@@ -270,7 +274,7 @@ func (s *MemoryStore) DeleteConnector(id string) {
 func (s *MemoryStore) ListToolsForConnector(connectorID string) []ToolSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []ToolSnapshot
+	out := []ToolSnapshot{}
 	for _, t := range s.tools {
 		if t.ConnectorID == connectorID {
 			out = append(out, t)
@@ -283,7 +287,7 @@ func (s *MemoryStore) ListToolsForConnector(connectorID string) []ToolSnapshot {
 func (s *MemoryStore) ListConnectors(workspaceID string) []Connector {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []Connector
+	out := []Connector{}
 	for _, c := range s.connectors {
 		if c.WorkspaceID == workspaceID {
 			out = append(out, c)
@@ -327,7 +331,7 @@ func (s *MemoryStore) GetTool(publicName string) (ToolSnapshot, bool) {
 func (s *MemoryStore) ListTools(workspaceID string) []ToolSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []ToolSnapshot
+	out := []ToolSnapshot{}
 	for _, t := range s.tools {
 		if t.WorkspaceID == workspaceID {
 			out = append(out, t)
@@ -389,9 +393,49 @@ func (s *MemoryStore) HasGroupGrant(userID, publicName string) bool {
 func (s *MemoryStore) GroupGrantsFor(groupID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []string
+	out := []string{}
 	for name := range s.groupGrants[groupID] {
 		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.groupServers[groupID] == nil {
+		s.groupServers[groupID] = map[string]bool{}
+	}
+	s.groupServers[groupID][connectorID] = true
+}
+
+func (s *MemoryStore) RevokeGroupServerGrant(groupID, connectorID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.groupServers[groupID], connectorID)
+}
+
+// HasServerGrant reports whether any of the user's groups is attached to
+// the whole connector.
+func (s *MemoryStore) HasServerGrant(userID, connectorID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for gid, users := range s.members {
+		if users[userID] && s.groupServers[gid][connectorID] {
+			return true
+		}
+	}
+	return false
+}
+
+// GroupServersFor returns the connector IDs attached to a group.
+func (s *MemoryStore) GroupServersFor(groupID string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []string{}
+	for id := range s.groupServers[groupID] {
+		out = append(out, id)
 	}
 	sort.Strings(out)
 	return out
@@ -420,7 +464,7 @@ func (s *MemoryStore) ToolHolders(publicName string) (users, groups []string) {
 func (s *MemoryStore) UserGrantsFor(userID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []string
+	out := []string{}
 	for name := range s.grants[userID] {
 		out = append(out, name)
 	}

@@ -97,6 +97,70 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('1 server')
   })
 
+  it('expands a gateway server to show its tools with args and descriptions', async () => {
+    const withTools = (url: string) => {
+      if (url.endsWith('/api/admin/tools')) {
+        const schema = btoa(JSON.stringify({
+          properties: { q: { type: 'string', description: 'Search query' } },
+          required: ['q'],
+        }))
+        return Promise.resolve(
+          jsonResponse(200, {
+            tools: [
+              { ConnectorID: 'c1', WorkspaceID: 'w1', UpstreamName: 'search', PublicName: 'notion__search', Description: 'Searches notes', InputSchema: schema, Status: 'active', DiscoveredAt: '' },
+            ],
+          }),
+        )
+      }
+      return healthyFetch()(url)
+    }
+    await renderPanel(vi.fn(withTools))
+
+    expect(container!.textContent).not.toContain('notion__search')
+    await act(async () => {
+      ;(container!.querySelector('[aria-label="Show 1 tool on Notion"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(container!.textContent).toContain('notion__search')
+    expect(container!.textContent).toContain('Searches notes')
+    expect(container!.textContent).toContain('q: string*')
+  })
+
+  it('adds custom servers from pasted mcpServers JSON', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock)
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
+        return Promise.resolve(jsonResponse(201, { ID: 'c9' }))
+      }
+      return healthyFetch()(url)
+    })
+
+    const box = container!.querySelector('[data-testid="gateway-add-json"]') as HTMLTextAreaElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+        box,
+        '{"mcpServers": {"acme": {"url": "https://acme.example.com/mcp"}}}',
+      )
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      ;(container!.querySelector('[data-testid="gateway-add-submit"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE}/api/admin/connectors`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ Provider: 'acme', Label: '', Slug: '', URL: 'https://acme.example.com/mcp' }),
+      }),
+    )
+    expect(container!.textContent).toContain('Added 1 server: acme')
+  })
+
   it('adds an AgentWorks server to the gateway from its catalog template', async () => {
     const fetchMock = vi.fn(healthyFetch())
     await renderPanel(fetchMock)

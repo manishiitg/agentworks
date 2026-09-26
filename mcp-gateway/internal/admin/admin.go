@@ -271,6 +271,24 @@ func (a *Admin) SetGroupGrant(groupID, publicName string, grant bool) error {
 	return nil
 }
 
+// SetGroupServer attaches or detaches a whole connector to a group.
+func (a *Admin) SetGroupServer(groupID, connectorID string, attach bool) error {
+	g, ok := a.Store.GetGroup(groupID)
+	if !ok || g.WorkspaceID != a.WorkspaceID {
+		return errors.New("unknown group")
+	}
+	c, ok := a.Store.GetConnector(connectorID)
+	if !ok || c.WorkspaceID != a.WorkspaceID {
+		return errors.New("unknown connector")
+	}
+	if attach {
+		a.Store.AddGroupServerGrant(groupID, connectorID)
+	} else {
+		a.Store.RevokeGroupServerGrant(groupID, connectorID)
+	}
+	return nil
+}
+
 // --- JSON API ---
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -372,6 +390,44 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		if err := a.SetMember(r.PathValue("id"), r.PathValue("uid"), false); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/admin/groups/{id}/servers", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			g, ok := a.Store.GetGroup(r.PathValue("id"))
+			if !ok || g.WorkspaceID != a.WorkspaceID {
+				writeErr(w, 400, errors.New("unknown group"))
+				return
+			}
+			writeJSON(w, 200, map[string]any{"servers": a.Store.GroupServersFor(g.ID)})
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			ConnectorID string `json:"connector_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		if err := a.SetGroupServer(r.PathValue("id"), in.ConnectorID, true); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "attached"})
+	}))
+	mux.HandleFunc("/api/admin/groups/{id}/servers/{cid}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := a.SetGroupServer(r.PathValue("id"), r.PathValue("cid"), false); err != nil {
 			writeErr(w, 400, err)
 			return
 		}

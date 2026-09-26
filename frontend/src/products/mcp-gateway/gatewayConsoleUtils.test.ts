@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeServerRows, normalizeServerKey, plural } from './gatewayConsoleUtils'
+import { mergeServerRows, normalizeServerKey, parseMcpServersJson, parseToolArgs, plural } from './gatewayConsoleUtils'
 import type { GatewayConnector, GatewayProvider } from './gatewayAdminApi'
 
 function connector(id: string, provider: string): GatewayConnector {
@@ -15,6 +15,47 @@ describe('plural', () => {
     expect(plural(1, 'server')).toBe('1 server')
     expect(plural(0, 'server')).toBe('0 servers')
     expect(plural(2, 'server')).toBe('2 servers')
+  })
+})
+
+describe('parseMcpServersJson', () => {
+  it('reads the Claude-style mcpServers map', () => {
+    const out = parseMcpServersJson('{"mcpServers": {"acme": {"url": "https://acme.example.com/mcp"}}}')
+    expect(out.servers).toEqual([{ name: 'acme', url: 'https://acme.example.com/mcp' }])
+    expect(out.skipped).toEqual([])
+  })
+
+  it('accepts a bare name-to-entry map and skips non-URL servers', () => {
+    const out = parseMcpServersJson('{"acme": {"url": "https://acme.example.com/mcp"}, "local": {"command": "npx"}}')
+    expect(out.servers).toEqual([{ name: 'acme', url: 'https://acme.example.com/mcp' }])
+    expect(out.skipped).toEqual([{ name: 'local', reason: 'only Streamable-HTTP ("url") servers are supported' }])
+  })
+
+  it('rejects invalid JSON and empty maps', () => {
+    expect(() => parseMcpServersJson('{nope')).toThrow('not valid JSON')
+    expect(() => parseMcpServersJson('{"mcpServers": {}}')).toThrow('No servers found')
+    expect(() => parseMcpServersJson('[]')).toThrow('Expected { "mcpServers"')
+  })
+})
+
+describe('parseToolArgs', () => {
+  it('returns null when the upstream sent no schema', () => {
+    expect(parseToolArgs(null)).toBeNull()
+    expect(parseToolArgs('!!!not-base64!!!')).toBeNull()
+  })
+
+  it('flattens properties with required flags', () => {
+    const b64 = btoa(JSON.stringify({
+      properties: {
+        q: { type: 'string', description: 'Query' },
+        limit: { type: ['number', 'null'] },
+      },
+      required: ['q'],
+    }))
+    expect(parseToolArgs(b64)).toEqual([
+      { name: 'q', type: 'string', required: true, description: 'Query' },
+      { name: 'limit', type: 'number | null', required: false, description: '' },
+    ])
   })
 })
 

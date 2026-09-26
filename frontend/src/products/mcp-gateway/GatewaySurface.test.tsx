@@ -80,13 +80,12 @@ describe('GatewaySurface', () => {
     const menu = container!.querySelector('[aria-label="Gateway sections"]')
     expect(menu).not.toBeNull()
     expect(menu!.textContent).toContain('Servers')
-    expect(menu!.textContent).toContain('Tools & Grants')
+    expect(menu!.textContent).toContain('Groups')
+    expect(menu!.textContent).toContain('Users')
     expect(menu!.textContent).toContain('Audit')
-    expect(container!.textContent).toContain(`${BASE}/mcp`)
-    expect(container!.textContent).toContain('Connected')
+    expect(menu!.textContent).not.toContain('Tools & Grants')
     expect(container!.textContent).not.toContain('admin token')
     expect(container!.textContent).not.toContain('Sign in')
-    expect(container!.textContent).not.toContain('Classic admin')
   })
 
   it('shows an error with retry instead of hanging when the gateway is down', async () => {
@@ -96,8 +95,8 @@ describe('GatewaySurface', () => {
 
     await renderSurface()
 
-    expect(container!.textContent).toContain('Unreachable')
     expect(container!.textContent).toContain('Gateway is unreachable')
+    expect(container!.querySelector('[aria-label="Gateway sections"]')).toBeNull()
     const callsBefore = fetchMock.mock.calls.length
     expect(callsBefore).toBeGreaterThan(0)
 
@@ -111,7 +110,7 @@ describe('GatewaySurface', () => {
     await act(async () => {})
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore)
-    expect(container!.textContent).toContain('Connected')
+    expect(container!.querySelector('[aria-label="Gateway sections"]')).not.toBeNull()
   })
 
   it('explains itself when no gateway is configured', async () => {

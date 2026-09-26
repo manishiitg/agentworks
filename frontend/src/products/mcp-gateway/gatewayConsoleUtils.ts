@@ -62,6 +62,82 @@ export function plural(count: number, one: string, many?: string): string {
   return `${count} ${count === 1 ? one : (many ?? `${one}s`)}`
 }
 
+export interface McpServerEntry {
+  name: string
+  url: string
+}
+
+/**
+ * Parses a pasted MCP servers block in the standard Claude-style shape:
+ * `{ "mcpServers": { name: { url } } }` (a bare `{ name: { url } }` map is
+ * accepted too). Only Streamable-HTTP (`url`) servers can join the gateway;
+ * anything else is reported as skipped with a reason.
+ */
+export function parseMcpServersJson(text: string): { servers: McpServerEntry[]; skipped: Array<{ name: string; reason: string }> } {
+  let doc: unknown
+  try {
+    doc = JSON.parse(text)
+  } catch {
+    throw new Error('That is not valid JSON.')
+  }
+  const root = doc as Record<string, unknown>
+  const map: unknown =
+    root !== null && typeof root === 'object' && !Array.isArray(root) && 'mcpServers' in root ? root.mcpServers : root
+  if (map === null || typeof map !== 'object' || Array.isArray(map)) {
+    throw new Error('Expected { "mcpServers": { "<name>": { "url": "https://…/mcp" } } }.')
+  }
+  const servers: McpServerEntry[] = []
+  const skipped: Array<{ name: string; reason: string }> = []
+  for (const [name, entry] of Object.entries(map as Record<string, unknown>)) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      skipped.push({ name, reason: 'not an object' })
+      continue
+    }
+    const url = (entry as Record<string, unknown>).url
+    if (typeof url !== 'string' || url.trim() === '') {
+      skipped.push({ name, reason: 'only Streamable-HTTP ("url") servers are supported' })
+      continue
+    }
+    servers.push({ name, url: url.trim() })
+  }
+  if (servers.length === 0) {
+    throw new Error(
+      skipped.length > 0
+        ? `No usable servers: ${skipped.map((s) => `${s.name} (${s.reason})`).join('; ')}.`
+        : 'No servers found in that JSON.',
+    )
+  }
+  return { servers, skipped }
+}
+
+export interface ToolArg {
+  name: string
+  type: string
+  required: boolean
+  description: string
+}
+
+/**
+ * Decodes a tool's base64 JSON input schema into a flat argument list.
+ * Returns null when the upstream sent no (or an unreadable) schema.
+ */
+export function parseToolArgs(schemaB64: string | null | undefined): ToolArg[] | null {
+  if (!schemaB64) return null
+  try {
+    const schema = JSON.parse(atob(schemaB64)) as { properties?: Record<string, { type?: unknown; description?: unknown }>; required?: unknown }
+    if (!schema.properties || typeof schema.properties !== 'object') return []
+    const required = new Set(Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === 'string') : [])
+    return Object.entries(schema.properties).map(([name, def]) => ({
+      name,
+      type: Array.isArray(def?.type) ? def.type.map(String).join(' | ') : typeof def?.type === 'string' ? def.type : 'any',
+      required: required.has(name),
+      description: typeof def?.description === 'string' ? def.description : '',
+    }))
+  } catch {
+    return null
+  }
+}
+
 /** Lowercase alphanumeric key; mirrors the gateway catalog.Key and the brand-slug normalization. */
 export function normalizeServerKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')

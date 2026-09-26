@@ -32,7 +32,8 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 	if !ok || c.Status != store.StatusActive {
 		return store.ToolSnapshot{}, ErrConnectorDisabled
 	}
-	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) {
+	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
+		!s.HasServerGrant(id.UserID, t.ConnectorID) {
 		return store.ToolSnapshot{}, ErrNoGrant
 	}
 	return t, nil

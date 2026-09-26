@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/admin"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/policy"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
@@ -99,6 +101,91 @@ func TestGroupMembersRoundTrip(t *testing.T) {
 	}
 	if code, data := get("/api/admin/groups/nope/members"); code != 400 {
 		t.Fatalf("unknown group: got %d %s, want 400", code, data)
+	}
+}
+
+// TestGroupServerGrantRoundTrip: attaching a whole connector to a group
+// authorizes its tools (current and later-discovered) for members.
+func TestGroupServerGrantRoundTrip(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
+	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1", Email: "u1@example.com"})
+	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
+	st.AddMember("g1", "u1")
+	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	mux := http.NewServeMux()
+	adm.APIRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
+	if _, err := policy.Authorize(st, id, "fake__tool"); err == nil {
+		t.Fatal("tool allowed before any grant")
+	}
+
+	resp, err := http.Post(srv.URL+"/api/admin/groups/g1/servers", "application/json",
+		strings.NewReader(`{"connector_id":"c1"}`))
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("attach: got %d, want 200", resp.StatusCode)
+	}
+	if _, err := policy.Authorize(st, id, "fake__tool"); err != nil {
+		t.Fatalf("tool denied after server attach: %v", err)
+	}
+	// A tool discovered later is covered by the same ongoing attach.
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__new", Status: store.StatusActive})
+	if _, err := policy.Authorize(st, id, "fake__new"); err != nil {
+		t.Fatalf("later tool denied after server attach: %v", err)
+	}
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/admin/groups/g1/servers/c1", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 204 {
+		t.Fatalf("detach: got %d, want 204", resp.StatusCode)
+	}
+	if _, err := policy.Authorize(st, id, "fake__tool"); err == nil {
+		t.Fatal("tool allowed after detach")
+	}
+}
+
+// TestEmptyListsMarshalAsArrays: list endpoints emit [] (never null) so
+// clients can iterate without nil checks.
+func TestEmptyListsMarshalAsArrays(t *testing.T) {
+	srv := httptest.NewServer(localAdminMux())
+	defer srv.Close()
+
+	for _, path := range []string{
+		"/api/admin/users", "/api/admin/groups", "/api/admin/connectors",
+		"/api/admin/tools", "/api/admin/audit",
+	} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		data, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: got %d", path, resp.StatusCode)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("GET %s decode: %v", path, err)
+		}
+		for key, value := range decoded {
+			arr, ok := value.([]any)
+			if !ok || arr == nil {
+				t.Fatalf("GET %s: field %q = %v, want []", path, key, value)
+			}
+		}
 	}
 }
 

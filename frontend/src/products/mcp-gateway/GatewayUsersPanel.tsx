@@ -3,7 +3,7 @@ import { Loader2, UserRound } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { createUser, listUsers } from './gatewayAdminApi'
+import { createUser, listGroups, listMembers, listUsers } from './gatewayAdminApi'
 import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
 import {
   codeClass,
@@ -18,7 +18,20 @@ import {
 
 export function GatewayUsersPanel({ base }: { base: string }) {
   const [attempt, bump] = useAttempt()
-  const { data, loading, error } = useGatewayLoader(async () => listUsers(base), attempt)
+  const { data, loading, error } = useGatewayLoader(async () => {
+    const [users, groups] = await Promise.all([listUsers(base), listGroups(base)])
+    const userGroups = new Map<string, string[]>()
+    await Promise.all(
+      groups.groups.map(async (g) => {
+        for (const m of (await listMembers(base, g.ID)).members ?? []) {
+          const list = userGroups.get(m) ?? []
+          list.push(g.ID)
+          userGroups.set(m, list)
+        }
+      }),
+    )
+    return { users: users.users, userGroups }
+  }, attempt)
 
   const [userId, setUserId] = useState('')
   const [email, setEmail] = useState('')
@@ -53,29 +66,33 @@ export function GatewayUsersPanel({ base }: { base: string }) {
         icon={<UserRound className="h-4 w-4 text-primary" />}
         title="Users"
         count={<SettingsCount>{plural(data.users.length, 'user')}</SettingsCount>}
-        description="People who sign into MCP clients through the gateway. Grants decide which tools each of them sees."
+        description="People who sign into MCP clients through the gateway. They get their tools from their groups."
       >
         {data.users.length === 0 ? (
           <ConsoleEmpty>No users yet. Create one below.</ConsoleEmpty>
         ) : (
-          <table className={tableClass}>
-            <thead>
-              <tr>
-                <th className={thClass}>User</th>
-                <th className={thClass}>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.users.map((u) => (
-                <tr key={u.ID}>
-                  <td className={tdClass}>
-                    <span className={codeClass}>{u.ID}</span>
-                  </td>
-                  <td className={tdClass}>{u.Email}</td>
+          <div className="overflow-x-auto">
+            <table className={tableClass}>
+              <thead>
+                <tr>
+                  <th className={thClass}>User</th>
+                  <th className={thClass}>Email</th>
+                  <th className={thClass}>Groups</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.users.map((u) => (
+                  <tr key={u.ID}>
+                    <td className={tdClass}>
+                      <span className={codeClass}>{u.ID}</span>
+                    </td>
+                    <td className={tdClass}>{u.Email}</td>
+                    <td className={tdClass}>{(data.userGroups.get(u.ID) ?? []).join(', ') || <span className="text-muted-foreground">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </SettingsCard>
 

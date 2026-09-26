@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   GatewayApiError,
+  attachGroupServer,
   createConnector,
   createUser,
+  detachGroupServer,
   getGrants,
   listAudit,
   listConnectors,
+  listGroupServers,
   listMembers,
   setGrant,
 } from './gatewayAdminApi'
@@ -79,6 +82,25 @@ describe('gatewayAdminApi', () => {
         body: JSON.stringify({ user_id: 'u1', tool: 'notion__search', grant: true }),
       }),
     )
+  })
+
+  it('attaches and detaches whole servers to groups', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { servers: ['c1'] }))
+      .mockResolvedValueOnce(jsonResponse(200, { status: 'attached' }))
+      .mockResolvedValueOnce({ ok: true, status: 204, json: () => Promise.reject(new Error('no body')) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listGroupServers(BASE, 'g1')).resolves.toEqual({ servers: ['c1'] })
+    await attachGroupServer(BASE, 'g1', 'c1')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${BASE}/api/admin/groups/g1/servers`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ connector_id: 'c1' }) }),
+    )
+    await detachGroupServer(BASE, 'g1', 'c1')
+    expect(fetchMock).toHaveBeenNthCalledWith(3, `${BASE}/api/admin/groups/g1/servers/c1`, expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('lists members and audit events', async () => {

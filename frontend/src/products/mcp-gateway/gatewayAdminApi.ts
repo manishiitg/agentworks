@@ -33,6 +33,8 @@ export interface GatewayTool {
   UpstreamName: string
   PublicName: string
   Description: string
+  /** Raw JSON schema, base64-encoded by Go ([]byte); null when the upstream sent none. */
+  InputSchema: string | null
   Status: string
   DiscoveredAt: string
 }
@@ -129,6 +131,20 @@ export function addMember(base: string, groupId: string, userId: string): Promis
 
 export function removeMember(base: string, groupId: string, userId: string): Promise<void> {
   return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function listGroupServers(base: string, groupId: string): Promise<{ servers: string[] }> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers`)
+}
+
+export function attachGroupServer(base: string, groupId: string, connectorId: string): Promise<{ status: string }> {
+  return post(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers`, { connector_id: connectorId })
+}
+
+export function detachGroupServer(base: string, groupId: string, connectorId: string): Promise<void> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers/${encodeURIComponent(connectorId)}`, {
     method: 'DELETE',
   })
 }
