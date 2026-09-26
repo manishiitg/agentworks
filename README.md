@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/i
 
 This downloads the latest release, installs `AgentWorks.app` to `/Applications`, installs the MCP bridge that Claude Code and Codex use for tool access (to `~/go/bin`, installing Go through Homebrew if needed), clears the macOS quarantine flag, and launches the app. Pin a version with `RUNLOOP_VERSION=v1.25.6 curl -fsSL … | bash` (the variable keeps its legacy name).
 
-On first launch, pick a workspace folder and set an `AUTH_SECRET` (used to encrypt provider keys; reuse the same value on every machine that opens this workspace). Then connect a coding-agent CLI or an API provider in **LLM Configuration**.
+On first launch, pick a workspace folder and set an `AUTH_SECRET` (used to encrypt provider keys; reuse the same value on every machine that opens this workspace). Then connect a coding-agent CLI in **LLM Configuration**, signing in with your subscription or that CLI's API key.
 
 <details>
 <summary>Manual install, and the "AgentWorks is damaged and can't be opened" message</summary>
@@ -51,12 +51,11 @@ If macOS still complains, also run `xattr -cr ~/Downloads/AgentWorks-*.dmg`. No 
 ## Works with
 
 - **Coding-agent CLIs:** Claude Code, OpenAI Codex CLI, Cursor CLI, Pi CLI (Gemini, OpenRouter, and other Pi providers), and Muse. Use the subscription you already pay for.
-- **API providers:** OpenAI, Anthropic, Google Gemini and Vertex AI, AWS Bedrock, Azure AI Foundry, MiniMax, and OpenRouter. Keys are encrypted at rest.
 - **Channels:** Slack and WhatsApp for two-way conversations; Gmail for outbound updates.
 - **Tools:** any MCP server, workspace files, and a persistent, isolated browser per workflow ([browser docs](docs/core/browser.md)).
 - **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork), or any MCP client to check goals, read reports, and start runs from that chat. It can read and run, but not edit workflows ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
 
-Route each part of a workflow to the model that fits it: your strongest model for judgment, a cheaper one for routine steps.
+AgentWorks runs each vendor's own agent (model plus harness), not a bare model API, so you get everything the agent can do. Route each step to the agent and model that fit it: your strongest for judgment, a cheaper one for routine steps.
 
 ## Control and security
 
