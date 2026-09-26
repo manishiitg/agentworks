@@ -583,10 +583,26 @@ if [ "$ONLY_FRONTEND" = true ]; then
     RUNTIME_APP_NAME="$(json_escape_runtime_value "${AGENTWORKS_APP_NAME:-AgentWorks}")"
     RUNTIME_FAVICON_URL="$(json_escape_runtime_value "${AGENTWORKS_FAVICON_URL:-/logo.svg}")"
     # A frontend-only restart must not drop the gateway switcher entry while
-    # the gateway (started with the backend) is still up.
+    # the gateway (started with the backend) is still up. The backend falls
+    # back to a random port in 18100-18199 when the default is busy, so when
+    # the default probe misses (and no explicit GATEWAY_PORT pins the port),
+    # scan that range for a live gateway instead of dropping the entry.
     ONLY_FRONTEND_GATEWAY_LINE=""
     ONLY_FRONTEND_GATEWAY_PROBE="${GATEWAY_PORT:-18745}"
-    if curl -fsS --max-time 2 "http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}/healthz" >/dev/null 2>&1; then
+    if ! curl -fsS --max-time 2 "http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}/healthz" >/dev/null 2>&1; then
+        if [ -n "${GATEWAY_PORT:-}" ]; then
+            ONLY_FRONTEND_GATEWAY_PROBE=""
+        else
+            ONLY_FRONTEND_GATEWAY_PROBE=""
+            for probe_port in {18100..18199}; do
+                if curl -fsS --max-time 1 "http://127.0.0.1:${probe_port}/healthz" >/dev/null 2>&1; then
+                    ONLY_FRONTEND_GATEWAY_PROBE="$probe_port"
+                    break
+                fi
+            done
+        fi
+    fi
+    if [ -n "$ONLY_FRONTEND_GATEWAY_PROBE" ]; then
         ONLY_FRONTEND_GATEWAY_LINE=",
   gatewayUrl: \"http://127.0.0.1:${ONLY_FRONTEND_GATEWAY_PROBE}\""
     fi
