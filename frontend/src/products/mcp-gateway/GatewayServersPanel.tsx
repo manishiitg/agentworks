@@ -245,7 +245,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
   }
 
   if (loading) return <ConsoleLoading label="Loading servers…" />
-  if (error || !data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
+  if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
   const inGateway = rows.filter((r) => r.gateway.length > 0).length
   const stats: Array<[string, string]> = [

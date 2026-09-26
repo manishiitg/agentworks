@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeServerRows, normalizeServerKey, parseMcpServersJson, parseToolArgs, plural } from './gatewayConsoleUtils'
+import { formatDateTime, mergeServerRows, normalizeServerKey, parseMcpServersJson, parseToolArgs, plural, slugifyId } from './gatewayConsoleUtils'
 import type { GatewayConnector, GatewayProvider } from './gatewayAdminApi'
 
 function connector(id: string, provider: string): GatewayConnector {
@@ -56,6 +56,20 @@ describe('parseToolArgs', () => {
       { name: 'q', type: 'string', required: true, description: 'Query' },
       { name: 'limit', type: 'number | null', required: false, description: '' },
     ])
+  })
+})
+
+describe('slugifyId', () => {
+  it('derives a lowercase dashed id from a display name', () => {
+    expect(slugifyId('Support engineers')).toBe('support-engineers')
+    expect(slugifyId('  Data_Science 2!')).toBe('data-science-2')
+    expect(slugifyId('!!!')).toBe('')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('renders never for empty values', () => {
+    expect(formatDateTime('')).toBe('never')
   })
 })
 

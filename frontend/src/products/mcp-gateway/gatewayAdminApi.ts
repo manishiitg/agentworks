@@ -60,6 +60,17 @@ export interface GatewayProvider {
   OAuth: boolean
 }
 
+export interface GatewayAPIKey {
+  ID: string
+  WorkspaceID: string
+  GroupID: string
+  Label: string
+  /** Present only in the create response; listings scrub it. */
+  Token: string
+  CreatedAt: string
+  LastUsedAt: string
+}
+
 export class GatewayApiError extends Error {
   status: number
 
@@ -119,6 +130,24 @@ export function listGroups(base: string): Promise<{ groups: GatewayGroup[] }> {
 
 export function createGroup(base: string, id: string, name: string): Promise<{ id: string }> {
   return post(base, '/api/admin/groups', { ID: id, Name: name })
+}
+
+export function renameGroup(base: string, id: string, name: string): Promise<{ status: string }> {
+  return post(base, `/api/admin/groups/${encodeURIComponent(id)}`, { Name: name })
+}
+
+export function listGroupKeys(base: string, groupId: string): Promise<{ keys: GatewayAPIKey[] }> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/keys`)
+}
+
+export function createGroupKey(base: string, groupId: string, label: string): Promise<GatewayAPIKey> {
+  return post(base, `/api/admin/groups/${encodeURIComponent(groupId)}/keys`, { Label: label })
+}
+
+export function revokeGroupKey(base: string, groupId: string, keyId: string): Promise<void> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/keys/${encodeURIComponent(keyId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export function listMembers(base: string, groupId: string): Promise<{ members: string[] }> {

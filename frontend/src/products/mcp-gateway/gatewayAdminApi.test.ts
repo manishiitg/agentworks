@@ -3,13 +3,17 @@ import {
   GatewayApiError,
   attachGroupServer,
   createConnector,
+  createGroupKey,
   createUser,
   detachGroupServer,
   getGrants,
   listAudit,
   listConnectors,
+  listGroupKeys,
   listGroupServers,
   listMembers,
+  renameGroup,
+  revokeGroupKey,
   setGrant,
 } from './gatewayAdminApi'
 
@@ -101,6 +105,27 @@ describe('gatewayAdminApi', () => {
     )
     await detachGroupServer(BASE, 'g1', 'c1')
     expect(fetchMock).toHaveBeenNthCalledWith(3, `${BASE}/api/admin/groups/g1/servers/c1`, expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('renames groups and manages their API keys', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { status: 'renamed' }))
+      .mockResolvedValueOnce(jsonResponse(200, { keys: [{ ID: 'key_1' }] }))
+      .mockResolvedValueOnce(jsonResponse(201, { ID: 'key_2', Token: 'gwk_x' }))
+      .mockResolvedValueOnce({ ok: true, status: 204, json: () => Promise.reject(new Error('no body')) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    await renameGroup(BASE, 'g1', 'New name')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `${BASE}/api/admin/groups/g1`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'New name' }) }),
+    )
+    await expect(listGroupKeys(BASE, 'g1')).resolves.toEqual({ keys: [{ ID: 'key_1' }] })
+    await expect(createGroupKey(BASE, 'g1', 'share')).resolves.toEqual({ ID: 'key_2', Token: 'gwk_x' })
+    await revokeGroupKey(BASE, 'g1', 'key_2')
+    expect(fetchMock).toHaveBeenNthCalledWith(4, `${BASE}/api/admin/groups/g1/keys/key_2`, expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('lists members and audit events', async () => {

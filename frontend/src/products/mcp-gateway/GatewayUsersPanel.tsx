@@ -58,7 +58,7 @@ export function GatewayUsersPanel({ base }: { base: string }) {
   }
 
   if (loading) return <ConsoleLoading label="Loading users…" />
-  if (error || !data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
+  if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
   return (
     <div className="space-y-4" data-testid="gateway-users">

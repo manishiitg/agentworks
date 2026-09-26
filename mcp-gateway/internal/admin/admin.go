@@ -271,6 +271,59 @@ func (a *Admin) SetGroupGrant(groupID, publicName string, grant bool) error {
 	return nil
 }
 
+// RenameGroup changes a group's display name.
+func (a *Admin) RenameGroup(id, name string) error {
+	g, ok := a.Store.GetGroup(id)
+	if !ok || g.WorkspaceID != a.WorkspaceID {
+		return errors.New("unknown group")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("invalid group name")
+	}
+	a.Store.RenameGroup(id, name)
+	return nil
+}
+
+// CreateGroupKey mints a shareable API key carrying the group's grants.
+// The token is returned once; listings never include it.
+func (a *Admin) CreateGroupKey(groupID, label string) (store.APIKey, error) {
+	g, ok := a.Store.GetGroup(groupID)
+	if !ok || g.WorkspaceID != a.WorkspaceID {
+		return store.APIKey{}, errors.New("unknown group")
+	}
+	tokenBytes := make([]byte, 24)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return store.APIKey{}, err
+	}
+	idBytes := make([]byte, 4)
+	if _, err := rand.Read(idBytes); err != nil {
+		return store.APIKey{}, err
+	}
+	k := store.APIKey{
+		ID:          "key_" + hex.EncodeToString(idBytes),
+		WorkspaceID: a.WorkspaceID,
+		GroupID:     groupID,
+		Label:       strings.TrimSpace(label),
+		Token:       "gwk_" + hex.EncodeToString(tokenBytes),
+		CreatedAt:   time.Now(),
+	}
+	a.Store.AddAPIKey(k)
+	return k, nil
+}
+
+// RevokeGroupKey deletes an API key by ID.
+func (a *Admin) RevokeGroupKey(groupID, id string) error {
+	g, ok := a.Store.GetGroup(groupID)
+	if !ok || g.WorkspaceID != a.WorkspaceID {
+		return errors.New("unknown group")
+	}
+	if !a.Store.RevokeAPIKey(groupID, id) {
+		return errors.New("unknown key")
+	}
+	return nil
+}
+
 // SetGroupServer attaches or detaches a whole connector to a group.
 func (a *Admin) SetGroupServer(groupID, connectorID string, attach bool) error {
 	g, ok := a.Store.GetGroup(groupID)
@@ -356,6 +409,63 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID)})
+	}))
+	mux.HandleFunc("/api/admin/groups/{id}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Name string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		if err := a.RenameGroup(r.PathValue("id"), in.Name); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 200, map[string]string{"status": "renamed"})
+	}))
+	mux.HandleFunc("/api/admin/groups/{id}/keys", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			g, ok := a.Store.GetGroup(r.PathValue("id"))
+			if !ok || g.WorkspaceID != a.WorkspaceID {
+				writeErr(w, 400, errors.New("unknown group"))
+				return
+			}
+			writeJSON(w, 200, map[string]any{"keys": a.Store.ListAPIKeys(g.ID)})
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Label string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		k, err := a.CreateGroupKey(r.PathValue("id"), in.Label)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 201, k)
+	}))
+	mux.HandleFunc("/api/admin/groups/{id}/keys/{keyid}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := a.RevokeGroupKey(r.PathValue("id"), r.PathValue("keyid")); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("/api/admin/groups/{id}/members", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {

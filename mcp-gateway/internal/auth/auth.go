@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
@@ -20,6 +21,9 @@ type Identity struct {
 	UserID      string
 	WorkspaceID string
 	Email       string
+	// ViaGroup is set when the caller authenticated with a group API key:
+	// only that group's grants apply, never the key's own (nonexistent) user.
+	ViaGroup string
 }
 
 // Authenticator resolves a bearer token to an Identity.
@@ -32,14 +36,27 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 // OAuth validates MCP client tokens against the shared authorization server.
 // M0 maps every valid grant into the single workspace; M1 provisions users
 // and resolves workspace membership here.
+//
+// Group API keys (gwk_…) authenticate without the authorization server: the
+// key carries exactly its group's grants, so it can be shared with someone
+// outside the workspace login.
 type OAuth struct {
 	Server      *mcpoauth.Server
 	WorkspaceID string
+	Keys        *store.MemoryStore
 }
 
 func (o OAuth) Authenticate(ctx context.Context, token string) (Identity, error) {
 	if token == "" {
 		return Identity{}, ErrUnauthenticated
+	}
+	if strings.HasPrefix(token, "gwk_") && o.Keys != nil {
+		k, ok := o.Keys.APIKeyByToken(token)
+		if !ok || k.WorkspaceID != o.WorkspaceID {
+			return Identity{}, ErrUnauthenticated
+		}
+		o.Keys.TouchAPIKey(token)
+		return Identity{UserID: "key:" + k.ID, WorkspaceID: k.WorkspaceID, ViaGroup: k.GroupID}, nil
 	}
 	grant, err := o.Server.AuthenticateRequest(ctx, token)
 	if err != nil {

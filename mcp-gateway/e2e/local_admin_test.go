@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -186,6 +187,124 @@ func TestEmptyListsMarshalAsArrays(t *testing.T) {
 				t.Fatalf("GET %s: field %q = %v, want []", path, key, value)
 			}
 		}
+	}
+}
+
+// TestGroupAPIKeyFlow: a group key authenticates on /mcp carrying exactly
+// the group's grants; revoking disables it.
+func TestGroupAPIKeyFlow(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
+	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
+	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
+	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	mux := http.NewServeMux()
+	adm.APIRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/admin/groups/g1/keys", "application/json", strings.NewReader(`{"label":"share"}`))
+	if err != nil {
+		t.Fatalf("create key: %v", err)
+	}
+	var created struct {
+		ID    string `json:"ID"`
+		Token string `json:"Token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode key: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 201 || !strings.HasPrefix(created.Token, "gwk_") || created.ID == "" {
+		t.Fatalf("create key: status=%d id=%q token-prefix=%q", resp.StatusCode, created.ID, created.Token)
+	}
+
+	oauth := auth.OAuth{WorkspaceID: "w1", Keys: st}
+	id, err := oauth.Authenticate(context.Background(), created.Token)
+	if err != nil || id.ViaGroup != "g1" {
+		t.Fatalf("key auth: id=%+v err=%v", id, err)
+	}
+	if _, err := policy.Authorize(st, id, "fake__tool"); err == nil {
+		t.Fatal("key allowed before any grant")
+	}
+	st.AddGroupGrant(store.GroupGrant{GroupID: "g1", PublicName: "fake__tool"})
+	if _, err := policy.Authorize(st, id, "fake__tool"); err != nil {
+		t.Fatalf("key denied after group tool grant: %v", err)
+	}
+	if !policy.Visible(st, id, "fake__tool") {
+		t.Fatal("key cannot see granted tool in listing")
+	}
+
+	// Listings never include tokens.
+	listResp, err := http.Get(srv.URL + "/api/admin/groups/g1/keys")
+	if err != nil {
+		t.Fatalf("list keys: %v", err)
+	}
+	var listed struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode keys: %v", err)
+	}
+	listResp.Body.Close()
+	if len(listed.Keys) != 1 || listed.Keys[0]["Token"] != "" {
+		t.Fatalf("list keys leaks token: %+v", listed.Keys)
+	}
+
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/admin/groups/g1/keys/"+created.ID, nil)
+	delResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	delResp.Body.Close()
+	if delResp.StatusCode != 204 {
+		t.Fatalf("revoke: got %d, want 204", delResp.StatusCode)
+	}
+	if _, err := oauth.Authenticate(context.Background(), created.Token); err == nil {
+		t.Fatal("revoked key still authenticates")
+	}
+}
+
+// TestRenameGroup: groups can be renamed; ids stay stable.
+func TestRenameGroup(t *testing.T) {
+	srv := httptest.NewServer(localAdminMux())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/admin/groups", "application/json", strings.NewReader(`{"ID":"g1","Name":"Old"}`))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	resp.Body.Close()
+	resp, err = http.Post(srv.URL+"/api/admin/groups/g1", "application/json", strings.NewReader(`{"Name":"New"}`))
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("rename: got %d, want 200", resp.StatusCode)
+	}
+	getResp, err := http.Get(srv.URL + "/api/admin/groups")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var out struct {
+		Groups []store.Group `json:"groups"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	getResp.Body.Close()
+	if len(out.Groups) != 1 || out.Groups[0].Name != "New" || out.Groups[0].ID != "g1" {
+		t.Fatalf("renamed group: %+v", out.Groups)
+	}
+	resp, err = http.Post(srv.URL+"/api/admin/groups/g1", "application/json", strings.NewReader(`{"Name":"  "}`))
+	if err != nil {
+		t.Fatalf("empty rename: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("empty rename: got %d, want 400", resp.StatusCode)
 	}
 }
 

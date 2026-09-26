@@ -71,7 +71,7 @@ func run() error {
 
 	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL, filepath.Join(stateDir, "mcp-oauth.sqlite"), humanToken, human))
 
-	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1"},
+	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1", Keys: st},
 		map[string]*upstream.Client{}, oauthSrv)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)

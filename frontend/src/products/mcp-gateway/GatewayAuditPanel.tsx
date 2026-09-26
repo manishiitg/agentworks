@@ -25,7 +25,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
   const { data, loading, error } = useGatewayLoader(async () => listAudit(base, limit), attempt)
 
   if (loading) return <ConsoleLoading label="Loading audit events…" />
-  if (error || !data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
+  if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
   const events = [...data.events].reverse()
 

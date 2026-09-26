@@ -128,6 +128,7 @@ type MemoryStore struct {
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
 	groupServers map[string]map[string]bool // group ID -> connector IDs
+	apiKeys      map[string]APIKey          // by token
 	audit        []AuditEvent
 }
 
@@ -142,6 +143,7 @@ func NewMemoryStore() *MemoryStore {
 		grants:       map[string]map[string]bool{},
 		groupGrants:  map[string]map[string]bool{},
 		groupServers: map[string]map[string]bool{},
+		apiKeys:      map[string]APIKey{},
 	}
 }
 
@@ -427,6 +429,92 @@ func (s *MemoryStore) HasServerGrant(userID, connectorID string) bool {
 		}
 	}
 	return false
+}
+
+// GroupHasTool reports whether the group directly grants the tool.
+func (s *MemoryStore) GroupHasTool(groupID, publicName string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.groupGrants[groupID][publicName]
+}
+
+// GroupHasServer reports whether the group is attached to the connector.
+func (s *MemoryStore) GroupHasServer(groupID, connectorID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.groupServers[groupID][connectorID]
+}
+
+// RenameGroup changes a group's display name.
+func (s *MemoryStore) RenameGroup(groupID, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if g, ok := s.groups[groupID]; ok {
+		g.Name = name
+		s.groups[groupID] = g
+	}
+}
+
+// APIKey is a shareable credential carrying exactly one group's grants.
+type APIKey struct {
+	ID          string
+	WorkspaceID string
+	GroupID     string
+	Label       string
+	Token       string
+	CreatedAt   time.Time
+	LastUsedAt  time.Time
+}
+
+func (s *MemoryStore) AddAPIKey(k APIKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.apiKeys[k.Token] = k
+}
+
+func (s *MemoryStore) APIKeyByToken(token string) (APIKey, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	k, ok := s.apiKeys[token]
+	return k, ok
+}
+
+// ListAPIKeys returns the group's keys newest first, with tokens scrubbed.
+func (s *MemoryStore) ListAPIKeys(groupID string) []APIKey {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []APIKey{}
+	for _, k := range s.apiKeys {
+		if k.GroupID == groupID {
+			k.Token = ""
+			out = append(out, k)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}
+
+// RevokeAPIKey deletes a key by ID. It reports whether one existed.
+func (s *MemoryStore) RevokeAPIKey(groupID, id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for token, k := range s.apiKeys {
+		if k.GroupID == groupID && k.ID == id {
+			delete(s.apiKeys, token)
+			return true
+		}
+	}
+	return false
+}
+
+// TouchAPIKey records a use. Missing tokens are ignored.
+func (s *MemoryStore) TouchAPIKey(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if k, ok := s.apiKeys[token]; ok {
+		k.LastUsedAt = time.Now()
+		s.apiKeys[token] = k
+	}
 }
 
 // GroupServersFor returns the connector IDs attached to a group.

@@ -32,6 +32,13 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 	if !ok || c.Status != store.StatusActive {
 		return store.ToolSnapshot{}, ErrConnectorDisabled
 	}
+	if id.ViaGroup != "" {
+		// Group API key: exactly the key's group applies.
+		if !s.GroupHasTool(id.ViaGroup, publicName) && !s.GroupHasServer(id.ViaGroup, t.ConnectorID) {
+			return store.ToolSnapshot{}, ErrNoGrant
+		}
+		return t, nil
+	}
 	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
 		!s.HasServerGrant(id.UserID, t.ConnectorID) {
 		return store.ToolSnapshot{}, ErrNoGrant

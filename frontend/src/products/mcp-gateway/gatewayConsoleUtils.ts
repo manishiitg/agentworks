@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { GatewayApiError, type GatewayConnector, type GatewayProvider } from './gatewayAdminApi'
 
 export function gatewayErrorMessage(err: unknown): string {
@@ -16,6 +16,10 @@ export const codeClass = 'rounded bg-muted px-1 py-0.5 font-mono text-[11px]'
  * Loads console data once per attempt with cancellation. Panels refetch by
  * bumping the attempt counter (manual refresh only — no polling, no retry
  * storms against a gateway that may be down).
+ *
+ * Refetches keep showing the previous data: flipping back to a spinner
+ * would unmount the whole panel subtree and destroy child state (expanded
+ * rows, show-once secrets, form inputs) on every mutation.
  */
 export function useGatewayLoader<T>(load: () => Promise<T>, attempt: number): {
   data: T | null
@@ -25,14 +29,16 @@ export function useGatewayLoader<T>(load: () => Promise<T>, attempt: number): {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasData = useRef(false)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
+    if (!hasData.current) setLoading(true)
     setError(null)
     void load().then(
       (value) => {
         if (cancelled) return
+        hasData.current = true
         setData(value)
         setLoading(false)
       },
@@ -60,6 +66,22 @@ export function useAttempt(): [number, () => void] {
 
 export function plural(count: number, one: string, many?: string): string {
   return `${count} ${count === 1 ? one : (many ?? `${one}s`)}`
+}
+
+/** Derives a valid gateway id from a display name (lowercase slug). */
+export function slugifyId(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}
+
+export function formatDateTime(iso: string): string {
+  if (!iso) return 'never'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
 export interface McpServerEntry {
