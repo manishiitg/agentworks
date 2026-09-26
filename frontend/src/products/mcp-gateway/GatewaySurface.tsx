@@ -47,9 +47,6 @@ export function GatewaySurface() {
     <div className="flex h-full flex-col bg-background" data-testid="gateway-surface">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
         <ProductSurfaceSwitcher />
-        <h1 className="text-sm font-semibold text-foreground">
-          {SECTIONS.find((s) => s.id === section)?.label ?? 'Servers'}
-        </h1>
       </header>
 
       {ping.loading ? (
