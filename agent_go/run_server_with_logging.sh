@@ -908,6 +908,37 @@ is_csv_value() {
     return 1
 }
 
+# Gateway port first: the agent/workspace random fallback range (18000-19000)
+# contains the gateway default, so they must exclude the chosen gateway port.
+GATEWAY_PID=""
+GATEWAY_LOG_PATH=""
+GATEWAY_DIR="${SCRIPT_DIR}/../mcp-gateway"
+DEFAULT_GATEWAY_PORT=18745
+if [ "$WITH_GATEWAY" = true ]; then
+    if [ -n "${GATEWAY_PORT:-}" ]; then
+        echo "🔎 Using requested gateway port: $GATEWAY_PORT"
+        if port_in_use "$GATEWAY_PORT"; then
+            echo "❌ Error: Requested GATEWAY_PORT $GATEWAY_PORT is already in use"
+            exit 1
+        fi
+    else
+        echo "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
+        GATEWAY_PORT="$(choose_default_then_random_port "$DEFAULT_GATEWAY_PORT" 18100 18199)"
+        if [ -z "$GATEWAY_PORT" ]; then
+            echo "❌ Error: No free gateway port available in range 18100-18199"
+            exit 1
+        fi
+    fi
+else
+    GATEWAY_PORT="${GATEWAY_PORT:-18745}"
+fi
+export GATEWAY_PORT
+export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
+export GATEWAY_HUMAN_TOKEN="${GATEWAY_HUMAN_TOKEN:-local-admin}"
+export GATEWAY_DEMO="${GATEWAY_DEMO:-1}"
+export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
+export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
+
 # Kill any orphaned agent server from a previous run on the default port so we can
 # reuse it (avoids accumulating background servers on different random ports).
 if [ -z "${AGENT_PORT:-}" ] && port_in_use "$DEFAULT_AGENT_PORT"; then
@@ -924,7 +955,7 @@ if [ -n "${AGENT_PORT:-}" ]; then
     fi
 else
     echo "🔎 Selecting agent server port: default ${DEFAULT_AGENT_PORT}, random fallback in range 18000-19000..."
-    AGENT_PORT="$(choose_default_then_random_port "$DEFAULT_AGENT_PORT" 18000 19000)"
+    AGENT_PORT="$(choose_default_then_random_port "$DEFAULT_AGENT_PORT" 18000 19000 "$GATEWAY_PORT")"
     if [ -z "$AGENT_PORT" ]; then
         echo "❌ Error: No free port available in range 18000-19000"
         exit 1
@@ -1174,7 +1205,7 @@ if [ "$WITH_WORKSPACE" = true ]; then
         fi
     else
         echo "🔎 Selecting workspace server port: default ${DEFAULT_WORKSPACE_PORT}, random fallback in range 18000-19000..."
-        WORKSPACE_PORT="$(choose_default_then_random_port "$DEFAULT_WORKSPACE_PORT" 18000 19000 "$AGENT_PORT")"
+        WORKSPACE_PORT="$(choose_default_then_random_port "$DEFAULT_WORKSPACE_PORT" 18000 19000 "$AGENT_PORT,$GATEWAY_PORT")"
         if [ -z "$WORKSPACE_PORT" ]; then
             echo "❌ Error: No free workspace port available in range 18000-19000"
             exit 1
@@ -1184,35 +1215,6 @@ else
     WORKSPACE_PORT="${WORKSPACE_PORT:-8081}"
 fi
 export WORKSPACE_PORT
-
-GATEWAY_PID=""
-GATEWAY_LOG_PATH=""
-GATEWAY_DIR="${SCRIPT_DIR}/../mcp-gateway"
-DEFAULT_GATEWAY_PORT=18745
-if [ "$WITH_GATEWAY" = true ]; then
-    if [ -n "${GATEWAY_PORT:-}" ]; then
-        echo "🔎 Using requested gateway port: $GATEWAY_PORT"
-        if port_in_use "$GATEWAY_PORT"; then
-            echo "❌ Error: Requested GATEWAY_PORT $GATEWAY_PORT is already in use"
-            exit 1
-        fi
-    else
-        echo "🔎 Selecting gateway port: default ${DEFAULT_GATEWAY_PORT}, random fallback in range 18100-18199..."
-        GATEWAY_PORT="$(choose_default_then_random_port "$DEFAULT_GATEWAY_PORT" 18100 18199)"
-        if [ -z "$GATEWAY_PORT" ]; then
-            echo "❌ Error: No free gateway port available in range 18100-18199"
-            exit 1
-        fi
-    fi
-else
-    GATEWAY_PORT="${GATEWAY_PORT:-18745}"
-fi
-export GATEWAY_PORT
-export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
-export GATEWAY_HUMAN_TOKEN="${GATEWAY_HUMAN_TOKEN:-local-admin}"
-export GATEWAY_DEMO="${GATEWAY_DEMO:-1}"
-export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
-export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
 
 if [ "$WITH_WORKSPACE" = true ]; then
     if [ ! -f "${WORKSPACE_DIR}/main.go" ]; then
