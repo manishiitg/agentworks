@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   deploymentDefaultProductSurface,
   enabledProductSurfaces,
+  gatewayAdminUrl,
   intersectAllowedProductSurfaces,
   isEnabledProductSurface,
   hasGatewaySSO,
@@ -64,6 +65,33 @@ describe('product surface deployment configuration', () => {
     expect(isEnabledProductSurface('work')).toBe(true)
     expect(isEnabledProductSurface('dominion')).toBe(false)
     expect(isSingleProductDeployment()).toBe(false)
+  })
+})
+
+describe('gatewayAdminUrl', () => {
+  it('is null when no gateway is configured', () => {
+    expect(gatewayAdminUrl()).toBeNull()
+  })
+
+  it('links to the configured gateway admin', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'https://mcp.agentworkshq.com/' },
+    })
+    expect(gatewayAdminUrl()).toBe('https://mcp.agentworkshq.com/admin/')
+  })
+
+  it('accepts loopback http for local development', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18080' },
+    })
+    expect(gatewayAdminUrl()).toBe('http://127.0.0.1:18080/admin/')
+  })
+
+  it('rejects non-http(s) values', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'javascript:alert(1)' },
+    })
+    expect(gatewayAdminUrl()).toBeNull()
   })
 })
 

@@ -6,6 +6,7 @@ type ProductRuntimeConfig = {
   defaultProductSurface?: unknown
   enabledProductSurfaces?: unknown
   gatewaySso?: unknown
+  gatewayUrl?: unknown
 }
 
 function runtimeConfig(): ProductRuntimeConfig | undefined {
@@ -49,6 +50,19 @@ export function isSingleProductDeployment(): boolean {
 
 export function hasGatewaySSO(): boolean {
   return runtimeConfig()?.gatewaySso === true
+}
+
+/**
+ * Admin URL of the MCP Gateway deployment linked from the product switcher.
+ * The gateway is a separate service with its own auth, so this is a plain
+ * link-out, not a product surface: null hides the entry.
+ */
+export function gatewayAdminUrl(): string | null {
+  const raw = runtimeConfig()?.gatewayUrl
+  if (typeof raw !== 'string') return null
+  const url = raw.trim().replace(/\/+$/, '')
+  if (!/^https?:\/\/[^/\s]+/.test(url)) return null
+  return `${url}/admin/`
 }
 
 /**

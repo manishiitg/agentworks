@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
+import { GatewayMark } from '../products/mcp-gateway/GatewayMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { isEnabledProductSurface, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, isEnabledProductSurface, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { cn } from '../lib/utils'
 
 type ProductSurfaceSwitcherProps = {
@@ -47,6 +48,7 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
   const visibleProducts = products.filter((product) => visibleProductIDs.includes(product.id))
   const currentProduct = visibleProducts.find((product) => product.id === productSurface) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
+  const gatewayUrl = gatewayAdminUrl()
 
   const activateProduct = (product: ProductSurface) => {
     setOpen(false)
@@ -124,6 +126,25 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
               </button>
             )
           })}
+          {gatewayUrl ? (
+            <a
+              href={gatewayUrl}
+              target="_blank"
+              rel="noreferrer"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <GatewayMark className="h-8 w-8 shrink-0" title="" />
+              <span className="min-w-0 flex-1">
+                <strong className="block text-xs text-slate-900 dark:text-slate-100">MCP Gateway</strong>
+                <small className="mt-0.5 block text-[10px] text-slate-400">
+                  Governed MCP tools for every AI client
+                </small>
+              </span>
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400" />
+            </a>
+          ) : null}
         </div>
       ) : null}
     </div>
