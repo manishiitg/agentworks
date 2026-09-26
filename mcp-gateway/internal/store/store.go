@@ -44,16 +44,16 @@ type Connector struct {
 
 // ToolSnapshot is one discovered upstream tool plus its gateway identity.
 type ToolSnapshot struct {
-	ConnectorID   string
-	WorkspaceID   string
-	UpstreamName  string
-	PublicName    string // stable gateway-visible name
-	Description   string
-	InputSchema   []byte // raw JSON schema, passed through
-	Fingerprint   string // sha256 over name+description+schema
-	Status        string
-	DiscoveredAt  time.Time
-	Version       int
+	ConnectorID  string
+	WorkspaceID  string
+	UpstreamName string
+	PublicName   string // stable gateway-visible name
+	Description  string
+	InputSchema  []byte // raw JSON schema, passed through
+	Fingerprint  string // sha256 over name+description+schema
+	Status       string
+	DiscoveredAt time.Time
+	Version      int
 }
 
 // Grant binds a user to one registered tool (M0). M1 adds groups.

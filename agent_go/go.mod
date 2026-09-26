@@ -34,9 +34,12 @@ require (
 	google.golang.org/genai v1.57.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.49.1
+	github.com/manishiitg/coding-agent-loop/mcpoauth v0.0.0
 )
 
 replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
+
+replace github.com/manishiitg/coding-agent-loop/mcpoauth => ./pkg/mcpoauth
 
 // Local checkouts so in-flight work is exercised before it is tagged. Drop
 // these and bump the pinned versions above once the changes are released.

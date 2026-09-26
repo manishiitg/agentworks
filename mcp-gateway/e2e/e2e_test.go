@@ -1,16 +1,21 @@
 // Package e2e proves the M0 gateway path end to end: a real MCP client talks
-// to the gateway over Streamable HTTP; the gateway enforces grants and
-// proxies to a (fake) upstream MCP server.
+// to the gateway over Streamable HTTP after signing in through the real
+// OAuth flow; the gateway enforces grants and proxies to a (fake) upstream
+// MCP server.
 package e2e
 
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -22,7 +27,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 )
 
-const testToken = "e2e-token"
+const testHumanToken = "e2e-human-token"
 
 // fakeUpstream serves two tools: allowed_tool echoes, secret_tool must never run.
 func fakeUpstream(t *testing.T) *httptest.Server {
@@ -47,12 +52,12 @@ func fakeUpstream(t *testing.T) *httptest.Server {
 	return ts
 }
 
-func dialGateway(t *testing.T, url string) *client.Client {
+func dialGateway(t *testing.T, url, token string) *client.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 	c, err := client.NewStreamableHttpClient(url,
-		transport.WithHTTPHeaders(map[string]string{"Authorization": "Bearer " + testToken}),
+		transport.WithHTTPHeaders(map[string]string{"Authorization": "Bearer " + token}),
 	)
 	if err != nil {
 		t.Fatalf("gateway client: %v", err)
@@ -81,6 +86,7 @@ func TestM0GovernedCallPath(t *testing.T) {
 	}
 	defer up.Close()
 
+	human := mcpoauth.User{ID: "u1", Username: "e2e", Email: "e2e@example.com", Provider: "e2e"}
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "e2e"})
 	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1", Email: "e2e@example.com"})
@@ -88,20 +94,28 @@ func TestM0GovernedCallPath(t *testing.T) {
 		ID: "c1", WorkspaceID: "w1", Provider: "fake",
 		Label: "fake", UpstreamURL: upstreamSrv.URL + "/mcp", Status: store.StatusActive,
 	})
-	gw := mcpserver.New(st, auth.StaticToken{
-		Token:    testToken,
-		Identity: auth.Identity{UserID: "u1", WorkspaceID: "w1", Email: "e2e@example.com"},
-	}, map[string]*upstream.Client{"c1": up})
+
+	// The OAuth deployment origin must equal the served URL: listen first,
+	// then build the gateway against it.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { l.Close() })
+	publicURL := "http://" + l.Addr().String()
+	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL,
+		filepath.Join(t.TempDir(), "mcp-oauth.sqlite"), testHumanToken, human))
+	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1"},
+		map[string]*upstream.Client{"c1": up}, oauthSrv)
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 	st.AddGrant(store.Grant{UserID: "u1", PublicName: "fake__allowed_tool"})
+	go http.Serve(l, gw.Handler()) //nolint:errcheck
 
-	gwSrv := httptest.NewServer(gw.Handler())
-	defer gwSrv.Close()
-
-	// Unauthenticated callers get 401 before any MCP handling.
-	resp, err := http.Get(gwSrv.URL + "/mcp")
+	// Unauthenticated callers get 401 plus the OAuth challenge before any
+	// MCP handling.
+	resp, err := http.Get(publicURL + "/mcp")
 	if err != nil {
 		t.Fatalf("unauth probe: %v", err)
 	}
@@ -109,8 +123,12 @@ func TestM0GovernedCallPath(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauth probe status = %d, want 401", resp.StatusCode)
 	}
+	if !strings.Contains(resp.Header.Get("WWW-Authenticate"), "oauth-protected-resource") {
+		t.Fatalf("unauth probe missing OAuth challenge: %v", resp.Header)
+	}
 
-	c := dialGateway(t, gwSrv.URL+"/mcp")
+	access := fetchAccessToken(t, publicURL, testHumanToken)
+	c := dialGateway(t, publicURL+"/mcp", access)
 
 	// tools/list shows only the granted tool.
 	list, err := c.ListTools(ctx, mcp.ListToolsRequest{})

@@ -5,11 +5,14 @@ package e2e
 
 import (
 	"context"
-	"net/http/httptest"
+	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
@@ -38,13 +41,21 @@ func TestM0LiveContext7(t *testing.T) {
 		ID: "c1", WorkspaceID: "w1", Provider: "context7",
 		Label: "context7", UpstreamURL: "https://mcp.context7.com/mcp", Status: store.StatusActive,
 	})
-	gw := mcpserver.New(st, auth.StaticToken{
-		Token:    testToken,
-		Identity: auth.Identity{UserID: "u1", WorkspaceID: "w1", Email: "live@example.com"},
-	}, map[string]*upstream.Client{"c1": up})
+	human := mcpoauth.User{ID: "u1", Username: "live", Email: "live@example.com", Provider: "e2e"}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { l.Close() })
+	publicURL := "http://" + l.Addr().String()
+	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL,
+		filepath.Join(t.TempDir(), "mcp-oauth.sqlite"), testHumanToken, human))
+	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1"},
+		map[string]*upstream.Client{"c1": up}, oauthSrv)
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatalf("live sync: %v", err)
 	}
+	go http.Serve(l, gw.Handler()) //nolint:errcheck
 	discovered := st.ListTools("w1")
 	if len(discovered) == 0 {
 		t.Fatalf("live upstream exposed zero tools")
@@ -64,9 +75,8 @@ func TestM0LiveContext7(t *testing.T) {
 	}
 	st.AddGrant(store.Grant{UserID: "u1", PublicName: granted})
 
-	gwSrv := httptest.NewServer(gw.Handler())
-	defer gwSrv.Close()
-	c := dialGateway(t, gwSrv.URL+"/mcp")
+	access := fetchAccessToken(t, publicURL, testHumanToken)
+	c := dialGateway(t, publicURL+"/mcp", access)
 
 	list, err := c.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {

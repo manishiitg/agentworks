@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -34,12 +35,13 @@ type Gateway struct {
 	store     *store.MemoryStore
 	auth      auth.Authenticator
 	upstreams map[string]*upstream.Client // connector ID -> session
+	oauth     *mcpoauth.Server
 	mcp       *server.MCPServer
 }
 
 // New builds the gateway MCP server. Call SyncTools before serving.
-func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client) *Gateway {
-	g := &Gateway{store: st, auth: a, upstreams: ups}
+func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client, oauthSrv *mcpoauth.Server) *Gateway {
+	g := &Gateway{store: st, auth: a, upstreams: ups, oauth: oauthSrv}
 	hooks := &server.Hooks{}
 	// Shape tools/list per caller (visibility only). Deliberately not a
 	// ToolFilter: filters also block calls before the handler runs, which
@@ -84,13 +86,13 @@ func (g *Gateway) SyncTools(ctx context.Context, workspaceID string) error {
 		}
 		for _, t := range tools {
 			snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
-				ConnectorID:   c.ID,
-				WorkspaceID:   c.WorkspaceID,
-				UpstreamName:  t.Name,
-				PublicName:    PublicName(c.Provider, c.InstanceSlug, t.Name),
-				Description:   t.Description,
-				Fingerprint:   store.Fingerprint(t.Name, t.Description, rawSchema(t)),
-				DiscoveredAt:  time.Now().UTC(),
+				ConnectorID:  c.ID,
+				WorkspaceID:  c.WorkspaceID,
+				UpstreamName: t.Name,
+				PublicName:   PublicName(c.Provider, c.InstanceSlug, t.Name),
+				Description:  t.Description,
+				Fingerprint:  store.Fingerprint(t.Name, t.Description, rawSchema(t)),
+				DiscoveredAt: time.Now().UTC(),
 			})
 			g.register(snap, t)
 		}
@@ -163,7 +165,40 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	return res, nil
 }
 
-// Handler returns the HTTP handler: bearer auth → Streamable HTTP at /mcp.
+// OAuth endpoint paths for this deployment.
+const (
+	OAuthProtectedResourcePath = "/.well-known/oauth-protected-resource/mcp"
+	OAuthMetadataPath          = "/.well-known/oauth-authorization-server"
+	OAuthRegisterPath          = "/api/oauth/mcp/register"
+	OAuthAuthorizePath         = "/api/oauth/mcp/authorize"
+	OAuthTokenPath             = "/api/oauth/mcp/token"
+	OAuthConsentPath           = "/api/oauth/mcp/consent"
+	OAuthConnectionsPath       = "/api/oauth/mcp/connections"
+	ConsentUIPath              = "/oauth/consent"
+)
+
+// OAuthConfig wires the shared authorization server to this deployment.
+func OAuthConfig(publicURL, statePath, humanToken string, humanUser mcpoauth.User) mcpoauth.Config {
+	human := auth.HumanSession{Token: humanToken, User: humanUser}
+	cfg := mcpoauth.Config{
+		PublicURL:             publicURL,
+		ResourcePath:          "/mcp",
+		Scopes:                []string{"mcp"},
+		AccessPrefix:          "gw_mcp_",
+		RefreshPrefix:         "gw_mcp_refresh_",
+		ConsentUIPath:         ConsentUIPath,
+		ProtectedResourcePath: OAuthProtectedResourcePath,
+		RegisterPath:          OAuthRegisterPath,
+		AuthorizePath:         OAuthAuthorizePath,
+		TokenPath:             OAuthTokenPath,
+		CurrentUser:           human.CurrentUser,
+	}
+	cfg.OpenStore = func() (*mcpoauth.Store, error) { return mcpoauth.OpenStore(statePath, cfg) }
+	return cfg
+}
+
+// Handler returns the HTTP handler: OAuth AS endpoints, consent UI, and the
+// bearer-authenticated Streamable HTTP endpoint at /mcp.
 func (g *Gateway) Handler() http.Handler {
 	httpSrv := server.NewStreamableHTTPServer(g.mcp,
 		server.WithEndpointPath("/mcp"),
@@ -176,6 +211,17 @@ func (g *Gateway) Handler() http.Handler {
 	)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", g.requireAuth(httpSrv))
+	mux.HandleFunc(OAuthProtectedResourcePath, g.oauth.HandleProtectedResource)
+	mux.HandleFunc(OAuthMetadataPath, g.oauth.HandleMetadata)
+	mux.HandleFunc(OAuthRegisterPath, g.oauth.HandleRegister)
+	mux.HandleFunc(OAuthAuthorizePath, g.oauth.HandleAuthorize)
+	mux.HandleFunc(OAuthTokenPath, g.oauth.HandleToken)
+	mux.HandleFunc(OAuthConsentPath, g.oauth.HandleConsent)
+	mux.HandleFunc(OAuthConnectionsPath, g.oauth.HandleConnections)
+	mux.HandleFunc("DELETE "+OAuthConnectionsPath+"/{id}", func(w http.ResponseWriter, r *http.Request) {
+		g.oauth.RevokeConnection(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc(ConsentUIPath, serveConsentUI)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
 	})
@@ -184,24 +230,65 @@ func (g *Gateway) Handler() http.Handler {
 
 type identityKey struct{}
 
-// requireAuth validates the bearer token on every request. M0 also accepts
-// X-Gateway-Token for test clients that cannot set Authorization; M1 removes it.
+// requireAuth validates the OAuth bearer token on every MCP request.
 func (g *Gateway) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := ""
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 			token = strings.TrimPrefix(h, "Bearer ")
-		} else {
-			token = r.Header.Get("X-Gateway-Token")
 		}
 		id, err := g.auth.Authenticate(r.Context(), token)
 		if err != nil {
+			g.oauth.Challenge(w)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, id)))
 	})
 }
+
+// serveConsentUI renders the M0 approval page. It drives the JSON consent
+// API; the human pastes the M0 session token once (M1 replaces this with the
+// shared-IdP session and AgentWorks-styled UI).
+func serveConsentUI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Fprint(w, consentUIPage)
+}
+
+const consentUIPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>MCP Gateway: approve access</title></head>
+<body style="font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem">
+<h1>Approve MCP access</h1>
+<p id="desc">Loading request…</p>
+<label>Session token <input id="token" type="password" size="40" placeholder="M0 human token"></label>
+<p><button id="approve">Approve</button> <button id="deny">Deny</button></p>
+<p id="err" style="color:red"></p>
+<script>
+const q = new URLSearchParams(location.search).get("request") || "";
+const saved = sessionStorage.getItem("gw_human");
+if (saved) document.getElementById("token").value = saved;
+async function api(method, body) {
+  const token = document.getElementById("token").value.trim();
+  sessionStorage.setItem("gw_human", token);
+  const r = await fetch("/api/oauth/mcp/consent?request=" + encodeURIComponent(q), {
+    method, headers: {"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+    body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error("consent API " + r.status);
+  return r.json();
+}
+api("GET").then(d => {
+  document.getElementById("desc").textContent =
+    (d.client_name || "A client") + " requests scopes: " + (d.scopes || []).join(", ");
+}).catch(e => document.getElementById("err").textContent = String(e));
+async function decide(decision) {
+  try { const d = await api("POST", {decision}); location.href = d.redirect_url; }
+  catch (e) { document.getElementById("err").textContent = String(e); }
+}
+document.getElementById("approve").onclick = () => decide("approve");
+document.getElementById("deny").onclick = () => decide("deny");
+</script>
+</body></html>`
 
 func newCallID() string {
 	var b [8]byte
