@@ -1,7 +1,7 @@
 // Package policy evaluates the gateway's deny-by-default authorization.
 //
-// Rule order (M0): disabled connector/user-object → missing grant. M1 adds
-// groups, PII policy, and schema validation ahead of the upstream call.
+// Rule order: disabled connector/tool → missing grant (direct or via group).
+// M1 adds PII policy and schema validation ahead of the upstream call.
 package policy
 
 import (
@@ -32,7 +32,7 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 	if !ok || c.Status != store.StatusActive {
 		return store.ToolSnapshot{}, ErrConnectorDisabled
 	}
-	if !s.HasGrant(id.UserID, publicName) {
+	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) {
 		return store.ToolSnapshot{}, ErrNoGrant
 	}
 	return t, nil

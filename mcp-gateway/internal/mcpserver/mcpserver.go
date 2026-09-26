@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
@@ -34,6 +35,7 @@ func PublicName(provider, slug, upstreamName string) string {
 type Gateway struct {
 	store     *store.MemoryStore
 	auth      auth.Authenticator
+	mu        sync.RWMutex
 	upstreams map[string]*upstream.Client // connector ID -> session
 	oauth     *mcpoauth.Server
 	mcp       *server.MCPServer
@@ -76,32 +78,97 @@ func (g *Gateway) SyncTools(ctx context.Context, workspaceID string) error {
 		if c.Status != store.StatusActive {
 			continue
 		}
-		up, ok := g.upstreams[c.ID]
-		if !ok {
-			return fmt.Errorf("connector %s (%s): no upstream session", c.ID, c.Label)
+		if err := g.syncConnector(ctx, c); err != nil {
+			return err
 		}
-		tools, err := up.Discover(ctx)
-		if err != nil {
-			return fmt.Errorf("connector %s (%s): %w", c.ID, c.Label, err)
-		}
-		for _, t := range tools {
-			log.Printf("gateway: discovered %s -> %s", t.Name, PublicName(c.Provider, c.InstanceSlug, t.Name))
-		}
-		for _, t := range tools {
-			snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
-				ConnectorID:  c.ID,
-				WorkspaceID:  c.WorkspaceID,
-				UpstreamName: t.Name,
-				PublicName:   PublicName(c.Provider, c.InstanceSlug, t.Name),
-				Description:  t.Description,
-				Fingerprint:  store.Fingerprint(t.Name, t.Description, rawSchema(t)),
-				DiscoveredAt: time.Now().UTC(),
-			})
-			g.register(snap, t)
-		}
-		log.Printf("gateway: synced workspace %s", workspaceID)
+	}
+	log.Printf("gateway: synced workspace %s", workspaceID)
+	return nil
+}
+
+func (g *Gateway) upstreamFor(connectorID string) (*upstream.Client, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	up, ok := g.upstreams[connectorID]
+	return up, ok
+}
+
+func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
+	up, ok := g.upstreamFor(c.ID)
+	if !ok {
+		return fmt.Errorf("connector %s (%s): no upstream session", c.ID, c.Label)
+	}
+	tools, err := up.Discover(ctx)
+	if err != nil {
+		return fmt.Errorf("connector %s (%s): %w", c.ID, c.Label, err)
+	}
+	for _, t := range tools {
+		log.Printf("gateway: discovered %s -> %s", t.Name, PublicName(c.Provider, c.InstanceSlug, t.Name))
+	}
+	for _, t := range tools {
+		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
+			ConnectorID:  c.ID,
+			WorkspaceID:  c.WorkspaceID,
+			UpstreamName: t.Name,
+			PublicName:   PublicName(c.Provider, c.InstanceSlug, t.Name),
+			Description:  t.Description,
+			Fingerprint:  store.Fingerprint(t.Name, t.Description, rawSchema(t)),
+			DiscoveredAt: time.Now().UTC(),
+		})
+		g.register(snap, t)
 	}
 	return nil
+}
+
+// AddConnector dials a new upstream instance and syncs its tools while
+// serving. The connector row must already exist in the store.
+func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
+	if _, ok := g.upstreamFor(c.ID); ok {
+		return fmt.Errorf("connector %s already connected", c.ID)
+	}
+	up, err := upstream.Dial(ctx, c.UpstreamURL)
+	if err != nil {
+		return err
+	}
+	g.mu.Lock()
+	g.upstreams[c.ID] = up
+	g.mu.Unlock()
+	if err := g.syncConnector(ctx, c); err != nil {
+		g.mu.Lock()
+		delete(g.upstreams, c.ID)
+		g.mu.Unlock()
+		up.Close()
+		return err
+	}
+	return nil
+}
+
+// Resync rediscovers one connector's tools, dialing first if needed.
+func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
+	if _, ok := g.upstreamFor(c.ID); !ok {
+		up, err := upstream.Dial(ctx, c.UpstreamURL)
+		if err != nil {
+			return err
+		}
+		g.mu.Lock()
+		g.upstreams[c.ID] = up
+		g.mu.Unlock()
+	}
+	return g.syncConnector(ctx, c)
+}
+
+// RemoveConnector disconnects an instance and drops its snapshots. The MCP
+// server keeps the stale handler registrations, but they deny (unknown tool)
+// and hide (list filter), so removal is effective immediately.
+func (g *Gateway) RemoveConnector(id string) {
+	g.mu.Lock()
+	up, ok := g.upstreams[id]
+	delete(g.upstreams, id)
+	g.mu.Unlock()
+	if ok {
+		up.Close()
+	}
+	g.store.DeleteConnector(id)
 }
 
 func (g *Gateway) register(snap store.ToolSnapshot, upstreamTool mcp.Tool) {
@@ -138,7 +205,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if _, err := policy.Authorize(g.store, id, snap.PublicName); err != nil {
 		return deny(err)
 	}
-	up, ok := g.upstreams[snap.ConnectorID]
+	up, ok := g.upstreamFor(snap.ConnectorID)
 	if !ok {
 		return deny(policy.ErrConnectorDisabled)
 	}
@@ -200,9 +267,10 @@ func OAuthConfig(publicURL, statePath, humanToken string, humanUser mcpoauth.Use
 	return cfg
 }
 
-// Handler returns the HTTP handler: OAuth AS endpoints, consent UI, and the
-// bearer-authenticated Streamable HTTP endpoint at /mcp.
-func (g *Gateway) Handler() http.Handler {
+// Handler returns the HTTP mux: OAuth AS endpoints, consent UI, and the
+// bearer-authenticated Streamable HTTP endpoint at /mcp. Callers may mount
+// more routes (admin API/UI) on the returned mux.
+func (g *Gateway) Handler() *http.ServeMux {
 	httpSrv := server.NewStreamableHTTPServer(g.mcp,
 		server.WithEndpointPath("/mcp"),
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {

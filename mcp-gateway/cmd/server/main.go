@@ -17,7 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/admin"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
@@ -54,29 +56,35 @@ func run() error {
 		return err
 	}
 
-	st := store.NewMemoryStore()
-	st.AddWorkspace(store.Workspace{ID: "w1", Name: "m0"})
-	st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
-	st.AddConnector(store.Connector{
-		ID: "c1", WorkspaceID: "w1", Provider: provider,
-		Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
-	})
-
-	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL, filepath.Join(stateDir, "mcp-oauth.sqlite"), humanToken, human))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	up, err := upstream.Dial(ctx, upstreamURL)
+	cat, err := catalog.Load()
 	if err != nil {
 		return err
 	}
-	defer up.Close()
+	log.Printf("gateway: catalog has %d providers", len(cat.Providers))
+
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w1", Name: "m0"})
+	st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
+	if os.Getenv("GATEWAY_DEMO") != "" {
+		seedDemo(st)
+	}
+
+	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL, filepath.Join(stateDir, "mcp-oauth.sqlite"), humanToken, human))
 
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1"},
-		map[string]*upstream.Client{"c1": up}, oauthSrv)
+		map[string]*upstream.Client{}, oauthSrv)
 
-	if err := gw.SyncTools(ctx, "w1"); err != nil {
-		return err
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	if upstreamURL != "" && upstreamURL != "none" {
+		st.AddConnector(store.Connector{
+			ID: "c1", WorkspaceID: "w1", Provider: catalog.Key(provider),
+			Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
+		})
+		c, _ := st.GetConnector("c1")
+		if err := gw.AddConnector(ctx, c); err != nil {
+			return err
+		}
 	}
 	for _, name := range grants {
 		name = strings.TrimSpace(name)
@@ -92,6 +100,24 @@ func run() error {
 		log.Printf("gateway: granted %s", public)
 	}
 
+	adm := &admin.Admin{
+		Store: st, Gateway: gw, Catalog: cat,
+		WorkspaceID: "w1", HumanToken: humanToken, PublicURL: publicURL,
+	}
+	mux := gw.Handler()
+	adm.APIRoutes(mux)
+	adm.UIRoutes(mux)
+
 	log.Printf("gateway: listening on :%s (upstream %s)", port, upstreamURL)
-	return http.ListenAndServe(":"+port, gw.Handler())
+	return http.ListenAndServe(":"+port, mux)
+}
+
+// seedDemo creates local-test users and groups.
+func seedDemo(st *store.MemoryStore) {
+	st.AddUser(store.User{ID: "alice", WorkspaceID: "w1", Email: "alice@example.com"})
+	st.AddUser(store.User{ID: "bob", WorkspaceID: "w1", Email: "bob@example.com"})
+	st.AddGroup(store.Group{ID: "eng", WorkspaceID: "w1", Name: "Engineering"})
+	st.AddGroup(store.Group{ID: "support", WorkspaceID: "w1", Name: "Support"})
+	st.AddMember("eng", "alice")
+	st.AddMember("support", "bob")
 }
