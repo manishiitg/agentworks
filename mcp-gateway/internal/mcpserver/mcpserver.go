@@ -85,6 +85,9 @@ func (g *Gateway) SyncTools(ctx context.Context, workspaceID string) error {
 			return fmt.Errorf("connector %s (%s): %w", c.ID, c.Label, err)
 		}
 		for _, t := range tools {
+			log.Printf("gateway: discovered %s -> %s", t.Name, PublicName(c.Provider, c.InstanceSlug, t.Name))
+		}
+		for _, t := range tools {
 			snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
 				ConnectorID:  c.ID,
 				WorkspaceID:  c.WorkspaceID,
