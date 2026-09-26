@@ -109,7 +109,7 @@ func run() error {
 	adm.UIRoutes(mux)
 
 	log.Printf("gateway: listening on :%s (upstream %s)", port, upstreamURL)
-	return http.ListenAndServe(":"+port, mux)
+	return http.ListenAndServe(":"+port, admin.LocalhostCORS(mux))
 }
 
 // seedDemo creates local-test users and groups.

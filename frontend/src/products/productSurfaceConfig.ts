@@ -55,16 +55,25 @@ export function hasGatewaySSO(): boolean {
 }
 
 /**
- * Admin URL of the MCP Gateway deployment embedded as a product surface.
- * The gateway UI is a separate service rendered in an iframe; null hides
- * the switcher entry.
+ * Base URL of the MCP Gateway deployment embedded as a product surface,
+ * without a trailing slash. Null hides the switcher entry.
  */
-export function gatewayAdminUrl(): string | null {
+export function gatewayBaseUrl(): string | null {
   const raw = runtimeConfig()?.gatewayUrl
   if (typeof raw !== 'string') return null
   const url = raw.trim().replace(/\/+$/, '')
   if (!/^https?:\/\/[^/\s]+/.test(url)) return null
-  return `${url}/admin/`
+  return url
+}
+
+/**
+ * Admin URL of the MCP Gateway deployment embedded as a product surface.
+ * The React console talks to the gateway API directly; the server-rendered
+ * UI stays available at this URL as a standalone fallback.
+ */
+export function gatewayAdminUrl(): string | null {
+  const base = gatewayBaseUrl()
+  return base === null ? null : `${base}/admin/`
 }
 
 /**

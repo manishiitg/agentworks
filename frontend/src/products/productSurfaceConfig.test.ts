@@ -3,6 +3,7 @@ import {
   deploymentDefaultProductSurface,
   enabledProductSurfaces,
   gatewayAdminUrl,
+  gatewayBaseUrl,
   intersectAllowedProductSurfaces,
   isEnabledProductSurface,
   hasGatewaySSO,
@@ -92,6 +93,26 @@ describe('gatewayAdminUrl', () => {
       __APP_RUNTIME_CONFIG__: { gatewayUrl: 'javascript:alert(1)' },
     })
     expect(gatewayAdminUrl()).toBeNull()
+  })
+})
+
+describe('gatewayBaseUrl', () => {
+  it('is null when no gateway is configured', () => {
+    expect(gatewayBaseUrl()).toBeNull()
+  })
+
+  it('returns the validated base without a trailing slash', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18080/' },
+    })
+    expect(gatewayBaseUrl()).toBe('http://127.0.0.1:18080')
+  })
+
+  it('rejects non-http(s) values', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'javascript:alert(1)' },
+    })
+    expect(gatewayBaseUrl()).toBeNull()
   })
 })
 

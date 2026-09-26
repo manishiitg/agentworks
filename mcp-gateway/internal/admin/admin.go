@@ -9,7 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,6 +41,13 @@ func newID(prefix string) string {
 }
 
 func (a *Admin) authed(r *http.Request) bool {
+	// Local runs have no separate admin identity: a request arriving
+	// directly on a loopback interface is the local user, who is admin.
+	// Only the direct peer address counts (never X-Forwarded-For), so a
+	// gateway behind a proxy still fails closed to the token.
+	if isLoopbackPeer(r) {
+		return true
+	}
 	if a.HumanToken == "" {
 		return false
 	}
@@ -47,6 +56,61 @@ func (a *Admin) authed(r *http.Request) bool {
 	}
 	c, err := r.Cookie("gw_admin")
 	return err == nil && c.Value == a.HumanToken
+}
+
+// isLoopbackPeer reports whether the request arrived directly from a
+// loopback address.
+func isLoopbackPeer(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// isLoopbackOrigin reports whether an Origin header value names loopback
+// http(s), e.g. the local AgentWorks dev server or desktop shell.
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// LocalhostCORS lets the local AgentWorks UI (a different loopback origin)
+// call the admin API from the browser. Only loopback origins get headers;
+// anything else passes through untouched.
+func LocalhostCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin == "" || !isLoopbackOrigin(origin) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", origin)
+		h.Set("Vary", "Origin")
+		h.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // --- service (shared by JSON API and UI) ---
@@ -276,6 +340,15 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		writeJSON(w, 200, map[string]any{"groups": a.Store.ListGroups(a.WorkspaceID)})
 	}))
 	mux.HandleFunc("/api/admin/groups/{id}/members", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			g, ok := a.Store.GetGroup(r.PathValue("id"))
+			if !ok || g.WorkspaceID != a.WorkspaceID {
+				writeErr(w, 400, errors.New("unknown group"))
+				return
+			}
+			writeJSON(w, 200, map[string]any{"members": a.Store.MembersOf(g.ID)})
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
