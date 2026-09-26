@@ -82,6 +82,21 @@ describe('GatewayServersPanel', () => {
     expect(add!.textContent).toContain('Add to gateway')
   })
 
+  it('filters the list by search text', async () => {
+    await renderPanel(vi.fn(healthyFetch()))
+
+    const search = container!.querySelector('[data-testid="gateway-servers-search"]') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'linear')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {})
+
+    expect(container!.textContent).toContain('Linear')
+    expect(container!.textContent).not.toContain('Notion')
+    expect(container!.textContent).toContain('1 server')
+  })
+
   it('adds an AgentWorks server to the gateway from its catalog template', async () => {
     const fetchMock = vi.fn(healthyFetch())
     await renderPanel(fetchMock)

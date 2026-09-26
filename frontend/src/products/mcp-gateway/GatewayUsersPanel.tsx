@@ -8,6 +8,7 @@ import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShar
 import {
   codeClass,
   gatewayErrorMessage,
+  plural,
   tableClass,
   tdClass,
   thClass,
@@ -51,7 +52,7 @@ export function GatewayUsersPanel({ base }: { base: string }) {
       <SettingsCard
         icon={<UserRound className="h-4 w-4 text-primary" />}
         title="Users"
-        count={<SettingsCount>{`${data.users.length} users`}</SettingsCount>}
+        count={<SettingsCount>{plural(data.users.length, 'user')}</SettingsCount>}
         description="People who sign into MCP clients through the gateway. Grants decide which tools each of them sees."
       >
         {data.users.length === 0 ? (

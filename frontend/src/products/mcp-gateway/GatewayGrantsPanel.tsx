@@ -7,6 +7,7 @@ import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShar
 import {
   codeClass,
   gatewayErrorMessage,
+  plural,
   tableClass,
   tdClass,
   thClass,
@@ -81,7 +82,7 @@ export function GatewayGrantsPanel({ base }: { base: string }) {
       <SettingsCard
         icon={<KeyRound className="h-4 w-4 text-primary" />}
         title="Tool grants"
-        count={<SettingsCount>{`${data.tools.length} tools`}</SettingsCount>}
+        count={<SettingsCount>{plural(data.tools.length, 'tool')}</SettingsCount>}
         description="Deny-by-default: a tool is invisible to everyone until granted to a user or a group. Pick a subject, then tick the tools they may call."
       >
         <div className="flex flex-wrap items-center gap-2">

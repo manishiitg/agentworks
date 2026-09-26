@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Loader2, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Search, Server, Trash2 } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -23,6 +23,7 @@ import {
   codeClass,
   gatewayErrorMessage,
   mergeServerRows,
+  plural,
   tableClass,
   tdClass,
   thClass,
@@ -58,6 +59,15 @@ function gatewayStatusDot(status: string): string {
   return 'bg-gray-400'
 }
 
+type Filter = 'all' | 'gateway' | 'missing'
+type Sort = 'name' | 'tools'
+
+const FILTERS: Array<{ id: Filter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'gateway', label: 'In gateway' },
+  { id: 'missing', label: 'Not in gateway' },
+]
+
 export function GatewayServersPanel({ base }: { base: string }) {
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
@@ -66,6 +76,9 @@ export function GatewayServersPanel({ base }: { base: string }) {
   }, attempt)
   const toolList = useMCPStore((state) => state.toolList)
 
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<Filter>('all')
+  const [sort, setSort] = useState<Sort>('name')
   const [addingKey, setAddingKey] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<GatewayConnector | null>(null)
@@ -83,16 +96,52 @@ export function GatewayServersPanel({ base }: { base: string }) {
     return mergeServerRows(agentWorksServers(toolList), data.connectors, data.providers)
   }, [data, toolList])
 
+  const toolCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const t of data?.tools ?? []) counts.set(t.ConnectorID, (counts.get(t.ConnectorID) ?? 0) + 1)
+    return counts
+  }, [data])
+
+  const rowTools = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of rows) {
+      counts.set(
+        row.key,
+        row.gateway.reduce((n, c) => n + (toolCounts.get(c.ID) ?? 0), 0),
+      )
+    }
+    return counts
+  }, [rows, toolCounts])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const filtered = rows.filter((row) => {
+      if (filter === 'gateway' && row.gateway.length === 0) return false
+      if (filter === 'missing' && row.gateway.length > 0) return false
+      if (!q) return true
+      const name = displayName(row)
+      return (
+        name.toLowerCase().includes(q) ||
+        descriptionFor(name).toLowerCase().includes(q) ||
+        row.gateway.some((c) => c.UpstreamURL.toLowerCase().includes(q))
+      )
+    })
+    if (sort === 'tools') {
+      return [...filtered].sort((a, b) => (rowTools.get(b.key) ?? 0) - (rowTools.get(a.key) ?? 0))
+    }
+    return filtered
+  }, [rows, query, filter, sort, rowTools])
+
   const grouped = useMemo(() => {
     const byGroup = new Map<string, ServerRow[]>()
-    for (const row of rows) {
+    for (const row of visible) {
       const group = groupFor(displayName(row))
       const list = byGroup.get(group) ?? []
       list.push(row)
       byGroup.set(group, list)
     }
     return GROUP_ORDER.filter((g) => byGroup.has(g.id)).map((g) => ({ ...g, rows: byGroup.get(g.id) ?? [] }))
-  }, [rows])
+  }, [visible])
 
   async function onAddToGateway(row: ServerRow) {
     if (!row.catalogMatch) return
@@ -164,22 +213,81 @@ export function GatewayServersPanel({ base }: { base: string }) {
   if (loading) return <ConsoleLoading label="Loading servers…" />
   if (error || !data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
-  const toolCounts = new Map<string, number>()
-  for (const t of data.tools) toolCounts.set(t.ConnectorID, (toolCounts.get(t.ConnectorID) ?? 0) + 1)
+  const inGateway = rows.filter((r) => r.gateway.length > 0).length
+  const stats: Array<[string, string]> = [
+    [String(rows.length), 'servers'],
+    [String(inGateway), 'in gateway'],
+    [String(data.tools.length), 'tools governed'],
+    [String(data.providers.length), 'in catalog'],
+  ]
 
   return (
     <div className="space-y-4" data-testid="gateway-servers">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-border px-4 py-2.5" aria-label="Gateway overview">
+        {stats.map(([value, label]) => (
+          <p key={label} className="text-xs text-muted-foreground">
+            <span className="mr-1.5 text-base font-semibold text-foreground">{value}</span>
+            {label}
+          </p>
+        ))}
+        <p className="ml-auto hidden text-xs text-muted-foreground xl:block">
+          Add an AgentWorks server to the gateway to govern it for every client.
+        </p>
+      </div>
+
       <SettingsCard
         icon={<Server className="h-4 w-4 text-primary" />}
         title="All servers"
-        count={<SettingsCount>{`${rows.length} servers`}</SettingsCount>}
-        description="Every MCP server across AgentWorks and the gateway, in one list. Add an AgentWorks server to the gateway to govern it for every client."
+        count={<SettingsCount>{plural(visible.length, 'server')}</SettingsCount>}
+        description="Every MCP server across AgentWorks and the gateway, in one list."
       >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="relative min-w-52 flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              aria-label="Search servers"
+              placeholder="Search servers…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-8"
+              data-testid="gateway-servers-search"
+            />
+          </span>
+          <div className="flex gap-1 rounded-md bg-muted p-1 text-xs" role="tablist" aria-label="Server filter">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                role="tab"
+                aria-selected={filter === f.id}
+                onClick={() => setFilter(f.id)}
+                className={`rounded px-3 py-1 font-medium ${
+                  filter === f.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <select
+            aria-label="Sort servers"
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+          >
+            <option value="name">Sort A–Z</option>
+            <option value="tools">Sort by tools</option>
+          </select>
+        </div>
+
         {actionError && <ConsoleError message={actionError} onRetry={bump} />}
-        {rows.length === 0 ? (
-          <ConsoleEmpty>No servers yet. Connect one in AgentWorks, or add a custom URL below.</ConsoleEmpty>
+        {visible.length === 0 ? (
+          <ConsoleEmpty>
+            {rows.length === 0
+              ? 'No servers yet. Connect one in AgentWorks, or add a custom URL below.'
+              : 'No servers match this search.'}
+          </ConsoleEmpty>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {grouped.map((group) => (
               <div key={group.id}>
                 <h4 className="mb-1 text-xs font-semibold text-foreground">{group.label}</h4>
@@ -198,22 +306,22 @@ export function GatewayServersPanel({ base }: { base: string }) {
                       return (
                         <tr key={row.key}>
                           <td className={tdClass}>
-                            <span className="flex items-start gap-2">
+                            <span className="flex items-center gap-2">
                               <ConnectionIcon icon={brandSlugFor(name)} name={name} size="xs" />
-                              <span>
-                                <span className="block font-medium text-foreground">{name}</span>
-                                <span className="block max-w-72 truncate text-muted-foreground" title={descriptionFor(name)}>
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium text-foreground">{name}</span>
+                                <span className="block max-w-96 truncate text-muted-foreground" title={descriptionFor(name)}>
                                   {descriptionFor(name)}
                                 </span>
                               </span>
                             </span>
                           </td>
-                          <td className={tdClass}>
+                          <td className={`${tdClass} whitespace-nowrap`}>
                             {row.agentworks && aw ? (
                               <span className="inline-flex items-center gap-1.5" title={aw.title}>
                                 <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
                                 {row.agentworks.connection === 'connected'
-                                  ? `${row.agentworks.toolCount} tools`
+                                  ? plural(row.agentworks.toolCount, 'tool')
                                   : aw.title}
                               </span>
                             ) : (
@@ -222,7 +330,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
                           </td>
                           <td className={tdClass}>
                             {row.gateway.length > 0 ? (
-                              <span className="flex flex-col gap-1.5">
+                              <span className="flex flex-col gap-1">
                                 {row.gateway.map((c) => (
                                   <span key={c.ID} className="inline-flex flex-wrap items-center gap-1.5">
                                     <span className={`h-2 w-2 shrink-0 rounded-full ${gatewayStatusDot(c.Status)}`} aria-hidden />
@@ -230,7 +338,9 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                       {c.Label || c.Provider}
                                       {c.InstanceSlug ? `:${c.InstanceSlug}` : ''}
                                     </span>
-                                    <span className="text-muted-foreground">{toolCounts.get(c.ID) ?? 0} tools</span>
+                                    <span className="whitespace-nowrap text-muted-foreground">
+                                      {plural(toolCounts.get(c.ID) ?? 0, 'tool')}
+                                    </span>
                                     <Button
                                       variant="ghost"
                                       size="xs"
@@ -281,7 +391,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
         title="Add a custom server"
         description="Any Streamable-HTTP MCP URL. Servers from the catalog are added from the list above."
       >
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <Input aria-label="Provider name" placeholder="Provider name (e.g. acme-notes)" value={customName} onChange={(e) => setCustomName(e.target.value)} />
           <Input aria-label="Upstream URL" placeholder="https://…/mcp" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} data-testid="gateway-add-url" />
           <Input aria-label="Label" placeholder="Label (defaults to provider)" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} />

@@ -3,7 +3,7 @@ import { ScrollText } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { listAudit } from './gatewayAdminApi'
 import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
-import { codeClass, tableClass, tdClass, thClass, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
+import { codeClass, plural, tableClass, tdClass, thClass, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
 const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
@@ -34,7 +34,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
       <SettingsCard
         icon={<ScrollText className="h-4 w-4 text-primary" />}
         title="Audit log"
-        count={<SettingsCount>{`${events.length} events`}</SettingsCount>}
+        count={<SettingsCount>{plural(events.length, 'event')}</SettingsCount>}
         description="Every tool call through the gateway: who asked, what was decided, and how it ended. Newest first."
         actions={
           <select

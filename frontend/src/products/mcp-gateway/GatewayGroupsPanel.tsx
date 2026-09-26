@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { addMember, createGroup, listGroups, listMembers, listUsers, removeMember } from './gatewayAdminApi'
 import { ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
-import { gatewayErrorMessage, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
+import { gatewayErrorMessage, plural, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
 const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
@@ -86,7 +86,7 @@ export function GatewayGroupsPanel({ base }: { base: string }) {
       <SettingsCard
         icon={<UsersRound className="h-4 w-4 text-primary" />}
         title="Groups"
-        count={<SettingsCount>{`${data.groups.length} groups`}</SettingsCount>}
+        count={<SettingsCount>{plural(data.groups.length, 'group')}</SettingsCount>}
         description="Groups bundle users so one grant covers the whole team."
       >
         {memberError && <ConsoleError message={memberError} onRetry={bump} />}
@@ -103,9 +103,7 @@ export function GatewayGroupsPanel({ base }: { base: string }) {
                     <p className="text-sm font-semibold text-foreground">
                       {g.Name || g.ID} <span className="font-mono text-[11px] font-normal text-muted-foreground">{g.ID}</span>
                     </p>
-                    <span className="text-muted-foreground">
-                      {members.length} member{members.length === 1 ? '' : 's'}
-                    </span>
+                    <span className="text-muted-foreground">{plural(members.length, 'member')}</span>
                   </div>
                   {members.length > 0 && (
                     <ul className="mt-2 flex flex-wrap gap-1.5">

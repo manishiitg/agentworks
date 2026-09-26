@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeServerRows, normalizeServerKey } from './gatewayConsoleUtils'
+import { mergeServerRows, normalizeServerKey, plural } from './gatewayConsoleUtils'
 import type { GatewayConnector, GatewayProvider } from './gatewayAdminApi'
 
 function connector(id: string, provider: string): GatewayConnector {
@@ -9,6 +9,14 @@ function connector(id: string, provider: string): GatewayConnector {
 function provider(name: string, key: string): GatewayProvider {
   return { Name: name, Key: key, URL: 'https://x/mcp', OAuth: false }
 }
+
+describe('plural', () => {
+  it('uses the singular form for exactly one', () => {
+    expect(plural(1, 'server')).toBe('1 server')
+    expect(plural(0, 'server')).toBe('0 servers')
+    expect(plural(2, 'server')).toBe('2 servers')
+  })
+})
 
 describe('normalizeServerKey', () => {
   it('lowercases and strips non-alphanumerics like the gateway catalog', () => {

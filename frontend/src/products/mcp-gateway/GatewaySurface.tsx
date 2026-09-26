@@ -106,14 +106,12 @@ export function GatewaySurface() {
               </button>
             ))}
           </nav>
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
-            <div className="mx-auto w-full max-w-5xl">
-              {section === 'servers' && <GatewayServersPanel base={base} />}
-              {section === 'grants' && <GatewayGrantsPanel base={base} />}
-              {section === 'groups' && <GatewayGroupsPanel base={base} />}
-              {section === 'users' && <GatewayUsersPanel base={base} />}
-              {section === 'audit' && <GatewayAuditPanel base={base} />}
-            </div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
+            {section === 'servers' && <GatewayServersPanel base={base} />}
+            {section === 'grants' && <GatewayGrantsPanel base={base} />}
+            {section === 'groups' && <GatewayGroupsPanel base={base} />}
+            {section === 'users' && <GatewayUsersPanel base={base} />}
+            {section === 'audit' && <GatewayAuditPanel base={base} />}
           </div>
         </div>
       )}

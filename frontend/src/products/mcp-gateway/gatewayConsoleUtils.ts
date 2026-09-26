@@ -58,6 +58,10 @@ export function useAttempt(): [number, () => void] {
   return [attempt, bump]
 }
 
+export function plural(count: number, one: string, many?: string): string {
+  return `${count} ${count === 1 ? one : (many ?? `${one}s`)}`
+}
+
 /** Lowercase alphanumeric key; mirrors the gateway catalog.Key and the brand-slug normalization. */
 export function normalizeServerKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')
