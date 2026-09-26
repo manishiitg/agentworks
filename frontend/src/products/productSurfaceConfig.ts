@@ -1,4 +1,4 @@
-export const PRODUCT_SURFACES = ['agentworks', 'video-studio', 'dominion', 'sparkquill', 'work'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'video-studio', 'dominion', 'sparkquill', 'work', 'mcp-gateway'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
@@ -21,15 +21,17 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 /**
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation surface and the built-in Work coding surface together.
- * Dedicated product shells can still replace this with their own allowlist.
+ * the automation surface and the built-in Work coding surface together, plus
+ * the gateway surface whenever a gateway URL is configured (the switcher
+ * applies that second gate).  Dedicated product shells can still replace this
+ * with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
-  if (!Array.isArray(configured)) return ['agentworks', 'work']
+  if (!Array.isArray(configured)) return ['agentworks', 'work', 'mcp-gateway']
 
   const enabled = configured.filter(isProductSurface)
-  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'work']
+  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'work', 'mcp-gateway']
 }
 
 export function deploymentDefaultProductSurface(): ProductSurface {
@@ -53,9 +55,9 @@ export function hasGatewaySSO(): boolean {
 }
 
 /**
- * Admin URL of the MCP Gateway deployment linked from the product switcher.
- * The gateway is a separate service with its own auth, so this is a plain
- * link-out, not a product surface: null hides the entry.
+ * Admin URL of the MCP Gateway deployment embedded as a product surface.
+ * The gateway UI is a separate service rendered in an iframe; null hides
+ * the switcher entry.
  */
 export function gatewayAdminUrl(): string | null {
   const raw = runtimeConfig()?.gatewayUrl

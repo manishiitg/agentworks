@@ -44,6 +44,7 @@ const VideoStudioSurface = lazy(() => import('./products/video-studio/VideoStudi
 const DominionSurface = lazy(() => import('./products/dominion/DominionSurface').then(module => ({ default: module.DominionSurface })))
 const SparkQuillSurface = lazy(() => import('./products/sparkquill/SparkQuillSurface').then(module => ({ default: module.SparkQuillSurface })))
 const WorkSurface = lazy(() => import('./products/work/WorkSurface').then(module => ({ default: module.WorkSurface })))
+const GatewaySurface = lazy(() => import('./products/mcp-gateway/GatewaySurface').then(module => ({ default: module.GatewaySurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -926,6 +927,8 @@ function App() {
           <Suspense fallback={<FileSurfaceFallback />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'work' ? (
           <Suspense fallback={<FileSurfaceFallback />}><WorkSurface /></Suspense>
+        ) : productSurface === 'mcp-gateway' ? (
+          <Suspense fallback={<FileSurfaceFallback />}><GatewaySurface /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />

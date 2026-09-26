@@ -14,8 +14,8 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
-  it('defaults to AgentWorks and Work when no deployment allowlist is configured', () => {
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
+  it('defaults to AgentWorks, Work, and the gateway when no deployment allowlist is configured', () => {
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'mcp-gateway'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(hasGatewaySSO()).toBe(false)
