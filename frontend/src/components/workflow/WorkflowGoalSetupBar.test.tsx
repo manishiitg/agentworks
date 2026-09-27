@@ -56,6 +56,12 @@ describe('WorkflowGoalSetupBar', () => {
 
     expect(container.textContent).toContain('Goal setup')
     expect(container.textContent).toContain('Optional')
+    expect(container.textContent).toContain('1 of 3 done')
+    const current = container.querySelector('[aria-current="step"]') as HTMLButtonElement
+    expect(current?.textContent).toContain('Plan')
+    expect(current.disabled).toBe(false)
+    const doneStep = Array.from(container.querySelectorAll('ol[aria-label="Setup steps"] button')).find(b => b.textContent?.includes('Goal')) as HTMLButtonElement
+    expect(doneStep.disabled).toBe(true)
     const action = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'Design the plan in chat')
     expect(action).toBeTruthy()
     await act(async () => { action!.click() })
