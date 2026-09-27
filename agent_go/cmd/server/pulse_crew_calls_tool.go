@@ -64,13 +64,13 @@ func createCrewCallsTool() (llmtypes.Tool, func(context.Context, map[string]inte
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"workspace_path": map[string]interface{}{"type": "string", "description": "This workflow's path, e.g. Workflow/salesoutreach."},
+				"workspace_path": map[string]interface{}{"type": "string", "description": "Optional. This workflow's own path; any other workflow is refused."},
 				"operation":      map[string]interface{}{"type": "string", "enum": []string{"list", "read"}},
 				"call_id":        map[string]interface{}{"type": "string", "description": "read: a function call ID from list (fn-...)."},
 				"record_path":    map[string]interface{}{"type": "string", "description": "read: a Crew step record from list, workflow-relative, e.g. runs/iteration-5-sched/default/execution/step-review/crew-run.json."},
 				"max_messages":   map[string]interface{}{"type": "integer", "minimum": 1, "maximum": crewCallsMaxMessages, "description": "read: newest messages to return (default 40)."},
 			},
-			"required": []string{"workspace_path", "operation"},
+			"required": []string{"operation"},
 		}),
 	}}
 	return tool, runReadCrewCalls
@@ -81,14 +81,16 @@ func runReadCrewCalls(ctx context.Context, args map[string]interface{}) (string,
 	if api == nil || api.productSchedules == nil {
 		return "", fmt.Errorf("Crew calls are unavailable in this process")
 	}
-	workspacePath := strings.Trim(strings.TrimSpace(fmt.Sprint(args["workspace_path"])), "/")
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found || strings.TrimSpace(manifest.ID) == "" {
-		return "", fmt.Errorf("cannot read the workflow at %q", workspacePath)
-	}
-	claims, err := pulsePlatformClaims(ctx, workspacePath)
+	// The workflow and principal come from the calling session, never from
+	// the arguments (pulseToolScope); both list and read need read access.
+	requested, _ := args["workspace_path"].(string)
+	workspacePath, claims, err := api.pulseToolScope(ctx, requested, false)
 	if err != nil {
 		return "", err
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || strings.TrimSpace(manifest.ID) == "" {
+		return "", fmt.Errorf("cannot read this session's workflow")
 	}
 	operation, _ := args["operation"].(string)
 	switch strings.TrimSpace(operation) {
@@ -112,7 +114,7 @@ func runReadCrewCalls(ctx context.Context, args map[string]interface{}) (string,
 				maxMessages = crewCallsMaxMessages
 			}
 		}
-		return readVerifiedCrewCall(ctx, api, manifest.ID, call, maxMessages)
+		return readVerifiedCrewCall(ctx, api, manifest.ID, claims.UserID, call, maxMessages)
 	default:
 		return "", fmt.Errorf("operation must be list or read")
 	}
@@ -276,7 +278,7 @@ func resolveWorkflowCrewCall(ctx context.Context, workspacePath, workflowID, own
 
 // readVerifiedCrewCall confirms with the Crew side that this workflow's
 // binding made the run, then returns that run's own conversation.
-func readVerifiedCrewCall(ctx context.Context, api *StreamingAPI, workflowID string, call pulseCrewCall, maxMessages int) (string, error) {
+func readVerifiedCrewCall(ctx context.Context, api *StreamingAPI, workflowID, principalID string, call pulseCrewCall, maxMessages int) (string, error) {
 	profileID := normalizeInternalProfileID(call.CrewProfileID)
 	userID := strings.TrimSpace(call.userID)
 	if userID == "" {
@@ -303,11 +305,21 @@ func readVerifiedCrewCall(ctx context.Context, api *StreamingAPI, workflowID str
 	if sessionID != "" && sessionID == strings.TrimSpace(manifest.SessionID) {
 		return "", fmt.Errorf("this run is in the Crew's main chat, which is private; only its status is available")
 	}
-	if sessionID == "" {
+	// Fail closed on an unknown Crew owner, and show another person's Crew
+	// only as its run status and final answer: its internal tool calls and
+	// results stay with its owner.
+	crewOwnerID, ok := crewProjectOwnerID(binding.WorkspacePath)
+	crewOwnerID = strings.TrimSpace(crewOwnerID)
+	if !ok || crewOwnerID == "" {
+		return "", fmt.Errorf("cannot determine who owns this Crew; its conversation is not available")
+	}
+	switch {
+	case sessionID == "":
 		out["conversation"] = "no conversation recorded for this run yet"
-	} else {
-		ownerID, _ := crewProjectOwnerID(binding.WorkspacePath)
-		raw, readErr := ReadChatHistoryConversation(ownerID, sessionID, binding.WorkspacePath)
+	case crewOwnerID != strings.TrimSpace(principalID):
+		out["conversation"] = "this Crew belongs to someone else; only its run status and final answer are shown"
+	default:
+		raw, readErr := ReadChatHistoryConversation(crewOwnerID, sessionID, binding.WorkspacePath)
 		if readErr != nil {
 			out["conversation"] = "conversation unavailable: " + readErr.Error()
 		} else {

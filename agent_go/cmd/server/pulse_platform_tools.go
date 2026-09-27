@@ -15,9 +15,10 @@ import (
 
 // Pulse Goal Work looks beyond its own workflow: other workflows the owner can
 // see (their plans, runs, files and knowledge) and the Crews on this server.
-// Both tools reuse the external API in-process, as the workflow's owner, so
-// visibility and access are exactly what that person gets from the agentworks
-// CLI; nothing here has its own permission logic.
+// Both tools reuse the external API in-process, as the calling session's
+// owner (pulseToolScope: never a model-chosen workflow or its owner), so
+// visibility and access are exactly what that person gets from the
+// agentworks CLI.
 
 // pulsePlatformAPI is set when the server starts. Nil (tests, CLI tools) means
 // the platform tools report that they are unavailable.
@@ -51,11 +52,11 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		return llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"workspace_path": map[string]interface{}{"type": "string", "description": "This workflow's path, e.g. Workflow/linkedin. The call runs with its owner's access."},
+				"workspace_path": map[string]interface{}{"type": "string", "description": "Optional. This workflow's own path; any other workflow is refused. The call runs as this session's owner."},
 				"operation":      map[string]interface{}{"type": "string", "enum": sortedOperations(ops)},
 				"arguments":      map[string]interface{}{"type": "object", "description": argsDescription},
 			},
-			"required": []string{"workspace_path", "operation"},
+			"required": []string{"operation"},
 		})
 	}
 	searchTool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
@@ -71,8 +72,12 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		Parameters: params(pulseCrewWorkOperations, "The operation's arguments: {\"crew_id\":\"...\",\"message\":\"...\"} or {\"crew_id\":\"...\",\"function\":\"...\",\"args\":{...}}; optional wait_seconds (max 25)."),
 	}}
 	executors := map[string]interface{}{
-		"search_platform":   func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulsePlatformReadOperations) },
-		"ask_platform_crew": func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulseCrewWorkOperations) },
+		"search_platform": func(ctx context.Context, args map[string]interface{}) (string, error) {
+			return runPulsePlatformOperation(ctx, args, pulsePlatformReadOperations, false)
+		},
+		"ask_platform_crew": func(ctx context.Context, args map[string]interface{}) (string, error) {
+			return runPulsePlatformOperation(ctx, args, pulseCrewWorkOperations, true)
+		},
 	}
 	crewCallsTool, crewCallsExecutor := createCrewCallsTool()
 	executors["read_crew_calls"] = crewCallsExecutor
@@ -80,7 +85,7 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	return []llmtypes.Tool{searchTool, crewTool, crewCallsTool}, executors, categories
 }
 
-func runPulsePlatformOperation(ctx context.Context, args map[string]interface{}, allowed map[string]bool) (string, error) {
+func runPulsePlatformOperation(ctx context.Context, args map[string]interface{}, allowed map[string]bool, needWrite bool) (string, error) {
 	operation, _ := args["operation"].(string)
 	operation = strings.TrimSpace(operation)
 	if !allowed[operation] {
@@ -90,8 +95,8 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 	if api == nil {
 		return "", fmt.Errorf("platform search is unavailable in this process")
 	}
-	workspacePath, _ := args["workspace_path"].(string)
-	claims, err := pulsePlatformClaims(ctx, workspacePath)
+	requested, _ := args["workspace_path"].(string)
+	_, claims, err := api.pulseToolScope(ctx, requested, needWrite)
 	if err != nil {
 		return "", err
 	}
@@ -112,30 +117,4 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 		return "", fmt.Errorf("%s failed (%d): %s", operation, rec.Code, out)
 	}
 	return out, nil
-}
-
-// pulsePlatformClaims is the principal a Pulse platform call acts as: the
-// caller already on the context, else the workflow's first owner.
-func pulsePlatformClaims(ctx context.Context, workspacePath string) (*UserClaims, error) {
-	if claims := GetUserFromContext(ctx); claims != nil && strings.TrimSpace(claims.UserID) != "" {
-		copy := *claims
-		return &copy, nil
-	}
-	workspacePath = strings.TrimSpace(workspacePath)
-	if workspacePath == "" {
-		return nil, fmt.Errorf("workspace_path is required")
-	}
-	manifest, ok, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !ok {
-		return nil, fmt.Errorf("cannot read the workflow at %s to find its owner", workspacePath)
-	}
-	userID := GetDefaultUserID()
-	if owners := manifest.effectiveOwners(); len(owners) > 0 && strings.TrimSpace(owners[0]) != "" {
-		userID = strings.TrimSpace(owners[0])
-	}
-	claims := &UserClaims{UserID: userID}
-	if record := directoryUserFor(userID, "", ""); record != nil {
-		claims.Username, claims.Email = record.Username, record.Email
-	}
-	return claims, nil
 }

@@ -1990,7 +1990,11 @@ func (iwm *InteractiveWorkshopManager) configureWorkshopToolAgentSessionWithID(c
 	config.MCPSessionID = toolAgentSessionID
 	config.FolderGuardReadPaths = readPaths
 	config.FolderGuardWritePaths = writePaths
+	// Trusted owner of this tool session for server-side tools that act for
+	// a workflow (workshop_tool_sessions.go).
+	unregister := RegisterWorkshopToolSession(toolAgentSessionID, iwm.controller.GetWorkspacePath(), iwm.mainSessionID)
 	return toolAgentSessionID, func() {
+		unregister()
 		common.ClearSessionShellConfig(toolAgentSessionID)
 	}
 }
@@ -9075,6 +9079,18 @@ func (iwm *InteractiveWorkshopManager) runBackgroundTaskAgentSequence(ctx contex
 		}
 		workshopToolDefinitions = filtered
 	}
+	// Having a Crew do work is running work: only Goal Work may, and only with
+	// its Run permission (goalWorkToolAllowed). No other background agent gets
+	// ask_platform_crew.
+	if !reviewScope.goalWork() {
+		filtered := workshopToolDefinitions[:0]
+		for _, tool := range workshopToolDefinitions {
+			if tool.Name != "ask_platform_crew" {
+				filtered = append(filtered, tool)
+			}
+		}
+		workshopToolDefinitions = filtered
+	}
 	config.DirectTools = workshopToolDefinitions
 
 	// --- Tools: inherit the parent's complete workspace tool bundle ---
@@ -9093,6 +9109,8 @@ func (iwm *InteractiveWorkshopManager) runBackgroundTaskAgentSequence(ctx contex
 	}
 	if reviewScope.goalWork() {
 		toolsToRegister, executorsToUse = filterGoalWorkTools(toolsToRegister, executorsToUse, reviewScope.Permissions)
+	} else {
+		toolsToRegister, executorsToUse = withoutBackgroundTool(toolsToRegister, executorsToUse, "ask_platform_crew")
 	}
 
 	if readOnlyTask {

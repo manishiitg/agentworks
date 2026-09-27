@@ -205,3 +205,22 @@ func filterReadOnlyBackgroundTools(tools []llmtypes.Tool, executors map[string]i
 	}
 	return result, handlers
 }
+
+// withoutBackgroundTool removes one tool from a background agent's bundle
+// without touching the shared parent bundle it was copied from.
+func withoutBackgroundTool(tools []llmtypes.Tool, executors map[string]interface{}, name string) ([]llmtypes.Tool, map[string]interface{}) {
+	result := make([]llmtypes.Tool, 0, len(tools))
+	for _, tool := range tools {
+		if tool.Function != nil && tool.Function.Name == name {
+			continue
+		}
+		result = append(result, tool)
+	}
+	handlers := make(map[string]interface{}, len(executors))
+	for key, handler := range executors {
+		if key != name {
+			handlers[key] = handler
+		}
+	}
+	return result, handlers
+}
