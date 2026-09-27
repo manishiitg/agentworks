@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { terminalUsageLines, usageWindowLabel } from './terminalUsage'
+import { terminalUsageLines, usageWindowLabel, terminalSessionUsageLines, formatTokenCount } from './terminalUsage'
 
 // Local-time instants so the assertions hold in any test-runner timezone.
 const NOW = new Date(2026, 8, 27, 12, 0).getTime() // Sun 27 Sep 2026, 12:00 local
@@ -71,5 +71,30 @@ describe('terminalUsageLines', () => {
     }, { now: NOW })
     expect(lines.map(line => line.high)).toEqual([false, true])
     expect(terminalUsageLines({ status_extras: ['7d 96% →Fri', '5h 12%'] }).map(line => line.high)).toEqual([true, false])
+  })
+})
+
+describe('terminalSessionUsageLines', () => {
+  it('summarizes context, tokens with cache, cost and details', () => {
+    expect(terminalSessionUsageLines({
+      total_input_tokens: 1_234_567,
+      total_output_tokens: 36_400,
+      cache_read_input_tokens: 900_000,
+      cost_usd: 4.1,
+      status_meta: { status_extras: ['5h 17% →3:30pm', 'ctx 42%', 'xhigh', 'pro'] },
+    })).toEqual(['Context 42%', 'Session: 1.2M in (900k cached) · 36k out · $4.10', 'xhigh · pro'])
+  })
+
+  it('shows only what the CLI reported', () => {
+    expect(terminalSessionUsageLines({ input_tokens: 950, output_tokens: 80 })).toEqual(['Session: 950 in · 80 out'])
+    expect(terminalSessionUsageLines({ status_meta: { status_extras: ['5h 8%'] } })).toEqual([])
+    expect(terminalSessionUsageLines(undefined)).toEqual([])
+  })
+
+  it('formats token counts compactly', () => {
+    expect(formatTokenCount(999)).toBe('999')
+    expect(formatTokenCount(36_400)).toBe('36k')
+    expect(formatTokenCount(1_000_000)).toBe('1M')
+    expect(formatTokenCount(12_600_000)).toBe('13M')
   })
 })

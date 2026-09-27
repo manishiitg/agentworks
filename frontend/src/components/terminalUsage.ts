@@ -130,3 +130,55 @@ export function terminalUsageLines(
   if (windows.length > 0) return windows
   return extrasLines(statusMeta.status_extras)
 }
+
+/** The session fields of a terminal status the hover summarizes. */
+export interface TerminalSessionUsageInput {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  total_input_tokens?: number
+  total_output_tokens?: number
+  cost_usd?: number
+  status_meta?: Record<string, unknown>
+}
+
+/** Compact token count: 950, 36k, 1.2M. */
+export function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+  return String(Math.round(value))
+}
+
+function positive(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+/**
+ * Session lines under the plan windows: context-window fill, tokens used
+ * (with the cached share) and cost, plus any other short CLI details
+ * (reasoning effort, plan). Each line appears only when the CLI reported it.
+ */
+export function terminalSessionUsageLines(status: TerminalSessionUsageInput | null | undefined): string[] {
+  if (!status) return []
+  const lines: string[] = []
+  const extras = Array.isArray(status.status_meta?.status_extras)
+    ? (status.status_meta?.status_extras as unknown[]).filter((value): value is string => typeof value === 'string' && value.trim() !== '').map(value => value.trim())
+    : []
+  const context = extras.find(value => /^ctx\b/i.test(value))
+  const contextPct = context ? /(\d+(?:\.\d+)?)\s*%/.exec(context) : null
+  if (contextPct) lines.push(`Context ${Math.round(Number(contextPct[1]))}%`)
+
+  const input = positive(status.total_input_tokens) || positive(status.input_tokens)
+  const output = positive(status.total_output_tokens) || positive(status.output_tokens)
+  const cached = positive(status.cache_read_input_tokens)
+  const cost = positive(status.cost_usd)
+  const parts: string[] = []
+  if (input > 0) parts.push(`${formatTokenCount(input)} in${cached > 0 ? ` (${formatTokenCount(cached)} cached)` : ''}`)
+  if (output > 0) parts.push(`${formatTokenCount(output)} out`)
+  if (cost > 0) parts.push(`$${cost.toFixed(cost >= 100 ? 0 : 2)}`)
+  if (parts.length > 0) lines.push(`Session: ${parts.join(' · ')}`)
+
+  const details = extras.filter(value => !/%/.test(value))
+  if (details.length > 0) lines.push(details.join(' · '))
+  return lines
+}

@@ -125,7 +125,7 @@ import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
 import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
-import { terminalUsageLines } from './terminalUsage'
+import { terminalSessionUsageLines, terminalUsageLines } from './terminalUsage'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 
@@ -1422,6 +1422,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // to the terminal icon's hover text.
   const terminalUsage = useMemo(
     () => terminalUsageLines(chatInputMainTerminal?.status?.status_meta),
+    [chatInputMainTerminal],
+  )
+  // Context fill, tokens, cost and other CLI details, below the plan windows.
+  const terminalSessionUsage = useMemo(
+    () => terminalSessionUsageLines(chatInputMainTerminal?.status),
     [chatInputMainTerminal],
   )
 
@@ -2910,6 +2915,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const terminalTitle = [
       `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}`,
       ...terminalUsage.map(line => `${line.text}${line.high ? ' (high)' : ''}`),
+      ...terminalSessionUsage,
     ].join('\n')
     return (
       <div data-tour="chat-input-area" data-testid="tour-chat-input-area" className={`${inputPadX} ${isProductSurface ? 'py-1' : 'py-2'}`}>
@@ -3313,6 +3319,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                           className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
                         >
                           {line.text}
+                        </p>
+                      ))}
+                      {terminalSessionUsage.map((line, index) => (
+                        <p
+                          key={`session-${index}`}
+                          data-testid="chat-input-terminal-session-usage"
+                          className="font-mono text-[11px] opacity-70"
+                        >
+                          {line}
                         </p>
                       ))}
                     </TooltipContent>
