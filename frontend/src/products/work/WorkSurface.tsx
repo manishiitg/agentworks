@@ -35,6 +35,8 @@ import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../pla
 import { usePresentationEvents } from '../../platform/presentations/usePresentationEvents'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { AgentWorksChatTabItem } from '../../components/chat/AgentWorksChatTabItem'
@@ -142,44 +144,67 @@ async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, wor
   }
 }
 
+// Keep the last list in memory across product switches. The surface still
+// revalidates on entry, but it needn't block on the project manifest requests
+// every time someone returns to Crew.
+const workSessionLists = new Map<string, WorkSession[]>()
+
 function useWorkSessions() {
-  const [sessions, setSessions] = useState<WorkSession[]>([])
+  const userId = useAuthStore(state => state.user?.id ?? 'local')
+  const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const cacheKey = `crew-session-list:${activeWorkspaceId}:${userId}`
+  const cached = useRef(workSessionLists.get(cacheKey) ?? null)
+  const [sessions, setSessions] = useState<WorkSession[]>(() => cached.current ?? [])
   const selectedId = useProductSurfaceStore(state => state.selectedWorkProjectId)
   const setSelectedId = useProductSurfaceStore(state => state.setSelectedWorkProjectId)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(cached.current === null)
   const [error, setError] = useState<string | null>(null)
+  const mutationRevision = useRef(0)
+
+  const updateSessions = useCallback((update: WorkSession[] | ((current: WorkSession[]) => WorkSession[]), fromLoad = false) => {
+    if (!fromLoad) mutationRevision.current += 1
+    setSessions(current => {
+      const next = typeof update === 'function' ? update(current) : update
+      workSessionLists.set(cacheKey, next)
+      return next
+    })
+  }, [cacheKey])
 
   const refresh = useCallback(async () => {
     const listed = await loadWorkSessionsIncludingShared()
-    setSessions(listed)
+    updateSessions(listed, true)
     const current = useProductSurfaceStore.getState().selectedWorkProjectId
     setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
     return listed
-  }, [setSelectedId])
+  }, [setSelectedId, updateSessions])
 
   useEffect(() => {
     let cancelled = false
+    const revisionAtStart = mutationRevision.current
     void loadWorkSessionsIncludingShared()
       .then((listed) => {
-        if (cancelled) return
-        setSessions(listed)
-        setSelectedId(useProductSurfaceStore.getState().selectedWorkProjectId ?? listed[0]?.id ?? null)
+        if (cancelled || mutationRevision.current !== revisionAtStart) return
+        updateSessions(listed, true)
+        const current = useProductSurfaceStore.getState().selectedWorkProjectId
+        setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
       })
       .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load projects.')
+        if (!cancelled && mutationRevision.current === revisionAtStart) {
+          setError(cause instanceof Error ? cause.message : 'Could not load projects.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [setSelectedId])
+  }, [setSelectedId, updateSessions])
 
   const create = useCallback(async (title: string, description: string, icon?: string) => {
     const session = await createWorkSession(title, description, icon)
-    setSessions((current) => [session, ...current])
+    updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
-  }, [setSelectedId])
+  }, [setSelectedId, updateSessions])
 
   const remove = useCallback(async (projectId: string) => {
     const project = sessions.find(item => item.id === projectId)
@@ -206,11 +231,11 @@ function useWorkSessions() {
     } catch { /* UI preferences only. */ }
 
     const remaining = sessions.filter(item => item.id !== projectId)
-    setSessions(remaining)
+    updateSessions(remaining)
     if (useProductSurfaceStore.getState().selectedWorkProjectId === projectId) {
       setSelectedId(remaining[0]?.id ?? null)
     }
-  }, [sessions, setSelectedId])
+  }, [sessions, setSelectedId, updateSessions])
 
   const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
     const project = sessions.find(item => item.id === projectId)
@@ -222,35 +247,35 @@ function useWorkSessions() {
       reasoningEffort: selection.reasoningEffort,
     })
     const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update Crew project model ${project.title}`, 'workflow.json')
-    setSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [sessions, updateSessions])
 
   const updateNativeAgentTools = useCallback(async (projectId: string, enabled: boolean) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error('This Crew project is no longer available.')
     if (project.shared) throw new Error('Only the Crew owner can change this.')
     const updated = await updateProductProjectNativeAgentTools(project, enabled, `${enabled ? 'Enable' : 'Disable'} native agent tools for Crew project ${project.title}`, 'workflow.json')
-    setSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [sessions, updateSessions])
 
   const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error('This Crew project is no longer available.')
     if (project.shared) throw new Error('Only the Crew owner can change this.')
     const updated = await updateProductProjectSelections(project, patch, `Update Crew project integrations ${project.title}`, 'workflow.json')
-    setSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [sessions, updateSessions])
 
   const updateIdentity = useCallback(async (projectId: string, patch: ProductIdentityPatch) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error('This Crew project is no longer available.')
     const updated = await updateWorkSessionIdentity(project, patch)
-    setSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [sessions, updateSessions])
 
   return {
     sessions,
@@ -626,7 +651,7 @@ function WorkTopBarControl({
   )
 }
 
-export function WorkSurface() {
+function WorkSurfaceContent() {
   const { sessions, selected, select, create, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions()
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
@@ -1160,4 +1185,10 @@ export function WorkSurface() {
       </div>
     </div>
   )
+}
+
+export function WorkSurface() {
+  const userId = useAuthStore(state => state.user?.id ?? 'local')
+  const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  return <WorkSurfaceContent key={`${activeWorkspaceId}:${userId}`} />
 }

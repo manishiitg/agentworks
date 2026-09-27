@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
@@ -9,11 +9,13 @@ import { GatewayMark } from '../products/mcp-gateway/GatewayMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { gatewayAdminUrl, isEnabledProductSurface, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
+import { preloadProductSurface } from '../products/productSurfacePreload'
 import { cn } from '../lib/utils'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
+  preloadOnIdle?: boolean
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -34,24 +36,19 @@ const products: Array<{
   { id: 'mcp-gateway', label: 'MCP Gateway', description: 'Governed MCP tools for every AI client', icon: GatewayMark },
 ]
 
-export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
-  const deploymentSurfaces = products.filter((product) => isEnabledProductSurface(product.id)).map((product) => product.id)
-  return intersectAllowedProductSurfaces(deploymentSurfaces, allowedProducts)
-}
-
-export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className, preloadOnIdle = true }: ProductSurfaceSwitcherProps) {
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
   const setProductSurface = useProductSurfaceStore((state) => state.setProductSurface)
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const visibleProductIDs = visibleProductSurfaceIDs(allowedProducts)
+  const visibleProductIDs = useMemo(() => visibleProductSurfaceIDs(allowedProducts), [allowedProducts])
   const gatewayUrl = gatewayAdminUrl()
   // The gateway renders inside the app like any other surface, but only
   // exists when a gateway URL is configured for this deployment.
-  const visibleProducts = products.filter(
+  const visibleProducts = useMemo(() => products.filter(
     (product) => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null),
-  )
+  ), [visibleProductIDs, gatewayUrl])
   const currentProduct = visibleProducts.find((product) => product.id === productSurface) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
 
@@ -82,6 +79,41 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
     }
   }, [open])
 
+  useEffect(() => {
+    if (!preloadOnIdle) return
+    // The auth bootstrap has already supplied this user's allowed products by
+    // the time the switcher mounts. Warm only those product modules after the
+    // first paint, one idle slot at a time, so the first switch avoids a chunk
+    // download without making the current product wait for every other one.
+    const candidates = visibleProducts.map(product => product.id).filter(id => id !== productSurface && id !== 'agentworks')
+    let cancelled = false
+    let cancelScheduled: (() => void) | null = null
+
+    const scheduleNext = () => {
+      if (cancelled || candidates.length === 0) return
+      const run = () => {
+        if (cancelled) return
+        const next = candidates.shift()!
+        const loading = preloadProductSurface(next)
+        if (loading) void loading.catch(() => {}).finally(scheduleNext)
+        else scheduleNext()
+      }
+      if (typeof window.requestIdleCallback === 'function') {
+        const handle = window.requestIdleCallback(run)
+        cancelScheduled = () => window.cancelIdleCallback(handle)
+      } else {
+        const handle = window.setTimeout(run, 200)
+        cancelScheduled = () => window.clearTimeout(handle)
+      }
+    }
+
+    scheduleNext()
+    return () => {
+      cancelled = true
+      cancelScheduled?.()
+    }
+  }, [visibleProducts, productSurface, preloadOnIdle])
+
   return (
     <div
       ref={menuRef}
@@ -110,6 +142,8 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
                 key={product.id}
                 type="button"
                 role="menuitem"
+                onMouseEnter={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
+                onFocus={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
                 onClick={() => {
                   activateProduct(product.id)
                 }}

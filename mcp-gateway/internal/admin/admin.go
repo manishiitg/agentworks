@@ -105,6 +105,7 @@ func LocalhostCORS(next http.Handler) http.Handler {
 		h.Set("Vary", "Origin")
 		h.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		h.Set("Access-Control-Expose-Headers", "WWW-Authenticate")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -162,7 +163,7 @@ func (a *Admin) SetMember(groupID, userID string, add bool) error {
 	return nil
 }
 
-func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string) store.Connector {
+func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string) (store.Connector, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		label = provider
@@ -172,22 +173,10 @@ func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string) store
 		InstanceSlug: strings.TrimSpace(slug), Label: label,
 		UpstreamURL: upstreamURL, Status: store.StatusActive,
 	}
-	a.Store.AddConnector(c)
-	return c
-}
-
-// namespaceTaken reports whether the workspace already has a connector with
-// the same public-name prefix. Public tool names key off that prefix, so a
-// duplicate would collide in the registry and handler map and resolve
-// existing grants unpredictably.
-func (a *Admin) namespaceTaken(provider, slug string) bool {
-	want := mcpserver.NamespacePrefix(provider, strings.TrimSpace(slug))
-	for _, c := range a.Store.ListConnectors(a.WorkspaceID) {
-		if mcpserver.NamespacePrefix(c.Provider, c.InstanceSlug) == want {
-			return true
-		}
+	if !a.Store.AddConnectorUnique(c) {
+		return store.Connector{}, errors.New("a connector with this provider and instance name already exists")
 	}
-	return false
+	return c, nil
 }
 
 // AddConnectorFromCatalog connects a catalog provider template.
@@ -196,10 +185,10 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	if !ok {
 		return store.Connector{}, errors.New("unknown provider")
 	}
-	if a.namespaceTaken(p.Key, slug) {
-		return store.Connector{}, errors.New("a connector with this provider and instance name already exists")
+	c, err := a.addConnectorRow(p.Key, label, slug, p.URL)
+	if err != nil {
+		return store.Connector{}, err
 	}
-	c := a.addConnectorRow(p.Key, label, slug, p.URL)
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
 		return store.Connector{}, err
@@ -217,10 +206,10 @@ func (a *Admin) AddConnectorCustom(ctx context.Context, provider, label, slug, u
 	if !strings.HasPrefix(upstreamURL, "https://") && !strings.HasPrefix(upstreamURL, "http://127.0.0.1") && !strings.HasPrefix(upstreamURL, "http://localhost") {
 		return store.Connector{}, errors.New("upstream must be https (or loopback http)")
 	}
-	if a.namespaceTaken(key, slug) {
-		return store.Connector{}, errors.New("a connector with this provider and instance name already exists")
+	c, err := a.addConnectorRow(key, label, slug, upstreamURL)
+	if err != nil {
+		return store.Connector{}, err
 	}
-	c := a.addConnectorRow(key, label, slug, upstreamURL)
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
 		return store.Connector{}, err

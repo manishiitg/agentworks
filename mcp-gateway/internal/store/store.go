@@ -252,6 +252,30 @@ func (s *MemoryStore) AddConnector(c Connector) {
 	s.connectors[c.ID] = c
 }
 
+// ConnectorNamespacePrefix is the shared public-tool prefix for one instance.
+func ConnectorNamespacePrefix(provider, slug string) string {
+	if slug == "" {
+		return provider
+	}
+	return provider + "_" + slug
+}
+
+// AddConnectorUnique reserves a tool namespace atomically with the insert.
+// A duplicate prefix can also arise from a provider containing an underscore,
+// so comparing provider and slug as separate fields is insufficient.
+func (s *MemoryStore) AddConnectorUnique(c Connector) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	want := ConnectorNamespacePrefix(c.Provider, c.InstanceSlug)
+	for _, existing := range s.connectors {
+		if existing.WorkspaceID == c.WorkspaceID && ConnectorNamespacePrefix(existing.Provider, existing.InstanceSlug) == want {
+			return false
+		}
+	}
+	s.connectors[c.ID] = c
+	return true
+}
+
 func (s *MemoryStore) GetConnector(id string) (Connector, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

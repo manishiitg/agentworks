@@ -6,21 +6,28 @@ func TestResolveBind(t *testing.T) {
 	cases := []struct {
 		name      string
 		bind      string
-		tokenSet  bool
+		token     string
 		want      string
 		wantError bool
 	}{
-		{name: "default is loopback", bind: "", tokenSet: false, want: "127.0.0.1"},
-		{name: "explicit loopback", bind: "127.0.0.1", tokenSet: false, want: "127.0.0.1"},
-		{name: "explicit lan address", bind: "192.168.1.10", tokenSet: false, want: "192.168.1.10"},
-		{name: "public bind with token", bind: "0.0.0.0", tokenSet: true, want: "0.0.0.0"},
-		{name: "public ipv6 bind with token", bind: "::", tokenSet: true, want: "::"},
-		{name: "public bind without token refused", bind: "0.0.0.0", tokenSet: false, wantError: true},
-		{name: "public ipv6 bind without token refused", bind: "::", tokenSet: false, wantError: true},
+		{name: "default is loopback", bind: "", want: "127.0.0.1"},
+		{name: "explicit loopback", bind: "127.0.0.1", want: "127.0.0.1"},
+		{name: "ipv6 loopback", bind: "::1", want: "::1"},
+		{name: "localhost", bind: "localhost", want: "localhost"},
+		{name: "lan with secret", bind: "192.168.1.10", token: "a-long-private-secret", want: "192.168.1.10"},
+		{name: "public bind with secret", bind: "0.0.0.0", token: "a-long-private-secret", want: "0.0.0.0"},
+		{name: "public ipv6 bind with secret", bind: "::", token: "a-long-private-secret", want: "::"},
+		{name: "lan without secret refused", bind: "192.168.1.10", wantError: true},
+		{name: "public bind without secret refused", bind: "0.0.0.0", wantError: true},
+		{name: "public ipv6 bind without secret refused", bind: "::", wantError: true},
+		{name: "launcher default refused", bind: "0.0.0.0", token: "local-admin", wantError: true},
+		{name: "server default refused", bind: "192.168.1.10", token: "m0-human-token", wantError: true},
+		{name: "weak token refused", bind: "0.0.0.0", token: "short", wantError: true},
+		{name: "unverified hostname refused", bind: "gateway.internal", wantError: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := resolveBind(tc.bind, tc.tokenSet)
+			got, err := resolveBind(tc.bind, tc.token)
 			if tc.wantError {
 				if err == nil {
 					t.Fatalf("resolveBind(%q) = %q, want error", tc.bind, got)

@@ -356,6 +356,9 @@ func TestLocalhostCORS(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:51733" {
 		t.Fatalf("loopback origin header: got %q", got)
 	}
+	if got := rec.Header().Get("Access-Control-Expose-Headers"); got != "WWW-Authenticate" {
+		t.Fatalf("OAuth challenge is not exposed to browser JavaScript: got %q", got)
+	}
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("loopback GET passthrough: got %d, want 418", rec.Code)
 	}
@@ -374,6 +377,9 @@ func TestLocalhostCORS(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Fatalf("foreign origin header: got %q, want empty", got)
+	}
+	if got := rec.Header().Get("Access-Control-Expose-Headers"); got != "" {
+		t.Fatalf("foreign origin exposed headers: got %q, want empty", got)
 	}
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("foreign GET passthrough: got %d, want 418", rec.Code)

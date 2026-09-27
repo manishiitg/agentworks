@@ -28,10 +28,7 @@ import (
 // "<provider>_<slug>". Connectors sharing a prefix would collide in the
 // name-keyed registry, so the admin API rejects the second one.
 func NamespacePrefix(provider, slug string) string {
-	if slug == "" {
-		return provider
-	}
-	return provider + "_" + slug
+	return store.ConnectorNamespacePrefix(provider, slug)
 }
 
 // PublicName derives the stable gateway-visible tool name. Single instance:

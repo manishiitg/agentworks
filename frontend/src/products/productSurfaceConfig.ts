@@ -93,3 +93,9 @@ export function intersectAllowedProductSurfaces(
   const allowed = new Set(allowedProducts.map((p) => p.toLowerCase()))
   return surfaces.filter((surface) => allowed.has(surface.toLowerCase()))
 }
+
+/** Product switcher entries in stable UI order for the current user. */
+export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
+  const enabled = new Set(enabledProductSurfaces())
+  return intersectAllowedProductSurfaces(PRODUCT_SURFACES.filter(surface => enabled.has(surface)), allowedProducts)
+}

@@ -65,14 +65,13 @@ describe('GatewaySurface', () => {
     await act(async () => {
       root.render(<GatewaySurface />)
     })
-    // Flush the ping fetch, then the panel fetch it unlocks.
-    await act(async () => {})
     await act(async () => {})
   }
 
-  it('renders the console menu with no token prompt when the gateway answers', async () => {
+  it('opens the servers panel without an extra user-list request', async () => {
     stubGatewayUrl(BASE)
-    vi.stubGlobal('fetch', vi.fn(healthyFetch()))
+    const fetchMock = vi.fn(healthyFetch())
+    vi.stubGlobal('fetch', fetchMock)
 
     await renderSurface()
 
@@ -87,6 +86,8 @@ describe('GatewaySurface', () => {
     expect(menu!.textContent).not.toContain('Tools & Grants')
     expect(container!.textContent).not.toContain('admin token')
     expect(container!.textContent).not.toContain('Sign in')
+    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+    expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain(`${BASE}/api/admin/users`)
   })
 
   it('shows an error with retry instead of hanging when the gateway is down', async () => {
@@ -97,7 +98,7 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.textContent).toContain('Gateway is unreachable')
-    expect(container!.querySelector('[aria-label="Gateway sections"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Gateway sections"]')).not.toBeNull()
     const callsBefore = fetchMock.mock.calls.length
     expect(callsBefore).toBeGreaterThan(0)
 
@@ -108,10 +109,9 @@ describe('GatewaySurface', () => {
       ;(retry as HTMLButtonElement).click()
     })
     await act(async () => {})
-    await act(async () => {})
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore)
-    expect(container!.querySelector('[aria-label="Gateway sections"]')).not.toBeNull()
+    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
   })
 
   it('explains itself when no gateway is configured', async () => {
