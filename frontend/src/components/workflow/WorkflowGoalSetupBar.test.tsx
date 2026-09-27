@@ -74,7 +74,9 @@ describe('WorkflowGoalSetupBar', () => {
     dismissGoalSetup.mockResolvedValue({ ...pending, show: false, dismissed: true })
     const { container, root } = await render({ workspacePath: 'Workflow/new', canEdit: true })
 
-    await act(async () => { (container.querySelector('[aria-label="Dismiss goal setup"]') as HTMLButtonElement).click() })
+    const noGoal = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'No goal needed')
+    expect(noGoal?.getAttribute('aria-label')).toBe('Dismiss goal setup')
+    await act(async () => { noGoal!.click() })
     expect(dismissGoalSetup).toHaveBeenCalledWith('Workflow/new')
     expect(container.textContent).not.toContain('Goal setup')
     await act(async () => root.unmount())

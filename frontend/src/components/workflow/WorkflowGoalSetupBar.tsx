@@ -111,7 +111,7 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
               {goalDone ? 'Goal set. Finish setting it up' : 'Give this automation a goal'}
             </p>
             <p className="text-xs leading-snug text-muted-foreground">
-              It plans the work, tracks the numbers and keeps chasing the goal.
+              It plans the work, tracks the numbers and keeps chasing the goal. Not every automation needs one.
             </p>
             {playbook ? (
               <button
@@ -172,6 +172,16 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
               <span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${steps.length ? (doneCount / steps.length) * 100 : 0}%` }} />
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => { void dismiss() }}
+            disabled={busy}
+            title="This automation runs without a goal. Hides goal setup; you can still add a goal later from chat."
+            aria-label="Dismiss goal setup"
+            className="shrink-0 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            No goal needed
+          </button>
           {next ? (
             <button
               type="button"
@@ -185,9 +195,6 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
           <div className="flex items-center">
             <button type="button" onClick={() => { void refresh() }} disabled={loading} title="Check setup again" aria-label="Refresh goal setup" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button type="button" onClick={() => { void dismiss() }} disabled={busy} title="Goals are optional. Hide goal setup for this automation." aria-label="Dismiss goal setup" className="rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-              Skip
             </button>
           </div>
         </div>
