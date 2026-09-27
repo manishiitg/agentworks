@@ -12,7 +12,7 @@ describe('Work Dashboard', () => {
     expect(source).toContain('<ReportDocumentSwitcher workspacePath={workspacePath}')
     expect(source).not.toContain('documentPath="db/reports/index.html"')
     expect(source).toContain("view === 'database'")
-    expect(source).toContain('sendChatMessage={async (message)')
+    expect(source).toContain('sendChatMessage={sendDashboardMessage}')
     expect(source).toContain("From this project's dashboard:")
     expect(source).toContain('emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}')
     expect(source).toContain('selectedGlobalSecrets={selectedGlobalSecrets}')

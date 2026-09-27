@@ -221,6 +221,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  // The dashboard's only link to the chat beside it: a stable callback, so
+  // nothing on the chat side re-renders or re-runs the dashboard.
+  const sendDashboardMessage = useCallback(async (message: string) => ({
+    status: 'queued' as const,
+    ...await sendWorkProjectPaneMessage(projectId, `From this project's dashboard:\n\n${message}`),
+  }), [projectId])
   const canonicalSessionId = useChatStore(state => Object.values(state.chatTabs).find(tab =>
     tab.metadata?.agentProfileId === 'work' &&
     tab.metadata?.agentProfileProjectId === projectId &&
@@ -344,7 +350,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             workspacePath={workspacePath}
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
             emptyDescription="Ask Crew to create a visual dashboard for this project. It can organize tasks, notes, plans, status, research, or anything else you want to manage visually."
-            sendChatMessage={async (message) => ({ status: 'queued', ...await sendWorkProjectPaneMessage(projectId, `From this project's dashboard:\n\n${message}`) })}
+            sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}
               message="Help me with this Crew project's results page. Explain what it shows in plain words and ask what I want to change."

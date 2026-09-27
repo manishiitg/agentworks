@@ -9,7 +9,7 @@ import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelect
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import { agentApi } from '../../services/api'
 import { useAppStore } from '../../stores/useAppStore'
-import { useChatStore, waitForChatStoreHydration } from '../../stores/useChatStore'
+import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
@@ -287,12 +287,36 @@ function useWorkSessions() {
   }
 }
 
+// selectWorkChatTabIds picks only the ids useWorkChatTab needs from the chat
+// store. It returns primitives, so with useShallow a change elsewhere in a
+// tab (the chat input's saved draft) does not re-render the Work surface.
+export function selectWorkChatTabIds(
+  state: { chatTabs: Record<string, ChatTab>; activeTabId: string | null },
+  sessionId: string | undefined,
+): { canonicalTabId: string | undefined; activeProjectTabId: string | undefined } {
+  if (!sessionId) return { canonicalTabId: undefined, activeProjectTabId: undefined }
+  const canonical = Object.values(state.chatTabs).find(tab =>
+    belongsToWorkProject(tab, sessionId) &&
+    tab.metadata?.agentProfileBuilder !== true &&
+    tab.metadata?.agentProfileConversationKey === sessionId)
+  const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
+  return {
+    canonicalTabId: canonical?.tabId,
+    activeProjectTabId: active && belongsToWorkProject(active, sessionId) ? active.tabId : undefined,
+  }
+}
+
 function useWorkChatTab(
   session: WorkSession | null,
   onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
-  const { chatTabs, activeTabId } = useChatStore(useShallow(state => ({ chatTabs: state.chatTabs, activeTabId: state.activeTabId })))
+  // Subscribe to the two tab ids this hook needs, never to chatTabs itself:
+  // the chat input saves its draft into its tab's config, and a whole-map
+  // subscription re-rendered the Work surface (and the workspace pane beside
+  // the chat) on every keystroke.
+  const sessionId = session?.id
+  const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
   const sessionRef = useRef(session)
   const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
   sessionRef.current = session
@@ -424,25 +448,14 @@ function useWorkChatTab(
     }
   }, [session])
 
-  const canonical = session
-    ? Object.values(chatTabs).find(tab =>
-      belongsToWorkProject(tab, session.id) &&
-      tab.metadata?.agentProfileBuilder !== true &&
-      tab.metadata?.agentProfileConversationKey === session.id)
-    : undefined
-  const activeProjectTab = session && activeTabId
-    ? chatTabs[activeTabId] && belongsToWorkProject(chatTabs[activeTabId], session.id)
-      ? chatTabs[activeTabId]
-      : undefined
-    : undefined
   useLayoutEffect(() => {
-    if (canonical?.tabId && !activeProjectTab) activateTab(canonical.tabId)
-  }, [activeProjectTab, canonical?.tabId])
+    if (canonicalTabId && !activeProjectTabId) activateTab(canonicalTabId)
+  }, [activeProjectTabId, canonicalTabId])
   return {
     // A previously prepared Crew tab is safe to display immediately while its
     // durable binding is revalidated in the background.
-    tabId: activeProjectTab?.tabId ?? canonical?.tabId ?? null,
-    canonicalTabId: canonical?.tabId ?? null,
+    tabId: activeProjectTabId ?? canonicalTabId ?? null,
+    canonicalTabId: canonicalTabId ?? null,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
 }
@@ -800,6 +813,13 @@ export function WorkSurface() {
   // Keep the workspace's inputs stable while chat state changes. The pane is
   // memoized, and each callback only changes when its project or action changes.
   const workspaceProjectId = selected?.id
+  const selectedProjectId = selected?.id
+  // Stable, so the memoized workspace pane never re-renders because of it.
+  const installSelectedTemplate = useCallback(async (templateId: CrewTemplateId) => {
+    if (!selectedProjectId) return
+    await installTemplate(selectedProjectId, templateId)
+    setChatOpen(true)
+  }, [installTemplate, selectedProjectId])
   const sharedWorkspaceOwner = useMemo(() => selected?.shared
     ? { ownerId: selected.shared.ownerId, ownerUsername: selected.shared.ownerUsername }
     : undefined, [selected?.shared])
@@ -1180,7 +1200,7 @@ export function WorkSurface() {
                         projectDescription={selected.description}
                         projectIdentity={selected.identity}
                         projectTemplates={selected.templates}
-                        onInstallTemplate={async id => { await installTemplate(selected.id, id); setChatOpen(true) }}
+                        onInstallTemplate={installSelectedTemplate}
                         tabId={tabId}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}
