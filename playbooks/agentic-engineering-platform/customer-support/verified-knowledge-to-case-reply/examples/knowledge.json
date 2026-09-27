@@ -1,0 +1,24 @@
+{
+  "artifact_type": "support-knowledge-publication/v1",
+  "artifact_id": "verified-knowledge-to-case-reply-knowledge-1",
+  "producer_id": "support-knowledge-curator",
+  "tenant_id": "tenant-1",
+  "subject_id": "case-701",
+  "product_id": "product-7",
+  "article_id": "kb-18",
+  "case_id": "case-701",
+  "source_revision": "knowledge-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "knowledge-source-1",
+    "knowledge-source-2",
+    "cms-publish-91"
+  ],
+  "state": "verified",
+  "action_state": "none",
+  "article_revision": "kb-18-v4",
+  "publication_state": "observed",
+  "publication_receipt": "cms-publish-91",
+  "live_url": "https://example.invalid/help/guest-invites",
+  "locale": "en-US"
+}

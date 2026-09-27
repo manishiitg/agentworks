@@ -1,0 +1,25 @@
+{
+  "artifact_type": "performance-regression-finding/v1",
+  "artifact_id": "performance-regression-to-owned-change-investigation-1",
+  "producer_id": "performance-investigator",
+  "tenant_id": "tenant-1",
+  "subject_id": "api-7",
+  "service_id": "api-7",
+  "budget_revision": "latency-slo-v2",
+  "build_id": "build-r7",
+  "source_revision": "investigation-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "investigation-source-1",
+    "investigation-source-2",
+    "trace-baseline-12",
+    "trace-current-15"
+  ],
+  "state": "reviewed",
+  "action_state": "none",
+  "baseline_ref": "trace-baseline-12",
+  "current_ref": "trace-current-15",
+  "comparison_state": "comparable",
+  "regression_state": "observed",
+  "hypothesis": "cache change may contribute"
+}

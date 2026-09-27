@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "release-to-observed-adoption",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Goal Owner",
+      "instructions": "Agree on the customer outcome and source, decision and action owners. Produce a verified release handoff and a bounded first adoption observation with stated coverage and the next measurement question."
+    },
+    {
+      "id": "subject_scope",
+      "title": "Subject Scope",
+      "instructions": "Bind exact tenant and subject IDs. One product, feature, exact release and flag revision, eligible population, observation window and Product owner."
+    },
+    {
+      "id": "source_policy",
+      "title": "Source Policy",
+      "instructions": "Agree on data access, version and source-of-truth policy. Re-read deployment and flag records, the approved release gate, versioned product events and identity coverage for eligible accounts."
+    },
+    {
+      "id": "decision_rule",
+      "title": "Decision Rule",
+      "instructions": "Record the blocking decision rule and evidence gaps. A go decision is not deployment; deployment is not exposure; exposure is not use. Count only eligible, exposed and observed users under one frozen event rule."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Team Bindings",
+      "instructions": "Inspect the named Crew templates and existing compatible Crews. Record exact Crew IDs, skill versions and grants; propose creation only for a missing owner or access boundary."
+    },
+    {
+      "id": "source_access",
+      "title": "Source Access",
+      "instructions": "Read at least one real authorized first-stage record and the current downstream source. Record source IDs, observed times, permissions, missing fields and owner."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Handoff Contract",
+      "instructions": "Run scripts/validate_handoff.py on each stage artifact. Block wrong tenant, subject, source revision, producer, approval or route-specific claim. The typed sequence is product-release-readiness/v1 → feature-adoption-observation/v1."
+    },
+    {
+      "id": "plan_review",
+      "title": "Plan Review",
+      "instructions": "Show the concrete Crew bindings, artifact paths, validator steps, manual route, approvals, deduplication, cost and notifications. No flag change, customer announcement, adoption claim, roadmap decision or schedule follows from selection or a release plan."
+    },
+    {
+      "id": "test_run",
+      "title": "Test Run",
+      "instructions": "Use one actual released feature with exact build and flag, compare exposure and usage sources, and have Product review the first observation. Save real source references, artifacts, validation and owner corrections. Fictional examples cannot complete this check."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Activation Choice",
+      "instructions": "Manual-only is valid. Any event or schedule needs exact subject and deduplication keys, permissions, retry limits, cost and notification review. Keep all consequential actions behind separate approval and provider receipts."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

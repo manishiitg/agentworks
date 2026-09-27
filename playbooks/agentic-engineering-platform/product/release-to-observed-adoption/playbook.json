@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "release-to-observed-adoption",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Connect a verified feature release and exposure rule to a source-bound adoption observation without assuming usage or impact."
+    }
+  ],
+  "title": "Release to Observed Adoption",
+  "description": "Connect a verified feature release and exposure rule to a source-bound adoption observation without assuming usage or impact.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Product"
+  ],
+  "order": 5,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Release to Observed Adoption as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One product, feature, exact release and flag revision, eligible population, observation window and Product owner.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Re-read deployment and flag records, the approved release gate, versioned product events and identity coverage for eligible accounts.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "A go decision is not deployment; deployment is not exposure; exposure is not use. Count only eligible, exposed and observed users under one frozen event rule.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Deployment, QA and flag records or exports",
+      "type": "mcp",
+      "purpose": "Read exact build, release gate, rollout approval and active flag revision",
+      "capability": "release_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Product event and identity records or exports",
+      "type": "mcp",
+      "purpose": "Count eligible, exposed and using accounts under the frozen event rule",
+      "capability": "adoption_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Release to Observed Adoption",
+      "focus_areas": [
+        "Produce a verified release handoff and a bounded first adoption observation with unknown coverage and next measurement date.",
+        "A go decision is not deployment; deployment is not exposure; exposure is not use. Count only eligible, exposed and observed users under one frozen event rule."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "product-release-readiness/v1",
+    "feature-adoption-observation/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "release",
+      "agent_playbook_id": "product-release-coordinator",
+      "required": true,
+      "output": "product-release-readiness/v1"
+    },
+    {
+      "id": "adoption",
+      "agent_playbook_id": "product-adoption-analyst",
+      "required": true,
+      "output": "feature-adoption-observation/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "release-to-adoption",
+      "from": "release",
+      "to": "adoption",
+      "artifact_type": "product-release-readiness/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

@@ -26,7 +26,7 @@ describe('small-team catalog', () => {
     ])
     expect(intelligence[0].handoffs?.[0].artifact_type).toBe('engineering-metric-observation/v1')
     expect(intelligence[0].setupChecks).toHaveLength(10)
-    expect(PLAYBOOK_CATALOG).toHaveLength(60)
+    expect(PLAYBOOK_CATALOG).toHaveLength(64)
     expect(PLAYBOOK_CATALOG.every(item => item.teamScope === 'small_team')).toBe(true)
   })
 
@@ -37,6 +37,22 @@ describe('small-team catalog', () => {
       ['offer-to-seller-readiness', 'GTM', ['pricing-packaging-analyst', 'sales-enablement-coordinator']],
       ['launch-signal-to-pipeline-review', 'GTM', ['launch-coordinator', 'revenue-operations-analyst']],
       ['case-pattern-to-knowledge-review', 'Customer Support', ['support-triage-assistant', 'support-knowledge-curator']],
+    ] as const
+    for (const [id, category, crewIds] of routes) {
+      const playbook = PLAYBOOK_CATALOG.find(item => item.id === id)
+      expect(playbook?.category).toBe(category)
+      expect(playbook?.agentSlots?.map(slot => slot.agent_playbook_id)).toEqual(crewIds)
+      expect(playbook?.handoffs).toHaveLength(crewIds.length - 1)
+      expect(playbook?.setupChecks).toHaveLength(10)
+    }
+  })
+
+  it('offers distinct follow-through routes for Product, GTM, Support and Engineering', () => {
+    const routes = [
+      ['release-to-observed-adoption', 'Product', ['product-release-coordinator', 'product-adoption-analyst']],
+      ['accepted-offer-to-launch-readiness', 'GTM', ['pricing-packaging-analyst', 'gtm-strategy-analyst', 'launch-coordinator']],
+      ['verified-knowledge-to-case-reply', 'Customer Support', ['support-knowledge-curator', 'support-reply-drafter']],
+      ['performance-regression-to-owned-change', 'Engineering', ['performance-investigator', 'engineering-delivery-coordinator']],
     ] as const
     for (const [id, category, crewIds] of routes) {
       const playbook = PLAYBOOK_CATALOG.find(item => item.id === id)

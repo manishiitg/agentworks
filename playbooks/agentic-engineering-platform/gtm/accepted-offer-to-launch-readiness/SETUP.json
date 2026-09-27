@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "accepted-offer-to-launch-readiness",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Goal Owner",
+      "instructions": "Agree on the customer outcome and source, decision and action owners. Produce a priced offer decision, sourced positioning brief and owner-reviewed launch readiness register with explicit blockers."
+    },
+    {
+      "id": "subject_scope",
+      "title": "Subject Scope",
+      "instructions": "Bind exact tenant and subject IDs. One offer, plan, price revision, buyer segment, intended launch window and accountable pricing and GTM owners."
+    },
+    {
+      "id": "source_policy",
+      "title": "Source Policy",
+      "instructions": "Agree on data access, version and source-of-truth policy. Read current billing price, entitlement and contract exceptions, approved claims, buyer evidence, channel policy and asset revisions."
+    },
+    {
+      "id": "decision_rule",
+      "title": "Decision Rule",
+      "instructions": "Record the blocking decision rule and evidence gaps. The exact offer must be accepted before positioning; every launch claim must cite an approved current source; assets remain unlaunched until separate review."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Team Bindings",
+      "instructions": "Inspect the named Crew templates and existing compatible Crews. Record exact Crew IDs, skill versions and grants; propose creation only for a missing owner or access boundary."
+    },
+    {
+      "id": "source_access",
+      "title": "Source Access",
+      "instructions": "Read at least one real authorized first-stage record and the current downstream source. Record source IDs, observed times, permissions, missing fields and owner."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Handoff Contract",
+      "instructions": "Run scripts/validate_handoff.py on each stage artifact. Block wrong tenant, subject, source revision, producer, approval or route-specific claim. The typed sequence is gtm-offer-decision/v1 → gtm-strategy-brief/v1 → gtm-launch-readiness/v1."
+    },
+    {
+      "id": "plan_review",
+      "title": "Plan Review",
+      "instructions": "Show the concrete Crew bindings, artifact paths, validator steps, manual route, approvals, deduplication, cost and notifications. No price edit, campaign publication, spend, seller asset distribution, lead contact or recurrence from this Playbook."
+    },
+    {
+      "id": "test_run",
+      "title": "Test Run",
+      "instructions": "Run one actual offer and launch window, verify price and claims across systems, and ask the GTM owner to approve or block the plan. Save real source references, artifacts, validation and owner corrections. Fictional examples cannot complete this check."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Activation Choice",
+      "instructions": "Manual-only is valid. Any event or schedule needs exact subject and deduplication keys, permissions, retry limits, cost and notification review. Keep all consequential actions behind separate approval and provider receipts."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

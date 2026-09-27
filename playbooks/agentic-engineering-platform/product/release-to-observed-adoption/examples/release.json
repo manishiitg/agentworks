@@ -1,0 +1,26 @@
+{
+  "artifact_type": "product-release-readiness/v1",
+  "artifact_id": "release-to-observed-adoption-release-1",
+  "producer_id": "product-release-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "feature-31",
+  "product_id": "product-7",
+  "feature_id": "feature-31",
+  "release_id": "release-12",
+  "source_revision": "release-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "release-source-1",
+    "release-source-2"
+  ],
+  "state": "verified",
+  "action_state": "none",
+  "decision": "go",
+  "qa_gate_state": "pass",
+  "qa_gate_ref": "gate-44",
+  "release_state": "verified",
+  "deployment_ref": "deploy-12",
+  "flag_revision": "flag-r4",
+  "rollout_approval_ref": "rollout-9",
+  "measurement_rule": "feature-used-v3"
+}

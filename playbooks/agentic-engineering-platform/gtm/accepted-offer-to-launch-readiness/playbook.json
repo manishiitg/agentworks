@@ -1,0 +1,173 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "accepted-offer-to-launch-readiness",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Carry an accepted priced SaaS offer through positioning into a reviewed launch plan with current claims, owners and channels."
+    }
+  ],
+  "title": "Accepted Offer to Launch Readiness",
+  "description": "Carry an accepted priced SaaS offer through positioning into a reviewed launch plan with current claims, owners and channels.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "GTM"
+  ],
+  "order": 4,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Accepted Offer to Launch Readiness as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One offer, plan, price revision, buyer segment, intended launch window and accountable pricing and GTM owners.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Read current billing price, entitlement and contract exceptions, approved claims, buyer evidence, channel policy and asset revisions.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "The exact offer must be accepted before positioning; every launch claim must cite an approved current source; assets remain unlaunched until separate review.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Billing price and entitlement records or exports",
+      "type": "mcp",
+      "purpose": "Read the exact accepted plan, price and entitlement revisions",
+      "capability": "offer_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Approved claims and launch asset records or exports",
+      "type": "mcp",
+      "purpose": "Verify buyer evidence, claim sources, channels and asset revisions",
+      "capability": "launch_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Accepted Offer to Launch Readiness",
+      "focus_areas": [
+        "Produce a priced offer decision, sourced positioning brief and owner-reviewed launch readiness register with explicit blockers.",
+        "The exact offer must be accepted before positioning; every launch claim must cite an approved current source; assets remain unlaunched until separate review."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "gtm-offer-decision/v1",
+    "gtm-strategy-brief/v1",
+    "gtm-launch-readiness/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "pricing",
+      "agent_playbook_id": "pricing-packaging-analyst",
+      "required": true,
+      "output": "gtm-offer-decision/v1"
+    },
+    {
+      "id": "strategy",
+      "agent_playbook_id": "gtm-strategy-analyst",
+      "required": true,
+      "output": "gtm-strategy-brief/v1"
+    },
+    {
+      "id": "launch",
+      "agent_playbook_id": "launch-coordinator",
+      "required": true,
+      "output": "gtm-launch-readiness/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "pricing-to-strategy",
+      "from": "pricing",
+      "to": "strategy",
+      "artifact_type": "gtm-offer-decision/v1",
+      "required": true
+    },
+    {
+      "id": "strategy-to-launch",
+      "from": "strategy",
+      "to": "launch",
+      "artifact_type": "gtm-strategy-brief/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

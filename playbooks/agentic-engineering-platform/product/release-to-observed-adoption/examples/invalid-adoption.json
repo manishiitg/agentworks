@@ -1,0 +1,28 @@
+{
+  "artifact_type": "feature-adoption-observation/v1",
+  "artifact_id": "release-to-observed-adoption-adoption-1",
+  "producer_id": "product-adoption-analyst",
+  "tenant_id": "tenant-1",
+  "subject_id": "feature-31",
+  "product_id": "product-7",
+  "feature_id": "feature-31",
+  "release_id": "release-12",
+  "source_revision": "adoption-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "adoption-source-1",
+    "adoption-source-2"
+  ],
+  "state": "observed",
+  "action_state": "none",
+  "eligible_count": 100,
+  "exposed_count": 72,
+  "using_count": 91,
+  "identity_coverage": "partial",
+  "event_rule_revision": "feature-used-v3",
+  "observation_window": "2026-09-20/2026-09-27",
+  "causal_claim": "none",
+  "input_artifact_id": "release-to-observed-adoption-release-1",
+  "input_revision": "release-rev-1",
+  "claim_scope": "observed_only"
+}

@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "verified-knowledge-to-case-reply",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Use an observed live help revision to prepare a grounded, unsent reply for an exact open support case."
+    }
+  ],
+  "title": "Verified Knowledge to Case Reply",
+  "description": "Use an observed live help revision to prepare a grounded, unsent reply for an exact open support case.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Customer Support"
+  ],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Verified Knowledge to Case Reply as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One product, help article and exact open case, locale, recipient, support owner and contact policy.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Read the live help revision and publication receipt, current case thread and account state, approved product facts and suppression history.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "An approved article draft is not live knowledge. Recheck the published revision, case applicability and permission before a separate reply approval.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Help center publication records or exports",
+      "type": "mcp",
+      "purpose": "Read publication receipt and exact live article revision",
+      "capability": "knowledge_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Support case and contact records or exports",
+      "type": "mcp",
+      "purpose": "Recheck case state, recipient, suppression and prior replies",
+      "capability": "case_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Verified Knowledge to Case Reply",
+      "focus_areas": [
+        "Produce a verified live knowledge reference and an exact-case reply draft with source links and a contact decision.",
+        "An approved article draft is not live knowledge. Recheck the published revision, case applicability and permission before a separate reply approval."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "support-knowledge-publication/v1",
+    "support-reply-draft/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "knowledge",
+      "agent_playbook_id": "support-knowledge-curator",
+      "required": true,
+      "output": "support-knowledge-publication/v1"
+    },
+    {
+      "id": "reply",
+      "agent_playbook_id": "support-reply-drafter",
+      "required": true,
+      "output": "support-reply-draft/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "knowledge-to-reply",
+      "from": "knowledge",
+      "to": "reply",
+      "artifact_type": "support-knowledge-publication/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

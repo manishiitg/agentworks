@@ -1,0 +1,25 @@
+{
+  "artifact_type": "engineering-performance-action/v1",
+  "artifact_id": "performance-regression-to-owned-change-delivery-1",
+  "producer_id": "engineering-delivery-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "api-7",
+  "service_id": "api-7",
+  "budget_revision": "latency-slo-v2",
+  "build_id": "build-r7",
+  "source_revision": "delivery-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "delivery-source-1",
+    "delivery-source-2"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "issue_ref": "issue-402",
+  "change_owner": "eng-owner-9",
+  "proposed_action": "profile cache path",
+  "deployment_state": "not_deployed",
+  "recovery_state": "verified",
+  "input_artifact_id": "performance-regression-to-owned-change-investigation-1",
+  "input_revision": "investigation-rev-1"
+}

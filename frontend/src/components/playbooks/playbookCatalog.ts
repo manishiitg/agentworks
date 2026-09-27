@@ -118,6 +118,12 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
   ], handoffs: [
     { id: 'triage-to-knowledge', from: 'triage', to: 'knowledge', artifact_type: 'support-case-pattern/v1', required: true },
   ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'verified-knowledge-to-case-reply', title: 'Verified Knowledge to Case Reply', description: 'Use an observed live help revision to prepare a grounded, unsent reply for an exact open support case.', version: '0.1.0', category: 'Customer Support', order: 3, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'knowledge', agent_playbook_id: 'support-knowledge-curator', required: true, output: 'support-knowledge-publication/v1' },
+    { id: 'reply', agent_playbook_id: 'support-reply-drafter', required: true, output: 'support-reply-draft/v1' },
+  ], handoffs: [
+    { id: 'knowledge-to-reply', from: 'knowledge', to: 'reply', artifact_type: 'support-knowledge-publication/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: 'order-exception-to-resolution', title: 'Order Exception to Resolution', description: 'Connect an order or fulfillment problem to a return or refund request, then prepare an approved action and verify the resulting store and customer state.', version: '0.1.1', category: 'Shopify', order: 1, inputCount: 5, toolCount: 5, teamScope: 'small_team', agentSlots: [
     { id: 'store_operations', agent_playbook_id: 'store-operations-coordinator', required: true, output: 'store-order-exception/v1' },
     { id: 'returns_refunds', agent_playbook_id: 'returns-refunds-coordinator', required: true, output: 'return-resolution-review/v1' },
@@ -166,6 +172,12 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
   ], handoffs: [
     { id: 'investigation-to-delivery', from: 'investigation', to: 'delivery', artifact_type: 'incident-investigation/v1', required: true },
   ], setupChecks: ['goal_owner', 'incident_scope', 'source_access', 'recovery_rule', 'team_bindings', 'handoff_contract', 'plan_review', 'test_run', 'action_ledger', 'activation_choice'] },
+  { id: 'performance-regression-to-owned-change', title: 'Performance Regression to Owned Change', description: 'Turn a reproducible service or page regression into an owner-reviewed change plan tied to the exact build and performance budget.', version: '0.1.0', category: 'Engineering', order: 2, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'investigation', agent_playbook_id: 'performance-investigator', required: true, output: 'performance-regression-finding/v1' },
+    { id: 'delivery', agent_playbook_id: 'engineering-delivery-coordinator', required: true, output: 'engineering-performance-action/v1' },
+  ], handoffs: [
+    { id: 'investigation-to-delivery', from: 'investigation', to: 'delivery', artifact_type: 'performance-regression-finding/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: 'launch-to-qualified-pipeline', title: 'Launch to Qualified Pipeline', description: 'Take an approved B2B offer from a sourced launch brief through observed campaign and lead signals to reviewed qualification and pipeline outcomes.', version: '0.1.0', category: 'GTM', order: 1, inputCount: 6, toolCount: 6, teamScope: 'small_team', agentSlots: [
     { id: 'strategy', agent_playbook_id: 'gtm-strategy-analyst', required: true, output: 'gtm-launch-brief/v1' },
     { id: 'launch', agent_playbook_id: 'launch-coordinator', required: true, output: 'launch-signal-register/v1' },
@@ -188,6 +200,14 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
     { id: 'revenue', agent_playbook_id: 'revenue-operations-analyst', required: true, output: 'gtm-funnel-reconciliation/v1' },
   ], handoffs: [
     { id: 'launch-to-revenue', from: 'launch', to: 'revenue', artifact_type: 'launch-signal-register/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'accepted-offer-to-launch-readiness', title: 'Accepted Offer to Launch Readiness', description: 'Carry an accepted priced SaaS offer through positioning into a reviewed launch plan with current claims, owners and channels.', version: '0.1.0', category: 'GTM', order: 4, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'pricing', agent_playbook_id: 'pricing-packaging-analyst', required: true, output: 'gtm-offer-decision/v1' },
+    { id: 'strategy', agent_playbook_id: 'gtm-strategy-analyst', required: true, output: 'gtm-strategy-brief/v1' },
+    { id: 'launch', agent_playbook_id: 'launch-coordinator', required: true, output: 'gtm-launch-readiness/v1' },
+  ], handoffs: [
+    { id: 'pricing-to-strategy', from: 'pricing', to: 'strategy', artifact_type: 'gtm-offer-decision/v1', required: true },
+    { id: 'strategy-to-launch', from: 'strategy', to: 'launch', artifact_type: 'gtm-strategy-brief/v1', required: true },
   ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: "basic-browser-setup", title: "Basic Browser Setup", description: "Configure browser access and Playwright, save verified locators, capture video plus console/network evidence, and establish reporting.", version: "0.9.0", changelog: [{"version":"0.9.0","summary":"Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},{"version":"0.8.0","summary":"Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},{"version":"0.7.0","summary":"Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}], category: "Browser QA", order: 1, inputCount: 7, toolCount: 4, teamScope: "small_team" },
   { id: "authentication-session-validation", title: "Authentication and Session Validation", description: "Validate login, logout, MFA, recovery, expiry, refresh, and invalid-session behavior with durable evidence.", version: "0.4.0", changelog: [{"version":"0.4.0","summary":"Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},{"version":"0.3.0","summary":"Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},{"version":"0.2.0","summary":"Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}], category: "Browser QA", order: 2, inputCount: 6, toolCount: 3, teamScope: "small_team" },
@@ -360,6 +380,12 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
     { id: 'release', agent_playbook_id: 'product-release-coordinator', required: true, output: 'product-release-readiness/v1' },
   ], handoffs: [
     { id: 'requirements-to-release', from: 'requirements', to: 'release', artifact_type: 'product-requirements-brief/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'release-to-observed-adoption', title: 'Release to Observed Adoption', description: 'Connect a verified feature release and exposure rule to a source-bound adoption observation without assuming usage or impact.', version: '0.1.0', category: 'Product', order: 5, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'release', agent_playbook_id: 'product-release-coordinator', required: true, output: 'product-release-readiness/v1' },
+    { id: 'adoption', agent_playbook_id: 'product-adoption-analyst', required: true, output: 'feature-adoption-observation/v1' },
+  ], handoffs: [
+    { id: 'release-to-adoption', from: 'release', to: 'adoption', artifact_type: 'product-release-readiness/v1', required: true },
   ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: 'website-growth-loop', title: 'Website Growth Loop', description: 'Coordinate a growth strategist and buyer-question specialist to find relevant website traffic opportunities, then track approved changes and measurement.', version: '0.5.0', category: 'Website Growth', order: 1, inputCount: 6, toolCount: 4, teamScope: 'small_team', agentSlots: [
     { id: 'strategist', agent_playbook_id: 'website-growth-starter', required: true, output: 'growth-priority-brief/v1' },
