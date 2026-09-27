@@ -15,8 +15,8 @@ const ACTION_LABEL: Record<string, string> = {
   dashboard: 'Design the dashboard in chat',
 }
 
-// One line under each step: what the user gets from it.
-const STEP_CAPTION: Record<string, string> = {
+// Hover text for each step: what the user gets from it.
+const STEP_HINT: Record<string, string> = {
   goal: 'What success looks like',
   plan: 'The steps to get there',
   metrics: 'How progress is measured',
@@ -24,9 +24,10 @@ const STEP_CAPTION: Record<string, string> = {
 }
 
 // Initial setup for an automation, like a Crew template's setup bar: goal,
-// then plan, metrics and dashboard, each done in the Builder chat. Goals are optional,
-// so it can be dismissed; the server stops showing it once the automation has
-// run.
+// then plan, metrics and dashboard, each done in the Builder chat. Goals are
+// optional, so it can be dismissed; the server stops showing it once the
+// automation has run. Until the goal is set it is a short card; after that it
+// collapses to one line so it does not crowd the chat.
 export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath: string | null | undefined; canEdit: boolean }) {
   const [status, setStatus] = useState<WorkflowGoalSetupStatus | null>(null)
   const [loading, setLoading] = useState(false)
@@ -63,8 +64,9 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
   const steps = status.checks.filter(check => check.id !== 'playbook')
   const playbook = status.checks.find(check => check.id === 'playbook')
   const playbooks = status.playbooks ?? []
-  const doneCount = steps.filter(step => step.done).length
   const goalDone = steps.find(step => step.id === 'goal')?.done ?? false
+  const nextIndex = next ? steps.findIndex(step => step.id === next.id) : -1
+  const stepPosition = nextIndex >= 0 ? `Step ${nextIndex + 1} of ${steps.length}` : `${steps.length} of ${steps.length} done`
 
   const startStep = async (step: WorkflowGoalSetupCheck | undefined) => {
     if (!step || busy) return
@@ -90,113 +92,128 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
     }
   }
 
-  return (
-    <section
-      className="relative shrink-0 overflow-hidden border-b border-border bg-gradient-to-r from-primary/[0.07] via-background to-background px-4 py-3"
-      aria-label="Goal setup"
-    >
-      <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary/60" />
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        {/* What this is, and why it matters. */}
-        <div className="flex min-w-[15rem] flex-1 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/20">
-            <Target className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              <span>Goal setup</span>
-              <span className="rounded-full bg-muted px-1.5 py-px text-[10px] normal-case tracking-normal">Optional</span>
-            </div>
-            <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground">
-              {goalDone ? 'Goal set. Finish setting it up' : 'Give this automation a goal'}
-            </p>
-            <p className="text-xs leading-snug text-muted-foreground">
-              It plans the work, tracks the numbers and keeps chasing the goal. Not every automation needs one.
-            </p>
-            {playbook ? (
-              <button
-                type="button"
-                onClick={() => useWorkflowStore.getState().openWorkspaceView('playbooks')}
-                title={playbook.done ? 'Installed playbooks guide this setup. Open Playbooks.' : 'Optional: start from a playbook. Open Playbooks.'}
-                className={`mt-1 inline-flex items-center gap-1 text-xs hover:underline ${playbook.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'}`}
-              >
-                <BookMarked className="h-3 w-3" />
-                {playbook.done ? `Playbook: ${playbooks.map(p => p.title).join(', ')}` : 'Playbook (optional)'}
-              </button>
-            ) : null}
-          </div>
-        </div>
+  const header = (
+    <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+      <Target className="h-3.5 w-3.5 text-primary" />
+      Goal setup · optional
+    </span>
+  )
 
-        {/* The steps, in order. */}
-        <ol className="flex items-start" aria-label="Setup steps">
-          {steps.map((step, index) => {
-            const current = step.id === next?.id
-            const clickable = current && !busy
-            return (
-              <li key={step.id} className="flex items-start">
-                {index > 0 ? (
-                  <span aria-hidden className={`mt-3 h-px w-5 sm:w-8 ${steps[index - 1].done ? 'bg-emerald-500/60' : 'bg-border'}`} />
-                ) : null}
-                <button
-                  type="button"
-                  disabled={!clickable}
-                  onClick={() => { void startStep(step) }}
-                  aria-current={current ? 'step' : undefined}
-                  title={current ? ACTION_LABEL[step.id] : step.done ? `${step.label} is done` : `${step.label} comes next`}
-                  className={`group flex w-16 flex-col items-center gap-1 rounded-md px-1 text-center sm:w-24 ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
-                >
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition-colors ${
-                      step.done
-                        ? 'bg-emerald-500 text-white'
-                        : current
-                          ? 'bg-primary text-primary-foreground ring-4 ring-primary/20 group-hover:ring-primary/35'
-                          : 'border border-border bg-background text-muted-foreground'
-                    }`}
-                  >
-                    {step.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : index + 1}
-                  </span>
-                  <span className={`text-xs font-medium leading-tight ${step.done || current ? 'text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
-                  <span className="hidden text-[10px] leading-tight text-muted-foreground lg:block">{STEP_CAPTION[step.id]}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ol>
+  const refreshButton = (
+    <button type="button" onClick={() => { void refresh() }} disabled={loading} title="Check setup again" aria-label="Refresh goal setup" className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
+      <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+    </button>
+  )
 
-        {/* Progress and the one thing to do next. */}
-        <div className="flex shrink-0 items-center gap-3">
-          <div className="hidden w-20 flex-col gap-1 sm:flex" aria-label={`${doneCount} of ${steps.length} done`}>
-            <span className="text-[11px] text-muted-foreground">{doneCount} of {steps.length} done</span>
-            <span className="h-1 overflow-hidden rounded-full bg-muted">
-              <span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${steps.length ? (doneCount / steps.length) * 100 : 0}%` }} />
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => { void dismiss() }}
-            disabled={busy}
-            title="This automation runs without a goal. Hides goal setup; you can still add a goal later from chat."
-            aria-label="Dismiss goal setup"
-            className="shrink-0 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
-          >
-            No goal needed
-          </button>
-          {next ? (
+  const stepper = (
+    <ol className="flex min-w-0 items-center" aria-label="Setup steps">
+      {steps.map((step, index) => {
+        const current = step.id === next?.id
+        const clickable = current && !busy
+        return (
+          <li key={step.id} className="flex items-center">
+            {index > 0 ? <span aria-hidden className={`mx-1.5 h-px w-4 sm:w-6 ${steps[index - 1].done ? 'bg-emerald-500/60' : 'bg-border'}`} /> : null}
             <button
               type="button"
-              onClick={() => { void startStep(next) }}
-              disabled={busy}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+              disabled={!clickable}
+              onClick={() => { void startStep(step) }}
+              aria-current={current ? 'step' : undefined}
+              title={`${step.label}: ${STEP_HINT[step.id] ?? ''}${step.done ? ' (done)' : ''}`}
+              className={`flex items-center gap-1.5 rounded-full py-0.5 pr-1.5 ${clickable ? 'cursor-pointer hover:bg-primary/10' : 'cursor-default'}`}
             >
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <>{ACTION_LABEL[next.id] ?? 'Set up in chat'}<ArrowRight className="h-3.5 w-3.5" /></>}
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                  step.done
+                    ? 'bg-emerald-500 text-white'
+                    : current
+                      ? 'bg-primary text-primary-foreground ring-4 ring-primary/20'
+                      : 'border border-border bg-background text-muted-foreground'
+                }`}
+              >
+                {step.done ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
+              </span>
+              <span className={`text-xs font-medium ${step.done || current ? 'text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
             </button>
-          ) : null}
-          <div className="flex items-center">
-            <button type="button" onClick={() => { void refresh() }} disabled={loading} title="Check setup again" aria-label="Refresh goal setup" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+          </li>
+        )
+      })}
+    </ol>
+  )
+
+  const primaryAction = next ? (
+    <button
+      type="button"
+      onClick={() => { void startStep(next) }}
+      disabled={busy}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+    >
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <>{ACTION_LABEL[next.id] ?? 'Set up in chat'}<ArrowRight className="h-3.5 w-3.5" /></>}
+    </button>
+  ) : null
+
+  const playbookAction = playbook ? (
+    <button
+      type="button"
+      onClick={() => useWorkflowStore.getState().openWorkspaceView('playbooks')}
+      title={playbook.done ? 'Installed playbooks guide this setup. Open Playbooks.' : 'Start from a ready-made playbook. Open Playbooks.'}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted ${playbook.done ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'border-border bg-background text-foreground'}`}
+    >
+      <BookMarked className="h-3.5 w-3.5" />
+      {playbook.done ? `Playbook: ${playbooks.map(p => p.title).join(', ')}` : 'Start from a playbook'}
+    </button>
+  ) : null
+
+  const dismissAction = (
+    <button
+      type="button"
+      onClick={() => { void dismiss() }}
+      disabled={busy}
+      title={goalDone ? 'Hide goal setup for this automation.' : 'This automation runs without a goal. Hides goal setup; you can still add a goal later from chat.'}
+      aria-label="Dismiss goal setup"
+      className="shrink-0 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+    >
+      {goalDone ? 'Hide' : 'No goal needed'}
+    </button>
+  )
+
+  // Goal set: one line, so it does not sit tall above every chat.
+  if (goalDone) {
+    return (
+      <section className="shrink-0 border-b border-border bg-primary/[0.04] px-4 py-2" aria-label="Goal setup">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {header}
+          {stepper}
+          <span className="text-[11px] text-muted-foreground">{stepPosition}</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            {primaryAction}
+            {dismissAction}
+            {refreshButton}
           </div>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="relative shrink-0 border-b border-border bg-gradient-to-r from-primary/[0.07] via-background to-background px-4 py-3" aria-label="Goal setup">
+      <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary/60" />
+      <div className="flex items-center justify-between gap-2">
+        {header}
+        {refreshButton}
+      </div>
+      <p className="mt-1 text-sm font-semibold leading-snug text-foreground">Give this automation a goal</p>
+      <p className="text-xs leading-snug text-muted-foreground">
+        It plans the work, tracks the numbers and keeps chasing the goal. Not every automation needs one.
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
+          {stepper}
+          <span className="shrink-0 text-[11px] text-muted-foreground">{stepPosition}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {primaryAction}
+          {playbookAction}
+          {dismissAction}
         </div>
       </div>
     </section>
