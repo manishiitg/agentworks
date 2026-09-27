@@ -63,6 +63,16 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 // projects live below _users/<id>/..., but their public project identity is the
 // stable Chats/Work/projects/<project> path used by the picker and workflow.json.
 func authorizeWorkflowContextPathsWithReadRoots(ctx context.Context, paths []string) ([]string, []string, error) {
+	return authorizeContextPathsWithReadRoots(ctx, paths, false)
+}
+
+// authorizeContextPathsWithReadRoots is authorizeWorkflowContextPathsWithReadRoots
+// with one relaxation for a turn's saved attachments (skipMissing): an attached
+// workflow or crew that no longer exists (its workflow.json / product.json is
+// definitely absent) is dropped with a log line instead of failing the whole
+// turn -- deleting a crew must not break every crew that had attached it.
+// Anything else (a read error, a malformed manifest, no access) still denies.
+func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, skipMissing bool) ([]string, []string, error) {
 	if len(paths) == 0 {
 		return nil, nil, nil
 	}
@@ -92,6 +102,12 @@ func authorizeWorkflowContextPathsWithReadRoots(ctx context.Context, paths []str
 		}
 		switch {
 		case len(parts) == 2 && parts[0] == "Workflow" && parts[1] != "" && parts[1] != "." && parts[1] != "..":
+			if skipMissing {
+				if _, exists, err := ReadWorkflowManifest(ctx, folder); err == nil && !exists {
+					log.Printf("[WORKFLOW_CONTEXT] Skipping attached workflow %s: it no longer exists", folder)
+					continue
+				}
+			}
 			if _, err := authorizeWorkflowContextPaths(ctx, []string{folder}); err != nil {
 				logContextDenial(claims, folder, "workflow not readable by this user")
 				return nil, nil, denied
@@ -102,6 +118,10 @@ func authorizeWorkflowContextPathsWithReadRoots(ctx context.Context, paths []str
 				return nil, nil, denied
 			}
 			rawManifest, exists, err := readFileFromWorkspace(ctx, readRoot+"/product.json")
+			if skipMissing && err == nil && !exists {
+				log.Printf("[WORKFLOW_CONTEXT] Skipping attached crew %s: it no longer exists", folder)
+				continue
+			}
 			if err != nil || !exists {
 				logContextDenial(claims, folder, "crew has no product.json")
 				return nil, nil, denied
@@ -156,7 +176,7 @@ func isOtherOwnerCrewPath(parts []string) bool {
 // and their read roots on req. handleQuery and the bot dry run share it.
 func admitTurnContextPaths(ctx context.Context, req *QueryRequest) error {
 	req.WorkflowContextPaths = mergeDurableWorkflowContextPaths(ctx, req.SelectedFolder, req.WorkflowContextPaths)
-	contextPaths, contextReadPaths, err := authorizeWorkflowContextPathsWithReadRoots(workflowContextAuthorizationContext(ctx), req.WorkflowContextPaths)
+	contextPaths, contextReadPaths, err := authorizeContextPathsWithReadRoots(workflowContextAuthorizationContext(ctx), req.WorkflowContextPaths, true)
 	if err != nil {
 		return err
 	}
