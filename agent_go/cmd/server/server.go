@@ -320,6 +320,7 @@ type ActiveSessionInfo struct {
 	WorkshopMode                string           `json:"workshop_mode,omitempty"`
 	BotPlatform                 string           `json:"bot_platform,omitempty"`
 	TriggeredBy                 string           `json:"triggered_by,omitempty"`
+	TriggeredByLabel            string           `json:"triggered_by_label,omitempty"`
 	LLMGuidance                 string           `json:"llm_guidance,omitempty"` // LLM guidance message for this session
 	ChatsFolder                 string           `json:"chats_folder,omitempty"` // Per-user Chats folder (default: _users/<userID>/Chats)
 	UserID                      string           `json:"-"`                      // User ID for session isolation (not exposed in JSON)
@@ -862,6 +863,9 @@ type QueryRequest struct {
 
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
+	// TriggeredByLabel names who or what started the run, for display only
+	// ("Called by RTS Flow Tester", "Schedule: Daily digest").
+	TriggeredByLabel string `json:"triggered_by_label,omitempty"`
 	// Auto-notification flag: when true, this is a background agent completion notification
 	// (not user-initiated). Backend treats it as a synthetic turn so frontend doesn't block input.
 	IsAutoNotification bool `json:"is_auto_notification,omitempty"`
@@ -4032,6 +4036,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	api.activeSessionsMux.Lock()
 	if sess, ok := api.activeSessions[sessionID]; ok {
 		sess.Username = queryLogCtx.Username
+		if label := strings.TrimSpace(req.TriggeredByLabel); label != "" {
+			sess.TriggeredByLabel = label
+		}
 		if strings.TrimSpace(req.PresetQueryID) != "" {
 			sess.PresetQueryID = strings.TrimSpace(req.PresetQueryID)
 		}

@@ -344,6 +344,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		return nil, err
 	}
 	reqMap["triggered_by"] = "manual"
+	reqMap["triggered_by_label"] = "Follow-up from " + caller.Label
 	reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, profile.Name)
 	body, err := json.Marshal(reqMap)
 	if err != nil {

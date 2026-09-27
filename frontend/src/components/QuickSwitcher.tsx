@@ -6,6 +6,7 @@ import { useChatStore } from '../stores'
 import type { ChatTab } from '../stores/useChatStore'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import type { ActiveSessionInfo } from '../services/api-types'
+import { sessionOriginLabel, titleWithoutOrigin } from '../utils/globalActivityPresentation'
 import { scopeQuickSwitcherToAgentWorks } from '../utils/quickSwitcherScope'
 import { openWorkflowPresetPage, pickWorkflowActiveSession, workflowSessionBotPlatform } from '../utils/workflowSessionRestore'
 import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../utils/runtimeActivity'
@@ -54,6 +55,9 @@ interface ActiveWorkItem {
   isActive: boolean
   lastAccessedAt: number
   session: ActiveSessionInfo
+  /** Already shown through its tab, Crew or automation row; listed on its
+   * own only under @active, which shows every running session. */
+  activeScopeOnly?: boolean
   tabId?: string
   mode: 'workflow' | 'multi-agent'
 }
@@ -153,11 +157,6 @@ const itemTypeRank = (item: QuickSwitcherItem): number => {
 const itemActiveSession = (item: QuickSwitcherItem): ActiveSessionInfo | undefined => {
   if (item.type === 'active') return item.session
   return item.activeSession
-}
-
-const itemHasActiveWork = (item: QuickSwitcherItem): boolean => {
-  if (item.type === 'active') return true
-  return !!item.activeSession || item.hasLocalActivity
 }
 
 const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
@@ -344,26 +343,22 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       })
 
     const activeItems: ActiveWorkItem[] = visibleActiveSessions
-      .filter(session => {
-        const tab = findTabForSession(allTabs, session.session_id)
-        if (tab && !tab.metadata?.isOrganizationAssistant) return false
-        if (
-          !isWorkProductSession(session) && isWorkflowSession(session) &&
-          workflowPresets.some(preset => workflowSessionMatchesPreset(session, preset, agentWorksTabs))
-        ) return false
-        return true
-      })
       .map(session => {
         const tab = findTabForSession(allTabs, session.session_id)
         const crew = isWorkProductSession(session)
         const workflow = !crew && isWorkflowSession(session)
         const status = activeSessionStatusLabel(session)
         const current = session.current_execution_name ? ` · ${session.current_execution_name}` : ''
+        const origin = sessionOriginLabel(session)
+        const coveredByTab = !!tab && !tab.metadata?.isOrganizationAssistant
+        const coveredByAutomation = !crew && workflow &&
+          workflowPresets.some(preset => workflowSessionMatchesPreset(session, preset, agentWorksTabs))
         return {
           type: 'active' as const,
           id: `active:${session.session_id}`,
-          label: activeSessionLabel(session),
-          subtitle: `${crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${status}${current} · ${sessionShortId(session.session_id)}`,
+          label: titleWithoutOrigin(activeSessionLabel(session), origin),
+          subtitle: `${crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current} · ${sessionShortId(session.session_id)}`,
+          activeScopeOnly: coveredByTab || coveredByAutomation,
           isActive: !!tab && tab.tabId === activeTabId && productSurface === (crew ? 'work' : 'agentworks'),
           lastAccessedAt: tab?.lastAccessedAt || tab?.createdAt || Date.parse(session.last_activity || session.created_at || '') || 0,
           session,
@@ -392,20 +387,22 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    if (!rawQuery) return allItems
+    if (!rawQuery) return allItems.filter(item => item.type !== 'active' || !item.activeScopeOnly)
 
     const scopeMatch = rawQuery.match(/^@(active|workflows?|chats?|tabs|crew)\s*/)
     const scope = scopeMatch?.[1] || null
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
       ? allItems.filter(item => {
-          if (scope === 'active') return itemHasActiveWork(item)
+          // Every running session once: its own row, plus tabs whose only
+          // activity is local (no server session yet).
+          if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
           if (scope === 'workflow' || scope === 'workflows') return item.type === 'workflow'
-          if (scope === 'crew') return item.type === 'crew' || (item.type === 'active' && isWorkProductSession(item.session))
+          if (scope === 'crew') return item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew'
         })
-      : allItems
+      : allItems.filter(item => item.type !== 'active' || !item.activeScopeOnly)
 
     if (!q) return scoped
 

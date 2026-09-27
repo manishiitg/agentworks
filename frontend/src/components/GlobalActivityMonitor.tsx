@@ -24,7 +24,7 @@ import { isWorkProductSession, openGlobalActivitySession, openGlobalTab } from '
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import type { CustomPreset } from '../types/preset'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
-import { activityTypeLabels, botPlatformLabel, crewActivityTitle, type ActivityType } from '../utils/globalActivityPresentation'
+import { activityTypeLabels, botPlatformLabel, crewActivityTitle, sessionOriginLabel, titleWithoutOrigin, type ActivityType } from '../utils/globalActivityPresentation'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
 
 type ActivityMonitorItem =
@@ -473,7 +473,8 @@ export const GlobalActivityMonitor: React.FC = () => {
                 : undefined
               const fallbackName = workflowPreset?.label || null
               const tone = statusTone(session)
-              const title = displaySessionTitle(session, tab, undefined, fallbackName)
+              const origin = sessionOriginLabel(session)
+              const title = titleWithoutOrigin(displaySessionTitle(session, tab, undefined, fallbackName), origin)
               const type = activityType(session)
               const crewSession = isWorkProductSession(session)
               const statusLabel = headerStatusLabel(session)
@@ -484,7 +485,7 @@ export const GlobalActivityMonitor: React.FC = () => {
                   type="button"
                   role="menuitem"
                   onClick={() => selectSession(session)}
-                  title={`${title} · ${type} · ${statusLabel}${waitingTitle}`}
+                  title={`${title} · ${origin} · ${statusLabel}${waitingTitle}`}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
                   {tone === 'needs-input'
@@ -499,7 +500,10 @@ export const GlobalActivityMonitor: React.FC = () => {
                     : crewSession
                       ? <EntityIdentityIcon icon={tab?.metadata?.agentProfileProjectIcon} label={tab?.metadata?.agentProfileIdentityName || title} />
                       : null}
-                  <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">{title}</span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-gray-800 dark:text-gray-200">{title}</span>
+                    <span className="truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{origin}</span>
+                  </span>
                   <ActivityTypeIcon type={type} platform={type === 'Bot' ? botPlatformLabel(session.bot_platform, session.session_id) : undefined} />
                   <span className="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{timeAgo(session.last_activity)}</span>
                 </button>

@@ -4390,6 +4390,24 @@ func filterScheduleRunsNewestFirst(runs []ScheduleRunEntry, scheduleID string) [
 }
 
 // scheduleSessionTrigger preserves the webhook origin in active session metadata.
+// automationTriggerLabel names what started an automation run, for the
+// active-work list. Internal Crew/workflow links are named "Called by <caller>"
+// already; other triggers get their kind in front of their name.
+func automationTriggerLabel(triggeredBy, name string) string {
+	name = strings.TrimSpace(name)
+	if strings.HasPrefix(name, "Called by ") {
+		return name
+	}
+	kind := "Schedule"
+	if triggeredBy == "webhook" {
+		kind = "Webhook"
+	}
+	if name == "" {
+		return kind
+	}
+	return kind + ": " + name
+}
+
 func scheduleSessionTrigger(sctx *ScheduleContext) string {
 	if sctx != nil && (sctx.Schedule.ScheduleType == "webhook" || sctx.WebhookInput != nil) {
 		return "webhook"
@@ -4521,6 +4539,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		"preset_query_id":             sctx.WorkflowID,
 		"selected_folder":             sctx.WorkspacePath,
 		"triggered_by":                scheduleSessionTrigger(sctx),
+		"triggered_by_label":          automationTriggerLabel(scheduleSessionTrigger(sctx), sctx.Schedule.Name),
 		"session_title":               sctx.Schedule.Name,
 		"servers":                     sctx.Capabilities.SelectedServers,
 		"selected_tools":              sctx.Capabilities.SelectedTools,

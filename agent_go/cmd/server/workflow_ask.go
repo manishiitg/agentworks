@@ -75,7 +75,7 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 	query := QueryRequest{
 		Query: workflowAskMessage(caller, message), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
 		PresetQueryID: manifest.ID, SelectedFolder: target.Path,
-		PinRunMode: true, TriggeredBy: "external", SessionTitle: "Asked by " + caller.Label,
+		PinRunMode: true, TriggeredBy: "external", TriggeredByLabel: "Asked by " + caller.Label, SessionTitle: "Asked by " + caller.Label,
 		ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"},
 	}
 	if api.workflowAskSessionExists(sessionID, target.Path) {
