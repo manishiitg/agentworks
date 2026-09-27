@@ -252,6 +252,7 @@ func (a *Admin) uiAudit(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	filter := store.AuditFilter{
 		WorkspaceID: a.WorkspaceID, UserID: q.Get("user"), GroupID: q.Get("group"),
+		ClientID:    q.Get("client"),
 		ConnectorID: q.Get("connector"), PublicName: q.Get("tool"),
 		Decision: q.Get("decision"), Outcome: q.Get("outcome"), Limit: 200,
 	}
@@ -273,7 +274,7 @@ func (a *Admin) uiAudit(w http.ResponseWriter, r *http.Request) {
 	csvURL := "/api/admin/audit?" + export.Encode()
 	export.Set("format", "json")
 	jsonURL := "/api/admin/audit?" + export.Encode()
-	render(w, "audit", map[string]any{"Rows": a.Store.QueryAudit(filter), "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
+	render(w, "audit", map[string]any{"Rows": a.Store.QueryAudit(filter), "Usage": a.Store.SummarizeAudit(filter), "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
 }
 
 func (a *Admin) renderPII(w http.ResponseWriter, r *http.Request, result string) {

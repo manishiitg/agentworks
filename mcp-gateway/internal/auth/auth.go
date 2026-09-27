@@ -22,6 +22,7 @@ type Identity struct {
 	UserID      string
 	WorkspaceID string
 	Email       string
+	ClientID    string // OAuth client or gateway API key identity
 	// ViaGroup is set when the caller authenticated with a group API key:
 	// only that group's grants apply, never the key's own (nonexistent) user.
 	ViaGroup string
@@ -57,13 +58,13 @@ func (o OAuth) Authenticate(ctx context.Context, token string) (Identity, error)
 			return Identity{}, ErrUnauthenticated
 		}
 		o.Keys.TouchAPIKey(token)
-		return Identity{UserID: "key:" + k.ID, WorkspaceID: k.WorkspaceID, ViaGroup: k.GroupID}, nil
+		return Identity{UserID: "key:" + k.ID, WorkspaceID: k.WorkspaceID, ClientID: "api-key:" + k.ID, ViaGroup: k.GroupID}, nil
 	}
 	grant, err := o.Server.AuthenticateRequest(ctx, token)
 	if err != nil {
 		return Identity{}, ErrUnauthenticated
 	}
-	return Identity{UserID: grant.UserID, WorkspaceID: o.WorkspaceID, Email: grant.Email}, nil
+	return Identity{UserID: grant.UserID, WorkspaceID: o.WorkspaceID, Email: grant.Email, ClientID: grant.ClientID}, nil
 }
 
 // HumanSession validates the logged-in human behind consent and connection

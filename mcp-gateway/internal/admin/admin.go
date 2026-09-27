@@ -868,27 +868,10 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		q := r.URL.Query()
-		filter := store.AuditFilter{
-			WorkspaceID: a.WorkspaceID,
-			UserID:      q.Get("user"), GroupID: q.Get("group"), ClientID: q.Get("client"),
-			ConnectorID: q.Get("connector"), PublicName: q.Get("tool"),
-			Decision: q.Get("decision"), Outcome: q.Get("outcome"),
-		}
-		for _, bound := range []struct {
-			value  string
-			target *time.Time
-		}{
-			{q.Get("after"), &filter.After}, {q.Get("before"), &filter.Before},
-		} {
-			if bound.value == "" {
-				continue
-			}
-			parsed, err := time.Parse(time.RFC3339, bound.value)
-			if err != nil {
-				writeErr(w, http.StatusBadRequest, errors.New("invalid audit date; use RFC3339"))
-				return
-			}
-			*bound.target = parsed
+		filter, err := parseAuditFilter(q, a.WorkspaceID)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
 		}
 		format := q.Get("format")
 		if format != "" && format != "csv" && format != "json" {
@@ -927,6 +910,18 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"events": events})
 	}))
+	mux.HandleFunc("/api/admin/usage", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		filter, err := parseAuditFilter(r.URL.Query(), a.WorkspaceID)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a.Store.SummarizeAudit(filter))
+	}))
 	mux.HandleFunc("/api/admin/catalog", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -934,6 +929,29 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"providers": a.Catalog.Providers})
 	}))
+}
+
+func parseAuditFilter(q url.Values, workspaceID string) (store.AuditFilter, error) {
+	filter := store.AuditFilter{
+		WorkspaceID: workspaceID,
+		UserID:      q.Get("user"), GroupID: q.Get("group"), ClientID: q.Get("client"),
+		ConnectorID: q.Get("connector"), PublicName: q.Get("tool"),
+		Decision: q.Get("decision"), Outcome: q.Get("outcome"),
+	}
+	for _, bound := range []struct {
+		value  string
+		target *time.Time
+	}{{q.Get("after"), &filter.After}, {q.Get("before"), &filter.Before}} {
+		if bound.value == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, bound.value)
+		if err != nil {
+			return store.AuditFilter{}, errors.New("invalid audit date; use RFC3339")
+		}
+		*bound.target = parsed
+	}
+	return filter, nil
 }
 
 // csvSafe keeps exported metadata from becoming spreadsheet formulas.

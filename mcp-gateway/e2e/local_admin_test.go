@@ -66,6 +66,18 @@ func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
 	if len(result.Events) != 1 || result.Events[0].ID != "match" {
 		t.Fatalf("filtered JSON: %+v", result.Events)
 	}
+	resp, err = http.Get(srv.URL + "/api/admin/usage?group=g1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var usage store.AuditSummary
+	if err := json.NewDecoder(resp.Body).Decode(&usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage.Total != 1 || usage.Allowed != 1 || len(usage.ByTool) != 1 || usage.ByTool[0].Key != "fake__tool" {
+		t.Fatalf("usage escaped workspace or group filter: %+v", usage)
+	}
 }
 
 func TestPIIRuleAndSampleAPI(t *testing.T) {

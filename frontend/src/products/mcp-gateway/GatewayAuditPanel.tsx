@@ -3,7 +3,7 @@ import { ScrollText } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { auditPath, listAudit, type GatewayAuditFilter } from './gatewayAdminApi'
+import { auditPath, getUsage, listAudit, type GatewayAuditFilter } from './gatewayAdminApi'
 import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import { codeClass, plural, tableClass, tdClass, thClass, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
@@ -26,7 +26,10 @@ export function GatewayAuditPanel({ base }: { base: string }) {
   const [limit, setLimit] = useState(100)
   const [draft, setDraft] = useState({ user: '', group: '', client: '', connector: '', tool: '', decision: '', outcome: '', after: '', before: '' })
   const [filter, setFilter] = useState<GatewayAuditFilter>({})
-  const { data, loading, error } = useGatewayLoader(async () => listAudit(base, limit, filter), attempt)
+  const { data, loading, error } = useGatewayLoader(async () => {
+    const [audit, usage] = await Promise.all([listAudit(base, limit, filter), getUsage(base, filter)])
+    return { events: audit.events, usage }
+  }, attempt)
 
   function applyFilters() {
     setFilter({
@@ -70,6 +73,30 @@ export function GatewayAuditPanel({ base }: { base: string }) {
           <a className="text-xs text-primary underline" href={`${base}${auditPath(filter, undefined, 'json')}`}>Export JSON</a>
         </div>
       </div>
+      <SettingsCard title="Usage history" description="Counts across all matching calls, including calls beyond the audit table limit.">
+        <div className="grid gap-2 sm:grid-cols-4">
+          {([['Calls', data.usage.Total], ['Allowed', data.usage.Allowed], ['Denied', data.usage.Denied], ['Upstream errors', data.usage.UpstreamErrors]] as const).map(([label, count]) => (
+            <div key={label} className="rounded-md border border-border px-3 py-2">
+              <div className="text-xs text-muted-foreground">{label}</div>
+              <div className="text-lg font-semibold tabular-nums">{count}</div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Average call duration: {data.usage.AvgDurationMs} ms</p>
+        {data.usage.ByDay.length > 0 && <div className="mt-3 overflow-x-auto">
+          <table className={tableClass}>
+            <thead><tr><th className={thClass}>Day (UTC)</th><th className={thClass}>Calls</th><th className={thClass}>Denied</th><th className={thClass}>Upstream errors</th></tr></thead>
+            <tbody>{data.usage.ByDay.slice(0, 14).map(day => <tr key={day.Key}><td className={tdClass}>{day.Key}</td><td className={tdClass}>{day.Count}</td><td className={tdClass}>{day.Denied}</td><td className={tdClass}>{day.UpstreamErrors}</td></tr>)}</tbody>
+          </table>
+        </div>}
+        {data.usage.ByTool.length > 0 && <div className="mt-3 overflow-x-auto">
+          <div className="mb-1 text-xs font-medium">Most used tools</div>
+          <table className={tableClass}>
+            <thead><tr><th className={thClass}>Tool</th><th className={thClass}>Calls</th><th className={thClass}>Denied</th></tr></thead>
+            <tbody>{data.usage.ByTool.slice(0, 10).map(tool => <tr key={tool.Key}><td className={tdClass}><span className={codeClass}>{tool.Key}</span></td><td className={tdClass}>{tool.Count}</td><td className={tdClass}>{tool.Denied}</td></tr>)}</tbody>
+          </table>
+        </div>}
+      </SettingsCard>
       <SettingsCard
         icon={<ScrollText className="h-4 w-4 text-primary" />}
         title="Audit log"
@@ -103,6 +130,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
                 <th className={thClass}>Time</th>
                 <th className={thClass}>User</th>
                 <th className={thClass}>Group</th>
+                <th className={thClass}>Client</th>
                 <th className={thClass}>Tool</th>
                 <th className={thClass}>Decision</th>
                 <th className={thClass}>Outcome</th>
@@ -117,6 +145,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
                     <span className={codeClass}>{e.UserID || '—'}</span>
                   </td>
                   <td className={tdClass}>{e.GroupIDs?.join(', ') || '—'}</td>
+                  <td className={tdClass}>{e.ClientID || '—'}</td>
                   <td className={tdClass}>
                     <span className={codeClass}>{e.PublicName}</span>
                   </td>

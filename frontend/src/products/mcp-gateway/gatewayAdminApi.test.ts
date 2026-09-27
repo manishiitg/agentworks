@@ -7,6 +7,7 @@ import {
   createUser,
   detachGroupServer,
   getGrants,
+  getUsage,
   listAudit,
   listConnectors,
   listGroupKeys,
@@ -29,6 +30,12 @@ afterEach(() => {
 })
 
 describe('gatewayAdminApi', () => {
+  it('loads filtered usage summary', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { Total: 3, ByDay: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(getUsage(BASE, { group: 'g1' })).resolves.toMatchObject({ Total: 3 })
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/admin/usage?group=g1`, expect.anything())
+  })
   it('lists connectors from the admin API', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { connectors: [{ ID: 'c1' }] }))
     vi.stubGlobal('fetch', fetchMock)

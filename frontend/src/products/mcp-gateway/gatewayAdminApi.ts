@@ -63,6 +63,16 @@ export interface GatewayAuditEvent {
   PIIDataTypes?: string[]
 }
 
+export interface GatewayUsageSummary {
+  Total: number
+  Allowed: number
+  Denied: number
+  UpstreamErrors: number
+  AvgDurationMs: number
+  ByDay: { Key: string; Count: number; Denied: number; UpstreamErrors: number }[]
+  ByTool: { Key: string; Count: number; Denied: number; UpstreamErrors: number }[]
+}
+
 export interface GatewayPIIRule {
   ID: string
   WorkspaceID: string
@@ -283,6 +293,12 @@ export function auditPath(filter: GatewayAuditFilter, limit?: number, format?: '
 
 export function listAudit(base: string, limit: number, filter: GatewayAuditFilter = {}): Promise<{ events: GatewayAuditEvent[] }> {
   return request(base, auditPath(filter, limit))
+}
+
+export function getUsage(base: string, filter: GatewayAuditFilter = {}): Promise<GatewayUsageSummary> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
+  return request(base, `/api/admin/usage?${params.toString()}`)
 }
 
 export function listPIIRules(base: string): Promise<{ rules: GatewayPIIRule[] }> {

@@ -127,6 +127,23 @@ type AuditFilter struct {
 	Limit       int
 }
 
+type UsageBucket struct {
+	Key            string
+	Count          int
+	Denied         int
+	UpstreamErrors int
+}
+
+type AuditSummary struct {
+	Total          int
+	Allowed        int
+	Denied         int
+	UpstreamErrors int
+	AvgDurationMs  int64
+	ByDay          []UsageBucket
+	ByTool         []UsageBucket
+}
+
 // Fingerprint returns a stable snapshot fingerprint for quarantine diffing.
 func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...[]byte) string {
 	h := sha256.New()
@@ -724,6 +741,63 @@ func (s *MemoryStore) QueryAudit(f AuditFilter) []AuditEvent {
 		}
 	}
 	return out
+}
+
+// SummarizeAudit counts all matching calls, independent of the audit page
+// limit. Buckets contain metadata only and are scoped by QueryAudit.
+func (s *MemoryStore) SummarizeAudit(f AuditFilter) AuditSummary {
+	f.Limit = 0
+	events := s.QueryAudit(f)
+	summary := AuditSummary{Total: len(events), ByDay: []UsageBucket{}, ByTool: []UsageBucket{}}
+	days := map[string]*UsageBucket{}
+	tools := map[string]*UsageBucket{}
+	var duration int64
+	for _, event := range events {
+		if event.Decision == DecisionAllow {
+			summary.Allowed++
+		} else {
+			summary.Denied++
+		}
+		if event.Outcome == OutcomeUpstreamError {
+			summary.UpstreamErrors++
+		}
+		duration += event.DurationMs
+		day := event.Timestamp.UTC().Format("2006-01-02")
+		for _, pair := range []struct {
+			buckets map[string]*UsageBucket
+			key     string
+		}{{days, day}, {tools, event.PublicName}} {
+			bucket := pair.buckets[pair.key]
+			if bucket == nil {
+				bucket = &UsageBucket{Key: pair.key}
+				pair.buckets[pair.key] = bucket
+			}
+			bucket.Count++
+			if event.Decision != DecisionAllow {
+				bucket.Denied++
+			}
+			if event.Outcome == OutcomeUpstreamError {
+				bucket.UpstreamErrors++
+			}
+		}
+	}
+	if summary.Total > 0 {
+		summary.AvgDurationMs = duration / int64(summary.Total)
+	}
+	for _, bucket := range days {
+		summary.ByDay = append(summary.ByDay, *bucket)
+	}
+	for _, bucket := range tools {
+		summary.ByTool = append(summary.ByTool, *bucket)
+	}
+	sort.Slice(summary.ByDay, func(i, j int) bool { return summary.ByDay[i].Key > summary.ByDay[j].Key })
+	sort.Slice(summary.ByTool, func(i, j int) bool {
+		if summary.ByTool[i].Count != summary.ByTool[j].Count {
+			return summary.ByTool[i].Count > summary.ByTool[j].Count
+		}
+		return summary.ByTool[i].Key < summary.ByTool[j].Key
+	})
+	return summary
 }
 
 func (s *MemoryStore) PutPIIRule(rule pii.Rule) {

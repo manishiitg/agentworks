@@ -285,7 +285,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	deny := func(err error) (*mcp.CallToolResult, error) {
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
-			WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 			GroupIDs:    groups,
 			ConnectorID: snap.ConnectorID,
 			PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
@@ -327,7 +327,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		}
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
-			UserID: id.UserID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
+			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
 			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
 			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: inputDecision.DataTypes,
@@ -344,7 +344,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if err != nil {
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
-			WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 			GroupIDs:    groups,
 			ConnectorID: snap.ConnectorID,
 			PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
@@ -362,7 +362,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		}
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
-			UserID: id.UserID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
+			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
 			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
 			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: outputDecision.DataTypes,
@@ -371,7 +371,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	}
 	g.store.AppendAudit(store.AuditEvent{
 		ID: callID, CallID: callID, Timestamp: start.UTC(),
-		WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+		WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 		GroupIDs:    groups,
 		ConnectorID: snap.ConnectorID,
 		PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,

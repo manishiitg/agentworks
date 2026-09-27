@@ -15,6 +15,8 @@ var (
 	ErrUnknownTool       = errors.New("unknown tool")
 	ErrToolNotActive     = errors.New("tool is not active")
 	ErrConnectorDisabled = errors.New("connector is disabled")
+	ErrUnknownUser       = errors.New("user is not in this workspace")
+	ErrUnknownGroup      = errors.New("group is not in this workspace")
 	ErrNoGrant           = errors.New("no grant for tool")
 )
 
@@ -34,10 +36,18 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 	}
 	if id.ViaGroup != "" {
 		// Group API key: exactly the key's group applies.
+		group, ok := s.GetGroup(id.ViaGroup)
+		if !ok || group.WorkspaceID != id.WorkspaceID {
+			return store.ToolSnapshot{}, ErrUnknownGroup
+		}
 		if !s.GroupHasTool(id.ViaGroup, publicName) && !s.GroupHasServer(id.ViaGroup, t.ConnectorID) {
 			return store.ToolSnapshot{}, ErrNoGrant
 		}
 		return t, nil
+	}
+	user, ok := s.GetUser(id.UserID)
+	if !ok || user.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrUnknownUser
 	}
 	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
 		!s.HasServerGrant(id.UserID, t.ConnectorID) {

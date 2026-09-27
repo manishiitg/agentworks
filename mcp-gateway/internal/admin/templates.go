@@ -102,10 +102,14 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 
 {{define "audit"}}<!doctype html><html><head><meta charset="utf-8"><title>audit</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Audit (latest first)</h1>
-<form method="get"><input name="user" placeholder="user" value="{{.Filter.Get "user"}}"><input name="group" placeholder="group" value="{{.Filter.Get "group"}}"><input name="connector" placeholder="connector" value="{{.Filter.Get "connector"}}"><input name="tool" placeholder="tool" value="{{.Filter.Get "tool"}}"><select name="decision"><option value="">any decision</option><option value="allow">allow</option><option value="deny">deny</option></select><select name="outcome"><option value="">any outcome</option><option value="ok">ok</option><option value="denied">denied</option><option value="upstream_error">upstream error</option></select><input type="date" name="after" value="{{.Filter.Get "after"}}"><input type="date" name="before" value="{{.Filter.Get "before"}}"><button>Filter</button></form>
+<form method="get"><input name="user" placeholder="user" value="{{.Filter.Get "user"}}"><input name="group" placeholder="group" value="{{.Filter.Get "group"}}"><input name="client" placeholder="client" value="{{.Filter.Get "client"}}"><input name="connector" placeholder="connector" value="{{.Filter.Get "connector"}}"><input name="tool" placeholder="tool" value="{{.Filter.Get "tool"}}"><select name="decision"><option value="">any decision</option><option value="allow">allow</option><option value="deny">deny</option></select><select name="outcome"><option value="">any outcome</option><option value="ok">ok</option><option value="denied">denied</option><option value="upstream_error">upstream error</option></select><input type="date" name="after" value="{{.Filter.Get "after"}}"><input type="date" name="before" value="{{.Filter.Get "before"}}"><button>Filter</button></form>
 <p><a href="{{.CSVURL}}">Export filtered CSV</a> · <a href="{{.JSONURL}}">Export filtered JSON</a></p>
-<table><tr><th>time</th><th>user</th><th>groups</th><th>tool</th><th>decision</th><th>outcome</th><th>PII</th><th>ms</th><th>error</th></tr>
-{{range .Rows}}<tr><td class="muted">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td><td><code>{{.UserID}}</code></td><td>{{range .GroupIDs}}{{.}} {{end}}</td><td><code>{{.PublicName}}</code></td><td>{{.Decision}}</td><td>{{.Outcome}}</td><td>{{.PIIAction}}</td><td>{{.DurationMs}}</td><td class="muted">{{.ErrorText}}</td></tr>{{end}}
+<h2>Usage history</h2><p>{{.Usage.Total}} calls · {{.Usage.Allowed}} allowed · {{.Usage.Denied}} denied · {{.Usage.UpstreamErrors}} upstream errors · {{.Usage.AvgDurationMs}} ms average</p>
+<table><tr><th>day (UTC)</th><th>calls</th><th>denied</th><th>upstream errors</th></tr>{{range .Usage.ByDay}}<tr><td>{{.Key}}</td><td>{{.Count}}</td><td>{{.Denied}}</td><td>{{.UpstreamErrors}}</td></tr>{{end}}</table>
+<h3>Most used tools</h3><table><tr><th>tool</th><th>calls</th><th>denied</th></tr>{{range .Usage.ByTool}}<tr><td><code>{{.Key}}</code></td><td>{{.Count}}</td><td>{{.Denied}}</td></tr>{{end}}</table>
+<h2>Call events (latest first)</h2>
+<table><tr><th>time</th><th>user</th><th>groups</th><th>client</th><th>tool</th><th>decision</th><th>outcome</th><th>PII</th><th>ms</th><th>error</th></tr>
+{{range .Rows}}<tr><td class="muted">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td><td><code>{{.UserID}}</code></td><td>{{range .GroupIDs}}{{.}} {{end}}</td><td>{{.ClientID}}</td><td><code>{{.PublicName}}</code></td><td>{{.Decision}}</td><td>{{.Outcome}}</td><td>{{.PIIAction}}</td><td>{{.DurationMs}}</td><td class="muted">{{.ErrorText}}</td></tr>{{end}}
 </table>
 </body></html>{{end}}
 
@@ -122,6 +126,7 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 <select name="type">{{range $type := (list "email" "phone" "ssn" "credit_card" "api_key")}}<option value="{{$type}}" {{if eq $.Edit.DataType $type}}selected{{end}}>{{$type}}</option>{{end}}</select>
 <select name="direction">{{range $direction := (list "input" "output" "both")}}<option value="{{$direction}}" {{if eq $.Edit.Direction $direction}}selected{{end}}>{{$direction}}</option>{{end}}</select>
 <select name="action">{{range $action := (list "allow" "mask" "block" "require_review")}}<option value="{{$action}}" {{if eq $.Edit.Action $action}}selected{{end}}>{{$action}}</option>{{end}}</select><br>
+<p class="muted">Require review applies to input only. Output matches are blocked to avoid repeating an upstream action.</p>
 <select name="group"><option value="">all groups</option>{{range .Groups}}<option value="{{.ID}}" {{if eq $.Edit.GroupID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
 <select name="connector"><option value="">all servers</option>{{range .Connectors}}<option value="{{.ID}}" {{if eq $.Edit.ConnectorID .ID}}selected{{end}}>{{.Label}}</option>{{end}}</select>
 <select name="tool"><option value="">all tools</option>{{range .Tools}}<option value="{{.PublicName}}" {{if eq $.Edit.PublicName .PublicName}}selected{{end}}>{{.PublicName}}</option>{{end}}</select>

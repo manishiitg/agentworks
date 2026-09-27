@@ -55,7 +55,7 @@ func TestPIIGuardsCallAndReviewRetry(t *testing.T) {
 		}
 		st.AddGrant(store.Grant{UserID: "u1", PublicName: name})
 	}
-	ctx = auth.WithIdentity(ctx, auth.Identity{UserID: "u1", WorkspaceID: "w1"})
+	ctx = auth.WithIdentity(ctx, auth.Identity{UserID: "u1", WorkspaceID: "w1", ClientID: "claude-test"})
 	call := func(name, message string) (*mcp.CallToolResult, error) {
 		req := mcp.CallToolRequest{}
 		req.Params.Name = name
@@ -87,6 +87,9 @@ func TestPIIGuardsCallAndReviewRetry(t *testing.T) {
 		t.Fatalf("output review incorrectly queued: %+v", reviews)
 	}
 	for _, event := range st.ListAudit() {
+		if event.ClientID != "claude-test" {
+			t.Fatalf("client identity missing from audit: %+v", event)
+		}
 		if strings.Contains(event.ErrorText, "123-45-6789") || strings.Contains(event.ErrorText, "4111") {
 			t.Fatalf("raw PII in audit: %+v", event)
 		}
