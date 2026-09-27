@@ -315,12 +315,34 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 		return t
 	}
 	if prev.Fingerprint == t.Fingerprint {
+		// A tool the last discovery dropped (DisableMissingTools) is back
+		// unchanged: revive it with its grants intact. Quarantined tools
+		// stay quarantined until admin review.
+		if prev.Status == StatusDisabled {
+			prev.Status = StatusActive
+			s.tools[t.PublicName] = prev
+		}
 		return prev
 	}
 	t.Version = prev.Version + 1
 	t.Status = StatusQuarantined
 	s.tools[t.PublicName] = t
 	return t
+}
+
+// DisableMissingTools marks one connector's snapshots absent from a
+// successful discovery as disabled, so a removed upstream tool stops being
+// advertised and authorized. Grants are kept: if the tool returns unchanged,
+// UpsertToolSnapshot revives it.
+func (s *MemoryStore) DisableMissingTools(connectorID string, present map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, t := range s.tools {
+		if t.ConnectorID == connectorID && !present[name] && t.Status == StatusActive {
+			t.Status = StatusDisabled
+			s.tools[name] = t
+		}
+	}
 }
 
 func (s *MemoryStore) GetTool(publicName string) (ToolSnapshot, bool) {

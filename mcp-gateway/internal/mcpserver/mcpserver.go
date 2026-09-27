@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,13 +23,21 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 )
 
+// NamespacePrefix derives the public-name prefix shared by every tool of one
+// connector instance. Single instance: "<provider>". Multi-instance:
+// "<provider>_<slug>". Connectors sharing a prefix would collide in the
+// name-keyed registry, so the admin API rejects the second one.
+func NamespacePrefix(provider, slug string) string {
+	if slug == "" {
+		return provider
+	}
+	return provider + "_" + slug
+}
+
 // PublicName derives the stable gateway-visible tool name. Single instance:
 // "<provider>__<tool>". Multi-instance: "<provider>_<slug>__<tool>".
 func PublicName(provider, slug, upstreamName string) string {
-	if slug == "" {
-		return provider + "__" + upstreamName
-	}
-	return provider + "_" + slug + "__" + upstreamName
+	return NamespacePrefix(provider, slug) + "__" + upstreamName
 }
 
 // Gateway is one workspace's governed MCP endpoint.
@@ -105,18 +114,25 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 	for _, t := range tools {
 		log.Printf("gateway: discovered %s -> %s", t.Name, PublicName(c.Provider, c.InstanceSlug, t.Name))
 	}
+	seen := make(map[string]bool, len(tools))
 	for _, t := range tools {
+		schema := schemaBytes(t)
 		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
 			ConnectorID:  c.ID,
 			WorkspaceID:  c.WorkspaceID,
 			UpstreamName: t.Name,
 			PublicName:   PublicName(c.Provider, c.InstanceSlug, t.Name),
 			Description:  t.Description,
-			Fingerprint:  store.Fingerprint(t.Name, t.Description, rawSchema(t)),
+			InputSchema:  schema,
+			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema),
 			DiscoveredAt: time.Now().UTC(),
 		})
+		seen[snap.PublicName] = true
 		g.register(snap, t)
 	}
+	// Reconcile against the successful discovery: tools the upstream no
+	// longer lists stop being advertised and authorized.
+	g.store.DisableMissingTools(c.ID, seen)
 	return nil
 }
 
@@ -367,9 +383,29 @@ func newCallID() string {
 	return "call_" + hex.EncodeToString(b[:])
 }
 
-func rawSchema(t mcp.Tool) []byte {
+// schemaBytes returns the normalized input schema for storage and
+// fingerprinting: the raw upstream bytes when present, else the parsed
+// struct serialized. Normalization (unmarshal+remarshal) keeps semantically
+// identical schemas byte-identical across resyncs, so property or
+// required-field changes are what flips the fingerprint.
+func schemaBytes(t mcp.Tool) []byte {
+	var raw []byte
 	if len(t.RawInputSchema) > 0 {
-		return t.RawInputSchema
+		raw = t.RawInputSchema
+	} else {
+		b, err := json.Marshal(t.InputSchema)
+		if err != nil {
+			return []byte(t.InputSchema.Type)
+		}
+		raw = b
 	}
-	return []byte(t.InputSchema.Type)
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return raw
+	}
+	norm, err := json.Marshal(v)
+	if err != nil {
+		return raw
+	}
+	return norm
 }

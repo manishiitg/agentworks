@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -37,6 +38,19 @@ func main() {
 	if err := run(); err != nil {
 		log.Fatalf("gateway: %v", err)
 	}
+}
+
+// resolveBind defaults local runs to loopback. A public bind requires an
+// explicitly configured human token, so the single-user admin assumption
+// cannot silently escape the machine on a default install.
+func resolveBind(bind string, humanTokenSet bool) (string, error) {
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	if (bind == "0.0.0.0" || bind == "::") && !humanTokenSet {
+		return "", errors.New("refusing public bind with the default human token: set GATEWAY_HUMAN_TOKEN explicitly")
+	}
+	return bind, nil
 }
 
 func run() error {
@@ -108,8 +122,12 @@ func run() error {
 	adm.APIRoutes(mux)
 	adm.UIRoutes(mux)
 
-	log.Printf("gateway: listening on :%s (upstream %s)", port, upstreamURL)
-	return http.ListenAndServe(":"+port, admin.LocalhostCORS(mux))
+	bind, err := resolveBind(env("GATEWAY_BIND", ""), os.Getenv("GATEWAY_HUMAN_TOKEN") != "")
+	if err != nil {
+		return err
+	}
+	log.Printf("gateway: listening on %s:%s (upstream %s)", bind, port, upstreamURL)
+	return http.ListenAndServe(bind+":"+port, admin.LocalhostCORS(mux))
 }
 
 // seedDemo creates local-test users and groups.
