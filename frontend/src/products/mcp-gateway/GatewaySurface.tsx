@@ -40,7 +40,7 @@ export function GatewaySurface() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-background" data-testid="gateway-surface">
+    <div className="flex h-full flex-col bg-muted" data-testid="gateway-surface">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
         <ProductSurfaceSwitcher />
       </header>
@@ -54,7 +54,7 @@ export function GatewaySurface() {
               aria-current={section === id ? 'page' : undefined}
               className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium ${
                 section === id
-                  ? 'bg-muted text-foreground'
+                  ? 'bg-card text-foreground'
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
               }`}
             >
