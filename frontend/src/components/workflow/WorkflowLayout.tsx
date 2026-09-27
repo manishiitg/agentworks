@@ -113,24 +113,32 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   )
 })
 
-const WorkflowNewChatGuide: React.FC = () => (
+const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = false }) => (
   <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
     <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <Sparkles className="h-4 w-4 text-primary" />
-        Start your workflow chat
+        {relayMode ? 'Build your Relay in chat' : 'Start your workflow chat'}
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        This is your persistent conversation for this workflow. Ask the builder to:
+        {relayMode ? 'Describe the input, agents, scripts, and JSON output you want. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
       </p>
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-        <li>• Build or change the workflow and its plan</li>
-        <li>• Create a schedule, webhook, bot, dashboard, or database</li>
-        <li>• Review a run, investigate a problem, or improve the workflow</li>
+        {relayMode ? <>
+          <li>• Add agents with your own system prompts and message templates</li>
+          <li>• Connect them with scripts and define the final JSON output</li>
+          <li>• Set up API triggers and inspect execution logs</li>
+        </> : <>
+          <li>• Build or change the workflow and its plan</li>
+          <li>• Create a schedule, webhook, bot, dashboard, or database</li>
+          <li>• Review a run, investigate a problem, or improve the workflow</li>
+        </>}
       </ul>
     </div>
   </div>
 )
+
+const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'workshop', 'costs', 'execution-logs', 'files', 'mcp', 'access'])
 import { agentApi, workflowManifestApi } from '../../services/api'
 import {
   type ActiveSessionInfo,
@@ -828,6 +836,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // previous/empty path until a page reload rebuilt all stores.
   const workflowManifests = useWorkflowManifestStore(state => state.workflows)
   const activeWorkflowManifest = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === activeWorkflowPreset?.selectedFolder?.filepath)?.manifest
+  const relayMode = activeWorkflowManifest?.kind === 'relay' || isRelaySurface
   const activeWorkflowWorkspacePath = resolveWorkflowHistoryPath(
     activePresetId,
     workflowManifests,
@@ -862,7 +871,15 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   }, [activePresetId, activeWorkflowWorkspacePath])
 
   useEffect(() => {
-    if (selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
+    if (!relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath) return
+    const currentView = workflowWorkspaceView ?? lastCanvasView
+    if (!hasSavedWorkflowWorkspaceView(activePresetId) || !RELAY_WORKSPACE_VIEWS.has(currentView)) {
+      useWorkflowStore.getState().openWorkspaceView('flow')
+    }
+  }, [activePresetId, lastCanvasView, relayMode, selectedModeCategory, workflowWorkspaceView, workspacePath])
+
+  useEffect(() => {
+    if (relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
     let cancelled = false
     const presetId = activePresetId
     void loadWorkspaceLandingView(workspacePath).then(landing => {
@@ -876,7 +893,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       })
     })
     return () => { cancelled = true }
-  }, [activePresetId, selectedModeCategory, workspacePath])
+  }, [activePresetId, relayMode, selectedModeCategory, workspacePath])
 
   const activeWorkflowChatTabId = useChatStore(state => {
     const tabId = activeWorkflowTabIdForPreset(state.activeTabId, activePresetId, state.chatTabs)
@@ -2266,7 +2283,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     <AutomationHubPanel
       key={`${activePresetId || 'workflow'}:${workspacePath}`}
       entityType="workflow"
-      relayMode={activeWorkflowManifest?.kind === 'relay'}
+      relayMode={relayMode}
       relayWorkflowID={activeWorkflowManifest?.id}
       workspacePath={workspacePath}
       workflowScope={{ presetQueryId: activePresetId || undefined, workspacePath }}
@@ -2305,7 +2322,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       ref={canvasRef}
       workspacePath={workspacePath}
       presetQueryId={activePresetId}
-      relayMode={activeWorkflowManifest?.kind === 'relay'}
+      relayMode={relayMode}
       relayOutputStepID={activeWorkflowManifest?.relay_output_step_id}
       currentPhase={activePhase || currentWorkflowPhase}
       onStartPhase={handleStartPhase}
@@ -2427,7 +2444,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
             )}
 
             {/* Initial goal setup (goal -> plan -> metrics); optional and dismissible. */}
-            <WorkflowGoalSetupBar workspacePath={workspacePath} canEdit={activeWorkflowAccess !== 'read'} />
+            {!relayMode && <WorkflowGoalSetupBar workspacePath={workspacePath} canEdit={activeWorkflowAccess !== 'read'} />}
 
             <div className="relative min-h-0 flex-1 overflow-hidden">
               {isWorkflowConversationResolving && (
@@ -2442,7 +2459,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   onNewChat={onNewChat}
                   hideHeader
                   compact
-                  workflowLandingContent={<WorkflowNewChatGuide />}
+                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}
                 />
               </div>
             </div>

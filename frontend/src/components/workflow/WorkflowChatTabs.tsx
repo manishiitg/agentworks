@@ -4,6 +4,7 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import {
   convertObservedWorkflowTabToInteractive,
   isMisclassifiedRestoredWorkflowChat,
@@ -44,6 +45,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const setShowChatArea = useWorkflowStore(state => state.setShowChatArea)
   const setFocusedPane = useWorkflowStore(state => state.setFocusedPane)
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
 
   // Repair tabs already corrupted by the old Restore path. The durable
   // restoredConversationPath marker proves this is an interactive restore,
@@ -215,6 +217,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 canClose={!isPersistentChat && activeWorkflowTabs.length > 1}
                 isBlank={false}
                 displayName={isPersistentChat ? 'Chat' : workflowTabDisplayName(tab, isBlank)}
+                titleOverride={isPersistentChat && isRelaySurface ? 'Relay Builder' : undefined}
                 onTabClick={handleTabClick}
                 onCloseTab={handleCloseTab}
                 onMakeInteractive={handleMakeInteractive}

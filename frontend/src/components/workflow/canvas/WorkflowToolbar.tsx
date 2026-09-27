@@ -87,6 +87,7 @@ const CAPABILITY_BUTTON_ATTRS: Partial<Record<WorkspaceViewId, { 'data-tour': st
 }
 
 interface WorkflowToolbarProps {
+  relayMode?: boolean
   status: WorkflowExecutionStatus
   plan?: PlanningResponse | null  // Plan data used by toolbar actions
   currentPhase?: string
@@ -112,6 +113,7 @@ interface WorkflowToolbarProps {
 }
 
 export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
+  relayMode = false,
   status,
   workspacePath,
   presetQueryId,
@@ -160,11 +162,11 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
 
   // Button clusters come from the view registry, in registry order. Plan is
   // always present, including for a new workflow with no steps yet.
-  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report')
-  const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id))
+  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report' && (!relayMode || ['flow', 'workshop'].includes(view.id)))
+  const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['costs', 'execution-logs', 'files'].includes(view.id)))
   const capabilityViewDefinitions = useMemo(
-    () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities'),
-    [],
+    () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp')),
+    [relayMode],
   )
 
   // The toggle follows the active view between Views and Ops. Setup views
@@ -386,7 +388,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
           {/* Report stays visible while the remaining tools use two compact groups. */}
-          {workspacePath && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
+          {workspacePath && !relayMode && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
 
           {/* One continuous pill: frequent tools | compact menus. */}
           {(workspacePath || canWriteWorkflow) && (
@@ -400,10 +402,10 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               hideToggleWhenOpen
               open={openToolbarMenu === 'views'}
               onToggle={() => toggleToolbarMenu('views')}
-              title="Views: Pulse, Plan, Browser and Automation"
+              title={relayMode ? 'Relay views: Graph and Triggers' : 'Views: Pulse, Plan, Browser and Automation'}
             >
               <div className="inline-flex items-center gap-0.5 px-0.5">
-                <Tooltip>
+                {!relayMode && <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
@@ -416,8 +418,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom"><p>Pulse</p></TooltipContent>
-                </Tooltip>
-                <Tooltip>
+                </Tooltip>}
+                {!relayMode && <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
@@ -431,8 +433,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom"><p>{pendingDecisionCount > 0 ? `${pendingDecisionCount} human ${pendingDecisionCount === 1 ? 'action' : 'actions'} pending` : 'Human actions'}</p></TooltipContent>
-                </Tooltip>
-                <WorkflowActivityButton
+                </Tooltip>}
+                {!relayMode && <WorkflowActivityButton
                   workspacePath={workspacePath}
                   onOpen={() => {
                     useLLMStore.getState().setShowLLMModal(false)
@@ -441,9 +443,9 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                     app.setActivityWorkflowPath(workspacePath)
                     app.setShowWorkflowsOverview(true)
                   }}
-                />
+                />}
                 {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                  <ToolbarInlineItem key={view} label={relayMode ? view === 'flow' ? 'Graph' : view === 'workshop' ? 'Triggers' : label : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
                 ))}
               </div>
             </WorkspaceToolbarGroup>
@@ -457,15 +459,15 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             hideToggleWhenOpen
             open={openToolbarMenu === 'ops'}
             onToggle={() => toggleToolbarMenu('ops')}
-            title="Operations: knowledge, costs, execution logs, files, backup, publish and notifications"
+            title={relayMode ? 'Relay operations: costs, execution logs and files' : 'Operations: knowledge, costs, execution logs, files, backup, publish and notifications'}
           >
             <div className="inline-flex items-center gap-0.5">
               {operationsWorkspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
                 <ToolbarInlineItem key={view} label={label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
               ))}
-              <ToolbarInlineItem label="Backup" Icon={Cloud} active={activeWorkspaceView === 'backup'} onClick={() => openWorkspaceView('backup')} indicatorClass={getBackupDotClass(backupState)} />
-              <ToolbarInlineItem label="Publish" Icon={Globe} active={activeWorkspaceView === 'publish'} onClick={() => openWorkspaceView('publish')} indicatorClass={getPublishDotClass(publishState)} />
-              <ToolbarInlineItem label="Notifications" Icon={BellRing} active={activeWorkspaceView === 'notify'} onClick={() => openWorkspaceView('notify')} indicatorClass={getNotificationDotClass(notificationState)} data-testid="workflow-notification-settings-button" />
+              {!relayMode && <ToolbarInlineItem label="Backup" Icon={Cloud} active={activeWorkspaceView === 'backup'} onClick={() => openWorkspaceView('backup')} indicatorClass={getBackupDotClass(backupState)} />}
+              {!relayMode && <ToolbarInlineItem label="Publish" Icon={Globe} active={activeWorkspaceView === 'publish'} onClick={() => openWorkspaceView('publish')} indicatorClass={getPublishDotClass(publishState)} />}
+              {!relayMode && <ToolbarInlineItem label="Notifications" Icon={BellRing} active={activeWorkspaceView === 'notify'} onClick={() => openWorkspaceView('notify')} indicatorClass={getNotificationDotClass(notificationState)} data-testid="workflow-notification-settings-button" />}
             </div>
           </WorkspaceToolbarGroup>
         )}
@@ -478,7 +480,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             label="Setup"
             data-tour="workflow-setup"
             open
-            title="Setup: identity, integrations, playbooks and access"
+            title={relayMode ? 'Relay setup: integrations and access' : 'Setup: identity, integrations, playbooks and access'}
           >
             <div className="inline-flex items-center gap-0.5">
               {capabilityViewDefinitions.map(({ id, icon: Icon, label }) => {

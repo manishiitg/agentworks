@@ -10,6 +10,7 @@ export interface AgentWorksChatTabItemProps {
   canClose: boolean
   isBlank: boolean
   displayName?: string
+  titleOverride?: string
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>
@@ -25,7 +26,7 @@ const TAB_STATUS_DOT: Record<'busy' | 'completed' | 'ready', { cls: string; labe
 
 /** The shared AgentWorks Builder/Chat tab pill used by workflows and Work. */
 export const AgentWorksChatTabItem = React.memo<AgentWorksChatTabItemProps>(({
-  tab, isActive, canClose, isBlank, displayName: displayNameOverride,
+  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride,
   onTabClick, onCloseTab, onRenameTab, onMakeInteractive,
 }) => {
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
@@ -104,7 +105,7 @@ export const AgentWorksChatTabItem = React.memo<AgentWorksChatTabItemProps>(({
       ) : (
         <span
           className="min-w-0 max-w-[14rem] truncate whitespace-nowrap"
-          title={tab.name || displayName}
+          title={titleOverride || tab.name || displayName}
         >
           {displayName}
         </span>

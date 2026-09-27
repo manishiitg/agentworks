@@ -787,7 +787,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
               <UsersControl />
 
-              {!reduced && <GlobalActivityButton
+              {!reduced && !isRelaySurface && <GlobalActivityButton
                 workspacePaths={workflowActivityPaths}
                 active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
                 onOpen={() => {
@@ -798,7 +798,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 }}
               />}
 
-              <Tooltip>
+              {!isRelaySurface && <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
@@ -821,7 +821,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
-              </Tooltip>
+              </Tooltip>}
 
               <span className="mx-0.5 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               <WorkspaceTopBarControls
