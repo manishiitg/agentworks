@@ -35,9 +35,35 @@ const (
 	crewFunctionActivityEventsScan = 80
 )
 
-// crewFunctionFastWait is how long call_function waits for a result before
-// returning {status:"running"} and notifying later. A var for tests.
+// crewFunctionFastWait is the longest call_function will wait for a result
+// (wait_seconds) before returning {status:"running"} and notifying later.
+// The default is no wait: functions are agentic and usually take minutes,
+// and a caller whose request is cut short (a shell curl with its own
+// timeout) never saw the call_id and called again (RTS 2026-09-27). A var for
+// tests.
 var crewFunctionFastWait = 120 * time.Second
+
+// crewFunctionWait reads call_function's optional wait_seconds, capped at
+// crewFunctionFastWait; absent means return at once.
+func crewFunctionWait(raw interface{}) time.Duration {
+	var seconds float64
+	switch value := raw.(type) {
+	case float64:
+		seconds = value
+	case int:
+		seconds = float64(value)
+	case json.Number:
+		seconds, _ = value.Float64()
+	}
+	if seconds <= 0 {
+		return 0
+	}
+	wait := time.Duration(seconds * float64(time.Second))
+	if wait > crewFunctionFastWait {
+		return crewFunctionFastWait
+	}
+	return wait
+}
 
 var crewFunctionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
@@ -1168,7 +1194,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return resolveTriggerTarget(ctx, claims, name)
 	}
 	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow: its name, a #crew:<name> / #workflow:<name> tag, or its exact workspace_path."}
-	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout time.Duration) (string, error) {
+	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1184,17 +1210,27 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		timer := time.NewTimer(crewFunctionFastWait)
-		defer timer.Stop()
-		select {
-		case <-call.done:
-			return jsonOut(call.snapshot())
-		case <-timer.C:
-		case <-ctx.Done():
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-call.done:
+				return jsonOut(call.snapshot())
+			case <-timer.C:
+			case <-ctx.Done():
+			}
+		} else {
+			select {
+			case <-call.done: // already settled (e.g. a joined call that finished)
+				return jsonOut(call.snapshot())
+			default:
+			}
 		}
 		response := call.snapshot()
 		response["status"] = "running"
-		response["note"] = "Still running. Poll with get_function_call, or ask a Crew target for an update with ask_function_update."
+		if _, joined := response["joined"]; !joined {
+			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
+		}
 		if notify {
 			executionID, watchErr := api.startCrewFunctionWatch(parentReq, sessionID, userID, call, timeout)
 			if watchErr != nil {
@@ -1320,12 +1356,13 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. If it finishes within about 2 minutes the result is returned here directly; otherwise this returns status=running with a call_id and the result arrives later as an [AUTO-NOTIFICATION] (unless notify=false). Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. It returns at once with status=running and a call_id (functions are agentic and usually take minutes); the result arrives later as an [AUTO-NOTIFICATION] in this chat (unless notify=false). Pass wait_seconds (up to 120) only for a function you expect to finish quickly, to get its result inline. Never call again for the same work: an identical call while one is running returns that same call. Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
 			"args":            map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
-			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result if it takes longer than the fast window (default true)."},
+			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result when it arrives (default true)."},
+			"wait_seconds":    map[string]interface{}{"type": "integer", "minimum": 0, "maximum": int(crewFunctionFastWait / time.Second), "description": "Wait up to this long for the result before returning status=running (default 0: return at once)."},
 			"timeout_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": int(triggerTargetMaxTimeout / time.Minute), "description": "How long the call may take before it fails (default 60)."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -1352,7 +1389,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		return callFunction(ctx, caller, target, function, callArgs, notify, timeout)
+		return callFunction(ctx, caller, target, function, callArgs, notify, timeout, crewFunctionWait(args["wait_seconds"]))
 	}); err != nil {
 		return err
 	}
@@ -1575,7 +1612,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if len(params) == 0 {
 				params = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 			}
-			description := fmt.Sprintf("Function %q of %s %q: %s Returns a result validated against its result schema; long calls return status=running and notify this chat later.", fn.Name, target.Kind, target.Label, fn.Description)
+			description := fmt.Sprintf("Function %q of %s %q: %s Returns at once with status=running and a call_id; the result, validated against its result schema, arrives later as an [AUTO-NOTIFICATION] in this chat. Do not call again for the same work.", fn.Name, target.Kind, target.Label, fn.Description)
 			if declare != nil {
 				declare(toolName)
 			}
@@ -1586,7 +1623,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 				if err != nil {
 					return "", err
 				}
-				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout)
+				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout, 0)
 			}); err != nil {
 				return err
 			}
