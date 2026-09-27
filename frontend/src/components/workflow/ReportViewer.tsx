@@ -2,7 +2,7 @@
 // db/reports/. The shared toolbar selects the active document; each HTML file
 // tabs, sections, a sidebar, or a single scrolling page.
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 import api, { agentApi, workspaceApi, getApiBaseUrl } from '../../services/api'
 import { useReportFilePreviewStore } from '../../stores/useReportFilePreviewStore'
@@ -82,6 +82,12 @@ function reportRunError(error: unknown): string {
 }
 
 function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi['sendChatMessage']): ReportDataApi {
+  // Parents often pass sendChatMessage as an inline arrow, a new function on
+  // every render (e.g. each keystroke in the chat input). A new data API makes
+  // the report re-dispatch report:data and re-run its live scripts, so the
+  // callback is read through a ref and never changes the API's identity.
+  const sendChatMessageRef = useRef(sendChatMessage)
+  sendChatMessageRef.current = sendChatMessage
   return useMemo(() => {
     const getText = async (path: string): Promise<string | null> => {
       const allowed = allowedReportPath(path)
@@ -100,7 +106,7 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
     return {
       workspacePath,
       getCosts: (options) => agentApi.getCosts(workspacePath, { ...options, view: 'summary' }),
-      sendChatMessage,
+      sendChatMessage: (...args: Parameters<ReportDataApi['sendChatMessage']>) => sendChatMessageRef.current(...args),
       query: async (sql: string) => {
         const response = await agentApi.queryWorkflowDB(`${workspacePath}/db/db.sqlite`, sql)
         if (!response.success || !response.data) throw new Error(response.error || 'Query failed.')
@@ -165,7 +171,7 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
         }
       },
     }
-  }, [workspacePath, sendChatMessage])
+  }, [workspacePath])
 }
 
 async function loadReportDocument(workspacePath: string, documentPath = 'db/reports/index.html'): Promise<ReportDocument | null> {

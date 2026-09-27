@@ -35,6 +35,17 @@ describe('open report stability', () => {
     expect(viewer).not.toContain("api.post('/workflow/report-preview/media-url'")
   })
 
+  it('keeps the report data API stable when a parent passes a new sendChatMessage', () => {
+    // Typing in the crew chat input re-rendered the pane with a new inline
+    // sendChatMessage; a new data API re-dispatched report:data on every
+    // keystroke and re-ran live report scripts (exhausting Notion quota).
+    const viewer = readFileSync('src/components/workflow/ReportViewer.tsx', 'utf8')
+
+    expect(viewer).toContain('sendChatMessageRef.current = sendChatMessage')
+    expect(viewer).toContain('}, [workspacePath])')
+    expect(viewer).not.toContain('}, [workspacePath, sendChatMessage])')
+  })
+
   it('does not let outer polling remount the report iframe', () => {
     const viewer = readFileSync('src/components/workflow/ReportViewer.tsx', 'utf8')
     const frame = readFileSync('src/components/workflow/reportWidgets/HtmlWidgetFrame.tsx', 'utf8')
