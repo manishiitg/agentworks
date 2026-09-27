@@ -321,9 +321,9 @@ func TestPromptContractDecisionMigrationGetsTargetedFixerContract(t *testing.T) 
 }
 
 func TestAnswerHumanInputRequestToolUsesValidatedDecisionLifecycle(t *testing.T) {
-	ctx := context.Background()
+	ctx := humanAnswerFixture(t)
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/chat-answer"
+	workspacePath := "Workflow/a"
 	inputID := "quality-scorecard-status"
 
 	if _, err := createReportHumanInput(ctx, workspacePath, ReportHumanInputCreateRequest{

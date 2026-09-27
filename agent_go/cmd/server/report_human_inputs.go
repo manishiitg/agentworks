@@ -1090,12 +1090,16 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			return marshalReportHumanInputToolResult("created", input)
 		},
 		"answer_human_input_request": func(ctx context.Context, args map[string]interface{}) (string, error) {
-			workspacePath, _ := args["workspace_path"].(string)
+			requestedWorkspace, _ := args["workspace_path"].(string)
+			workspacePath, claims, err := humanAnswerScope(ctx, requestedWorkspace)
+			if err != nil {
+				return "", err
+			}
 			inputID, _ := args["input_id"].(string)
 			req := ReportHumanInputAnswerRequest{}
 			req.SelectedOptionID, _ = args["selected_option_id"].(string)
 			req.Note, _ = args["note"].(string)
-			req.AnsweredBy = GetUserIDFromContext(ctx)
+			req.AnsweredBy = claims.UserID
 			req.AnsweredByKind = "human_via_chat"
 			req.AnsweredVia = "agent_chat"
 			req.SessionID = mcpexecutor.SessionIDFromContext(ctx)

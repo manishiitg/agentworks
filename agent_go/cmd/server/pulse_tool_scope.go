@@ -45,7 +45,7 @@ func (api *StreamingAPI) pulseToolScope(ctx context.Context, requestedWorkspace 
 	if owner, ok := step.LookupWorkshopToolSession(sessionID); ok {
 		workspacePath, chatSessionID = owner.WorkspacePath, owner.ChatSessionID
 	} else if value, ok := api.workshopChatSessions.Load(sessionID); ok {
-		if workshop, ok := value.(*step.WorkshopChatSession); ok && workshop.GetConfig() != nil {
+		if workshop, ok := value.(interface{ GetConfig() *step.WorkshopConfig }); ok && workshop.GetConfig() != nil {
 			workspacePath, chatSessionID = workshop.GetConfig().WorkspacePath, sessionID
 		}
 	}
