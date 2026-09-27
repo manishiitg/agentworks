@@ -404,7 +404,7 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 		for _, sched := range manifest.Schedules {
 			job := productScheduleJob{
 				UserID: userID, Profile: profile, Schedule: sched,
-				ProjectID: manifest.ID, ProjectTitle: manifest.Title,
+				ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(),
 				WorkspacePath: filepath.ToSlash(filepath.Dir(candidate)), ManifestPath: runtimePath,
 				ManifestActivatedAt: manifestActivatedAt,
 			}
@@ -680,7 +680,7 @@ func (s *ProductScheduleService) CreateProjectSchedule(ctx context.Context, user
 	if err := s.writeProjectManifest(ctx, binding, manifest); err != nil {
 		return productScheduleJob{}, err
 	}
-	return productScheduleJob{UserID: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.Title, WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
+	return productScheduleJob{UserID: userID, Profile: profile, Schedule: schedule, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(), WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}, nil
 }
 
 func (s *ProductScheduleService) UpdateProjectSchedule(ctx context.Context, userID, jobID string, update func(*productschedule.Schedule)) (productScheduleJob, error) {

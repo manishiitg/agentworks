@@ -5,7 +5,6 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { hydrateExecutionConversation } from '../../utils/executionConversationRestore'
-import { truncateTabTitle } from '../../utils/textUtils'
 import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
 import { loadWorkSessions, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 
@@ -117,7 +116,8 @@ export async function openWorkAutomationRunChat(
     throw new Error('Could not open the Crew chat for this run.')
   }
 
-  const runTitle = truncateTabTitle(options.title || session.title || session.query || 'Trigger run')
+  // Full title: the tab strip truncates with CSS and the hover shows it whole.
+  const runTitle = (options.title || session.title || session.query || 'Trigger run').trim() || 'Trigger run'
   const existing = Object.values(useChatStore.getState().chatTabs).find(tab =>
     tab.sessionId === session.session_id &&
     tab.metadata?.agentProfileId === WORK_PROFILE_ID &&

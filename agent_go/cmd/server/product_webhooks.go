@@ -628,7 +628,7 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
 	}
 	message := triggerTurnMessage(match.Trigger.Message, sourceNote, relativePayloadPath)
-	job := productScheduleJob{UserID: match.UserID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.Title, WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
+	job := productScheduleJob{UserID: match.UserID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
 	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, Detach: true, AllowQueue: true})
 	switch {
 	case dispatchErr == nil:

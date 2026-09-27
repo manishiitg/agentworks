@@ -706,6 +706,12 @@ func (store productConversationRegistryStore) writeDocument(ctx context.Context,
 	return nil
 }
 
+// displayTitle is the name people know the project by: the Crew's identity
+// name ("SDE") when it has one, else its folder title ("gptlive1").
+func (m productProjectManifest) displayTitle() string {
+	return firstNonEmptyTrimmed(m.Identity.Name, m.Title)
+}
+
 type productProjectManifest struct {
 	SchemaVersion int    `json:"schema_version"`
 	Product       string `json:"product,omitempty"`
