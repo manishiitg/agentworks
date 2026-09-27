@@ -430,10 +430,10 @@ func TestCodingWatchdogRateLimitEvidenceIgnoresAssistantNarration(t *testing.T) 
 // lines the window cannot attribute are not evidence; real notices are.
 func TestCodingWatchdogIgnoresUserAndReplyTextAboutLimits(t *testing.T) {
 	for name, pane := range map[string]string{
-		"user message": "> can you save this key and for dashboard lets use api.. instead of mcp .. we got rate\n  limited in mcp\n\n● Saved.\n\n❯ check any new comments in notion\n  ⏵⏵ auto mode on",
-		"reply":        "● No GitHub activity today. Now checking Notion (may still be\n  rate-limited from earlier).\n\n❯ ",
+		"user message":            "> can you save this key and for dashboard lets use api.. instead of mcp .. we got rate\n  limited in mcp\n\n● Saved.\n\n❯ check any new comments in notion\n  ⏵⏵ auto mode on",
+		"reply":                   "● No GitHub activity today. Now checking Notion (may still be\n  rate-limited from earlier).\n\n❯ ",
 		"window starts mid-block": "  rate-limited from earlier), which is a plan-level throttle.\n  Nothing else changed.\n\n❯ ",
-		"input box":    "❯ you have reached your usage limit is what notion said",
+		"input box":               "❯ you have reached your usage limit is what notion said",
 	} {
 		if got := codingWatchdogRateLimitEvidence(pane); got != "" {
 			t.Errorf("%s: misread as a limit wall", name)
@@ -447,5 +447,42 @@ func TestCodingWatchdogIgnoresUserAndReplyTextAboutLimits(t *testing.T) {
 		if got := codingWatchdogRateLimitEvidence(pane); got == "" {
 			t.Errorf("%s: real limit notice missed", name)
 		}
+	}
+}
+
+// The CLI's own usage numbers outrank screen text: usage known and below every
+// limit means limit-looking text is not a wall, however often it is seen;
+// usage known and exhausted still confirms the wall.
+func TestCodingTmuxWatchdogTrustsCLIUsageOverScreenText(t *testing.T) {
+	oldOutput, oldCapture, oldUsage := runTerminalTmuxOutputCommand, captureTmuxPanePlainForWatchdog, codingWatchdogStructuredUsage
+	t.Cleanup(func() {
+		runTerminalTmuxOutputCommand, captureTmuxPanePlainForWatchdog, codingWatchdogStructuredUsage = oldOutput, oldCapture, oldUsage
+	})
+	runTerminalTmuxOutputCommand = func(context.Context, ...string) (string, error) { return "0", nil }
+	captureTmuxPanePlainForWatchdog = func(string) string { return "You've hit your usage limit" }
+
+	// One tick: below-limit usage must not even start a confirmation streak;
+	// exhausted usage starts it like before. Several ticks below the limit
+	// must never stop the session.
+	run := func(exhausted bool, ticks int) (map[string]codingWatchdogObservation, string) {
+		codingWatchdogStructuredUsage = func(string) (bool, bool) { return true, exhausted }
+		store := terminals.NewStore()
+		sessionID := "usage-overrule-session"
+		store.HandleEvent(sessionID, terminalRouteChunkEvent(sessionID, "workflow-step:one", "mlp-claude-code-usage-overrule", "limited", 1))
+		api := &StreamingAPI{
+			terminalStore:  store,
+			activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+		}
+		streak := map[string]codingWatchdogObservation{}
+		for i := 0; i < ticks; i++ {
+			api.reapRateLimitedCodingSessionsOnce(streak)
+		}
+		return streak, api.activeSessions[sessionID].Status
+	}
+	if streak, status := run(false, codingWatchdogConfirmChecks+2); len(streak) != 0 || status != "running" {
+		t.Fatalf("usage below limits: streak=%#v status=%q", streak, status)
+	}
+	if streak, _ := run(true, 1); streak["mlp-claude-code-usage-overrule"].count != 1 {
+		t.Fatalf("usage exhausted: wall evidence not counted: %#v", streak)
 	}
 }

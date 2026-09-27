@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"log"
 	"os/exec"
 	"strings"
@@ -146,6 +148,16 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 		if evidence == "" {
 			continue
 		}
+		// The CLI's own usage numbers outrank screen text: when they are known
+		// and no window is exhausted, limit-looking text on screen is someone's
+		// words (a redrawn message, a quoted error), not a wall.
+		if known, exhausted := codingWatchdogStructuredUsage(tmux); known && !exhausted {
+			if streak[watchdogKey].count == 0 {
+				log.Printf("[CODING_WATCHDOG] session %s tmux %s shows limit-like text but the CLI reports usage below its limits - not a wall", sessionID, tmux)
+			}
+			delete(streak, watchdogKey)
+			continue
+		}
 		stillLimited[watchdogKey] = true
 		observation := streak[watchdogKey]
 		if observation.evidence == evidence {
@@ -192,6 +204,21 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 			delete(streak, watchdogKey)
 		}
 	}
+}
+
+// codingWatchdogStructuredUsage reports a pane's plan usage from the coding
+// CLI's own data (known, and whether a window is exhausted): Claude's
+// statusline rate_limits (written after its first response) and Codex's
+// rollout rate-limit windows. Other CLIs, and panes without data yet, are
+// unknown and fall back to screen text. A var so tests can stub it.
+var codingWatchdogStructuredUsage = func(tmux string) (known, exhausted bool) {
+	switch {
+	case strings.HasPrefix(tmux, "mlp-claude-code-"):
+		return claudecode.UsageLimitState(tmux)
+	case strings.HasPrefix(tmux, "mlp-codex-cli-"):
+		return codexcli.UsageLimitState(tmux)
+	}
+	return false, false
 }
 
 // codingWatchdogRateLimitEvidence returns the normalized visible tail when it
