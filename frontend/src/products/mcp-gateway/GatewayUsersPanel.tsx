@@ -4,7 +4,7 @@ import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { createUser, listGroups, listMembers, listUsers } from './gatewayAdminApi'
-import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
+import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import {
   codeClass,
   gatewayErrorMessage,
@@ -62,6 +62,7 @@ export function GatewayUsersPanel({ base }: { base: string }) {
 
   return (
     <div className="space-y-4" data-testid="gateway-users">
+      {error && <ConsoleStale message={error} onRetry={bump} />}
       <SettingsCard
         icon={<UserRound className="h-4 w-4 text-primary" />}
         title="Users"

@@ -20,7 +20,7 @@ import {
   type GatewayConnector,
   type GatewayTool,
 } from './gatewayAdminApi'
-import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
+import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import {
   codeClass,
   gatewayErrorMessage,
@@ -119,6 +119,10 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const [jsonBusy, setJsonBusy] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [jsonNotice, setJsonNotice] = useState<string | null>(null)
+  const [customName, setCustomName] = useState('')
+  const [customUrl, setCustomUrl] = useState('')
+  const [customBusy, setCustomBusy] = useState(false)
+  const [customError, setCustomError] = useState<string | null>(null)
 
   const rows = useMemo(() => {
     if (!data) return []
@@ -209,6 +213,32 @@ export function GatewayServersPanel({ base }: { base: string }) {
     }
   }
 
+  async function onAddCustom() {
+    const name = customName.trim()
+    const url = customUrl.trim()
+    if (!name || !url) {
+      setCustomError('Enter a name and a server URL.')
+      return
+    }
+    if (!url.startsWith('https://') && !url.startsWith('http://127.0.0.1') && !url.startsWith('http://localhost')) {
+      setCustomError('Upstream must be https (or loopback http).')
+      return
+    }
+    setCustomBusy(true)
+    setCustomError(null)
+    setActionError(null)
+    try {
+      await createConnector(base, { Provider: name, Label: '', Slug: '', URL: url })
+      setCustomName('')
+      setCustomUrl('')
+      bump()
+    } catch (err: unknown) {
+      setCustomError(gatewayErrorMessage(err))
+    } finally {
+      setCustomBusy(false)
+    }
+  }
+
   async function onAddJson() {
     let parsed: ReturnType<typeof parseMcpServersJson>
     try {
@@ -257,6 +287,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
 
   return (
     <div className="space-y-4" data-testid="gateway-servers">
+      {error && <ConsoleStale message={error} onRetry={bump} />}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-border px-4 py-2.5" aria-label="Gateway overview">
         {stats.map(([value, label]) => (
           <p key={label} className="text-xs text-muted-foreground">
@@ -486,29 +517,63 @@ export function GatewayServersPanel({ base }: { base: string }) {
 
       <SettingsCard
         title="Add custom servers"
-        description='Paste MCP servers as JSON, in the standard "mcpServers" shape. Only Streamable-HTTP ("url") servers can join the gateway.'
+        description='Connect any Streamable-HTTP ("url") MCP server by name and URL. Only https URLs (or loopback http) can join the gateway.'
       >
-        <Textarea
-          aria-label="MCP servers JSON"
-          placeholder={JSON_PLACEHOLDER}
-          value={jsonText}
-          onChange={(e) => setJsonText(e.target.value)}
-          rows={6}
-          className="font-mono text-xs"
-          data-testid="gateway-add-json"
-        />
-        {jsonError && (
-          <p className="text-destructive" role="alert">
-            {jsonError}
-          </p>
-        )}
-        {jsonNotice && <p className="text-muted-foreground" role="status">{jsonNotice}</p>}
-        <div>
-          <Button size="sm" disabled={jsonBusy || !jsonText.trim()} onClick={() => void onAddJson()} data-testid="gateway-add-submit">
-            {jsonBusy && <Loader2 className="animate-spin" />}
-            Connect servers
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            aria-label="Custom server name"
+            placeholder="Name (e.g. acme-notes)"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            className="max-w-56"
+            data-testid="gateway-add-name"
+          />
+          <Input
+            aria-label="Custom server URL"
+            placeholder="https://acme.example.com/mcp"
+            value={customUrl}
+            onChange={(e) => setCustomUrl(e.target.value)}
+            className="min-w-64 flex-1 font-mono text-xs sm:max-w-md"
+            data-testid="gateway-add-url"
+          />
+          <Button size="sm" disabled={customBusy || !customName.trim() || !customUrl.trim()} onClick={() => void onAddCustom()} data-testid="gateway-add-custom-submit">
+            {customBusy && <Loader2 className="animate-spin" />}
+            Connect server
           </Button>
         </div>
+        {customError && (
+          <p className="text-destructive" role="alert">
+            {customError}
+          </p>
+        )}
+        <details>
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+            Advanced: import JSON
+          </summary>
+          <div className="mt-2 space-y-2">
+            <Textarea
+              aria-label="MCP servers JSON"
+              placeholder={JSON_PLACEHOLDER}
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              rows={6}
+              className="font-mono text-xs"
+              data-testid="gateway-add-json"
+            />
+            {jsonError && (
+              <p className="text-destructive" role="alert">
+                {jsonError}
+              </p>
+            )}
+            {jsonNotice && <p className="text-muted-foreground" role="status">{jsonNotice}</p>}
+            <div>
+              <Button size="sm" disabled={jsonBusy || !jsonText.trim()} onClick={() => void onAddJson()} data-testid="gateway-add-submit">
+                {jsonBusy && <Loader2 className="animate-spin" />}
+                Connect servers
+              </Button>
+            </div>
+          </div>
+        </details>
       </SettingsCard>
 
       <ConfirmationDialog

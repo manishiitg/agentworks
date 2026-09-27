@@ -26,7 +26,7 @@ import {
   type GatewayAPIKey,
   type GatewayTool,
 } from './gatewayAdminApi'
-import { ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
+import { ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import {
   codeClass,
   formatDateTime,
@@ -161,6 +161,7 @@ export function GatewayGroupsPanel({ base }: { base: string }) {
 
   return (
     <div className="space-y-4" data-testid="gateway-groups">
+      {error && <ConsoleStale message={error} onRetry={bump} />}
       <SettingsCard
         icon={<UsersRound className="h-4 w-4 text-primary" />}
         title="Groups"
@@ -420,6 +421,7 @@ function GroupAPIKeys({
         <ConsoleError message={error ?? 'Failed to load.'} onRetry={onChanged} />
       ) : (
         <>
+          {error && <ConsoleStale message={error} onRetry={onChanged} />}
           {data.keys.length > 0 && (
             <ul className="space-y-1.5" data-testid="gateway-keys">
               {data.keys.map((k) => (
@@ -572,6 +574,7 @@ function GroupPermissions({
       description="Attach whole MCP servers for full access (covers tools discovered later), or grant specific tools."
     >
       {permError && <ConsoleError message={permError} onRetry={onChanged} />}
+      {error && <ConsoleStale message={error} onRetry={onChanged} />}
       {data.connectors.length === 0 ? (
         <SettingsEmpty>No servers connected yet. Connect one on the Servers page first.</SettingsEmpty>
       ) : (

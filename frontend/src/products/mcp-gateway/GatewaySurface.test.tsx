@@ -83,6 +83,7 @@ describe('GatewaySurface', () => {
     expect(menu!.textContent).toContain('Groups')
     expect(menu!.textContent).toContain('Users')
     expect(menu!.textContent).toContain('Audit')
+    expect(menu!.textContent).toContain('Connect')
     expect(menu!.textContent).not.toContain('Tools & Grants')
     expect(container!.textContent).not.toContain('admin token')
     expect(container!.textContent).not.toContain('Sign in')

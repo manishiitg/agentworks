@@ -60,6 +60,7 @@ describe('GatewayServersPanel', () => {
             providers: [
               { Name: 'Notion', Key: 'notion', URL: 'https://x/mcp', OAuth: false },
               { Name: 'Linear', Key: 'linear', URL: 'https://y/mcp', OAuth: false },
+              { Name: 'Slack', Key: 'slack', URL: 'https://z/mcp', OAuth: true },
             ],
           }),
         )
@@ -159,6 +160,96 @@ describe('GatewayServersPanel', () => {
       }),
     )
     expect(container!.textContent).toContain('Added 1 server: acme')
+  })
+
+  it('offers catalog-only servers with one-click add on a fresh workspace', async () => {
+    await renderPanel(vi.fn(healthyFetch()))
+
+    // Slack is in neither AgentWorks nor the gateway: it still gets a row.
+    expect(container!.textContent).toContain('Slack')
+    const add = container!.querySelector('[data-testid="gateway-add-slack"]')
+    expect(add).not.toBeNull()
+    expect(add!.textContent).toContain('Add to gateway')
+  })
+
+  it('adds a custom server by name and URL', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock)
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
+        return Promise.resolve(jsonResponse(201, { ID: 'c9' }))
+      }
+      return healthyFetch()(url)
+    })
+
+    const name = container!.querySelector('[data-testid="gateway-add-name"]') as HTMLInputElement
+    const address = container!.querySelector('[data-testid="gateway-add-url"]') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'acme')
+      name.dispatchEvent(new Event('input', { bubbles: true }))
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(address, 'https://acme.example.com/mcp')
+      address.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      ;(container!.querySelector('[data-testid="gateway-add-custom-submit"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE}/api/admin/connectors`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ Provider: 'acme', Label: '', Slug: '', URL: 'https://acme.example.com/mcp' }),
+      }),
+    )
+  })
+
+  it('rejects non-https custom URLs without calling the API', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock)
+    const callsBefore = fetchMock.mock.calls.length
+
+    const name = container!.querySelector('[data-testid="gateway-add-name"]') as HTMLInputElement
+    const address = container!.querySelector('[data-testid="gateway-add-url"]') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'acme')
+      name.dispatchEvent(new Event('input', { bubbles: true }))
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(address, 'http://acme.example.com/mcp')
+      address.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      ;(container!.querySelector('[data-testid="gateway-add-custom-submit"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(fetchMock.mock.calls.length).toBe(callsBefore)
+    expect(container!.textContent).toContain('must be https')
+  })
+
+  it('warns on stale data when a refetch fails instead of hiding it', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock)
+    expect(container!.textContent).toContain('Notion')
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors/c1/sync')) {
+        return Promise.resolve(jsonResponse(200, { status: 'synced' }))
+      }
+      if (url.endsWith('/api/admin/tools')) {
+        return Promise.resolve(jsonResponse(500, { error: 'boom' }))
+      }
+      return healthyFetch()(url)
+    })
+    await act(async () => {
+      ;(container!.querySelector('[aria-label="Sync Notion"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+    await act(async () => {})
+
+    expect(container!.textContent).toContain('Could not refresh')
+    expect(container!.textContent).toContain('may be outdated')
+    expect(container!.textContent).toContain('Notion')
   })
 
   it('adds an AgentWorks server to the gateway from its catalog template', async () => {

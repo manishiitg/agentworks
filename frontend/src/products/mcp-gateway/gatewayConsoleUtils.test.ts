@@ -92,13 +92,22 @@ describe('mergeServerRows', () => {
       [provider('Notion', 'notion'), provider('Linear', 'linear')],
     )
 
-    expect(rows.map((r) => r.name)).toEqual(['Notion', 'Sentry'])
-    const notion = rows[0]
+    expect(rows.map((r) => r.name)).toEqual(['Linear', 'Notion', 'Sentry'])
+    const notion = rows[1]
     expect(notion.agentworks?.connection).toBe('connected')
     expect(notion.gateway.map((c) => c.ID)).toEqual(['c1'])
     expect(notion.catalogMatch?.Name).toBe('Notion')
-    expect(rows[1].gateway).toEqual([])
-    expect(rows[1].catalogMatch).toBeNull()
+    expect(rows[2].gateway).toEqual([])
+    expect(rows[2].catalogMatch).toBeNull()
+  })
+
+  it('seeds catalog-only rows so a fresh workspace can browse and add', () => {
+    const rows = mergeServerRows([], [], [provider('Linear', 'linear'), provider('Notion', 'notion')])
+
+    expect(rows.map((r) => r.name)).toEqual(['Linear', 'Notion'])
+    expect(rows[0].agentworks).toBeNull()
+    expect(rows[0].gateway).toEqual([])
+    expect(rows[0].catalogMatch?.Key).toBe('linear')
   })
 
   it('keeps gateway-only connectors and groups multi-instance providers', () => {

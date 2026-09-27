@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { listAudit } from './gatewayAdminApi'
-import { ConsoleEmpty, ConsoleError, ConsoleLoading } from './gatewayConsoleShared'
+import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import { codeClass, plural, tableClass, tdClass, thClass, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
 const selectClass =
@@ -31,6 +31,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
 
   return (
     <div className="space-y-4" data-testid="gateway-audit">
+      {error && <ConsoleStale message={error} onRetry={bump} />}
       <SettingsCard
         icon={<ScrollText className="h-4 w-4 text-primary" />}
         title="Audit log"

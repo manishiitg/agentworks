@@ -184,8 +184,11 @@ export interface ServerRow {
 }
 
 /**
- * Centralizes the two server lists: every AgentWorks MCP server plus every
- * gateway connector, merged by normalized name so one row shows both sides.
+ * Centralizes the server lists: every AgentWorks MCP server, every gateway
+ * connector, and every catalog template, merged by normalized name so one
+ * row shows all sides. Catalog entries seed their own rows so a fresh
+ * workspace (no AgentWorks connections, no connectors yet) still offers the
+ * full catalog to browse, search, and add.
  */
 export function mergeServerRows(
   agentworks: AgentWorksServer[],
@@ -210,6 +213,9 @@ export function mergeServerRows(
   for (const connector of connectors) {
     const row = ensure(normalizeServerKey(connector.Provider), connector.Provider)
     row.gateway.push(connector)
+  }
+  for (const provider of providers) {
+    ensure(provider.Key, provider.Name)
   }
   for (const row of rows.values()) {
     row.catalogMatch = providers.find((p) => p.Key === row.key) ?? null
