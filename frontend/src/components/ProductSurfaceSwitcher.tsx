@@ -10,12 +10,10 @@ import { useProductSurfaceStore, type ProductSurface } from '../stores/useProduc
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
-import { preloadProductSurface } from '../products/productSurfacePreload'
 import { cn } from '../lib/utils'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
-  preloadOnIdle?: boolean
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -36,7 +34,7 @@ const products: Array<{
   { id: 'mcp-gateway', label: 'MCP Gateway', description: 'Governed MCP tools for every AI client', icon: GatewayMark },
 ]
 
-export function ProductSurfaceSwitcher({ className, preloadOnIdle = true }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProps) {
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
   const setProductSurface = useProductSurfaceStore((state) => state.setProductSurface)
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
@@ -79,41 +77,6 @@ export function ProductSurfaceSwitcher({ className, preloadOnIdle = true }: Prod
     }
   }, [open])
 
-  useEffect(() => {
-    if (!preloadOnIdle) return
-    // The auth bootstrap has already supplied this user's allowed products by
-    // the time the switcher mounts. Warm only those product modules after the
-    // first paint, one idle slot at a time, so the first switch avoids a chunk
-    // download without making the current product wait for every other one.
-    const candidates = visibleProducts.map(product => product.id).filter(id => id !== productSurface && id !== 'agentworks')
-    let cancelled = false
-    let cancelScheduled: (() => void) | null = null
-
-    const scheduleNext = () => {
-      if (cancelled || candidates.length === 0) return
-      const run = () => {
-        if (cancelled) return
-        const next = candidates.shift()!
-        const loading = preloadProductSurface(next)
-        if (loading) void loading.catch(() => {}).finally(scheduleNext)
-        else scheduleNext()
-      }
-      if (typeof window.requestIdleCallback === 'function') {
-        const handle = window.requestIdleCallback(run)
-        cancelScheduled = () => window.cancelIdleCallback(handle)
-      } else {
-        const handle = window.setTimeout(run, 200)
-        cancelScheduled = () => window.clearTimeout(handle)
-      }
-    }
-
-    scheduleNext()
-    return () => {
-      cancelled = true
-      cancelScheduled?.()
-    }
-  }, [visibleProducts, productSurface, preloadOnIdle])
-
   return (
     <div
       ref={menuRef}
@@ -143,8 +106,6 @@ export function ProductSurfaceSwitcher({ className, preloadOnIdle = true }: Prod
                 type="button"
                 role="menuitem"
                 aria-current={active ? 'page' : undefined}
-                onMouseEnter={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
-                onFocus={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
                 onClick={() => {
                   activateProduct(product.id)
                 }}

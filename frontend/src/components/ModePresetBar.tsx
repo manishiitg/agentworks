@@ -112,7 +112,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     savePreset,
     duplicatePreset,
     refreshPresets,
-    loading: presetsLoading
+    loading: presetsLoading,
+    workflowPresetsLoaded,
   } = usePresetManagement()
 
   const {
@@ -541,14 +542,15 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     }
   }, [duplicatePreset, duplicatingPreset, handlePresetClick, pendingDuplicatePreset])
 
-  // Refresh presets when switching to workflow mode
+  // An empty automation list is a valid loaded state. Checking its length here
+  // retriggers refresh after every empty response and blocks the UI thread.
   useEffect(() => {
-    if (selectedModeCategory === 'workflow' && workflowPresets.length === 0 && !presetsLoading) {
+    if (selectedModeCategory === 'workflow' && !workflowPresetsLoaded && !presetsLoading) {
       refreshPresets().catch(error => {
         console.error('[ModePresetBar] Failed to refresh presets:', error)
       })
     }
-  }, [selectedModeCategory, workflowPresets.length, presetsLoading, refreshPresets])
+  }, [selectedModeCategory, workflowPresetsLoaded, presetsLoading, refreshPresets])
 
   // Refresh presets when dropdown is opened for workflow mode
   const handlePresetDropdownToggle = useCallback(() => {

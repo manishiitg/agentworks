@@ -58,7 +58,7 @@ const FileSurfaceFallback = () => (
 const ProductSurfaceFallback = ({ label }: { label: string }) => (
   <div className="flex h-screen flex-col bg-background">
     <header className="flex items-center border-b border-border px-5 py-2.5">
-      <ProductSurfaceSwitcher preloadOnIdle={false} />
+      <ProductSurfaceSwitcher />
     </header>
     <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
