@@ -1550,6 +1550,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"record_pulse_goal_work",
 		"search_platform",
 		"ask_platform_crew",
+		"read_crew_calls",
 	}
 
 	var tools []string

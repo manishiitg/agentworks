@@ -74,8 +74,10 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		"search_platform":   func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulsePlatformReadOperations) },
 		"ask_platform_crew": func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulseCrewWorkOperations) },
 	}
-	categories := map[string]string{"search_platform": "workflow", "ask_platform_crew": "workflow"}
-	return []llmtypes.Tool{searchTool, crewTool}, executors, categories
+	crewCallsTool, crewCallsExecutor := createCrewCallsTool()
+	executors["read_crew_calls"] = crewCallsExecutor
+	categories := map[string]string{"search_platform": "workflow", "ask_platform_crew": "workflow", "read_crew_calls": "workflow"}
+	return []llmtypes.Tool{searchTool, crewTool, crewCallsTool}, executors, categories
 }
 
 func runPulsePlatformOperation(ctx context.Context, args map[string]interface{}, allowed map[string]bool) (string, error) {

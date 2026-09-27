@@ -9,8 +9,8 @@ import (
 // Goal Work's platform search is read-only; Crew work is its own tool.
 func TestPulsePlatformToolsKeepReadAndCrewWorkApart(t *testing.T) {
 	tools, executors, _ := createPulsePlatformTools()
-	if len(tools) != 2 {
-		t.Fatalf("want search_platform and ask_platform_crew, got %d tools", len(tools))
+	if len(tools) != 3 || executors["read_crew_calls"] == nil {
+		t.Fatalf("want search_platform, ask_platform_crew and read_crew_calls, got %d tools", len(tools))
 	}
 	search := executors["search_platform"].(func(context.Context, map[string]interface{}) (string, error))
 	for _, op := range []string{"ask_crew", "call_crew_function", "run_step", "write_file", "execute_step"} {

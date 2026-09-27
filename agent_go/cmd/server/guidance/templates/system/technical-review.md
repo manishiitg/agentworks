@@ -34,6 +34,16 @@ belong to Architecture unless they repair a concrete correctness failure.
 Plan-change compatibility belongs to Plan Drift. Business usefulness, goals and
 experiments belong to Strategic Review.
 
+When a Crew call fails, times out, or returns something wrong (a Crew step, or
+a function call from a step's agent), read what the Crew did before deciding:
+`read_crew_calls(operation="list")` finds this workflow's recent Crew calls, and
+`read_crew_calls(operation="read")` returns that call's own conversation with the
+Crew (read-only; never the Crew's main chat). If the cause is on this workflow's
+side (instruction, inputs, missing context, timeout, the wrong function or
+trigger), fix it here. If it is inside the Crew (its skills, memory, files or
+setup), do not edit the Crew: create a decision for the user that names the
+Crew, the call and the evidence, so the Crew's owner can change it.
+
 For a concrete missed fire, incorrect wait/skip/expiry transition, runaway run,
 or unsafe schedule configuration, load `references/schedules.md` before deciding
 or applying a repair. Read `list_schedules` plus targeted `get_schedule_runs` or
