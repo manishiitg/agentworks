@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -198,7 +199,11 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 
 	// Write manifest
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrInvalidWorkflowManifest) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), status)
 		return
 	}
 
@@ -556,7 +561,11 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 
 	// Write updated manifest
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrInvalidWorkflowManifest) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), status)
 		return
 	}
 	if req.FolderAccess != nil {

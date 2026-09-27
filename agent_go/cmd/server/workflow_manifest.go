@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +25,8 @@ import (
 
 // Current manifest schema version. This is the JSON shape version.
 const WorkflowManifestSchemaVersion = 1
+
+var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 
 // WorkflowContractCurrentVersion is the product-managed workflow behavior
 // contract version. Unlike schema_version, this gates agent-run workflow
@@ -1695,7 +1698,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	if err := ValidateManifest(m); err != nil {
-		return fmt.Errorf("manifest validation failed: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
 	}
 
 	data, err := json.MarshalIndent(m, "", "  ")
