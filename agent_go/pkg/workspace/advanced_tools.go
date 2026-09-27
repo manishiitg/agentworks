@@ -126,7 +126,7 @@ func diffPatchToolDef() llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "diff_patch_workspace_file",
-			Description: "Apply a unified diff patch to a workspace file and return the result. The filepath may be workspace-relative, an absolute path under the workspace docs root, or linked://<alias>/<relative-path> for an owner-approved read-write attached folder.",
+			Description: "Apply a patch to workspace files and return the result: a unified diff for one file, or a Codex/Cursor \"*** Begin Patch\" patch for one or several files (all files are checked first and written together, or none). The filepath may be workspace-relative, an absolute path under the workspace docs root, or linked://<alias>/<relative-path> for an owner-approved read-write attached folder (attached-folder files one per call).",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
