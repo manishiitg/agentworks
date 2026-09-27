@@ -32,10 +32,15 @@ structured signal instead.
 | AGY | conversation SQLite (`~/.gemini/antigravity-cli/conversations/<id>.db`) | matching type-14 user step after the pre-submit index | a status-3 type-15 assistant step with text at the end of the turn's trail, stable for 2 s, with the composer ready | type-15 field 20.1 text after that user step |
 
 AGY 1.2.12 has no distinct run-terminal row in the observed conversation
-record. Its SQLite trail is the primary intake and answer proof; tmux composer
-readiness remains a secondary completion guard so narration before a tool does
-not end the turn. A trailing tool step keeps the turn open. This contract is
-covered by the persistent MCP bridge live test with a 25-second tool.
+record. Its SQLite trail is the primary intake and answer proof for normal
+and retained turns; tmux composer readiness remains a secondary completion
+guard so narration before a tool does not end the turn. A trailing tool step
+keeps the turn open. Retained progress also reads new assistant SQLite steps
+with a cursor, without replaying old text. This contract is covered by the
+persistent MCP bridge live test with a 25-second tool.
+For live input, the server's second receipt comes from a new exact-match user
+step after the pre-send SQLite index; repeated identical sends need distinct
+rows. `TestAgyCLIRealDurableAckContract` passed on two retained turns.
 
 ## Messages sent during a running turn (steering)
 

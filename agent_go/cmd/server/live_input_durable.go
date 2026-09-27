@@ -108,6 +108,9 @@ var durableAckAwaiters = map[llmproviders.Provider]func(ctx context.Context, ses
 	llmproviders.ProviderMuseCLI: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
 		return llm.AwaitMuseInputDurable(ctx, sessionID, message, 0)
 	},
+	llmproviders.ProviderAgyCLI: func(ctx context.Context, sessionID, message string) (llmtypes.DurableAck, error) {
+		return llm.AwaitAgyInputDurable(ctx, sessionID, message, 0)
+	},
 }
 
 // awaitLiveInputDurable dispatches to the provider's durable-ack entry

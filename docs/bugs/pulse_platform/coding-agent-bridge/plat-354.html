@@ -474,8 +474,11 @@ answer from type-15 field 20.1 after that step. The turn waits for a stable,
 completed assistant step at the end of the SQLite trail. AGY 1.2.12 has no
 separate observed run-terminal row, so tmux composer readiness remains a
 secondary completion guard as well as the keystroke and blocker surface.
-The retained-session and 25-second MCP tool live tests pass with this gate;
-the full application P0 runner is still pending.</p>
+Retained-turn final text and progress also come from SQLite rather than pane
+scraping. The retained-session and 25-second MCP tool live tests pass with
+this gate;
+the live-input durable receipt also passed twice with an identical message.
+The full application P0 runner is still pending.</p>
 <ul>
 <li><strong>Unattended runs auto-answer questions.</strong> Persistent Muse
   enabled user choice, and schedules keep the native session alive, so a

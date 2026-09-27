@@ -183,7 +183,7 @@ func TestWatchLiveInputDurableSkipsProvidersWithoutFlag(t *testing.T) {
 	}
 
 	// Unknown providers have no durable-ack contract: no watch, no event.
-	// (All five coding CLIs now carry SupportsDurableAck.)
+	// (All six coding CLIs now carry SupportsDurableAck.)
 	api.watchLiveInputDurable("durable-watch-skipped", "unknown-provider", "steer-message-2", "steer into the turn")
 	time.Sleep(200 * time.Millisecond)
 	if called {
