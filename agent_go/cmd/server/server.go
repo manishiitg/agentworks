@@ -9325,6 +9325,11 @@ func (api *StreamingAPI) handleDismissSession(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Session ID is required", http.StatusBadRequest)
 		return
 	}
+	// Only someone who may see the session can dismiss it (PLAT-362 D5).
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, "Session not found or access denied", http.StatusNotFound)
+		return
+	}
 
 	api.activeSessionsMux.Lock()
 	if session, exists := api.activeSessions[sessionID]; exists {

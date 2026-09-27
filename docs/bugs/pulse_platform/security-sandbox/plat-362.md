@@ -150,24 +150,35 @@ Agent tool calls reach the server through the executor routes `/tools/...` and
   change, in the adapter's own test).
 
 **Follow-ups from the review (not deploy blockers)**
-- [ ] **D1.** The Landlock shell has read-write `/tmp`. Other sessions' bridge
+- [ ] **D1 (on hold by the user's choice, 2026-09-27).** The Landlock shell has read-write `/tmp`. Other sessions' bridge
   configs there hold their tokens (Claude structured MCP configs, Pi/Muse
   bridge configs), and the tmux socket `/tmp/tmux-<uid>/default` lets a shell
   capture or type into other users' CLIs.
   Fix: a private `TMPDIR` per shell, bridge configs in per-session 0700
   directories outside grants, tmux on a dedicated `-S` socket, and Landlock
   socket scoping on ABI ≥ 6.
-- [ ] **D5.** Session routes without owner checks:
-  - `POST /api/sessions/{id}/dismiss`;
-  - `/api/sessions/{id}/reconnect`;
-  - `GET /api/browser/sessions`, which lists every user's browser sessions and
-    so their session IDs.
-- [ ] **D2.** Cursor writes `.cursor/mcp.json` with the session token into the
-  agent's workspace folder, where readers, co-owners and backups can see it.
-- [ ] **D3.** The MCP scope uses the global `mcpClients`/`mcpcache` fallback for
-  non-workshop sessions.
+- [x] **D5 (builder, this commit).** Dismiss and reconnect now require
+  `canAccessTerminalSession`: the owner, an admin for ownerless sessions, or a
+  workflow writer for bot sessions. `GET /api/browser/sessions` lists only the
+  caller's own sessions' browsers; admins still see all.
+- [x] **D2 (multi-llm `c46a5df`, mcpagent `b0cdf7b`).** Cursor's
+  `.cursor/mcp.json` no longer holds the token.
+  - Each bridge token goes to a private 0600 file in the user's cache
+    directory, and the config names it with `MCP_API_TOKEN_FILE`, which
+    `mcpbridge` reads.
+  - The structured path deletes the file after the call; the tmux path keeps
+    it for the session.
+  - Not live-tested: Cursor is not logged in on the test machine.
+- [x] **D3 (mcpagent `b0cdf7b`).** The global MCP clients belong to whichever
+  agent registered last, with that user's credentials. A session call with no
+  connection of its own no longer falls back to them; it uses its own session
+  connection or the shared-config cache.
+  - Availability is unchanged: the scope check still passes exactly when the
+    old code would have found a global client.
+  - Only the credential source changes: shared config, never another agent's.
 - [ ] **D4.** `canUseSessionIDForQuery` lets a user pre-claim predictable
-  untracked session IDs (`wfask-<sha>`, `work:project:<id>`, ...).
+  untracked session IDs (`wfask-<sha>`, `work:project:<id>`, ...). Not a small
+  fix: it needs each feature's ID scheme and who it belongs to.
 - [ ] **D6.** Tokens never expire or get revoked for a pinned secret. A random
   secret per start acts as the epoch today. Consider an epoch, refusing tokens
   of stopped sessions, and redacting `mcps1.` in tool output and transcripts.

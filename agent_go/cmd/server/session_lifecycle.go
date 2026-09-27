@@ -518,6 +518,33 @@ func (api *StreamingAPI) handleGetBrowserSessions(w http.ResponseWriter, r *http
 	tracker := browser.GetSessionTracker()
 	sessions := tracker.ActiveSessions()
 	cdpOwners := browser.ActiveCDPOwnersSnapshot()
+	// Admins see every browser; everyone else sees only browsers of sessions
+	// they may access, so the list does not hand out other users' session IDs
+	// (PLAT-362 D5).
+	if !userAccessForClaims(GetUserFromContext(r.Context())).Admin {
+		visible := func(ids ...string) bool {
+			for _, id := range ids {
+				if strings.TrimSpace(id) != "" && api.canAccessTerminalSession(r, id) {
+					return true
+				}
+			}
+			return false
+		}
+		ownSessions := sessions[:0:0]
+		for _, s := range sessions {
+			if visible(s["workflow_session"], s["agent_session"]) {
+				ownSessions = append(ownSessions, s)
+			}
+		}
+		sessions = ownSessions
+		ownOwners := cdpOwners[:0:0]
+		for _, o := range cdpOwners {
+			if visible(o["owner"]) {
+				ownOwners = append(ownOwners, o)
+			}
+		}
+		cdpOwners = ownOwners
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"sessions":   sessions,
