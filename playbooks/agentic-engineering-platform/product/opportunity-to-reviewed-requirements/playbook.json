@@ -1,0 +1,173 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "opportunity-to-reviewed-requirements",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Move a bounded customer problem through accepted priority into reviewable product requirements without silently opening delivery work."
+    }
+  ],
+  "title": "Opportunity to Reviewed Requirements",
+  "description": "Move a bounded customer problem through accepted priority into reviewable product requirements without silently opening delivery work.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Product"
+  ],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Opportunity to Reviewed Requirements as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One product, customer segment, opportunity and strategy horizon; preserve participant privacy and the current roadmap revision.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Use authorized research, current opportunity and roadmap records, an approved strategy goal, and current design or behavior evidence.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "Discovery is evidence, Product priority needs explicit owner acceptance, and requirements stay a draft until Product, Design and Engineering review.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Customer source records or export",
+      "type": "mcp",
+      "purpose": "Read the exact first-stage source and revision",
+      "capability": "source_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Customer downstream records or export",
+      "type": "mcp",
+      "purpose": "Independently verify downstream state and owner",
+      "capability": "downstream_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Opportunity to Reviewed Requirements",
+      "focus_areas": [
+        "Produce a sourced opportunity, an owner-accepted priority decision, and testable requirements with open questions and no automatic issue write.",
+        "Discovery is evidence, Product priority needs explicit owner acceptance, and requirements stay a draft until Product, Design and Engineering review."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "product-opportunity-brief/v1",
+    "product-priority-decision/v1",
+    "product-requirements-brief/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "discovery",
+      "agent_playbook_id": "product-discovery-researcher",
+      "required": true,
+      "output": "product-opportunity-brief/v1"
+    },
+    {
+      "id": "priority",
+      "agent_playbook_id": "roadmap-prioritization-analyst",
+      "required": true,
+      "output": "product-priority-decision/v1"
+    },
+    {
+      "id": "requirements",
+      "agent_playbook_id": "product-requirements-coordinator",
+      "required": true,
+      "output": "product-requirements-brief/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "discovery-to-priority",
+      "from": "discovery",
+      "to": "priority",
+      "artifact_type": "product-opportunity-brief/v1",
+      "required": true
+    },
+    {
+      "id": "priority-to-requirements",
+      "from": "priority",
+      "to": "requirements",
+      "artifact_type": "product-priority-decision/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

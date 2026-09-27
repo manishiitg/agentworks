@@ -60,15 +60,21 @@ AgentWorks
     ├── Customer Success
     │   └── New Customer to First Value
     ├── Customer Support
-    │   └── Support Case to Reviewed Resolution
+    │   ├── Support Case to Reviewed Resolution
+    │   └── Case Pattern to Knowledge Review
     ├── Product
-    │   └── Feedback Theme to Product Decision
+    │   ├── Feedback Theme to Product Decision
+    │   ├── Released Feature to Adoption Decision
+    │   ├── Opportunity to Reviewed Requirements
+    │   └── Approved Requirement to Release Readiness
     ├── Operations
     │   ├── Meeting Decision to Owned Follow-through
     │   ├── Vendor Evaluation to Purchase Decision
     │   └── Order Exception to Reviewed Update
     ├── GTM
-    │   └── Launch to Qualified Pipeline
+    │   ├── Launch to Qualified Pipeline
+    │   ├── Offer to Seller Readiness
+    │   └── Launch Signal to Pipeline Review
     └── Shopify
         ├── Order Exception to Resolution
         ├── Storefront Opportunity to Verified Change
@@ -90,9 +96,9 @@ The [Crew and use-case catalog](../docs/design/crew_template_catalog.md) treats 
 | Finance | Finance Operations Review; Invoice Intake to Reviewed Payable; Refund Request to Reconciled Outcome; Subscription Receivable to Verified Outcome | Four core Finance roles, Tax Export, and four billing capability packs are locally installable. The packs can share one Billing Operations Coordinator Crew; each has independent chat setup. Invoice intake reuses Operations Document Intake Assistant. Refund and receivable routes bind exact money objects and keep customer contact, provider collection and ledger actions separately reviewed. |
 | Sales | Inbound Lead-to-Meeting Review; Discovery to Reviewed Proposal; Pipeline Health to Owned Action; Trial Account to Reviewed Sales Assist | Seven Sales Crew templates are locally installable. The proposal route requires reviewed discovery and current pricing. The pipeline route pairs comparable-snapshot analysis with a fresh seller next-step decision. |
 | Engineering | Incident to Verified Recovery; Post-Incident Review and Actions; Engineering Operations Intelligence, Reliability Operations, Performance Engineering, FinOps. QA specialty: Release Candidate to Reviewed Gate and Browser QA suite. Security specialty: Finding to Verified Remediation, Access Exception to Verified Fix, and Application Security Assessment and Remediation. | Thirteen Engineering Crew roles are locally installable with pending setup: seven core, three QA, and three Security. QA has one multi-Crew Automation Playbook and Security has two; existing method guides retain their `browser-qa/` and `security-engineering/` package paths. FinOps reuses Finance Analyst. |
-| GTM | Website Growth Loop and Inbound Lead-to-Meeting Review cover separate parts of the journey; Growth Analytics is adjacent | Five GTM Crews are locally installable with pending setup. Launch to Qualified Pipeline currently composes Strategy and Launch with reused Sales Crews; Revenue Operations, Sales Enablement and Pricing & Packaging are independent capabilities with typed handoffs, not extra Playbook slots. |
-| Customer Support | Support Case to Reviewed Resolution; Feedback Theme to Product Decision crosses into Product | Five Support Crews are locally installable with pending setup. Triage and Reply form the required support-case route; Escalation is optional. Feedback & Review Analyst feeds Product, while Support Knowledge Curator prepares reviewed help content. |
-| Product | Feedback Theme to Product Decision; Released Feature to Adoption Decision | Five Product Crews are locally installable with pending setup for discovery, decision, priority, requirements and release readiness. The two packaged routes still use Product Feedback Coordinator; other roles have source-specific setup and handoffs, not new installed Automations. |
+| GTM | Launch to Qualified Pipeline; Offer to Seller Readiness; Launch Signal to Pipeline Review | Five GTM Crews and three multi-Crew Automation proposals are locally installable with pending setup. The routes cover launch, priced offer to seller guidance, and observed campaign to reconciled pipeline. |
+| Customer Support | Support Case to Reviewed Resolution; Case Pattern to Knowledge Review; Feedback Theme to Product Decision crosses into Product | Five Support Crews and two multi-Crew Automation proposals are locally installable with pending setup. The knowledge route stops at an unpublished, owner-reviewed article draft. |
+| Product | Feedback Theme to Product Decision; Released Feature to Adoption Decision; Opportunity to Reviewed Requirements; Approved Requirement to Release Readiness | Five Product Crews and four multi-Crew Automation proposals are locally installable with pending setup for feedback, discovery, priority, requirements, release readiness and adoption review. |
 | Operations | Meeting Decision to Owned Follow-through; Vendor Evaluation to Purchase Decision; Order Exception to Reviewed Update; Invoice Intake to Reviewed Payable crosses into Finance | Six Operations Crews are locally installable with pending setup. The order route joins Order Operations Coordinator to Support Reply Drafter for one exact case, with no send or false delivery claim. Vendor Researcher and Spend & Payables Coordinator form a purchase-decision route with current quote and procurement gates. Document Intake also supports the invoice route. |
 | Shopify | Order Exception to Resolution; Storefront Opportunity to Verified Change; Inventory Availability to Owner Action; Payment Exception to Order Decision; Product Launch Readiness to Go/No-Go; Checkout Signal to Reviewed Recovery; Inventory Risk to Reviewed Replenishment | Seven Shopify Crews and seven multi-Crew Automation Playbooks are locally installable with pending setup. Generic Website Growth Crews can support public-storefront work without store access. |
 
@@ -120,12 +126,15 @@ The [Crew and use-case catalog](../docs/design/crew_template_catalog.md) treats 
 | Playbook | Outcome |
 | --- | --- |
 | [Launch to Qualified Pipeline](agentic-engineering-platform/gtm/launch-to-qualified-pipeline/SKILL.md) | Propose a GTM Strategy Analyst → Launch Coordinator → Lead Intake & Qualifier → Sales Follow-up Coordinator route, validate launch and source joins, reuse the Sales qualification contract, and verify actual delivery and meeting outcomes separately. |
+| [Offer to Seller Readiness](agentic-engineering-platform/gtm/offer-to-seller-readiness/SKILL.md) | Join a pricing-owner accepted plan and entitlement revision to an unpublished seller brief with current claims and price. |
+| [Launch Signal to Pipeline Review](agentic-engineering-platform/gtm/launch-signal-to-pipeline-review/SKILL.md) | Join observed campaign events to deduplicated CRM stages; report unmatched records and partial attribution without claiming revenue lift. |
 
 ### Customer Support Automation
 
 | Playbook | Outcome |
 | --- | --- |
 | [Support Case to Reviewed Resolution](agentic-engineering-platform/customer-support/support-case-to-reviewed-resolution/SKILL.md) | Propose Support Triage Assistant → Support Reply Drafter with optional Escalation Coordinator; validate exact case and thread handoffs, approve contact separately, and distinguish provider delivery from observed case resolution. |
+| [Case Pattern to Knowledge Review](agentic-engineering-platform/customer-support/case-pattern-to-knowledge-review/SKILL.md) | Turn distinct reviewed cases into a privacy-safe help article draft; publication and measured deflection remain separate later evidence. |
 
 ### Product Automation
 
@@ -133,6 +142,8 @@ The [Crew and use-case catalog](../docs/design/crew_template_catalog.md) treats 
 | --- | --- |
 | [Feedback Theme to Product Decision](agentic-engineering-platform/product/feedback-theme-to-product-decision/SKILL.md) | Propose Feedback & Review Analyst → Product Feedback Coordinator; validate the bounded theme and source coverage, inspect current issues, and prepare a product owner decision. Issue changes and customer promises require separate approval and receipts. |
 | [Released Feature to Adoption Decision](agentic-engineering-platform/product/released-feature-to-adoption-decision/SKILL.md) | Propose Product Adoption Analyst → Product Feedback Coordinator for one shipped feature; validate release/flag, eligible versus exposed and using accounts, coverage and comparable windows before a separate owner decision. |
+| [Opportunity to Reviewed Requirements](agentic-engineering-platform/product/opportunity-to-reviewed-requirements/SKILL.md) | Move bounded discovery evidence through an accepted priority into testable draft requirements with no automatic delivery write. |
+| [Approved Requirement to Release Readiness](agentic-engineering-platform/product/approved-requirement-to-release-readiness/SKILL.md) | Join an approved requirement to exact-build QA, help content and measurement readiness for a Product go/no-go review. |
 
 ### Operations Automation
 
@@ -302,7 +313,7 @@ Save application-specific verified locators and test setup in the knowledgebase 
 ## Authoring checks
 
 - Run `python3 playbooks/scripts/validate_playbooks.py` from the repository root.
-- This runs all 36 package-local contract suites; every multi-Crew Automation Playbook now has one.
+- This runs all 45 package-local contract suites plus five library suites; every multi-Crew Automation Playbook now has one.
 - Validate every skill's frontmatter and supporting links.
 - Parse `playbook.json` and confirm entrypoint/example paths exist.
 - Use each reference's behavioral cases when testing the builder on an authorized fixture application.

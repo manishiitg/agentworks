@@ -803,6 +803,54 @@ func TestCustomerSupportPlaybookInstallationCopiesContractAndPendingSetup(t *tes
 	}
 }
 
+func TestCategoryRoutePlaybooksInstallSelfContainedContracts(t *testing.T) {
+	for _, id := range []string{
+		"opportunity-to-reviewed-requirements",
+		"approved-requirement-to-release-readiness",
+		"offer-to-seller-readiness",
+		"launch-signal-to-pipeline-review",
+		"case-pattern-to-knowledge-review",
+	} {
+		t.Run(id, func(t *testing.T) {
+			item, err := findPlaybook(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(item.AgentSlots) < 2 || len(item.Handoffs) < 1 || len(item.SetupChecks) != 10 {
+				t.Fatalf("incomplete Crew route contract: %+v", item)
+			}
+			mock := &mockWorkspaceAPI{files: map[string]string{}}
+			ws := httptest.NewServer(mock)
+			defer ws.Close()
+			t.Setenv("WORKSPACE_API_URL", ws.URL)
+			const workspace = "Workflow/category-route"
+			skill := "agentworks-playbook-" + id
+			if _, err := installPlaybookSkill(context.Background(), workspace, skill, item); err != nil {
+				t.Fatal(err)
+			}
+			base := workspace + "/skills/" + skill + "/"
+			for _, relative := range []string{"SKILL.md", "SETUP.json", "playbook.json", "references/team-and-handoffs.md", "scripts/validate_handoff.py", "scripts/category_route_contract.py"} {
+				if mock.files[base+relative] == "" {
+					t.Fatalf("installation lacks %s", relative)
+				}
+			}
+			var setup struct {
+				PlaybookID string   `json:"playbook_id"`
+				Completed  []string `json:"completed_steps"`
+				Checks     []struct {
+					ID string `json:"id"`
+				} `json:"checks"`
+			}
+			if err := json.Unmarshal([]byte(mock.files[base+"SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			if setup.PlaybookID != id || len(setup.Completed) != 0 || len(setup.Checks) != 10 {
+				t.Fatalf("setup must start pending with ten checks: %+v", setup)
+			}
+		})
+	}
+}
+
 func TestQAPlaybookInstallationCopiesContractAndPendingSetup(t *testing.T) {
 	item, err := findPlaybook("release-candidate-to-reviewed-gate")
 	if err != nil {

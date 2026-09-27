@@ -112,6 +112,12 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
     { id: 'triage-to-escalation', from: 'triage', to: 'escalation', artifact_type: 'support-case-triage/v1', required: false },
     { id: 'escalation-to-reply', from: 'escalation', to: 'reply', artifact_type: 'support-escalation-brief/v1', required: false },
   ], setupChecks: ['goal_owner', 'case_scope', 'priority_policy', 'contact_knowledge', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'case-pattern-to-knowledge-review', title: 'Case Pattern to Knowledge Review', description: 'Turn a verified repeated support question into a privacy-safe, owner-reviewed help article draft without claiming publication or deflection.', version: '0.1.0', category: 'Customer Support', order: 2, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'triage', agent_playbook_id: 'support-triage-assistant', required: true, output: 'support-case-pattern/v1' },
+    { id: 'knowledge', agent_playbook_id: 'support-knowledge-curator', required: true, output: 'support-knowledge-update/v1' },
+  ], handoffs: [
+    { id: 'triage-to-knowledge', from: 'triage', to: 'knowledge', artifact_type: 'support-case-pattern/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: 'order-exception-to-resolution', title: 'Order Exception to Resolution', description: 'Connect an order or fulfillment problem to a return or refund request, then prepare an approved action and verify the resulting store and customer state.', version: '0.1.1', category: 'Shopify', order: 1, inputCount: 5, toolCount: 5, teamScope: 'small_team', agentSlots: [
     { id: 'store_operations', agent_playbook_id: 'store-operations-coordinator', required: true, output: 'store-order-exception/v1' },
     { id: 'returns_refunds', agent_playbook_id: 'returns-refunds-coordinator', required: true, output: 'return-resolution-review/v1' },
@@ -171,6 +177,18 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
     { id: 'launch-to-qualification', from: 'launch', to: 'qualification', artifact_type: 'launch-signal-register/v1', required: true },
     { id: 'qualification-to-followup', from: 'qualification', to: 'followup', artifact_type: 'lead-qualification-brief/v1', required: true },
   ], setupChecks: ['goal_owner', 'offer_claims', 'launch_scope', 'metric_policy', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'offer-to-seller-readiness', title: 'Offer to Seller Readiness', description: 'Join an owner-accepted priced SaaS offer to current, approved seller guidance without making unsupported claims or sending outreach.', version: '0.1.0', category: 'GTM', order: 2, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'pricing', agent_playbook_id: 'pricing-packaging-analyst', required: true, output: 'gtm-offer-decision/v1' },
+    { id: 'enablement', agent_playbook_id: 'sales-enablement-coordinator', required: true, output: 'gtm-enablement-brief/v1' },
+  ], handoffs: [
+    { id: 'pricing-to-enablement', from: 'pricing', to: 'enablement', artifact_type: 'gtm-offer-decision/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'launch-signal-to-pipeline-review', title: 'Launch Signal to Pipeline Review', description: 'Reconcile an observed launch campaign with deduplicated form, lead and opportunity records under one attribution policy.', version: '0.1.0', category: 'GTM', order: 3, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'launch', agent_playbook_id: 'launch-coordinator', required: true, output: 'launch-signal-register/v1' },
+    { id: 'revenue', agent_playbook_id: 'revenue-operations-analyst', required: true, output: 'gtm-funnel-reconciliation/v1' },
+  ], handoffs: [
+    { id: 'launch-to-revenue', from: 'launch', to: 'revenue', artifact_type: 'launch-signal-register/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: "basic-browser-setup", title: "Basic Browser Setup", description: "Configure browser access and Playwright, save verified locators, capture video plus console/network evidence, and establish reporting.", version: "0.9.0", changelog: [{"version":"0.9.0","summary":"Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},{"version":"0.8.0","summary":"Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},{"version":"0.7.0","summary":"Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}], category: "Browser QA", order: 1, inputCount: 7, toolCount: 4, teamScope: "small_team" },
   { id: "authentication-session-validation", title: "Authentication and Session Validation", description: "Validate login, logout, MFA, recovery, expiry, refresh, and invalid-session behavior with durable evidence.", version: "0.4.0", changelog: [{"version":"0.4.0","summary":"Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},{"version":"0.3.0","summary":"Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},{"version":"0.2.0","summary":"Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}], category: "Browser QA", order: 2, inputCount: 6, toolCount: 3, teamScope: "small_team" },
   { id: "role-permission-validation", title: "Role and Permission Validation", description: "Validate page, action, and data permissions across roles, ownership states, and tenant boundaries.", version: "0.4.0", changelog: [{"version":"0.4.0","summary":"Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},{"version":"0.3.0","summary":"Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},{"version":"0.2.0","summary":"Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}], category: "Browser QA", order: 3, inputCount: 5, toolCount: 3, teamScope: "small_team" },
@@ -329,6 +347,20 @@ export const PLAYBOOK_CATALOG: readonly PlaybookCatalogItem[] = [
   ], handoffs: [
     { id: 'adoption-to-product', from: 'adoption', to: 'product', artifact_type: 'feature-adoption-observation/v1', required: true },
   ], setupChecks: ['goal_owner', 'release_scope', 'measurement_rule', 'target_sample', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'opportunity-to-reviewed-requirements', title: 'Opportunity to Reviewed Requirements', description: 'Move a bounded customer problem through accepted priority into reviewable product requirements without silently opening delivery work.', version: '0.1.0', category: 'Product', order: 3, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'discovery', agent_playbook_id: 'product-discovery-researcher', required: true, output: 'product-opportunity-brief/v1' },
+    { id: 'priority', agent_playbook_id: 'roadmap-prioritization-analyst', required: true, output: 'product-priority-decision/v1' },
+    { id: 'requirements', agent_playbook_id: 'product-requirements-coordinator', required: true, output: 'product-requirements-brief/v1' },
+  ], handoffs: [
+    { id: 'discovery-to-priority', from: 'discovery', to: 'priority', artifact_type: 'product-opportunity-brief/v1', required: true },
+    { id: 'priority-to-requirements', from: 'priority', to: 'requirements', artifact_type: 'product-priority-decision/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
+  { id: 'approved-requirement-to-release-readiness', title: 'Approved Requirement to Release Readiness', description: 'Join approved product requirements to exact-build QA, support content and measurement evidence for a Product release decision.', version: '0.1.0', category: 'Product', order: 4, inputCount: 6, toolCount: 5, teamScope: 'small_team', agentSlots: [
+    { id: 'requirements', agent_playbook_id: 'product-requirements-coordinator', required: true, output: 'product-requirements-brief/v1' },
+    { id: 'release', agent_playbook_id: 'product-release-coordinator', required: true, output: 'product-release-readiness/v1' },
+  ], handoffs: [
+    { id: 'requirements-to-release', from: 'requirements', to: 'release', artifact_type: 'product-requirements-brief/v1', required: true },
+  ], setupChecks: ['goal_owner', 'subject_scope', 'source_policy', 'decision_rule', 'team_bindings', 'source_access', 'handoff_contract', 'plan_review', 'test_run', 'activation_choice'] },
   { id: 'website-growth-loop', title: 'Website Growth Loop', description: 'Coordinate a growth strategist and buyer-question specialist to find relevant website traffic opportunities, then track approved changes and measurement.', version: '0.5.0', category: 'Website Growth', order: 1, inputCount: 6, toolCount: 4, teamScope: 'small_team', agentSlots: [
     { id: 'strategist', agent_playbook_id: 'website-growth-starter', required: true, output: 'growth-priority-brief/v1' },
     { id: 'search', agent_playbook_id: 'search-opportunity-mapper', required: true, output: 'search-opportunity-list/v1' },

@@ -1,0 +1,27 @@
+{
+  "artifact_type": "product-requirements-brief/v1",
+  "artifact_id": "opportunity-to-reviewed-requirements-requirements-1",
+  "producer_id": "product-requirements-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "opp-8",
+  "product_id": "product-7",
+  "opportunity_id": "opp-8",
+  "source_revision": "requirements-rev-1",
+  "observed_at": "2026-09-27T12:00:00Z",
+  "source_refs": [
+    "requirements-source-1",
+    "requirements-source-2"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "acceptance_criteria": [
+    "Admin sees selected invite permission before confirmation",
+    "Revoked role blocks submission"
+  ],
+  "delivery_write_state": "none",
+  "open_questions": [
+    "guest role policy"
+  ],
+  "input_artifact_id": "opportunity-to-reviewed-requirements-priority-1",
+  "input_revision": "priority-rev-1"
+}

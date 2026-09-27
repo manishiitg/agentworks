@@ -1,0 +1,32 @@
+{
+  "artifact_type": "gtm-funnel-reconciliation/v1",
+  "artifact_id": "launch-signal-to-pipeline-review-revenue-1",
+  "producer_id": "revenue-operations-analyst",
+  "tenant_id": "tenant-1",
+  "subject_id": "cmp-17",
+  "offer_id": "offer-v2",
+  "launch_id": "launch-24",
+  "campaign_id": "cmp-17",
+  "source_revision": "revenue-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "revenue-source-1",
+    "revenue-source-2"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "counts": {
+    "submitted": 3,
+    "unique": 2,
+    "matched": 1,
+    "accepted": 0,
+    "opportunities": 0
+  },
+  "attribution_state": "partial",
+  "unmatched_event_ids": [
+    "event-93"
+  ],
+  "model_revision": "first-touch-v2",
+  "input_artifact_id": "launch-signal-to-pipeline-review-launch-1",
+  "input_revision": "launch-rev-1"
+}

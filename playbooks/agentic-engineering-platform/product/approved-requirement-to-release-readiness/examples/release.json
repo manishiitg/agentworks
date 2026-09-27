@@ -1,0 +1,28 @@
+{
+  "artifact_type": "product-release-readiness/v1",
+  "artifact_id": "approved-requirement-to-release-readiness-release-1",
+  "producer_id": "product-release-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "req-31",
+  "product_id": "product-7",
+  "requirement_id": "req-31",
+  "source_revision": "release-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "release-source-1",
+    "release-source-2"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "decision": "no_go",
+  "blockers": [
+    "kb-18 lacks guest role guidance"
+  ],
+  "build_id": "build-r7",
+  "flag_revision": "f7-r2",
+  "qa_gate_state": "pass",
+  "qa_gate_ref": "gate-44",
+  "release_state": "not_released",
+  "input_artifact_id": "approved-requirement-to-release-readiness-requirements-1",
+  "input_revision": "requirements-rev-1"
+}

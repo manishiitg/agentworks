@@ -1,0 +1,22 @@
+{
+  "artifact_type": "product-priority-decision/v1",
+  "artifact_id": "opportunity-to-reviewed-requirements-priority-1",
+  "producer_id": "roadmap-prioritization-analyst",
+  "tenant_id": "tenant-1",
+  "subject_id": "opp-8",
+  "product_id": "product-7",
+  "opportunity_id": "opp-8",
+  "source_revision": "priority-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "priority-source-1",
+    "priority-source-2"
+  ],
+  "state": "accepted",
+  "action_state": "none",
+  "approval_ref": "product-owner-31",
+  "strategy_goal_ref": "goal-onboarding-v2",
+  "capacity_note": "one squad; effort unknown",
+  "input_artifact_id": "opportunity-to-reviewed-requirements-discovery-1",
+  "input_revision": "discovery-rev-1"
+}

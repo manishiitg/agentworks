@@ -1,0 +1,26 @@
+{
+  "artifact_type": "launch-signal-register/v1",
+  "artifact_id": "launch-signal-to-pipeline-review-launch-1",
+  "producer_id": "launch-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "cmp-17",
+  "offer_id": "offer-v2",
+  "launch_id": "launch-24",
+  "campaign_id": "cmp-17",
+  "source_revision": "launch-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "launch-source-1",
+    "launch-source-2"
+  ],
+  "state": "observed",
+  "action_state": "none",
+  "provider_receipt": "provider-cmp-17",
+  "event_ids": [
+    "event-91",
+    "event-93"
+  ],
+  "duplicate_event_ids": [
+    "event-92"
+  ]
+}

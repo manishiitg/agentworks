@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "case-pattern-to-knowledge-review",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Goal Owner",
+      "instructions": "Agree on the customer outcome and source, decision and action owners. Produce a reviewed case pattern and an unpublished knowledge-gap brief with article draft and next verification."
+    },
+    {
+      "id": "subject_scope",
+      "title": "Subject Scope",
+      "instructions": "Bind exact tenant and subject IDs. One product question across exact cases, current help article revision, locale and support owner."
+    },
+    {
+      "id": "source_policy",
+      "title": "Source Policy",
+      "instructions": "Agree on data access, version and source-of-truth policy. Read current case threads, priority policy, approved product instructions, current article and privacy or quotation rules."
+    },
+    {
+      "id": "decision_rule",
+      "title": "Decision Rule",
+      "instructions": "Record the blocking decision rule and evidence gaps. Case similarity needs distinct IDs and current article comparison; a draft or approval is not publication or measured deflection."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Team Bindings",
+      "instructions": "Inspect the named Crew templates and existing compatible Crews. Record exact Crew IDs, skill versions and grants; propose creation only for a missing owner or access boundary."
+    },
+    {
+      "id": "source_access",
+      "title": "Source Access",
+      "instructions": "Read at least one real authorized first-stage record and the current downstream source. Record source IDs, observed times, permissions, missing fields and owner."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Handoff Contract",
+      "instructions": "Run scripts/validate_handoff.py on each stage artifact. Block wrong tenant, subject, source revision, producer, approval or route-specific claim. The typed sequence is support-case-pattern/v1 → support-knowledge-update/v1."
+    },
+    {
+      "id": "plan_review",
+      "title": "Plan Review",
+      "instructions": "Show the concrete Crew bindings, artifact paths, validator steps, manual route, approvals, deduplication, cost and notifications. No case closure, customer reply, knowledge publication or deflection claim follows from the Playbook selection."
+    },
+    {
+      "id": "test_run",
+      "title": "Test Run",
+      "instructions": "Review two real cases, one excluded counterexample and a current article with a Support knowledge owner. Save real source references, artifacts, validation and owner corrections. Fictional examples cannot complete this check."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Activation Choice",
+      "instructions": "Manual-only is valid. Any event or schedule needs exact subject and deduplication keys, permissions, retry limits, cost and notification review. Keep all consequential actions behind separate approval and provider receipts."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

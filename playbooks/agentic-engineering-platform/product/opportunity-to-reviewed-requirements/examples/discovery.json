@@ -1,0 +1,19 @@
+{
+  "artifact_type": "product-opportunity-brief/v1",
+  "artifact_id": "opportunity-to-reviewed-requirements-discovery-1",
+  "producer_id": "product-discovery-researcher",
+  "tenant_id": "tenant-1",
+  "subject_id": "opp-8",
+  "product_id": "product-7",
+  "opportunity_id": "opp-8",
+  "source_revision": "discovery-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "discovery-source-1",
+    "discovery-source-2"
+  ],
+  "state": "reviewed",
+  "action_state": "none",
+  "counterexample_ref": "interview-9",
+  "sample_note": "two interviews; prevalence unknown"
+}

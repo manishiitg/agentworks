@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "approved-requirement-to-release-readiness",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Join approved product requirements to exact-build QA, support content and measurement evidence for a Product release decision."
+    }
+  ],
+  "title": "Approved Requirement to Release Readiness",
+  "description": "Join approved product requirements to exact-build QA, support content and measurement evidence for a Product release decision.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Product"
+  ],
+  "order": 4,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Approved Requirement to Release Readiness as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One accepted requirement, product, build, flag revision and rollout owner; no inferred exposure or adoption.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Read current approved requirement, build and flag, independent QA gate, help content and versioned usage rule.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "A passing QA gate is one input. Product go needs current help, measurement and rollout authority; a no-go names blockers.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Customer source records or export",
+      "type": "mcp",
+      "purpose": "Read the exact first-stage source and revision",
+      "capability": "source_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Customer downstream records or export",
+      "type": "mcp",
+      "purpose": "Independently verify downstream state and owner",
+      "capability": "downstream_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Approved Requirement to Release Readiness",
+      "focus_areas": [
+        "Produce an exact-requirement release readiness decision with named blockers or verified go evidence.",
+        "A passing QA gate is one input. Product go needs current help, measurement and rollout authority; a no-go names blockers."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "product-requirements-brief/v1",
+    "product-release-readiness/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "requirements",
+      "agent_playbook_id": "product-requirements-coordinator",
+      "required": true,
+      "output": "product-requirements-brief/v1"
+    },
+    {
+      "id": "release",
+      "agent_playbook_id": "product-release-coordinator",
+      "required": true,
+      "output": "product-release-readiness/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "requirements-to-release",
+      "from": "requirements",
+      "to": "release",
+      "artifact_type": "product-requirements-brief/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}
