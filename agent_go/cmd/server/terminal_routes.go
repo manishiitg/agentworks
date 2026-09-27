@@ -492,6 +492,7 @@ func (api *StreamingAPI) handleGetTerminal(w http.ResponseWriter, r *http.Reques
 	}
 
 	contentMode := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("content")))
+	snapshot = withTerminalCLIUsage(snapshot)
 	var response terminals.Snapshot
 	if isMetadataOnlyTerminalList(contentMode) {
 		response = compactTerminalSnapshotForList(
@@ -1539,6 +1540,7 @@ func (api *StreamingAPI) enrichTerminalSnapshot(ctx context.Context, planTypes *
 }
 
 func (api *StreamingAPI) terminalSnapshotForList(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot, contentMode string) terminals.Snapshot {
+	snapshot = withTerminalCLIUsage(snapshot)
 	if isMetadataOnlyTerminalList(contentMode) {
 		return compactTerminalSnapshotForList(api.enrichTerminalSnapshotMetadata(ctx, planTypes, snapshot), contentMode)
 	}
