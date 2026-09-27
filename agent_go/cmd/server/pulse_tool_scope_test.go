@@ -94,3 +94,36 @@ func TestPulsePlatformToolsRefuseASpoofedWorkflow(t *testing.T) {
 		t.Errorf("read_crew_calls must refuse another workflow, got %v", err)
 	}
 }
+
+// A scheduled run's own turns (Gate, Plan Drift, finalizer) cannot ask a
+// Crew; a Goal Work agent's tool session can, even when its ID is derived
+// from the scheduled session.
+func TestAskPlatformCrewIsRefusedInAScheduledRunsOwnTurns(t *testing.T) {
+	root := executor.WithSessionID(context.Background(), "schedule-cron--wf-a")
+	if err := refuseUnattendedCrewWork(root); err == nil || !strings.Contains(err.Error(), "scheduled run") {
+		t.Fatalf("a scheduled run's own turn must be refused, got %v", err)
+	}
+	t.Cleanup(step.RegisterWorkshopToolSession("schedule-cron--wf-a-goal-work-1", "Workflow/a", "schedule-cron--wf-a"))
+	if err := refuseUnattendedCrewWork(executor.WithSessionID(context.Background(), "schedule-cron--wf-a-goal-work-1")); err != nil {
+		t.Fatalf("a Goal Work agent keeps the tool, got %v", err)
+	}
+	if err := refuseUnattendedCrewWork(executor.WithSessionID(context.Background(), "chat-a")); err != nil {
+		t.Fatalf("a Builder chat keeps the tool, got %v", err)
+	}
+	_, executors, _ := createPulsePlatformTools()
+	run := executors["ask_platform_crew"].(func(context.Context, map[string]interface{}) (string, error))
+	old := pulsePlatformAPI
+	pulsePlatformAPI = &StreamingAPI{}
+	t.Cleanup(func() { pulsePlatformAPI = old })
+	if _, err := run(root, map[string]interface{}{"operation": "ask_crew"}); err == nil || !strings.Contains(err.Error(), "scheduled run") {
+		t.Fatalf("the tool itself must refuse, got %v", err)
+	}
+}
+
+// A recorded call with no Crew owner is not resolved as the default user.
+func TestReadVerifiedCrewCallRefusesAnOwnerlessCall(t *testing.T) {
+	_, err := readVerifiedCrewCall(context.Background(), &StreamingAPI{}, "wf-a", "alice", pulseCrewCall{CrewProfileID: "crew", TriggerID: "t"}, 10)
+	if err == nil || !strings.Contains(err.Error(), "no recorded Crew owner") {
+		t.Fatalf("an ownerless call must be refused, got %v", err)
+	}
+}

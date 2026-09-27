@@ -282,7 +282,9 @@ func readVerifiedCrewCall(ctx context.Context, api *StreamingAPI, workflowID, pr
 	profileID := normalizeInternalProfileID(call.CrewProfileID)
 	userID := strings.TrimSpace(call.userID)
 	if userID == "" {
-		userID = GetDefaultUserID()
+		// No recorded owner means no Crew to resolve it against; never assume
+		// the default user.
+		return "", fmt.Errorf("this call has no recorded Crew owner, so its conversation cannot be read")
 	}
 	_, binding, manifest, trigger, err := api.productSchedules.findInternalProductTrigger(ctx, userID, profileID, call.CrewProjectID, call.TriggerID)
 	if err != nil {

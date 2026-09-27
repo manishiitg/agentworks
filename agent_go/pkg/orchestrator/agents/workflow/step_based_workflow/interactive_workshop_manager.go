@@ -9052,6 +9052,12 @@ func (iwm *InteractiveWorkshopManager) runBackgroundTaskAgentSequence(ctx contex
 	// done (background_step_ownership.go).
 	stepOwner := newBackgroundStepOwner(currentWorkshopParentExecutionID(ctx))
 	defer iwm.registerBackgroundStepOwner(toolSessionID, stepOwner)()
+	// On any exit the agent's turns are over, so nothing new is started.
+	defer stepOwner.stopUnhanded(func(executionID string) {
+		if snap, ok := iwm.stepRegistry.GetSnapshot(executionID); ok && snap.Status == WorkshopStepRunning {
+			_, _ = stopWorkshopExecution(iwm.stepRegistry, iwm.executionNotifier, executionID)
+		}
+	})
 
 	// The workshop-only tools are native definitions rather than entries in the
 	// workspace tool pool. Collect them before construction, alongside the full

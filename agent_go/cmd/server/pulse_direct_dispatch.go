@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
+	"github.com/manishiitg/mcpagent/executor"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
@@ -76,7 +77,12 @@ func (s *SchedulerService) runPulseReviewerDirect(ctx context.Context, sctx *Sch
 	defer release()
 	workshop.SetPulseLifecycleTurn(true)
 
-	out, err := codeexec.CallCustomToolWithSession(ctx, sessionID, "run_in_background", map[string]interface{}{
+	// The call carries this session as its caller, so the workshop's bound
+	// run_in_background re-checks the session's owner and workflow access, and
+	// refuses an executor bound to any other session (the registry's global
+	// fallback holds whichever workshop registered last).
+	callCtx := executor.WithSessionID(ctx, sessionID)
+	out, err := codeexec.CallCustomToolWithSession(callCtx, sessionID, "run_in_background", map[string]interface{}{
 		"name":          name,
 		"instruction":   pulseReviewerInstruction(pulseRunID, module),
 		"review_module": module,

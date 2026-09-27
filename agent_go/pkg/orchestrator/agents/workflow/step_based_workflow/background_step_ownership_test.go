@@ -183,3 +183,26 @@ func TestPulseReviewerIsAskedToRecordAMissingResult(t *testing.T) {
 		t.Fatalf("a non-Pulse background agent is not checked, got %q %v", plain.turns, err)
 	}
 }
+
+// A background agent that exits without handing its steps back (its turn
+// failed or was cancelled) stops the ones still running: their notice is
+// suppressed, so nobody else would take their result.
+func TestBackgroundAgentStopsUnhandedStepsOnExit(t *testing.T) {
+	registry := NewWorkshopStepRegistry()
+	owner := newBackgroundStepOwner("bg-1")
+	running := &WorkshopStepExecution{ID: "exec-running", StepID: "s1", Status: WorkshopStepRunning, CreatedAt: time.Now(), cancel: func() {}}
+	registry.Register(running)
+	owner.add("exec-running")
+	handed := &WorkshopStepExecution{ID: "exec-handed", StepID: "s2", Status: WorkshopStepRunning, CreatedAt: time.Now(), cancel: func() {}}
+	registry.Register(handed)
+	owner.add("exec-handed")
+	owner.handed["exec-handed"] = true
+
+	owner.stopUnhanded(func(id string) { _, _ = stopWorkshopExecution(registry, nil, id) })
+	if snap, _ := registry.GetSnapshot("exec-running"); snap.Status != WorkshopStepCancelled {
+		t.Fatalf("an unhanded running step must be stopped, got %s", snap.Status)
+	}
+	if snap, _ := registry.GetSnapshot("exec-handed"); snap.Status != WorkshopStepRunning {
+		t.Fatalf("a handed step is not the owner's to stop, got %s", snap.Status)
+	}
+}

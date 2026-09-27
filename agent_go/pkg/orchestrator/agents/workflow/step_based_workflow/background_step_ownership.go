@@ -74,6 +74,27 @@ func (iwm *InteractiveWorkshopManager) backgroundStepOwnerFor(ctx context.Contex
 	return owner
 }
 
+// stopUnhanded stops every step the owner started that is still running when
+// it exits without handing their results back (its turn failed, it was
+// cancelled, or it waited past the ceiling). Those steps were started with
+// their notice suppressed, so nobody else would ever take their result.
+func (o *backgroundStepOwner) stopUnhanded(stop func(executionID string)) {
+	if o == nil || stop == nil {
+		return
+	}
+	o.mu.Lock()
+	var pending []string
+	for _, id := range o.started {
+		if !o.handed[id] {
+			pending = append(pending, id)
+		}
+	}
+	o.mu.Unlock()
+	for _, id := range pending {
+		stop(id)
+	}
+}
+
 var backgroundStepPollInterval = time.Second
 
 // backgroundStepCeiling bounds how long a background agent waits for the

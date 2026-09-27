@@ -155,3 +155,45 @@ func TestScheduledRunStopsAtTheCeiling(t *testing.T) {
 		t.Fatalf("want a still-running error, got %v", err)
 	}
 }
+
+// Completions deferred while a session was claimed and not taken by the owner
+// are delivered when the last claim is released, not lost.
+func TestReleasingTheLastClaimRedeliversUntakenCompletions(t *testing.T) {
+	api := &StreamingAPI{bgAgentRegistry: NewBackgroundAgentRegistry()}
+	const session = "schedule-cron--redeliver"
+	ch := api.bgAgentRegistry.GetNotificationChannel(session)
+	finished := func(id string, metadata map[string]string) *BackgroundAgent {
+		agent := &BackgroundAgent{ID: id, SessionID: session, Status: BGAgentCompleted, CreatedAt: time.Now(), Metadata: metadata}
+		api.bgAgentRegistry.Register(session, agent)
+		return agent
+	}
+	finished("bg-untaken", nil)
+	finished("bg-suppressed", map[string]string{"suppress_auto_notification": "true"})
+	taken := finished("bg-taken", nil)
+	taken.completionNotification = completionNotificationDelivered
+	api.bgAgentRegistry.Register(session, &BackgroundAgent{ID: "bg-running", SessionID: session, Status: BGAgentRunning, CreatedAt: time.Now()})
+
+	outer := api.claimSessionCompletions(session)
+	inner := api.claimSessionCompletions(session)
+	inner()
+	inner() // a second call is a no-op
+	select {
+	case id := <-ch:
+		t.Fatalf("delivered %s while the session is still claimed", id)
+	default:
+	}
+	outer()
+	var got []string
+	for {
+		select {
+		case id := <-ch:
+			got = append(got, id)
+			continue
+		default:
+		}
+		break
+	}
+	if len(got) != 1 || got[0] != "bg-untaken" {
+		t.Fatalf("want only the untaken finished completion redelivered, got %v", got)
+	}
+}

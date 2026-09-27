@@ -44,9 +44,30 @@ func (api *StreamingAPI) claimSessionCompletions(sessionID string) (release func
 	atomic.AddInt32(count, 1)
 	var once int32
 	return func() {
-		if atomic.CompareAndSwapInt32(&once, 0, 1) {
-			atomic.AddInt32(count, -1)
+		if atomic.CompareAndSwapInt32(&once, 0, 1) && atomic.AddInt32(count, -1) == 0 {
+			api.redeliverUnclaimedCompletions(sessionID)
 		}
+	}
+}
+
+// redeliverUnclaimedCompletions runs when the last claim on a session is
+// released. Completions deferred while it was claimed that the owner did not
+// take (steps from an earlier turn, other agents that finished during a direct
+// reviewer run, anything left when the owner stopped early) go through normal
+// delivery now instead of being lost.
+func (api *StreamingAPI) redeliverUnclaimedCompletions(sessionID string) {
+	if api.bgAgentRegistry == nil {
+		return
+	}
+	for _, agent := range api.bgAgentRegistry.GetAll(sessionID) {
+		snap := agent.GetSnapshot()
+		if snap.CompletionNotified || (snap.Status != BGAgentCompleted && snap.Status != BGAgentFailed) {
+			continue
+		}
+		if completionAutoNotificationSuppressed(snap.Metadata) {
+			continue
+		}
+		api.bgAgentRegistry.NotifyCompletion(sessionID, snap.ID)
 	}
 }
 

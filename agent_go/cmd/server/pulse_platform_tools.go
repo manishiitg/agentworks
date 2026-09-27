@@ -10,7 +10,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // Pulse Goal Work looks beyond its own workflow: other workflows the owner can
@@ -95,6 +99,11 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 	if api == nil {
 		return "", fmt.Errorf("platform search is unavailable in this process")
 	}
+	if needWrite {
+		if err := refuseUnattendedCrewWork(ctx); err != nil {
+			return "", err
+		}
+	}
 	requested, _ := args["workspace_path"].(string)
 	_, claims, err := api.pulseToolScope(ctx, requested, needWrite)
 	if err != nil {
@@ -117,4 +126,23 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 		return "", fmt.Errorf("%s failed (%d): %s", operation, rec.Code, out)
 	}
 	return out, nil
+}
+
+// refuseUnattendedCrewWork keeps Crew work out of a scheduled run's own
+// conversation (the Pulse Gate, Plan Drift and finalizer turns). Pulse asks a
+// Crew only from a Goal Work agent, whose tool session is admitted there
+// only with the workflow's Run permission (background_review_scope.go). A
+// person's Builder chat is not scheduled and keeps the tool.
+func refuseUnattendedCrewWork(ctx context.Context) error {
+	sessionID := strings.TrimSpace(executor.SessionIDFromContext(ctx))
+	if sessionID == "" {
+		sessionID, _ = ctx.Value(common.ChatSessionIDKey).(string)
+	}
+	if _, background := step.LookupWorkshopToolSession(sessionID); background {
+		return nil
+	}
+	if isScheduledSession(strings.TrimSpace(sessionID)) {
+		return fmt.Errorf("ask_platform_crew is not available in a scheduled run's own turns; hand Crew work to Goal Work (record_pulse_goal_work)")
+	}
+	return nil
 }

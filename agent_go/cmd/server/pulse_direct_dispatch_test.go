@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
+	"github.com/manishiitg/mcpagent/executor"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -69,8 +70,12 @@ func TestPulseReviewerIsStartedAndAwaitedByTheRuntime(t *testing.T) {
 
 	var started map[string]interface{}
 	codeexec.InitRegistryForSession(session, map[string]func(context.Context, map[string]interface{}) (string, error){
-		"run_in_background": func(_ context.Context, args map[string]interface{}) (string, error) {
+		"run_in_background": func(ctx context.Context, args map[string]interface{}) (string, error) {
 			started = args
+			// The bound tool refuses a caller that is not its own session.
+			if got := executor.SessionIDFromContext(ctx); got != session {
+				t.Errorf("the start must carry the session as its caller, got %q", got)
+			}
 			if !api.sessionCompletionsOwned(session) {
 				t.Error("the session must be claimed while the reviewer runs")
 			}
