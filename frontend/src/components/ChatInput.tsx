@@ -125,6 +125,7 @@ import type { Skill } from '../types/skills'
 import { getClipboardImageFiles } from './clipboardImages'
 import { shouldUsePastedTextAttachment } from '../utils/chatPasteBehavior'
 import { isMainAgentTerminal } from '../utils/terminalIdentity'
+import { terminalUsageLines } from './terminalUsage'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 
@@ -1391,10 +1392,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // The terminal snapshot already carries the coding CLI's structured status
   // line. Surface it next to the model in the composer so a user can see plan
   // usage (for example "5h 11% · 7d 22%") without opening the terminal.
+  // The same snapshot feeds the terminal icon's hover (plan usage with reset
+  // times), so it is also fetched whenever the live terminal is offered —
+  // including product surfaces, where the lime chip itself stays hidden.
+  const showChatInputStatusChip = !hideRuntimeStatus && !isProductSurface
   const { data: chatInputTerminalStatus } = useQuery({
     queryKey: ['chat-input-statusline', tabSessionId],
     queryFn: () => agentApi.listTerminals(tabSessionId!, 'none'),
-    enabled: !hideRuntimeStatus && !isProductSurface && mainAgentIsTmuxCLI && !!tabSessionId,
+    enabled: (showChatInputStatusChip || liveTerminalOffered) && mainAgentIsTmuxCLI && !!tabSessionId,
     staleTime: 1_000,
     retry: false,
     refetchInterval: (query) => {
@@ -1402,14 +1407,23 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return isTurnInFlight || mainTerminal?.active ? 3_000 : false
     },
   })
+  const chatInputMainTerminal: TerminalSnapshot | undefined = useMemo(
+    () => chatInputTerminalStatus?.terminals?.find(isMainAgentTerminal),
+    [chatInputTerminalStatus?.terminals],
+  )
   const chatInputStatusExtras = useMemo(() => {
-    const mainTerminal: TerminalSnapshot | undefined = chatInputTerminalStatus?.terminals?.find(isMainAgentTerminal)
-    const rawExtras = mainTerminal?.status?.status_meta?.status_extras
+    const rawExtras = chatInputMainTerminal?.status?.status_meta?.status_extras
     return Array.isArray(rawExtras)
       ? rawExtras.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
       : []
-  }, [chatInputTerminalStatus?.terminals])
-  const chatInputStatusLine = chatInputStatusExtras.join(' · ')
+  }, [chatInputMainTerminal])
+  const chatInputStatusLine = showChatInputStatusChip ? chatInputStatusExtras.join(' · ') : ''
+  // Plan usage windows with reset times in the browser's timezone, appended
+  // to the terminal icon's hover text.
+  const terminalUsage = useMemo(
+    () => terminalUsageLines(chatInputMainTerminal?.status?.status_meta),
+    [chatInputMainTerminal],
+  )
 
   // Use the exact same authoritative activity classification as the global
   // monitor. A retained tmux session is intentionally "idle" there; merely
@@ -2893,7 +2907,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const isBotRun = activeTab?.metadata?.isBotRun
     const jobName = activeTab?.metadata?.scheduledJobName
     const botPlatform = activeTab?.metadata?.botPlatform
-    const terminalTitle = `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}`
+    const terminalTitle = [
+      `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}`,
+      ...terminalUsage.map(line => `${line.text}${line.high ? ' (high)' : ''}`),
+    ].join('\n')
     return (
       <div data-tour="chat-input-area" data-testid="tour-chat-input-area" className={`${inputPadX} ${isProductSurface ? 'py-1' : 'py-2'}`}>
         <div className="relative flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground">
@@ -3289,6 +3306,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
                         {mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}
                       </p>
+                      {terminalUsage.map((line, index) => (
+                        <p
+                          key={`${line.label}-${index}`}
+                          data-testid="chat-input-terminal-usage"
+                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
+                        >
+                          {line.text}
+                        </p>
+                      ))}
                     </TooltipContent>
                   </Tooltip>
                 )}
