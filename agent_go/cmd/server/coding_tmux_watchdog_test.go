@@ -486,3 +486,46 @@ func TestCodingTmuxWatchdogTrustsCLIUsageOverScreenText(t *testing.T) {
 		t.Fatalf("usage exhausted: wall evidence not counted: %#v", streak)
 	}
 }
+
+// A main pane that vanishes while a turn is in flight was replaced by that
+// turn (the provider's submit retry starts a fresh pane): the watchdog must not
+// cancel the session and kill the retry (RTS SDE crew, 2026-09-27). Without an
+// in-flight turn, a vanished main pane still fails the session.
+func TestCodingTmuxWatchdogLeavesReplacedMainPaneToRunningTurn(t *testing.T) {
+	oldOutput := runTerminalTmuxOutputCommand
+	t.Cleanup(func() { runTerminalTmuxOutputCommand = oldOutput })
+	runTerminalTmuxOutputCommand = func(context.Context, ...string) (string, error) {
+		return "", errors.New("can't find session: mlp-claude-code-replaced")
+	}
+	run := func(turnInFlight bool) string {
+		store := terminals.NewStore()
+		sessionID := "replaced-main-pane"
+		event := terminalRouteChunkEvent(sessionID, "main:"+sessionID, "mlp-claude-code-replaced", "resumed", 1)
+		event.ExecutionKind = "main_agent"
+		meta := event.Data.Data.(*agentevents.StreamingChunkEvent).Metadata
+		meta["execution_kind"], meta["scope"] = "main_agent", "main_agent"
+		delete(meta, "current_step_id")
+		delete(meta, "workflow_path")
+		store.HandleEvent(sessionID, event)
+		api := &StreamingAPI{
+			terminalStore:    store,
+			activeSessions:   map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+			agentCancelFuncs: map[string]context.CancelFunc{},
+			stoppedSessions:  map[string]bool{},
+		}
+		if turnInFlight {
+			api.agentCancelFuncs[sessionID] = func() {}
+		}
+		streak := map[string]codingWatchdogObservation{}
+		for i := 0; i < codingWatchdogMissingConfirmChecks+1; i++ {
+			api.reapRateLimitedCodingSessionsOnce(streak)
+		}
+		return api.activeSessions[sessionID].Status
+	}
+	if status := run(true); status != "running" {
+		t.Fatalf("turn in flight: session status = %q, want running (the retry must survive)", status)
+	}
+	if status := run(false); status == "running" {
+		t.Fatal("no turn in flight: a vanished main pane must still fail the session")
+	}
+}

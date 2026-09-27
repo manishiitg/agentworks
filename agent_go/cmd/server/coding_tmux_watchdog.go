@@ -99,7 +99,15 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 				continue
 			}
 			reason := "tmux pane disappeared unexpectedly"
-			if snap.Active {
+			// A main pane can vanish because the running turn replaced it:
+			// the provider's submit retry starts a fresh pane. Cancelling the
+			// session then kills the very retry that could recover (RTS SDE
+			// crew, 2026-09-27). While a turn is in flight it owns the outcome
+			// -- the adapter fails the turn itself if its pane is truly lost --
+			// so only retire this terminal record.
+			if snap.Active && codingAgentSnapshotIsMainAgent(snap) && api.hasActiveTurnCancel(sessionID) {
+				log.Printf("[CODING_WATCHDOG] session %s main tmux %s is gone while a turn is in flight - leaving recovery to the turn", sessionID, tmux)
+			} else if snap.Active {
 				api.terminalStore.MarkFailed(snap.TerminalID)
 				api.reconcileUnexpectedTerminalExit(snap, reason)
 			}
