@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Loader2, PlugZap, Plus, RefreshCw, Search, Server, Trash2 } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
@@ -9,7 +9,8 @@ import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
 import { GROUP_ORDER, descriptionFor, groupFor, statusIndicator } from '../../components/connectors/catalog'
 import { useMCPStore } from '../../stores/useMCPStore'
-import type { ToolDefinition } from '../../stores/types'
+import { agentApi } from '../../services/api'
+import type { ToolDefinition, ToolDetail } from '../../stores/types'
 import {
   createConnector,
   approveTool,
@@ -47,12 +48,18 @@ function agentWorksServers(toolList: ToolDefinition[]): AgentWorksServer[] {
     list.push(tool)
     groups.set(tool.server, list)
   }
-  return [...groups.entries()].map(([name, tools]) => ({
-    name,
-    connection: tools[0]?.connection,
-    status: tools[0]?.status,
-    toolCount: tools.reduce((n, t) => n + (t.function_names?.length ?? t.tools?.length ?? 0), 0),
-  }))
+  return [...groups.entries()].map(([name, entries]) => {
+    const details = entries.flatMap((entry) => entry.tools ?? [])
+    const names = [...new Set(entries.flatMap((entry) => entry.function_names ?? entry.tools?.map((tool) => tool.name) ?? []))]
+    return {
+      name,
+      connection: entries[0]?.connection,
+      status: entries[0]?.status,
+      toolCount: Math.max(names.length, details.length),
+      toolNames: names,
+      tools: details,
+    }
+  })
 }
 
 function displayName(row: ServerRow): string {
@@ -108,10 +115,18 @@ export function GatewayServersPanel({ base }: { base: string }) {
     return { connectors: connectors.connectors, providers: catalog.providers, tools: tools.tools }
   }, attempt)
   const toolList = useMCPStore((state) => state.toolList)
+  const refreshTools = useMCPStore((state) => state.refreshTools)
+  const agentWorksLoading = useMCPStore((state) => state.isLoadingTools)
+  const agentWorksError = useMCPStore((state) => state.toolsError)
+
+  useEffect(() => {
+    void refreshTools()
+  }, [refreshTools])
 
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('name')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [expandedAgentWorks, setExpandedAgentWorks] = useState<Set<string>>(new Set())
   const [addingKey, setAddingKey] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [approving, setApproving] = useState<string | null>(null)
@@ -148,7 +163,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
     const filtered = rows.filter((row) => matchesQuery(row, q))
     if (sort === 'tools') {
       const count = (row: ServerRow) =>
-        row.gateway.reduce((n, c) => n + (toolsByConnector.get(c.ID)?.length ?? 0), 0)
+        (row.agentworks?.toolCount ?? 0) + row.gateway.reduce((n, c) => n + (toolsByConnector.get(c.ID)?.length ?? 0), 0)
       return [...filtered].sort((a, b) => count(b) - count(a))
     }
     return filtered
@@ -297,7 +312,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const stats: Array<[string, string]> = [
     [String(connected.length), 'connected'],
     [String(inGateway), 'in gateway'],
-    [String(data.tools.filter((tool) => tool.Status === 'active').length), 'tools available'],
+    [String(data.tools.filter((tool) => tool.Status === 'active').length), 'gateway tools active'],
     [String(data.tools.filter((tool) => tool.Status === 'quarantined').length), 'awaiting review'],
     [String(data.providers.length), 'in catalog'],
   ]
@@ -340,11 +355,19 @@ export function GatewayServersPanel({ base }: { base: string }) {
 
       {actionError && <ConsoleError message={actionError} onRetry={bump} />}
 
+      {agentWorksError && (
+        <p className="text-xs text-destructive" role="alert">
+          AgentWorks connections could not be refreshed: {agentWorksError}
+          <Button variant="ghost" size="xs" onClick={() => void refreshTools()}>Retry</Button>
+        </p>
+      )}
+
       <SettingsCard
         icon={<PlugZap className="h-4 w-4 text-primary" />}
         title="Connected"
+        ariaLabel="Connected servers"
         count={<SettingsCount>{plural(connected.length, 'server')}</SettingsCount>}
-        description="Live right now: governed by the gateway, connected in AgentWorks, or both. Expand a gateway server to inspect its tools."
+        description="Servers connected in AgentWorks, the gateway, or both. Expand either connection to inspect its tools."
       >
         {connected.length === 0 ? (
           <ConsoleEmpty>No connected servers match.</ConsoleEmpty>
@@ -366,8 +389,11 @@ export function GatewayServersPanel({ base }: { base: string }) {
                       {group.rows.map((row) => {
                         const name = displayName(row)
                         const aw = row.agentworks ? statusIndicator(row.agentworks.connection, row.agentworks.status) : null
+                        const openGateway = row.gateway.filter((connector) => expanded.has(connector.ID))
+                        const openAgentWorks = !!row.agentworks && expandedAgentWorks.has(row.key)
                         return (
-                          <tr key={row.key}>
+                          <Fragment key={row.key}>
+                          <tr>
                             <td className={tdClass}>
                               <span className="flex items-center gap-2">
                                 <ConnectionIcon icon={brandSlugFor(name)} name={name} size="xs" />
@@ -380,12 +406,29 @@ export function GatewayServersPanel({ base }: { base: string }) {
                               </span>
                             </td>
                             <td className={`${tdClass} whitespace-nowrap`}>
-                              {row.agentworks && aw ? (
+                              {row.agentworks && aw ? row.agentworks.connection === 'connected' ? (
+                                <span className="flex flex-col gap-1">
+                                  <button
+                                    className="inline-flex items-center gap-1.5 rounded text-left hover:bg-muted/60"
+                                    title={aw.title}
+                                    aria-expanded={expandedAgentWorks.has(row.key)}
+                                    aria-label={`${expandedAgentWorks.has(row.key) ? 'Hide' : 'Show'} AgentWorks tools on ${name}`}
+                                    onClick={() => setExpandedAgentWorks((previous) => {
+                                      const next = new Set(previous)
+                                      if (next.has(row.key)) next.delete(row.key)
+                                      else next.add(row.key)
+                                      return next
+                                    })}
+                                  >
+                                    <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedAgentWorks.has(row.key) ? 'rotate-180' : ''}`} aria-hidden />
+                                    <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
+                                    <span>{row.agentworks.status === 'not_loaded' ? 'Tools not loaded' : plural(row.agentworks.toolCount, 'tool')}</span>
+                                  </button>
+                                </span>
+                              ) : (
                                 <span className="inline-flex items-center gap-1.5" title={aw.title}>
                                   <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
-                                  {row.agentworks.connection === 'connected'
-                                    ? plural(row.agentworks.toolCount, 'tool')
-                                    : aw.title}
+                                  {aw.title}
                                 </span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
@@ -425,6 +468,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                             <span className="whitespace-nowrap text-muted-foreground">
                                               {plural(tools.length, 'tool')}
                                             </span>
+                                            <span className="text-muted-foreground">· {c.Status}</span>
                                           </button>
                                           <Button
                                             variant="ghost"
@@ -444,7 +488,6 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                             <Trash2 />
                                           </Button>
                                         </span>
-                                        {open && <ToolList tools={tools} base={base} onApprove={onApprove} approving={approving} />}
                                       </span>
                                     )
                                   })}
@@ -465,6 +508,27 @@ export function GatewayServersPanel({ base }: { base: string }) {
                               )}
                             </td>
                           </tr>
+                          {(openAgentWorks || openGateway.length > 0) && (
+                            <tr>
+                              <td colSpan={3} className={`${tdClass} bg-muted/20 px-4 py-3`}>
+                                <div className={openAgentWorks && openGateway.length > 0 ? 'grid gap-4 xl:grid-cols-2' : 'grid gap-4'}>
+                                  {openAgentWorks && row.agentworks && (
+                                    <section className="min-w-0 space-y-2" aria-label={`${name} AgentWorks tools`}>
+                                      <h5 className="font-semibold text-foreground">AgentWorks tools</h5>
+                                      <AgentWorksToolList server={row.agentworks} />
+                                    </section>
+                                  )}
+                                  {openGateway.map((connector) => (
+                                    <section key={connector.ID} className="min-w-0 space-y-2" aria-label={`${name} Gateway tools`}>
+                                      <h5 className="font-semibold text-foreground">Gateway tools · {connector.Label || connector.Provider}</h5>
+                                      <ToolList tools={toolsByConnector.get(connector.ID) ?? []} base={base} onApprove={onApprove} approving={approving} />
+                                    </section>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         )
                       })}
                     </tbody>
@@ -476,13 +540,15 @@ export function GatewayServersPanel({ base }: { base: string }) {
         )}
       </SettingsCard>
 
-      {available.length > 0 && (
-        <SettingsCard
+      <SettingsCard
           icon={<Server className="h-4 w-4 text-primary" />}
           title="Available to add"
+          ariaLabel="Available servers"
           count={<SettingsCount>{plural(available.length, 'server')}</SettingsCount>}
           description="Known servers that are not connected anywhere yet. Add one to start governing it."
         >
+          {agentWorksLoading && <p className="mb-2 text-xs text-muted-foreground">Checking AgentWorks connections…</p>}
+          {available.length === 0 ? <ConsoleEmpty>No servers available to add.</ConsoleEmpty> : (
           <div className="overflow-x-auto">
             <table className={tableClass}>
               <thead>
@@ -529,8 +595,8 @@ export function GatewayServersPanel({ base }: { base: string }) {
               </tbody>
             </table>
           </div>
-        </SettingsCard>
-      )}
+          )}
+      </SettingsCard>
 
       <SettingsCard
         title="Add custom servers"
@@ -640,7 +706,7 @@ function ToolReviewRow({ tool, base, onApprove, approving }: {
         <span className="text-muted-foreground">{tool.UpstreamName}</span>
         <span className="text-xs text-muted-foreground">v{tool.Version} · {tool.Status}</span>
       </span>
-      {tool.Description && <span className="max-w-2xl text-muted-foreground">{tool.Description}</span>}
+      {tool.Description && <span className="max-w-4xl line-clamp-2 text-muted-foreground">{tool.Description}</span>}
       <ToolArgs tool={tool} />
       <span className="flex items-center gap-2">
         <Button variant="ghost" size="xs" onClick={() => open ? setOpen(false) : void openReview()}>
@@ -654,6 +720,7 @@ function ToolReviewRow({ tool, base, onApprove, approving }: {
       </span>
       {open && (
         <span className="block space-y-2 rounded-md border border-border p-2 text-xs">
+          {tool.Description && <><span className="block font-medium">Description</span><span className="block whitespace-pre-wrap">{tool.Description}</span></>}
           <span className="block font-medium">Current input schema</span>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(tool.InputSchema)}</pre>
           <span className="block font-medium">Output schema</span>
@@ -686,6 +753,77 @@ function ToolList({ tools, base, onApprove, approving }: {
       {tools.map((t) => (
         <ToolReviewRow key={t.PublicName} tool={t} base={base} onApprove={onApprove} approving={approving === t.PublicName} />
       ))}
+    </span>
+  )
+}
+
+function AgentWorksToolList({ server }: { server: AgentWorksServer }) {
+  const [detail, setDetail] = useState<ToolDefinition | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const refreshTools = useMCPStore((state) => state.refreshTools)
+
+  useEffect(() => {
+    // The summary endpoint intentionally does not discover idle servers. Fetch
+    // detail only when someone expands a connected server's tool list.
+    if (server.tools?.length) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    void agentApi.getToolDetail(server.name).then(
+      (result: ToolDefinition) => {
+        if (cancelled) return
+        setDetail(result)
+        setLoading(false)
+        if (result.status === 'ok') void refreshTools()
+      },
+      (cause: unknown) => {
+        if (cancelled) return
+        setError(gatewayErrorMessage(cause))
+        setLoading(false)
+      },
+    )
+    return () => { cancelled = true }
+    // A new discovery only occurs when the server changes or the user retries.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [server.name, attempt])
+
+  const tools: ToolDetail[] = detail?.tools?.length ? detail.tools : server.tools ?? []
+  const names = detail?.function_names?.length ? detail.function_names : server.toolNames ?? []
+  const items: ToolDetail[] = tools.length > 0 ? tools : names.map((name) => ({ name, description: '', server: server.name }))
+  const rawError = detail?.status === 'not_connected' || detail?.status === 'error'
+    ? detail.error || 'Could not discover tools for this server.'
+    : error
+  const discoveryError = rawError && /authorization required|unauthorized|oauth/i.test(rawError)
+    ? 'Authorization is required to load this server’s tools.'
+    : rawError
+
+  return (
+    <span className="ml-2 flex flex-col gap-1 border-l border-border pl-2 whitespace-normal">
+      {loading && <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading tools…</span>}
+      {items.map((tool) => (
+        <span key={tool.name} className="flex flex-col gap-0.5 py-0.5">
+          <span className={codeClass}>{tool.name}</span>
+          {tool.description && <span className="max-w-2xl text-muted-foreground">{tool.description}</span>}
+          {tool.parameters && Object.keys(tool.parameters).length > 0 && (
+            <span className="flex flex-wrap gap-1">
+              {Object.entries(tool.parameters).map(([name, parameter]) => (
+                <span key={name} className={codeClass} title={parameter.description || name}>
+                  {name}: {parameter.type || 'any'}{tool.required?.includes(name) ? '*' : ''}
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+      ))}
+      {!loading && !discoveryError && items.length === 0 && <span className="text-muted-foreground">No tools discovered.</span>}
+      {discoveryError && (
+        <span className="text-destructive" role="alert">
+          {discoveryError}
+          <Button variant="ghost" size="xs" onClick={() => setAttempt((value) => value + 1)}>Retry</Button>
+        </span>
+      )}
     </span>
   )
 }

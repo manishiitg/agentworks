@@ -3,6 +3,11 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewayServersPanel } from './GatewayServersPanel'
+import { agentApi } from '../../services/api'
+
+const refreshTools = vi.fn(async () => {})
+
+vi.mock('../../services/api', () => ({ agentApi: { getToolDetail: vi.fn() } }))
 
 vi.mock('../../stores/useMCPStore', () => ({
   useMCPStore: (selector: (state: Record<string, unknown>) => unknown) =>
@@ -10,7 +15,11 @@ vi.mock('../../stores/useMCPStore', () => ({
       toolList: [
         { name: 't1', server: 'Notion', connection: 'connected', status: 'ready', function_names: ['a', 'b'] },
         { name: 't2', server: 'Linear', connection: 'available', function_names: [] },
+        { name: 'WorkOS', server: 'WorkOS', connection: 'connected', status: 'not_loaded', function_names: [] },
       ],
+      refreshTools,
+      isLoadingTools: false,
+      toolsError: null,
     }),
 }))
 
@@ -30,6 +39,7 @@ describe('GatewayServersPanel', () => {
     container = null
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    refreshTools.mockClear()
   })
 
   async function renderPanel(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
@@ -77,10 +87,51 @@ describe('GatewayServersPanel', () => {
     // Notion: connected in AgentWorks (2 tools) and present in the gateway.
     expect(container!.textContent).toContain('Notion')
     expect(container!.textContent).toContain('2 tools')
+    expect(refreshTools).toHaveBeenCalledOnce()
+    const connected = container!.querySelector('[aria-label="Connected servers"]')!
+    const available = container!.querySelector('[aria-label="Available servers"]')!
+    expect(connected.textContent).toContain('WorkOS')
+    expect(connected.textContent).toContain('Tools not loaded')
+    expect(available.textContent).not.toContain('WorkOS')
+    expect(available.textContent).toContain('Linear')
     // Linear: in AgentWorks but not the gateway, with a catalog match → one-click add.
     const add = container!.querySelector('[data-testid="gateway-add-linear"]')
     expect(add).not.toBeNull()
     expect(add!.textContent).toContain('Add to gateway')
+  })
+
+  it('discovers and shows tools for an AgentWorks-only connected server', async () => {
+    const getDetail = vi.mocked(agentApi.getToolDetail).mockResolvedValue({
+      name: 'WorkOS', server: 'WorkOS', status: 'ok', connection: 'connected',
+      function_names: ['list_users'],
+      tools: [{ name: 'list_users', description: 'List organization users', server: 'WorkOS', parameters: { org_id: { type: 'string', description: 'Organization ID' } }, required: ['org_id'] }],
+    })
+    await renderPanel(vi.fn(healthyFetch()))
+
+    await act(async () => {
+      ;(container!.querySelector('[aria-label="Show AgentWorks tools on WorkOS"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(getDetail).toHaveBeenCalledWith('WorkOS')
+    expect(container!.textContent).toContain('list_users')
+    expect(container!.textContent).toContain('List organization users')
+    expect(container!.textContent).toContain('org_id: string*')
+  })
+
+  it('explains when a connected AgentWorks server needs authorization', async () => {
+    vi.mocked(agentApi.getToolDetail).mockResolvedValue({
+      name: 'WorkOS', server: 'WorkOS', status: 'error', connection: 'connected',
+      error: 'transport error: authorization required', function_names: [],
+    })
+    await renderPanel(vi.fn(healthyFetch()))
+    await act(async () => {
+      ;(container!.querySelector('[aria-label="Show AgentWorks tools on WorkOS"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {})
+
+    expect(container!.textContent).toContain('Authorization is required to load this server’s tools.')
+    expect(container!.textContent).not.toContain('transport error')
   })
 
   it('filters the list by search text', async () => {

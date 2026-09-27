@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GatewayApiError, type GatewayConnector, type GatewayProvider } from './gatewayAdminApi'
+import type { ToolDetail } from '../../stores/types'
 
 export function gatewayErrorMessage(err: unknown): string {
   if (err instanceof GatewayApiError) return err.message
@@ -170,6 +171,8 @@ export interface AgentWorksServer {
   connection?: string
   status?: string
   toolCount: number
+  toolNames?: string[]
+  tools?: ToolDetail[]
 }
 
 export interface ServerRow {
