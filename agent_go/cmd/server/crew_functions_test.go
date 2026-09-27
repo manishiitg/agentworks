@@ -78,6 +78,11 @@ func newCrewFunctionEnv(t *testing.T) crewFunctionEnv {
 	triggerTargetPollInterval = 10 * time.Millisecond
 	crewFunctionFastWait = 3 * time.Second
 	t.Cleanup(func() { triggerTargetPollInterval, crewFunctionFastWait = previousPoll, previousWait })
+	// Calls are process-wide; a call left in flight by an earlier test would
+	// otherwise be joined by an identical call here.
+	crewFunctionCalls.Lock()
+	crewFunctionCalls.m = map[string]*crewFunctionCall{}
+	crewFunctionCalls.Unlock()
 	env := crewFunctionEnv{triggerLinkEnv: newTriggerLinkEnv(t)}
 	env.alpha = env.functionTools(t, linkAlphaPath, "sess-caller", nil)
 	env.beta = env.functionTools(t, linkBetaPath, "sess-beta-chat", nil)

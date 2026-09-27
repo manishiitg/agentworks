@@ -321,11 +321,16 @@ type crewFunctionCall struct {
 	Late      bool      `json:"late,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Joined counts identical calls made while this one was in flight and
+	// answered with it instead of starting another run.
+	Joined int `json:"joined,omitempty"`
 
-	target triggerTarget
-	caller triggerLinkCaller
-	done   chan struct{}
-	closed bool
+	// argsKey identifies the exact arguments, for joining identical calls.
+	argsKey string
+	target  triggerTarget
+	caller  triggerLinkCaller
+	done    chan struct{}
+	closed  bool
 	// onLate tells the caller's chat about a late answer.
 	onLate func()
 	// poll is captured at start so a supervisor never reads the package
@@ -517,7 +522,38 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 	if c.Late {
 		out["late"] = true
 	}
+	if c.Joined > 0 {
+		out["joined"] = c.Joined
+		if _, ok := out["note"]; !ok {
+			out["note"] = "An identical call (same function and arguments) was already running, so this is that call, not a new run. Do not call again; wait for its result or use get_function_call."
+		}
+	}
 	return out
+}
+
+// joinInFlightCrewFunctionCallLocked returns an in-flight call from the same
+// caller for the same function and target with the same arguments. A caller
+// that retries a call it believes failed (a shell curl that timed out while
+// call_function was still waiting) joins the running call instead of starting
+// a duplicate run (RTS 2026-09-27: one PR reviewed three times at once).
+// Needs crewFunctionCalls locked.
+func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerID, targetKind, targetID, function, argsKey string) *crewFunctionCall {
+	for _, call := range crewFunctionCalls.m {
+		call.mu.Lock()
+		same := !call.terminalLocked() && call.UserID == userID &&
+			call.CallerKind == callerKind && call.CallerID == callerID &&
+			call.TargetKind == targetKind && call.TargetID == targetID &&
+			call.Function == function && call.argsKey == argsKey
+		if same {
+			call.Joined++
+			call.UpdatedAt = time.Now().UTC()
+		}
+		call.mu.Unlock()
+		if same {
+			return call
+		}
+	}
+	return nil
 }
 
 // crewFunctionFreeTextAnswer normalises an ask result to {"answer": text}:
@@ -680,6 +716,15 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 			return nil, fmt.Errorf("arguments do not match %s's input schema: %s", fn.Name, strings.Join(problems, "; "))
 		}
 	}
+	// encoding/json sorts map keys, so equal arguments give equal keys.
+	argsJSON, _ := json.Marshal(args)
+	argsKey := string(argsJSON)
+	crewFunctionCalls.Lock()
+	joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey)
+	crewFunctionCalls.Unlock()
+	if joined != nil {
+		return joined, nil
+	}
 	callerKey := crewFunctionKey(caller.Stamp.Type, caller.Stamp.ID)
 	targetKey := crewFunctionKey(target.Kind, target.stampID())
 	chain, root := crewFunctionChainFor(callerKey)
@@ -722,6 +767,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
 		FreeText: fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
 		target:   target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
+		argsKey: argsKey,
 	}
 	body := map[string]interface{}{
 		"task":    crewFunctionTaskText(call, fn, args),
@@ -729,6 +775,12 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
 	crewFunctionCalls.Lock()
+	// Re-check under the same lock as the insert: two identical calls racing
+	// past the early check must still start one run.
+	if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey); joined != nil {
+		crewFunctionCalls.Unlock()
+		return joined, nil
+	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
 	if isWorkflowAsk(target, fn) {
