@@ -1,3 +1,16 @@
+## Agents could act as another session or workflow — PLAT-362
+
+[PLAT-362](pulse_platform/security-sandbox/plat-362.md) closes the path for an
+agent to act as another user's session or workflow. Pulse platform tools and
+decision answers now act only for the calling session's own workflow and owner.
+Each agent's tool calls carry a token for its own session, signed with an
+in-memory secret, and the server refuses any request that names another
+session through the path, header, virtual-tool scope or model-supplied shell
+env. The body-session execute routes now require the caller's own session.
+Reviewed and pushed to main. Deployment, Pi/Cursor live checks, and follow-ups
+D1–D7 (shared `/tmp` and tmux socket, unowned session routes, Cursor config in
+the workspace, and more) are listed in the ticket.
+
 ## Scheduled runs and background agents stopped before their steps finished — PLAT-361
 
 [PLAT-361](pulse_platform/scheduler-runs/plat-361.md) fixes salesoutreach's
