@@ -38,6 +38,13 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         ):
             self.assertIn(expected, config)
 
+    def test_sparkquill_codex_install_is_pinned_and_launch_checked(self):
+        config = (ROOT / "products/sparkquill/product.env").read_text()
+        deploy = (REPO / "deploy.sh").read_text()
+        self.assertIn("CODEX_CLI_NPM_VERSION=0.156.1", config)
+        self.assertIn("--include=optional", deploy)
+        self.assertIn('check_lines+="codex --version"', deploy)
+
     def test_shared_builder_owns_confida_runtime_guards(self):
         deploy = (REPO / "deploy.sh").read_text()
         build = (ROOT / "build-and-activate.sh").read_text()

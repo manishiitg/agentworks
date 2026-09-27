@@ -202,10 +202,12 @@ fi
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
 if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
+  CODEX_CLI_NPM_VERSION="${CODEX_CLI_NPM_VERSION:-latest}"
+  [[ "$CODEX_CLI_NPM_VERSION" == latest || "$CODEX_CLI_NPM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid CODEX_CLI_NPM_VERSION" >&2; exit 1; }
   cli_install_cmd() {
     case "$1" in
       claude) printf "npm install -g --prefix '%s' @anthropic-ai/claude-code@latest >/dev/null" "$REMOTE_TOOLS" ;;
-      codex)  printf "npm install -g --prefix '%s' @openai/codex@latest >/dev/null" "$REMOTE_TOOLS" ;;
+      codex)  printf "npm install -g --prefix '%s' '@openai/codex@%s' --include=optional >/dev/null" "$REMOTE_TOOLS" "$CODEX_CLI_NPM_VERSION" ;;
       pi)     printf "npm install -g --prefix '%s' @earendil-works/pi-coding-agent@latest >/dev/null" "$REMOTE_TOOLS" ;;
       cursor) printf "HOME='%s/home' curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | HOME='%s/home' bash" "$REMOTE_APP" "$REMOTE_APP" ;;
       muse)   printf "HOME='%s/home' MUSE_INSTALL_DIR='%s/home/.local/bin' MUSE_NO_MODIFY_PATH=1 bash -c \"curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://dev.meta.ai/install.sh | bash\"" "$REMOTE_APP" "$REMOTE_APP" ;;
@@ -219,6 +221,7 @@ if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
   for cli in "${CLI_TOOLS[@]}"; do
     install_lines+="$(cli_install_cmd "$cli")"$'\n'
     check_lines+="command -v '$(cli_bin_name "$cli")' >/dev/null"$'\n'
+    if [[ "$cli" == codex ]]; then check_lines+="codex --version"$'\n'; fi
   done
 
   echo "==> [$PRODUCT] Installing server CLI dependencies (agent-browser, ${CLI_TOOLS[*]})"
