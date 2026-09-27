@@ -485,6 +485,7 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 		sessionEnv,
 		params.ExtraEnv,
 	)
+	bindShellBridgeSession(params.ExtraEnv, sessionID)
 	// Script-repair shells use the ordinary execute_shell_command executor, so
 	// infer the same snapshot behavior from their trusted session capability.
 	// The saved-script fast path sets DBReadSnapshot explicitly because it does
@@ -570,6 +571,29 @@ func isWorkflowStepShellRequest(envs ...map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// bindShellBridgeSession makes a shell's tool-call credentials match the
+// session it finally runs as. The bridge token is per session
+// (common/bridge_token.go), so it is derived last, after every env layer has
+// been merged. A shell built from a sessionless client but run for a session
+// gets that session's scoped URL and token, as session clients do; a shell
+// with no session gets no token at all.
+func bindShellBridgeSession(env map[string]string, sessionID string) {
+	if env == nil || !common.BridgeTokensEnabled() {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if strings.TrimSpace(env["MCP_SESSION_ID"]) == "" && sessionID != "" {
+		env["MCP_SESSION_ID"] = sessionID
+		if base := strings.TrimRight(strings.TrimSpace(env["MCP_API_URL"]), "/"); base != "" && !strings.Contains(base, "/s/") {
+			env["MCP_API_URL"] = base + "/s/" + sessionID
+		}
+	}
+	if strings.TrimSpace(env["MCP_SESSION_ID"]) == "" {
+		delete(env, "MCP_API_TOKEN")
+	}
+	common.PopulateMCPBridgeShortEnv(env)
 }
 
 // mergeShellCommandEnv returns a new map for each request. Values are applied

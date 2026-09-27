@@ -2231,6 +2231,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	// E2E processes can authenticate against this same server without exposing
 	// a token read endpoint.
 	api.apiToken = resolveServerAPIToken()
+	// Agents get a token for their own session, derived from this one
+	// (pkg/common/bridge_token.go, bridge_auth.go). Set before any shell
+	// client or bridge env is built.
+	common.SetBridgeTokenSecret(api.apiToken)
 
 	// Set env vars for code execution mode (mcpagent reads these as fallback).
 	// MCP_API_URL may be explicitly configured for a rootless deployment; otherwise
@@ -2390,7 +2394,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 
 	toolsRouter := router.PathPrefix("/tools").Subrouter()
-	toolsRouter.Use(executor.AuthMiddleware(api.apiToken))
+	toolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
 	toolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		routeMCPRequest(w, r, vars["server"], vars["tool"])
@@ -2414,7 +2418,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The session_id is extracted from the path and injected as X-Session-ID header,
 	// which the per-tool handler reads as a fallback when body session_id is empty.
 	sessionToolsRouter := router.PathPrefix("/s/{session_id}/tools").Subrouter()
-	sessionToolsRouter.Use(executor.AuthMiddleware(api.apiToken))
+	sessionToolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
 	sessionToolsRouter.HandleFunc("/browser/packages/{package}", api.handlePlaywrightPackage).Methods("GET")
 	sessionToolsRouter.HandleFunc("/browser/live", api.handlePlaywrightPublisher).Methods("GET")
 	sessionToolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
