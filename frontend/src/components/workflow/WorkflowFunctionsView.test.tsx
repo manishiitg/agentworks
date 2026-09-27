@@ -7,6 +7,7 @@ import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: vi.fn(() => 'http://localhost:8000') }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const webhook = { id: 'hook', name: 'GitHub PRs', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/hook', route_selections: {}, group_names: [] }
@@ -19,10 +20,10 @@ beforeEach(() => {
 })
 afterEach(() => { cleanups.splice(0).forEach(clean => clean()); vi.clearAllMocks() })
 
-async function mount(onAsk?: (message: string) => void) {
+async function mount(onAsk?: (message: string) => void, relayMode = false) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<WorkflowFunctionsView workspacePath="Workflow/gate" onAsk={onAsk} />))
+  await act(async () => root.render(<WorkflowFunctionsView workspacePath="Workflow/gate" relayMode={relayMode} relayWorkflowID={relayMode ? 'relay-1' : undefined} onAsk={onAsk} />))
   await act(async () => { await Promise.resolve() })
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return host
@@ -54,4 +55,11 @@ it('offers to add a function when there is none', async () => {
   const add = [...host.querySelectorAll('button')].find(button => button.textContent === 'Add a function in chat')!
   await act(async () => { add.click() })
   expect(onAsk).toHaveBeenCalled()
+})
+
+it('shows the durable Relay endpoint without the continuing ask function', async () => {
+  const host = await mount(undefined, true)
+  expect(host.querySelector('[data-testid="workflow-function-ask"]')).toBeNull()
+  expect(host.textContent).toContain('External API request')
+  expect(host.textContent).toContain('/api/relays/relay-1/runs')
 })

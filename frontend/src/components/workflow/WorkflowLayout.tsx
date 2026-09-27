@@ -825,6 +825,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // deriving history from that stale object made the new workflow request the
   // previous/empty path until a page reload rebuilt all stores.
   const workflowManifests = useWorkflowManifestStore(state => state.workflows)
+  const activeWorkflowManifest = workflowManifests.find(workflow => workflow.manifest.id === activePresetId || workflow.workspace_path === activeWorkflowPreset?.selectedFolder?.filepath)?.manifest
   const activeWorkflowWorkspacePath = resolveWorkflowHistoryPath(
     activePresetId,
     workflowManifests,
@@ -2263,6 +2264,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     <AutomationHubPanel
       key={`${activePresetId || 'workflow'}:${workspacePath}`}
       entityType="workflow"
+      relayMode={activeWorkflowManifest?.kind === 'relay'}
+      relayWorkflowID={activeWorkflowManifest?.id}
       workspacePath={workspacePath}
       workflowScope={{ presetQueryId: activePresetId || undefined, workspacePath }}
       chatContent={<WorkflowPreviousChatsPanel primary chatOnly workspacePath={workspacePath} />}
@@ -2299,6 +2302,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       ref={canvasRef}
       workspacePath={workspacePath}
       presetQueryId={activePresetId}
+      relayMode={activeWorkflowManifest?.kind === 'relay'}
+      relayOutputStepID={activeWorkflowManifest?.relay_output_step_id}
       currentPhase={activePhase || currentWorkflowPhase}
       onStartPhase={handleStartPhase}
       onCreatePlan={onCreatePlan || handleCreatePlan}

@@ -372,13 +372,6 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	}
 	payload["function"] = sched.Function.Name
 	payload["args"] = call.Args
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
-	}
-	if err := checkInternalPayload(body); err != nil {
-		return sched.ID, internalTriggerDeliveryResult{}, err
-	}
 	deliveryID := strings.TrimSpace(call.DeliveryID)
 	if deliveryID == "" {
 		deliveryID = uuid.NewString()
@@ -395,6 +388,14 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
 			return sched.ID, internalTriggerDeliveryResult{}, err
 		}
+		payload["relay_output_step_id"] = manifest.RelayOutputStepID
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
+	}
+	if err := checkInternalPayload(body); err != nil {
+		return sched.ID, internalTriggerDeliveryResult{}, err
 	}
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
 	delivery, err := receiver.deliverFunction(ctx, manifest.ID, workspacePath, *sched, deliveryID, body, variables, group)
@@ -406,17 +407,7 @@ func validateRelayOutputStep(ctx context.Context, workspacePath, outputStepID st
 	if err != nil {
 		return fmt.Errorf("read Relay plan: %w", err)
 	}
-	for _, step := range plan.Steps {
-		if step.GetID() != outputStepID {
-			continue
-		}
-		sequence, ok := step.(*stepworkflow.MessageSequencePlanStep)
-		if !ok || !sequence.AuthoredPrompt {
-			return fmt.Errorf("Relay output step %q must be an authored message sequence", outputStepID)
-		}
-		return nil
-	}
-	return fmt.Errorf("Relay output step %q is missing from the plan", outputStepID)
+	return stepworkflow.ValidateRelayPlanStructure(plan, outputStepID)
 }
 
 // deliverFunction is deliver for a function trigger: the validated inputs

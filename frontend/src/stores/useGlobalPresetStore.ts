@@ -24,6 +24,7 @@ function buildWorkflowPresetsFromManifests(): CustomPreset[] {
       icon: wf.manifest.icon,
       createdAt: new Date(wf.manifest.created_at || 0).getTime(),
       agentMode: 'workflow' as const,
+      workflowKind: wf.manifest.kind === 'relay' ? 'relay' as const : 'workflow' as const,
       selectedFolder: {
         filepath: wf.workspace_path,
         content: '',
@@ -74,7 +75,7 @@ interface GlobalPresetState {
 
   // Actions for manifest management
   refreshPresets: () => Promise<void>
-  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', cdpPorts?: number[], icon?: string) => Promise<CustomPreset | null>
+  savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', cdpPorts?: number[], icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
   duplicatePreset: (presetId: string) => Promise<CustomPreset | null>
 
   // Actions for preset application
@@ -157,7 +158,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
         return refreshPromise
       },
       
-      savePreset: async (label, query, selectedServers, selectedTools, selectedSkills, agentMode, selectedFolder, llmConfig, useCodeExecutionMode, id, selectedSecrets, selectedGlobalSecretNames, browserMode, cdpPorts, icon) => {
+      savePreset: async (label, query, selectedServers, selectedTools, selectedSkills, agentMode, selectedFolder, llmConfig, useCodeExecutionMode, id, selectedSecrets, selectedGlobalSecretNames, browserMode, cdpPorts, icon, workflowKind) => {
         const toolsForBackend = selectedTools?.filter(t => !t.endsWith(':*')) || []
         const existingPreset = id ? get().workflowPresets.find(p => p.id === id) : undefined
         const effectiveCDPPorts = cdpPorts ?? existingPreset?.cdpPorts ?? []
@@ -237,6 +238,7 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
             // Create new workflow manifest
             await workflowManifestApi.createWorkflowManifest({
               label,
+              kind: workflowKind === 'relay' ? 'relay' : undefined,
               icon: icon?.trim() || undefined,
               workspace_path: selectedFolder.filepath,
               capabilities: {

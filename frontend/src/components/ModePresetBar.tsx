@@ -395,7 +395,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     selectedGlobalSecretNames?: string[] | null,
     browserMode?: 'none' | 'auto' | 'headless' | 'cdp',
     cdpPorts?: number[],
-    icon?: string
+    icon?: string,
+    workflowKind?: 'relay' | 'workflow'
   ) => {
     try {
       const effectiveMode = editingPreset ? editingPreset.agentMode : agentMode
@@ -423,8 +424,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
             selected_skills: selectedSkills || [],
             selected_secrets: selectedSecrets || [],
             selected_global_secret_names: globalSecretNamesForBackend,
-            browser_mode: browserMode || 'none',
-            cdp_ports: browserMode === 'cdp' || browserMode === 'auto' ? (cdpPorts || []) : [],
+            browser_mode: editingPreset.workflowKind === 'relay' ? 'none' : (browserMode || 'none'),
+            cdp_ports: editingPreset.workflowKind === 'relay' ? [] : (browserMode === 'cdp' || browserMode === 'auto' ? (cdpPorts || []) : []),
             use_code_execution_mode: useCodeExecutionMode || false,
             llm_config: llmConfig || undefined,
           },
@@ -449,9 +450,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         editingPreset?.id,
         selectedSecrets,
         selectedGlobalSecretNames,
-        browserMode,
-        cdpPorts,
-        icon
+        workflowKind === 'relay' ? 'none' : browserMode,
+        workflowKind === 'relay' ? [] : cdpPorts,
+        icon,
+        workflowKind
       )
 
       // Apply the preset immediately if it's a new one
@@ -704,6 +706,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                                       <WorkflowIcon icon={preset.icon} label={preset.label} />
                                       <div className="flex-1">
                                         <div className="font-medium">{preset.label}</div>
+                                        {'workflowKind' in preset && preset.workflowKind === 'relay' && <span className="text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Relay</span>}
                                       </div>
                                     </div>
                                   </button>
