@@ -29,7 +29,7 @@ func TestCORSPreflightAllowsChatSendHeaders(t *testing.T) {
 	for _, name := range strings.Split(rec.Header().Get("Access-Control-Allow-Headers"), ",") {
 		allowed[strings.ToLower(strings.TrimSpace(name))] = true
 	}
-	for _, header := range []string{"X-Session-ID", "X-Conversation-Continuation", "X-Queued-Chat-Delivery", "X-Client-Submitted-At"} {
+	for _, header := range []string{"X-User-ID", "X-Session-ID", "X-Conversation-Continuation", "X-Queued-Chat-Delivery", "X-Client-Submitted-At"} {
 		if !allowed[strings.ToLower(header)] {
 			t.Errorf("preflight does not allow %s", header)
 		}

@@ -18,6 +18,7 @@ import FileSelectionDialog from './FileSelectionDialog'
 import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
 import { PulseReviewFocusDialog } from './commands/PulseReviewFocusDialog'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { findCommand, findProductCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
@@ -444,6 +445,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Store subscriptions
   const {
     agentMode,
@@ -2908,13 +2910,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
-      return 'Chat with the automation builder... (@ files, / commands, # references)'
+      return isRelaySurface
+        ? 'Describe your Relay graph... (@ files, / commands, # references)'
+        : 'Chat with the automation builder... (@ files, / commands, # references)'
     }
     const baseHints = "@ files, / commands, # references, ! skills, $ servers"
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab])
+  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.

@@ -2475,7 +2475,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   if (flowShell === 'loading') {
     return (
       <div className="relative flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
-        <div className="absolute right-3 top-3 z-20"><WorkspacePanelGuideButton topic="Plan" /></div>
+        {!relayMode && <div className="absolute right-3 top-3 z-20"><WorkspacePanelGuideButton topic="Plan" /></div>}
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-gray-400 dark:border-gray-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -2503,7 +2503,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
           <div className="flex flex-col gap-2">
             {effectiveError && (
               <span className="text-sm text-red-600 dark:text-red-400">
-                <strong>Plan error:</strong> {effectiveError}
+                <strong>{relayMode ? 'Graph error:' : 'Plan error:'}</strong> {effectiveError}
               </span>
             )}
             {workspaceStateError && (
@@ -2524,7 +2524,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
           </div>
           <div className="flex items-center gap-2">
             {assistantControl}
-            <WorkspacePanelGuideButton topic="Plan" />
+            {!relayMode && <WorkspacePanelGuideButton topic="Plan" />}
             <button
               onClick={() => {
                 loadPlanRefresh()
@@ -2552,10 +2552,10 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                No Plan Yet
+                {relayMode ? 'No Relay Graph Yet' : 'No Plan Yet'}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create a plan to visualize your workflow
+                {relayMode ? 'Describe the agents, scripts, and output in chat to build your graph.' : 'Create a plan to visualize your workflow'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -2565,10 +2565,10 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
                 onClick={onCreatePlan}
                 className="px-6 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"
               >
-                Build Plan
+                {relayMode ? 'Build Graph' : 'Build Plan'}
               </button>
             )}
-            <WorkspacePanelGuideButton topic="Plan" />
+            {!relayMode && <WorkspacePanelGuideButton topic="Plan" />}
             <button
               type="button"
               onClick={() => void (async () => {
@@ -2578,8 +2578,8 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
               })()}
               disabled={isRefreshingPlan}
               className="inline-flex h-[42px] items-center gap-1.5 rounded-lg border border-border bg-background/95 px-4 text-sm font-medium text-foreground shadow-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Check again for a plan"
-              title="Check again for a plan"
+              aria-label={relayMode ? 'Check again for a graph' : 'Check again for a plan'}
+              title={relayMode ? 'Check again for a graph' : 'Check again for a plan'}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingPlan ? 'animate-spin' : ''}`} />
               Refresh
@@ -2624,10 +2624,10 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             {assistantControl}
             <button type="button" onClick={() => void fitView({ padding: FLOW_FIT_PADDING, duration: 300, minZoom: FLOW_FIT_MIN_ZOOM, maxZoom: FLOW_FIT_MAX_ZOOM })}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
-              aria-label="Fit plan to view" title="Fit plan to view">
+              aria-label={relayMode ? 'Fit graph to view' : 'Fit plan to view'} title={relayMode ? 'Fit graph to view' : 'Fit plan to view'}>
               <Maximize className="h-3.5 w-3.5" />
             </button>
-            <WorkspacePanelGuideButton topic="Plan" />
+            {!relayMode && <WorkspacePanelGuideButton topic="Plan" />}
             <button
               type="button"
               onPointerDown={event => event.stopPropagation()}
