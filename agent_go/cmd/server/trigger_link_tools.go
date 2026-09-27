@@ -274,6 +274,10 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 		}
 		state := triggerTargetRunState{Terminal: result.Terminal, Status: result.Status, Raw: result}
 		state.Failed = result.Terminal && (strings.TrimSpace(result.Error) != "" || workflowRunStatusFailed(result.Status))
+		if manifest.Kind == "relay" && !state.Failed && len(result.Result) > 0 {
+			state.Result = string(result.Result)
+			return state, nil
+		}
 		encoded, _ := json.MarshalIndent(map[string]interface{}{"status": result.Status, "error": result.Error, "steps": result.Steps, "run_folder": result.RunFolder}, "", "  ")
 		state.Result = string(encoded)
 		return state, nil
