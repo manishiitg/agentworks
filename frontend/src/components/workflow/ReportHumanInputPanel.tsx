@@ -110,6 +110,7 @@ interface ReportHumanInputPanelProps {
 	providedLoading?: boolean
 	providedError?: string | null
 	onRequestRefresh?: () => void
+	showEmptyState?: boolean
 }
 
 export function ReportHumanInputPanel({
@@ -125,6 +126,7 @@ export function ReportHumanInputPanel({
 	providedLoading,
 	providedError,
 	onRequestRefresh,
+	showEmptyState = false,
 }: ReportHumanInputPanelProps) {
   const [inputs, setInputs] = useState<ReportHumanInput[]>([])
   const [loading, setLoading] = useState(false)
@@ -190,7 +192,9 @@ export function ReportHumanInputPanel({
 
 	const pending = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'pending')
 	const history = contentMode === 'pending' ? [] : reportHumanInputHistory(visibleInputs, historyLimit)
-	if (!visibleLoading && !visibleError && pending.length === 0 && history.length === 0) return null
+	if (!visibleLoading && !visibleError && pending.length === 0 && history.length === 0) {
+		return showEmptyState ? <p className={`rounded-lg border bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground ${className}`}>No human actions are waiting for you.</p> : null
+	}
 
 	const requestRefresh = () => {
     window.dispatchEvent(new CustomEvent(WORKFLOW_DECISIONS_REFRESH_EVENT, { detail: { workspacePath } }))

@@ -19,7 +19,7 @@ export function buildReportHumanInputChatMessage(
   const lines = [
     `I want to discuss a pending ${sourceName(input.source)} decision. Do not submit, dismiss, or mark the decision handled yet; answer my question first.`,
     'If I later explicitly choose an option or give a final answer, call answer_human_input_request with the exact IDs below. Record it as answered only; do not mark it consumed.',
-    'This is a Needs your decision card in the pulse workspace view. Read its current status with get_human_input_request. After my final answer, save it in that turn without waiting for a separate request to mark it; the card refreshes automatically after a successful save.',
+    'This is a Needs your decision card in the Human actions view. Read its current status with get_human_input_request. After my final answer, save it in that turn without waiting for a separate request to mark it; the card refreshes automatically after a successful save.',
     '',
     `Automation: ${workspacePath}`,
     `Decision ID: ${input.id}`,

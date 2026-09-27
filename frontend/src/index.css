@@ -1599,29 +1599,6 @@
   background-color: rgba(107, 114, 128, 0.7);
 }
 
-/* A double heartbeat on the Pulse glyph signals decisions awaiting input. */
-@keyframes pulse-decision-heartbeat {
-  0%, 32%, 100% {
-    transform: scale(1);
-  }
-  10% {
-    transform: scale(1.2);
-  }
-  18% {
-    transform: scale(1);
-  }
-  25% {
-    transform: scale(1.14);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .pulse-decision-heartbeat {
-    transform-origin: center;
-    animation: pulse-decision-heartbeat 1.8s ease-in-out infinite;
-  }
-}
-
 /* ===== WORKFLOW NODE ANIMATIONS ===== */
 /* Highlight pulse animation for plan changes */
 @keyframes highlight-pulse {

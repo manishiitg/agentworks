@@ -27,7 +27,6 @@ import type {
   PulseReviewAudit,
   PulseReviewerModule,
 } from '../../services/api-types'
-import { ReportHumanInputPanel } from './ReportHumanInputPanel'
 import { WORKFLOW_LOG_REFRESH_EVENT } from './workflowEvents'
 import { mergePulseReviewCoverage } from './pulseReviewCoverage'
 import { PulseReviewOverview, type InstalledPlaybookReviewFocus } from './PulseReviewOverview'
@@ -382,7 +381,6 @@ export function PulseWorkspace({
   if (loading && findings.length === 0 && reviews.length === 0) {
     return (
       <div className="space-y-4">
-        <ReportHumanInputPanel workspacePath={workspacePath} contentMode="all" providedImpact={impact} />
         <div className="flex min-h-96 items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading Pulse workspace…
@@ -414,7 +412,6 @@ export function PulseWorkspace({
       {tab === 'for_you' ? <>
         <SoulViewer workspacePath={workspacePath} pulseSummary />
         <GoalProgress workspacePath={workspacePath} impact={impact} />
-        <ReportHumanInputPanel workspacePath={workspacePath} contentMode="all" providedImpact={impact} />
         <PulseGoalWork workspacePath={workspacePath} items={goalWork} autonomy={autonomy} autonomySaving={autonomySaving}
           onChangeAutonomy={onChangeAutonomy} onRunGoalWork={() => { void runReviewNow('strategic_review') }}
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}

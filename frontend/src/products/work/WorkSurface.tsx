@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import SchedulesPage from '../../components/SchedulesPage'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
@@ -733,6 +734,7 @@ export function WorkSurface() {
   const { start: startSplitDrag, stop: stopSplitDrag } = usePointerDrag()
   const [createError, setCreateError] = useState<string | null>(null)
   const showProviders = useLLMStore((state) => state.showLLMModal)
+  const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
@@ -758,9 +760,14 @@ export function WorkSurface() {
   }, [selected?.shared, selectWorkspaceView, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
-    openWorkPresentationView(pendingWorkView)
+    if (pendingWorkView === 'triggers') {
+      if (selected?.id !== useProductSurfaceStore.getState().selectedWorkProjectId) return
+      openWorkPresentationView('schedules', 'triggers')
+    } else {
+      openWorkPresentationView(pendingWorkView)
+    }
     setPendingWorkView(null)
-  }, [openWorkPresentationView, pendingWorkView, setPendingWorkView])
+  }, [openWorkPresentationView, pendingWorkView, selected?.id, setPendingWorkView])
   const workUIAdapter = useMemo<WorkspaceUIControlAdapter>(() => ({
     getView: () => workPresentationView(workspaceView),
     openView: openWorkPresentationView,
@@ -1037,7 +1044,8 @@ export function WorkSurface() {
         className="relative min-h-0 flex-1 overflow-hidden"
       >
         <LlmModalHost />
-        <div className={showProviders ? 'hidden' : 'h-full'}>
+        {showSchedulesOverview && !showProviders && <SchedulesPage />}
+        <div className={showProviders || showSchedulesOverview ? 'hidden' : 'h-full'}>
           {error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : !selected ? (

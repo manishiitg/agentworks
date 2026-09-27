@@ -758,7 +758,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 }}
               />}
 
-              {!reduced && <Tooltip>
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
@@ -768,7 +768,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                       setShowSchedulesOverview(true)
                     }}
                     data-tour="global-schedules"
-                    aria-label={schedulerPaused ? 'Schedules (all paused)' : 'Schedules'}
+                    aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
                     aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
                     className={`relative rounded-md p-1.5 transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview
                       ? 'bg-primary/10 text-primary'
@@ -780,8 +780,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                     )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules (all paused)' : 'Schedules'}</TooltipContent>
-              </Tooltip>}
+                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
+              </Tooltip>
 
               <span className="mx-0.5 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               <WorkspaceTopBarControls

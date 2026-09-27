@@ -19,6 +19,7 @@ export const WORKSPACE_ASK_AI_MESSAGE = {
   webhooks: "Help me set up or change a webhook for this workflow. Ask which external event should trigger it, what should run, and which authentication and routing it needs.",
   files: "Help me work with this workflow's files. Ask what I want to find, understand, create, or change before modifying anything.",
   pulse: "Tell me what Pulse is and how it can help me. Explain in plain words, then ask what I want to review or act on.",
+  'human-actions': "Help me review the pending human actions for this workflow. Explain the evidence and options for the action I choose.",
   backup: "Help me set up or change backup for this workflow. Explain the current state and ask what should be backed up and where.",
   publish: "Help me publish this workflow. Explain its current publishing state and ask which target and release process I want.",
   notify: "Help me change this workflow's notifications. Explain the current setup, including the Gmail sender, and ask which events, channels, sender, and recipients I want.",

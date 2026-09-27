@@ -4,6 +4,7 @@ import { formatExactDateTime, formatLastRunLabel, formatLocalScheduleTime } from
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 
 type ScheduleGroupsViewProps = {
+  entityLabel?: string
   panel: Pick<ScheduleRunsPanelState,
     | 'workflowGroups' | 'isSchedulerPaused' | 'isReadOnlyUser' | 'setActiveFilter' | 'setActiveView'
     | 'setSelectedWorkflowFilter' | 'handleToggleWorkflowGroupPause' | 'bulkUpdatingGroupKey'
@@ -11,7 +12,7 @@ type ScheduleGroupsViewProps = {
 }
 
 /** Global scheduling is a workflow-level view. Per-schedule detail belongs in All Schedules. */
-export const ScheduleGroupsView: React.FC<ScheduleGroupsViewProps> = ({ panel }) => {
+export const ScheduleGroupsView: React.FC<ScheduleGroupsViewProps> = ({ panel, entityLabel = 'Automation' }) => {
   const {
     workflowGroups,
     isSchedulerPaused,
@@ -35,7 +36,7 @@ export const ScheduleGroupsView: React.FC<ScheduleGroupsViewProps> = ({ panel })
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Automation</th>
+              <th className="px-4 py-2 font-medium">{entityLabel}</th>
               <th className="px-3 py-2 font-medium">Schedules</th>
               <th className="px-3 py-2 font-medium">Needs attention</th>
               <th className="px-3 py-2 font-medium">Next run (local)</th>

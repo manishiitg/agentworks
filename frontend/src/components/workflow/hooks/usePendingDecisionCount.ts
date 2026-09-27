@@ -6,10 +6,10 @@ import {
   WORKFLOW_LOG_REFRESH_EVENT,
 } from "../workflowEvents";
 
-// The primary Pulse button remains mounted when the decision panel is closed.
+// The Human actions button remains mounted when the decision panel is closed.
 // Refresh on saved decisions/chat receipts and periodically for background work.
-export function usePendingDecisionCount(workspacePath?: string | null): number {
-  const [snapshot, setSnapshot] = useState({ workspace: "", count: 0 });
+export function usePendingDecisionState(workspacePath?: string | null): { count: number; loaded: boolean } {
+  const [snapshot, setSnapshot] = useState({ workspace: "", count: 0, loaded: false });
   // Live notices bump this to refetch; 30s polling only if the feed is down.
   const [liveTick, setLiveTick] = useState(0);
   useLiveRefetch(() => setLiveTick((tick) => tick + 1), {
@@ -32,6 +32,7 @@ export function usePendingDecisionCount(workspacePath?: string | null): number {
         if (disposed || request !== generation || !response.success) return;
         setSnapshot({
           workspace: workspacePath,
+          loaded: true,
           count: (response.inputs || []).filter(
             (input) =>
               input.status === "pending" &&
@@ -59,5 +60,11 @@ export function usePendingDecisionCount(workspacePath?: string | null): number {
       );
     };
   }, [workspacePath, liveTick]);
-  return snapshot.workspace === workspacePath ? snapshot.count : 0;
+  return snapshot.workspace === workspacePath
+    ? { count: snapshot.count, loaded: snapshot.loaded }
+    : { count: 0, loaded: false };
+}
+
+export function usePendingDecisionCount(workspacePath?: string | null): number {
+  return usePendingDecisionState(workspacePath).count;
 }

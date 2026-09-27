@@ -9,6 +9,7 @@ import {
   Files,
   FileText,
   Fingerprint,
+  Hand,
   Globe,
   LayoutDashboard,
   Monitor,
@@ -83,6 +84,7 @@ const VIEWS = [
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
   { id: 'pulse', kind: 'inspector', label: 'Pulse', icon: Activity, toolbarGroup: 'pulse', pane: true },
+  { id: 'human-actions', kind: 'inspector', label: 'Human actions', icon: Hand, toolbarGroup: 'pulse', pane: true },
   { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'pulse', pane: true },
   { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'pulse', pane: true },
   { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'pulse', pane: true },

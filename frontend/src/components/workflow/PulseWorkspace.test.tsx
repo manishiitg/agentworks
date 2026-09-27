@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('../../services/api', () => ({ agentApi: {}, getApiBaseUrl: () => 'http://127.0.0.1:99999' }))
 vi.mock('../../api/playbooks', () => ({ playbooksApi: { list: vi.fn(), listInstalled: vi.fn() } }))
-vi.mock('./ReportHumanInputPanel', () => ({ ReportHumanInputPanel: () => <section>Needs your decision</section> }))
 import { manualPulseReviewMessage, PulseWorkspace, pulseTabReviewMessage } from './PulseWorkspace'
 import { setProductCommands } from '../../commands/registry'
 import { toAgentworksCommandDefinitions } from '../../commands/agentworksProductCommands'
@@ -23,8 +22,8 @@ describe('PulseWorkspace information hierarchy', () => {
       autonomy={{ run: 'auto', outward: 'ask', change: 'auto' }} focusAreas={['Find more audience strategies like SaaS Builder']} onSaveFocusAreas={async () => true} />)
     expect(html).toContain('For you')
     expect(html).toContain('Platform health')
-    expect(html.indexOf('Progress toward goals')).toBeLessThan(html.indexOf('Needs your decision'))
-    expect(html.indexOf('Needs your decision')).toBeLessThan(html.indexOf('Did for you'))
+    expect(html).not.toContain('Needs your decision')
+    expect(html.indexOf('Progress toward goals')).toBeLessThan(html.indexOf('Did for you'))
     expect(html.indexOf('Did for you')).toBeLessThan(html.indexOf('Challenging your rules'))
     expect(html.indexOf('Challenging your rules')).toBeLessThan(html.indexOf('Next up'))
     expect(html.indexOf('Next up')).toBeLessThan(html.indexOf('Pulse autonomy'))

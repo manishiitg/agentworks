@@ -5,6 +5,7 @@ import {
   Globe,
   ShieldCheck,
   Activity,
+  Hand,
   BellRing,
 } from 'lucide-react'
 import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowStore'
@@ -22,7 +23,8 @@ import { getNotificationDotClass } from '../notificationStatus'
 import { loadWorkflowNotificationInfo, type WorkflowNotificationState } from '../../../services/workflow-notifications'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip'
 import { hasWorkflowOwnerAccess } from '../../../utils/workflowPermissions'
-import { usePendingDecisionCount } from '../hooks/usePendingDecisionCount'
+import { usePendingDecisionState } from '../hooks/usePendingDecisionCount'
+import { useDefaultHumanActionsView } from '../hooks/useDefaultHumanActionsView'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { WorkspaceToolbarGroup } from '../../workspace/WorkspaceToolbarGroup'
@@ -119,7 +121,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   monitorOn,
   className = ''
 }) => {
-  const pendingDecisionCount = usePendingDecisionCount(workspacePath)
+  const { count: pendingDecisionCount, loaded: pendingDecisionsLoaded } = usePendingDecisionState(workspacePath)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const canManageAccess = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
 
@@ -299,6 +301,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     }
   }, [presetQueryId, loadSavedSettings])
 
+  useDefaultHumanActionsView(workspacePath, pendingDecisionsLoaded, pendingDecisionCount)
+
   // Restore selection from localStorage after workspace state finishes loading
   // This ensures localStorage values are restored AFTER all API data is loaded
   const hasRestoredRef = useRef(false)
@@ -405,13 +409,28 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                       type="button"
                       onClick={() => openWorkspaceView('pulse')}
                       className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${activeWorkspaceView === 'pulse' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-                      aria-label={pendingDecisionCount > 0 ? `Pulse, ${pendingDecisionCount} pending ${pendingDecisionCount === 1 ? 'decision' : 'decisions'}` : 'Pulse'}
+                      aria-label="Pulse"
                       aria-pressed={activeWorkspaceView === 'pulse'}
                     >
-                      <Activity aria-hidden="true" className={`h-3.5 w-3.5 ${pendingDecisionCount > 0 ? 'pulse-decision-heartbeat text-amber-500' : monitorOn ? 'text-primary' : ''}`} />
+                      <Activity aria-hidden="true" className={`h-3.5 w-3.5 ${monitorOn ? 'text-primary' : ''}`} />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom"><p>{pendingDecisionCount > 0 ? `Pulse · ${pendingDecisionCount} ${pendingDecisionCount === 1 ? 'decision needs' : 'decisions need'} your input` : 'Pulse'}</p></TooltipContent>
+                  <TooltipContent side="bottom"><p>Pulse</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => openWorkspaceView('human-actions')}
+                      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${activeWorkspaceView === 'human-actions' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
+                      aria-label={pendingDecisionCount > 0 ? `Human actions, ${pendingDecisionCount} pending` : 'Human actions'}
+                      aria-pressed={activeWorkspaceView === 'human-actions'}
+                    >
+                      <Hand aria-hidden="true" className={`h-3.5 w-3.5 ${pendingDecisionCount > 0 ? 'text-amber-500' : ''}`} />
+                      {pendingDecisionCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[8px] font-bold leading-none text-background">{pendingDecisionCount > 9 ? '9+' : pendingDecisionCount}</span>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom"><p>{pendingDecisionCount > 0 ? `${pendingDecisionCount} human ${pendingDecisionCount === 1 ? 'action' : 'actions'} pending` : 'Human actions'}</p></TooltipContent>
                 </Tooltip>
                 <WorkflowActivityButton
                   workspacePath={workspacePath}

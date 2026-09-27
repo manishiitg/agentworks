@@ -29,6 +29,7 @@ interface WorkflowScheduleRunsPanelProps {
   workflowScope?: WorkflowScope
   headerAction?: React.ReactNode
   entityType?: 'workflow' | 'product'
+  productProfileId?: string
   canManage?: boolean
   scopeNoun?: 'automation' | 'project'
   productTriggerScope?: ProductTriggerScope
@@ -42,8 +43,8 @@ interface WorkflowScheduleRunsPanelProps {
   onStatus?: (status: ScheduleStatusSnapshot) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, headerAction, entityType = 'workflow', canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
-  const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, canManage, active })
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, headerAction, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
+  const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
   const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
   useEffect(() => {
     if (refreshToken) void loadJobs(true)
@@ -88,7 +89,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
   const compact = embedded && !isWorkflowScoped
 
   const views = [
-    { key: 'by-workflow' as const, label: 'Workflows' },
+    { key: 'by-workflow' as const, label: entityType === 'product' ? 'Crews' : 'Workflows' },
     { key: 'schedules' as const, label: 'List' },
     { key: 'calendar' as const, label: 'Calendar' },
   ]
@@ -223,12 +224,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                       )}
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label="Filter by automation"
+                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">All automations</option>
+                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -288,7 +289,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                     }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" /> All workflows
+                    <ChevronLeft className="h-3.5 w-3.5" /> {entityType === 'product' ? 'All Crews' : 'All workflows'}
                   </button>
                   <span className="truncate text-xs text-muted-foreground">
                     {workflowOptions.find(option => option.value === selectedWorkflowFilter)?.label}
@@ -312,12 +313,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                       </div>
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label="Filter by automation"
+                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">All automations</option>
+                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -354,7 +355,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'by-workflow' && workflowGroups.length > 0 && (
-            <ScheduleGroupsView panel={panel} />
+            <ScheduleGroupsView panel={panel} entityLabel={entityType === 'product' ? 'Crew' : 'Automation'} />
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length === 0 && (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-sm text-muted-foreground px-6 text-center">
@@ -373,7 +374,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length > 0 && (
-            compact ? <ScheduleTableView panel={panel} /> : <ScheduleListView panel={panel} />
+            compact ? <ScheduleTableView panel={panel} entityType={entityType} /> : <ScheduleListView panel={panel} />
           )}
         </div>
         </>}

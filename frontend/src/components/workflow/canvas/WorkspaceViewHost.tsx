@@ -69,6 +69,7 @@ const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowSch
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
 const WorkflowCapabilitiesPanel = lazy(() => import('../WorkflowCapabilitiesPanel'))
 const PulseView = lazy(() => import('../PulseView'))
+const HumanActionsView = lazy(() => import('../HumanActionsView'))
 const WorkflowBackupView = lazy(() => import('../WorkflowBackupView'))
 const WorkflowPublishView = lazy(() => import('../WorkflowPublishView'))
 const WorkflowNotificationView = lazy(() => import('../WorkflowNotificationView'))
@@ -219,6 +220,8 @@ function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string
             headerAction={askAI('pulse')}
           />
         )
+      case 'human-actions':
+        return <HumanActionsView workspacePath={workspacePath} />
       case 'backup':
         return <WorkflowBackupView workspacePath={workspacePath} headerAction={askAI('backup')} />
       case 'publish':
@@ -289,7 +292,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     className = '',
     hideToolbar = false,
     embeddedPlanOnly = false,
-    openPulseOnMount = false,
+    openHumanActionsOnMount = false,
   } = props
 
   const selectedRunFolder = useWorkflowStore(state => state.selectedRunFolder)
@@ -434,17 +437,16 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   }, [workspacePath])
 
   // Used by cross-workflow decision links: opening a decision must surface
-  // Pulse, but re-renders after that must not keep reopening a view the user
+  // Human actions, but re-renders after that must not keep reopening a view the user
   // deliberately navigated away from -- one-shot, gated the same as before
   // (only from the flow view, so a user already on e.g. Costs isn't yanked
-  // into Pulse).
-  const openedInitialPulseRef = useRef(false)
+  // into Human actions).
+  const openedInitialActionsRef = useRef(false)
   useEffect(() => {
-    if (!openPulseOnMount || openedInitialPulseRef.current || kind !== 'canvas') return
-    openedInitialPulseRef.current = true
-    useWorkflowStore.getState().openWorkspaceView('pulse')
-    void refreshPulseModuleStates()
-  }, [openPulseOnMount, kind, refreshPulseModuleStates])
+    if (!openHumanActionsOnMount || openedInitialActionsRef.current || kind !== 'canvas') return
+    openedInitialActionsRef.current = true
+    useWorkflowStore.getState().openWorkspaceView('human-actions')
+  }, [openHumanActionsOnMount, kind])
 
   // The module state is a ~250KB payload: poll slowly, never while the tab is
   // hidden, and never start a poll while the previous one is still in flight

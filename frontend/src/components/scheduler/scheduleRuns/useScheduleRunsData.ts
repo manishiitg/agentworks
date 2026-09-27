@@ -47,6 +47,7 @@ export type UseScheduleRunsDataArgs = {
   onJobsLoaded?: (jobs: ScheduledJob[]) => void
   workflowScope?: WorkflowScope
   entityType?: 'workflow' | 'product'
+  productProfileId?: string
   canManage?: boolean
 }
 
@@ -60,7 +61,7 @@ function retainDurationAverage(updated: ScheduledJob, previous: ScheduledJob): S
   }
 }
 
-export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', canManage, active = true }: UseScheduleRunsDataArgs) {
+export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType = 'workflow', productProfileId, canManage, active = true }: UseScheduleRunsDataArgs) {
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -160,7 +161,9 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
         }),
         schedulerApi.getConfig().catch(() => null),
       ])
-      const scheduleJobs = timeScheduledJobs(resp.jobs)
+      const scheduleJobs = timeScheduledJobs(productProfileId && entityType === 'product'
+        ? resp.jobs.filter(job => job.id.startsWith(`product-project:${productProfileId}:`))
+        : resp.jobs)
       setJobs(scheduleJobs)
       onJobsLoaded?.(scheduleJobs)
       setSchedulerConfig(config)
@@ -169,7 +172,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
     } finally {
       if (showLoading) setIsLoading(false)
     }
-  }, [entityType, onJobsLoaded])
+  }, [entityType, productProfileId, onJobsLoaded])
 
   useEffect(() => {
     if (!active) return
