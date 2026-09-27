@@ -61,8 +61,8 @@ describe('WorkflowGoalSetupBar', () => {
     getGoalSetup.mockResolvedValue(pending)
     const { container, root } = await render({ workspacePath: 'Workflow/new', canEdit: true })
 
-    expect(container.textContent).toContain('Goal setup · optional')
-    expect(container.textContent).toContain('Step 2 of 3')
+    expect(container.textContent).toContain('Goal set')
+    expect(container.textContent).toContain('Next: Plan')
     expect(container.textContent).not.toContain('Give this automation a goal')
     expect(container.textContent).not.toContain('Start from a playbook')
     const current = container.querySelector('[aria-current="step"]') as HTMLButtonElement
@@ -108,7 +108,8 @@ describe('WorkflowGoalSetupBar', () => {
     const first = await render({ workspacePath: 'Workflow/new', canEdit: true })
     expect(first.container.textContent).toContain('Give this automation a goal')
     expect(first.container.textContent).toContain('Not every automation needs one')
-    expect(first.container.textContent).toContain('Step 1 of 3')
+    expect(first.container.textContent).toContain('Goal setup · optional')
+    expect((first.container.querySelector('[aria-current="step"]') as HTMLElement).textContent).toContain('Goal')
     const playbookButton = Array.from(first.container.querySelectorAll('button')).find(b => b.textContent === 'Start from a playbook')
     expect(playbookButton).toBeTruthy()
     await act(async () => { playbookButton!.click() })
