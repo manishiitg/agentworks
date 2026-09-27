@@ -1050,6 +1050,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	if hcpo.WorkspaceClient == nil {
 		return "", -1, fmt.Errorf("%w: no workspace client configured", ErrScriptedHarnessRejection)
 	}
+	// The script's bridge session comes from the orchestrator's own workspace
+	// env (trusted), so pass it as the context session: the shell binds its
+	// bridge token only to that, never to a session named in ExtraEnv.
+	if sid := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sid != "" {
+		if existing, _ := ctx.Value(common.ChatSessionIDKey).(string); strings.TrimSpace(existing) == "" {
+			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sid)
+		}
+	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)
 	if err != nil {
 		// Transport failure or a non-2xx status: the request never became a

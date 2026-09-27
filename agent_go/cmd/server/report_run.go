@@ -249,6 +249,10 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	timeoutSeconds := int(reportRunTimeout / time.Second)
 	runCtx, cancel := context.WithTimeout(ctx, reportRunTimeout+15*time.Second)
 	defer cancel()
+	// The script's bridge session is set by this trusted caller, so it goes in
+	// the context: a shell binds its bridge token only to that, never to a
+	// session named in ExtraEnv (pkg/workspace bindShellBridgeSession).
+	runCtx = context.WithValue(runCtx, common.ChatSessionIDKey, sessionID)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
 	out, execErr := client.ExecuteShellCommand(runCtx, workspace.ExecuteShellCommandParams{
 		Command:          reportRunCommand(absScript),

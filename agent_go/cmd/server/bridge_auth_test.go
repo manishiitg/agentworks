@@ -2,13 +2,17 @@ package server
 
 import (
 	"net/http"
-	"os"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gorilla/mux"
 
+	"context"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"strings"
+
+	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 func bridgeAuthRouter(t *testing.T) (*mux.Router, *string, *string) {
@@ -107,5 +111,61 @@ func TestBridgeTokenSecretStaysOutOfTheEnvironment(t *testing.T) {
 	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
 	if _, ok := common.VerifyBridgeToken(forged); ok {
 		t.Fatal("a token minted from anything but the in-memory secret must not verify")
+	}
+}
+
+// The virtual-tool scope header selects whose offloaded outputs a virtual
+// tool reads; it must be the token's own session (or one of its child scopes).
+func TestBridgeAuthBindsTheVirtualScope(t *testing.T) {
+	router, _, _ := bridgeAuthRouter(t)
+	alice := common.BridgeTokenForSession("chat-alice")
+	call := func(scope string) int {
+		req := httptest.NewRequest(http.MethodPost, "/tools/custom/search_large_output", nil)
+		req.Header.Set("Authorization", "Bearer "+alice)
+		req.Header.Set("X-Virtual-Scope-ID", scope)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, scope := range []string{"chat-alice", "chat-alice:vt:trace-1"} {
+		if code := call(scope); code != http.StatusOK {
+			t.Errorf("own scope %q must pass, got %d", scope, code)
+		}
+	}
+	for _, scope := range []string{"chat-bob", "chat-bob:vt:trace-1"} {
+		if code := call(scope); code != http.StatusForbidden {
+			t.Errorf("another session's scope %q must be refused, got %d", scope, code)
+		}
+	}
+}
+
+// /api/{mcp,virtual}/execute take the session from the body behind only a
+// login: a named session must be the caller's own.
+func TestExecuteRoutesRequireTheCallersOwnSession(t *testing.T) {
+	store := internalevents.NewEventStore(10)
+	store.SetSessionOwner("chat-alice", "alice")
+	store.SetSessionOwner("chat-bob", "bob")
+	api := &StreamingAPI{eventStore: store}
+	reached := false
+	handler := api.requireOwnBodySession(func(w http.ResponseWriter, r *http.Request) { reached = true; w.WriteHeader(http.StatusOK) })
+	call := func(user, body string) (int, bool) {
+		reached = false
+		req := httptest.NewRequest(http.MethodPost, "/api/mcp/execute", strings.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		return rec.Code, reached
+	}
+	if code, ok := call("alice", `{"server":"s","tool":"t","session_id":"chat-alice"}`); code != http.StatusOK || !ok {
+		t.Fatalf("own session must pass, got %d", code)
+	}
+	if code, ok := call("alice", `{"server":"s","tool":"t","session_id":"chat-bob"}`); code != http.StatusForbidden || ok {
+		t.Fatalf("another user's session must be refused, got %d reached=%v", code, ok)
+	}
+	if code, ok := call("alice", `{"server":"s","tool":"t","session_id":"no-owner"}`); code != http.StatusForbidden || ok {
+		t.Fatalf("a session with no owner must be refused, got %d", code)
+	}
+	if code, ok := call("alice", `{"server":"s","tool":"t"}`); code != http.StatusOK || !ok {
+		t.Fatalf("a call without a session (the tool tester) is unchanged, got %d", code)
 	}
 }

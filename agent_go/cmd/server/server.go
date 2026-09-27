@@ -2384,9 +2384,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	executorHandlers := executor.NewExecutorHandlers(api.mcpConfigPath, api.logger)
 	executorHandlers.SetMCPServerResolver(api.resolveWorkshopMCPServer)
 
-	apiRouter.HandleFunc("/mcp/execute", executorHandlers.HandleMCPExecute).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/execute", api.requireOwnBodySession(executorHandlers.HandleMCPExecute)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/custom/execute", executorHandlers.HandleCustomExecute).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/virtual/execute", executorHandlers.HandleVirtualExecute).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/virtual/execute", api.requireOwnBodySession(executorHandlers.HandleVirtualExecute)).Methods("POST", "OPTIONS")
 
 	// Per-tool endpoints for code execution mode (bearer token auth, bypasses JWT)
 	// LLM-generated code calls these directly, so they use API token auth instead of JWT.

@@ -573,25 +573,35 @@ func isWorkflowStepShellRequest(envs ...map[string]string) bool {
 	return false
 }
 
-// bindShellBridgeSession makes a shell's tool-call credentials match the
-// session it finally runs as. The bridge token is per session
-// (common/bridge_token.go), so it is derived last, after every env layer has
-// been merged. A shell built from a sessionless client but run for a session
-// gets that session's scoped URL and token, as session clients do; a shell
-// with no session gets no token at all.
+// bindShellBridgeSession makes a shell's tool-call credentials those of the
+// session it runs as, and only that one. The bridge token is per session
+// (common/bridge_token.go), so it is derived last, after every env layer is
+// merged, and only from the trusted session: sessionIDFromContext (the
+// request context the token-bound bridge route or step wrapper set, else the
+// client's own env), never from the command's extra_env, which the model
+// controls. A model naming another session in extra_env still gets this
+// shell's session and token; a shell with no trusted session gets no token.
 func bindShellBridgeSession(env map[string]string, sessionID string) {
 	if env == nil || !common.BridgeTokensEnabled() {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
-	if strings.TrimSpace(env["MCP_SESSION_ID"]) == "" && sessionID != "" {
-		env["MCP_SESSION_ID"] = sessionID
-		if base := strings.TrimRight(strings.TrimSpace(env["MCP_API_URL"]), "/"); base != "" && !strings.Contains(base, "/s/") {
-			env["MCP_API_URL"] = base + "/s/" + sessionID
+	if sessionID == "" {
+		for _, key := range []string{"MCP_SESSION_ID", "MCP_API_TOKEN", "MCP_AUTH"} {
+			delete(env, key)
+		}
+		return
+	}
+	env["MCP_SESSION_ID"] = sessionID
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("MCP_API_URL")), "/")
+	if base == "" {
+		base = strings.TrimRight(strings.TrimSpace(env["MCP_API_URL"]), "/")
+		if i := strings.Index(base, "/s/"); i >= 0 {
+			base = base[:i]
 		}
 	}
-	if strings.TrimSpace(env["MCP_SESSION_ID"]) == "" {
-		delete(env, "MCP_API_TOKEN")
+	if base != "" {
+		env["MCP_API_URL"] = base + "/s/" + sessionID
 	}
 	common.PopulateMCPBridgeShortEnv(env)
 }
