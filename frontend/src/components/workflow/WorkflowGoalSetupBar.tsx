@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, Circle, Loader2, RefreshCw, Target, X } from 'lucide-react'
+import { BookMarked, CheckCircle2, Circle, Loader2, RefreshCw, Target, X } from 'lucide-react'
 import { workflowManifestApi, type WorkflowGoalSetupStatus } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { goalSetupChatMessage } from '../../utils/goalSetupChat'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
@@ -57,7 +58,7 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
     if (!next || busy) return
     setBusy(true)
     try {
-      await sendWorkspacePaneMessageToChat({ workspacePath, message: goalSetupChatMessage(next.command) })
+      await sendWorkspacePaneMessageToChat({ workspacePath, message: goalSetupChatMessage(next.command || 'setup-goals', status.playbooks ?? []) })
     } catch (cause) {
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not start goal setup in chat.', 'error')
     } finally {
@@ -84,7 +85,19 @@ export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath
         <span className="text-sm font-semibold text-foreground">Goal setup</span>
         <span className="text-xs text-muted-foreground">Optional</span>
         <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {status.checks.map(check => (
+          {status.checks.map(check => check.id === 'playbook' ? (
+            <li key={check.id}>
+              <button
+                type="button"
+                onClick={() => useWorkflowStore.getState().openWorkspaceView('playbooks')}
+                title={check.done ? 'Installed playbooks guide this setup. Open Playbooks.' : 'Optional: start from a playbook. Open Playbooks.'}
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-muted ${check.done ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : 'border-dashed border-border text-muted-foreground'}`}
+              >
+                <BookMarked className="h-3 w-3" />
+                {check.done ? `Playbook: ${(status.playbooks ?? []).map(p => p.title).join(', ')}` : 'Playbook (optional)'}
+              </button>
+            </li>
+          ) : (
             <li key={check.id} className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${check.done ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : check.id === next?.id ? 'border-primary/50 text-foreground' : 'border-border text-muted-foreground'}`}>
               {check.done ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
               {check.label}

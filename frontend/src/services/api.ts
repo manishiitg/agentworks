@@ -2958,10 +2958,18 @@ export interface WorkflowUserPermissionsResponse {
 
 // --- Workflow manifest API ---
 export interface WorkflowGoalSetupCheck {
-  id: 'goal' | 'plan' | 'metrics' | 'dashboard'
+  id: 'playbook' | 'goal' | 'plan' | 'metrics' | 'dashboard'
   label: string
   done: boolean
-  command: string
+  command?: string
+  optional?: boolean
+}
+
+export interface WorkflowGoalSetupPlaybook {
+  id: string
+  title: string
+  skill_name: string
+  status?: string
 }
 
 export interface WorkflowGoalSetupStatus {
@@ -2971,6 +2979,7 @@ export interface WorkflowGoalSetupStatus {
   has_runs: boolean
   checks: WorkflowGoalSetupCheck[]
   next?: WorkflowGoalSetupCheck
+  playbooks?: WorkflowGoalSetupPlaybook[]
 }
 
 export const workflowManifestApi = {

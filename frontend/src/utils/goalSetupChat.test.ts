@@ -23,4 +23,11 @@ describe('goalSetupChatMessage', () => {
     expect(message).toContain('kind="setup-goals"')
     expect(message).toContain('Requested from goal setup.')
   })
+
+  it('starts from an installed playbook', () => {
+    const message = goalSetupChatMessage('design-plan', [{ title: 'Website Growth Loop', skill_name: 'agentworks-playbook-website-growth-loop' }])
+    expect(message).toContain('Website Growth Loop')
+    expect(message).toContain('agentworks-playbook-website-growth-loop')
+    expect(message).toContain('follow its setup checks')
+  })
 })

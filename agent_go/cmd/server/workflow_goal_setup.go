@@ -13,26 +13,37 @@ import (
 
 // Goal setup is an automation's initial setup, like a Crew template's setup
 // bar: goal -> plan -> metrics -> dashboard, each done in the Builder chat
-// (/setup-goals, /design-plan, /design-dashboard). Every check reads the workflow's real state; nothing is
+// (/setup-goals, /design-plan, /design-dashboard). It opens with an optional
+// playbook: an installed playbook's skill is the starting point for those
+// chats, and choosing none never blocks setup. Every check reads the workflow's real state; nothing is
 // self-reported. Goals are optional, so the owner can dismiss the bar, and it
 // only shows during initial setup: once the automation has run, it is gone.
 
 const workflowGoalSetupDismissFile = ".goal-setup.json"
 
 type workflowGoalSetupCheck struct {
-	ID      string `json:"id"`
-	Label   string `json:"label"`
-	Done    bool   `json:"done"`
-	Command string `json:"command"` // the chat command that completes it
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Done     bool   `json:"done"`
+	Command  string `json:"command,omitempty"` // the chat command that completes it
+	Optional bool   `json:"optional,omitempty"`
+}
+
+type workflowGoalSetupPlaybook struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	SkillName string `json:"skill_name"`
+	Status    string `json:"status,omitempty"`
 }
 
 type workflowGoalSetupStatus struct {
-	Show      bool                     `json:"show"`
-	Complete  bool                     `json:"complete"`
-	Dismissed bool                     `json:"dismissed"`
-	HasRuns   bool                     `json:"has_runs"`
-	Checks    []workflowGoalSetupCheck `json:"checks"`
-	Next      *workflowGoalSetupCheck  `json:"next,omitempty"`
+	Show      bool                        `json:"show"`
+	Complete  bool                        `json:"complete"`
+	Dismissed bool                        `json:"dismissed"`
+	HasRuns   bool                        `json:"has_runs"`
+	Checks    []workflowGoalSetupCheck    `json:"checks"`
+	Next      *workflowGoalSetupCheck     `json:"next,omitempty"`
+	Playbooks []workflowGoalSetupPlaybook `json:"playbooks"`
 }
 
 func workflowGoalSetupReadFile(ctx context.Context, filePath string) (string, error) {
@@ -46,7 +57,14 @@ func workflowGoalSetupReadFile(ctx context.Context, filePath string) (string, er
 	return content, nil
 }
 
-func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string) workflowGoalSetupStatus {
+func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string, manifest *WorkflowManifest) workflowGoalSetupStatus {
+	playbooks := []workflowGoalSetupPlaybook{}
+	if manifest != nil {
+		for _, installed := range manifest.InstalledPlaybooks {
+			playbooks = append(playbooks, workflowGoalSetupPlaybook{ID: installed.ID, Title: installed.Title, SkillName: installed.SkillName, Status: installed.Status})
+		}
+	}
+
 	objective, successCriteria, _ := step.ReadWorkflowObjectiveFromSoul(ctx, workspacePath, workflowGoalSetupReadFile)
 	goalDone := step.SoulSectionWritten(objective) && step.SoulSectionWritten(successCriteria)
 
@@ -69,14 +87,15 @@ func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string) wor
 	dashboardDone := strings.TrimSpace(dashboardRaw) != ""
 
 	checks := []workflowGoalSetupCheck{
+		{ID: "playbook", Label: "Playbook", Done: len(playbooks) > 0, Optional: true},
 		{ID: "goal", Label: "Goal", Done: goalDone, Command: "setup-goals"},
 		{ID: "plan", Label: "Plan", Done: planDone, Command: "design-plan"},
 		{ID: "metrics", Label: "Metrics", Done: metricsDone, Command: "setup-goals"},
 		{ID: "dashboard", Label: "Dashboard", Done: dashboardDone, Command: "design-dashboard"},
 	}
-	status := workflowGoalSetupStatus{Checks: checks, Complete: goalDone && planDone && metricsDone && dashboardDone}
+	status := workflowGoalSetupStatus{Checks: checks, Playbooks: playbooks, Complete: goalDone && planDone && metricsDone && dashboardDone}
 	for i := range checks {
-		if !checks[i].Done {
+		if !checks[i].Done && !checks[i].Optional {
 			next := checks[i]
 			status.Next = &next
 			break
@@ -130,5 +149,5 @@ func (api *StreamingAPI) handleWorkflowGoalSetup(w http.ResponseWriter, r *http.
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(buildWorkflowGoalSetupStatus(r.Context(), workspacePath))
+	_ = json.NewEncoder(w).Encode(buildWorkflowGoalSetupStatus(r.Context(), workspacePath, manifest))
 }

@@ -17,15 +17,18 @@ vi.mock('../../utils/workspacePaneChat', () => ({
   sendWorkspacePaneMessageToChat: (...args: unknown[]) => sendWorkspacePaneMessageToChat(...args),
 }))
 vi.mock('../../utils/goalSetupChat', () => ({
-  goalSetupChatMessage: (command: string) => `expanded /${command}`,
+  goalSetupChatMessage: (command: string, playbooks: Array<{ title: string }> = []) => `expanded /${command}${playbooks.length ? ` from ${playbooks[0].title}` : ''}`,
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
+const openWorkspaceView = vi.fn()
+vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView }) } }))
 
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 
 const pending = {
   show: true, complete: false, dismissed: false, has_runs: false,
   checks: [
+    { id: 'playbook', label: 'Playbook', done: false, optional: true },
     { id: 'goal', label: 'Goal', done: true, command: 'setup-goals' },
     { id: 'plan', label: 'Plan', done: false, command: 'design-plan' },
     { id: 'metrics', label: 'Metrics', done: false, command: 'setup-goals' },
@@ -81,5 +84,27 @@ describe('WorkflowGoalSetupBar', () => {
     const ran = await render({ workspacePath: 'Workflow/running', canEdit: true })
     expect(ran.container.textContent).toBe('')
     await act(async () => ran.root.unmount())
+  })
+
+  it('offers an optional playbook and starts setup from an installed one', async () => {
+    getGoalSetup.mockResolvedValue(pending)
+    const first = await render({ workspacePath: 'Workflow/new', canEdit: true })
+    const chip = Array.from(first.container.querySelectorAll('button')).find(b => b.textContent === 'Playbook (optional)')
+    expect(chip).toBeTruthy()
+    await act(async () => { chip!.click() })
+    expect(openWorkspaceView).toHaveBeenCalledWith('playbooks')
+    await act(async () => first.root.unmount())
+
+    getGoalSetup.mockResolvedValue({
+      ...pending,
+      checks: pending.checks.map(check => check.id === 'playbook' ? { ...check, done: true } : check),
+      playbooks: [{ id: 'website-growth-loop', title: 'Website Growth Loop', skill_name: 'agentworks-playbook-website-growth-loop' }],
+    })
+    const second = await render({ workspacePath: 'Workflow/new', canEdit: true })
+    expect(second.container.textContent).toContain('Playbook: Website Growth Loop')
+    const action = Array.from(second.container.querySelectorAll('button')).find(b => b.textContent === 'Design the plan in chat')
+    await act(async () => { action!.click() })
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ workspacePath: 'Workflow/new', message: 'expanded /design-plan from Website Growth Loop' })
+    await act(async () => second.root.unmount())
   })
 })
