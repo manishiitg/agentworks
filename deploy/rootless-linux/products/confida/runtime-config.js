@@ -13,6 +13,6 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: false,
   appName: "AgentWorks",
   faviconUrl: "/logo.svg",
-  enabledProductSurfaces: ["agentworks", "work"],
+  enabledProductSurfaces: ["agentworks", "relays", "work"],
   defaultProductSurface: "agentworks"
 };

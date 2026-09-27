@@ -33,6 +33,7 @@ export interface PredefinedPreset {
   selectedSkills?: string[]; // Skill folder names for workflow
   selectedGlobalSecretNames?: string[] | null; // null=all global secrets, []=none, [...]=specific
   agentMode?: 'multi-agent' | 'workflow';
+  workflowKind?: 'relay' | 'workflow';
   selectedFolder?: PlannerFile;
   llmConfig?: PresetLLMConfig; // LLM configuration for this preset
   useCodeExecutionMode?: boolean; // MCP code execution mode

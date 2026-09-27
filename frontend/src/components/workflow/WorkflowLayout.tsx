@@ -21,6 +21,7 @@ import { WorkflowChatTabs } from './WorkflowChatTabs'
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
 import { useAppStore } from '../../stores/useAppStore'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { sanitizeDisplayNameForFolder } from '../../utils/workflowUtils'
 import { logger } from '../../utils/logger'
 import { startRestoredTransportTerminal } from '../../utils/restoredTerminal'
@@ -624,6 +625,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   onNewChat
 }) => {
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Narrow selectors: bare useChatStore() re-renders on every store update (10x/sec with 2 parallel sessions)
   const currentWorkflowPhase = useChatStore(state => state.currentWorkflowPhase)
   const setCurrentWorkflowPhase = useChatStore(state => state.setCurrentWorkflowPhase)
@@ -2284,11 +2286,12 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              Select an Automation
+              Select {isRelaySurface ? 'a Relay' : 'an Automation'}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              Choose an automation from the top bar, or use the plus button to create one.
-              Build it in chat and inspect its plan and dashboard beside the conversation.
+              {isRelaySurface
+                ? 'Choose a relay from the top bar, or use the plus button to create one. Build its graph in chat and inspect it beside the conversation.'
+                : 'Choose an automation from the top bar, or use the plus button to create one. Build it in chat and inspect its plan and dashboard beside the conversation.'}
             </p>
             </div>
           </div>

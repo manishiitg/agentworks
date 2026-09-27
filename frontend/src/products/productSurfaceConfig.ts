@@ -1,4 +1,4 @@
-export const PRODUCT_SURFACES = ['agentworks', 'video-studio', 'dominion', 'sparkquill', 'work', 'code'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'dominion', 'sparkquill', 'work', 'code'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
@@ -20,15 +20,15 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 /**
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation surface and the built-in Work coding surface together.
+ * the automation, Relay, and built-in Crew surfaces together.
  * Dedicated product shells can still replace this with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
-  if (!Array.isArray(configured)) return ['agentworks', 'work']
+  if (!Array.isArray(configured)) return ['agentworks', 'relays', 'work']
 
   const enabled = configured.filter(isProductSurface)
-  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'work']
+  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'relays', 'work']
 }
 
 export function deploymentDefaultProductSurface(): ProductSurface {
@@ -66,5 +66,7 @@ export function intersectAllowedProductSurfaces(
 ): ProductSurface[] {
   if (!allowedProducts) return surfaces
   const allowed = new Set(allowedProducts.map((p) => p.toLowerCase()))
-  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()))
+  // Relays use the existing workflow APIs and permissions. A user granted
+  // AgentWorks workflow access can use the Relay view without a new ACL.
+  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()) || (surface === 'relays' && allowed.has('agentworks')))
 }

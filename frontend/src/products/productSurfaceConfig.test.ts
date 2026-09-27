@@ -13,8 +13,8 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
-  it('defaults to AgentWorks and Work when no deployment allowlist is configured', () => {
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
+  it('defaults to AgentWorks, Relays, and Crew when no deployment allowlist is configured', () => {
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(hasGatewaySSO()).toBe(false)
@@ -77,5 +77,6 @@ describe('intersectAllowedProductSurfaces', () => {
 
   it('narrows to the explicit per-user allowlist, case-insensitively', () => {
     expect(intersectAllowedProductSurfaces(['dominion', 'agentworks'], ['Dominion'])).toEqual(['dominion'])
+    expect(intersectAllowedProductSurfaces(['agentworks', 'relays', 'work'], ['agentworks'])).toEqual(['agentworks', 'relays'])
   })
 })
