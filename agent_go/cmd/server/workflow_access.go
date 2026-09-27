@@ -462,3 +462,19 @@ func sessionVisibleTo(ownerID string, claims *UserClaims) bool {
 	}
 	return userAccessForClaims(claims).Admin
 }
+
+// workflowManifestBlockedWriteForNonOwner is the workflow.json path a
+// Workshop session must not write when its user is not an owner of the
+// workflow at folder (editors included), or "" when they may. The manifest
+// holds the access record and created_by, so only owners change it.
+func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserClaims, folder string) string {
+	folder = strings.TrimSuffix(strings.TrimSpace(folder), "/")
+	if folder == "" {
+		return ""
+	}
+	level, manifest := workflowAccessForWorkspacePath(ctx, claims, folder)
+	if manifest == nil || level == WorkflowAccessOwner {
+		return ""
+	}
+	return folder + "/workflow.json"
+}

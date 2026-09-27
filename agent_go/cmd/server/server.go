@@ -5713,6 +5713,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				blockedPlanning := effectiveWorkflowPhaseFolderForWrites + "/" + todo_creation_human.PlanningFolderName + "/"
 				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning)
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Write access: %s/ (whole workflow) with blocked-write prefix: %s", effectiveWorkflowPhaseFolderForWrites, blockedPlanning)
+				// workflow.json carries the access record and created_by (whom
+				// schedules run as): only an owner's session may write it, so an
+				// editor cannot have the agent promote them or change run-as.
+				if blockedManifest := workflowManifestBlockedWriteForNonOwner(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), effectiveWorkflowPhaseFolderForWrites); blockedManifest != "" {
+					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedManifest)
+					log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Non-owner session: blocked writes to %s", blockedManifest)
+				}
 			} else if isWorkflowPhase && currentUserIsReadOnly {
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Read-only identity — no whole-workflow write grant for session=%s", sessionID)
 			}
