@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -128,5 +129,36 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	manifest.Kind = "other"
 	if err := ValidateManifest(manifest); err == nil {
 		t.Fatal("unknown workflow kind accepted")
+	}
+}
+
+func TestRelayManifestUpdateRejectsInvalidGroupsAsBadRequest(t *testing.T) {
+	manifest := NewWorkflowManifest("Relay")
+	manifest.Kind = "relay"
+	manifest.CreatedBy = "owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
+		"Workflow/relay/workflow.json": string(raw),
+	}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	function := reviewPRTrigger()
+	requestBody, err := json.Marshal(UpdateWorkflowManifestRequest{
+		WorkspacePath: "Workflow/relay",
+		Schedules:     &[]WorkflowSchedule{function},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/workflows/manifest", strings.NewReader(string(requestBody)))
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
+	response := httptest.NewRecorder()
+	(&StreamingAPI{}).handleUpdateWorkflowManifest(response, req)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "exactly one variable group") {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
 }
