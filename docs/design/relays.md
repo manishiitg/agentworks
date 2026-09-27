@@ -54,6 +54,22 @@ Start with the workflow-backed option. A Relay is identified as a Relay in its m
 
 This choice is a v1 implementation direction, not a mandate to run the full goal-driven controller. A spike must prove that Relay mode can call message-sequence, scripted, and route primitives without invoking Pulse, workshop, or hidden workflow prompt behavior. If that boundary cannot be made reliable, return to this comparison with measured extraction cost before creating a new top-level store.
 
+### Reuse rule for implementation
+
+The default is to **extend the existing path**, with a `relay` mode at its boundary. An implementation PR should name the existing entry point it extends and show a compatibility test for ordinary workflows. A new Relay-only store, scheduler, trigger service, ACL, execution engine, graph schema, log system, or parallel React view requires evidence that the existing component cannot support the behavior after a small shared refactor. `product.yaml` selects the builder experience; it must not become a second execution platform.
+
+| Need | Existing path to extend | Small new behavior |
+| --- | --- | --- |
+| Graph and draft edits | `planning/plan.json`, `step_config.json`, workflow builder plan tools and canvas | Relay mode accepts only message-sequence, scripted, and route steps; exact prompts and final JSON contract. |
+| Publish and version | Workflow plan revision/history and backup | Freeze a revision plus referenced code/tool artifacts; pin each call to its hash. |
+| Start and poll | Workflow functions, `DeliveryID`, trigger auth, `call_workflow_function`, `get_workflow_function_call` | Accept JSON object inputs and expose the authored JSON result. |
+| Execute | Existing message-sequence, scripted, and deterministic route executors | Relay mode omits goal, Pulse, synthetic turns, and default workflow prompt. |
+| Run state and resume | Workflow run ID/history and current continuation state | Node checkpoint and `needs_attention` state in the same run record. |
+| UI and operations | Product chat/split pane, Plan, Triggers, Execution logs, Integrations, Active Work, costs, CLI, access and secrets | Relay labels, node prompt inspector, version selector, and recovery actions. |
+| Python tools and browser | Shared custom-tool bridge/sandbox and managed `agent_browser` | A shared Python tool runner and tool-call-only bridge path; browser ownership scoped to a run. |
+
+The last row is genuine platform work because user-authored Python tools and run-scoped browser ownership are not supplied by the current primitives. Build those as shared capabilities usable by AgentWorks and Crew. Do not create Relay-only copies. This reuse rule is a release gate: a Relay that works by duplicating core subsystems has not met the product requirement.
+
 ### Access, security, and shared product surfaces
 
 A Relay inherits the workflow workspace's owner/reader model, read-only account behavior, and product visibility toggle. Integrate co-owner/private behavior as the shared access work lands; do not invent a separate Relay ACL. Review every API, builder tool, trigger, and run-log route with owner, co-owner, reader, and unrelated-user cases; a trigger credential authorizes a scoped invocation, not definition editing or unrestricted run inspection. Apply the existing workspace-token and proxy path policy to the Relay paths, including draft code and immutable version blobs. Never introduce an unguarded top-level `Relays/` prefix.
@@ -66,7 +82,7 @@ Relay calls should appear in Active Work and Ctrl+K with a “Called by …” o
 
 Use the repository's established `product.yaml` spelling (rather than a new `product.yml` loader). Add `agent_go/internal/relayproduct/product.yaml` and load it through `agentprofiles.LoadProductManifest`, as Crew and the other products do. This static manifest owns the **Relay builder chat**: product identity, builder system prompt file, project-scoped conversation, allowed builder tools, runtime policy, and UI surface. It does **not** store an individual Relay's graph or become the system prompt for an agent node. Those user-authored values live in immutable Relay versions.
 
-The Relay profile should use `scope: project`, a keyed chat per Relay, `ui.surface: relays`, and only the shared features its **builder** needs: live chat, MCP selection, secrets, models, and workspace UI. The builder gets a small set of typed product tools to create/update a draft graph, edit a Python tool or script, test a draft, publish a version, and manage Relay triggers. Published version files are writable only through the version publisher, never through generic chat file tools. Do not give the builder a persistent browser, dashboard, Pulse, or background work. Crew's message-only `triggers` feature does not start a graph run; use the existing workflow function trigger/call path for Relay invocations. Browser access is a per-node **execution** setting from the Relay definition, not a persistent builder-profile feature.
+The Relay profile should use `scope: project`, a keyed chat per Relay, `ui.surface: relays`, and only the shared features its **builder** needs: live chat, MCP selection, secrets, models, and workspace UI. Reuse the workflow builder's typed plan-editing tools with Relay-mode field validation; add only missing publish/test and Python-tool authoring operations. Published revisions are writable only through the version publisher, never through generic chat file tools. Do not give the builder a persistent browser, dashboard, Pulse, or background work. Crew's message-only `triggers` feature does not start a graph run; use the existing workflow function trigger/call path for Relay invocations. Browser access is a per-node **execution** setting from the saved plan, not a persistent builder-profile feature.
 
 Choose a transport whose tool allowlist is actually enforced for the builder. The [product.yaml design guide](../core/product_yaml_design_guide.md) records that native/tmux coding-CLI mode can run tools outside `mcpagent`'s allowlist; `structured` mode enforces the narrow product tool policy but may reduce streaming and live steering for some CLI providers. Pin the chosen provider/transport combination with a live tool-discovery test. Relay **execution agents** have their own per-node model, prompt, and tool policy from the published version; they do not inherit the builder profile's prompt or tools.
 
@@ -74,37 +90,28 @@ One shared-platform gap needs an explicit solution: today a registered custom to
 
 | Concern | Reuse | Relay-specific seam |
 | --- | --- | --- |
-| Product registration and builder chat | `agentprofiles` manifest loader, product profile registry, `ChatArea` with `inputVariant="product"`, `ProductChatSurface` | `relayproduct/product.yaml`, builder prompt, typed draft/publish/test tools. |
+| Product registration and builder chat | `agentprofiles` manifest loader, product profile registry, workflow builder tools, `ChatArea` with `inputVariant="product"`, `ProductChatSurface` | `relayproduct/product.yaml`, builder prompt, Relay-mode tool validation and missing publish/test actions. |
 | Left/right layout | Product surface switcher, split rail, workspace toolbar, view headers | A thin `RelaySurface` composing the existing chat and Relay pane. |
-| Plan | React Flow shell, canvas controls, node/edge visuals, route trace | Adapter from Relay graph definition and run path; Relay node inspector. |
+| Plan | Existing workflow plan representation, React Flow shell, canvas controls, node/edge visuals, route trace | Relay-mode filter and prompt/output inspector over the same plan. |
 | Agent node | Message-sequence executor, MCP session, provider continuation, event/logging primitives | Custom system prompt and authored message templates; durable turn cursor; no workflow synthetic turns. |
-| Script and decision | Script executor and deterministic route resolution | Relay input/output adapter and one-path graph cursor. |
-| Python tool | Existing agent custom-tool registration and tool-call events | Versioned user script loader, isolated JSON stdin/stdout runner, per-node allowlist, effect journal. |
+| Script and decision | Script executor and deterministic route resolution | Relay input/output binding and one selected path. |
+| Python tool | Existing agent custom-tool registration, tool-call events, and sandbox isolator | Shared versioned Python tool runner and enforced per-node allowlist. |
 | Browser | Managed `agent_browser` tool, session tracker, and cleanup primitives | Run-ID-owned headless session/profile, per-node enablement, terminal cleanup, and recovery of an interrupted run. |
 | Triggers | Workflow function trigger/call/poll path, webhook authentication, encrypted secrets, delivery IDs | Extend typed inputs for JSON, bind to a Relay version, and expose its final JSON result. |
 | Execution logs | Shared log rows, tool-call display, step detail, cost display | Query by Relay run ID and show durable checkpoints/recovery state. |
 | Resume | Workflow run IDs/history and `mcpagent` provider-neutral CLI session handles | V1 durable node checkpoints and explicit uncertain-node state; later turn checkpoints, leases/fencing, effect reconciliation. |
 
-Extract shared components and services at these seams, then let both Workflows/Crew and Relays call them. Keep the Relay execution adapter small: resolve a frozen graph, run one node, commit its output and next edge, and repeat. Avoid invoking goal, Pulse, learning, and workshop code merely to reach message-sequence or scripted executors. Where an executor is too coupled to those behaviors, extract it behind a shared interface and leave a compatibility adapter for existing workflows. Consecutive agent nodes should be allowed to share one coding-CLI session when their model, prompt, and tool policy are compatible; a policy or system-prompt change forces a new session. Measure CLI cold-start and MCP-ready cost before choosing a default grouping.
+Extend shared components and services at these seams, then let both Workflows/Crew and Relays call them. Keep Relay mode small: resolve the frozen plan revision, run one existing step, commit its output and selected next edge, and repeat. Avoid invoking goal, Pulse, learning, and workshop code merely to reach message-sequence or scripted executors. Where an executor is too coupled to those behaviors, extract it behind a shared interface and leave a compatibility adapter for existing workflows. Consecutive agent nodes should be allowed to share one coding-CLI session when their model, prompt, and tool policy are compatible; a policy or system-prompt change forces a new session. Measure CLI cold-start and MCP-ready cost before choosing a default grouping.
 
 ## Definition and API contracts
 
 ### Definition storage
 
-Proposed layout **under the existing workflow workspace**, subject to its path and backup policies:
+Keep the canonical draft in the existing workflow workspace: `workflow.json` identifies the Relay kind and stores product-level input/output/version metadata; `planning/plan.json` holds the graph using existing message-sequence, scripted, and route step types; and `planning/step_config.json` holds compatible step settings. Add the authored system prompt and per-node permissions to those existing step contracts or a small referenced extension. Reuse the workflow's script files and history/backup machinery. User-authored Python tool files are the one new artifact type, stored beneath the guarded workflow workspace and referenced from the plan.
 
-```text
-<workflow-workspace>/relay/draft/definition.json
-<workflow-workspace>/relay/draft/code/<script-node-id>/main.py
-<workflow-workspace>/relay/draft/tools/<tool-id>/main.py
-<workflow-workspace>/relay/versions/v<N>/manifest.json
-<workflow-workspace>/relay/versions/v<N>/artifacts/...
-<workflow-workspace>/<existing-run-history>/<run-id>/relay-artifacts/...
-```
+Publishing freezes the plan, step config, referenced scripts and Python tools as one version hash. Extend the existing plan-revision/history path rather than creating a parallel `definition.json` graph and `versions/vN` directory tree. A draft test also pins a revision so its trace does not change after later edits. Trigger bindings and encrypted credentials stay in the existing workflow manifest and secret path; a run snapshots the resolved trigger mapping and version at acceptance. Secret **references** may be versioned, but secret values are never written into definitions or logs.
 
-Publishing freezes a complete draft snapshot and records a content hash. Use the workflow's history/backup mechanism or content-addressed blobs for version payloads rather than copying a large directory for each version; the sketch above is logical, not a required physical duplication scheme. A draft test also snapshots its draft revision, so its historical trace does not change after later edits. Trigger bindings and encrypted credentials live separately from versions; a run snapshots the resolved trigger mapping and version at acceptance. Secret **references** may be versioned, but secret values are never written into definitions or logs.
-
-The definition contains stable node IDs, directed edges, entry and final output nodes, input fields, prompt/message templates, script and user-created tool references, decision cases and fallback, model and tool selections, per-node `agent_browser` enablement, optional output schema, and execution limits. Structural checks on save/publish reject dangling edges, unreachable output, cycles, invalid variable references, and unsupported node settings. These checks do not launch a model or run an automatic prevalidation/repair agent.
+The Relay-mode plan contains stable step IDs, routes, input fields, prompt/message templates, script and user-tool references, decision cases and fallback, model/tool selections, per-node `agent_browser` enablement, optional output schema, and execution limits. Reuse plan validation for dangling edges, cycles, and step IDs; add only Relay-specific checks for single-path V1, variable references, and unsupported settings. These checks do not launch a model or run an automatic prevalidation/repair agent.
 
 ### User-created tools
 
@@ -215,9 +222,9 @@ The estimates below are rough **engineer effort**, not calendar dates. The archi
 
 ### 1. Build a callable vertical slice (2–3 engineer weeks)
 
-- Register `relayproduct/product.yaml`, builder prompt, and thin left-chat/right-pane surface. Store a Relay kind under an existing workflow workspace and reuse its owner, readers, tokens, path guards, encrypted secrets, and history. Add versioned graph definition, structural checks, content hash, and draft test snapshot.
+- Register `relayproduct/product.yaml`, builder prompt, and thin left-chat/right-pane surface. Store a Relay kind under an existing workflow workspace and reuse its owner, readers, tokens, path guards, encrypted secrets, and history. Extend `planning/plan.json` and step config only for missing Relay fields; publish a frozen plan revision and draft-test snapshot through the existing history path.
 - Extend workflow functions to accept the declared JSON input contract and bind a call to an immutable published version. Reuse delivery ID, trigger auth, call ID, immediate accept, and polling. Produce one stable JSON output envelope. Add a Relay-facing HTTP alias only if the existing function endpoint is unsuitable for external callers.
-- Add Relay mode to message-sequence execution: authored system prompt and ordered user messages, variables from trigger and prior nodes, no workflow template or synthetic turns. Reuse scripted steps and deterministic routes. Reject loops and parallel branches in V1.
+- Add Relay mode to message-sequence execution: authored system prompt and ordered user messages, variables from trigger and prior nodes, no workflow template or synthetic turns. Reuse scripted steps, deterministic routes, and existing plan validation. Reject loops and parallel branches in V1.
 - Gate: author and publish a two-agent branching Relay in chat, invoke it from a website backend and through `call_workflow_function`, poll the same call ID, and retrieve author-defined JSON. Editing the draft cannot change the running version.
 
 ### 2. Add tools, browser, and enforceable permissions (2–3 engineer weeks)
@@ -236,7 +243,7 @@ The estimates below are rough **engineer effort**, not calendar dates. The archi
 
 ### 4. Complete the right pane and V1 release gate (1–2 engineer weeks, overlaps earlier stages)
 
-- Reuse Plan, Triggers, Execution logs, and Integrations UI. Show exact authored prompts, rendered inputs, selected path, JSON output, version, Python tool policy, browser setting, and recovery state. Reuse existing controls where possible instead of maintaining parallel React state.
+- Reuse Plan, Triggers, Execution logs, and Integrations UI against the same workflow data services. Show exact authored prompts, rendered inputs, selected path, JSON output, version, Python tool policy, browser setting, and recovery state. Add Relay-only controls behind the product mode rather than maintaining parallel React state or duplicate views.
 - Fault-inject at acceptance, node dispatch, script/tool dispatch, node commit, route selection, final JSON commit, and HTTP response. Test one side-effecting MCP integration and every supported CLI transport. Test key rotation, concurrent duplicate calls, draft edit during a published run, browser cleanup, and access roles.
 - Gate: the V1 node-boundary resume promise and security checks pass. Clearly label an interrupted in-flight node `needs_attention`; never imply that its agent turn or external effect was automatically resumed.
 
