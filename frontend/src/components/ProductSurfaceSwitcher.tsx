@@ -142,22 +142,18 @@ export function ProductSurfaceSwitcher({ className, preloadOnIdle = true }: Prod
                 key={product.id}
                 type="button"
                 role="menuitem"
+                aria-current={active ? 'page' : undefined}
                 onMouseEnter={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
                 onFocus={() => { void preloadProductSurface(product.id)?.catch(() => {}) }}
                 onClick={() => {
                   activateProduct(product.id)
                 }}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
-                  active
-                    ? 'bg-violet-50 dark:bg-violet-950/40'
-                    : 'hover:bg-slate-100 dark:hover:bg-slate-800',
-                )}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-800"
               >
                 <Icon className="h-8 w-8 shrink-0" title="" />
                 <span className="min-w-0 flex-1">
-                  <strong className={cn('block text-xs', active ? 'text-violet-800 dark:text-violet-200' : 'text-slate-900 dark:text-slate-100')}>{product.label}</strong>
-                  <small className={cn('mt-0.5 block text-[10px]', active ? 'text-violet-500 dark:text-violet-400' : 'text-slate-400')}>
+                  <strong className="block text-xs text-slate-900 dark:text-slate-100">{product.label}</strong>
+                  <small className="mt-0.5 block text-[10px] text-slate-600 dark:text-slate-300">
                     {product.description}
                   </small>
                 </span>
