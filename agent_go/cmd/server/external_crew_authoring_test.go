@@ -123,6 +123,10 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		}
 	}
 
+	// Export carries skill files and function instructions: owner only.
+	if code, out := externalCrewRequest(t, env, other, "export_crew", map[string]any{"crew_id": crewID}); code != 403 {
+		t.Fatalf("a non-owner export must be refused, got %d %v", code, out)
+	}
 	// Export -> import on another account reproduces the Crew, schedules off.
 	code, exported := externalCrewRequest(t, env, owner, "export_crew", map[string]any{"crew_id": crewID})
 	spec, _ := exported["spec"].(map[string]any)

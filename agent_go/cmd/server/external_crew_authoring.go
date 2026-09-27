@@ -375,6 +375,12 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
 			return
 		}
+		// Export carries the Crew's skill files and function instructions,
+		// which Run-mode users never see; only the owner may take it away.
+		if !crew.OwnedByCaller {
+			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the Crew's owner (%v) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
+			return
+		}
 		if name == "export_crew" {
 			spec, err := exportCrewSpec(ctx, crew, manifest)
 			if err != nil {
@@ -382,10 +388,6 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 				return
 			}
 			externalJSON(w, map[string]any{"spec": spec})
-			return
-		}
-		if !crew.OwnedByCaller {
-			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the Crew's owner (%v) can edit it.", summary["owner"]))
 			return
 		}
 		var update crewUpdate
