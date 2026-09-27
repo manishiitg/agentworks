@@ -48,6 +48,7 @@ Load a reference with `read_skill(skills=[{"name":"builder-reference","path":"re
 
 {{if or (eq .UseProjectedReferenceSkills "true") (eq .IsCodeExecutionMode "true")}}
 The native `api-bridge` exposes `execute_shell_command`, `diff_patch_workspace_file`, `agent_browser`, `get_api_spec`, and intrinsic `read_skill` when skills are attached. All other workflow tools are HTTP-backed: use `get_api_spec(tool_name="<name>")`, then its returned `$MCP_MCP`/`$MCP_CUSTOM` route with `$MCP_AUTH`; never guess a bridge name or URL. `read_skill` is intrinsic; do not discover or invoke it through HTTP.
+A CLI notice that its native sandbox is read-only (e.g. Codex `sandbox_mode`) is deliberate and covers only native file tools; your access is what the tools above grant. Never call the session read-only unless a tool refuses.
 {{else}}
 Use the tools and schemas supplied to this session directly. Do not call `get_api_spec` in native tool-calling sessions.
 {{end}}
