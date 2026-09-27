@@ -383,11 +383,14 @@ func detectSuccessfulLLMScriptedSelfRun(history []llmtypes.MessageContent, mainP
 						lastMainPyMutation = callIndex
 					}
 				case "diff_patch_workspace_file", "mcp_api-bridge_diff_patch_workspace_file":
-					var args struct {
-						Filepath string `json:"filepath"`
-					}
-					if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err == nil && strings.TrimSpace(args.Filepath) == mainPyAbsPath {
-						lastMainPyMutation = callIndex
+					// A multi-file "*** Begin Patch" names main.py inside the diff.
+					var args map[string]interface{}
+					if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err == nil {
+						for _, target := range workspace.DiffPatchTargetPaths(args) {
+							if strings.TrimSpace(target) == mainPyAbsPath {
+								lastMainPyMutation = callIndex
+							}
+						}
 					}
 				}
 			}

@@ -191,3 +191,79 @@ func TestDiffPatchDocumentAppliesBeginPatchFormat(t *testing.T) {
 		t.Fatalf("file on disk:\n%s", written)
 	}
 }
+
+func patchDocumentForTest(t *testing.T, docsDir, relPath string, body map[string]interface{}) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	viper.Set("docs-dir", docsDir)
+	router := gin.New()
+	router.PATCH("/api/documents/*filepath", HandleDocumentRequest)
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, "/api/documents/"+relPath+"/diff", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+// A dry run reports whether the patch applies and writes nothing, not even a
+// new file's folder; multi-file patches check every file this way first.
+func TestDiffPatchDocumentDryRunWritesNothing(t *testing.T) {
+	docsDir, cleanup := setupTestDocsDir(t)
+	defer cleanup()
+	path := filepath.Join(docsDir, "Workflow", "wf", "lib.py")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(applyPatchLib), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patch := "*** Begin Patch\n*** Update File: lib.py\n-import os\n+import sys\n*** End Patch\n"
+	w := patchDocumentForTest(t, docsDir, "Workflow/wf/lib.py", map[string]interface{}{"diff": patch, "dry_run": true})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"dry_run":true`) {
+		t.Fatalf("dry run = %d %s", w.Code, w.Body.String())
+	}
+	if got, _ := os.ReadFile(path); string(got) != applyPatchLib {
+		t.Fatal("dry run changed the file")
+	}
+	add := "*** Begin Patch\n*** Add File: new/ids.py\n+X = 1\n*** End Patch\n"
+	w = patchDocumentForTest(t, docsDir, "Workflow/wf/new/ids.py", map[string]interface{}{"diff": add, "dry_run": true})
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"would_create":true`) {
+		t.Fatalf("dry run add = %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(docsDir, "Workflow", "wf", "new")); !os.IsNotExist(err) {
+		t.Fatal("dry run created the new file's folder")
+	}
+	bad := "*** Begin Patch\n*** Update File: lib.py\n-not in the file\n+x\n*** End Patch\n"
+	if w := patchDocumentForTest(t, docsDir, "Workflow/wf/lib.py", map[string]interface{}{"diff": bad, "dry_run": true}); w.Code == http.StatusOK {
+		t.Fatalf("a patch that does not apply must fail its dry run: %s", w.Body.String())
+	}
+}
+
+// Hunks with no @@ line and Add File sections change the line count without
+// an @@ header; the post-apply line-count check must count them.
+func TestDiffPatchDocumentAcceptsBeginPatchWithoutAnchorsAndAddFile(t *testing.T) {
+	docsDir, cleanup := setupTestDocsDir(t)
+	defer cleanup()
+	path := filepath.Join(docsDir, "Workflow", "wf", "lib.py")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(applyPatchLib), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patch := "*** Begin Patch\n*** Update File: lib.py\n import os\n+import sys\n+import json\n*** End Patch\n"
+	if w := patchDocumentForTest(t, docsDir, "Workflow/wf/lib.py", map[string]interface{}{"diff": patch}); w.Code != http.StatusOK {
+		t.Fatalf("no-anchor patch = %d %s", w.Code, w.Body.String())
+	}
+	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "import os\nimport sys\nimport json\n") {
+		t.Fatalf("file = %q", got)
+	}
+	add := "*** Begin Patch\n*** Add File: ids.py\n+A = 1\n+B = 2\n*** End Patch\n"
+	if w := patchDocumentForTest(t, docsDir, "Workflow/wf/ids.py", map[string]interface{}{"diff": add}); w.Code != http.StatusOK {
+		t.Fatalf("add file = %d %s", w.Code, w.Body.String())
+	}
+	if got, _ := os.ReadFile(filepath.Join(docsDir, "Workflow", "wf", "ids.py")); string(got) != "A = 1\nB = 2\n" {
+		t.Fatalf("added file = %q", got)
+	}
+}

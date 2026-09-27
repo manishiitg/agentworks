@@ -71,11 +71,17 @@ type PatchDocumentRequest struct {
 // DiffPatchRequest represents the request to apply a diff patch
 type DiffPatchRequest struct {
 	Diff string `json:"diff" binding:"required"`
+	// DryRun applies the patch in memory and reports whether it would
+	// apply, writing nothing (not even a new file's folder). Multi-file
+	// patches check every file this way before writing any.
+	DryRun bool `json:"dry_run,omitempty"`
 }
 
 // DiffPatchResponse represents the response after applying a diff patch
 type DiffPatchResponse struct {
 	Applied      bool                   `json:"applied"`
+	DryRun       bool                   `json:"dry_run,omitempty"`
+	WouldCreate  bool                   `json:"would_create,omitempty"`
 	Suggestions  []string               `json:"suggestions,omitempty"`
 	ErrorDetails map[string]interface{} `json:"error_details,omitempty"`
 }

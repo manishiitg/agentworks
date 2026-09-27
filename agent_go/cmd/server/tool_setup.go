@@ -14,6 +14,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
 // extractWorkspacePathFromObjective extracts the workspace path from the objective string
@@ -689,8 +690,9 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 			// via the isolator's BlockedPaths (kernel-level enforcement, set up at
 			// SetSessionFolderGuard call site) — no string-scanning needed here.
 			if writeTools[toolNameCopy] {
-				for _, paramName := range writePathParams {
-					if paramValue, exists := args[paramName]; exists {
+				targetArgs, targetParams := writeTargetArgs(args, writePathParams)
+				for _, paramName := range targetParams {
+					if paramValue, exists := targetArgs[paramName]; exists {
 						if pathStr, ok := paramValue.(string); ok && pathStr != "" {
 							cleanedPath := filepath.Clean(pathStr)
 
@@ -812,8 +814,9 @@ func wrapExecutorsWithPlanFolderGuard(executors map[string]func(ctx context.Cont
 			}
 
 			if writeTools[toolNameCopy] {
-				for _, paramName := range writePathParams {
-					if pathValue, exists := args[paramName]; exists {
+				targetArgs, targetParams := writeTargetArgs(args, writePathParams)
+				for _, paramName := range targetParams {
+					if pathValue, exists := targetArgs[paramName]; exists {
 						if pathStr, ok := pathValue.(string); ok {
 							cleanedPath := filepath.Clean(pathStr)
 							if !isWriteAllowed(cleanedPath) {
@@ -899,4 +902,27 @@ func extractStepSummary(planJSON string) string {
 		}
 	}
 	return sb.String()
+}
+
+// writeTargetArgs returns the path arguments a write check must cover: the
+// named path parameters, plus every file a multi-file "*** Begin Patch" in
+// args["diff"] names (diff_patch_workspace_file writes those too, and a check
+// of filepath alone would let them past blocked-write prefixes such as a
+// non-owner's workflow.json).
+func writeTargetArgs(args map[string]interface{}, params []string) (map[string]interface{}, []string) {
+	targets := workspace.DiffPatchTargetPaths(args)
+	if len(targets) == 0 {
+		return args, params
+	}
+	merged := make(map[string]interface{}, len(args)+len(targets))
+	for key, value := range args {
+		merged[key] = value
+	}
+	names := append([]string(nil), params...)
+	for i, path := range targets {
+		key := fmt.Sprintf("patch_target_%d", i)
+		merged[key] = path
+		names = append(names, key)
+	}
+	return merged, names
 }

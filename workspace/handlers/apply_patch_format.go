@@ -258,3 +258,27 @@ func findApplyPatchBlock(lines, block []string, from int, endOfFile bool) (at in
 	}
 	return found, false
 }
+
+// applyPatchClaimedLineDelta is the net line change a "*** Begin Patch" patch
+// claims: its '+' lines minus its '-' lines inside file sections. Hunks need
+// no @@ line in this format, so the unified-diff counter, which starts
+// counting at @@, would miss them and refuse a correct result.
+func applyPatchClaimedLineDelta(diff string) int {
+	delta := 0
+	inFile := false
+	for _, line := range strings.Split(normalizeLineEndings(diff), "\n") {
+		switch {
+		case strings.HasPrefix(line, "*** End Patch"):
+			return delta
+		case strings.HasPrefix(line, "*** Update File:"), strings.HasPrefix(line, "*** Add File:"):
+			inFile = true
+		case strings.HasPrefix(line, "*** "):
+		case !inFile:
+		case strings.HasPrefix(line, "+"):
+			delta++
+		case strings.HasPrefix(line, "-"):
+			delta--
+		}
+	}
+	return delta
+}
