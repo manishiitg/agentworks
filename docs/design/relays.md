@@ -6,7 +6,7 @@
 
 Relays are reusable, user-authored graphs of agents, scripts, and decisions. A user builds a Relay in the left-side chat, inspects and tests it in the right pane, publishes an immutable version, and calls it from an external website or an existing product through an API trigger. Each call has a defined JSON input and one final, author-defined JSON output.
 
-Relays are a separate product from goal-driven Workflows and continuing Crew conversations. A Relay run follows one path through a saved graph and ends. It has no goal, Pulse, self-improvement cycle, dashboard, or implicit conversational memory between runs. An agent node may use the managed `agent_browser` tool, but browser state belongs to one run and is removed when that run ends.
+Relays are a separate **product experience** from goal-driven Workflows and continuing Crew conversations. The proposed implementation is a Relay kind of workflow, using the existing workflow identity, access, storage, function-call, and execution infrastructure with Relay-only behavior selected explicitly. A Relay run follows one path through a saved graph and ends. It has no goal, Pulse, self-improvement cycle, dashboard, or implicit conversational memory between runs. An agent node may use the managed `agent_browser` tool, but browser state belongs to one run and is removed when that run ends.
 
 ### Decisions for the first version
 
@@ -22,7 +22,7 @@ Relays are a separate product from goal-driven Workflows and continuing Crew con
 | Output | The HTTP response is always a JSON envelope. Its `output` value is the Relay author's final JSON value; an optional author-defined schema can constrain it. |
 | Versions | Chat and direct edits change a draft. Publishing freezes the graph, prompts, scripts, model/tool permissions, and input/output contract. Triggers can pin a version or follow the latest published version. |
 | API | A call returns a durable run ID immediately; an optional short wait returns the result when ready. Polling always works. Retry with the same idempotency key returns the same run. |
-| Resume | Every accepted run remains durably recorded and reaches a result, a recoverable pause, or an explicit `needs_attention` state. The runtime never silently starts it over. See the resume contract below. |
+| Resume | Every accepted run remains durably recorded and reaches a result or an explicit `needs_attention` state. V1 checkpoints completed nodes; turn-level automatic continuation is later work. See the staged resume contract below. |
 
 ### Author and caller experience
 
@@ -41,13 +41,32 @@ The right pane reuses the existing AgentWorks structure and names:
 | **Execution logs** | Run list and per-node transcript, input/output, selected route, browser actions/artifacts, retry/recovery state | [ExecutionLogsPopup](../../frontend/src/components/workflow/ExecutionLogsPopup.tsx); adapt data loading from workflow run folders to Relay run IDs. |
 | **Integrations** | MCP connections, user-created tool definitions, per-node tool permissions, secrets, models, and browser access settings | Extract relevant controls from [WorkflowCapabilitiesPanel](../../frontend/src/components/workflow/WorkflowCapabilitiesPanel.tsx); omit persistent Browser, Slack/WhatsApp, and workflow-only controls. |
 
-The reusable pieces are visual and execution primitives. Relay definitions and run state must have their own model; copying workflow `plan.json`, Pulse, iteration folders, or workshop lifecycle into Relays would recreate the complexity this product is meant to avoid.
+The Relay view is a distinct UI over a workflow-backed object. Its graph, versions, and result contract need Relay-specific fields, but existing workflow identity, access, run history, functions, and storage should remain authoritative. The Relay execution path must switch off goal, Pulse, learning, validation turns, and workshop behavior at explicit mode boundaries rather than copy those lifecycles into Relay code.
+
+## Architecture choice: workflow kind or separate store
+
+| Option | Reuse and cost | Risk |
+| --- | --- | --- |
+| **Relay kind of workflow (recommended)** | Reuse workflow ownership, ACLs, path guards, secret binding, function calls, delivery IDs, trigger credentials, run discovery, history, CLI and cost accounting. Add a Relay mode, immutable version reference, exact prompt mode, JSON output contract, and run-scoped browser. | Existing workflow controllers may assume goal, Pulse, validation, or mutable `plan.json`; mode boundaries require targeted refactoring and tests. |
+| Separate `Relays/` root and runner | Clean domain model and fewer workflow flags inside the Relay runner. | Rebuild or adapt access, proxy/path policy, secrets, trigger/API delivery, active work, costs, backup, CLI, and recovery. This conflicts with the requested maximum reuse. |
+
+Start with the workflow-backed option. A Relay is identified as a Relay in its manifest and UI, while its published graph is a frozen version referenced by a run. Reuse [workflow function triggers](../../agent_go/cmd/server/workflow_function_triggers.go) and the existing call/poll path. Extend their current primitive typed inputs to accept the Relay JSON input contract; do not claim arbitrary JSON object input is already supported. Retain the existing workflow path so workspace tokens, proxy path policy, Folder Guard, encrypted workflow secrets, access lists, and backup/history can apply through their established paths. Any code path that branches on product type must be audited rather than assumed to inherit those rules automatically.
+
+This choice is a v1 implementation direction, not a mandate to run the full goal-driven controller. A spike must prove that Relay mode can call message-sequence, scripted, and route primitives without invoking Pulse, workshop, or hidden workflow prompt behavior. If that boundary cannot be made reliable, return to this comparison with measured extraction cost before creating a new top-level store.
+
+### Access, security, and shared product surfaces
+
+A Relay inherits the workflow workspace's owner/reader model, read-only account behavior, and product visibility toggle. Integrate co-owner/private behavior as the shared access work lands; do not invent a separate Relay ACL. Review every API, builder tool, trigger, and run-log route with owner, co-owner, reader, and unrelated-user cases; a trigger credential authorizes a scoped invocation, not definition editing or unrestricted run inspection. Apply the existing workspace-token and proxy path policy to the Relay paths, including draft code and immutable version blobs. Never introduce an unguarded top-level `Relays/` prefix.
+
+Execution agents need the same per-session bridge tokens, Folder Guard, and sandbox policy as other coding-CLI sessions. Run Python tools through the existing `workspace/security` isolator with a narrower filesystem and secret grant. Landlock controls filesystem access, not arbitrary network side effects; the open `/tmp` read exposure for bridge configuration and the tmux socket must be closed or explicitly blocked for Relay execution before exposing untrusted user scripts. A script marked pure must have no direct network or external write capability, enforced by the runner rather than by its label.
+
+Relay calls should appear in Active Work and Ctrl+K with a “Called by …” origin, and feed the existing cost ledger, usage hover, run history, backup/export, external MCP selection, and `agentworks` CLI. Add documentation and a QA ticket for the new surface. These are acceptance requirements for the workflow-backed choice, not optional polish after launch.
 
 ## Maximum reuse through `product.yaml`
 
 Use the repository's established `product.yaml` spelling (rather than a new `product.yml` loader). Add `agent_go/internal/relayproduct/product.yaml` and load it through `agentprofiles.LoadProductManifest`, as Crew and the other products do. This static manifest owns the **Relay builder chat**: product identity, builder system prompt file, project-scoped conversation, allowed builder tools, runtime policy, and UI surface. It does **not** store an individual Relay's graph or become the system prompt for an agent node. Those user-authored values live in immutable Relay versions.
 
-The Relay profile should use `scope: project`, a keyed chat per Relay, `ui.surface: relays`, and only the shared features its **builder** needs: live chat, MCP selection, secrets, models, and workspace UI. The builder gets a small set of typed product tools to create/update a draft graph, edit a Python tool or script, test a draft, publish a version, and manage Relay triggers. Published version files are writable only through the version publisher, never through generic chat file tools. Do not give the builder a persistent browser, dashboard, Pulse, background work, or Crew's message-only `triggers` feature: that feature delivers a message to a continuing Crew chat, whereas a Relay trigger starts a versioned graph run. Reuse its underlying auth/delivery primitives through a Relay adapter instead. Browser access is a per-node **execution** setting from the Relay definition, not a persistent builder-profile feature.
+The Relay profile should use `scope: project`, a keyed chat per Relay, `ui.surface: relays`, and only the shared features its **builder** needs: live chat, MCP selection, secrets, models, and workspace UI. The builder gets a small set of typed product tools to create/update a draft graph, edit a Python tool or script, test a draft, publish a version, and manage Relay triggers. Published version files are writable only through the version publisher, never through generic chat file tools. Do not give the builder a persistent browser, dashboard, Pulse, or background work. Crew's message-only `triggers` feature does not start a graph run; use the existing workflow function trigger/call path for Relay invocations. Browser access is a per-node **execution** setting from the Relay definition, not a persistent builder-profile feature.
 
 Choose a transport whose tool allowlist is actually enforced for the builder. The [product.yaml design guide](../core/product_yaml_design_guide.md) records that native/tmux coding-CLI mode can run tools outside `mcpagent`'s allowlist; `structured` mode enforces the narrow product tool policy but may reduce streaming and live steering for some CLI providers. Pin the chosen provider/transport combination with a live tool-discovery test. Relay **execution agents** have their own per-node model, prompt, and tool policy from the published version; they do not inherit the builder profile's prompt or tools.
 
@@ -62,37 +81,36 @@ One shared-platform gap needs an explicit solution: today a registered custom to
 | Script and decision | Script executor and deterministic route resolution | Relay input/output adapter and one-path graph cursor. |
 | Python tool | Existing agent custom-tool registration and tool-call events | Versioned user script loader, isolated JSON stdin/stdout runner, per-node allowlist, effect journal. |
 | Browser | Managed `agent_browser` tool, session tracker, and cleanup primitives | Run-ID-owned headless session/profile, per-node enablement, terminal cleanup, and recovery of an interrupted run. |
-| Triggers | Existing webhook authentication, encrypted secrets, idempotency, and status-polling primitives | Binding to a Relay version, input mapping, final JSON result endpoint. |
+| Triggers | Workflow function trigger/call/poll path, webhook authentication, encrypted secrets, delivery IDs | Extend typed inputs for JSON, bind to a Relay version, and expose its final JSON result. |
 | Execution logs | Shared log rows, tool-call display, step detail, cost display | Query by Relay run ID and show durable checkpoints/recovery state. |
-| Resume | `mcpagent` provider-neutral session handles and existing continuation behavior | Relay run ledger, leases/fencing, node/turn/effect checkpoints, startup recovery. |
+| Resume | Workflow run IDs/history and `mcpagent` provider-neutral CLI session handles | V1 durable node checkpoints and explicit uncertain-node state; later turn checkpoints, leases/fencing, effect reconciliation. |
 
-Extract shared components and services at these seams, then let both Workflows/Crew and Relays call them. Keep the Relay orchestration layer small: resolve a frozen graph, run one node, commit its output and next edge, and repeat. Do not invoke the full workflow controller merely to reach its message-sequence or scripted executors; that controller also owns workflow folders, run iterations, validation, learning, and Pulse behavior. Where an executor is too coupled to the workflow controller, extract the executor behind a shared interface and leave a compatibility adapter for existing workflows.
+Extract shared components and services at these seams, then let both Workflows/Crew and Relays call them. Keep the Relay execution adapter small: resolve a frozen graph, run one node, commit its output and next edge, and repeat. Avoid invoking goal, Pulse, learning, and workshop code merely to reach message-sequence or scripted executors. Where an executor is too coupled to those behaviors, extract it behind a shared interface and leave a compatibility adapter for existing workflows. Consecutive agent nodes should be allowed to share one coding-CLI session when their model, prompt, and tool policy are compatible; a policy or system-prompt change forces a new session. Measure CLI cold-start and MCP-ready cost before choosing a default grouping.
 
 ## Definition and API contracts
 
 ### Definition storage
 
-Proposed canonical layout:
+Proposed layout **under the existing workflow workspace**, subject to its path and backup policies:
 
 ```text
-Relays/<relay-id>/draft/definition.json
-Relays/<relay-id>/draft/code/<script-node-id>/main.py
-Relays/<relay-id>/draft/tools/<tool-id>/main.py
-Relays/<relay-id>/versions/v<N>/definition.json
-Relays/<relay-id>/versions/v<N>/code/<script-node-id>/main.py
-Relays/<relay-id>/versions/v<N>/tools/<tool-id>/main.py
-Relays/<relay-id>/runs/<run-id>/artifacts/...
+<workflow-workspace>/relay/draft/definition.json
+<workflow-workspace>/relay/draft/code/<script-node-id>/main.py
+<workflow-workspace>/relay/draft/tools/<tool-id>/main.py
+<workflow-workspace>/relay/versions/v<N>/manifest.json
+<workflow-workspace>/relay/versions/v<N>/artifacts/...
+<workflow-workspace>/<existing-run-history>/<run-id>/relay-artifacts/...
 ```
 
-Publishing copies a complete draft snapshot into a new, immutable version and records a content hash. A draft test also snapshots its draft revision, so its historical trace does not change after later edits. Trigger bindings and encrypted credentials live separately from versions; a run snapshots the resolved trigger mapping and version at acceptance. Secret **references** may be versioned, but secret values are never written into definitions or logs.
+Publishing freezes a complete draft snapshot and records a content hash. Use the workflow's history/backup mechanism or content-addressed blobs for version payloads rather than copying a large directory for each version; the sketch above is logical, not a required physical duplication scheme. A draft test also snapshots its draft revision, so its historical trace does not change after later edits. Trigger bindings and encrypted credentials live separately from versions; a run snapshots the resolved trigger mapping and version at acceptance. Secret **references** may be versioned, but secret values are never written into definitions or logs.
 
 The definition contains stable node IDs, directed edges, entry and final output nodes, input fields, prompt/message templates, script and user-created tool references, decision cases and fallback, model and tool selections, per-node `agent_browser` enablement, optional output schema, and execution limits. Structural checks on save/publish reject dangling edges, unreachable output, cycles, invalid variable references, and unsupported node settings. These checks do not launch a model or run an automatic prevalidation/repair agent.
 
 ### User-created tools
 
-An author creates a tool in chat or Integrations and assigns it to one or more agent nodes. A tool has a stable ID, display name, agent-facing description, JSON Schema arguments, optional JSON Schema result, a Python `main.py`, timeout, selected secrets, and an effect policy (`read_only`, `idempotent`, `reconcilable`, or `unknown`). The node's explicit allowlist determines whether the agent can discover and call it. Existing MCP tools remain selectable beside these user-created Python tools.
+An author creates a tool in chat or Integrations and assigns it to one or more agent nodes. A tool has a stable ID, display name, agent-facing description, JSON Schema arguments, optional JSON Schema result, a Python `main.py`, timeout, selected secrets, and a declared effect policy (`read_only`, `idempotent`, `reconcilable`, or `unknown`). The node's explicit allowlist determines whether the agent can discover and call it. Existing MCP tools remain selectable beside these user-created Python tools. A user-declared policy is metadata until runtime permissions or an integration contract prove it; V1 conservatively treats user Python tools as `unknown` for crash recovery.
 
-The tool runner validates the model's JSON arguments, starts the version-pinned Python script in an isolated process, passes one JSON object on standard input, and requires one JSON value on standard output. Standard error is diagnostic output; a nonzero exit, timeout, or invalid JSON is a tool error returned to the agent and recorded in the run. The runner supplies stable run/tool/operation IDs and only the explicitly selected secrets and capabilities; it grants no browser access. This is an on-demand tool call: the agent may call it zero or more times during its message sequence. A scripted graph node instead executes when the graph reaches that node.
+The tool runner validates the model's JSON arguments, starts the version-pinned Python script through the existing sandbox runner in an isolated process, passes one JSON object on standard input, and requires one JSON value on standard output. Standard error is diagnostic output; a nonzero exit, timeout, or invalid JSON is a tool error returned to the agent and recorded in the run. The runner supplies stable run/tool/operation IDs and only the explicitly selected secrets and capabilities; it grants no browser access. This is an on-demand tool call: the agent may call it zero or more times during its message sequence. A scripted graph node instead executes when the graph reaches that node.
 
 This is distinct from the current `enabled_custom_tools` step setting, which selects platform-registered tool categories; it does not itself provide a user-authored tool definition or executor. Register a published Relay tool with the agent's existing runtime tool mechanism, but load its definition and code from the frozen Relay version. Do not grant it implicit access to every MCP server or secret. Record each invocation's validated arguments, result or error, duration, and effect operation ID in Execution logs, with secret redaction.
 
@@ -112,16 +130,15 @@ Only nodes on the selected path have outputs. A reference to a missing field, sk
 
 ### Trigger and result API
 
-Proposed endpoints, using the existing trigger authentication and idempotency patterns where possible:
+Optional Relay-facing endpoint aliases over the existing workflow function call/status service; do not add a second scheduler or run registry:
 
 ```text
 POST /api/relays/{relay_id}/runs
 GET  /api/relays/{relay_id}/runs/{run_id}
-POST /api/relays/{relay_id}/runs/{run_id}/resume
-POST /api/relays/{relay_id}/runs/{run_id}/effects/{effect_id}/resolve
+POST /api/relays/{relay_id}/runs/{run_id}/resolve
 ```
 
-`POST` accepts `{ "input": { ... } }`, a trigger credential, and an optional `Idempotency-Key`. It commits the run and input before returning `202 { "run_id": "...", "status_url": "..." }`. An optional bounded wait may return `200` with the finished result; a timeout still returns the run ID. A terminal result has a stable envelope such as:
+The `resolve` action records an authorized V1 node outcome and continues the same run. A later per-effect journal can add an effect-specific resolution endpoint. `POST` accepts `{ "input": { ... } }`, a trigger credential, and an optional `Idempotency-Key` mapped to the workflow function delivery ID. Extend the current function input checker beyond its primitive input types to accept the declared JSON contract. The shared service commits the run and input before returning `202 { "run_id": "...", "status_url": "..." }`. An optional bounded wait may return `200` with the finished result; a timeout still returns the run ID. Existing `call_workflow_function` and polling clients should also be able to invoke a published Relay. A terminal result has a stable envelope such as:
 
 ```json
 {
@@ -136,7 +153,13 @@ The author controls the JSON value under `output`; the platform owns the run met
 
 ## The "100% resume" contract
 
-**Product promise:** Once the API acknowledges a run, that run and its original input/version remain recoverable after an app, worker, or host process restart, assuming its durable storage survives. A recovered run keeps the same run ID. Completed nodes are not repeated. The run either completes, stays paused for a resolvable dependency, or reports an explicit reason that an external effect needs attention. Neither the server nor the client has to guess whether a new run was created.
+**Product promise:** Once the API acknowledges a run, that run and its original input/version remain recoverable after an app, worker, or host process restart, assuming its durable storage survives. A recovered run keeps the same run ID. Completed nodes are not repeated. The run either completes or reports an explicit reason that its current node needs attention. Neither the server nor the client has to guess whether a new run was created. This is 100% durable accountability, not 100% automatic replay of every in-flight agent action.
+
+### V1 cut line and later continuation
+
+V1 uses the existing workflow run identity, function-call delivery ID, and durable run history. It checkpoints **at node boundaries**: the frozen version/input, selected route, and each committed node output. On restart, a completed node is never rerun. A node interrupted while running automatically retries only if the runner can enforce that it is side-effect-free. Every other interrupted node becomes `needs_attention` on the same run ID. An authorized operator can inspect its evidence and either confirm its output, confirm no effect occurred and retry, or fail the run. A provider session may be relaunched from its saved CLI handle when available, but V1 does not promise turn-level continuation inside a node.
+
+Later work adds durable turn checkpoints, per-effect reconciliation adapters, multi-worker leases/fencing, and browser-profile recovery. These are not prerequisites for a user to create, test, publish, and call a V1 Relay. Keep the full target design below to guide the upgrade, but label its later-phase mechanisms explicitly. The fault-injection release gate applies to V1's node-boundary promise first, then expands with each continuation capability.
 
 This is a guarantee of **durable, safe recovery**, not a claim that arbitrary external actions execute exactly once. An MCP tool or script can complete an outward action just before the process dies and before it reports success. If that service cannot deduplicate or report the action's status, no runner can prove whether replay is safe. The Relay must stop at `needs_attention` rather than silently perform the action again. The API and UI must expose the effect, evidence, and available choices. Automatic continuation is guaranteed only across effects that can be reconciled or repeated safely.
 
@@ -144,101 +167,81 @@ The current [standalone message-sequence executor](../../agent_go/pkg/orchestrat
 
 ### Durable run state
 
-Use a transactional run ledger (the existing server database if suitable) as the authority for `relay_runs`, `relay_node_attempts`, `relay_turns`, `relay_effects`, and append-only `relay_events`. Keep large artifacts on disk with atomic write/rename and record their hashes in the ledger. A run records:
+There is no general transactional server database to assume. V1 extends the existing per-workflow file/SQLite run records and atomic-write conventions for Relay checkpoints, after a storage spike verifies crash consistency and concurrent idempotency. Do not add a parallel `relay_runs` service merely to support this product. A later shared transactional ledger may add node attempts, turns, effects, and append-only events if the existing run store cannot support those guarantees. Keep large artifacts in the workflow workspace and record their hashes in durable run metadata. A run records:
 
 - Relay ID, immutable version ID and hash, trigger ID and resolved mapping, original input, and idempotency key.
-- Status and current node/turn, selected decision path, attempt numbers, timestamps, cancellation/pause reason, and lease fencing token.
-- Each completed node's exact output and each agent turn's rendered user message, conversation checkpoint, and provider-neutral session handle.
-- Each external effect's stable operation ID, tool identity, arguments hash, start/result state, and reconciliation evidence. Secret values and credentials are excluded.
+- V1 status and current node, selected decision path, attempt numbers, timestamps, and cancellation/attention reason; later turn cursor and lease fencing token.
+- Each completed node's exact output; later each agent turn's rendered user message, conversation checkpoint, and provider-neutral CLI session handle.
+- Any dispatched node's operation ID, tool identity, arguments hash, start/result state, and reconciliation evidence where available. Secret values and credentials are excluded.
 
 The node state machine is `pending -> running -> completed`; exceptions move to `retryable`, `paused`, `needs_attention`, or `failed`. User **Pause** preserves the checkpoint; **Cancel** is a terminal request. The run result is committed once and then remains stable for polling.
 
-### Checkpoint boundaries and recovery
+### Checkpoint boundaries and recovery (target, with V1 subset)
 
-1. **Accept:** In one durable transaction, resolve the published version and trigger mapping, enforce request/idempotency rules, persist input and a queued run, then acknowledge it. A repeat request with the same trigger and idempotency key returns the existing run ID.
-2. **Claim:** A worker obtains a time-limited lease with a monotonically increasing fencing token. Every state write checks that token. Another worker can claim an expired lease without both workers committing results.
-3. **Before a node/turn:** Persist the planned node, attempt ID, fully rendered input, and intended tool/effect policy before invoking the agent or script.
-4. **After a turn:** Persist its conversation, output, and refreshed provider session handle as one logical checkpoint. Native coding-agent continuation is used where supported; API model sessions use the persisted conversation. A partial streamed response is diagnostic evidence, not a committed turn.
-5. **After a node:** Atomically commit the node output, selected decision, and next cursor. Never rerun a completed node on recovery.
-6. **Restart:** Scan queued/running runs with expired leases. Restore their frozen version and checkpoint. Reattach to a live provider session if possible; otherwise use the saved handle/history. Reconcile any in-flight external effect before continuing or replaying its turn. If continuation cannot be established safely, move to `needs_attention` with a clear reason.
-7. **Finish:** Persist final JSON and terminal status before emitting a response or callback. A lost HTTP connection does not lose the result; polling returns the same document.
+1. **Accept (V1):** Use the workflow function delivery path to resolve the published version and trigger mapping, enforce request/idempotency rules, persist input and a queued run, then acknowledge it. A repeat request with the same trigger and idempotency key returns the existing run ID.
+2. **Claim (later):** For concurrent workers, obtain a time-limited lease with a monotonically increasing fencing token. Every state write checks that token. Another worker can claim an expired lease without both workers committing results.
+3. **Before a node (V1):** Persist the planned node, attempt ID, fully rendered input, and effect classification before invoking the agent or script. A direct effect that cannot be mediated makes the whole node `unknown`.
+4. **After a turn (later):** Persist the CLI conversation, output, and refreshed provider-neutral session handle as one logical checkpoint. A partial streamed response is diagnostic evidence, not a committed turn. AgentWorks currently runs coding CLIs, so direct API-model session replay is outside this plan.
+5. **After a node (V1):** Atomically commit the node output, selected decision, and next cursor. Never rerun a completed node on recovery.
+6. **Restart (V1):** Scan accepted/running workflow-backed Relay calls. Restore their frozen version and last committed node. Relaunch a coding CLI from a saved handle only when safe; server startup kills `mlp-*` tmux sessions, so do not assume a live process can be reattached. Otherwise mark the interrupted node `needs_attention`, except for enforceably pure nodes. Prefer structured transport for Relay execution and test provider-specific continuation before enabling it.
+7. **Finish (V1):** Persist final JSON and terminal status before emitting a response or callback. A lost HTTP connection does not lose the result; polling returns the same document.
 
-The execution engine must not infer progress from log text, process IDs, in-memory goroutines, or file timestamps. Those may help diagnostics, but the run ledger owns the cursor. Startup recovery and a periodic lease sweeper use the same recovery path. Resume is idempotent and safe under concurrent requests.
+The execution engine must not infer progress from log text, process IDs, in-memory goroutines, or file timestamps. Those may help diagnostics, but the durable workflow run record owns the cursor. Startup recovery uses that record in V1; a later lease sweeper uses the same recovery path when multi-worker execution is introduced. Resume is idempotent and safe under concurrent requests.
 
 ### Run-scoped browser lifecycle
 
 Selected agent nodes receive the managed `agent_browser` tool in headless mode. Give each run a unique browser session and temporary profile, never the persistent browser or user Chrome/CDP profile used by Crew and Workflows. Browser-enabled nodes in the same live run may share that session; other runs cannot. Close the session and remove its profile on completion, failure, cancellation, or retention cleanup. Startup recovery and the idle reaper also clean abandoned sessions, using run ownership rather than a shared workflow identity.
 
-Retain the temporary profile only while the run is active or paused so a server restart can reopen it. Checkpoint the run's browser ownership, current URL/tab information, and action results alongside node/turn state. Reopening a profile may restore cookies and storage, but it does not prove that arbitrary in-page JavaScript state survived. On recovery, re-observe the page before continuing; restart the interrupted browser turn from its last durable checkpoint when safe. Navigation and snapshots can usually be repeated. A click, form submission, purchase, post, or similar action is an external effect: journal it before dispatch and reconcile an uncertain outcome before retrying. If the site cannot confirm the action, use `needs_attention` on the same run ID. No browser session or login state carries into a later Relay run.
+In V1, retain the temporary profile only while the process is live; after a restart, an interrupted browser node becomes `needs_attention` on the same run. A later browser-recovery phase may retain an active/paused run's profile, checkpoint browser ownership and URL/tab information, then reopen and re-observe the page. Reopening a profile may restore cookies and storage, but it does not prove that arbitrary in-page JavaScript state survived. A click, form submission, purchase, post, or similar action is an external effect: record the node dispatch before acting and reconcile an uncertain outcome before retrying. If the site cannot confirm the action, keep `needs_attention`. No browser session or login state carries into a later Relay run.
 
 ### External effects and scripts
 
-For a tool call that may change external state, including a user-created tool, write an effect record **before** dispatch. Pass its stable operation ID as an idempotency key when the tool/provider supports one. On restart, query the provider or tool's operation status when possible. Commit the observed result before advancing the turn. Unknown tools default to `needs_attention` if interrupted after dispatch. A Python tool is `read_only` only when that is enforced by its runtime permissions; it is `idempotent` or `reconcilable` only when its external operation contract supports that claim. An author-selected label alone never makes replay safe.
+V1 records node dispatch before any call that may change external state and treats an interrupted node as unknown. The later per-effect phase writes an effect record **before** each tool dispatch, passes a stable operation ID as an idempotency key when the provider supports one, and queries operation status on restart. Unknown tools remain `needs_attention` if interrupted after dispatch. A Python tool is `read_only` only when that is enforced by its runtime permissions; it is `idempotent` or `reconcilable` only when its external operation contract supports that claim. An author-selected label alone never makes replay safe.
 
 Resolving `needs_attention` is part of resume, not a new run. Execution logs show the effect's recorded request and any reconciliation evidence. An authorized user can record that the effect succeeded (including its observed result), confirm it did not occur and retry it, or fail the run. The resolution and actor are audited, then the same run ID continues from its checkpoint. The API exposes the same action for an external operator. The runtime never treats lack of evidence as proof that an effect did not occur.
 
-Script nodes receive the same run/node/attempt identifiers. Pure scripts may rerun. Scripts that write to external systems must use an idempotent API or a Relay effect helper that journals and reconciles the action. An arbitrary shell command or third-party MCP tool with unobservable side effects cannot be promised automatic replay; Plan should show its resume-safety status before publication. This policy is separate from model prevalidation.
+Script nodes receive the same run/node/attempt identifiers. In V1, journal the **entire user-authored script invocation as an unknown effect before dispatch** and never automatically replay it after an interruption. A script may be classified as pure and auto-retried only when a runner enforces no network, no external writes, no privileged bridge or tmux socket access, and only an isolated scratch directory; the existing filesystem isolator alone does not prove network purity. A later effect helper can enable idempotent/reconcilable external calls, but merely asking a script to use it is not enforcement. An arbitrary shell command or third-party MCP tool with unobservable side effects also pauses at `needs_attention` after an uncertain dispatch. Plan must show this resume-safety status before publication. This policy is separate from model prevalidation.
 
 ## Implementation plan
 
-### 1. Register the Relay product and extract shared seams
+The estimates below are rough **engineer effort**, not calendar dates. The architecture spike can change them. V1 includes the authoring experience, an externally callable run, Python tools, optional `agent_browser`, and the node-boundary resume contract. Turn-level continuation and automatic reconciliation are later work.
 
-- Add `relayproduct/product.yaml`, its builder prompt, manifest loader/validator, project-scoped profile registration, and typed builder tools using the shared `agentprofiles` pattern. Pin excluded features and allowed tools with manifest tests.
-- Add a thin Relay product surface using the shared product chat and split-pane primitives. Extract graph, trigger, log, and integration view pieces only where both existing products and Relays can consume them.
-- Establish separate builder and run permissions: builder tools mutate drafts or publish through typed APIs; runtime agent nodes see only their published per-node tools and cannot edit definitions.
-- Acceptance: a fresh Relay builder chat resolves the declared prompt and tool set; denied tools are absent in a live provider test; no Relay runtime agent receives the builder prompt or authoring tools.
+### 0. Prove the reuse boundary (3–5 engineer days)
 
-### 2. Define the Relay contract and storage
+- Trace one workflow function from `workflow_function_triggers.go` through accepted run, status polling, CLI launch, run history, and access checks. Confirm how a JSON object input, frozen version reference, and JSON result can be added without a parallel service.
+- Prototype a `relay` workflow kind and a no-goal execution mode that reaches message-sequence, scripted, and route steps without invoking Pulse, workshop, validation, or learning turns. Test structured transport and exact system-prompt delivery on each supported coding CLI. Measure cold-start and MCP-ready cost; decide when adjacent agent nodes can share a session.
+- Verify the existing per-workflow file/SQLite storage can atomically accept a call and checkpoint a completed node. If it cannot, specify a shared run-store extension before implementation; do not silently assume a general server database.
+- Gate: record code entry points and a working test. Revisit the architecture table if the workflow-backed path proves more costly or less isolated than a shared executor extraction.
 
-- Add a Relay definition schema, graph structural validator, immutable version publisher, draft revision snapshots, and input/output schema handling.
-- Add a transactional run ledger with idempotency uniqueness, node/turn/effect records, artifact hashes, leases, and fencing tokens.
-- Define the persisted state machine and migration/retention policy before wiring API traffic. Preserve terminal status and final JSON longer than optional bulky artifacts.
-- Acceptance: concurrent publication cannot mutate an existing version; the same trigger/idempotency key cannot produce two runs; a run is queryable immediately after its `202` response.
+### 1. Build a callable vertical slice (2–3 engineer weeks)
 
-### 3. Adapt the agent, script, and decision runtimes
+- Register `relayproduct/product.yaml`, builder prompt, and thin left-chat/right-pane surface. Store a Relay kind under an existing workflow workspace and reuse its owner, readers, tokens, path guards, encrypted secrets, and history. Add versioned graph definition, structural checks, content hash, and draft test snapshot.
+- Extend workflow functions to accept the declared JSON input contract and bind a call to an immutable published version. Reuse delivery ID, trigger auth, call ID, immediate accept, and polling. Produce one stable JSON output envelope. Add a Relay-facing HTTP alias only if the existing function endpoint is unsuitable for external callers.
+- Add Relay mode to message-sequence execution: authored system prompt and ordered user messages, variables from trigger and prior nodes, no workflow template or synthetic turns. Reuse scripted steps and deterministic routes. Reject loops and parallel branches in V1.
+- Gate: author and publish a two-agent branching Relay in chat, invoke it from a website backend and through `call_workflow_function`, poll the same call ID, and retrieve author-defined JSON. Editing the draft cannot change the running version.
 
-- Add a custom-prompt mode to the message-sequence agent path. In Relay mode, send the authored system prompt in the supported provider's system role or equivalent and the authored messages in order. Bypass the workflow execution-only prompt template and opening user-message envelope. Show the effective prompt in logs; do not claim full prompt control for a provider that cannot supply it.
-- Disable message-sequence synthetic validation, learning/KB closing turns, workflow goal context, and automatic fallback message for Relay nodes. Keep its useful session, MCP/tool, logging, stop, and cost primitives.
-- Run scripts through the existing scripted executor with explicit input/output paths and a Relay-scoped execution directory. Run decisions through a deterministic value switch. Reject cycles and unsupported step types in v1.
-- Add a versioned Python-tool loader and isolated process runner that registers only node-allowed tools with the agent runtime. Validate JSON stdin/stdout against the declared contracts, scope secrets and MCP access, and apply time and resource limits. Do not treat platform `enabled_custom_tools` as a user-tool authoring feature.
-- Use a shared, server-enforced custom-tool invocation path so exposing a Python tool does not also expose an unrestricted shell. Exercise the actual provider transport, not only the registration list.
-- Adapt the managed `agent_browser` runtime for run-ID-owned headless sessions: register only on browser-enabled agent nodes, retain a temporary profile only for an active/paused run, and tear it down at terminal state. Do not route Relays through a workflow's shared browser or a user's CDP profile.
-- Acceptance: each agent receives exactly the authored messages plus explicitly selected inputs and tools; no workflow-only turns appear; a graph follows one and only one path and returns the declared final JSON. An unauthorized node cannot discover or invoke another node's user-created tool.
+### 2. Add tools, browser, and enforceable permissions (2–3 engineer weeks)
 
-### 4. Add durable turn and node continuation
+- Add versioned Python tool definitions and a JSON stdin/stdout runner through the existing sandbox isolator. Pass only selected secrets and capabilities. Every user Python tool and script is an unknown-effect node in V1 unless a separate runner proves it has no network or external writes. Journal dispatch before execution; an interrupted invocation requires attention, never automatic replay.
+- Extend the shared agent tool bridge to enforce per-node allowlists without granting arbitrary shell access. Verify discovery and denial on the actual coding-CLI transport. Register selected MCP tools and the optional managed `agent_browser` only for authorized nodes.
+- Give each run a temporary headless browser/profile, close it at terminal state, and mark uncertain interrupted browser actions `needs_attention`. Automatic browser-profile restoration is later work.
+- Gate: an unselected tool cannot be discovered or called; Python tools cannot read bridge config or tmux socket material in `/tmp`; crash after a user script's external call never automatically repeats it; browser state cannot leak to another run.
 
-- Extend or extract message-sequence execution so its turn queue is driven by the Relay ledger rather than only in-memory state and `session.json`. Persist a turn cursor and provider-neutral `AgentSessionHandle` after every completed turn.
-- Restore the current node from the frozen version and checkpoint after restart. Reuse `mcpagent` continuation for providers that support it, and persisted history for API models. Surface typed `non_continuable` and `stale_handle` outcomes instead of guessing.
-- Add worker leases, fencing, startup scan, and periodic recovery. Mark uncertain in-flight work `needs_attention` until reconciled.
-- Acceptance: kill the server before/after every turn and node commit; recovery retains the run ID and version, does not rerun committed nodes, and either completes or names the exact unresolved effect.
+### 3. Ship node-level recovery and shared product coverage (2–3 engineer weeks)
 
-### 5. Make effects safe to resume
+- Checkpoint accepted input/version, current node, chosen route, committed outputs, and terminal JSON in the workflow run store. Add startup recovery and an audited `needs_attention` resolution that continues the original run. Retry only enforceably pure nodes. Keep the same call ID and idempotency key across reconnects and retries.
+- Audit owner/co-owner/reader/private and read-only-account access, product toggles, workspace-token/proxy path policy, per-session bridge tokens, Folder Guard, Landlock, secret binding, and the `/tmp` exposure before external triggers are enabled.
+- Surface Relay runs in Active Work, Ctrl+K, origin labels, cost ledger, usage hover, run history, backup/export, external MCP selection, and the `agentworks` CLI. Add docs and a QA ticket.
+- Gate: no acknowledged run disappears on restart; completed nodes do not rerun; uncertain nodes state exactly what requires attention. A second caller with the same delivery ID joins the original run.
 
-- Introduce a shared effect journal around Relay MCP calls, user-created tools, browser actions, and side-effecting scripts; classify tools as read-only, idempotent/reconcilable, or unknown. Add an audited `resolve-effect` action that continues the same run after an uncertain effect is reconciled.
-- Propagate stable operation IDs to supported integrations and add status reconciliation adapters. Gate interrupted unknown effects at `needs_attention` with UI and API details for manual reconciliation.
-- Acceptance: crash after an external action but before its response cannot silently issue a duplicate action. An idempotent action completes automatically with one externally observed effect.
+### 4. Complete the right pane and V1 release gate (1–2 engineer weeks, overlaps earlier stages)
 
-### 6. Build triggers and reuse the right pane
+- Reuse Plan, Triggers, Execution logs, and Integrations UI. Show exact authored prompts, rendered inputs, selected path, JSON output, version, Python tool policy, browser setting, and recovery state. Reuse existing controls where possible instead of maintaining parallel React state.
+- Fault-inject at acceptance, node dispatch, script/tool dispatch, node commit, route selection, final JSON commit, and HTTP response. Test one side-effecting MCP integration and every supported CLI transport. Test key rotation, concurrent duplicate calls, draft edit during a published run, browser cleanup, and access roles.
+- Gate: the V1 node-boundary resume promise and security checks pass. Clearly label an interrupted in-flight node `needs_attention`; never imply that its agent turn or external effect was automatically resumed.
 
-- Add Relay trigger management and run/result endpoints using existing webhook bearer/auth, secret rotation, status polling, and idempotency patterns where they fit. A trigger binds to a published version or latest-published pointer and maps payload fields into the Relay input contract.
-- Reuse the workspace shell and named Plan, Triggers, Execution logs, and Integrations views. Extract shared visual controls from workflow components instead of making Relay state masquerade as workflow state.
-- Add draft test execution to Plan; show resolved prompts, selected path, final JSON, version, run recovery state, and Resume/Pause/Cancel actions in Execution logs.
-- Acceptance: a website can send an input, lose its connection, retry with the same key, and retrieve the same final JSON; the UI can explain and safely resume a paused run.
+### 5. Later continuation work (separate estimate)
 
-### 7. Prove the resume contract before release
-
-Use fault injection and process-kill integration tests at acceptance, lease claim, prompt rendering, agent turn dispatch, tool dispatch, tool success before acknowledgment, browser action dispatch, node output commit, branch selection, final output commit, and HTTP response. Test two workers racing after a lease expires, trigger retries, key rotation, app restart, provider session loss, browser profile reopening/cleanup, and a draft being edited while a published run executes.
-
-Required assertions:
-
-- Every acknowledged run remains discoverable with the same input, version, run ID, and status after restart.
-- A completed node is never rerun; a decision keeps its committed route.
-- A recoverable in-flight agent resumes from the last durable turn; an unavailable provider handle becomes an explicit recoverable or `needs_attention` state.
-- An idempotent external effect occurs once despite retry and restart. An unknown external effect is never replayed automatically.
-- A user-created tool is available only to its assigned agent nodes, receives only its selected secrets/capabilities, and produces a durable invocation record that survives restart.
-- A Python tool's invalid arguments, nonzero exit, timeout, and invalid JSON result are reported as distinct failures; a crash after its external effect follows the same journal and reconciliation rules as an MCP call.
-- A `needs_attention` effect can be resolved with evidence and the original run resumes from the correct checkpoint; a duplicate resolution cannot advance it twice.
-- Final output is stable JSON, and polling/repeated requests return the same result.
-- No Relay run invokes Pulse, workflow validation/learning turns, a persistent/shared browser, or a hidden workflow system prompt. Only browser-enabled nodes can invoke `agent_browser`; an interrupted browser submission is reconciled or paused before replay.
-
-Do not ship the external trigger API with a best-effort resume label. The release gate is the fault-injection suite plus a live end-to-end restart test for each supported agent provider class and at least one side-effecting MCP integration.
+- Add turn-level CLI session checkpoints and typed stale/non-continuable handle outcomes. Relaunch from saved handles after startup rather than relying on `mlp-*` tmux sessions to survive.
+- Add per-effect operation IDs and reconciliation adapters, then multi-worker leases/fencing if execution becomes distributed. Add browser-profile recovery only after reliable action journaling and re-observation are proven.
+- Expand fault injection to turn dispatch, effect success before acknowledgment, lease races, and browser-profile reopening. An unknown outward effect remains `needs_attention` regardless of phase.
