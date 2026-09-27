@@ -423,3 +423,29 @@ func TestCodingWatchdogRateLimitEvidenceIgnoresAssistantNarration(t *testing.T) 
 		t.Fatal("a CLI status line must still be detected")
 	}
 }
+
+// RTS 2026-09-27: a resumed SDE crew pane redrew the user's own message
+// "...we got rate limited in mcp"; the watchdog read it as a limit wall and
+// killed every new turn. User messages, assistant replies and continuation
+// lines the window cannot attribute are not evidence; real notices are.
+func TestCodingWatchdogIgnoresUserAndReplyTextAboutLimits(t *testing.T) {
+	for name, pane := range map[string]string{
+		"user message": "> can you save this key and for dashboard lets use api.. instead of mcp .. we got rate\n  limited in mcp\n\n● Saved.\n\n❯ check any new comments in notion\n  ⏵⏵ auto mode on",
+		"reply":        "● No GitHub activity today. Now checking Notion (may still be\n  rate-limited from earlier).\n\n❯ ",
+		"window starts mid-block": "  rate-limited from earlier), which is a plan-level throttle.\n  Nothing else changed.\n\n❯ ",
+		"input box":    "❯ you have reached your usage limit is what notion said",
+	} {
+		if got := codingWatchdogRateLimitEvidence(pane); got != "" {
+			t.Errorf("%s: misread as a limit wall", name)
+		}
+	}
+	for name, pane := range map[string]string{
+		"claude status": "● Working on it\n\nYou've hit your session limit · resets 11pm (UTC)\n/usage-credits to finish what you're working on.",
+		"tool result":   "● Calling the API\n  ⎿  API Error: 429 Too Many Requests\n\n❯ ",
+		"codex":         "■ You've reached your usage limit. Upgrade to Pro.",
+	} {
+		if got := codingWatchdogRateLimitEvidence(pane); got == "" {
+			t.Errorf("%s: real limit notice missed", name)
+		}
+	}
+}

@@ -206,6 +206,10 @@ func codingWatchdogRateLimitEvidence(content string) string {
 	normalized := make([]string, 0, len(lines))
 	hasRateLimit := false
 	inNarration := false
+	// The tail can start inside a wrapped block whose opening line ("● " reply
+	// or "> " user message) is above the window; its indented continuation
+	// lines cannot be attributed, so they are not evidence either.
+	atWindowStart := true
 	for _, raw := range lines {
 		line := strings.Join(strings.Fields(raw), " ")
 		if line == "" {
@@ -214,18 +218,26 @@ func codingWatchdogRateLimitEvidence(content string) string {
 		normalized = append(normalized, strings.ToLower(line))
 		// The assistant's own reply text ("● Notion rate-limited that query —
 		// retrying") is narration about the work, not the provider's limit
-		// wall. Claude prefixes reply blocks with "● " and indents their
-		// wrapped lines by two spaces; tool results ("⎿", where API errors
-		// appear) and CLI status lines are still checked.
+		// wall, and a user message redrawn in the transcript ("> we got rate
+		// limited in mcp", or the "❯" input box) is the user's words. Claude
+		// prefixes reply blocks with "● ", user messages with ">"/"❯", and
+		// indents their wrapped lines by two spaces; tool results ("⎿", where
+		// API errors appear) and CLI status lines are still checked. Seen on
+		// RTS 2026-09-27: a resumed SDE crew pane redrew the user's "we got rate
+		// limited" message, the watchdog read it as a limit wall and killed
+		// every new turn.
 		trimmedLeft := strings.TrimLeft(raw, " ")
+		continuation := strings.HasPrefix(raw, "  ") && !strings.HasPrefix(trimmedLeft, "⎿")
 		switch {
-		case strings.HasPrefix(trimmedLeft, "● "):
+		case strings.HasPrefix(trimmedLeft, "● "), strings.HasPrefix(trimmedLeft, ">"), strings.HasPrefix(trimmedLeft, "❯"):
 			inNarration = true
+			atWindowStart = false
 			continue
-		case inNarration && strings.HasPrefix(raw, "  ") && !strings.HasPrefix(trimmedLeft, "⎿"):
+		case (inNarration || atWindowStart) && continuation:
 			continue
 		default:
 			inNarration = false
+			atWindowStart = false
 		}
 		hasRateLimit = hasRateLimit || terminals.DetectRateLimit(line)
 	}
