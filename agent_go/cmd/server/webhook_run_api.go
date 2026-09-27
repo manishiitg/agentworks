@@ -325,7 +325,7 @@ func (s *SchedulerService) pollWebhookRun(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
-	applyRelayResult(found.Manifest, &result)
+	applyRelayResult(found.Manifest, &result, found.WorkspacePath, run)
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		http.Error(w, "artifact signing unavailable", 503)
 		return
@@ -390,14 +390,19 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 
 // applyRelayResult projects the selected step's JSON output onto the existing
 // trigger result. The underlying workflow run and its logs remain unchanged.
-func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult) {
+func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, workspacePath string, run schedulerstate.Run) {
 	if manifest == nil || manifest.Kind != "relay" || result == nil || !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
+		return
+	}
+	if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
+		result.Error = "Relay has no relay_output_step_id"
+		result.Status = "failed"
 		return
 	}
 	var selected interface{}
 	found := false
 	for _, step := range result.Steps {
-		if manifest.RelayOutputStepID != "" && step.StepID != manifest.RelayOutputStepID {
+		if step.StepID != manifest.RelayOutputStepID {
 			continue
 		}
 		value, ok := step.Outputs["result.json"]
@@ -410,6 +415,30 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult) {
 			return
 		}
 		selected, found = value, true
+	}
+	if !found {
+		// Generic webhook snapshots stop inlining outputs after 2 MiB. A Relay's
+		// selected result is its response contract, so read that one saved file
+		// directly when it appears only in the artifact list.
+		for _, step := range result.Steps {
+			if step.StepID != manifest.RelayOutputStepID {
+				continue
+			}
+			for _, artifact := range step.Artifacts {
+				if artifact.Name != "result.json" || artifact.Size > 128*1024 {
+					continue
+				}
+				root, err := openWebhookRunRoot(workspacePath, run)
+				if err != nil {
+					continue
+				}
+				data, err := root.ReadFile(artifact.Path)
+				root.Close()
+				if err == nil && len(data) <= 128*1024 && json.Unmarshal(data, &selected) == nil {
+					found = true
+				}
+			}
+		}
 	}
 	if !found {
 		result.Error = "Relay completed without a result.json output"
@@ -464,7 +493,7 @@ func (s *SchedulerService) readInternalWorkflowTriggerRun(ctx context.Context, w
 	if err != nil {
 		return webhookRunResult{}, err
 	}
-	applyRelayResult(manifest, &result)
+	applyRelayResult(manifest, &result, workspacePath, run)
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		return webhookRunResult{}, err
 	}

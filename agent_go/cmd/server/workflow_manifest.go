@@ -1179,6 +1179,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
 			return fmt.Errorf("schedules[%d]: Relays support only function triggers", i)
 		}
+		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) != 1 {
+			return fmt.Errorf("schedules[%d]: a Relay function must select exactly one variable group", i)
+		}
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)
 		}
@@ -1197,10 +1200,14 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if err := validateScheduleRuntimePolicy(sched); err != nil {
 			return fmt.Errorf("schedules[%d]: %w", i, err)
 		}
-		if mode := strings.ToLower(strings.TrimSpace(sched.PulseMode)); mode != "" && mode != schedulePulseModeOff && mode != schedulePulseModeBasic && mode != schedulePulseModeFull {
+		mode := strings.ToLower(strings.TrimSpace(sched.PulseMode))
+		if m.Kind == "relay" && mode != "" && mode != schedulePulseModeOff {
+			return fmt.Errorf("schedules[%d].pulse_mode must be off for a Relay", i)
+		}
+		if mode != "" && mode != schedulePulseModeOff && mode != schedulePulseModeBasic && mode != schedulePulseModeFull {
 			return fmt.Errorf("schedules[%d].pulse_mode must be off, basic, or full", i)
 		}
-		if schedulepolicy.RequiresExplicitPulse(m.Version) {
+		if m.Kind != "relay" && schedulepolicy.RequiresExplicitPulse(m.Version) {
 			// A persisted legacy "full" is tolerated (it runs as basic); only
 			// authoring paths reject newly setting it.
 			if err := schedulepolicy.ValidatePulse(schedulepolicy.NormalizePulse(sched.PulseMode), sched.PulseModeReason); err != nil {

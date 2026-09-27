@@ -1057,7 +1057,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 		learningRefBefore = hcpo.snapshotCanonicalArtifactRef(ctx, filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID))
 	}
 
-	message := strings.TrimSpace(item.Message)
+	message := item.Message
+	if !step.AuthoredPrompt {
+		message = strings.TrimSpace(message)
+	}
 	if step.AuthoredPrompt {
 		message, err = hcpo.renderAuthoredPrompt(ctx, message)
 		if err != nil {
