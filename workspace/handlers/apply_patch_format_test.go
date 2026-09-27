@@ -1,8 +1,17 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 )
 
 const applyPatchLib = `import os
@@ -82,5 +91,103 @@ func TestApplyPatchFormatRefusesWhatItCannotPlace(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s: expected a refusal, got:\n%s", name, got)
 		}
+	}
+}
+
+// The shape of the real RTS patch: the @@ anchor is only the start of the
+// signature line, and that line is also the first line the hunk replaces.
+func TestApplyPatchFormatPrefixAnchorThatIsAlsoTheFirstRemovedLine(t *testing.T) {
+	src := "import os\n\n\ndef helper():\n    return 1\n\n\ndef open_assets(page: Page) -> tuple[bool, str]:\n    page.click(\"#assets\")\n    return True, \"\"\n\n\ndef tail():\n    return 2\n"
+	patch := "*** Begin Patch\n*** Update File: lib.py\n@@ def open_assets(\n-def open_assets(page: Page) -> tuple[bool, str]:\n-    page.click(\"#assets\")\n+def open_assets(page: Page, *, wait: bool = True) -> tuple[bool, str]:\n+    page.click(\"[data-testid=assets]\")\n     return True, \"\"\n*** End Patch\n"
+	got, err := ApplyDiffPatchDirect(src, patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "def open_assets(page: Page, *, wait: bool = True)") || strings.Contains(got, "#assets\"") {
+		t.Fatalf("hunk not applied:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "def tail():\n    return 2\n") || !strings.Contains(got, "def helper():") {
+		t.Fatalf("code outside the hunk changed:\n%s", got)
+	}
+}
+
+// "return True" recurs at many indentations in Python. A hunk whose lines
+// match only with different indentation must match exactly once, or it is
+// refused rather than patching the wrong function.
+func TestApplyPatchFormatRefusesAmbiguousIndentationInsensitiveMatch(t *testing.T) {
+	src := "def a():\n    if x:\n        return True\n\n\ndef b():\n    if y:\n        return True\n"
+	loose := "*** Begin Patch\n*** Update File: lib.py\n@@\n-return True\n+return False\n*** End Patch\n"
+	if got, err := ApplyDiffPatchDirect(src, loose); err == nil {
+		t.Fatalf("ambiguous loose match was applied:\n%s", got)
+	}
+	// An anchor narrows it to one place; the loose match after it is unique.
+	anchored := "*** Begin Patch\n*** Update File: lib.py\n@@ def b():\n-return True\n+        return False\n*** End Patch\n"
+	got, err := ApplyDiffPatchDirect(src, anchored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "def a():\n    if x:\n        return True\n") || !strings.HasSuffix(got, "    if y:\n        return False\n") {
+		t.Fatalf("wrong place patched:\n%s", got)
+	}
+}
+
+// Identical exact blocks: hunks apply in order, each searching after the
+// previous one, so two identical hunks change both occurrences in turn.
+func TestApplyPatchFormatRepeatedExactBlocksApplyInOrder(t *testing.T) {
+	src := "x = 1\nprint(x)\nx = 1\nprint(x)\n"
+	patch := "*** Begin Patch\n*** Update File: a.py\n@@\n-x = 1\n+x = 2\n@@\n-x = 1\n+x = 3\n*** End Patch\n"
+	got, err := ApplyDiffPatchDirect(src, patch)
+	if err != nil || got != "x = 2\nprint(x)\nx = 3\nprint(x)\n" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+// CRLF patches and files, a file without a final newline, and blank context
+// lines that lost their leading space.
+func TestApplyPatchFormatLineEndingsAndBlankContext(t *testing.T) {
+	crlf := "*** Begin Patch\r\n*** Update File: a.py\r\n@@\r\n-a = 1\r\n+a = 2\r\n*** End Patch\r\n"
+	if got, err := ApplyDiffPatchDirect("a = 1\r\nb = 2\r\n", crlf); err != nil || got != "a = 2\nb = 2\n" {
+		t.Fatalf("crlf: got %q, %v", got, err)
+	}
+	if got, err := ApplyDiffPatchDirect("a = 1\nb = 2", "*** Begin Patch\n*** Update File: a.py\n-b = 2\n+b = 3\n*** End Patch\n"); err != nil || got != "a = 1\nb = 3" {
+		t.Fatalf("no final newline: got %q, %v", got, err)
+	}
+	src := "def f():\n    a = 1\n\n    return a\n"
+	patch := "*** Begin Patch\n*** Update File: a.py\n@@ def f():\n     a = 1\n\n-    return a\n+    return a + 1\n*** End Patch\n"
+	if got, err := ApplyDiffPatchDirect(src, patch); err != nil || got != "def f():\n    a = 1\n\n    return a + 1\n" {
+		t.Fatalf("blank context: got %q, %v", got, err)
+	}
+}
+
+// Through the workspace HTTP handler with a real file, as agents call it.
+func TestDiffPatchDocumentAppliesBeginPatchFormat(t *testing.T) {
+	docsDir, cleanup := setupTestDocsDir(t)
+	defer cleanup()
+	gin.SetMode(gin.TestMode)
+	viper.Set("docs-dir", docsDir)
+	dir := filepath.Join(docsDir, "Workflow", "wf", "code", "shared")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lib.py"), []byte(applyPatchLib), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.PATCH("/api/documents/*filepath", HandleDocumentRequest)
+	patch := "*** Begin Patch\n*** Update File: Workflow/wf/code/shared/lib.py\n@@ def open_assets(\n-    page.click(\"#assets\")\n+    page.click(\"[data-testid=assets]\")\n*** End Patch\n"
+	body, _ := json.Marshal(map[string]string{"diff": patch})
+	req := httptest.NewRequest(http.MethodPatch, "/api/documents/Workflow/wf/code/shared/lib.py/diff", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	written, err := os.ReadFile(filepath.Join(dir, "lib.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "[data-testid=assets]") || !strings.HasSuffix(string(written), "    return select_cases([1, 0, 2])\n") {
+		t.Fatalf("file on disk:\n%s", written)
 	}
 }

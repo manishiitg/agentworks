@@ -163,18 +163,24 @@ func applyApplyPatchHunks(currentContent string, hunks []applyPatchHunk) (string
 			if at < 0 {
 				return "", fmt.Errorf("hunk %d: anchor %q not found after line %d; copy the @@ line exactly from the current file", i+1, hunk.anchor, cursor+1)
 			}
-			start = at + 1
+			// The anchor may itself be the first line the hunk replaces, so
+			// the block search starts at the anchor line, not after it.
+			start = at
 		}
 		var at int
 		switch {
 		case len(hunk.old) == 0 && hunk.endOfFile:
 			at = len(fileLines)
 		case len(hunk.old) == 0 && hunk.anchor != "":
-			at = start
+			at = start + 1 // pure insertion goes right after the anchor line
 		case len(hunk.old) == 0:
 			return "", fmt.Errorf("hunk %d only adds lines and has no context or @@ anchor to place them; include a context line or an @@ anchor", i+1)
 		default:
-			at = findApplyPatchBlock(fileLines, hunk.old, start, hunk.endOfFile)
+			var ambiguous bool
+			at, ambiguous = findApplyPatchBlock(fileLines, hunk.old, start, hunk.endOfFile)
+			if ambiguous {
+				return "", fmt.Errorf("hunk %d: its lines only match with different indentation, and at more than one place; add an @@ anchor line or more context so it matches exactly once", i+1)
+			}
 			if at < 0 {
 				return "", fmt.Errorf("hunk %d: its context and removed lines were not found in the current file after line %d; read the file and copy those lines exactly", i+1, start+1)
 			}
@@ -194,10 +200,18 @@ func applyApplyPatchHunks(currentContent string, hunks []applyPatchHunk) (string
 }
 
 // findApplyPatchLine finds the first line at or after from that matches the
-// anchor, exactly or ignoring surrounding whitespace.
+// anchor: the whole line (ignoring surrounding whitespace), else a line that
+// starts with it, since agents often write only the start of a signature
+// ("@@ def open_assets(" for "def open_assets(page: Page) -> bool:").
 func findApplyPatchLine(lines []string, anchor string, from int) int {
+	anchor = strings.TrimSpace(anchor)
 	for i := from; i < len(lines); i++ {
-		if lines[i] == anchor || strings.TrimSpace(lines[i]) == anchor {
+		if strings.TrimSpace(lines[i]) == anchor {
+			return i
+		}
+	}
+	for i := from; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), anchor) {
 			return i
 		}
 	}
@@ -205,30 +219,42 @@ func findApplyPatchLine(lines []string, anchor string, from int) int {
 }
 
 // findApplyPatchBlock finds block in lines at or after from: an exact match
-// first, then one ignoring trailing whitespace, then surrounding whitespace.
-// With endOfFile only a match ending at the last line counts.
-func findApplyPatchBlock(lines, block []string, from int, endOfFile bool) int {
-	normalizers := []func(string) string{
+// first (the first one wins, as hunks apply in order), then one ignoring
+// trailing whitespace. Ignoring leading whitespace too is a last resort that
+// must match exactly once: in Python a line such as "return True" recurs at
+// many indentations, and patching the wrong one is silent corruption
+// (ambiguous reports that case). With endOfFile only a match ending at the
+// last line counts.
+func findApplyPatchBlock(lines, block []string, from int, endOfFile bool) (at int, ambiguous bool) {
+	matchesAt := func(i int, norm func(string) string) bool {
+		if endOfFile && i+len(block) != len(lines) {
+			return false
+		}
+		for j := range block {
+			if norm(lines[i+j]) != norm(block[j]) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, norm := range []func(string) string{
 		func(s string) string { return s },
 		func(s string) string { return strings.TrimRight(s, " \t") },
-		strings.TrimSpace,
-	}
-	for _, norm := range normalizers {
+	} {
 		for i := from; i+len(block) <= len(lines); i++ {
-			if endOfFile && i+len(block) != len(lines) {
-				continue
-			}
-			match := true
-			for j := range block {
-				if norm(lines[i+j]) != norm(block[j]) {
-					match = false
-					break
-				}
-			}
-			if match {
-				return i
+			if matchesAt(i, norm) {
+				return i, false
 			}
 		}
 	}
-	return -1
+	found := -1
+	for i := from; i+len(block) <= len(lines); i++ {
+		if matchesAt(i, strings.TrimSpace) {
+			if found >= 0 {
+				return -1, true
+			}
+			found = i
+		}
+	}
+	return found, false
 }
