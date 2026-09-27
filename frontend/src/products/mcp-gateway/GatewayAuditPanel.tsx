@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
-import { listAudit } from './gatewayAdminApi'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
+import { auditPath, listAudit, type GatewayAuditFilter } from './gatewayAdminApi'
 import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import { codeClass, plural, tableClass, tdClass, thClass, useAttempt, useGatewayLoader } from './gatewayConsoleUtils'
 
@@ -22,21 +24,57 @@ function formatTime(iso: string): string {
 export function GatewayAuditPanel({ base }: { base: string }) {
   const [attempt, bump] = useAttempt()
   const [limit, setLimit] = useState(100)
-  const { data, loading, error } = useGatewayLoader(async () => listAudit(base, limit), attempt)
+  const [draft, setDraft] = useState({ user: '', group: '', client: '', connector: '', tool: '', decision: '', outcome: '', after: '', before: '' })
+  const [filter, setFilter] = useState<GatewayAuditFilter>({})
+  const { data, loading, error } = useGatewayLoader(async () => listAudit(base, limit, filter), attempt)
+
+  function applyFilters() {
+    setFilter({
+      ...draft,
+      after: draft.after ? new Date(`${draft.after}T00:00:00`).toISOString() : '',
+      before: draft.before ? new Date(`${draft.before}T23:59:59.999`).toISOString() : '',
+    })
+    bump()
+  }
 
   if (loading) return <ConsoleLoading label="Loading audit events…" />
   if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
-  const events = [...data.events].reverse()
+  const events = data.events
 
   return (
     <div className="space-y-4" data-testid="gateway-audit">
       {error && <ConsoleStale message={error} onRetry={bump} />}
+      <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3">
+        {(['user', 'group', 'client', 'connector', 'tool'] as const).map((field) => (
+          <Input key={field} aria-label={`Filter by ${field}`} placeholder={field[0].toUpperCase() + field.slice(1)} value={draft[field]}
+            onChange={(event) => setDraft(current => ({ ...current, [field]: event.target.value }))} />
+        ))}
+        {(['decision', 'outcome'] as const).map((field) => (
+          <select key={field} aria-label={`Filter by ${field}`} className={selectClass} value={draft[field]}
+            onChange={(event) => setDraft(current => ({ ...current, [field]: event.target.value }))}>
+            <option value="">Any {field}</option>
+            {(field === 'decision' ? ['allow', 'deny'] : ['ok', 'denied', 'upstream_error']).map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+        ))}
+        {(['after', 'before'] as const).map((field) => (
+          <label key={field} className="flex items-center gap-2 text-xs text-muted-foreground">
+            {field === 'after' ? 'From' : 'Through'}
+            <Input type="date" aria-label={`Filter ${field}`} value={draft[field]}
+              onChange={(event) => setDraft(current => ({ ...current, [field]: event.target.value }))} />
+          </label>
+        ))}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={applyFilters}>Apply filters</Button>
+          <a className="text-xs text-primary underline" href={`${base}${auditPath(filter, undefined, 'csv')}`}>Export CSV</a>
+          <a className="text-xs text-primary underline" href={`${base}${auditPath(filter, undefined, 'json')}`}>Export JSON</a>
+        </div>
+      </div>
       <SettingsCard
         icon={<ScrollText className="h-4 w-4 text-primary" />}
         title="Audit log"
         count={<SettingsCount>{plural(events.length, 'event')}</SettingsCount>}
-        description="Every tool call through the gateway: who asked, what was decided, and how it ended. Newest first."
+        description="Gateway call metadata, newest first. Group keys identify the key and group, not the person holding it."
         actions={
           <select
             aria-label="Event limit"
@@ -64,6 +102,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
               <tr>
                 <th className={thClass}>Time</th>
                 <th className={thClass}>User</th>
+                <th className={thClass}>Group</th>
                 <th className={thClass}>Tool</th>
                 <th className={thClass}>Decision</th>
                 <th className={thClass}>Outcome</th>
@@ -77,6 +116,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
                   <td className={tdClass}>
                     <span className={codeClass}>{e.UserID || '—'}</span>
                   </td>
+                  <td className={tdClass}>{e.GroupIDs?.join(', ') || '—'}</td>
                   <td className={tdClass}>
                     <span className={codeClass}>{e.PublicName}</span>
                   </td>

@@ -26,9 +26,9 @@ input,select,button{font:inherit;padding:.25rem .5rem;margin:.1rem .25rem .1rem 
 .stat b{font-size:1.5rem;display:block}
 .tag{font-size:.75rem;border:1px solid #888;padding:0 .35rem;margin-left:.4rem;white-space:nowrap}`
 
-const pageNav = `<nav><a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/audit">audit</a></nav>`
+const pageNav = `<nav><a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/pii">PII policy</a><a href="/admin/audit">audit</a></nav>`
 
-var pages = template.Must(template.New("admin").Parse(`
+var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": func(values ...string) []string { return values }}).Parse(`
 {{define "dashboard"}}<!doctype html><html><head><meta charset="utf-8"><title>dashboard</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Dashboard</h1>
 <div class="grid">
@@ -87,21 +87,51 @@ var pages = template.Must(template.New("admin").Parse(`
 {{define "tools"}}<!doctype html><html><head><meta charset="utf-8"><title>tools</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Tools</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
-<table><tr><th>public name</th><th>connector</th><th>upstream</th><th>status</th><th>users</th><th>groups</th><th>grant</th></tr>
+<table><tr><th>public name</th><th>connector</th><th>upstream</th><th>status</th><th>users</th><th>groups</th><th>grant</th><th>review</th></tr>
 {{range .Rows}}<tr><td><code>{{.PublicName}}</code></td><td>{{.ConnLabel}}</td><td><code>{{.UpstreamName}}</code></td><td>{{.Status}} v{{.Version}}</td>
 <td>{{range .Users}}<code>{{.}}</code> {{end}}</td><td>{{range .Groups}}<code>{{.}}</code> {{end}}</td>
 <td><form class="inline" method="post" action="/admin/grants/set"><input type="hidden" name="tool" value="{{.PublicName}}">
 <select name="user"><option value="">user…</option>{{range $.Users}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><button name="action" value="grant">+</button><button name="action" value="revoke">−</button></form>
 <form class="inline" method="post" action="/admin/grants/set"><input type="hidden" name="tool" value="{{.PublicName}}">
-<select name="group"><option value="">group…</option>{{range $.Groups}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><button name="action" value="grant">+</button><button name="action" value="revoke">−</button></form></td></tr>{{end}}
+<select name="group"><option value="">group…</option>{{range $.Groups}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><button name="action" value="grant">+</button><button name="action" value="revoke">−</button></form></td>
+<td><details><summary>Definition</summary><p>{{.Description}}</p><pre>{{printf "%s" .InputSchema}}</pre>
+{{range .Previous}}<p>Previous v{{.Version}}: {{.Description}}</p><pre>{{printf "%s" .InputSchema}}</pre>{{end}}</details>
+{{if eq .Status "quarantined"}}<form method="post" action="/admin/tools/approve"><input type="hidden" name="name" value="{{.PublicName}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="fingerprint" value="{{.Fingerprint}}"><button>Approve v{{.Version}}</button></form>{{end}}</td></tr>{{end}}
 </table>
 </body></html>{{end}}
 
 {{define "audit"}}<!doctype html><html><head><meta charset="utf-8"><title>audit</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Audit (latest first)</h1>
-<table><tr><th>time</th><th>user</th><th>tool</th><th>decision</th><th>outcome</th><th>ms</th><th>error</th></tr>
-{{range .Rows}}<tr><td class="muted">{{.Timestamp.Format "15:04:05"}}</td><td><code>{{.UserID}}</code></td><td><code>{{.PublicName}}</code></td><td>{{.Decision}}</td><td>{{.Outcome}}</td><td>{{.DurationMs}}</td><td class="muted">{{.ErrorText}}</td></tr>{{end}}
+<form method="get"><input name="user" placeholder="user" value="{{.Filter.Get "user"}}"><input name="group" placeholder="group" value="{{.Filter.Get "group"}}"><input name="connector" placeholder="connector" value="{{.Filter.Get "connector"}}"><input name="tool" placeholder="tool" value="{{.Filter.Get "tool"}}"><select name="decision"><option value="">any decision</option><option value="allow">allow</option><option value="deny">deny</option></select><select name="outcome"><option value="">any outcome</option><option value="ok">ok</option><option value="denied">denied</option><option value="upstream_error">upstream error</option></select><input type="date" name="after" value="{{.Filter.Get "after"}}"><input type="date" name="before" value="{{.Filter.Get "before"}}"><button>Filter</button></form>
+<p><a href="{{.CSVURL}}">Export filtered CSV</a> · <a href="{{.JSONURL}}">Export filtered JSON</a></p>
+<table><tr><th>time</th><th>user</th><th>groups</th><th>tool</th><th>decision</th><th>outcome</th><th>PII</th><th>ms</th><th>error</th></tr>
+{{range .Rows}}<tr><td class="muted">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td><td><code>{{.UserID}}</code></td><td>{{range .GroupIDs}}{{.}} {{end}}</td><td><code>{{.PublicName}}</code></td><td>{{.Decision}}</td><td>{{.Outcome}}</td><td>{{.PIIAction}}</td><td>{{.DurationMs}}</td><td class="muted">{{.ErrorText}}</td></tr>{{end}}
 </table>
+</body></html>{{end}}
+
+{{define "pii"}}<!doctype html><html><head><meta charset="utf-8"><title>PII policy</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+<h1>PII policy</h1>
+{{if .Err}}<div class="err">{{.Err}}</div>{{end}}
+<p class="muted">Deterministic regex and checksum checks. Email and US phone numbers are masked by default; SSNs, valid credit cards, and known API key formats are blocked. Opaque results are blocked. Detection is best effort.</p>
+<h2>Rules</h2>
+<table><tr><th>type</th><th>direction</th><th>action</th><th>scope</th><th></th></tr>
+{{range .Rules}}<tr><td>{{.DataType}}</td><td>{{.Direction}}</td><td>{{.Action}}</td><td>{{.GroupID}} / {{.ConnectorID}} / {{.PublicName}}</td><td><a href="/admin/pii?edit={{.ID}}">edit</a> <form class="inline" method="post" action="/admin/pii/rules/delete"><input type="hidden" name="id" value="{{.ID}}"><button>delete</button></form></td></tr>{{end}}
+</table>
+<h2>{{if .Edit.ID}}Edit rule{{else}}Add rule{{end}}</h2>
+<form method="post" action="/admin/pii/rules/save"><input type="hidden" name="id" value="{{.Edit.ID}}">
+<select name="type">{{range $type := (list "email" "phone" "ssn" "credit_card" "api_key")}}<option value="{{$type}}" {{if eq $.Edit.DataType $type}}selected{{end}}>{{$type}}</option>{{end}}</select>
+<select name="direction">{{range $direction := (list "input" "output" "both")}}<option value="{{$direction}}" {{if eq $.Edit.Direction $direction}}selected{{end}}>{{$direction}}</option>{{end}}</select>
+<select name="action">{{range $action := (list "allow" "mask" "block" "require_review")}}<option value="{{$action}}" {{if eq $.Edit.Action $action}}selected{{end}}>{{$action}}</option>{{end}}</select><br>
+<select name="group"><option value="">all groups</option>{{range .Groups}}<option value="{{.ID}}" {{if eq $.Edit.GroupID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="connector"><option value="">all servers</option>{{range .Connectors}}<option value="{{.ID}}" {{if eq $.Edit.ConnectorID .ID}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+<select name="tool"><option value="">all tools</option>{{range .Tools}}<option value="{{.PublicName}}" {{if eq $.Edit.PublicName .PublicName}}selected{{end}}>{{.PublicName}}</option>{{end}}</select>
+<button>Save rule</button></form>
+<h2>Test a sample</h2><p class="muted">The sample is inspected on demand and not saved to the audit log.</p>
+<form method="post" action="/admin/pii/test"><textarea name="sample" rows="3" cols="70" placeholder="Paste a sample value" required></textarea><br><select name="direction"><option value="input">input</option><option value="output">output</option></select><button>Test policy</button></form>
+{{if .Result}}<p><strong>Result:</strong> {{.Result}}</p>{{end}}
+<h2>Pending reviews</h2><p class="muted">Approval permits one matching client retry; the gateway does not replay a call.</p>
+<table><tr><th>call</th><th>user</th><th>tool</th><th>direction</th><th>types</th><th>status</th><th></th></tr>
+{{range .Reviews}}<tr><td><code>{{.ID}}</code></td><td>{{.UserID}}</td><td>{{.PublicName}}</td><td>{{.Direction}}</td><td>{{range .DataTypes}}{{.}} {{end}}</td><td>{{.Status}}</td><td>{{if eq .Status "pending"}}<form method="post" action="/admin/pii/reviews/approve"><input type="hidden" name="id" value="{{.ID}}"><button>Approve retry</button></form>{{end}}</td></tr>{{end}}</table>
 </body></html>{{end}}
 
 {{define "login"}}<!doctype html><html><head><meta charset="utf-8"><title>admin login</title></head>

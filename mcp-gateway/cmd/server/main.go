@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +65,17 @@ func run() error {
 	publicURL := env("GATEWAY_PUBLIC_URL", "http://127.0.0.1:"+port)
 	stateDir := env("GATEWAY_STATE_DIR", filepath.Join(".", "var"))
 	humanToken := env("GATEWAY_HUMAN_TOKEN", "m0-human-token")
+	bind, err := resolveBind(env("GATEWAY_BIND", ""), humanToken)
+	if err != nil {
+		return err
+	}
+	bindIP := net.ParseIP(bind)
+	loopbackBind := bind == "localhost" || (bindIP != nil && bindIP.IsLoopback())
+	allowPrivateUpstreams := loopbackBind || os.Getenv("GATEWAY_ALLOW_PRIVATE_UPSTREAMS") == "1"
+	localAdmin := os.Getenv("GATEWAY_LOCAL_ADMIN") == "1"
+	if localAdmin && (!loopbackBind || !loopbackURL(publicURL)) {
+		return errors.New("GATEWAY_LOCAL_ADMIN requires a loopback bind and public URL")
+	}
 	human := mcpoauth.User{ID: "u1", Username: "m0", Email: "m0@example.com", Provider: "m0-static"}
 
 	if os.Getenv("GATEWAY_HUMAN_TOKEN") == "" {
@@ -89,7 +101,7 @@ func run() error {
 	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL, filepath.Join(stateDir, "mcp-oauth.sqlite"), humanToken, human))
 
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1", Keys: st},
-		map[string]*upstream.Client{}, oauthSrv)
+		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: allowPrivateUpstreams})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -114,23 +126,33 @@ func run() error {
 			continue
 		}
 		st.AddGrant(store.Grant{UserID: human.ID, PublicName: public})
-		log.Printf("gateway: granted %s", public)
+		log.Printf("gateway: granted %s (tool still requires admin approval)", public)
 	}
 
 	adm := &admin.Admin{
 		Store: st, Gateway: gw, Catalog: cat,
 		WorkspaceID: "w1", HumanToken: humanToken, PublicURL: publicURL,
+		LocalAdmin: localAdmin,
 	}
 	mux := gw.Handler()
 	adm.APIRoutes(mux)
 	adm.UIRoutes(mux)
 
-	bind, err := resolveBind(env("GATEWAY_BIND", ""), humanToken)
-	if err != nil {
-		return err
-	}
 	log.Printf("gateway: listening on %s:%s (upstream %s)", bind, port, upstreamURL)
 	return http.ListenAndServe(net.JoinHostPort(bind, port), admin.LocalhostCORS(mux))
+}
+
+func loopbackURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // seedDemo creates local-test users and groups.

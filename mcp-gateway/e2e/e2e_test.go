@@ -80,7 +80,7 @@ func TestM0GovernedCallPath(t *testing.T) {
 	defer cancel()
 
 	upstreamSrv := fakeUpstream(t)
-	up, err := upstream.Dial(ctx, upstreamSrv.URL+"/mcp")
+	up, err := upstream.DialWithOptions(ctx, upstreamSrv.URL+"/mcp", upstream.DialOptions{AllowPrivate: true})
 	if err != nil {
 		t.Fatalf("dial upstream: %v", err)
 	}
@@ -109,6 +109,13 @@ func TestM0GovernedCallPath(t *testing.T) {
 		map[string]*upstream.Client{"c1": up}, oauthSrv)
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatalf("sync: %v", err)
+	}
+	allowed, ok := st.GetTool("fake__allowed_tool")
+	if !ok {
+		t.Fatal("allowed tool missing after discovery")
+	}
+	if _, approved := st.ApproveTool("w1", allowed.PublicName, allowed.Fingerprint, allowed.Version); !approved {
+		t.Fatal("could not approve allowed tool")
 	}
 	st.AddGrant(store.Grant{UserID: "u1", PublicName: "fake__allowed_tool"})
 	go http.Serve(l, gw.Handler()) //nolint:errcheck

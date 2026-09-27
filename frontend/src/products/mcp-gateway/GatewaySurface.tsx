@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PlugZap, ScrollText, Server, UserRound, UsersRound } from 'lucide-react'
+import { PlugZap, ScrollText, Server, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { gatewayBaseUrl } from '../productSurfaceConfig'
 import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
 import { GatewayServersPanel } from './GatewayServersPanel'
@@ -7,12 +7,14 @@ import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
 import { GatewayConnectPanel } from './GatewayConnectPanel'
+import { GatewayPIIPanel } from './GatewayPIIPanel'
 
 const SECTIONS = [
   { id: 'servers', label: 'Servers', icon: Server },
   { id: 'groups', label: 'Groups', icon: UsersRound },
   { id: 'users', label: 'Users', icon: UserRound },
   { id: 'audit', label: 'Audit', icon: ScrollText },
+  { id: 'pii', label: 'PII policy', icon: ShieldCheck },
   { id: 'connect', label: 'Connect', icon: PlugZap },
 ] as const
 
@@ -66,6 +68,7 @@ export function GatewaySurface() {
           {section === 'groups' && <GatewayGroupsPanel base={base} />}
           {section === 'users' && <GatewayUsersPanel base={base} />}
           {section === 'audit' && <GatewayAuditPanel base={base} />}
+          {section === 'pii' && <GatewayPIIPanel base={base} />}
           {section === 'connect' && <GatewayConnectPanel base={base} />}
         </div>
       </div>

@@ -8,8 +8,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 )
 
 // Statuses for connectors and tool snapshots.
@@ -44,16 +47,20 @@ type Connector struct {
 
 // ToolSnapshot is one discovered upstream tool plus its gateway identity.
 type ToolSnapshot struct {
-	ConnectorID  string
-	WorkspaceID  string
-	UpstreamName string
-	PublicName   string // stable gateway-visible name
-	Description  string
-	InputSchema  []byte // raw JSON schema, passed through
-	Fingerprint  string // sha256 over name+description+schema
-	Status       string
-	DiscoveredAt time.Time
-	Version      int
+	ConnectorID         string
+	WorkspaceID         string
+	UpstreamName        string
+	PublicName          string // stable gateway-visible name
+	Description         string
+	Title               string
+	InputSchema         []byte // raw JSON schema, passed through
+	OutputSchema        []byte // normalized upstream output schema, if present
+	Annotations         []byte // normalized tool annotations
+	Fingerprint         string // sha256 over name+description+schema
+	ApprovedFingerprint string // definition last approved by an admin
+	Status              string
+	DiscoveredAt        time.Time
+	Version             int
 }
 
 // Grant binds a user to one registered tool.
@@ -93,6 +100,8 @@ type AuditEvent struct {
 	Timestamp    time.Time
 	WorkspaceID  string
 	UserID       string
+	GroupIDs     []string
+	ClientID     string
 	ConnectorID  string
 	PublicName   string
 	UpstreamName string
@@ -100,36 +109,59 @@ type AuditEvent struct {
 	Outcome      string
 	DurationMs   int64
 	ErrorText    string
+	PIIAction    string
+	PIIDataTypes []string
+}
+
+type AuditFilter struct {
+	WorkspaceID string
+	UserID      string
+	GroupID     string
+	ClientID    string
+	ConnectorID string
+	PublicName  string
+	Decision    string
+	Outcome     string
+	After       time.Time
+	Before      time.Time
+	Limit       int
 }
 
 // Fingerprint returns a stable snapshot fingerprint for quarantine diffing.
-func Fingerprint(upstreamName, description string, inputSchema []byte) string {
+func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...[]byte) string {
 	h := sha256.New()
 	h.Write([]byte(upstreamName))
 	h.Write([]byte{0})
 	h.Write([]byte(description))
 	h.Write([]byte{0})
 	h.Write(inputSchema)
+	for _, part := range extra {
+		h.Write([]byte{0})
+		h.Write(part)
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 // MemoryStore is the M0 Store implementation. All methods are safe for
 // concurrent use.
 type MemoryStore struct {
-	mu          sync.RWMutex
-	workspaces  map[string]Workspace
-	users       map[string]User
-	groups      map[string]Group
-	members     map[string]map[string]bool // group ID -> user IDs
-	connectors  map[string]Connector
-	tools       map[string]ToolSnapshot // by PublicName (unique per workspace in M0)
-	grants      map[string]map[string]bool
-	groupGrants map[string]map[string]bool // group ID -> public names
+	mu           sync.RWMutex
+	workspaces   map[string]Workspace
+	users        map[string]User
+	groups       map[string]Group
+	members      map[string]map[string]bool // group ID -> user IDs
+	connectors   map[string]Connector
+	tools        map[string]ToolSnapshot   // by PublicName (unique per workspace in M0)
+	toolVersions map[string][]ToolSnapshot // previous definitions for review
+	grants       map[string]map[string]bool
+	groupGrants  map[string]map[string]bool // group ID -> public names
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
 	groupServers map[string]map[string]bool // group ID -> connector IDs
-	apiKeys      map[string]APIKey          // by token
+	apiKeys      map[string]APIKey          // by SHA-256 of token
 	audit        []AuditEvent
+	piiRules     map[string]pii.Rule
+	piiReviews   map[string]PIIReview
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -140,10 +172,13 @@ func NewMemoryStore() *MemoryStore {
 		members:      map[string]map[string]bool{},
 		connectors:   map[string]Connector{},
 		tools:        map[string]ToolSnapshot{},
+		toolVersions: map[string][]ToolSnapshot{},
 		grants:       map[string]map[string]bool{},
 		groupGrants:  map[string]map[string]bool{},
 		groupServers: map[string]map[string]bool{},
 		apiKeys:      map[string]APIKey{},
+		piiRules:     map[string]pii.Rule{},
+		piiReviews:   map[string]PIIReview{},
 	}
 }
 
@@ -324,8 +359,7 @@ func (s *MemoryStore) ListConnectors(workspaceID string) []Connector {
 }
 
 // UpsertToolSnapshot inserts or versions a discovered tool. A changed
-// fingerprint on a known tool quarantines it until admin review (M1 surfaces
-// the review UI; M0 keeps the old version served and marks the new one).
+// fingerprint on a known tool quarantines it until admin review.
 func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -333,7 +367,9 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	if !known {
 		t.Version = 1
 		if t.Status == "" {
-			t.Status = StatusActive
+			t.Status = StatusQuarantined
+		} else if t.Status == StatusActive {
+			t.ApprovedFingerprint = t.Fingerprint
 		}
 		s.tools[t.PublicName] = t
 		return t
@@ -343,15 +379,46 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 		// unchanged: revive it with its grants intact. Quarantined tools
 		// stay quarantined until admin review.
 		if prev.Status == StatusDisabled {
-			prev.Status = StatusActive
+			if prev.ApprovedFingerprint == prev.Fingerprint {
+				prev.Status = StatusActive
+			} else {
+				prev.Status = StatusQuarantined
+			}
 			s.tools[t.PublicName] = prev
 		}
 		return prev
 	}
 	t.Version = prev.Version + 1
 	t.Status = StatusQuarantined
+	t.ApprovedFingerprint = prev.ApprovedFingerprint
+	s.toolVersions[t.PublicName] = append(s.toolVersions[t.PublicName], prev)
 	s.tools[t.PublicName] = t
 	return t
+}
+
+// ApproveTool activates exactly the reviewed version. A concurrent sync that
+// changes its definition makes the approval fail rather than approve new code.
+func (s *MemoryStore) ApproveTool(workspaceID, publicName, fingerprint string, version int) (ToolSnapshot, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tools[publicName]
+	if !ok || t.WorkspaceID != workspaceID || t.Status != StatusQuarantined || t.Fingerprint != fingerprint || t.Version != version {
+		return ToolSnapshot{}, false
+	}
+	t.Status = StatusActive
+	t.ApprovedFingerprint = t.Fingerprint
+	s.tools[publicName] = t
+	return t, true
+}
+
+func (s *MemoryStore) ListToolVersions(workspaceID, publicName string) []ToolSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	current, ok := s.tools[publicName]
+	if !ok || current.WorkspaceID != workspaceID {
+		return nil
+	}
+	return append([]ToolSnapshot(nil), s.toolVersions[publicName]...)
 }
 
 // DisableMissingTools marks one connector's snapshots absent from a
@@ -362,7 +429,10 @@ func (s *MemoryStore) DisableMissingTools(connectorID string, present map[string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for name, t := range s.tools {
-		if t.ConnectorID == connectorID && !present[name] && t.Status == StatusActive {
+		if t.ConnectorID == connectorID && !present[name] && t.Status != StatusDisabled {
+			if t.Status == StatusActive && t.ApprovedFingerprint == "" {
+				t.ApprovedFingerprint = t.Fingerprint
+			}
 			t.Status = StatusDisabled
 			s.tools[name] = t
 		}
@@ -515,13 +585,20 @@ type APIKey struct {
 func (s *MemoryStore) AddAPIKey(k APIKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.apiKeys[k.Token] = k
+	hash := tokenHash(k.Token)
+	k.Token = ""
+	s.apiKeys[hash] = k
+}
+
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *MemoryStore) APIKeyByToken(token string) (APIKey, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	k, ok := s.apiKeys[token]
+	k, ok := s.apiKeys[tokenHash(token)]
 	return k, ok
 }
 
@@ -557,9 +634,9 @@ func (s *MemoryStore) RevokeAPIKey(groupID, id string) bool {
 func (s *MemoryStore) TouchAPIKey(token string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if k, ok := s.apiKeys[token]; ok {
+	if k, ok := s.apiKeys[tokenHash(token)]; ok {
 		k.LastUsedAt = time.Now()
-		s.apiKeys[token] = k
+		s.apiKeys[tokenHash(token)] = k
 	}
 }
 
@@ -609,6 +686,7 @@ func (s *MemoryStore) UserGrantsFor(userID string) []string {
 func (s *MemoryStore) AppendAudit(e AuditEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	e.GroupIDs = append([]string(nil), e.GroupIDs...)
 	s.audit = append(s.audit, e)
 }
 
@@ -618,4 +696,142 @@ func (s *MemoryStore) ListAudit() []AuditEvent {
 	out := make([]AuditEvent, len(s.audit))
 	copy(out, s.audit)
 	return out
+}
+
+// QueryAudit filters immutable event metadata inside one workspace. Results
+// are newest first so a limited view shows the most recent matching calls.
+func (s *MemoryStore) QueryAudit(f AuditFilter) []AuditEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []AuditEvent{}
+	for i := len(s.audit) - 1; i >= 0; i-- {
+		e := s.audit[i]
+		if e.WorkspaceID != f.WorkspaceID ||
+			(f.UserID != "" && e.UserID != f.UserID) ||
+			(f.GroupID != "" && !contains(e.GroupIDs, f.GroupID)) ||
+			(f.ClientID != "" && e.ClientID != f.ClientID) ||
+			(f.ConnectorID != "" && e.ConnectorID != f.ConnectorID) ||
+			(f.PublicName != "" && !strings.Contains(strings.ToLower(e.PublicName), strings.ToLower(f.PublicName))) ||
+			(f.Decision != "" && e.Decision != f.Decision) ||
+			(f.Outcome != "" && e.Outcome != f.Outcome) ||
+			(!f.After.IsZero() && e.Timestamp.Before(f.After)) ||
+			(!f.Before.IsZero() && e.Timestamp.After(f.Before)) {
+			continue
+		}
+		out = append(out, e)
+		if f.Limit > 0 && len(out) >= f.Limit {
+			break
+		}
+	}
+	return out
+}
+
+func (s *MemoryStore) PutPIIRule(rule pii.Rule) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.piiRules[rule.ID] = rule
+}
+
+func (s *MemoryStore) DeletePIIRule(workspaceID, id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rule, ok := s.piiRules[id]
+	if !ok || rule.WorkspaceID != workspaceID {
+		return false
+	}
+	delete(s.piiRules, id)
+	return true
+}
+
+func (s *MemoryStore) ListPIIRules(workspaceID string) []pii.Rule {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []pii.Rule{}
+	for _, rule := range s.piiRules {
+		if rule.WorkspaceID == workspaceID {
+			out = append(out, rule)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// PIIReview stores only a payload hash and metadata. The original content is
+// never retained, and an approval authorizes one matching client retry.
+type PIIReview struct {
+	ID          string
+	WorkspaceID string
+	UserID      string
+	ConnectorID string
+	PublicName  string
+	Direction   string
+	PayloadHash string
+	DataTypes   []string
+	Status      string
+	CreatedAt   time.Time
+}
+
+const piiReviewLifetime = 24 * time.Hour
+
+func reviewExpired(review PIIReview, now time.Time) bool {
+	return review.CreatedAt.IsZero() || !now.Before(review.CreatedAt.Add(piiReviewLifetime))
+}
+
+func (s *MemoryStore) AddPIIReview(review PIIReview) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	review.DataTypes = append([]string(nil), review.DataTypes...)
+	s.piiReviews[review.ID] = review
+}
+
+func (s *MemoryStore) ListPIIReviews(workspaceID string) []PIIReview {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []PIIReview{}
+	for id, review := range s.piiReviews {
+		if review.WorkspaceID == workspaceID {
+			if review.Status != "consumed" && reviewExpired(review, time.Now()) {
+				review.Status = "expired"
+				s.piiReviews[id] = review
+			}
+			out = append(out, review)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}
+
+func (s *MemoryStore) ApprovePIIReview(workspaceID, id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	review, ok := s.piiReviews[id]
+	if !ok || review.WorkspaceID != workspaceID || review.Status != "pending" || reviewExpired(review, time.Now()) {
+		return false
+	}
+	review.Status = "approved"
+	s.piiReviews[id] = review
+	return true
+}
+
+func (s *MemoryStore) ConsumePIIReview(workspaceID, userID, publicName, direction, payloadHash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, review := range s.piiReviews {
+		if review.WorkspaceID == workspaceID && review.UserID == userID && review.PublicName == publicName &&
+			review.Direction == direction && review.PayloadHash == payloadHash && review.Status == "approved" && !reviewExpired(review, time.Now()) {
+			review.Status = "consumed"
+			s.piiReviews[id] = review
+			return true
+		}
+	}
+	return false
+}
+
+func contains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

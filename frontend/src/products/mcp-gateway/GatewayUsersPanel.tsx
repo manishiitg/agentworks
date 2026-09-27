@@ -67,7 +67,7 @@ export function GatewayUsersPanel({ base }: { base: string }) {
         icon={<UserRound className="h-4 w-4 text-primary" />}
         title="Users"
         count={<SettingsCount>{plural(data.users.length, 'user')}</SettingsCount>}
-        description="People who sign into MCP clients through the gateway. They get their tools from their groups."
+        description="Gateway user records used for group access. Hosted account sign-in is not connected yet."
       >
         {data.users.length === 0 ? (
           <ConsoleEmpty>No users yet. Create one below.</ConsoleEmpty>
@@ -97,7 +97,7 @@ export function GatewayUsersPanel({ base }: { base: string }) {
         )}
       </SettingsCard>
 
-      <SettingsCard title="Create a user" description="Ids are lowercase, e.g. alice.">
+      <SettingsCard title="Create a user record" description="Ids are lowercase, e.g. alice. This does not create a login account.">
         <div className="grid grid-cols-2 gap-2">
           <Input aria-label="User id" placeholder="User id" value={userId} onChange={(e) => setUserId(e.target.value)} />
           <Input

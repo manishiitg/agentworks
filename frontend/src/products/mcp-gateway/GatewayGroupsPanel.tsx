@@ -523,6 +523,7 @@ function GroupPermissions({
   const [busy, setBusy] = useState<string | null>(null)
   const [permError, setPermError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [confirmServer, setConfirmServer] = useState<{ id: string; name: string; active: number; pending: number } | null>(null)
 
   const toolsByConnector = useMemo(() => {
     const byId = new Map<string, GatewayTool[]>()
@@ -571,7 +572,7 @@ function GroupPermissions({
       icon={<KeyRound className="h-4 w-4 text-primary" />}
       title={`Permissions for ${groupName}`}
       count={<SettingsCount>{`${data.servers.size} servers · ${data.grants.size} tools`}</SettingsCount>}
-      description="Attach whole MCP servers for full access (covers tools discovered later), or grant specific tools."
+      description="Grant individual tools below. Whole-server access covers current approved tools; newly discovered or changed tools still need admin approval."
     >
       {permError && <ConsoleError message={permError} onRetry={onChanged} />}
       {error && <ConsoleStale message={error} onRetry={onChanged} />}
@@ -611,15 +612,18 @@ function GroupPermissions({
                     ) : (
                       <Checkbox
                         checked={full}
-                        onCheckedChange={(v) =>
-                          void run(`full:${c.ID}`, () =>
-                            v === true ? attachGroupServer(base, groupId, c.ID) : detachGroupServer(base, groupId, c.ID),
-                          )
-                        }
+                        onCheckedChange={(v) => {
+                          if (v === true) setConfirmServer({
+                            id: c.ID, name: c.Label || c.Provider,
+                            active: tools.filter(tool => tool.Status === 'active').length,
+                            pending: tools.filter(tool => tool.Status === 'quarantined').length,
+                          })
+                          else void run(`full:${c.ID}`, () => detachGroupServer(base, groupId, c.ID))
+                        }}
                         aria-label={`Full access to ${c.Label || c.Provider}`}
                       />
                     )}
-                    Full access
+                    Whole server
                   </label>
                 </div>
                 {open && (
@@ -644,6 +648,7 @@ function GroupPermissions({
                           )}
                           <span className="min-w-0">
                             <span className={codeClass}>{t.PublicName}</span>
+                            {t.Status !== 'active' && <span className="ml-1 text-xs text-amber-600">{t.Status} · unavailable to clients</span>}
                             {t.Description && (
                               <span className="block truncate text-muted-foreground" title={t.Description}>
                                 {t.Description.split('\n')[0]}
@@ -660,6 +665,20 @@ function GroupPermissions({
           })}
         </div>
       )}
+      <ConfirmationDialog
+        isOpen={confirmServer !== null}
+        onClose={() => setConfirmServer(null)}
+        onConfirm={() => {
+          if (!confirmServer) return
+          const serverId = confirmServer.id
+          void run(`full:${serverId}`, () => attachGroupServer(base, groupId, serverId)).then(() => setConfirmServer(null))
+        }}
+        title={`Grant whole server to ${groupName}`}
+        message={`${confirmServer?.name ?? 'This server'} has ${confirmServer?.active ?? 0} approved tool(s) available now and ${confirmServer?.pending ?? 0} awaiting review. Future tools become available to this group only after an admin approves them.`}
+        confirmText="Grant server"
+        type="warning"
+        isLoading={busy === `full:${confirmServer?.id}`}
+      />
     </SettingsCard>
   )
 }

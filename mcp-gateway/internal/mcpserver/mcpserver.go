@@ -4,6 +4,7 @@ package mcpserver
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,8 +17,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/policy"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
@@ -39,17 +42,57 @@ func PublicName(provider, slug, upstreamName string) string {
 
 // Gateway is one workspace's governed MCP endpoint.
 type Gateway struct {
-	store     *store.MemoryStore
-	auth      auth.Authenticator
-	mu        sync.RWMutex
-	upstreams map[string]*upstream.Client // connector ID -> session
-	oauth     *mcpoauth.Server
-	mcp       *server.MCPServer
+	store           *store.MemoryStore
+	auth            auth.Authenticator
+	mu              sync.RWMutex
+	upstreams       map[string]*upstream.Client // connector ID -> session
+	oauth           *mcpoauth.Server
+	mcp             *server.MCPServer
+	upstreamOptions upstream.DialOptions
+	schemas         sync.Map // approved fingerprint -> compiled input schema
+}
+
+type denyRemoteSchemaLoader struct{}
+
+func (denyRemoteSchemaLoader) Load(string) (any, error) {
+	return nil, fmt.Errorf("external schema references are unsupported")
+}
+
+func (g *Gateway) validateArguments(snap store.ToolSnapshot, args map[string]any) error {
+	if len(snap.InputSchema) == 0 || len(snap.InputSchema) > 256*1024 {
+		return fmt.Errorf("tool has no input schema")
+	}
+	encoded, err := json.Marshal(args)
+	if err != nil || len(encoded) > 256*1024 {
+		return fmt.Errorf("tool arguments exceed size limit")
+	}
+	if cached, ok := g.schemas.Load(snap.Fingerprint); ok {
+		return cached.(*jsonschema.Schema).Validate(args)
+	}
+	var document any
+	if err := json.Unmarshal(snap.InputSchema, &document); err != nil {
+		return fmt.Errorf("invalid tool schema")
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.UseLoader(denyRemoteSchemaLoader{})
+	const location = "https://gateway.invalid/input-schema"
+	if err := compiler.AddResource(location, document); err != nil {
+		return fmt.Errorf("invalid tool schema")
+	}
+	compiled, err := compiler.Compile(location)
+	if err != nil {
+		return fmt.Errorf("invalid tool schema")
+	}
+	actual, _ := g.schemas.LoadOrStore(snap.Fingerprint, compiled)
+	return actual.(*jsonschema.Schema).Validate(args)
 }
 
 // New builds the gateway MCP server. Call SyncTools before serving.
-func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client, oauthSrv *mcpoauth.Server) *Gateway {
+func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client, oauthSrv *mcpoauth.Server, options ...upstream.DialOptions) *Gateway {
 	g := &Gateway{store: st, auth: a, upstreams: ups, oauth: oauthSrv}
+	if len(options) > 0 {
+		g.upstreamOptions = options[0]
+	}
 	hooks := &server.Hooks{}
 	// Shape tools/list per caller (visibility only). Deliberately not a
 	// ToolFilter: filters also block calls before the handler runs, which
@@ -99,6 +142,11 @@ func (g *Gateway) upstreamFor(connectorID string) (*upstream.Client, bool) {
 	return up, ok
 }
 
+func (g *Gateway) ValidateUpstreamURL(raw string) error {
+	_, err := upstream.ValidateURL(raw, g.upstreamOptions)
+	return err
+}
+
 func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 	up, ok := g.upstreamFor(c.ID)
 	if !ok {
@@ -114,14 +162,19 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 	seen := make(map[string]bool, len(tools))
 	for _, t := range tools {
 		schema := schemaBytes(t)
+		outputSchema := outputSchemaBytes(t)
+		annotations, _ := json.Marshal(t.Annotations)
 		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
 			ConnectorID:  c.ID,
 			WorkspaceID:  c.WorkspaceID,
 			UpstreamName: t.Name,
 			PublicName:   PublicName(c.Provider, c.InstanceSlug, t.Name),
 			Description:  t.Description,
+			Title:        t.Title,
 			InputSchema:  schema,
-			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema),
+			OutputSchema: outputSchema,
+			Annotations:  annotations,
+			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema, []byte(t.Title), outputSchema, annotations),
 			DiscoveredAt: time.Now().UTC(),
 		})
 		seen[snap.PublicName] = true
@@ -139,7 +192,7 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 	if _, ok := g.upstreamFor(c.ID); ok {
 		return fmt.Errorf("connector %s already connected", c.ID)
 	}
-	up, err := upstream.Dial(ctx, c.UpstreamURL)
+	up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, g.upstreamOptions)
 	if err != nil {
 		return err
 	}
@@ -159,7 +212,7 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 // Resync rediscovers one connector's tools, dialing first if needed.
 func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 	if _, ok := g.upstreamFor(c.ID); !ok {
-		up, err := upstream.Dial(ctx, c.UpstreamURL)
+		up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, g.upstreamOptions)
 		if err != nil {
 			return err
 		}
@@ -186,10 +239,14 @@ func (g *Gateway) RemoveConnector(id string) {
 
 func (g *Gateway) register(snap store.ToolSnapshot, upstreamTool mcp.Tool) {
 	public := mcp.Tool{
-		Name:           snap.PublicName,
-		Description:    upstreamTool.Description,
-		InputSchema:    upstreamTool.InputSchema,
-		RawInputSchema: upstreamTool.RawInputSchema,
+		Name:            snap.PublicName,
+		Description:     upstreamTool.Description,
+		InputSchema:     upstreamTool.InputSchema,
+		RawInputSchema:  upstreamTool.RawInputSchema,
+		OutputSchema:    upstreamTool.OutputSchema,
+		RawOutputSchema: upstreamTool.RawOutputSchema,
+		Annotations:     upstreamTool.Annotations,
+		Title:           upstreamTool.Title,
 	}
 	g.mcp.AddTool(public, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return g.handleCall(ctx, snap, req)
@@ -202,11 +259,34 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	id, _ := auth.FromContext(ctx)
 	callID := newCallID()
 	start := time.Now()
+	groups := g.store.GroupsOf(id.UserID)
+	if id.ViaGroup != "" {
+		groups = []string{id.ViaGroup}
+	}
+	queueReview := func(direction string, payload any, found pii.Decision) bool {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return false
+		}
+		hash := sha256.Sum256(append([]byte(id.WorkspaceID+"\x00"+id.UserID+"\x00"+snap.PublicName+"\x00"+direction+"\x00"), encoded...))
+		key := hex.EncodeToString(hash[:])
+		if g.store.ConsumePIIReview(id.WorkspaceID, id.UserID, snap.PublicName, direction, key) {
+			return true
+		}
+		g.store.AddPIIReview(store.PIIReview{
+			ID: callID, WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+			ConnectorID: snap.ConnectorID, PublicName: snap.PublicName,
+			Direction: direction, PayloadHash: key, DataTypes: found.DataTypes,
+			Status: "pending", CreatedAt: start.UTC(),
+		})
+		return false
+	}
 
 	deny := func(err error) (*mcp.CallToolResult, error) {
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+			GroupIDs:    groups,
 			ConnectorID: snap.ConnectorID,
 			PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
@@ -222,7 +302,42 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if !ok {
 		return deny(policy.ErrConnectorDisabled)
 	}
-	args, _ := req.Params.Arguments.(map[string]any)
+	args, ok := req.Params.Arguments.(map[string]any)
+	if !ok && req.Params.Arguments != nil {
+		return deny(fmt.Errorf("arguments must be an object"))
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	current, ok := g.store.GetTool(snap.PublicName)
+	if !ok || current.WorkspaceID != id.WorkspaceID || current.Status != store.StatusActive {
+		return deny(policy.ErrToolNotActive)
+	}
+	if err := g.validateArguments(current, args); err != nil {
+		return deny(fmt.Errorf("arguments do not match approved tool schema"))
+	}
+	rules := g.store.ListPIIRules(id.WorkspaceID)
+	scope := pii.Scope{WorkspaceID: id.WorkspaceID, GroupIDs: groups, ConnectorID: snap.ConnectorID, PublicName: snap.PublicName, Direction: pii.Input}
+	inspectedArgs, inputDecision, scanErr := pii.ScanJSON(args, scope, rules)
+	inputReviewApproved := inputDecision.Action == pii.Review && queueReview(pii.Input, args, inputDecision)
+	if scanErr != nil || inputDecision.Action == pii.Block || (inputDecision.Action == pii.Review && !inputReviewApproved) {
+		action := inputDecision.Action
+		if scanErr != nil {
+			action = pii.Block
+		}
+		g.store.AppendAudit(store.AuditEvent{
+			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
+			UserID: id.UserID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
+			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
+			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
+			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: inputDecision.DataTypes,
+		})
+		if action == pii.Review {
+			return nil, fmt.Errorf("input requires admin review; retry after approval (call %s)", callID)
+		}
+		return nil, fmt.Errorf("input blocked by PII policy (call %s)", callID)
+	}
+	args = inspectedArgs.(map[string]any)
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	res, err := up.Call(callCtx, snap.UpstreamName, args)
@@ -230,22 +345,99 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		g.store.AppendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+			GroupIDs:    groups,
 			ConnectorID: snap.ConnectorID,
 			PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionAllow, Outcome: store.OutcomeUpstreamError,
-			DurationMs: time.Since(start).Milliseconds(), ErrorText: err.Error(),
+			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream call failed",
 		})
-		return nil, fmt.Errorf("upstream %s: %w", snap.UpstreamName, err)
+		return nil, fmt.Errorf("upstream call failed (call %s)", callID)
+	}
+	scope.Direction = pii.Output
+	outputDecision, scanErr := inspectResult(res, scope, rules)
+	if scanErr != nil || outputDecision.Action == pii.Block || outputDecision.Action == pii.Review {
+		action := outputDecision.Action
+		if scanErr != nil || action == pii.Review {
+			action = pii.Block
+		}
+		g.store.AppendAudit(store.AuditEvent{
+			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
+			UserID: id.UserID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
+			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
+			Decision: store.DecisionDeny, Outcome: store.OutcomeDenied,
+			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: outputDecision.DataTypes,
+		})
+		return nil, fmt.Errorf("output blocked by PII policy (call %s)", callID)
 	}
 	g.store.AppendAudit(store.AuditEvent{
 		ID: callID, CallID: callID, Timestamp: start.UTC(),
 		WorkspaceID: id.WorkspaceID, UserID: id.UserID,
+		GroupIDs:    groups,
 		ConnectorID: snap.ConnectorID,
 		PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
 		Decision: store.DecisionAllow, Outcome: store.OutcomeOK,
-		DurationMs: time.Since(start).Milliseconds(),
+		DurationMs:   time.Since(start).Milliseconds(),
+		PIIAction:    combinedPIIAction(inputDecision.Action, outputDecision.Action),
+		PIIDataTypes: append(inputDecision.DataTypes, outputDecision.DataTypes...),
 	})
 	return res, nil
+}
+
+func combinedPIIAction(first, second string) string {
+	if first == pii.Review || second == pii.Review {
+		return pii.Review
+	}
+	if first == pii.Mask || second == pii.Mask {
+		return pii.Mask
+	}
+	return pii.Allow
+}
+
+// inspectResult modifies only inspectable text/JSON. Opaque content is denied
+// because regex inspection cannot establish what it contains.
+func inspectResult(res *mcp.CallToolResult, scope pii.Scope, rules []pii.Rule) (pii.Decision, error) {
+	encoded, err := json.Marshal(res)
+	if err != nil || len(encoded) > pii.MaxPayloadBytes {
+		return pii.Decision{Action: pii.Block}, pii.ErrPayloadTooLarge
+	}
+	decision := pii.Decision{Action: pii.Allow}
+	merge := func(found pii.Decision) {
+		if found.Action == pii.Block || (found.Action == pii.Review && decision.Action != pii.Block) {
+			decision.Action = found.Action
+		} else if found.Action == pii.Mask && decision.Action == pii.Allow {
+			decision.Action = pii.Mask
+		}
+		decision.MatchCount += found.MatchCount
+		decision.DataTypes = append(decision.DataTypes, found.DataTypes...)
+	}
+	for index, item := range res.Content {
+		var textContent mcp.TextContent
+		switch content := item.(type) {
+		case mcp.TextContent:
+			textContent = content
+		case *mcp.TextContent:
+			textContent = *content
+		default:
+			return pii.Decision{Action: pii.Block}, fmt.Errorf("opaque MCP result content cannot be inspected")
+		}
+		masked, found, err := pii.ScanText(textContent.Text, scope, rules)
+		if err != nil {
+			return pii.Decision{Action: pii.Block}, err
+		}
+		merge(found)
+		textContent.Text = masked
+		res.Content[index] = textContent
+	}
+	if res.StructuredContent != nil {
+		masked, found, err := pii.ScanJSON(res.StructuredContent, scope, rules)
+		if err != nil {
+			return pii.Decision{Action: pii.Block}, err
+		}
+		merge(found)
+		res.StructuredContent = masked
+		res.RawStructuredContent = nil
+	}
+	return decision, nil
 }
 
 // OAuth endpoint paths for this deployment.
@@ -389,6 +581,8 @@ func schemaBytes(t mcp.Tool) []byte {
 	var raw []byte
 	if len(t.RawInputSchema) > 0 {
 		raw = t.RawInputSchema
+	} else if t.InputSchema.Type == "" {
+		return []byte(`{}`)
 	} else {
 		b, err := json.Marshal(t.InputSchema)
 		if err != nil {
@@ -405,4 +599,27 @@ func schemaBytes(t mcp.Tool) []byte {
 		return raw
 	}
 	return norm
+}
+
+func outputSchemaBytes(t mcp.Tool) []byte {
+	if len(t.RawOutputSchema) == 0 && t.OutputSchema.Type == "" {
+		return nil
+	}
+	raw := t.RawOutputSchema
+	if len(raw) == 0 {
+		encoded, err := json.Marshal(t.OutputSchema)
+		if err != nil {
+			return nil
+		}
+		raw = encoded
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return raw
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return raw
+	}
+	return encoded
 }

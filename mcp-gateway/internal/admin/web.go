@@ -2,10 +2,14 @@ package admin
 
 import (
 	"context"
+	"crypto/subtle"
+	"errors"
 	"html/template"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
@@ -23,8 +27,14 @@ func (a *Admin) UIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/connectors/sync", a.requireUI(a.uiConnectorsSync))
 	mux.HandleFunc("/admin/connectors/delete", a.requireUI(a.uiConnectorsDelete))
 	mux.HandleFunc("/admin/tools", a.requireUI(a.uiTools))
+	mux.HandleFunc("/admin/tools/approve", a.requireUI(a.uiToolsApprove))
 	mux.HandleFunc("/admin/grants/set", a.requireUI(a.uiGrantsSet))
 	mux.HandleFunc("/admin/audit", a.requireUI(a.uiAudit))
+	mux.HandleFunc("/admin/pii", a.requireUI(a.uiPII))
+	mux.HandleFunc("/admin/pii/rules/save", a.requireUI(a.uiPIIRuleSave))
+	mux.HandleFunc("/admin/pii/rules/delete", a.requireUI(a.uiPIIRuleDelete))
+	mux.HandleFunc("/admin/pii/reviews/approve", a.requireUI(a.uiPIIReviewApprove))
+	mux.HandleFunc("/admin/pii/test", a.requireUI(a.uiPIITest))
 }
 
 func (a *Admin) requireUI(next http.HandlerFunc) http.HandlerFunc {
@@ -39,8 +49,8 @@ func (a *Admin) requireUI(next http.HandlerFunc) http.HandlerFunc {
 
 func (a *Admin) uiLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		if err := r.ParseForm(); err == nil && r.PostForm.Get("token") == a.HumanToken && a.HumanToken != "" {
-			http.SetCookie(w, &http.Cookie{Name: "gw_admin", Value: a.HumanToken, Path: "/", HttpOnly: true})
+		if err := r.ParseForm(); err == nil && a.HumanToken != "" && subtle.ConstantTimeCompare([]byte(r.PostForm.Get("token")), []byte(a.HumanToken)) == 1 {
+			http.SetCookie(w, &http.Cookie{Name: "gw_admin", Value: a.HumanToken, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 			http.Redirect(w, r, "/admin/", http.StatusSeeOther)
 			return
 		}
@@ -187,6 +197,7 @@ func (a *Admin) uiTools(w http.ResponseWriter, r *http.Request) {
 		store.ToolSnapshot
 		Users, Groups []string
 		ConnLabel     string
+		Previous      []store.ToolSnapshot
 	}
 	var rows []row
 	for _, t := range a.Store.ListTools(a.WorkspaceID) {
@@ -195,12 +206,28 @@ func (a *Admin) uiTools(w http.ResponseWriter, r *http.Request) {
 		if c, ok := a.Store.GetConnector(t.ConnectorID); ok {
 			label = c.Label
 		}
-		rows = append(rows, row{ToolSnapshot: t, Users: users, Groups: groups, ConnLabel: label})
+		rows = append(rows, row{ToolSnapshot: t, Users: users, Groups: groups, ConnLabel: label, Previous: a.Store.ListToolVersions(a.WorkspaceID, t.PublicName)})
 	}
 	render(w, "tools", map[string]any{
 		"Rows": rows, "Users": a.Store.ListUsers(a.WorkspaceID),
 		"Groups": a.Store.ListGroups(a.WorkspaceID), "Err": r.URL.Query().Get("err"),
 	})
+}
+
+func (a *Admin) uiToolsApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		back(w, r, "/admin/tools", err)
+		return
+	}
+	version, err := strconv.Atoi(r.PostForm.Get("version"))
+	if err == nil {
+		_, err = a.ApproveTool(r.PostForm.Get("name"), r.PostForm.Get("fingerprint"), version)
+	}
+	back(w, r, "/admin/tools", err)
 }
 
 func (a *Admin) uiGrantsSet(w http.ResponseWriter, r *http.Request) {
@@ -222,12 +249,113 @@ func (a *Admin) uiGrantsSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Admin) uiAudit(w http.ResponseWriter, r *http.Request) {
-	events := a.Store.ListAudit()
-	for i, j := 0, len(events)-1; i < j; i, j = i+1, j-1 {
-		events[i], events[j] = events[j], events[i]
+	q := r.URL.Query()
+	filter := store.AuditFilter{
+		WorkspaceID: a.WorkspaceID, UserID: q.Get("user"), GroupID: q.Get("group"),
+		ConnectorID: q.Get("connector"), PublicName: q.Get("tool"),
+		Decision: q.Get("decision"), Outcome: q.Get("outcome"), Limit: 200,
 	}
-	if len(events) > 200 {
-		events = events[:200]
+	export := r.URL.Query()
+	export.Del("format")
+	if date := q.Get("after"); date != "" {
+		if parsed, err := time.Parse("2006-01-02", date); err == nil {
+			filter.After = parsed
+			export.Set("after", parsed.Format(time.RFC3339))
+		}
 	}
-	render(w, "audit", map[string]any{"Rows": events})
+	if date := q.Get("before"); date != "" {
+		if parsed, err := time.Parse("2006-01-02", date); err == nil {
+			filter.Before = parsed.Add(24*time.Hour - time.Nanosecond)
+			export.Set("before", filter.Before.Format(time.RFC3339Nano))
+		}
+	}
+	export.Set("format", "csv")
+	csvURL := "/api/admin/audit?" + export.Encode()
+	export.Set("format", "json")
+	jsonURL := "/api/admin/audit?" + export.Encode()
+	render(w, "audit", map[string]any{"Rows": a.Store.QueryAudit(filter), "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
+}
+
+func (a *Admin) renderPII(w http.ResponseWriter, r *http.Request, result string) {
+	selected := pii.Rule{DataType: "email", Direction: pii.Both, Action: pii.Mask}
+	for _, rule := range a.Store.ListPIIRules(a.WorkspaceID) {
+		if rule.ID == r.URL.Query().Get("edit") {
+			selected = rule
+			break
+		}
+	}
+	render(w, "pii", map[string]any{
+		"Rules": a.Store.ListPIIRules(a.WorkspaceID), "Reviews": a.Store.ListPIIReviews(a.WorkspaceID),
+		"Groups": a.Store.ListGroups(a.WorkspaceID), "Connectors": a.Store.ListConnectors(a.WorkspaceID),
+		"Tools": a.Store.ListTools(a.WorkspaceID), "Edit": selected,
+		"Result": result, "Err": r.URL.Query().Get("err"),
+	})
+}
+
+func (a *Admin) uiPII(w http.ResponseWriter, r *http.Request) { a.renderPII(w, r, "") }
+
+func (a *Admin) uiPIIRuleSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		back(w, r, "/admin/pii", err)
+		return
+	}
+	_, err := a.SavePIIRule(pii.Rule{
+		ID: r.PostForm.Get("id"), GroupID: r.PostForm.Get("group"), ConnectorID: r.PostForm.Get("connector"),
+		PublicName: r.PostForm.Get("tool"), DataType: r.PostForm.Get("type"),
+		Direction: r.PostForm.Get("direction"), Action: r.PostForm.Get("action"),
+	})
+	back(w, r, "/admin/pii", err)
+}
+
+func (a *Admin) uiPIIRuleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	if !a.Store.DeletePIIRule(a.WorkspaceID, r.PostForm.Get("id")) {
+		back(w, r, "/admin/pii", errors.New("unknown PII rule"))
+		return
+	}
+	back(w, r, "/admin/pii", nil)
+}
+
+func (a *Admin) uiPIIReviewApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	_ = r.ParseForm()
+	if !a.Store.ApprovePIIReview(a.WorkspaceID, r.PostForm.Get("id")) {
+		back(w, r, "/admin/pii", errors.New("review missing or already decided"))
+		return
+	}
+	back(w, r, "/admin/pii", nil)
+}
+
+func (a *Admin) uiPIITest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		back(w, r, "/admin/pii", err)
+		return
+	}
+	masked, decision, err := pii.ScanText(r.PostForm.Get("sample"), pii.Scope{
+		WorkspaceID: a.WorkspaceID, Direction: r.PostForm.Get("direction"),
+	}, a.Store.ListPIIRules(a.WorkspaceID))
+	if err != nil {
+		back(w, r, "/admin/pii", err)
+		return
+	}
+	result := decision.Action + " — " + strconv.Itoa(decision.MatchCount) + " match(es)"
+	if decision.Action == pii.Mask {
+		result += ": " + masked
+	}
+	a.renderPII(w, r, result)
 }

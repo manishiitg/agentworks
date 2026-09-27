@@ -12,10 +12,12 @@ import { useMCPStore } from '../../stores/useMCPStore'
 import type { ToolDefinition } from '../../stores/types'
 import {
   createConnector,
+  approveTool,
   deleteConnector,
   listCatalog,
   listConnectors,
   listTools,
+  listToolVersions,
   syncConnector,
   type GatewayConnector,
   type GatewayTool,
@@ -112,6 +114,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [addingKey, setAddingKey] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [approving, setApproving] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<GatewayConnector | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -198,6 +201,19 @@ export function GatewayServersPanel({ base }: { base: string }) {
     }
   }
 
+  async function onApprove(tool: GatewayTool) {
+    setApproving(tool.PublicName)
+    setActionError(null)
+    try {
+      await approveTool(base, tool)
+      bump()
+    } catch (err: unknown) {
+      setActionError(gatewayErrorMessage(err))
+    } finally {
+      setApproving(null)
+    }
+  }
+
   async function onDelete() {
     if (!deleting) return
     setDeleteBusy(true)
@@ -281,7 +297,8 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const stats: Array<[string, string]> = [
     [String(connected.length), 'connected'],
     [String(inGateway), 'in gateway'],
-    [String(data.tools.length), 'tools governed'],
+    [String(data.tools.filter((tool) => tool.Status === 'active').length), 'tools available'],
+    [String(data.tools.filter((tool) => tool.Status === 'quarantined').length), 'awaiting review'],
     [String(data.providers.length), 'in catalog'],
   ]
 
@@ -427,7 +444,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                             <Trash2 />
                                           </Button>
                                         </span>
-                                        {open && <ToolList tools={tools} />}
+                                        {open && <ToolList tools={tools} base={base} onApprove={onApprove} approving={approving} />}
                                       </span>
                                     )
                                   })}
@@ -589,23 +606,85 @@ export function GatewayServersPanel({ base }: { base: string }) {
   )
 }
 
-function ToolList({ tools }: { tools: GatewayTool[] }) {
+function toolJSON(encoded: string | null | undefined): string {
+  if (!encoded) return 'Not provided.'
+  try { return JSON.stringify(JSON.parse(atob(encoded)), null, 2) }
+  catch { return 'Schema could not be displayed.' }
+}
+
+function ToolReviewRow({ tool, base, onApprove, approving }: {
+  tool: GatewayTool
+  base: string
+  onApprove: (tool: GatewayTool) => Promise<void>
+  approving: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [versions, setVersions] = useState<GatewayTool[] | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+
+  async function openReview() {
+    setOpen(true)
+    if (versions !== null) return
+    try {
+      const response = await listToolVersions(base, tool.PublicName)
+      setVersions(response.versions)
+    } catch (err: unknown) {
+      setHistoryError(gatewayErrorMessage(err))
+    }
+  }
+
+  return (
+    <span className="flex flex-col gap-1 py-1">
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        <span className={codeClass}>{tool.PublicName}</span>
+        <span className="text-muted-foreground">{tool.UpstreamName}</span>
+        <span className="text-xs text-muted-foreground">v{tool.Version} · {tool.Status}</span>
+      </span>
+      {tool.Description && <span className="max-w-2xl text-muted-foreground">{tool.Description}</span>}
+      <ToolArgs tool={tool} />
+      <span className="flex items-center gap-2">
+        <Button variant="ghost" size="xs" onClick={() => open ? setOpen(false) : void openReview()}>
+          {open ? 'Hide details' : 'Review details'}
+        </Button>
+        {tool.Status === 'quarantined' && (
+          <Button size="xs" disabled={approving} onClick={() => void onApprove(tool)}>
+            {approving && <Loader2 className="animate-spin" />}Approve v{tool.Version}
+          </Button>
+        )}
+      </span>
+      {open && (
+        <span className="block space-y-2 rounded-md border border-border p-2 text-xs">
+          <span className="block font-medium">Current input schema</span>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(tool.InputSchema)}</pre>
+          <span className="block font-medium">Output schema</span>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(tool.OutputSchema)}</pre>
+          <span className="block font-medium">Annotations</span>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(tool.Annotations)}</pre>
+          {historyError && <span className="text-destructive">{historyError}</span>}
+          {versions?.slice(-1).map((previous) => (
+            <span className="block" key={previous.Version}>
+              <span className="block font-medium">Previous v{previous.Version}: {previous.Description}</span>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(previous.InputSchema)}</pre>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(previous.OutputSchema)}</pre>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function ToolList({ tools, base, onApprove, approving }: {
+  tools: GatewayTool[]
+  base: string
+  onApprove: (tool: GatewayTool) => Promise<void>
+  approving: string | null
+}) {
   if (tools.length === 0) return <span className="ml-5 text-muted-foreground">No tools discovered yet.</span>
   return (
     <span className="ml-5 flex flex-col gap-1 border-l border-border pl-2">
       {tools.map((t) => (
-        <span key={t.PublicName} className="flex flex-col">
-          <span className="inline-flex flex-wrap items-center gap-1.5">
-            <span className={codeClass}>{t.PublicName}</span>
-            <span className="text-muted-foreground">{t.UpstreamName}</span>
-          </span>
-          {t.Description && (
-            <span className="max-w-2xl truncate text-muted-foreground" title={t.Description}>
-              {t.Description.split('\n')[0]}
-            </span>
-          )}
-          <ToolArgs tool={t} />
-        </span>
+        <ToolReviewRow key={t.PublicName} tool={t} base={base} onApprove={onApprove} approving={approving === t.PublicName} />
       ))}
     </span>
   )

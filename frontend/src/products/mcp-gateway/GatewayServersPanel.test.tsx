@@ -128,6 +128,31 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('q: string*')
   })
 
+  it('reviews and approves the exact quarantined tool version', async () => {
+    const tool = {
+      ConnectorID: 'c1', WorkspaceID: 'w1', UpstreamName: 'search', PublicName: 'notion__search',
+      Description: 'Search notes', InputSchema: btoa('{"type":"object"}'), Status: 'quarantined',
+      Version: 2, Fingerprint: 'fingerprint-2', ApprovedFingerprint: 'fingerprint-1', DiscoveredAt: '',
+    }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/admin/tools')) return Promise.resolve(jsonResponse(200, { tools: [tool] }))
+      if (url.endsWith('/api/admin/tools/notion__search/versions')) return Promise.resolve(jsonResponse(200, { versions: [{ ...tool, Version: 1, Status: 'active' }] }))
+      if (url.endsWith('/api/admin/tools/notion__search/approve') && init?.method === 'POST') return Promise.resolve(jsonResponse(200, { ...tool, Status: 'active' }))
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock)
+    await act(async () => { (container!.querySelector('[aria-label="Show 1 tool on Notion"]') as HTMLButtonElement).click() })
+    await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Review details') as HTMLButtonElement).click() })
+    await act(async () => {})
+    expect(container!.textContent).toContain('Current input schema')
+    expect(container!.textContent).toContain('Previous v1')
+
+    await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent?.includes('Approve v2')) as HTMLButtonElement).click() })
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/admin/tools/notion__search/approve`, expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ fingerprint: 'fingerprint-2', version: 2 }),
+    }))
+  })
+
   it('adds custom servers from pasted mcpServers JSON', async () => {
     const fetchMock = vi.fn(healthyFetch())
     await renderPanel(fetchMock)

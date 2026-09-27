@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/admin"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
@@ -19,11 +20,110 @@ import (
 func localAdminMux() *http.ServeMux {
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
 	adm.UIRoutes(mux)
 	return mux
+}
+
+func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
+	st := store.NewMemoryStore()
+	now := time.Now().UTC()
+	st.AppendAudit(store.AuditEvent{ID: "match", CallID: "call-1", Timestamp: now, WorkspaceID: "w1", UserID: "=formula", GroupIDs: []string{"g1"}, PublicName: "fake__tool", Decision: store.DecisionAllow, Outcome: store.OutcomeOK})
+	st.AppendAudit(store.AuditEvent{ID: "other-tenant", Timestamp: now, WorkspaceID: "w2", UserID: "=formula", GroupIDs: []string{"g1"}, PublicName: "secret__tool"})
+	st.AppendAudit(store.AuditEvent{ID: "other-group", Timestamp: now, WorkspaceID: "w1", UserID: "u2", GroupIDs: []string{"g2"}})
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", LocalAdmin: true}
+	mux := http.NewServeMux()
+	adm.APIRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/admin/audit?group=g1&format=csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "'=formula") || strings.Contains(string(body), "other-tenant") || strings.Contains(string(body), "other-group") {
+		t.Fatalf("filtered CSV status %d body %q", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.Contains(got, "attachment") {
+		t.Fatalf("missing download disposition: %q", got)
+	}
+
+	resp, err = http.Get(srv.URL + "/api/admin/audit?group=g1&limit=10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Events []store.AuditEvent `json:"events"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Events) != 1 || result.Events[0].ID != "match" {
+		t.Fatalf("filtered JSON: %+v", result.Events)
+	}
+}
+
+func TestPIIRuleAndSampleAPI(t *testing.T) {
+	srv := httptest.NewServer(localAdminMux())
+	defer srv.Close()
+	page, err := http.Get(srv.URL + "/admin/pii")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageBody, _ := io.ReadAll(page.Body)
+	page.Body.Close()
+	if page.StatusCode != http.StatusOK || !strings.Contains(string(pageBody), "Test a sample") || strings.Contains(string(pageBody), "template:") {
+		t.Fatalf("standalone PII page status %d: %s", page.StatusCode, pageBody)
+	}
+	resp, err := http.Post(srv.URL+"/api/admin/pii/rules", "application/json", strings.NewReader(`{"DataType":"email","Direction":"input","Action":"block"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("rule status %d: %s", resp.StatusCode, body)
+	}
+	var rule struct{ ID string }
+	if err := json.NewDecoder(resp.Body).Decode(&rule); err != nil || rule.ID == "" {
+		t.Fatalf("created rule: %+v, %v", rule, err)
+	}
+	resp, err = http.Post(srv.URL+"/api/admin/pii/test", "application/json", strings.NewReader(`{"Sample":"alice@example.com","Direction":"input"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Decision struct {
+			Action string `json:"action"`
+		}
+		MaskedPreview string `json:"masked_preview"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Decision.Action != "block" || result.MaskedPreview != "" {
+		t.Fatalf("test result: %+v", result)
+	}
+}
+
+func TestStandaloneAuditPageRendersFilters(t *testing.T) {
+	srv := httptest.NewServer(localAdminMux())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/admin/audit?user=u1&after=2026-09-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Export filtered CSV") || strings.Contains(string(body), "template:") {
+		t.Fatalf("audit page status %d: %s", resp.StatusCode, body)
+	}
 }
 
 // TestLoopbackBypassesAdminToken: in local runs the user is admin, so
@@ -54,13 +154,57 @@ func TestLoopbackBypassesAdminToken(t *testing.T) {
 	}
 }
 
+func TestLoopbackProxyIsNotAdminByDefault(t *testing.T) {
+	st := store.NewMemoryStore()
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "private-token"}
+	mux := http.NewServeMux()
+	adm.APIRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/admin/users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("loopback proxy request status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestLocalAdminRejectsCrossSiteOriginAndReboundHost(t *testing.T) {
+	srv := httptest.NewServer(localAdminMux())
+	defer srv.Close()
+	for _, tc := range []struct{ name, origin, host string }{
+		{"foreign origin", "https://attacker.example", ""},
+		{"rebound host", "", "attacker.example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/admin/users", nil)
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			if tc.host != "" {
+				req.Host = tc.host
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", resp.StatusCode)
+			}
+		})
+	}
+}
+
 // TestGroupMembersRoundTrip: add/remove members and list them.
 func TestGroupMembersRoundTrip(t *testing.T) {
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
 	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1", Email: "u1@example.com"})
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
 	srv := httptest.NewServer(mux)
@@ -115,7 +259,7 @@ func TestGroupServerGrantRoundTrip(t *testing.T) {
 	st.AddMember("g1", "u1")
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
 	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
 	srv := httptest.NewServer(mux)
@@ -198,7 +342,7 @@ func TestGroupAPIKeyFlow(t *testing.T) {
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
 	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
 	srv := httptest.NewServer(mux)

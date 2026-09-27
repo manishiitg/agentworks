@@ -56,7 +56,7 @@ func TestDuplicateConnectorNamespaceRejected(t *testing.T) {
 	upstreamSrv := fakeUpstream(t)
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "ns"})
-	gw := mcpserver.New(st, auth.OAuth{}, map[string]*upstream.Client{}, nil)
+	gw := mcpserver.New(st, auth.OAuth{}, map[string]*upstream.Client{}, nil, upstream.DialOptions{AllowPrivate: true})
 	adm := &admin.Admin{Store: st, Gateway: gw, WorkspaceID: "w1"}
 
 	first, err := adm.AddConnectorCustom(ctx, "Fake", "first", "", upstreamSrv.URL+"/mcp")
@@ -101,7 +101,7 @@ func TestResyncDisablesRemovedTools(t *testing.T) {
 	srv.AddTool(schemaTool("keep_tool", `{"type":"object"}`), echoHandler())
 	srv.AddTool(schemaTool("drop_tool", `{"type":"object"}`), echoHandler())
 
-	up, err := upstream.Dial(ctx, ts.URL+"/mcp")
+	up, err := upstream.DialWithOptions(ctx, ts.URL+"/mcp", upstream.DialOptions{AllowPrivate: true})
 	if err != nil {
 		t.Fatalf("dial upstream: %v", err)
 	}
@@ -117,6 +117,15 @@ func TestResyncDisablesRemovedTools(t *testing.T) {
 
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatalf("sync: %v", err)
+	}
+	for _, name := range []string{"mut__drop_tool", "mut__keep_tool"} {
+		snap, ok := st.GetTool(name)
+		if !ok || snap.Status != store.StatusQuarantined {
+			t.Fatalf("new tool %s = %+v, want quarantined", name, snap)
+		}
+		if _, approved := st.ApproveTool("w1", name, snap.Fingerprint, snap.Version); !approved {
+			t.Fatalf("could not approve %s", name)
+		}
 	}
 	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
 	if _, err := policy.Authorize(st, id, "mut__drop_tool"); err != nil {
@@ -171,7 +180,7 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 	ts, srv := mutableUpstream(t)
 	srv.AddTool(schemaTool("shaped_tool", `{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}`), echoHandler())
 
-	up, err := upstream.Dial(ctx, ts.URL+"/mcp")
+	up, err := upstream.DialWithOptions(ctx, ts.URL+"/mcp", upstream.DialOptions{AllowPrivate: true})
 	if err != nil {
 		t.Fatalf("dial upstream: %v", err)
 	}
@@ -193,8 +202,11 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 	if !strings.Contains(string(snap.InputSchema), `"required"`) || !strings.Contains(string(snap.InputSchema), `"q"`) {
 		t.Fatalf("stored schema = %q, want full normalized input schema", snap.InputSchema)
 	}
-	if snap.Version != 1 || snap.Status != store.StatusActive {
-		t.Fatalf("fresh snapshot = v%d %q, want v1 active", snap.Version, snap.Status)
+	if snap.Version != 1 || snap.Status != store.StatusQuarantined {
+		t.Fatalf("fresh snapshot = v%d %q, want v1 quarantined", snap.Version, snap.Status)
+	}
+	if _, approved := st.ApproveTool("w1", snap.PublicName, snap.Fingerprint, snap.Version); !approved {
+		t.Fatal("could not approve initial schema")
 	}
 
 	// Unchanged resync: stable version, still active.
@@ -217,5 +229,64 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 	}
 	if !strings.Contains(string(snap.InputSchema), `"n"`) {
 		t.Fatalf("quarantined snapshot schema = %q, want the new definition", snap.InputSchema)
+	}
+
+	// Output-only schema changes also require review and retain the prior
+	// definition for an admin to compare.
+	srv.DeleteTools("shaped_tool")
+	changedOutput := schemaTool("shaped_tool", `{"type":"object","properties":{"q":{"type":"string"},"n":{"type":"number"}},"required":["q","n"]}`)
+	changedOutput.RawOutputSchema = json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`)
+	srv.AddTool(changedOutput, echoHandler())
+	if err := gw.Resync(ctx, c); err != nil {
+		t.Fatalf("output resync: %v", err)
+	}
+	snap, _ = st.GetTool("mut__shaped_tool")
+	if snap.Version != 3 || snap.Status != store.StatusQuarantined || !strings.Contains(string(snap.OutputSchema), "answer") {
+		t.Fatalf("output schema change = %+v", snap)
+	}
+	if versions := st.ListToolVersions("w1", snap.PublicName); len(versions) != 2 {
+		t.Fatalf("tool history = %d versions, want 2", len(versions))
+	}
+}
+
+func TestServerGrantDoesNotAutoApproveFutureTool(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ts, srv := mutableUpstream(t)
+	srv.AddTool(schemaTool("first", `{"type":"object"}`), echoHandler())
+	up, err := upstream.DialWithOptions(ctx, ts.URL+"/mcp", upstream.DialOptions{AllowPrivate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer up.Close()
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w1"})
+	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1"})
+	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1"})
+	st.AddMember("g1", "u1")
+	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "mut", Status: store.StatusActive})
+	st.AddGroupServerGrant("g1", "c1")
+	gw := mcpserver.New(st, auth.OAuth{}, map[string]*upstream.Client{"c1": up}, nil)
+	if err := gw.SyncTools(ctx, "w1"); err != nil {
+		t.Fatal(err)
+	}
+	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
+	if _, err := policy.Authorize(st, id, "mut__first"); err != policy.ErrToolNotActive {
+		t.Fatalf("first tool before approval: %v", err)
+	}
+	first, _ := st.GetTool("mut__first")
+	if _, approved := st.ApproveTool("w1", first.PublicName, first.Fingerprint, first.Version); !approved {
+		t.Fatal("approve first")
+	}
+	if _, err := policy.Authorize(st, id, "mut__first"); err != nil {
+		t.Fatalf("approved tool denied: %v", err)
+	}
+	srv.AddTool(schemaTool("future", `{"type":"object"}`), echoHandler())
+	connector, _ := st.GetConnector("c1")
+	if err := gw.Resync(ctx, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.Authorize(st, id, "mut__future"); err != policy.ErrToolNotActive {
+		t.Fatalf("future tool auto-granted: %v", err)
 	}
 }

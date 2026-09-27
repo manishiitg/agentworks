@@ -77,8 +77,18 @@ describe('GatewayGroupsPanel', () => {
     expect(container!.textContent).toContain('Engineering')
     expect(container!.textContent).toContain('alice')
     expect(container!.textContent).toContain('Permissions for Engineering')
-    expect(container!.textContent).toContain('Full access')
+    expect(container!.textContent).toContain('Whole server')
     expect(container!.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
+  })
+
+  it('confirms the scope before granting a whole server', async () => {
+    const fetchMock = await renderPanel()
+    await act(async () => { (container!.querySelector('[aria-label="Full access to Notion"]') as HTMLButtonElement).click() })
+    expect(document.body.textContent).toContain('1 approved tool(s) available now')
+    expect(fetchMock.mock.calls.some(([url, init]) => url.includes('/servers') && init?.method === 'POST')).toBe(false)
+    const confirm = [...document.body.querySelectorAll('button')].find(button => button.textContent === 'Grant server') as HTMLButtonElement
+    await act(async () => { confirm.click() })
+    expect(fetchMock.mock.calls.some(([url, init]) => url.includes('/servers') && init?.method === 'POST')).toBe(true)
   })
 
   it('expands a server to grant specific tools', async () => {

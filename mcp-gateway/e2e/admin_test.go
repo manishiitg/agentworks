@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -76,7 +77,7 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL,
 		filepath.Join(t.TempDir(), "mcp-oauth.sqlite"), testHumanToken, human))
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1"},
-		map[string]*upstream.Client{}, oauthSrv)
+		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: true})
 	adm := &admin.Admin{Store: st, Gateway: gw, Catalog: cat,
 		WorkspaceID: "w1", HumanToken: testHumanToken, PublicURL: publicURL}
 	mux := gw.Handler()
@@ -117,6 +118,14 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 	c := dialGateway(t, publicURL+"/mcp", access)
 	callReq := mcp.CallToolRequest{}
 	callReq.Params.Name = "fake__allowed_tool"
+	if _, err := c.CallTool(ctx, callReq); err == nil {
+		t.Fatal("new tool ran before admin approval despite group grant")
+	}
+	snap, _ := st.GetTool("fake__allowed_tool")
+	approval := fmt.Sprintf(`{"fingerprint":%q,"version":%d}`, snap.Fingerprint, snap.Version)
+	if code, data := apiCall(t, "POST", publicURL+"/api/admin/tools/fake__allowed_tool/approve", approval); code != 200 {
+		t.Fatalf("approve tool: %d %s", code, data)
+	}
 	if _, err := c.CallTool(ctx, callReq); err != nil {
 		t.Fatalf("group-granted call: %v", err)
 	}

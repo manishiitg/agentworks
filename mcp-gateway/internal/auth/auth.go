@@ -8,6 +8,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -78,7 +79,7 @@ func (h HumanSession) CurrentUser(r *http.Request) (*mcpoauth.User, bool) {
 		return nil, false
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.Token {
+	if !strings.HasPrefix(auth, "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, "Bearer ")), []byte(h.Token)) != 1 {
 		return nil, false
 	}
 	u := h.User

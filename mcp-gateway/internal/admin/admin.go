@@ -6,6 +6,8 @@ package admin
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +21,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
@@ -30,6 +33,7 @@ type Admin struct {
 	WorkspaceID string
 	HumanToken  string
 	PublicURL   string
+	LocalAdmin  bool // explicitly enabled for a direct, loopback-only local run
 }
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -41,21 +45,43 @@ func newID(prefix string) string {
 }
 
 func (a *Admin) authed(r *http.Request) bool {
-	// Local runs have no separate admin identity: a request arriving
-	// directly on a loopback interface is the local user, who is admin.
-	// Only the direct peer address counts (never X-Forwarded-For), so a
-	// gateway behind a proxy still fails closed to the token.
-	if isLoopbackPeer(r) {
+	// Explicit local mode treats a direct loopback peer as the single admin.
+	// Hosted deployments leave LocalAdmin false, including when a reverse
+	// proxy connects to this process over loopback.
+	if a.LocalAdmin && isLoopbackPeer(r) && isLoopbackHost(r.Host) &&
+		(r.Header.Get("Origin") == "" || isLoopbackOrigin(r.Header.Get("Origin"))) &&
+		r.Header.Get("Sec-Fetch-Site") != "cross-site" {
 		return true
 	}
 	if a.HumanToken == "" {
 		return false
 	}
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return strings.TrimPrefix(h, "Bearer ") == a.HumanToken
+		return subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(h, "Bearer ")), []byte(a.HumanToken)) == 1
 	}
 	c, err := r.Cookie("gw_admin")
-	return err == nil && c.Value == a.HumanToken
+	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.HumanToken)) != 1 || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Host != r.Host {
+			return false
+		}
+	}
+	return true
+}
+
+func isLoopbackHost(hostport string) bool {
+	host := hostport
+	if parsed, _, err := net.SplitHostPort(hostport); err == nil {
+		host = parsed
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // isLoopbackPeer reports whether the request arrived directly from a
@@ -185,6 +211,9 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	if !ok {
 		return store.Connector{}, errors.New("unknown provider")
 	}
+	if err := a.Gateway.ValidateUpstreamURL(p.URL); err != nil {
+		return store.Connector{}, err
+	}
 	c, err := a.addConnectorRow(p.Key, label, slug, p.URL)
 	if err != nil {
 		return store.Connector{}, err
@@ -203,8 +232,8 @@ func (a *Admin) AddConnectorCustom(ctx context.Context, provider, label, slug, u
 		return store.Connector{}, errors.New("invalid provider name")
 	}
 	upstreamURL = strings.TrimSpace(upstreamURL)
-	if !strings.HasPrefix(upstreamURL, "https://") && !strings.HasPrefix(upstreamURL, "http://127.0.0.1") && !strings.HasPrefix(upstreamURL, "http://localhost") {
-		return store.Connector{}, errors.New("upstream must be https (or loopback http)")
+	if err := a.Gateway.ValidateUpstreamURL(upstreamURL); err != nil {
+		return store.Connector{}, err
 	}
 	c, err := a.addConnectorRow(key, label, slug, upstreamURL)
 	if err != nil {
@@ -236,6 +265,70 @@ func (a *Admin) DeleteConnector(id string) error {
 	}
 	a.Gateway.RemoveConnector(id)
 	return nil
+}
+
+// ApproveTool activates only the exact discovered definition the admin saw.
+func (a *Admin) ApproveTool(publicName, fingerprint string, version int) (store.ToolSnapshot, error) {
+	t, ok := a.Store.ApproveTool(a.WorkspaceID, publicName, fingerprint, version)
+	if !ok {
+		return store.ToolSnapshot{}, errors.New("tool changed, was removed, or is not awaiting review; refresh and try again")
+	}
+	return t, nil
+}
+
+func (a *Admin) SavePIIRule(rule pii.Rule) (pii.Rule, error) {
+	rule.WorkspaceID = a.WorkspaceID
+	if rule.ID == "" {
+		rule.ID = newID("pii")
+	} else {
+		found := false
+		for _, existing := range a.Store.ListPIIRules(a.WorkspaceID) {
+			if existing.ID == rule.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return pii.Rule{}, errors.New("unknown PII rule")
+		}
+	}
+	if !containsString([]string{"email", "phone", "ssn", "credit_card", "api_key"}, rule.DataType) ||
+		!containsString([]string{pii.Allow, pii.Mask, pii.Block, pii.Review}, rule.Action) ||
+		!containsString([]string{pii.Input, pii.Output, pii.Both}, rule.Direction) {
+		return pii.Rule{}, errors.New("invalid PII type, action, or direction")
+	}
+	if rule.Action == pii.Review && rule.Direction != pii.Input {
+		return pii.Rule{}, errors.New("require_review is available for input only; reviewing output would repeat the upstream call")
+	}
+	if rule.GroupID != "" {
+		g, ok := a.Store.GetGroup(rule.GroupID)
+		if !ok || g.WorkspaceID != a.WorkspaceID {
+			return pii.Rule{}, errors.New("unknown group")
+		}
+	}
+	if rule.ConnectorID != "" {
+		c, ok := a.Store.GetConnector(rule.ConnectorID)
+		if !ok || c.WorkspaceID != a.WorkspaceID {
+			return pii.Rule{}, errors.New("unknown connector")
+		}
+	}
+	if rule.PublicName != "" {
+		t, ok := a.Store.GetTool(rule.PublicName)
+		if !ok || t.WorkspaceID != a.WorkspaceID {
+			return pii.Rule{}, errors.New("unknown tool")
+		}
+	}
+	a.Store.PutPIIRule(rule)
+	return rule, nil
+}
+
+func containsString(items []string, wanted string) bool {
+	for _, item := range items {
+		if item == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Admin) checkTool(publicName string) error {
@@ -612,6 +705,121 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"tools": a.Store.ListTools(a.WorkspaceID)})
 	}))
+	mux.HandleFunc("/api/admin/tools/{name}/versions", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		name := r.PathValue("name")
+		t, ok := a.Store.GetTool(name)
+		if !ok || t.WorkspaceID != a.WorkspaceID {
+			writeErr(w, http.StatusNotFound, errors.New("unknown tool"))
+			return
+		}
+		writeJSON(w, 200, map[string]any{"versions": a.Store.ListToolVersions(a.WorkspaceID, name)})
+	}))
+	mux.HandleFunc("/api/admin/tools/{name}/approve", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Fingerprint string `json:"fingerprint"`
+			Version     int    `json:"version"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		t, err := a.ApproveTool(r.PathValue("name"), in.Fingerprint, in.Version)
+		if err != nil {
+			writeErr(w, http.StatusConflict, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, t)
+	}))
+	mux.HandleFunc("/api/admin/pii/rules", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, map[string]any{"rules": a.Store.ListPIIRules(a.WorkspaceID)})
+		case http.MethodPost:
+			var rule pii.Rule
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&rule); err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			saved, err := a.SavePIIRule(rule)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, saved)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/admin/pii/rules/{id}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if !a.Store.DeletePIIRule(a.WorkspaceID, r.PathValue("id")) {
+			writeErr(w, http.StatusNotFound, errors.New("unknown PII rule"))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/admin/pii/test", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Sample      string
+			Direction   string
+			GroupIDs    []string
+			ConnectorID string
+			PublicName  string
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, pii.MaxPayloadBytes)).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if in.Direction != pii.Input && in.Direction != pii.Output {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid direction"))
+			return
+		}
+		masked, decision, err := pii.ScanText(in.Sample, pii.Scope{
+			WorkspaceID: a.WorkspaceID, GroupIDs: in.GroupIDs, ConnectorID: in.ConnectorID, PublicName: in.PublicName, Direction: in.Direction,
+		}, a.Store.ListPIIRules(a.WorkspaceID))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		preview := ""
+		if decision.Action == pii.Mask {
+			preview = masked
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"decision": decision, "masked_preview": preview})
+	}))
+	mux.HandleFunc("/api/admin/pii/reviews", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"reviews": a.Store.ListPIIReviews(a.WorkspaceID)})
+	}))
+	mux.HandleFunc("/api/admin/pii/reviews/{id}/approve", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if !a.Store.ApprovePIIReview(a.WorkspaceID, r.PathValue("id")) {
+			writeErr(w, http.StatusConflict, errors.New("review missing or already decided"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
+	}))
 	mux.HandleFunc("/api/admin/grants", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -659,15 +867,63 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		limit := 100
-		if v := r.URL.Query().Get("limit"); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
-				limit = n
+		q := r.URL.Query()
+		filter := store.AuditFilter{
+			WorkspaceID: a.WorkspaceID,
+			UserID:      q.Get("user"), GroupID: q.Get("group"), ClientID: q.Get("client"),
+			ConnectorID: q.Get("connector"), PublicName: q.Get("tool"),
+			Decision: q.Get("decision"), Outcome: q.Get("outcome"),
+		}
+		for _, bound := range []struct {
+			value  string
+			target *time.Time
+		}{
+			{q.Get("after"), &filter.After}, {q.Get("before"), &filter.Before},
+		} {
+			if bound.value == "" {
+				continue
+			}
+			parsed, err := time.Parse(time.RFC3339, bound.value)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, errors.New("invalid audit date; use RFC3339"))
+				return
+			}
+			*bound.target = parsed
+		}
+		format := q.Get("format")
+		if format != "" && format != "csv" && format != "json" {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid audit export format"))
+			return
+		}
+		if format == "" {
+			filter.Limit = 100
+			if v := q.Get("limit"); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 1 || n > 5000 {
+					writeErr(w, http.StatusBadRequest, errors.New("audit limit must be 1 to 5000"))
+					return
+				}
+				filter.Limit = n
 			}
 		}
-		events := a.Store.ListAudit()
-		if len(events) > limit {
-			events = events[len(events)-limit:]
+		events := a.Store.QueryAudit(filter)
+		if format == "csv" {
+			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="gateway-audit.csv"`)
+			writer := csv.NewWriter(w)
+			_ = writer.Write([]string{"time", "call_id", "user", "groups", "client", "connector", "tool", "decision", "outcome", "duration_ms", "error"})
+			for _, e := range events {
+				_ = writer.Write([]string{
+					e.Timestamp.Format(time.RFC3339Nano), csvSafe(e.CallID), csvSafe(e.UserID), csvSafe(strings.Join(e.GroupIDs, ";")),
+					csvSafe(e.ClientID), csvSafe(e.ConnectorID), csvSafe(e.PublicName), e.Decision, e.Outcome,
+					strconv.FormatInt(e.DurationMs, 10), csvSafe(e.ErrorText),
+				})
+			}
+			writer.Flush()
+			return
+		}
+		if format == "json" {
+			w.Header().Set("Content-Disposition", `attachment; filename="gateway-audit.json"`)
 		}
 		writeJSON(w, 200, map[string]any{"events": events})
 	}))
@@ -678,4 +934,12 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]any{"providers": a.Catalog.Providers})
 	}))
+}
+
+// csvSafe keeps exported metadata from becoming spreadsheet formulas.
+func csvSafe(value string) string {
+	if value != "" && strings.ContainsRune("=+-@", rune(value[0])) {
+		return "'" + value
+	}
+	return value
 }

@@ -33,10 +33,16 @@ export interface GatewayTool {
   UpstreamName: string
   PublicName: string
   Description: string
+  Title?: string
   /** Raw JSON schema, base64-encoded by Go ([]byte); null when the upstream sent none. */
   InputSchema: string | null
+  OutputSchema?: string | null
+  Annotations?: string | null
   Status: string
   DiscoveredAt: string
+  Version: number
+  Fingerprint: string
+  ApprovedFingerprint: string
 }
 
 export interface GatewayAuditEvent {
@@ -44,6 +50,8 @@ export interface GatewayAuditEvent {
   CallID: string
   Timestamp: string
   UserID: string
+  GroupIDs?: string[]
+  ClientID?: string
   ConnectorID: string
   PublicName: string
   UpstreamName: string
@@ -51,6 +59,30 @@ export interface GatewayAuditEvent {
   Outcome: string
   DurationMs: number
   ErrorText: string
+  PIIAction?: string
+  PIIDataTypes?: string[]
+}
+
+export interface GatewayPIIRule {
+  ID: string
+  WorkspaceID: string
+  GroupID: string
+  ConnectorID: string
+  PublicName: string
+  DataType: string
+  Direction: string
+  Action: string
+}
+
+export interface GatewayPIIReview {
+  ID: string
+  UserID: string
+  ConnectorID: string
+  PublicName: string
+  Direction: string
+  DataTypes: string[]
+  Status: string
+  CreatedAt: string
 }
 
 export interface GatewayProvider {
@@ -198,6 +230,17 @@ export function listTools(base: string): Promise<{ tools: GatewayTool[] }> {
   return request(base, '/api/admin/tools')
 }
 
+export function listToolVersions(base: string, publicName: string): Promise<{ versions: GatewayTool[] }> {
+  return request(base, `/api/admin/tools/${encodeURIComponent(publicName)}/versions`)
+}
+
+export function approveTool(base: string, tool: GatewayTool): Promise<GatewayTool> {
+  return post(base, `/api/admin/tools/${encodeURIComponent(tool.PublicName)}/approve`, {
+    fingerprint: tool.Fingerprint,
+    version: tool.Version,
+  })
+}
+
 export function getGrants(base: string, subject: { user: string } | { group: string }): Promise<string[]> {
   const query = 'user' in subject ? `user=${encodeURIComponent(subject.user)}` : `group=${encodeURIComponent(subject.group)}`
   return request<{ user_grants?: string[]; group_grants?: string[] }>(base, `/api/admin/grants?${query}`).then(
@@ -218,8 +261,55 @@ export function setGrant(
   })
 }
 
-export function listAudit(base: string, limit: number): Promise<{ events: GatewayAuditEvent[] }> {
-  return request(base, `/api/admin/audit?limit=${limit}`)
+export interface GatewayAuditFilter {
+  user?: string
+  group?: string
+  client?: string
+  connector?: string
+  tool?: string
+  decision?: string
+  outcome?: string
+  after?: string
+  before?: string
+}
+
+export function auditPath(filter: GatewayAuditFilter, limit?: number, format?: 'csv' | 'json'): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
+  if (limit) params.set('limit', String(limit))
+  if (format) params.set('format', format)
+  return `/api/admin/audit?${params.toString()}`
+}
+
+export function listAudit(base: string, limit: number, filter: GatewayAuditFilter = {}): Promise<{ events: GatewayAuditEvent[] }> {
+  return request(base, auditPath(filter, limit))
+}
+
+export function listPIIRules(base: string): Promise<{ rules: GatewayPIIRule[] }> {
+  return request(base, '/api/admin/pii/rules')
+}
+
+export function savePIIRule(base: string, rule: Partial<GatewayPIIRule>): Promise<GatewayPIIRule> {
+  return post(base, '/api/admin/pii/rules', rule)
+}
+
+export function deletePIIRule(base: string, id: string): Promise<void> {
+  return request(base, `/api/admin/pii/rules/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function testPII(base: string, sample: string, direction: string, scope: { GroupIDs?: string[]; ConnectorID?: string; PublicName?: string }): Promise<{
+  decision: { action: string; data_types: string[]; match_count: number }
+  masked_preview: string
+}> {
+  return post(base, '/api/admin/pii/test', { Sample: sample, Direction: direction, ...scope })
+}
+
+export function listPIIReviews(base: string): Promise<{ reviews: GatewayPIIReview[] }> {
+  return request(base, '/api/admin/pii/reviews')
+}
+
+export function approvePIIReview(base: string, id: string): Promise<{ status: string }> {
+  return post(base, `/api/admin/pii/reviews/${encodeURIComponent(id)}/approve`, {})
 }
 
 export function listCatalog(base: string): Promise<{ providers: GatewayProvider[] }> {
