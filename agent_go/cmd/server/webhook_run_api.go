@@ -152,6 +152,7 @@ type webhookRunResult struct {
 	Error            string                 `json:"error,omitempty"`
 	FinishedAt       *time.Time             `json:"finished_at,omitempty"`
 	Steps            []webhookStepOutput    `json:"steps"`
+	Result           json.RawMessage        `json:"result,omitempty"`
 	Truncated        bool                   `json:"truncated,omitempty"`
 }
 
@@ -324,6 +325,7 @@ func (s *SchedulerService) pollWebhookRun(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
+	applyRelayResult(found.Manifest, &result)
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		http.Error(w, "artifact signing unavailable", 503)
 		return
@@ -386,6 +388,43 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 	return result, nil
 }
 
+// applyRelayResult projects the selected step's JSON output onto the existing
+// trigger result. The underlying workflow run and its logs remain unchanged.
+func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult) {
+	if manifest == nil || manifest.Kind != "relay" || result == nil || !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
+		return
+	}
+	var selected interface{}
+	found := false
+	for _, step := range result.Steps {
+		if manifest.RelayOutputStepID != "" && step.StepID != manifest.RelayOutputStepID {
+			continue
+		}
+		value, ok := step.Outputs["result.json"]
+		if !ok {
+			continue
+		}
+		if found {
+			result.Error = "multiple Relay result.json outputs found; set relay_output_step_id"
+			result.Status = "failed"
+			return
+		}
+		selected, found = value, true
+	}
+	if !found {
+		result.Error = "Relay completed without a result.json output"
+		result.Status = "failed"
+		return
+	}
+	encoded, err := json.Marshal(selected)
+	if err != nil {
+		result.Error = "Relay result.json could not be encoded"
+		result.Status = "failed"
+		return
+	}
+	result.Result = encoded
+}
+
 // signWebhookRunArtifacts attaches short-lived download URLs to run artifacts.
 func signWebhookRunArtifacts(result *webhookRunResult, run schedulerstate.Run) error {
 	for i := range result.Steps {
@@ -425,6 +464,7 @@ func (s *SchedulerService) readInternalWorkflowTriggerRun(ctx context.Context, w
 	if err != nil {
 		return webhookRunResult{}, err
 	}
+	applyRelayResult(manifest, &result)
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		return webhookRunResult{}, err
 	}

@@ -105,10 +105,14 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
-	KnowledgebaseSources   []workflowtypes.KnowledgebaseSource   `json:"knowledgebase_sources,omitempty"`
-	CodeLayoutVersion      int                                   `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
-	SchemaVersion          int                                   `json:"schema_version"`
-	ID                     string                                `json:"id"`
+	KnowledgebaseSources []workflowtypes.KnowledgebaseSource `json:"knowledgebase_sources,omitempty"`
+	CodeLayoutVersion    int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
+	SchemaVersion        int                                 `json:"schema_version"`
+	ID                   string                              `json:"id"`
+	// Kind distinguishes a Relay from a general workflow while reusing the
+	// same manifest, schedules, access rules, runner, and run history.
+	Kind                   string                                `json:"kind,omitempty"`
+	RelayOutputStepID      string                                `json:"relay_output_step_id,omitempty"`
 	Version                string                                `json:"version,omitempty"`
 	ContractUpgradeHistory []WorkflowContractUpgradeHistoryEntry `json:"contract_upgrade_history,omitempty"`
 	Label                  string                                `json:"label"`
@@ -474,6 +478,9 @@ func (m *WorkflowManifest) PulseEnabled() bool {
 	if m == nil {
 		return false
 	}
+	if m.Kind == "relay" {
+		return false
+	}
 	if m.Pulse != nil && m.Pulse.Enabled {
 		return true
 	}
@@ -507,6 +514,9 @@ const (
 // existing manifests retain their behavior: enabled means full Pulse, disabled
 // means no post-run Pulse work. Explicit schedule values override that default.
 func (m *WorkflowManifest) EffectivePulseMode(schedule WorkflowSchedule) string {
+	if m != nil && m.Kind == "relay" {
+		return schedulePulseModeOff
+	}
 	// A normal schedule never runs the full Pulse review; that runs on the
 	// workflow's own Pulse schedule (pulse_schedule.go). Legacy "full" and the
 	// legacy empty-with-Pulse-enabled default both mean basic stewardship.
@@ -973,6 +983,15 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.ID == "" {
 		return fmt.Errorf("id is required")
 	}
+	if m.Kind != "" && m.Kind != "relay" {
+		return fmt.Errorf("kind must be relay or omitted")
+	}
+	if m.Kind != "relay" && m.RelayOutputStepID != "" {
+		return fmt.Errorf("relay_output_step_id requires kind relay")
+	}
+	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
+		return fmt.Errorf("Relays do not support Pulse")
+	}
 	if m.Label == "" {
 		return fmt.Errorf("label is required")
 	}
@@ -1157,6 +1176,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	for i, sched := range m.Schedules {
+		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
+			return fmt.Errorf("schedules[%d]: Relays support only function triggers", i)
+		}
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)
 		}

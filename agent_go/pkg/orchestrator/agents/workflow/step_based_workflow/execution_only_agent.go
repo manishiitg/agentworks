@@ -137,6 +137,10 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) Execute(ctx context.Context, template
 	// Generate system prompt and user message separately
 	systemPrompt := hctpeoa.executionOnlySystemPromptProcessor(templateVars)
 	userMessage := hctpeoa.executionOnlyUserMessageProcessor(templateVars)
+	if authored, ok := templateVars["AuthoredSystemPrompt"]; ok {
+		systemPrompt = authored
+		userMessage = templateVars["AuthoredUserMessage"]
+	}
 
 	// Create a simple input processor that returns the user message
 	inputProcessor := func(map[string]string) string {

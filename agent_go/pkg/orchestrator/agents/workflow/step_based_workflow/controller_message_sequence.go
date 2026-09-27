@@ -481,7 +481,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 		if initialInstruction == "" && execCtx != nil {
 			initialInstruction = strings.TrimSpace(execCtx.WorkshopHumanInput)
 		}
-		if initialInstruction != "" {
+		if initialInstruction != "" && !sequenceStep.AuthoredPrompt {
 			configuredItems = append([]MessageSequenceItem{{
 				ID:      sequenceStep.GetID() + "-initial-instruction",
 				Type:    "user_message",
@@ -489,7 +489,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 				Message: initialInstruction,
 			}}, configuredItems...)
 		}
-		if len(configuredItems) == 0 {
+		if len(configuredItems) == 0 && !sequenceStep.AuthoredPrompt {
 			configuredItems = []MessageSequenceItem{{
 				ID:      sequenceStep.GetID() + "-execute",
 				Type:    "user_message",
@@ -497,8 +497,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 				Message: "Execute the step charter now and verify that its requirements are satisfied.",
 			}}
 		}
-		plannedItems = appendMessageSequenceFinalValidation(configuredItems, sequenceStep.ValidationSchema)
-		plannedItems = append(plannedItems, hcpo.messageSequenceClosingItems(ctx, sequenceStep, stepIndex)...)
+		if sequenceStep.AuthoredPrompt {
+			plannedItems = configuredItems
+		} else {
+			plannedItems = appendMessageSequenceFinalValidation(configuredItems, sequenceStep.ValidationSchema)
+			plannedItems = append(plannedItems, hcpo.messageSequenceClosingItems(ctx, sequenceStep, stepIndex)...)
+		}
 		session.delegation = opts.Delegation
 		source = "configured_queue"
 	}
@@ -539,7 +543,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 		break
 	}
 
-	for _, item := range plannedItems {
+	for itemIndex, item := range plannedItems {
 		// Stop means stop. Every layer below is expected to surface a canceled
 		// context as an item error, and the queue halts on any error — but that
 		// makes halting depend on a lower layer noticing, and a coding-CLI turn
@@ -564,6 +568,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 		started := time.Now()
 		notificationID, notificationName, notificationMeta, notifyItem := hcpo.startMessageSequenceItemNotification(ctx, sequenceStep, item, stepIndex, stepPath, source, started)
 		summary, err := hcpo.executeMessageSequenceItem(ctx, sequenceStep, item, stepIndex, stepPath, session, isRoute)
+		if err == nil && sequenceStep.AuthoredPrompt && itemIndex == len(plannedItems)-1 {
+			_, err = normalizeAuthoredJSONResult(summary)
+		}
 		ended := time.Now()
 		entry := messageSequenceEntry{
 			EntryID:   fmt.Sprintf("%s-%d", item.ID, started.UnixNano()),
@@ -611,6 +618,22 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 		_ = hcpo.saveMessageSequenceSession(ctx, sessionRelPath, session)
 		hcpo.completeMessageSequenceItemNotification(ctx, notificationID, notificationName, summary, notificationMeta, notifyItem, nil)
 	}
+	if sequenceStep.AuthoredPrompt {
+		if len(session.Entries) == 0 {
+			return "", session.ConversationHistory, fmt.Errorf("message_sequence step %q has no JSON result", sequenceStep.ID)
+		}
+		resultJSON, resultErr := normalizeAuthoredJSONResult(session.Entries[len(session.Entries)-1].Summary)
+		if resultErr != nil {
+			session.Status = "failed"
+			session.UpdatedAt = time.Now()
+			_ = hcpo.saveMessageSequenceSession(ctx, sessionRelPath, session)
+			return "", session.ConversationHistory, fmt.Errorf("message_sequence step %q: %w", sequenceStep.ID, resultErr)
+		}
+		resultPath := filepath.Join(hcpo.messageSequenceExecutionRelPath(stepPath, sequenceStep.ID), "result.json")
+		if err := hcpo.WriteWorkspaceFile(ctx, resultPath, resultJSON); err != nil {
+			return "", session.ConversationHistory, fmt.Errorf("save authored JSON result: %w", err)
+		}
+	}
 
 	session.Status = "completed"
 	session.UpdatedAt = time.Now()
@@ -619,6 +642,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceStep(
 	}
 	_ = hcpo.saveMessageSequenceSession(ctx, sessionRelPath, session)
 	finalSummary := hcpo.summarizeMessageSequenceSession(session)
+	if sequenceStep.AuthoredPrompt && len(session.Entries) > 0 {
+		finalSummary = session.Entries[len(session.Entries)-1].Summary
+	}
 	// Item summaries stay in the retained message-sequence session. Pulse reads
 	// that evidence directly; do not parse prose into observations here.
 	if err := hcpo.saveFinalExecutionSummary(sequenceStep.GetID(), stepPath, finalSummary); err != nil {
@@ -1032,7 +1058,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 	}
 
 	message := strings.TrimSpace(item.Message)
-	if session.LastRuntimeContext != "" {
+	if step.AuthoredPrompt {
+		message, err = hcpo.renderAuthoredPrompt(ctx, message)
+		if err != nil {
+			return "", fmt.Errorf("message_sequence step %q item %q: %w", step.ID, item.ID, err)
+		}
+	}
+	if session.LastRuntimeContext != "" && !step.AuthoredPrompt {
 		message = session.LastRuntimeContext + "\n\n## Next instruction\n" + message
 	}
 	var templateVars map[string]string
@@ -1040,6 +1072,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 		templateVars = delegation.TurnVars(item, message, session.ExecutionTurnCount == 0)
 	} else {
 		templateVars = hcpo.buildMessageSequenceTemplateVars(step, item, stepIndex, stepPath, message, readPaths, writePaths, writeAccess)
+	}
+	if step.AuthoredPrompt {
+		systemPrompt, promptErr := hcpo.renderAuthoredPrompt(ctx, step.SystemPrompt)
+		if promptErr != nil {
+			return "", fmt.Errorf("message_sequence step %q system_prompt: %w", step.ID, promptErr)
+		}
+		templateVars["AuthoredSystemPrompt"] = systemPrompt
+		templateVars["AuthoredUserMessage"] = message
 	}
 
 	turnCtx := agentCtx
@@ -1669,6 +1709,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceAbsPath(workflowRel st
 // resolve it exactly like any other step's output.
 func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceExecutionRelPath(stepPath string, stepID string) string {
 	return filepath.Join("runs", hcpo.selectedRunFolder, "execution", getArtifactFolderName(stepID, stepPath))
+}
+
+func (hcpo *StepBasedWorkflowOrchestrator) renderAuthoredPrompt(ctx context.Context, prompt string) (string, error) {
+	return renderAuthoredPromptWithSteps(prompt, hcpo.variableValues, func(stepID string) (string, error) {
+		path := filepath.Join("runs", hcpo.selectedRunFolder, "execution", stepID, "result.json")
+		return hcpo.ReadWorkspaceFile(ctx, path)
+	})
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) messageSequenceSessionPath(stepPath string, stepID string) string {

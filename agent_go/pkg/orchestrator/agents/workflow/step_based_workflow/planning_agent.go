@@ -791,7 +791,11 @@ type MessageSequenceItem struct {
 type MessageSequencePlanStep struct {
 	Type StepType `json:"type"`
 	CommonStepFields
-	Items            []MessageSequenceItem    `json:"items,omitempty"`
+	Items []MessageSequenceItem `json:"items,omitempty"`
+	// AuthoredPrompt runs the exact system prompt and user messages supplied by
+	// the author. It is used by Relays on the shared message-sequence executor.
+	AuthoredPrompt   bool                     `json:"authored_prompt,omitempty"`
+	SystemPrompt     string                   `json:"system_prompt,omitempty"`
 	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
 	NextStepID       string                   `json:"next_step_id,omitempty"`
 	AgentConfigs     *AgentConfigs            `json:"-"`
@@ -821,6 +825,8 @@ func (m *MessageSequencePlanStep) UnmarshalJSON(data []byte) error {
 		Type StepType `json:"type"`
 		CommonStepFields
 		Items               []MessageSequenceItem `json:"items,omitempty"`
+		AuthoredPrompt      bool                  `json:"authored_prompt,omitempty"`
+		SystemPrompt        string                `json:"system_prompt,omitempty"`
 		PredefinedRoutesRaw []json.RawMessage     `json:"predefined_routes,omitempty"`
 		NextStepID          string                `json:"next_step_id,omitempty"`
 	}
@@ -832,6 +838,8 @@ func (m *MessageSequencePlanStep) UnmarshalJSON(data []byte) error {
 	m.Type = StepTypeMessageSeq
 	m.CommonStepFields = raw.CommonStepFields
 	m.Items = raw.Items
+	m.AuthoredPrompt = raw.AuthoredPrompt
+	m.SystemPrompt = raw.SystemPrompt
 	m.NextStepID = raw.NextStepID
 	m.PredefinedRoutes = nil
 	for i, routeJSON := range raw.PredefinedRoutesRaw {
@@ -1211,7 +1219,9 @@ type PartialPlanStep struct {
 	ValidationSchema *ValidationSchema                    `json:"validation_schema,omitempty"`   // Optional: Updated validation schema
 	ScriptParameters map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`   // Optional: replace the scripted runtime parameter contract; pass {} to clear
 	// Message sequence fields
-	Items []MessageSequenceItem `json:"items,omitempty"`
+	Items          []MessageSequenceItem `json:"items,omitempty"`
+	AuthoredPrompt *bool                 `json:"authored_prompt,omitempty"`
+	SystemPrompt   *string               `json:"system_prompt,omitempty"`
 	// Crew step fields
 	CrewProfileID      string `json:"crew_profile_id,omitempty"` // Optional: Updated crew profile ID
 	CrewProjectID      string `json:"crew_project_id,omitempty"` // Optional: Updated crew project ID
@@ -1651,6 +1661,8 @@ func getAddMessageSequenceStepSchema() string {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the message sequence step."},
 			"description": {"type": "string", "description": "REQUIRED: The durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put ordered execution and verification instructions in items[]."},
+			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
+			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input.field}} and {{steps.id.output.field}} variables."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "REQUIRED: Prior context files this sequence depends on. Use [] if none."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Summary/result file for later steps. Omit when the step writes its result to the db (validate via validation_schema.db)."},
 			"items": {
@@ -1704,6 +1716,8 @@ func getUpdateMessageSequenceStepSchema() string {
 			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the message_sequence step to update. Legacy non-scripted regular steps are accepted and atomically upgraded to message_sequence because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
 			"description": {"type": "string", "description": "OPTIONAL: Replaces the durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Put ordered execution and verification instructions in items[]. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
+			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
+			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input.field}} and {{steps.id.output.field}} variables."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "OPTIONAL: Replaces the full list of prior context files this sequence depends on. Omit to preserve the existing list."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Replaces the summary/result file for later steps. Omit to preserve the existing value, or to leave the step writing its result to the db (validate via validation_schema.db) instead of a file."},
 			"items": {
@@ -3336,6 +3350,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.Items != nil {
 			updated.Items = partialUpdate.Items
 		}
+		if partialUpdate.AuthoredPrompt != nil {
+			updated.AuthoredPrompt = *partialUpdate.AuthoredPrompt
+		}
+		if partialUpdate.SystemPrompt != nil {
+			updated.SystemPrompt = *partialUpdate.SystemPrompt
+		}
 		if partialUpdate.PredefinedRoutes != nil {
 			updated.PredefinedRoutes = append([]PlanOrchestrationRoute(nil), partialUpdate.PredefinedRoutes...)
 		}
@@ -3725,6 +3745,16 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldItemsJSON,
 			NewValue: string(newBytes),
 		})
+	}
+	if sequenceStep, ok := existingStep.(*MessageSequencePlanStep); ok {
+		if partialUpdate.AuthoredPrompt != nil {
+			changedFields = append(changedFields, "authored_prompt")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "authored_prompt", OldValue: sequenceStep.AuthoredPrompt, NewValue: *partialUpdate.AuthoredPrompt})
+		}
+		if partialUpdate.SystemPrompt != nil {
+			changedFields = append(changedFields, "system_prompt")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "system_prompt", OldValue: sequenceStep.SystemPrompt, NewValue: *partialUpdate.SystemPrompt})
+		}
 	}
 	// Loop fields ignored (feature removed)
 	// Legacy todo_task_step field — extract fields and track them as top-level changes
@@ -5902,6 +5932,17 @@ func validateMessageSequenceStepFieldsTypedWithOptions(step *MessageSequencePlan
 	if len(step.Items) == 0 {
 		return fmt.Errorf("message_sequence step (title: %q, ID: %s) must include at least one item", step.Title, step.ID)
 	}
+	if step.AuthoredPrompt {
+		if strings.TrimSpace(step.SystemPrompt) == "" {
+			return fmt.Errorf("message_sequence step %q: authored_prompt requires system_prompt", step.ID)
+		}
+		if len(step.PredefinedRoutes) > 0 {
+			return fmt.Errorf("message_sequence step %q: authored_prompt does not support predefined_routes", step.ID)
+		}
+		if lastType := strings.TrimSpace(step.Items[len(step.Items)-1].Type); lastType != "" && lastType != "user_message" {
+			return fmt.Errorf("message_sequence step %q: authored_prompt must end with a user_message that returns JSON", step.ID)
+		}
+	}
 	seen := make(map[string]bool, len(step.Items))
 	for i, item := range step.Items {
 		if strings.TrimSpace(item.ID) == "" {
@@ -5945,6 +5986,9 @@ func validateMessageSequenceStepFieldsTypedWithOptions(step *MessageSequencePlan
 			}
 		default:
 			return fmt.Errorf("message_sequence step %q item %q has unsupported type %q", step.ID, item.ID, item.Type)
+		}
+		if step.AuthoredPrompt && itemType != "user_message" && itemType != "scripted" {
+			return fmt.Errorf("message_sequence step %q item %q: authored_prompt supports only user_message and scripted items", step.ID, item.ID)
 		}
 
 		// NOTE: per-item write access (db/kb/learnings) is intentionally NOT

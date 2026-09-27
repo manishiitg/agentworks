@@ -42,7 +42,7 @@ type WorkflowFunctionSpec struct {
 // variable of the same name for that run.
 type WorkflowFunctionInput struct {
 	Name        string   `json:"name"`
-	Type        string   `json:"type,omitempty"` // string (default), integer, number, boolean
+	Type        string   `json:"type,omitempty"` // string (default), integer, number, boolean, object
 	Required    bool     `json:"required,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Enum        []string `json:"enum,omitempty"`
@@ -60,7 +60,7 @@ func (s WorkflowSchedule) IsFunctionTrigger() bool {
 
 func workflowFunctionInputType(input WorkflowFunctionInput) string {
 	switch strings.ToLower(strings.TrimSpace(input.Type)) {
-	case "integer", "number", "boolean":
+	case "integer", "number", "boolean", "object":
 		return strings.ToLower(strings.TrimSpace(input.Type))
 	default:
 		return "string"
@@ -96,9 +96,9 @@ func validateWorkflowFunctionSpec(spec *WorkflowFunctionSpec) error {
 		}
 		seen[input.Name] = true
 		switch strings.ToLower(strings.TrimSpace(input.Type)) {
-		case "", "string", "integer", "number", "boolean":
+		case "", "string", "integer", "number", "boolean", "object":
 		default:
-			return fmt.Errorf("function input %q: type must be string, integer, number or boolean", input.Name)
+			return fmt.Errorf("function input %q: type must be string, integer, number, boolean or object", input.Name)
 		}
 	}
 	for _, caller := range spec.AllowedCallers {
@@ -178,11 +178,17 @@ func workflowFunctions(manifest *WorkflowManifest) []crewFunction {
 		if !sched.IsFunctionTrigger() || !sched.Enabled {
 			continue
 		}
+		resultSchema := workflowFunctionResultSchema()
+		if manifest.Kind == "relay" {
+			// The authored Relay output is JSON chosen by its author. A future
+			// output-schema field can narrow this for specific integrations.
+			resultSchema = nil
+		}
 		out = append(out, crewFunction{
 			Name:         sched.Function.Name,
 			Description:  firstNonEmptyTrimmed(sched.Function.Description, sched.Name),
 			InputSchema:  workflowFunctionInputSchema(sched),
-			ResultSchema: workflowFunctionResultSchema(),
+			ResultSchema: resultSchema,
 			CreatedBy:    "workflow trigger " + sched.ID,
 			TriggerID:    sched.ID,
 		})
@@ -270,6 +276,15 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 func workflowFunctionInputValue(input WorkflowFunctionInput, raw interface{}) (string, error) {
 	var value string
 	switch workflowFunctionInputType(input) {
+	case "object":
+		if _, ok := raw.(map[string]interface{}); !ok {
+			return "", fmt.Errorf("input %s must be an object", input.Name)
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return "", fmt.Errorf("input %s must be a JSON object", input.Name)
+		}
+		value = string(encoded)
 	case "integer":
 		switch n := raw.(type) {
 		case float64:
