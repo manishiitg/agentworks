@@ -2957,7 +2957,33 @@ export interface WorkflowUserPermissionsResponse {
 }
 
 // --- Workflow manifest API ---
+export interface WorkflowGoalSetupCheck {
+  id: 'goal' | 'plan' | 'metrics'
+  label: string
+  done: boolean
+  command: string
+}
+
+export interface WorkflowGoalSetupStatus {
+  show: boolean
+  complete: boolean
+  dismissed: boolean
+  has_runs: boolean
+  checks: WorkflowGoalSetupCheck[]
+  next?: WorkflowGoalSetupCheck
+}
+
 export const workflowManifestApi = {
+  // Initial goal setup (goal -> plan -> metrics), read from the workflow's
+  // real state; POST dismisses it for this automation (goals are optional).
+  getGoalSetup: async (workspacePath: string): Promise<WorkflowGoalSetupStatus> => {
+    const response = await api.get('/api/workflows/goal-setup', {params: {workspace_path: workspacePath}})
+    return response.data
+  },
+  dismissGoalSetup: async (workspacePath: string): Promise<WorkflowGoalSetupStatus> => {
+    const response = await api.post('/api/workflows/goal-setup', null, {params: {workspace_path: workspacePath}})
+    return response.data
+  },
   getKnowledgebaseSources: async (workspacePath: string): Promise<{success: boolean; sources: import('./api-types').KnowledgebaseSourceStatus[]}> => {
     const response = await api.get('/api/workflows/knowledgebase-sources', {params: {workspace_path: workspacePath}})
     return response.data

@@ -1,4 +1,5 @@
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
+import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -2416,6 +2417,9 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                 ) : null}
               </div>
             )}
+
+            {/* Initial goal setup (goal -> plan -> metrics); optional and dismissible. */}
+            <WorkflowGoalSetupBar workspacePath={workspacePath} canEdit={activeWorkflowAccess !== 'read'} />
 
             <div className="relative min-h-0 flex-1 overflow-hidden">
               {isWorkflowConversationResolving && (

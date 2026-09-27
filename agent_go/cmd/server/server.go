@@ -2836,6 +2836,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", api.handleGetWorkflowManifest).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/workflows/goal-setup", api.handleWorkflowGoalSetup).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/workflows/goal-setup", requireWorkflowWriteAccess(api.handleWorkflowGoalSetup)).Methods("POST")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowCreateAccess(api.handleCreateWorkflowManifest)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowWriteAccess(api.handleUpdateWorkflowManifest)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowWriteAccess(api.handleDeleteWorkflowManifest)).Methods("DELETE", "OPTIONS")
