@@ -59,6 +59,9 @@ func TestNormalizeAuthoredJSONResult(t *testing.T) {
 	if _, err := normalizeAuthoredJSONResult("Here is the result: {\"ok\":true}"); err == nil {
 		t.Fatal("prose must not be published as JSON")
 	}
+	if _, err := normalizeAuthoredJSONResult(`{"payload":"` + strings.Repeat("a", 128*1024) + `"}`); err == nil {
+		t.Fatal("oversized JSON must fail before writing an unreadable result")
+	}
 }
 
 func TestRenderAuthoredPromptWithStepOutput(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // Workflow functions: a workflow offers typed functions to Crews, other
@@ -382,9 +383,40 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if deliveryID == "" {
 		deliveryID = uuid.NewString()
 	}
+	if manifest.Kind == "relay" {
+		// A replay must return its original run even if the author edited the
+		// plan after dispatch. Keep the existing function-trigger idempotency.
+		if run, lookupErr := s.existingWebhookRun(ctx, webhookDeliveryRunID(manifest.ID, sched.ID, deliveryID)); lookupErr == nil {
+			return sched.ID, internalTriggerDeliveryResult{RunID: run.RunID, DeliveryID: deliveryID, Duplicate: true, Status: string(run.State)}, nil
+		}
+		if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
+			return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Relay %q has no relay_output_step_id", manifest.Label)
+		}
+		if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
+			return sched.ID, internalTriggerDeliveryResult{}, err
+		}
+	}
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
 	delivery, err := receiver.deliverFunction(ctx, manifest.ID, workspacePath, *sched, deliveryID, body, variables, group)
 	return sched.ID, delivery, err
+}
+
+func validateRelayOutputStep(ctx context.Context, workspacePath, outputStepID string) error {
+	plan, err := readPlanFromWorkspace(ctx, workspacePath)
+	if err != nil {
+		return fmt.Errorf("read Relay plan: %w", err)
+	}
+	for _, step := range plan.Steps {
+		if step.GetID() != outputStepID {
+			continue
+		}
+		sequence, ok := step.(*stepworkflow.MessageSequencePlanStep)
+		if !ok || !sequence.AuthoredPrompt {
+			return fmt.Errorf("Relay output step %q must be an authored message sequence", outputStepID)
+		}
+		return nil
+	}
+	return fmt.Errorf("Relay output step %q is missing from the plan", outputStepID)
 }
 
 // deliverFunction is deliver for a function trigger: the validated inputs

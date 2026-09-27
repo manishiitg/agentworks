@@ -103,5 +103,8 @@ func normalizeAuthoredJSONResult(answer string) (string, error) {
 	if err := json.Compact(&compact, []byte(answer)); err != nil {
 		return "", fmt.Errorf("compact final JSON: %w", err)
 	}
+	if compact.Len() > 128*1024 {
+		return "", fmt.Errorf("final JSON exceeds the 128 KiB Relay response limit")
+	}
 	return compact.String(), nil
 }
