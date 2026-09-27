@@ -9,7 +9,7 @@ afterEach(() => setProductCommands([]))
 // working one before the product commands load.
 describe('goalSetupChatMessage', () => {
   it('falls back to the command guidance before commands load', () => {
-    for (const command of ['setup-goals', 'design-plan']) {
+    for (const command of ['setup-goals', 'design-plan', 'design-dashboard']) {
       expect(goalSetupChatMessage(command)).toContain(`get_workflow_command_guidance(kind="${command}"`)
     }
   })

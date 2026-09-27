@@ -11,11 +11,12 @@ const ACTION_LABEL: Record<string, string> = {
   goal: 'Set the goal in chat',
   plan: 'Design the plan in chat',
   metrics: 'Add metrics in chat',
+  dashboard: 'Design the dashboard in chat',
 }
 
 
 // Initial setup for an automation, like a Crew template's setup bar: goal,
-// then plan, then metrics, each done in the Builder chat. Goals are optional,
+// then plan, metrics and dashboard, each done in the Builder chat. Goals are optional,
 // so it can be dismissed; the server stops showing it once the automation has
 // run.
 export function WorkflowGoalSetupBar({ workspacePath, canEdit }: { workspacePath: string | null | undefined; canEdit: boolean }) {

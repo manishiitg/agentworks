@@ -12,8 +12,8 @@ import (
 )
 
 // Goal setup is an automation's initial setup, like a Crew template's setup
-// bar: goal -> plan -> metrics, each done in the Builder chat (/setup-goals,
-// /design-plan). Every check reads the workflow's real state; nothing is
+// bar: goal -> plan -> metrics -> dashboard, each done in the Builder chat
+// (/setup-goals, /design-plan, /design-dashboard). Every check reads the workflow's real state; nothing is
 // self-reported. Goals are optional, so the owner can dismiss the bar, and it
 // only shows during initial setup: once the automation has run, it is gone.
 
@@ -63,12 +63,18 @@ func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string) wor
 		metricsDone = len(ledger.Metrics) > 0
 	}
 
+	// The dashboard is the one live report at db/reports/index.html; nothing
+	// scaffolds it, so a non-empty file means one was designed.
+	dashboardRaw, _ := workflowGoalSetupReadFile(ctx, workspacePath+"/db/reports/index.html")
+	dashboardDone := strings.TrimSpace(dashboardRaw) != ""
+
 	checks := []workflowGoalSetupCheck{
 		{ID: "goal", Label: "Goal", Done: goalDone, Command: "setup-goals"},
 		{ID: "plan", Label: "Plan", Done: planDone, Command: "design-plan"},
 		{ID: "metrics", Label: "Metrics", Done: metricsDone, Command: "setup-goals"},
+		{ID: "dashboard", Label: "Dashboard", Done: dashboardDone, Command: "design-dashboard"},
 	}
-	status := workflowGoalSetupStatus{Checks: checks, Complete: goalDone && planDone && metricsDone}
+	status := workflowGoalSetupStatus{Checks: checks, Complete: goalDone && planDone && metricsDone && dashboardDone}
 	for i := range checks {
 		if !checks[i].Done {
 			next := checks[i]

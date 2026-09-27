@@ -7,7 +7,7 @@ import (
 )
 
 // A new automation shows goal setup with Goal next; a written goal moves to
-// Plan; a plan moves to Metrics. Checks read real state: the scaffold's TODO
+// Plan; a plan moves to Metrics; the Dashboard comes last. Checks read real state: the scaffold's TODO
 // placeholder is not a goal, and an empty plan is not a plan.
 func TestGoalSetupFollowsGoalThenPlanThenMetrics(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
@@ -37,6 +37,16 @@ func TestGoalSetupFollowsGoalThenPlanThenMetrics(t *testing.T) {
 	status = buildWorkflowGoalSetupStatus(ctx, ws)
 	if status.Next == nil || status.Next.ID != "metrics" || status.Complete {
 		t.Fatalf("with a goal and plan, Metrics is next, got %+v", status)
+	}
+	last := status.Checks[len(status.Checks)-1]
+	if last.ID != "dashboard" || last.Done || last.Command != "design-dashboard" {
+		t.Fatalf("the dashboard is the last check and pending, got %+v", last)
+	}
+	setFile("db/reports/index.html", "<html><body>Demos booked this week</body></html>")
+	for _, check := range buildWorkflowGoalSetupStatus(ctx, ws).Checks {
+		if check.ID == "dashboard" && !check.Done {
+			t.Fatal("a designed dashboard must count as done")
+		}
 	}
 }
 

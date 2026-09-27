@@ -2958,7 +2958,7 @@ export interface WorkflowUserPermissionsResponse {
 
 // --- Workflow manifest API ---
 export interface WorkflowGoalSetupCheck {
-  id: 'goal' | 'plan' | 'metrics'
+  id: 'goal' | 'plan' | 'metrics' | 'dashboard'
   label: string
   done: boolean
   command: string
