@@ -241,6 +241,20 @@ func cleanupStepDelegation(workshopStepCorrelationID string) {
 
 const envMCPServerAPIToken = "MCP_SERVER_API_TOKEN"
 
+// envBridgeTokenSecret pins the session-token signing secret across restarts
+// (so retained CLI sessions keep working). It is read once and removed from
+// the environment; without it a random secret is made per start.
+const envBridgeTokenSecret = "MCP_BRIDGE_TOKEN_SECRET"
+
+func resolveBridgeTokenSecret() string {
+	secret := strings.TrimSpace(os.Getenv(envBridgeTokenSecret))
+	os.Unsetenv(envBridgeTokenSecret)
+	if secret != "" {
+		return secret
+	}
+	return common.NewBridgeTokenSecret()
+}
+
 func resolveServerAPIToken() string {
 	if token := strings.TrimSpace(os.Getenv(envMCPServerAPIToken)); token != "" {
 		return token
@@ -2235,10 +2249,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	// E2E processes can authenticate against this same server without exposing
 	// a token read endpoint.
 	api.apiToken = resolveServerAPIToken()
-	// Agents get a token for their own session, derived from this one
-	// (pkg/common/bridge_token.go, bridge_auth.go). Set before any shell
-	// client or bridge env is built.
-	common.SetBridgeTokenSecret(api.apiToken)
+	// Agents get a token for their own session (pkg/common/bridge_token.go,
+	// bridge_auth.go), signed with a secret that exists only in this
+	// process's memory: never the API token, never in the environment, so no
+	// child process can mint a token for another session. Set before any
+	// shell client or bridge env is built.
+	common.SetBridgeTokenSecret(resolveBridgeTokenSecret())
+	// Neither the API token nor the signing secret stays in the environment
+	// children inherit (tmux panes, live-attach terminals, anything exec'd with
+	// the default env). Agents get only their own session's token.
+	os.Unsetenv(envMCPServerAPIToken)
+	os.Unsetenv("MCP_API_TOKEN")
 
 	// Set env vars for code execution mode (mcpagent reads these as fallback).
 	// MCP_API_URL may be explicitly configured for a rootless deployment; otherwise
@@ -2246,7 +2267,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// MCP_BRIDGE_API_URL = host-reachable URL (for mcpbridge binary running on the host)
 	os.Setenv("MCP_API_URL", api.GetCodeExecAPIURL())
 	os.Setenv("MCP_BRIDGE_API_URL", api.GetAPIURL())
-	os.Setenv("MCP_API_TOKEN", api.apiToken)
 	seedMCPBridgeCodeExecRegistry(api.logger)
 
 	// Load global secrets from GLOBAL_SECRET_* environment variables
@@ -5415,10 +5435,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// inheriting the broad server shell executor.
 			nativeAPIEnv := map[string]string{
 				"MCP_API_URL":    strings.TrimRight(os.Getenv("MCP_API_URL"), "/") + "/s/" + sessionID,
-				"MCP_API_TOKEN":  os.Getenv("MCP_API_TOKEN"),
 				"MCP_SESSION_ID": sessionID,
 			}
-			if strings.TrimSpace(os.Getenv("MCP_API_URL")) != "" && strings.TrimSpace(os.Getenv("MCP_API_TOKEN")) != "" {
+			if strings.TrimSpace(os.Getenv("MCP_API_URL")) != "" && common.BridgeTokensEnabled() {
 				common.PopulateMCPBridgeShortEnv(nativeAPIEnv)
 				for name, value := range nativeAPIEnv {
 					codingAgentSecretEnvironment[name] = value

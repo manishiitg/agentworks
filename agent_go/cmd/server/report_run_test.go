@@ -3,12 +3,15 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 func TestReportRunScriptPath(t *testing.T) {
@@ -113,7 +116,11 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("MCP_API_URL", "http://127.0.0.1:9/api")
-	t.Setenv("MCP_API_TOKEN", "bridge-token")
+	// The process-wide token never reaches the script; it gets its own
+	// session's token (bridge_token.go).
+	t.Setenv("MCP_API_TOKEN", "global-token")
+	common.SetBridgeTokenSecret("test-signing-secret")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
 	if err := os.MkdirAll(filepath.Join(docs, "Workflow/deals/code/reports"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +181,7 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 	}
 	env := sent.ExtraEnv
 	sid := env["MCP_SESSION_ID"]
-	if !strings.HasPrefix(sid, "report-run-") || env["MCP_API_URL"] != "http://127.0.0.1:9/api/s/"+sid || env["MCP_AUTH"] != "Authorization: Bearer bridge-token" {
+	if !strings.HasPrefix(sid, "report-run-") || env["MCP_API_URL"] != "http://127.0.0.1:9/api/s/"+sid || env["MCP_AUTH"] != "Authorization: Bearer "+common.BridgeTokenForSession(sid) || strings.Contains(fmt.Sprint(env), "global-token") {
 		t.Fatalf("bridge env: %v", env)
 	}
 	if env["REPORT_ARGS"] != `{"days":7}` || env["VAR_REGION"] != "us" || env["REPORT_CACHE_DIR"] != filepath.Join(docs, "Workflow/deals/.report-cache") {

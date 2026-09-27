@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"os"
 	"net/http/httptest"
 	"testing"
 
@@ -80,5 +81,31 @@ func TestBridgeAuthRefusesTheGlobalToken(t *testing.T) {
 	router, _, _ = bridgeAuthRouter(t)
 	if code := bridgeCall(router, "/tools/custom/search_platform", "server-secret", "chat-bob"); code != http.StatusOK {
 		t.Fatalf("the rollback switch must re-admit the global token, got %d", code)
+	}
+}
+
+// The signing secret never comes from the API token and never stays in the
+// environment children inherit.
+func TestBridgeTokenSecretStaysOutOfTheEnvironment(t *testing.T) {
+	t.Setenv(envBridgeTokenSecret, "pinned-secret")
+	if got := resolveBridgeTokenSecret(); got != "pinned-secret" {
+		t.Fatalf("a pinned secret must be used, got %q", got)
+	}
+	if _, set := os.LookupEnv(envBridgeTokenSecret); set {
+		t.Fatal("the pinned secret must be removed from the environment once read")
+	}
+	a, b := resolveBridgeTokenSecret(), resolveBridgeTokenSecret()
+	if len(a) != 64 || a == b {
+		t.Fatalf("without a pin each start must get a fresh random secret, got %q %q", a, b)
+	}
+
+	// A token signed with a key derived from the API token (what a process
+	// holding only the API token could compute) does not verify.
+	common.SetBridgeTokenSecret("server-api-token")
+	forged := common.BridgeTokenForSession("chat-bob")
+	common.SetBridgeTokenSecret(a)
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
+	if _, ok := common.VerifyBridgeToken(forged); ok {
+		t.Fatal("a token minted from anything but the in-memory secret must not verify")
 	}
 }

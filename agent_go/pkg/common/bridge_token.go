@@ -2,9 +2,11 @@ package common
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"sync"
 )
@@ -20,9 +22,11 @@ import (
 //	mcps1.<base64url(session id)>.<base64url(HMAC-SHA256(key, session id))>
 //
 // The server verifies the HMAC and then requires the session the request
-// names to be the token's session (cmd/server bridge_auth.go). The key is
-// derived from the server's API token, so no state is stored and tokens live
-// exactly as long as that token does.
+// names to be the token's session (cmd/server bridge_auth.go). The key comes
+// from a secret held only in the server's memory (random per start unless
+// pinned), never from the API token or anything in the environment: a process
+// that inherits the server's environment must not be able to mint a token
+// for another session.
 
 const bridgeTokenPrefix = "mcps1."
 
@@ -31,17 +35,26 @@ var (
 	bridgeTokenKey []byte
 )
 
-// SetBridgeTokenSecret enables session tokens, keyed from the server's API
-// token. An empty secret disables them.
-func SetBridgeTokenSecret(serverAPIToken string) {
+// NewBridgeTokenSecret returns a fresh random signing secret.
+func NewBridgeTokenSecret() string {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		panic("bridge token secret: " + err.Error())
+	}
+	return hex.EncodeToString(buf)
+}
+
+// SetBridgeTokenSecret enables session tokens signed with secret, which must
+// live only in memory. An empty secret disables them.
+func SetBridgeTokenSecret(secret string) {
 	bridgeTokenMu.Lock()
 	defer bridgeTokenMu.Unlock()
-	serverAPIToken = strings.TrimSpace(serverAPIToken)
-	if serverAPIToken == "" {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
 		bridgeTokenKey = nil
 		return
 	}
-	sum := sha256.Sum256([]byte("agentworks-bridge-session-v1:" + serverAPIToken))
+	sum := sha256.Sum256([]byte("agentworks-bridge-session-v1:" + secret))
 	bridgeTokenKey = sum[:]
 }
 

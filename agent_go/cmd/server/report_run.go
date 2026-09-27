@@ -319,10 +319,7 @@ func (api *StreamingAPI) reportRunEnv(ctx context.Context, userID, workspacePath
 	if base := strings.TrimRight(os.Getenv("MCP_API_URL"), "/"); base != "" {
 		env["MCP_API_URL"] = base + "/s/" + sessionID
 		env["MCP_SESSION_ID"] = sessionID
-		if token := os.Getenv("MCP_API_TOKEN"); token != "" {
-			env["MCP_API_TOKEN"] = token
-		}
-		common.PopulateMCPBridgeShortEnv(env)
+		common.PopulateMCPBridgeShortEnv(env) // the session's own token
 	}
 	return env
 }
