@@ -942,7 +942,7 @@ function App() {
         ) : productSurface === 'work' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface /></Suspense>
         ) : productSurface === 'mcp-gateway' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="MCP Gateway" />}><GatewaySurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="CapLayer" />}><GatewaySurface /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />

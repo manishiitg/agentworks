@@ -1,15 +1,15 @@
 import type { ComponentPropsWithoutRef } from 'react'
 import { cn } from '../../lib/utils'
 
-type GatewayMarkProps = ComponentPropsWithoutRef<'svg'> & {
+type CapLayerMarkProps = ComponentPropsWithoutRef<'svg'> & {
   title?: string
 }
 
-export function GatewayMark({
+export function CapLayerMark({
   className,
-  title = 'MCP Gateway',
+  title = 'CapLayer',
   ...props
-}: GatewayMarkProps) {
+}: CapLayerMarkProps) {
   return (
     <svg
       viewBox="0 0 64 64"
@@ -21,19 +21,8 @@ export function GatewayMark({
     >
       {title ? <title>{title}</title> : null}
       <rect x="4" y="4" width="56" height="56" rx="17" fill="#18181B" />
-      <path
-        d="M22 46 V31 a10 10 0 0 1 20 0 V46"
-        stroke="white"
-        strokeWidth="4.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M17 46 H47"
-        stroke="white"
-        strokeWidth="4.5"
-        strokeLinecap="round"
-      />
+      <path d="M16 23 32 14l16 9-16 9-16-9Z" stroke="white" strokeWidth="3.5" strokeLinejoin="round" />
+      <path d="m16 32 16 9 16-9M16 41l16 9 16-9" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

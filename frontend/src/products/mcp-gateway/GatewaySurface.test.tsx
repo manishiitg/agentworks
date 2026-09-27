@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewaySurface } from './GatewaySurface'
 
+vi.mock('../../services/api', () => ({ agentApi: { getToolDetail: vi.fn() } }))
+
 // The surface embeds the product switcher and the AgentWorks MCP store. Mock
 // the stores (notably useAuthStore, which pulls services/api's eager side
 // effect) the same way other component tests in this repo do.
@@ -18,7 +20,9 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
     selector({ productSurface: 'mcp-gateway', setProductSurface: () => {} }),
 }))
 vi.mock('../../stores/useMCPStore', () => ({
-  useMCPStore: (selector: (state: Record<string, unknown>) => unknown) => selector({ toolList: [] }),
+  useMCPStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
+    toolList: [], refreshTools: async () => {}, isLoadingTools: false, toolsError: null,
+  }),
 }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -76,9 +80,10 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.querySelector('[data-testid="gateway-surface"]')).not.toBeNull()
-    const menu = container!.querySelector('[aria-label="Gateway sections"]')
+    const menu = container!.querySelector('[aria-label="CapLayer sections"]')
     expect(menu).not.toBeNull()
-    expect(menu!.textContent).toContain('Servers')
+    expect(container!.textContent).toContain('CapLayer')
+    expect(menu!.textContent).toContain('MCP Gateway')
     expect(menu!.textContent).toContain('Groups')
     expect(menu!.textContent).toContain('Users')
     expect(menu!.textContent).toContain('Audit')
@@ -98,7 +103,7 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.textContent).toContain('Gateway is unreachable')
-    expect(container!.querySelector('[aria-label="Gateway sections"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="CapLayer sections"]')).not.toBeNull()
     const callsBefore = fetchMock.mock.calls.length
     expect(callsBefore).toBeGreaterThan(0)
 
@@ -120,6 +125,6 @@ describe('GatewaySurface', () => {
 
     await renderSurface()
 
-    expect(container!.textContent).toContain('No MCP Gateway is configured')
+    expect(container!.textContent).toContain('CapLayer needs an MCP Gateway endpoint')
   })
 })

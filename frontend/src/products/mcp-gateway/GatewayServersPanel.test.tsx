@@ -97,7 +97,7 @@ describe('GatewayServersPanel', () => {
     // Linear: in AgentWorks but not the gateway, with a catalog match → one-click add.
     const add = container!.querySelector('[data-testid="gateway-add-linear"]')
     expect(add).not.toBeNull()
-    expect(add!.textContent).toContain('Add to gateway')
+    expect(add!.textContent).toContain('Connect to gateway')
   })
 
   it('discovers and shows tools for an AgentWorks-only connected server', async () => {
@@ -245,7 +245,7 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('Slack')
     const add = container!.querySelector('[data-testid="gateway-add-slack"]')
     expect(add).not.toBeNull()
-    expect(add!.textContent).toContain('Add to gateway')
+    expect(add!.textContent).toContain('Connect to gateway')
   })
 
   it('adds a custom server by name and URL', async () => {

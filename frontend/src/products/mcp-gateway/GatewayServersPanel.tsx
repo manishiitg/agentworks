@@ -501,7 +501,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                   data-testid={`gateway-add-${row.key}`}
                                 >
                                   {addingKey === row.key ? <Loader2 className="animate-spin" /> : <Plus />}
-                                  Add to gateway
+                                  Connect to gateway
                                 </Button>
                               ) : (
                                 <span className="text-muted-foreground">Not in catalog</span>
@@ -583,7 +583,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
                             data-testid={`gateway-add-${row.key}`}
                           >
                             {addingKey === row.key ? <Loader2 className="animate-spin" /> : <Plus />}
-                            Add to gateway
+                            Connect to gateway
                           </Button>
                         ) : (
                           <span className="text-muted-foreground">Not in catalog</span>

@@ -10,7 +10,7 @@ import { GatewayConnectPanel } from './GatewayConnectPanel'
 import { GatewayPIIPanel } from './GatewayPIIPanel'
 
 const SECTIONS = [
-  { id: 'servers', label: 'Servers', icon: Server },
+  { id: 'servers', label: 'MCP Gateway', icon: Server },
   { id: 'groups', label: 'Groups', icon: UsersRound },
   { id: 'users', label: 'Users', icon: UserRound },
   { id: 'audit', label: 'Audit', icon: ScrollText },
@@ -21,7 +21,7 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]['id']
 
 /**
- * Embedded MCP Gateway console. The React UI talks to the gateway admin API
+ * Embedded CapLayer console. Its MCP Gateway UI talks to the gateway admin API
  * directly; locally the gateway trusts loopback callers as admin, so there
  * is no token prompt. Entry is hidden unless a gateway URL is configured;
  * the null branch only fires for a persisted surface after the URL was
@@ -34,7 +34,7 @@ export function GatewaySurface() {
   if (!base) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center text-sm text-slate-500">
-        No MCP Gateway is configured for this deployment.
+        CapLayer needs an MCP Gateway endpoint for this deployment.
       </div>
     )
   }
@@ -46,7 +46,7 @@ export function GatewaySurface() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r border-border p-3" aria-label="Gateway sections">
+        <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r border-border p-3" aria-label="CapLayer sections">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
