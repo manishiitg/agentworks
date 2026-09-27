@@ -197,6 +197,38 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveDeterministicRoutingSelection(
 		return nil, fmt.Errorf("routing step is nil")
 	}
 
+	// Relay decisions use the same branch executor, but select a route from
+	// structured trigger input or a committed prior step result. A configured
+	// value path is authoritative: a missing value must not silently take a
+	// default or pick up a stale route_selection.json from another attempt.
+	if branch, ok := routingStep.(*BranchPlanStep); ok && strings.TrimSpace(branch.ValuePath) != "" {
+		valuePath := strings.TrimSpace(branch.ValuePath)
+		if !authoredPromptVariable.MatchString(valuePath) || authoredPromptVariable.FindString(valuePath) != valuePath {
+			return nil, fmt.Errorf("branch %q value_path must be one {{input.field}} or {{steps.id.output.field}} reference", branch.ID)
+		}
+		value, err := hcpo.renderAuthoredPrompt(ctx, valuePath)
+		if err != nil {
+			return nil, fmt.Errorf("branch %q value_path: %w", branch.ID, err)
+		}
+		routeID, matched := branch.ValueCases[value]
+		if !matched {
+			routeID = branch.DefaultRouteID
+		}
+		if routeID == "" {
+			return nil, fmt.Errorf("branch %q has no route for value %q and no default_route_id", branch.ID, value)
+		}
+		selectedRouteID, err := resolveRouteSelectionValue(branch.Routes, routeID)
+		if err != nil {
+			return nil, fmt.Errorf("branch %q value %q: %w", branch.ID, value, err)
+		}
+		return &deterministicRoutingSelection{
+			SelectedRouteID: selectedRouteID,
+			Reasoning:       fmt.Sprintf("Value %q selected route %q.", value, selectedRouteID),
+			SourceKind:      "value_path",
+			RawValue:        value,
+		}, nil
+	}
+
 	for _, ownRouteFilePath := range hcpo.routingStepOwnRouteFileCandidates(routingStep, stepIndex, routingStepPath) {
 		if selection, found, err := hcpo.readDeterministicRoutingSource(ctx, routingStep, ownRouteFilePath, "routing step preseed"); err != nil {
 			return nil, err

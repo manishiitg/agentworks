@@ -503,6 +503,9 @@ type PlanStepInterface interface {
 type RegularPlanStep struct {
 	Type StepType `json:"type"` // Always "regular" - required for JSON marshaling/unmarshaling
 	CommonStepFields
+	// ScriptOnly executes the saved main.py without agent generation or repair.
+	// Relay script nodes use this on the existing scripted step executor.
+	ScriptOnly      bool          `json:"script_only,omitempty"`
 	NextStepID      string        `json:"next_step_id,omitempty"`     // Optional explicit successor; empty preserves sequential execution
 	HasLoop         bool          `json:"has_loop"`                   // DEPRECATED: loop feature removed, kept for JSON backward compatibility
 	LoopCondition   string        `json:"loop_condition,omitempty"`   // DEPRECATED: loop feature removed
@@ -634,14 +637,18 @@ func (r *RoutingPlanStep) SetRoutingResponse(resp *RoutingResponse) { r.RoutingR
 type BranchPlanStep struct {
 	Type StepType `json:"type"` // Always "branch" - required for JSON marshaling/unmarshaling
 	CommonStepFields
-	BranchQuestion  string           `json:"branch_question"`             // Human-readable decision prompt; retained for compatibility/readability
-	Routes          []RoutingRoute   `json:"routes"`                      // Available routes (min 2, required)
-	DefaultRouteID  string           `json:"default_route_id,omitempty"`  // Optional fallback route_id when no route file is available
-	RouteSourceFile string           `json:"route_source_file,omitempty"` // Optional route_selection.json source produced by a prior step
-	RouteSource     string           `json:"route_source,omitempty"`      // "human": when no route was preseeded, ask the person (routes are the options) instead of falling to default_route_id. Successor to yesno/multiple_choice human_input. See controller_branch_human.go.
-	SelectedRouteID string           `json:"-"`                           // runtime: stores selected route ID
-	RoutingResponse *RoutingResponse `json:"-"`                           // runtime: stores structured routing response
-	AgentConfigs    *AgentConfigs    `json:"-"`                           // runtime: per-agent configuration
+	BranchQuestion  string         `json:"branch_question"`             // Human-readable decision prompt; retained for compatibility/readability
+	Routes          []RoutingRoute `json:"routes"`                      // Available routes (min 2, required)
+	DefaultRouteID  string         `json:"default_route_id,omitempty"`  // Optional fallback route_id when no route file is available
+	RouteSourceFile string         `json:"route_source_file,omitempty"` // Optional route_selection.json source produced by a prior step
+	RouteSource     string         `json:"route_source,omitempty"`      // "human": when no route was preseeded, ask the person (routes are the options) instead of falling to default_route_id. Successor to yesno/multiple_choice human_input. See controller_branch_human.go.
+	// ValuePath is one authored input or prior JSON output reference, for
+	// example {{input.kind}}. ValueCases maps exact values to route IDs.
+	ValuePath       string            `json:"value_path,omitempty"`
+	ValueCases      map[string]string `json:"value_cases,omitempty"`
+	SelectedRouteID string            `json:"-"` // runtime: stores selected route ID
+	RoutingResponse *RoutingResponse  `json:"-"` // runtime: stores structured routing response
+	AgentConfigs    *AgentConfigs     `json:"-"` // runtime: per-agent configuration
 }
 
 // Implement PlanStepInterface for BranchPlanStep
@@ -1200,10 +1207,13 @@ type PartialPlanStep struct {
 	// Routing fields
 	NextStepID string `json:"next_step_id,omitempty"` // Optional: Updated next_step_id (for routing steps)
 	// Routing step fields
-	RoutingQuestion string         `json:"routing_question,omitempty"`  // Optional: Updated routing question
-	Routes          []RoutingRoute `json:"routes,omitempty"`            // Optional: Updated routes
-	DefaultRouteID  string         `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
-	RouteSourceFile string         `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
+	RoutingQuestion string            `json:"routing_question,omitempty"`  // Optional: Updated routing question
+	Routes          []RoutingRoute    `json:"routes,omitempty"`            // Optional: Updated routes
+	DefaultRouteID  string            `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
+	RouteSourceFile string            `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
+	ValuePath       string            `json:"value_path,omitempty"`
+	ValueCases      map[string]string `json:"value_cases,omitempty"`
+	ScriptOnly      *bool             `json:"script_only,omitempty"`
 	// Branch step fields (PLAT-259: same deterministic-switch shape as
 	// routing, just its own field name for the human-readable prompt)
 	BranchQuestion string `json:"branch_question,omitempty"` // Optional: Updated branch question
@@ -1500,6 +1510,7 @@ func getUpdateRegularStepSchema() string {
 							"type": "string",
 							"description": "REQUIRED: The ID of the step in the existing plan that you want to update. Use the step's id field from the plan."
 						},
+						"script_only": {"type": "boolean", "description": "For a Relay script node, execute saved main.py strictly, without agent repair."},
 						"title": {
 							"type": "string",
 							"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
@@ -1570,6 +1581,7 @@ func getAddRegularStepSchema() string {
 		"type": "object",
 		"properties": {
             "is_orphan": {"type": "boolean", "description": "Set true to create a reusable saved script in orphan_steps instead of the main flow, for scripted message-sequence batches. It does not auto-run. Use empty insert_after_step_id."},
+			"script_only": {"type": "boolean", "description": "For a Relay script node, require an existing main.py and stop on any error without agent generation or repair."},
 			"id": {
 				"type": "string",
 				"description": "REQUIRED: Stable step ID for this new step. Generate a unique, URL-friendly ID based on the step title (e.g., 'deploy-application' from 'Deploy Application')."
@@ -1915,6 +1927,8 @@ func getAddBranchStepSchema() string {
 				"type": "string",
 				"description": "REQUIRED for compatibility/readability: Human-readable next-step decision prompt. It is not evaluated by an LLM at runtime; the selected route must come from caller route_selections, route_source_file, route_selection.json dependency, or default_route_id."
 			},
+			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: map exact rendered values to route_id; unmatched values use default_route_id or fail."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,
@@ -2002,6 +2016,8 @@ func getUpdateBranchStepSchema() string {
 				"type": "string",
 				"description": "OPTIONAL: Updated human-readable branch prompt. Runtime does not LLM-evaluate this field."
 			},
+			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: replace exact value to route_id mapping."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,
@@ -3280,6 +3296,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.NextStepID != "" {
 			updated.NextStepID = partialUpdate.NextStepID
 		}
+		if partialUpdate.ScriptOnly != nil {
+			updated.ScriptOnly = *partialUpdate.ScriptOnly
+		}
 		// Loop fields ignored (feature removed)
 		if partialUpdate.ValidationSchema != nil {
 			updated.ValidationSchema = partialUpdate.ValidationSchema
@@ -3498,6 +3517,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		}
 		if partialUpdate.RouteSource != "" {
 			updated.RouteSource = partialUpdate.RouteSource
+		}
+		if partialUpdate.ValuePath != "" {
+			updated.ValuePath = partialUpdate.ValuePath
+		}
+		if partialUpdate.ValueCases != nil {
+			updated.ValueCases = partialUpdate.ValueCases
 		}
 		return &updated
 
@@ -3730,6 +3755,14 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldParameters,
 			NewValue: partialUpdate.ScriptParameters,
 		})
+	}
+	if partialUpdate.ScriptOnly != nil {
+		changedFields = append(changedFields, "script_only")
+		old := false
+		if regular, ok := existingStep.(*RegularPlanStep); ok {
+			old = regular.ScriptOnly
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "script_only", OldValue: old, NewValue: *partialUpdate.ScriptOnly})
 	}
 	if partialUpdate.Items != nil {
 		changedFields = append(changedFields, "items")
@@ -4080,6 +4113,22 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldQuestion,
 			NewValue: partialUpdate.BranchQuestion,
 		})
+	}
+	if partialUpdate.ValuePath != "" {
+		changedFields = append(changedFields, "value_path")
+		old := ""
+		if branch, ok := existingStep.(*BranchPlanStep); ok {
+			old = branch.ValuePath
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "value_path", OldValue: old, NewValue: partialUpdate.ValuePath})
+	}
+	if partialUpdate.ValueCases != nil {
+		changedFields = append(changedFields, "value_cases")
+		var old map[string]string
+		if branch, ok := existingStep.(*BranchPlanStep); ok {
+			old = branch.ValueCases
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "value_cases", OldValue: old, NewValue: partialUpdate.ValueCases})
 	}
 	if partialUpdate.Routes != nil {
 		changedFields = append(changedFields, "routes")

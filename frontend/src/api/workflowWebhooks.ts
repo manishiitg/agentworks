@@ -21,7 +21,7 @@ export interface WorkflowAPITrigger {
 
 export interface WorkflowFunctionInput {
   name: string
-  type?: 'string' | 'integer' | 'number' | 'boolean'
+  type?: 'string' | 'integer' | 'number' | 'boolean' | 'object'
   required?: boolean
   description?: string
   enum?: string[]

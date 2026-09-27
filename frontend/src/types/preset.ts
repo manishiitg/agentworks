@@ -13,6 +13,7 @@ export interface CustomPreset {
   selectedSecrets?: string[]; // Secret names for workflow injection
   selectedGlobalSecretNames?: string[] | null; // null=all global secrets, []=none, [...]=specific
   agentMode?: 'multi-agent' | 'workflow';
+  workflowKind?: 'relay' | 'workflow';
   selectedFolder?: PlannerFile; // Single folder
   llmConfig?: PresetLLMConfig; // LLM configuration for this preset
   useCodeExecutionMode?: boolean; // MCP code execution mode

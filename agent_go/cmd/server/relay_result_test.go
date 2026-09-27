@@ -17,7 +17,7 @@ import (
 
 func TestValidateRelayOutputStep(t *testing.T) {
 	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{
-		"Workflow/relay/planning/plan.json": `{"steps":[{"type":"message_sequence","id":"answer","title":"Answer","authored_prompt":true,"system_prompt":"Return JSON","items":[{"id":"turn","type":"user_message","message":"{{input.question}}"}]},{"type":"message_sequence","id":"ordinary","title":"Ordinary"}]}`,
+		"Workflow/relay/planning/plan.json": `{"steps":[{"type":"message_sequence","id":"answer","title":"Answer","description":"Return the answer","authored_prompt":true,"system_prompt":"Return JSON","next_step_id":"end","items":[{"id":"turn","type":"user_message","message":"{{input.question}}"}]}]}`,
 	}})
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)

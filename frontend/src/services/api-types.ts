@@ -3487,6 +3487,8 @@ export interface SchedulerConfig {
 export interface WorkflowManifest {
   schema_version: number
   id: string
+  kind?: 'relay' | string
+  relay_output_step_id?: string
   version?: string
   label: string
   icon?: string
@@ -3660,6 +3662,7 @@ export interface WorkflowContractUpgradeItem {
 
 export interface CreateWorkflowManifestRequest {
   label: string
+  kind?: 'relay' | string
   icon?: string
   workspace_path: string
   capabilities?: Partial<WorkflowCapabilities>
@@ -3669,6 +3672,7 @@ export interface CreateWorkflowManifestRequest {
 
 export interface UpdateWorkflowManifestRequest {
   workspace_path: string
+  relay_output_step_id?: string
   label?: string
   icon?: string
   capabilities?: WorkflowCapabilities

@@ -394,7 +394,19 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 	if manifest == nil || manifest.Kind != "relay" || result == nil || !result.Terminal || result.Error != "" || workflowRunStatusFailed(result.Status) {
 		return
 	}
-	if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
+	outputStepID := strings.TrimSpace(manifest.RelayOutputStepID)
+	if workspacePath != "" && run.RunID != "" {
+		if raw, exists, err := readFileFromWorkspace(context.Background(), webhookInputPath(workspacePath, run.RunID)); err == nil && exists {
+			var delivery WorkflowWebhookDelivery
+			var payload struct {
+				OutputStepID string `json:"relay_output_step_id"`
+			}
+			if json.Unmarshal([]byte(raw), &delivery) == nil && json.Unmarshal(delivery.Payload, &payload) == nil && strings.TrimSpace(payload.OutputStepID) != "" {
+				outputStepID = strings.TrimSpace(payload.OutputStepID)
+			}
+		}
+	}
+	if outputStepID == "" {
 		result.Error = "Relay has no relay_output_step_id"
 		result.Status = "failed"
 		return
@@ -402,7 +414,7 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 	var selected interface{}
 	found := false
 	for _, step := range result.Steps {
-		if step.StepID != manifest.RelayOutputStepID {
+		if step.StepID != outputStepID {
 			continue
 		}
 		value, ok := step.Outputs["result.json"]
@@ -421,7 +433,7 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 		// selected result is its response contract, so read that one saved file
 		// directly when it appears only in the artifact list.
 		for _, step := range result.Steps {
-			if step.StepID != manifest.RelayOutputStepID {
+			if step.StepID != outputStepID {
 				continue
 			}
 			for _, artifact := range step.Artifacts {

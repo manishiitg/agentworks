@@ -35,6 +35,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -2928,6 +2929,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
+	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
+	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
@@ -7078,6 +7081,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if phaseWorkspacePath != "" {
 						phaseManifest, phaseFound, phaseMErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath)
 						if phaseMErr == nil && phaseFound {
+							if phaseManifest.Kind == "relay" {
+								relayPrompt, relayErr := relayproduct.BuilderPrompt()
+								if relayErr != nil {
+									sendError(fmt.Sprintf("Failed to load Relay product contract: %v", relayErr), true)
+									return
+								}
+								phaseAdditions = append(phaseAdditions, relayPrompt)
+							}
 							configuredBrowserMode := strings.ToLower(strings.TrimSpace(phaseManifest.Capabilities.BrowserMode))
 							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, append(append([]int{}, req.CdpPorts...), phaseManifest.Capabilities.CDPPorts...))
 

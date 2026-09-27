@@ -180,6 +180,7 @@ interface CommonStepFields {
 // Regular step (may have loops)
 export interface RegularPlanStep extends CommonStepFields {
   type: 'regular';
+  script_only?: boolean;
   next_step_id?: string;                    // Explicit successor for scripted route chains
   has_loop?: boolean;
   loop_condition?: string;
@@ -236,6 +237,8 @@ export interface MessageSequenceItem {
 
 export interface MessageSequencePlanStep extends CommonStepFields {
   type: 'message_sequence';
+  authored_prompt?: boolean;
+  system_prompt?: string;
   items?: MessageSequenceItem[];
   predefined_routes?: PlanRoutingRoute[]; // Optional bounded specialists selected by the sequence agent at runtime
   next_step_id?: string;
@@ -278,6 +281,8 @@ export interface RoutingPlanStep extends CommonStepFields {
 // just its own type tag. See PLAT-259.
 export interface BranchPlanStep extends CommonStepFields {
   type: 'branch';
+  value_path?: string;
+  value_cases?: Record<string, string>;
   branch_question: string;            // Question to evaluate for route selection
   routes: RoutingRoute[];             // Available routes (min 2)
   default_route_id?: string;          // Optional fallback route_id

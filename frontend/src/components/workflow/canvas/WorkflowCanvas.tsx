@@ -45,7 +45,8 @@ import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { WorkspacePanelGuideButton } from '../WorkspacePanelGuideButton'
 import { useChatStore } from '../../../stores/useChatStore'
-import { agentApi } from '../../../services/api'
+import { agentApi, workflowManifestApi } from '../../../services/api'
+import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import type { PlanStep } from '../../../utils/stepConfigMatching'
 import { effectiveAgentItems, effectiveExecutionMode, effectiveExecutionModeReason, isCrewStep } from '../../../utils/stepConfigMatching'
 import { CrewStepDetailSection } from './CrewStepDetailSection'
@@ -134,6 +135,8 @@ import type { ExecutionOptions } from '../../../services/api-types'
 export interface WorkflowCanvasProps {
   workspacePath: string | null
   presetQueryId: string | null
+  relayMode?: boolean
+  relayOutputStepID?: string
   currentPhase?: string
   onStartPhase?: (phaseId: string, executionOptions?: ExecutionOptions) => void
   onCreatePlan?: () => void
@@ -826,7 +829,9 @@ function ReadOnlyStepDetailPanel({
               <div className="mt-2 flex max-w-2xl items-start gap-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
                 <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
                 <span>
-                  {agentConfigs?.lock_code
+                  {step.script_only
+                    ? 'Runs the saved Python code exactly. Errors stop the Relay; no agent repairs the script.'
+                    : agentConfigs?.lock_code
                     ? 'Runs the saved Python code first. Automatic repair is off because this code is locked.'
                     : 'Runs the saved Python code first. If it fails, an agent uses the description below to repair the code and retry.'}
                 </span>
@@ -837,6 +842,20 @@ function ReadOnlyStepDetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {step?.type === 'message_sequence' && step.authored_prompt && (
+          <DetailSection icon={Braces} title="Authored agent">
+            <p className="mb-1 text-xs text-muted-foreground">Exact system prompt</p>
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-2 text-xs text-foreground">{step.system_prompt}</pre>
+            <p className="mt-2 text-xs text-muted-foreground">User messages below run in order. Variables render from the trigger input and prior JSON outputs.</p>
+          </DetailSection>
+        )}
+        {step?.type === 'branch' && step.value_path && (
+          <DetailSection icon={Braces} title="Decision rule">
+            <div className="text-xs"><span className="text-muted-foreground">Value: </span><code>{step.value_path}</code></div>
+            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-2 text-xs text-foreground">{formatJson(step.value_cases || {})}</pre>
+            {step.default_route_id && <div className="mt-1 text-xs text-muted-foreground">Default route: {step.default_route_id}</div>}
+          </DetailSection>
+        )}
         {step?.description && (
           <DetailSection icon={FileText} title="Description">
             <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1">
@@ -1028,6 +1047,8 @@ export interface WorkflowCanvasRef {
 const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>(({
   workspacePath,
   presetQueryId,
+  relayMode = false,
+  relayOutputStepID,
   onCreatePlan,
   showChatArea = false,
   toolbarOnly = false,
@@ -1035,6 +1056,20 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   embeddedPlanOnly = false,
   assistantControl,
 }, ref) => {
+  const [savingRelayOutput, setSavingRelayOutput] = React.useState(false)
+  const saveRelayOutput = React.useCallback(async (stepID: string) => {
+    if (!workspacePath || savingRelayOutput) return
+    setSavingRelayOutput(true)
+    try {
+      await workflowManifestApi.updateWorkflowManifest({ workspace_path: workspacePath, relay_output_step_id: stepID })
+      await useWorkflowManifestStore.getState().refreshWorkflows()
+      useChatStore.getState().addToast('Relay output saved', 'success')
+    } catch (error) {
+      useChatStore.getState().addToast(`Could not save Relay output: ${error instanceof Error ? error.message : String(error)}`, 'error')
+    } finally {
+      setSavingRelayOutput(false)
+    }
+  }, [workspacePath, savingRelayOutput])
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const { setViewport, getNode, updateNode, fitView, getViewport } = useReactFlow()
@@ -2573,6 +2608,19 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             </div>
           )}
           <div className="absolute right-3 top-3 z-20 flex items-center gap-1">
+            {relayMode && <label className="flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 text-xs shadow-sm">
+              <span>Output</span>
+              <select
+                aria-label="Relay output agent"
+                className="h-8 max-w-32 bg-transparent text-xs"
+                value={relayOutputStepID || ''}
+                disabled={readOnly || savingRelayOutput}
+                onChange={event => void saveRelayOutput(event.target.value)}
+              >
+                <option value="">Select agent</option>
+                {plan?.steps?.filter(step => step.type === 'message_sequence' && step.authored_prompt).map(step => <option key={step.id} value={step.id}>{step.title || step.id}</option>)}
+              </select>
+            </label>}
             {assistantControl}
             <button type="button" onClick={() => void fitView({ padding: FLOW_FIT_PADDING, duration: 300, minZoom: FLOW_FIT_MIN_ZOOM, maxZoom: FLOW_FIT_MAX_ZOOM })}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
