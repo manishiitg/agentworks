@@ -798,6 +798,11 @@ func applyDiffPatchFlexibleContext(ctx context.Context, currentContent, diffCont
 		return "", err
 	}
 
+	// Codex/Cursor's native "*** Begin Patch" envelope has no line numbers.
+	if isApplyPatchFormat(diffContent) {
+		return applyApplyPatchFormat(currentContent, diffContent)
+	}
+
 	var result string
 	var err error
 
