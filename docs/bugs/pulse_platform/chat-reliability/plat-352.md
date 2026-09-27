@@ -22,6 +22,15 @@ with their own files stay linked, not duplicated: PLAT-324
 (continuity), PLAT-178 (delivery/transcript recovery), PLAT-340
 (Stop/resume bindings), PLAT-351 (retained-turn settle).
 
+AGY onboarding follows this delivery contract at the provider boundary:
+the matching user step in AGY's own conversation SQLite proves that a tmux
+submission was taken in; a pane echo cannot acknowledge the turn. The
+assistant answer and tool trail are read from that same turn's SQLite rows.
+The provider records `agy_intake_source=sqlite_user_step` and
+`agy_completion_source=sqlite_assistant_settled` for diagnostics. See
+[PLAT-354](../coding-agent-bridge/plat-354.html) for the completion guard and
+its current AGY limitation; the full application P0 runner remains pending.
+
 ## Turn delivery: no silent drops into dead retained runtimes (2026-09-25, implemented, push/deploy/verify pending)
 
 Follow-up chat turns are short-circuited as retained live-input into a

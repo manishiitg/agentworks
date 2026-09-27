@@ -1,12 +1,13 @@
 # Coding CLI turn signals: where each fact comes from
 
-Status: current as of 2026-09-24 (PLAT-354 complete). Detailed history:
+Status: current as of 2026-09-27 (five original CLIs certified; AGY onboarding
+tested at the provider boundary). Detailed history:
 [PLAT-354](../bugs/pulse_platform/coding-agent-bridge/plat-354.html). Submit
 receipts: [durable_ack_p0.md](../refactor/durable_ack_p0.md).
 
 ## Rule
 
-**tmux is kept for as little as possible.** It launches the CLI, types input
+**tmux remains the critical interactive transport.** It launches the CLI, types input
 (so a user can steer a running turn), carries live stderr to the terminal
 panel, and gives the CLI its full interactive harness.
 
@@ -28,6 +29,13 @@ structured signal instead.
 | Muse | `session.jsonl` | `runtime.user_intent.accepted` | run `terminal`; with subagents, follow the chain below | assistant message of the final run |
 | Cursor | `store.db` (SQLite) | user row for this query | the turn's rows end in assistant prose (a trailing tool call = still running; a trailing tool result = reply pending) | that prose |
 | Pi | `markers.jsonl` + session | intake marker | `agent_settled` (fallback: `agent_end` + 15 s quiet) | last assistant message |
+| AGY | conversation SQLite (`~/.gemini/antigravity-cli/conversations/<id>.db`) | matching type-14 user step after the pre-submit index | a status-3 type-15 assistant step with text at the end of the turn's trail, stable for 2 s, with the composer ready | type-15 field 20.1 text after that user step |
+
+AGY 1.2.12 has no distinct run-terminal row in the observed conversation
+record. Its SQLite trail is the primary intake and answer proof; tmux composer
+readiness remains a secondary completion guard so narration before a tool does
+not end the turn. A trailing tool step keeps the turn open. This contract is
+covered by the persistent MCP bridge live test with a 25-second tool.
 
 ## Messages sent during a running turn (steering)
 
@@ -66,7 +74,7 @@ command: `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`,
 Certified versions are in `scripts/p0-certified-cli-versions.json`; the gate
 script is `scripts/run-coding-cli-p0.sh`, which needs `MCP_API_TOKEN` and
 `WORKSPACE_API_TOKEN`. Run it for one provider at a time
-(`--providers <name>`), not all five, unless asked. Opt-in stress tests
+(`--providers <name>`), not all providers, unless asked. Opt-in stress tests
 (`-coding-cli-stress`, count set by `CODING_CLI_STRESS_ITERATIONS`) run
 parallel subagents, a slow MCP tool and a mid-turn steer. Results on
 2026-09-24: Claude 3/3, Codex 3/3, Muse 3/3, Cursor 5/5.
