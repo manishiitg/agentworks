@@ -98,6 +98,53 @@ func writeCrewFunctions(ctx context.Context, target triggerTarget, functions []c
 	return writeFileToWorkspace(ctx, crewFunctionsPath(ctx, target), string(encoded)+"\n")
 }
 
+// crewFunctionSpec is one function definition as its author sends it. The
+// define_function tool and the external Crew authoring tools share it, so
+// both apply the same checks.
+type crewFunctionSpec struct {
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	Instructions string                 `json:"instructions"`
+	InputSchema  map[string]interface{} `json:"input_schema,omitempty"`
+	ResultSchema map[string]interface{} `json:"result_schema,omitempty"`
+}
+
+func (spec crewFunctionSpec) normalized() crewFunctionSpec {
+	spec.Name = strings.TrimSpace(spec.Name)
+	spec.Description = strings.TrimSpace(spec.Description)
+	spec.Instructions = strings.TrimSpace(spec.Instructions)
+	return spec
+}
+
+func (spec crewFunctionSpec) validate() error {
+	if !crewFunctionNamePattern.MatchString(spec.Name) {
+		return fmt.Errorf("name must be snake_case: a lowercase letter, then lowercase letters, digits or _ (max 48)")
+	}
+	if spec.Description == "" || spec.Instructions == "" {
+		return fmt.Errorf("description and instructions are required")
+	}
+	if len(spec.InputSchema) > 0 && spec.InputSchema["type"] != "object" {
+		return fmt.Errorf("input_schema must have type object (named arguments)")
+	}
+	if err := checkCrewFunctionSchema(spec.InputSchema, "input_schema"); err != nil {
+		return err
+	}
+	return checkCrewFunctionSchema(spec.ResultSchema, "result_schema")
+}
+
+// upsertCrewFunction declares a validated spec, updating a same-named
+// function in place (keeping its creator and creation time).
+func upsertCrewFunction(functions []crewFunction, spec crewFunctionSpec, creator string, now time.Time) ([]crewFunction, bool) {
+	for i := range functions {
+		if functions[i].Name == spec.Name {
+			functions[i].Description, functions[i].Instructions = spec.Description, spec.Instructions
+			functions[i].InputSchema, functions[i].ResultSchema, functions[i].UpdatedAt = spec.InputSchema, spec.ResultSchema, now
+			return functions, true
+		}
+	}
+	return append(functions, crewFunction{Name: spec.Name, Description: spec.Description, Instructions: spec.Instructions, InputSchema: spec.InputSchema, ResultSchema: spec.ResultSchema, CreatedBy: creator, CreatedAt: now, UpdatedAt: now}), false
+}
+
 // crewFunctionAskName is the implicit function every Crew
 // offers: a free-text question answered by the target's final reply, over
 // the standard inbound trigger. A declared function of the same name wins.
@@ -1128,27 +1175,17 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		name, _ := args["name"].(string)
-		name = strings.TrimSpace(name)
-		if !crewFunctionNamePattern.MatchString(name) {
-			return "", fmt.Errorf("name must be snake_case: a lowercase letter, then lowercase letters, digits or _ (max 48)")
-		}
-		description, _ := args["description"].(string)
-		instructions, _ := args["instructions"].(string)
-		if strings.TrimSpace(description) == "" || strings.TrimSpace(instructions) == "" {
-			return "", fmt.Errorf("description and instructions are required")
-		}
 		inputSchema, _ := args["input_schema"].(map[string]interface{})
 		resultSchema, _ := args["result_schema"].(map[string]interface{})
-		if len(inputSchema) > 0 && inputSchema["type"] != "object" {
-			return "", fmt.Errorf("input_schema must have type object (named arguments)")
-		}
-		if err := checkCrewFunctionSchema(inputSchema, "input_schema"); err != nil {
+		spec := crewFunctionSpec{InputSchema: inputSchema, ResultSchema: resultSchema}
+		spec.Name, _ = args["name"].(string)
+		spec.Description, _ = args["description"].(string)
+		spec.Instructions, _ = args["instructions"].(string)
+		spec = spec.normalized()
+		if err := spec.validate(); err != nil {
 			return "", err
 		}
-		if err := checkCrewFunctionSchema(resultSchema, "result_schema"); err != nil {
-			return "", err
-		}
+		name := spec.Name
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
@@ -1156,19 +1193,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		now := time.Now().UTC()
 		creator := caller.Stamp.Type + ":" + caller.Stamp.ID + " (" + caller.Label + ")"
-		updated := false
-		for i := range functions {
-			if functions[i].Name == name {
-				functions[i].Description, functions[i].Instructions = strings.TrimSpace(description), strings.TrimSpace(instructions)
-				functions[i].InputSchema, functions[i].ResultSchema, functions[i].UpdatedAt = inputSchema, resultSchema, now
-				updated = true
-			}
-		}
-		if !updated {
-			functions = append(functions, crewFunction{Name: name, Description: strings.TrimSpace(description), Instructions: strings.TrimSpace(instructions), InputSchema: inputSchema, ResultSchema: resultSchema, CreatedBy: creator, CreatedAt: now, UpdatedAt: now})
-		}
+		functions, updated := upsertCrewFunction(functions, spec, creator, time.Now().UTC())
 		if err := writeCrewFunctions(ctx, target, functions); err != nil {
 			return "", err
 		}

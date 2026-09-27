@@ -48,7 +48,7 @@ var cliOperationGroups = []struct {
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}}},
-	{"crews", "Discover Crews, read their files, and call their functions", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}}},
+	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"create", "create_crew"}, {"update", "update_crew"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -396,7 +396,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	if tool != "list_workflows" && tool != "list_guidance_topics" && tool != "get_guidance_topic" && !crewTool {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
-	if crewTool && tool != "list_crews" && tool != "get_crew_function_call" {
+	if crewTool && tool != "list_crews" && tool != "get_crew_function_call" && tool != "create_crew" && tool != "import_crew" {
 		f.String("crew", "", "Crew ID from crews list (crew_id)")
 	}
 	switch tool {

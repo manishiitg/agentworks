@@ -725,6 +725,8 @@ type productProjectManifest struct {
 	Identity      struct {
 		Name string `json:"name,omitempty"`
 		Icon string `json:"icon,omitempty"`
+		// Role is carried so manifest rewrites preserve the Crew's role.
+		Role string `json:"role,omitempty"`
 	} `json:"identity,omitempty"`
 	Schedules            []productschedule.Schedule `json:"schedules,omitempty"`
 	Triggers             []productWebhookTrigger    `json:"triggers,omitempty"`

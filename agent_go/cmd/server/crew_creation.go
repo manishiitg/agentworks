@@ -444,12 +444,17 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if llmConfig := resolveCrewCreationLLMConfig(profile, inheritedLLM); llmConfig != nil {
 		capabilities["llm_config"] = llmConfig
 	}
+	// A Crew created outside a workflow (external authoring) references none.
+	contextPaths := []string{}
+	if workflowPath != "" {
+		contextPaths = append(contextPaths, workflowPath)
+	}
 	runtimeManifest := map[string]interface{}{
 		"schema_version":         1,
 		"id":                     crewID,
 		"label":                  title,
 		"capabilities":           capabilities,
-		"workflow_context_paths": []string{workflowPath},
+		"workflow_context_paths": contextPaths,
 		"schedules":              []string{},
 		"triggers":               []string{},
 		"created_at":             now,

@@ -158,6 +158,23 @@ func externalTools() ([]externalTool, error) {
 		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. The Crew does the work in your own continuing conversation with it (never its main chat); the result is validated against the function's result schema. Returns the result if it finishes within wait_seconds, otherwise status=running with a call_id for get_crew_function_call. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait}), "crew_id", "function")
 		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. Repeated asks continue one conversation with that Crew, so you can chat with it: it remembers your earlier asks. Returns the answer if it finishes within wait_seconds, otherwise status=running with a call_id for get_crew_function_call. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait}), "crew_id", "message")
 		add("get_crew_function_call", "Poll a call started with call_crew_function or ask_crew: status (queued, running, completed, failed), progress reports, and the result or error. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function or ask_crew.")}, "call_id")
+		// Crew authoring (crews:write; owner-only edits). One spec shape
+		// serves create_crew, export_crew and import_crew.
+		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
+		add("create_crew", "Create a Crew you own from a spec: name, icon, role, purpose (its standing instructions), skills, functions, schedules, project files, and first-party templates. Returns the new Crew as get_crew does. Requires crews:write on a connection covering all your Crews.", false, false, specProps, "name", "role", "purpose")
+		strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
+		add("update_crew", "Edit a Crew you own. Every field is optional; omitted parts stay as they are. skills: set/add/remove names. functions: upsert specs / delete names. schedules: add specs, update specs by id, remove ids. files: write project files; remove_files deletes them. Requires crews:write.", false, false, crewID(map[string]any{
+			"name": map[string]any{"type": "string", "maxLength": 60}, "icon": map[string]any{"type": "string", "maxLength": 8},
+			"role": map[string]any{"type": "string", "maxLength": 120}, "purpose": map[string]any{"type": "string", "maxLength": crewPurposeLimit},
+			"skills":       map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"set": strList, "add": strList, "remove": strList}},
+			"functions":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"upsert": map[string]any{"type": "array", "items": fnSpec}, "delete": strList}},
+			"schedules":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"add": map[string]any{"type": "array", "items": scheduleSpec}, "update": map[string]any{"type": "array", "items": scheduleSpec}, "remove": strList}},
+			"files":        specProps["files"],
+			"remove_files": strList,
+		}), "crew_id")
+		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions, schedules, template references). Chats, memory, databases, secrets, and model connections are never included. Pass the result to import_crew on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
+		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name", "role", "purpose"}, "description": "A spec from export_crew (or a Crew Agent Playbook catalog entry)."}
+		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native

@@ -381,6 +381,11 @@ chat:
       - call_crew_function
       - ask_crew
       - get_crew_function_call
+      # Crew authoring (crews:write; only the owner edits; export is crews:read).
+      - create_crew
+      - update_crew
+      - export_crew
+      - import_crew
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

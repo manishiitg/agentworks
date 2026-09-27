@@ -10,6 +10,7 @@ const scopeDescriptions: Record<string, string> = {
   'runs:execute': 'Start, watch, and cancel workflow runs',
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
+  'crews:write': 'Create Crews and edit the Crews you own (identity, skills, functions, schedules, files)',
 }
 
 export function MCPOAuthConsent() {

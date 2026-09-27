@@ -38,6 +38,10 @@ const externalMCPInstructions = `You are connected to an AgentWorks server: tool
 
 const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection: every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
+// Appended when the connection holds crews:write: the one authoring surface
+// external connections have.
+const externalMCPCrewAuthoringInstructions = `Exception: create_crew, update_crew and import_crew create and edit Crews you own (get_crew shows the full spec; export_crew returns a portable spec).`
+
 var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolSpec: {
 		"type": "object",
@@ -100,6 +104,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		// execute_step's presence proves this connection runs.
 		if tool.Name == "execute_step" {
 			instructions = externalMCPInstructions
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if tool.Name == "create_crew" {
+			instructions += " " + externalMCPCrewAuthoringInstructions
 			break
 		}
 	}
