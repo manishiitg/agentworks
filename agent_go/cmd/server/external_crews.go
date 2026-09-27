@@ -38,12 +38,19 @@ func externalCrewCaller(claims *UserClaims) triggerLinkCaller {
 	return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: claims.UserID}, Label: label}
 }
 
+// externalCrewWait reads wait_seconds. Functions are agentic and usually
+// take minutes, so a call returns at once unless the caller asks to wait
+// (capped under the proxy timeout); a client whose request is cut short never
+// sees the call_id and calls again.
 func externalCrewWait(args map[string]any) time.Duration {
-	seconds := externalCrewMaxWaitSeconds
-	if raw, ok := args["wait_seconds"].(float64); ok && raw >= 0 && raw < float64(externalCrewMaxWaitSeconds) {
-		seconds = int(raw)
+	raw, ok := args["wait_seconds"].(float64)
+	if !ok || raw <= 0 {
+		return 0
 	}
-	return time.Duration(seconds) * time.Second
+	if raw > externalCrewMaxWaitSeconds {
+		raw = externalCrewMaxWaitSeconds
+	}
+	return time.Duration(raw * float64(time.Second))
 }
 
 // externalCrewCallResponse returns the call's state after waiting up to wait.

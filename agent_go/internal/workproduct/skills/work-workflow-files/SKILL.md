@@ -124,9 +124,11 @@ schemas, and instructions, stored in its `functions.json`.
   tools named `<crew>__<function>` appear for tagged or attached targets.
 - **Call** — `call_function(target, function, args)` validates `args`, runs the
   function as a turn in your conversation with the target (queued if busy),
-  and returns the result directly when it finishes within about 2 minutes.
-  Otherwise it returns `status: running` with a `call_id`: tell the user and
-  end the turn, and the result arrives as an `[AUTO-NOTIFICATION]`. Write
+  and returns at once with `status: running` and a `call_id` (functions are
+  agentic and usually take minutes): tell the user and end the turn, and the
+  result arrives as an `[AUTO-NOTIFICATION]`. Pass `wait_seconds` (up to 120)
+  only for a function you expect to finish quickly. Never call again for the
+  same work: an identical call while one runs returns that same call. Write
   `ask` messages and arguments self-contained, because the target does not see
   this chat.
 - **Follow** — `get_function_call(call_id)` shows status, the target's progress

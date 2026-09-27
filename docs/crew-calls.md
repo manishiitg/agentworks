@@ -29,8 +29,10 @@ returned.
   `call_function` returns at once with `status: running` and a `call_id`; a
   calling Crew or workflow gets the result as an automatic notification. Pass
   `wait_seconds` (up to 120) to wait inline for a function you expect to be
-  quick. Over MCP/CLI a call waits up to 25 seconds, then clients poll
-  `get_crew_function_call`.
+  quick. MCP/CLI calls (`call_crew_function`, `ask_crew`,
+  `call_workflow_function`) also return at once; clients poll
+  `get_crew_function_call` / `get_workflow_function_call`, or pass
+  `wait_seconds` (max 25).
 - **No duplicate runs:** calling the same function with the same arguments
   while that call is still running returns the running call (`joined`), not a
   new run.
