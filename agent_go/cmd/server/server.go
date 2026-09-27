@@ -64,6 +64,7 @@ import (
 	"github.com/manishiitg/mcpagent/toolcalllog"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxcapture"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -1750,6 +1751,11 @@ func runServer(cmd *cobra.Command, args []string) {
 		if n := sweepOrphanedOwnedTmuxSessions(sweepCtx); n > 0 {
 			fmt.Printf("🧹 Swept %d orphaned coding-agent tmux session(s) from a previous run\n", n)
 			log.Printf("[STARTUP] swept %d orphaned coding-agent tmux sessions", n)
+		}
+		// Bridge token files of backends that exited (their tokens no longer
+		// verify); a live backend's are kept (PLAT-362 D2).
+		if n := cursorcli.SweepStaleBridgeTokenFiles(); n > 0 {
+			log.Printf("[STARTUP] swept bridge token files of %d exited backend(s)", n)
 		}
 		cancelSweep()
 	}

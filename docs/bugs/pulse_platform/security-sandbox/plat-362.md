@@ -157,10 +157,16 @@ Agent tool calls reach the server through the executor routes `/tools/...` and
   Fix: a private `TMPDIR` per shell, bridge configs in per-session 0700
   directories outside grants, tmux on a dedicated `-S` socket, and Landlock
   socket scoping on ABI ≥ 6.
+  - Same class: the D2 token files (0600, user cache dir) are still owned by
+    the one OS user every agent runs as. An agent's native (non-Landlock)
+    Read tools can read other sessions' files. Needs per-session isolation,
+    not just file modes.
 - [x] **D5 (builder, this commit).** Dismiss and reconnect now require
   `canAccessTerminalSession`: the owner, an admin for ownerless sessions, or a
   workflow writer for bot sessions. `GET /api/browser/sessions` lists only the
-  caller's own sessions' browsers; admins still see all.
+  caller's own sessions' browsers; admins still see all. A CDP owner that is
+  a per-Crew or per-workflow browser name (not a session ID) is shown when it
+  matches the browser of a session the caller can see.
 - [x] **D2 (multi-llm `c46a5df`, mcpagent `b0cdf7b`).** Cursor's
   `.cursor/mcp.json` no longer holds the token.
   - Each bridge token goes to a private 0600 file in the user's cache
@@ -168,6 +174,11 @@ Agent tool calls reach the server through the executor routes `/tools/...` and
     `mcpbridge` reads.
   - The structured path deletes the file after the call; the tmux path keeps
     it for the session.
+  - Each backend process keeps its files in its own folder (named by PID);
+    startup removes the folders of backends that have exited, next to the
+    tmux orphan sweep, and never touches a live backend's (another server on
+    the same machine). File names are a hash of the token, never the session
+    ID.
   - Not live-tested: Cursor is not logged in on the test machine.
 - [x] **D3 (mcpagent `b0cdf7b`).** The global MCP clients belong to whichever
   agent registered last, with that user's credentials. A session call with no
@@ -176,6 +187,9 @@ Agent tool calls reach the server through the executor routes `/tools/...` and
   - Availability is unchanged: the scope check still passes exactly when the
     old code would have found a global client.
   - Only the credential source changes: shared config, never another agent's.
+  - Follow-up: calls without a session (the MCP tool tester on
+    `/api/mcp/execute`, open to any signed-in user) no longer use the global
+    clients either; they use the shared-config connection.
 - [ ] **D4.** `canUseSessionIDForQuery` lets a user pre-claim predictable
   untracked session IDs (`wfask-<sha>`, `work:project:<id>`, ...). Not a small
   fix: it needs each feature's ID scheme and who it belongs to.

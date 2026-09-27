@@ -531,15 +531,21 @@ func (api *StreamingAPI) handleGetBrowserSessions(w http.ResponseWriter, r *http
 			return false
 		}
 		ownSessions := sessions[:0:0]
+		ownBrowsers := map[string]bool{}
 		for _, s := range sessions {
 			if visible(s["workflow_session"], s["agent_session"]) {
 				ownSessions = append(ownSessions, s)
+				if name := strings.TrimSpace(s["browser_session"]); name != "" {
+					ownBrowsers[name] = true
+				}
 			}
 		}
 		sessions = ownSessions
+		// A CDP owner is a session ID or, for per-Crew and per-workflow
+		// browsers, a browser name; it is the caller's when either is.
 		ownOwners := cdpOwners[:0:0]
 		for _, o := range cdpOwners {
-			if visible(o["owner"]) {
+			if ownBrowsers[strings.TrimSpace(o["owner"])] || visible(o["owner"]) {
 				ownOwners = append(ownOwners, o)
 			}
 		}
