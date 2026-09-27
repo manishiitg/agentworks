@@ -18,6 +18,6 @@ window.__APP_RUNTIME_CONFIG__ = {
   markUrl: "/brand/icon.svg",
   logoUrl: "/brand/logo.svg",
   logoDarkUrl: "/brand/logo-white.svg",
-  enabledProductSurfaces: ["agentworks", "work", "code"],
+  enabledProductSurfaces: ["agentworks", "relays", "work", "code"],
   defaultProductSurface: "agentworks"
 };

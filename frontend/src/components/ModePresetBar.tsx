@@ -23,6 +23,7 @@ import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
 import McpControl from './topbar/McpControl'
@@ -68,6 +69,7 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
     llmConfig: caps?.llm_config ? { ...caps.llm_config } : undefined,
     employee_id: manifest.ownership?.employee_id ?? undefined,
+    workflowKind: manifest.kind === 'relay' ? 'relay' : 'workflow',
   }
 }
 
@@ -87,6 +89,7 @@ interface ModePresetBarProps {
 }
 
 export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, reduced = false, walkthroughSurface: productWalkthroughSurface, walkthroughReady = true, walkthroughPaused = false }) => {
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   const { selectedModeCategory, setModeCategory, getAgentModeFromCategory } = useModeStore(useShallow(state => ({
     selectedModeCategory: state.selectedModeCategory,
     setModeCategory: state.setModeCategory,
@@ -127,9 +130,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   } = usePresetApplication()
 
   // Get active preset for current mode (for schedule popup, supports all modes)
-  const activePreset = presetModeCategory === null
+  const selectedPreset = presetModeCategory === null
     ? null
     : getActivePreset(presetModeCategory)
+  const activePreset = selectedPreset && (selectedPreset.workflowKind === 'relay') === isRelaySurface ? selectedPreset : null
   const activeWorkspacePath = activePreset?.selectedFolder?.filepath?.replace(/\/+$/, '')
   const workflowActivityPaths = React.useMemo(() => workflowPresets
     .map(preset => preset.selectedFolder?.filepath?.replace(/\/+$/, ''))
@@ -143,9 +147,12 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const isActiveWorkflowReadOnly = selectedModeCategory === 'workflow' && activeWorkflowAccess === 'read'
   const isEffectiveReadOnly = isReadOnlyUser || isActiveWorkflowReadOnly
   // Get presets for current mode
-  const presetsForMode = presetModeCategory === null
+  const allPresetsForMode = presetModeCategory === null
     ? []
     : getPresetsForMode(presetModeCategory)
+  const presetsForMode = selectedModeCategory === 'workflow'
+    ? allPresetsForMode.filter(preset => (preset.workflowKind === 'relay') === isRelaySurface)
+    : allPresetsForMode
 
   const [showPresetDropdown, setShowPresetDropdown] = useState(false)
   const [showPresetModal, setShowPresetModal] = useState(false)
@@ -247,6 +254,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   }, [currentWalkthroughSurface])
 
   useEffect(() => {
+    if (isRelaySurface) {
+      setShowWorkflowWalkthrough(false)
+      return
+    }
     if (showWorkflowWalkthrough && walkthroughSurface !== currentWalkthroughSurface) {
       setShowWorkflowWalkthrough(false)
       if (!isWorkflowWalkthroughDismissed(walkthroughSurface)) {
@@ -267,9 +278,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     if (!isWorkflowWalkthroughDismissed(currentWalkthroughSurface)) {
       openWorkflowWalkthrough(currentWalkthroughSurface)
     }
-  }, [currentWalkthroughSurface, llmDiscoveryReady, openWorkflowWalkthrough, showPresetModal, showProviders, showWorkflowWalkthrough, walkthroughPaused, walkthroughStartupReady, walkthroughSurface])
+  }, [currentWalkthroughSurface, isRelaySurface, llmDiscoveryReady, openWorkflowWalkthrough, showPresetModal, showProviders, showWorkflowWalkthrough, walkthroughPaused, walkthroughStartupReady, walkthroughSurface])
 
   useEffect(() => {
+    if (isRelaySurface) return
     if (showPresetModal || walkthroughPaused) {
       if (showWorkflowWalkthrough) {
         pausedWalkthroughForPresetRef.current = walkthroughSurface
@@ -282,7 +294,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     if (pausedSurface === currentWalkthroughSurface && !isWorkflowWalkthroughDismissed(pausedSurface)) {
       openWorkflowWalkthrough(pausedSurface)
     }
-  }, [currentWalkthroughSurface, openWorkflowWalkthrough, showPresetModal, showWorkflowWalkthrough, walkthroughPaused, walkthroughSurface])
+  }, [currentWalkthroughSurface, isRelaySurface, openWorkflowWalkthrough, showPresetModal, showWorkflowWalkthrough, walkthroughPaused, walkthroughSurface])
 
   const returnToWorkspace = useCallback(() => {
     useLLMStore.getState().setShowLLMModal(false)
@@ -648,10 +660,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                       label={activePreset?.label}
                       leading={activePreset ? <WorkflowIcon icon={activePreset.icon} label={activePreset.label} /> : undefined}
                       compactOnNarrow
-                      placeholder="Select Automation"
+                      placeholder={isRelaySurface ? 'Select Relay' : 'Select Automation'}
                       title={activePreset?.label
                         ? (currentSessionStatusLabel ? `${activePreset.label} · ${currentSessionStatusLabel}` : activePreset.label)
-                        : 'Select Automation'}
+                        : isRelaySurface ? 'Select Relay' : 'Select Automation'}
                       open={showPresetDropdown}
                       onToggle={() => {
                         if (isGlobalPage) returnToWorkspace()
@@ -659,8 +671,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                       }}
                       onClose={() => setShowPresetDropdown(false)}
                       onAdd={handleAddWorkflow}
-                      addLabel="Add automation"
-                      addTitle={!canCreateWorkflows ? 'Your account cannot create automations. Ask an administrator to enable creation.' : 'Add automation'}
+                      addLabel={isRelaySurface ? 'Add relay' : 'Add automation'}
+                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : isRelaySurface ? 'Add relay' : 'Add automation'}
                       addDisabled={!canCreateWorkflows}
                       addTestId="add-workflow-button"
                       dataTour="workflow-add-edit"
@@ -677,7 +689,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             >
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span className="font-medium">+ Add Automation</span>
+                                <span className="font-medium">+ Add {isRelaySurface ? 'Relay' : 'Automation'}</span>
                               </div>
                             </button>
 
@@ -690,7 +702,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             {/* Loading state */}
                             {presetsLoading && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
-                                Loading automations...
+                                Loading {isRelaySurface ? 'relays' : 'automations'}...
                               </div>
                             )}
 
@@ -698,8 +710,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             {!presetsLoading && presetsForMode.length === 0 && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
                                 {canCreateWorkflows
-                                  ? 'No automations available. Create one to get started.'
-                                  : 'No automations are available to your account.'}
+                                  ? `No ${isRelaySurface ? 'relays' : 'automations'} available. Create one to get started.`
+                                  : `No ${isRelaySurface ? 'relays' : 'automations'} are available to your account.`}
                               </div>
                             )}
 
@@ -813,7 +825,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
               <span className="mx-0.5 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               <WorkspaceTopBarControls
-                onOpenWalkthrough={openWorkflowWalkthrough}
+                onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
                 onOpenShortcuts={reduced ? undefined : () => setShowShortcuts(true)}
               />
 
@@ -934,10 +946,11 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         fixedAgentMode={editingPreset?.agentMode || (selectedModeCategory ? (getAgentModeFromCategory(selectedModeCategory) as 'multi-agent' | 'workflow') : undefined)}
         agentMode={agentMode}
         onDeleteWorkflow={handleDeleteWorkflow}
+        fixedWorkflowKind={isRelaySurface ? 'relay' : 'workflow'}
       />
 
       <WorkflowWalkthrough
-        isOpen={showWorkflowWalkthrough}
+        isOpen={showWorkflowWalkthrough && !isRelaySurface}
         onClose={closeWorkflowWalkthrough}
         openToken={workflowWalkthroughOpenToken}
         surface={walkthroughSurface}

@@ -4,6 +4,8 @@ import { normalizeEventViewMode, useChatStore, type EventViewMode } from '../sto
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { isEnabledProductSurface } from '../products/productSurfaceConfig'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
 
 export type WorkflowNavigationContext = {
@@ -50,6 +52,14 @@ export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset
   const presetStore = useGlobalPresetStore.getState()
   const workflowId = typeof presetOrId === 'string' ? presetOrId : presetOrId.id
   if (!workflowId) return false
+
+  const preset = typeof presetOrId === 'string'
+    ? presetStore.workflowPresets.find(item => item.id === workflowId)
+    : presetOrId
+  if (preset) {
+    const surface = preset.workflowKind === 'relay' ? 'relays' : 'agentworks'
+    if (isEnabledProductSurface(surface)) useProductSurfaceStore.getState().setProductSurface(surface)
+  }
 
   // Re-activating a tab inside the current workflow must not re-run the preset
   // application lifecycle (which saves and reloads workflow settings).

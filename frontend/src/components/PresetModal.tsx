@@ -37,6 +37,7 @@ interface PresetModalProps {
   fixedAgentMode?: 'multi-agent' | 'workflow';
   agentMode: string;
   onDeleteWorkflow?: (preset: CustomPreset) => Promise<void>;
+  fixedWorkflowKind?: 'relay' | 'workflow';
 }
 
 const PresetModal: React.FC<PresetModalProps> = React.memo(({
@@ -49,6 +50,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
   fixedAgentMode,
   agentMode: propAgentMode,
   onDeleteWorkflow,
+  fixedWorkflowKind,
 }) => {
   const [label, setLabel] = useState('');
   const [icon, setIcon] = useState('');
@@ -281,7 +283,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       // Default to workflow mode as chat presets are disabled
       const defaultMode = 'workflow';
       setInternalAgentMode(defaultMode);
-      setWorkflowKind('workflow');
+      setWorkflowKind(fixedWorkflowKind || 'workflow');
       setSelectedFolder(makeWorkflowFolder(sanitizeWorkflowFolderName('')));
       setWorkflowFolderEdited(false);
       // Initialize LLM config from current primary config
@@ -303,7 +305,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
       setTier3LLM(null);
       setShowWorkflowLLMAdvanced(false);
     }
-  }, [editingPreset, fixedAgentMode, primaryConfig, selectedModeCategory, getAgentModeFromCategory, makeWorkflowFolder, sanitizeWorkflowFolderName, hasAdvancedWorkflowLLMConfig]);
+  }, [editingPreset, fixedAgentMode, fixedWorkflowKind, primaryConfig, selectedModeCategory, getAgentModeFromCategory, makeWorkflowFolder, sanitizeWorkflowFolderName, hasAdvancedWorkflowLLMConfig]);
 
   useEffect(() => {
     if (editingPreset || effectiveAgentMode !== 'workflow' || workflowFolderEdited) {
@@ -616,7 +618,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                   </p>
                 )}
               </div>
-              {!editingPreset && <div>
+              {!editingPreset && !fixedWorkflowKind && <div>
                 <label htmlFor="workflow-kind" className="mb-2 block text-sm font-medium">Product</label>
                 <select
                   id="workflow-kind"
