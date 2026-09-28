@@ -641,7 +641,7 @@ func (api *StreamingAPI) refreshLatestBuilderConversationFromNativeTranscript(ct
 		if userID == "" {
 			userID, _ = record["user_id"].(string)
 		}
-		keys, err := api.connectionAPIKeys(ctx, userID, provider, runtime.AgentSessionHandle.ConnectionID)
+		keys, err := api.connectionAPIKeys(ctx, providerAccountScope{Principal: userID, WorkspacePath: path}, provider, runtime.AgentSessionHandle.ConnectionID)
 		if err != nil {
 			return conv
 		}

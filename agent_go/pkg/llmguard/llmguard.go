@@ -47,6 +47,22 @@ func AgyAlphaEnabled() bool {
 	return strings.TrimSpace(os.Getenv("AGY_ALPHA")) == "1" && os.Getenv("MULTI_USER_MODE") != "true"
 }
 
+// ServerDefaultConnectionPrefix marks a model that names no account, so it
+// runs on the server account. WithServerAccountAdmission sets it only on the
+// config handed to InitializeLLM, so the server's connection resolver runs
+// (and admits or refuses the server account) for every model, not only for
+// models that name an account. It is never stored.
+const ServerDefaultConnectionPrefix = "server-default:"
+
+// WithServerAccountAdmission routes a config without a connection through
+// the resolver attached to its keys, when there is one.
+func WithServerAccountAdmission(config llm.Config) llm.Config {
+	if strings.TrimSpace(config.ConnectionID) == "" && config.APIKeys != nil && config.APIKeys.ResolveConnection != nil && strings.TrimSpace(string(config.Provider)) != "" {
+		config.ConnectionID = ServerDefaultConnectionPrefix + string(config.Provider)
+	}
+	return config
+}
+
 func normalize(provider string) string {
 	return strings.ToLower(strings.TrimSpace(provider))
 }

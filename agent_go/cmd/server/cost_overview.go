@@ -81,6 +81,9 @@ type costOverviewResponse struct {
 	// IncludesOther reports whether chat/unattributed spend is in the view
 	// (admins only), so the UI can say what the total covers.
 	IncludesOther bool `json:"includes_other"`
+	// ByAccount is spend per provider and account with the account
+	// visibility rules (provider_account_costs.go).
+	ByAccount []*providerCost `json:"by_account"`
 }
 
 // costOverviewRoot folds a ledger workflow_id into the row it belongs to.
@@ -436,6 +439,8 @@ func (api *StreamingAPI) handleCostOverview(w http.ResponseWriter, r *http.Reque
 		}
 		return currentUserWorkflowAccess(r, id) != WorkflowAccessNone
 	}
+	resp := buildCostOverview(summary, visible, currentUserIsAdmin(r))
+	resp.ByAccount = buildProviderAccountCosts(summary, GetUserIDFromContext(r.Context()), currentUserIsAdmin(r), providerAccountsByID(r.Context())).Providers
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(buildCostOverview(summary, visible, currentUserIsAdmin(r)))
+	json.NewEncoder(w).Encode(resp)
 }

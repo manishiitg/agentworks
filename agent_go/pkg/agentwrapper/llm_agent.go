@@ -1024,7 +1024,7 @@ func initializeLLMWithConfig(ctx context.Context, config LLMAgentConfig, logger 
 	}
 
 	// Initialize the LLM using the factory with the selected model
-	return llm.InitializeLLM(llmConfig)
+	return llm.InitializeLLM(llmguard.WithServerAccountAdmission(llmConfig))
 }
 
 // EmitTypedEvent emits a typed event through the agent's event dispatcher

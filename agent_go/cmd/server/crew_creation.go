@@ -557,6 +557,7 @@ func resolveCrewCreationLLMConfig(profile agentprofiles.Profile, inherited *work
 // default provider option, else its first option. A nil return omits
 // llm_config and the profile default applies at chat time.
 func defaultCrewLLMConfig(profile agentprofiles.Profile) map[string]interface{} {
+	profile = profileWithProductDefault(context.Background(), profile)
 	options := profile.Runtime.ProviderOptions
 	if len(options) == 0 {
 		return nil

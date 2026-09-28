@@ -771,6 +771,15 @@ func (api *StreamingAPI) handleGetLLMDefaults(w http.ResponseWriter, r *http.Req
 	globalLocked := isGlobalLLMConfigLocked()
 	lockedProviders := getLockedProviders()
 	primaryProvider, primaryModelID := getPrimaryProviderAndModelFromDefaults()
+	productDefaults, productDefaultsErr := effectiveProductDefaults(r.Context())
+	if productDefaultsErr != nil {
+		log.Printf("[PROVIDER_ACCOUNT] product defaults unavailable: %v", productDefaultsErr)
+	}
+	// A new workflow starts with the workflows product default when the
+	// installation or an admin set one.
+	if value, ok := productDefaults[productWorkflows]; ok {
+		primaryProvider, primaryModelID = value.Provider, value.Model
+	}
 	primaryConfig := map[string]interface{}{
 		"provider": primaryProvider,
 		"model_id": primaryModelID,
@@ -790,6 +799,7 @@ func (api *StreamingAPI) handleGetLLMDefaults(w http.ResponseWriter, r *http.Req
 	}
 
 	response["llm_config_locked"] = globalLocked
+	response["product_defaults"] = productDefaultsResponse(productDefaults)
 	response["default_published_llms"] = getDefaultPublishedLLMs(globalLocked, defaults.PrimaryConfig)
 	response["default_published_llms_locked"] = globalLocked
 

@@ -17,6 +17,8 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 	t.Setenv("LLM_CONFIG_LOCKED", "")
 	t.Setenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS", "")
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,muse-cli")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
 	mock := &mockWorkspaceAPI{files: map[string]string{}}
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
@@ -48,11 +50,11 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 	if stored == "" || strings.Contains(stored, "private-key") {
 		t.Fatal("registry was not encrypted")
 	}
-	keysA, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", a.ID)
+	keysA, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	keysB, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", b.ID)
+	keysB, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", b.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 		t.Fatal("Codex account does not use file credentials")
 	}
 	for _, attempt := range []struct{ user, provider, id string }{{"bob", "codex-cli", b.ID}, {"", "codex-cli", b.ID}, {"alice", "muse-cli", b.ID}, {"alice", "codex-cli", "missing"}, {"alice", "codex-cli", "global:muse-cli"}} {
-		if _, err := api.connectionAPIKeys(context.Background(), attempt.user, attempt.provider, attempt.id); err == nil {
+		if _, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: attempt.user}, attempt.provider, attempt.id); err == nil {
 			t.Fatalf("unauthorized binding accepted: %+v", attempt)
 		}
 	}
@@ -88,7 +90,7 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 	if w.Code != 204 {
 		t.Fatalf("rotate status %d", w.Code)
 	}
-	rotated, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", b.ID)
+	rotated, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", b.ID)
 	if err != nil || *rotated.CodexCLI != "rotated-B" || rotated.RuntimeEnvironment["HOME"] != keysB.RuntimeEnvironment["HOME"] {
 		t.Fatal("rotation changed identity or failed to update credential")
 	}
@@ -98,15 +100,15 @@ func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
 	if w.Code != 204 {
 		t.Fatalf("delete status %d", w.Code)
 	}
-	if _, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", b.ID); err == nil {
+	if _, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", b.ID); err == nil {
 		t.Fatal("deleted account fell back to global credentials")
 	}
 	t.Setenv("LLM_CONFIG_LOCKED", "codex-cli")
-	if _, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", a.ID); err == nil {
+	if _, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", a.ID); err == nil {
 		t.Fatal("administrator lock bypassed")
 	}
 	t.Setenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS", "true")
-	if _, err := api.connectionAPIKeys(context.Background(), "alice", "codex-cli", a.ID); err != nil {
+	if _, err := api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "alice"}, "codex-cli", a.ID); err != nil {
 		t.Fatal("explicit personal-account opt-in ignored")
 	}
 }

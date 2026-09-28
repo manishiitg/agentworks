@@ -836,6 +836,7 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 // Product manifests include AGY for local alpha runs. Keep the option out of
 // public profile responses whenever the runtime gate refuses it.
 func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.Profile {
+	profile = profileWithProductDefault(context.Background(), profile)
 	if llmguard.AgyAlphaEnabled() {
 		return profile
 	}

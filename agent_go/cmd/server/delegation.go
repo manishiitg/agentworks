@@ -660,7 +660,9 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 	// Load provider keys and add the private workflow credential only for
 	// workflow-owned delegations. Normal multi-agent chats must not inherit a
 	// credential merely because they reference a workflow folder.
-	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), subAgentUserID)
+	// A sub-agent runs in its parent's scope: the parent's workspace decides
+	// which shared accounts it may use.
+	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), providerAccountScope{Principal: subAgentUserID, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID})
 	workflowOwnedDelegation := parentReq.AgentMode == "workflow" || parentReq.AgentMode == "workflow_phase" || strings.TrimSpace(parentReq.PhaseID) != ""
 	workflowDecisionScope := strings.TrimSpace(parentReq.SelectedFolder)
 	if workflowOwnedDelegation {
@@ -820,6 +822,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			parentUserID,
 			parentReq.AgentMode,
 			withCostModel(string(provider), modelID),
+			withCostAccount(costAccountIDFor(string(provider), connectionID)),
 			withCostAttribution(
 				inferCostScope(parentReq.AgentMode, parentReq.PhaseID),
 				costWorkspace,

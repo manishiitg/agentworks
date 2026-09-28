@@ -2028,6 +2028,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Failed to initialize AgentWorks CLI security store: %v", err)
 	}
+	// A broken AGENTWORKS_PROVIDER_POLICY, or a product default its
+	// provider's policy does not admit, stops the server here instead of
+	// failing runs later.
+	if err := validateProviderAccountInstallation(); err != nil {
+		log.Fatalf("Provider accounts: %v", err)
+	}
 	profileRegistry := agentprofiles.NewRegistry()
 	// Platform-owned tools first: any product's manifest may bind them.
 	if err := platformtools.RegisterAgentProfileTools(profileRegistry); err != nil {
@@ -2100,6 +2106,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		for _, profile := range workproduct.BuiltinAgentProfiles() {
 			profile.Product = "work"
+			applyInstallationProductDefault(&profile)
 			if err := profileRegistry.RegisterProfile(profile); err != nil {
 				log.Fatalf("Failed to register Work agent profile: %v", err)
 			}
@@ -2114,6 +2121,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		for _, profile := range codeproduct.BuiltinAgentProfiles() {
 			profile.Product = codeproduct.ProfileID
+			applyInstallationProductDefault(&profile)
 			if err := profileRegistry.RegisterProfile(profile); err != nil {
 				log.Fatalf("Failed to register Code agent profile: %v", err)
 			}
@@ -2416,6 +2424,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/providers", api.handleGetProviderManifest).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/share-targets", api.handleProviderShareTargets).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions", api.handleStartProviderSetup).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions/{id}", api.handleProviderSetupSession).Methods("GET", "DELETE", "OPTIONS")
@@ -3819,6 +3830,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	// Provider accounts: every turn re-checks that this principal may use the
+	// account the turn names here, before any retained CLI gets the message.
+	// A denied account fails the turn; it never falls back to another one.
+	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	turnProvider, turnConnectionID := api.queryTurnConnectionForSession(req, sessionID)
+	if turnConnectionID != "" && turnProvider != "" {
+		if _, accountErr := api.admitProviderAccount(r.Context(), accountScope, turnProvider, turnConnectionID); accountErr != nil {
+			http.Error(w, accountErr.Error(), http.StatusForbidden)
+			return
+		}
+	}
+	// Someone else's shared account runs MCP-only: a CLI with native tools is
+	// not confined and could read the owner's login in the account HOME.
+	sharedAccountTurn := api.providerAccountForcesMCPOnly(r.Context(), currentUserID, turnConnectionID)
+	if sharedAccountTurn && resolvedProfile != nil {
+		resolvedProfile.Definition.Runtime.AgentTools.Mode = "mcp_only"
+	}
 	crewGuest := crewGuestCallerForTurn(req, currentUserID)
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
@@ -3849,7 +3877,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	agentToolsMode := agentProfileToolsMode(resolvedProfile)
 	// A workflow's Builder/Run chat takes the workflow's "Native agent tools"
 	// switch (a Crew's comes through its resolved profile).
-	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
+	workflowNativeAgentTools := resolvedProfile == nil && !sharedAccountTurn && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
 	if workflowNativeAgentTools {
 		agentToolsMode = "hybrid"
 	}
@@ -5256,7 +5284,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
-	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, currentUserID)
+	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, queryProviderAccountScope(req, currentUserID, resolvedProfile, isWorkflowPhase, workflowPhaseFolder))
 	queryInputLaneRelease := releaseInputLane
 	if queryInputLaneRelease != nil {
 		// Ownership moves to the background turn for its full lifetime. Normal
@@ -7052,6 +7080,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			currentUserID,
 			req.AgentMode,
 			withCostModel(finalProvider, finalModelID),
+			costobserver.WithAccount(costobserver.AccountIDFor(finalProvider, func() string { _, id := queryTurnConnection(req); return id }())),
 			withCostAttribution(
 				costScope,
 				costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder),
@@ -10417,6 +10446,17 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	api.lastQueryMu.RLock()
 	policyRequest, policyKnown := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
+	// Live input is a turn too: re-check the session's account for the
+	// person sending it (sharing changes apply from the next turn).
+	if policyKnown {
+		if provider, connectionID := queryTurnConnection(policyRequest); provider != "" && connectionID != "" {
+			scope := providerAccountScope{Principal: GetUserIDFromContext(r.Context()), WorkspacePath: policyRequest.SelectedFolder, Product: policyRequest.AgentProfileID}
+			if _, accountErr := api.admitProviderAccount(r.Context(), scope, provider, connectionID); accountErr != nil {
+				http.Error(w, accountErr.Error(), http.StatusForbidden)
+				return
+			}
+		}
+	}
 	if !policyKnown && strings.HasPrefix(submissionProject, "Workflow/") {
 		http.Error(w, "Workflow session configuration is unavailable; reopen the workflow chat", http.StatusConflict)
 		return

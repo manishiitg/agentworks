@@ -374,7 +374,7 @@ func (api *StreamingAPI) scheduleProviderAPIKeys(ctx context.Context, sctx *Sche
 	if config := sctx.Capabilities.LLMConfig; config != nil {
 		builder := presetPrimaryLLMForChat(config)
 		if builder != nil && builder.ConnectionID != "" {
-			return api.connectionAPIKeys(ctx, sctx.OwnerUserID, builder.Provider, builder.ConnectionID)
+			return api.connectionAPIKeys(ctx, providerAccountScope{Principal: sctx.OwnerUserID, WorkspacePath: sctx.WorkspacePath}, builder.Provider, builder.ConnectionID)
 		}
 	}
 	return keys, nil

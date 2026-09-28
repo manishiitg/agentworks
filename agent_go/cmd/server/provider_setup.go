@@ -642,16 +642,32 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	request.WorkspacePath = strings.TrimSpace(request.WorkspacePath)
 	var environment []string
 	var cleanup func()
+	caller := GetUserIDFromContext(r.Context())
+	admin := currentUserIsAdmin(r)
+	accountOwner := ""
 	if request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") {
-		keys, err := api.connectionAPIKeys(r.Context(), GetUserIDFromContext(r.Context()), request.Provider, request.ConnectionID)
+		// A user account: its owner and admins sign it in and inspect it;
+		// someone it is shared with may only see usage, and only where the
+		// usage terminal cannot read the account's files.
+		record, err := api.providerSetupAccount(r.Context(), request, caller, admin)
 		if err != nil {
-			http.Error(w, "connection unavailable or unauthorized", 403)
+			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
 			return
 		}
+		keys, err := providerConnectionRuntimeKeys(*record)
+		if err != nil {
+			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
+			return
+		}
+		accountOwner = record.OwnerUserID
 		environment = providerConnectionSetupEnvironment(keys)
-	} else if !currentUserIsAdmin(r) {
-		writeWorkflowPermissionDenied(w, "admin")
-		return
+	} else if !admin {
+		// The server account: signing it in or inspecting it is admin-only.
+		// Anyone it is available to may see Claude Code usage (no tools).
+		if request.Action != "usage" || !providerUsageTerminalSafeForOthers(request.Provider) || !api.serverAccountAvailableToCaller(r.Context(), caller, request.Provider) {
+			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
 	}
 	if request.WorkspacePath != "" && request.ConnectionID == "" {
 		if request.Action != "inspect" {
@@ -679,14 +695,14 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	// account's (paths only, never credentials).
 	target, home := "server account", "service HOME"
 	if request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") {
-		target = "private account " + request.ConnectionID
+		target = "user account " + request.ConnectionID + " (owner " + accountOwner + ")"
 		for _, entry := range environment {
 			if value, ok := strings.CutPrefix(entry, "HOME="); ok {
 				home = value
 			}
 		}
 	}
-	log.Printf("[PROVIDER_SETUP] %s %s for %s (HOME %s) by %s", request.Provider, request.Action, target, home, GetUserIDFromContext(r.Context()))
+	log.Printf("[PROVIDER_SETUP] %s %s for %s (HOME %s) by %s", request.Provider, request.Action, target, home, caller)
 	session, err := api.providerSetupManager().start(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, request.ConnectionID)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -800,4 +816,49 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 			return
 		}
 	}
+}
+
+// providerSetupAccount finds the user account a setup session targets and
+// checks the caller may open it for request.Action.
+func (api *StreamingAPI) providerSetupAccount(ctx context.Context, request startProviderSetupRequest, caller string, admin bool) (*storedProviderConnection, error) {
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	for i := range records {
+		record := records[i]
+		if record.ID != request.ConnectionID {
+			continue
+		}
+		if record.Provider != request.Provider || !providerEnabled(record.Provider) || personalProviderConnectionsLocked(record.Provider) {
+			return nil, fmt.Errorf("connection unavailable")
+		}
+		if record.OwnerUserID == caller || admin {
+			return &record, nil
+		}
+		if request.Action == "usage" && providerUsageTerminalSafeForOthers(record.Provider) {
+			if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: caller, WorkspacePath: request.WorkspacePath}, record.Provider, record.ID); err == nil {
+				return &record, nil
+			}
+		}
+		return nil, fmt.Errorf("connection unavailable")
+	}
+	return nil, fmt.Errorf("connection unavailable")
+}
+
+// serverAccountAvailableToCaller reports whether the server account of
+// provider is available to caller for any product.
+func (api *StreamingAPI) serverAccountAvailableToCaller(ctx context.Context, caller, provider string) bool {
+	availability, err := effectiveServerAccountAvailability(ctx, provider)
+	if err != nil {
+		return false
+	}
+	for _, product := range []string{productWorkflows, productCrews, productCode} {
+		if availability.AvailableTo.admits(caller, product) {
+			return true
+		}
+	}
+	return false
 }

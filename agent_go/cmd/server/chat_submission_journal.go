@@ -456,7 +456,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 		}
 		workingDir = strings.TrimSpace(runtime.AgentSessionHandle.Provider.WorkingDir)
 		if runtime.AgentSessionHandle.ConnectionID != "" {
-			keys, keyErr := api.connectionAPIKeys(ctx, record.Owner, provider, runtime.AgentSessionHandle.ConnectionID)
+			keys, keyErr := api.connectionAPIKeys(ctx, providerAccountScope{Principal: record.Owner, WorkspacePath: record.Project}, provider, runtime.AgentSessionHandle.ConnectionID)
 			if keyErr != nil {
 				return false
 			}
