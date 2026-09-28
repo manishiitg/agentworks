@@ -1,8 +1,10 @@
 package relayproduct
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+	"text/template"
 )
 
 func TestBuilderPromptLoadsProductManifest(t *testing.T) {
@@ -13,6 +15,26 @@ func TestBuilderPromptLoadsProductManifest(t *testing.T) {
 	for _, required := range []string{"planning/plan.json", "authored_prompt", "script_only", "value_path"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay product prompt is missing %q", required)
+		}
+	}
+}
+
+func TestBuilderPromptRendersRelayVariableExamples(t *testing.T) {
+	prompt, err := BuilderPrompt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := template.New("relay-builder").Parse(prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, variable := range []string{"{{input}}", "{{input.field}}", "{{steps.id.output.field}}"} {
+		if !strings.Contains(rendered.String(), variable) {
+			t.Fatalf("rendered Relay prompt is missing %q", variable)
 		}
 	}
 }

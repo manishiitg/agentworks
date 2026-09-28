@@ -675,6 +675,17 @@ export const getStepStatus = (stepLogs: StepExecutionLogs): 'completed' | 'faile
     return 'pending'
   }
 
+  // A saved Python script can fail before a validation record is written.
+  // Its last fast-path execution carries the terminal failure directly. Other
+  // step types may recover from an earlier failed attempt, so do not treat
+  // any historical execution error as their final status.
+  const latestExecution = executions[executions.length - 1]
+  if ((latestExecution?.fast_path || latestExecution?.content?.mode === 'scripted_fast_path') &&
+    (latestExecution.content?.success === false ||
+      (typeof latestExecution.content?.exit_code === 'number' && latestExecution.content.exit_code !== 0))) {
+    return 'failed'
+  }
+
   // Check validations first for finality
   if (validations.length > 0) {
     if (validations.some(v => v.content?.execution_status === 'FAILED')) {
