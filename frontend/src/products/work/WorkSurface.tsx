@@ -82,6 +82,7 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // data (transcripts, run databases, usage) the proxy will not serve
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
+const SHARED_CODE_WORKSPACE_PANELS: Set<string> = new Set(['files'])
 
 function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
   if (typeof window === 'undefined' || !projectId) return null
@@ -803,21 +804,23 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   // Code's plain shell: owners, co-owners and editors, never viewers.
   const showShell = product.profileId === 'code' && (!selected?.shared || selected.shared.role === 'editor' || selected.shared.role === 'co_owner')
   const isShared = Boolean(selected?.shared)
+  // A Code has no Memory: someone else's Code offers only its files.
+  const sharedPanels = product.profileId === 'code' ? SHARED_CODE_WORKSPACE_PANELS : SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared
-    ? (showShell ? new Set([...SHARED_CREW_WORKSPACE_PANELS, 'shell']) : SHARED_CREW_WORKSPACE_PANELS)
-    : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, showShell])
+    ? (showShell ? new Set([...sharedPanels, 'shell']) : sharedPanels)
+    : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels, showShell])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
-    if (selected?.shared && !SHARED_CREW_WORKSPACE_PANELS.has(panel) && !(panel === 'shell' && showShell)) return
+    if (selected?.shared && !sharedPanels.has(panel) && !(panel === 'shell' && showShell)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
     setPanelOpen(true)
     selectWorkspaceView(panel)
-  }, [selected?.shared, selectWorkspaceView, showShell, workspacePanels])
+  }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -1232,25 +1235,22 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               >
                 <WorkspaceTopToolbar className={layout.toolbarClassName}>
                   {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
+                  {product.profileId === 'code' && selected ? (
+                    <button
+                      type="button"
+                      onClick={() => setShareOpen(true)}
+                      title={selected.shared ? `${selected.shared.ownerUsername || selected.shared.ownerId}’s ${product.noun} · you are ${selected.shared.role === 'co_owner' ? 'a co-owner' : `a ${selected.shared.role || 'viewer'}`}` : 'Share this workspace'}
+                      className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                    >
+                      <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
+                    </button>
+                  ) : null}
                   {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
-                  {product.profileId === 'code' ? (
-                    <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {selected.shared
-                          ? `${selected.shared.ownerUsername || selected.shared.ownerId}’s ${product.noun} · you are ${selected.shared.role === 'co_owner' ? 'a co-owner' : `a ${selected.shared.role || 'viewer'}`}. Admins on this server can view it.`
-                          : 'Private to you and the people you share it with. Admins on this server can view it.'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShareOpen(true)}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-background"
-                      >
-                        <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
-                      </button>
-                    </div>
-                  ) : selected.shared ? (
+                  {/* A Code's privacy notice lives in Setup → General and the
+                      Share dialog, not above every chat. */}
+                  {product.profileId !== 'code' && selected.shared ? (
                     <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                       <span className="min-w-0 flex-1 text-muted-foreground">
                         {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · read-only. Your chats stay private to you.

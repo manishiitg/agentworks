@@ -37,7 +37,7 @@ profile:
       # it and usable only in its owner's chats; never the shared accounts.
       options: {channels: "slack,whatsapp", dm_only: "true", gmail: own}
     - dashboard
-    - memory
+    # No project Memory (user, 2026-09-28): a Code keeps notes in its files.
     - costs
     - background-work
     - workspace-ui
@@ -55,11 +55,6 @@ profile:
     enabled:
       - get_file_link
       - get_report_link
-  commands:
-    - name: update-memory
-      description: Update project memory and skills from this conversation
-      icon: brain
-      file: commands/update-memory.md
   runtime:
     transport: auto
     provider_options:
