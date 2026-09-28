@@ -316,7 +316,12 @@ type ServerConfig struct {
 
 // ActiveSessionInfo represents an active session for page refresh recovery
 type ActiveSessionInfo struct {
-	SessionID                   string           `json:"session_id"`
+	SessionID string `json:"session_id"`
+	// TurnProvider is the principal the current turn runs as (its claims
+	// provider): the web chat's login provider, "bot_user" for the person's
+	// 1:1 Slack DM, "bot_owner" for their WhatsApp, "bot_route" for a shared
+	// Slack channel route. Set on every turn, never inherited.
+	TurnProvider                string           `json:"-"`
 	ParentSessionID             string           `json:"parent_session_id,omitempty"`
 	SessionKind                 string           `json:"session_kind,omitempty"`
 	AgentMode                   string           `json:"agent_mode"`
@@ -4095,6 +4100,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	api.activeSessionsMux.Lock()
 	if sess, ok := api.activeSessions[sessionID]; ok {
 		sess.Username = queryLogCtx.Username
+		sess.TurnProvider = ""
+		if claims := GetUserFromContext(r.Context()); claims != nil {
+			sess.TurnProvider = claims.Provider
+		}
 		if label := strings.TrimSpace(req.TriggeredByLabel); label != "" {
 			sess.TriggeredByLabel = label
 		}
