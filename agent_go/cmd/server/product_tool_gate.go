@@ -70,6 +70,18 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 	return gate
 }
 
+// newProductToolGateForAllowlist applies a product chat surface through the
+// same registration chokepoint used by profile tool policies.
+func newProductToolGateForAllowlist(productID string, names []string) *productToolGate {
+	gate := &productToolGate{profileID: productID, allowed: make(map[string]struct{}, len(names))}
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			gate.allowed[name] = struct{}{}
+		}
+	}
+	return gate
+}
+
 // enforcing reports whether the gate filters. False means observe mode.
 func (g *productToolGate) enforcing() bool { return g != nil && g.allowed != nil }
 

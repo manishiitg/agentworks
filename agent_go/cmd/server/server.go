@@ -5632,6 +5632,27 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
+		relayChat := false
+		if isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
+			manifest, found, manifestErr := ReadWorkflowManifest(r.Context(), workflowPhaseFolder)
+			if manifestErr != nil {
+				sendError(fmt.Sprintf("Failed to read workflow manifest: %v", manifestErr), true)
+				return
+			}
+			if found && manifest.Kind == "relay" {
+				relayChat = true
+				if currentUserIsReadOnly {
+					sendError("Relay Builder requires edit access to this Relay.", true)
+					return
+				}
+				relayTools, toolErr := relayproduct.BuilderTools()
+				if toolErr != nil {
+					sendError(fmt.Sprintf("Failed to load Relay Builder tools: %v", toolErr), true)
+					return
+				}
+				toolGate = newProductToolGateForAllowlist("relays", relayTools)
+			}
+		}
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
@@ -6354,8 +6375,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if currentUserIsReadOnly {
 						chatMode = "run"
 					}
-					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !agentworksproduct.ChatAllowsTool(chatMode, toolName) {
-						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because AgentWorks product.yaml does not admit it in %s mode", toolName, chatMode)
+					allowedHumanTool := false
+					if relayChat {
+						allowedHumanTool = relayproduct.BuilderAllowsTool(toolName)
+					} else {
+						allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
+					}
+					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !allowedHumanTool {
+						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
 					if isWorkflowPhase && (accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
@@ -6766,7 +6793,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.
-			hasProductAllowlist := resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
+			hasProductAllowlist := relayChat || resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
 			if common.IsCLIProvider(req.Provider) && !hasProductAllowlist {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
@@ -6855,14 +6882,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// skill so the builder agent sees what the workflow has
 					// learned across runs. Mirrors the step-time attach in
 					// step_based_workflow.appendSupplementaryPrompts.
-					if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
-						_ = llmAgent.AttachSkill(globalSkill)
-						log.Printf("[SKILLS] Auto-attached workflow global skill (_global) from learnings/_global/SKILL.md")
+					if !relayChat {
+						if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
+							_ = llmAgent.AttachSkill(globalSkill)
+							log.Printf("[SKILLS] Auto-attached workflow global skill (_global) from learnings/_global/SKILL.md")
+						}
 					}
 					// Playbooks are workflow-local skills for Builder setup. They are
 					// intentionally attached here, after the definitive workflow path is
 					// known, and never added to the workflow execution skill defaults.
-					if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
+					if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && !relayChat {
 						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr == nil && found {
 							builderSkills := installedBuilderSkillNames(manifest.InstalledPlaybooks)
 							for _, playbookSkill := range skills.LoadAttachableIn(getWorkspaceAPIURL(), phaseWorkspacePath, builderSkills) {
@@ -6922,6 +6951,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					"WorkspacePath":               phaseWorkspacePath,
 					"IsCodeExecutionMode":         fmt.Sprintf("%v", phaseIsCodeExec),
 					"UseProjectedReferenceSkills": "true", // legacy template key; mcpagent read_skill is transport-neutral
+				}
+				if relayChat {
+					phaseTemplateVars["WorkflowKind"] = "relay"
 				}
 
 				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
@@ -7081,14 +7113,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if phaseWorkspacePath != "" {
 						phaseManifest, phaseFound, phaseMErr := ReadWorkflowManifest(context.Background(), phaseWorkspacePath)
 						if phaseMErr == nil && phaseFound {
-							if phaseManifest.Kind == "relay" {
-								relayPrompt, relayErr := relayproduct.BuilderPrompt()
-								if relayErr != nil {
-									sendError(fmt.Sprintf("Failed to load Relay product contract: %v", relayErr), true)
-									return
-								}
-								phaseAdditions = append(phaseAdditions, relayPrompt)
-							}
 							configuredBrowserMode := strings.ToLower(strings.TrimSpace(phaseManifest.Capabilities.BrowserMode))
 							phaseConfiguredCDPPorts := configuredCDPPortsForMode(configuredBrowserMode, req.CdpPort, append(append([]int{}, req.CdpPorts...), phaseManifest.Capabilities.CDPPorts...))
 
@@ -7109,7 +7133,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 								// upload rules, session limits) lives in the builder-reference
 								// mega-skill as `browser-usage` and is fetched on demand.
 								browserPrompt := "\n## Browser\n\nThis phase has a browser tool configured (mode=" + configuredBrowserMode +
-									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints. Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints.\n"
+								if !relayChat {
+									browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+								}
 								if configuredBrowserMode == "auto" || configuredBrowserMode == "cdp" {
 									_, endpointGuidance := cdpPromptEndpoints(phaseConfiguredCDPPorts, phaseBrowserCfg.CdpPort)
 									browserPrompt += endpointGuidance + " These are configured candidates only; `agent_browser status` is authoritative for current reachability.\n"
@@ -7299,7 +7326,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if newWorkshopMode != "" {
 			activeForPolicy, _ := api.getActiveSession(sessionID)
 			currentPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForPolicy, currentUserIsReadOnly)
-			policyKey := api.chatPolicySessionKey(currentPolicy)
+			policyWorkflowKind := ""
+			if relayChat {
+				policyWorkflowKind = "relay"
+			}
+			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
 			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()

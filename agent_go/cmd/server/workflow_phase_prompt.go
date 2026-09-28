@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
@@ -25,6 +26,22 @@ This Builder request was made by the signed-in user below. Use this identity to 
 // runtime sections (notification preferences, secret names, browser configuration)
 // are passed in by the caller, so size and content tests exercise the same path.
 func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx promptContext, additions ...string) (string, []string, []string, error) {
+	if phase == "workflow-builder" && vars["WorkflowKind"] == "relay" {
+		chatPrompt, err := relayproduct.BuilderPrompt()
+		if err != nil {
+			return "", nil, nil, err
+		}
+		parts := []string{chatPrompt, "## Workspace\n\nActive Relay workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Relay Builder tools and attached skills."}
+		if ctx.WorkflowUIAvailable {
+			parts = append(parts, "## Relay views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
+		}
+		for _, addition := range additions {
+			if strings.TrimSpace(addition) != "" {
+				parts = append(parts, addition)
+			}
+		}
+		return strings.Join(parts, "\n\n"), nil, nil, nil
+	}
 	parts := &workflowPromptParts{parts: []string{workflow.PhaseChatSystemPrompt(phase, vars)}}
 	// Other phase templates keep their existing reference contract. Builder
 	// (including Run) is the skill-backed surface migrated here.
