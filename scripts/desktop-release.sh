@@ -141,15 +141,21 @@ if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
   die "GitHub release already exists: $tag"
 fi
 
+# The repository's "Latest" release may be SparkQuill's (sparkquill-v*), so
+# the previous AgentWorks release is the highest published plain vX.Y.Z tag,
+# the same filter the desktop updater uses.
 previous_tag=""
-if previous_tag="$(gh release view --repo "$REPO" --json tagName --jq .tagName 2>/dev/null)"; then
-  if [[ ! "$previous_tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-    die "Latest release tag is not plain semver: $previous_tag"
+while IFS= read -r candidate; do
+  [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
+  if [[ -z "$previous_tag" ]] || semver_gt "$candidate" "$previous_tag"; then
+    previous_tag="$candidate"
   fi
-  semver_gt "$tag" "$previous_tag" || die "$tag must be greater than Latest release $previous_tag"
+done < <(gh release list --repo "$REPO" --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' 2>/dev/null)
+if [[ -n "$previous_tag" ]]; then
+  echo "==> Previous AgentWorks release: $previous_tag"
+  semver_gt "$tag" "$previous_tag" || die "$tag must be greater than the previous AgentWorks release $previous_tag"
 else
-  previous_tag=""
-  echo "==> No published release exists; validating this as the first release"
+  echo "==> No published AgentWorks release exists; validating this as the first release"
 fi
 
 echo "==> Building changelog"
