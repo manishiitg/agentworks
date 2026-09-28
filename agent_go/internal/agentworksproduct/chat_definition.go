@@ -40,14 +40,23 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 			}
 			toolSeen[name] = true
 		}
-		// The external CLI/MCP API is run-mode access: only the run mode
-		// admits external tools, and it must admit at least one.
+		// External Run tools and the four explicit Builder operations have separate admission lists.
 		if mode == "run" {
 			if len(def.ExternalTools) == 0 {
 				return fmt.Errorf("chat run: external_tools are required")
 			}
-		} else if len(def.ExternalTools) != 0 {
-			return fmt.Errorf("chat %s: external_tools belong on the run mode only", mode)
+		}
+		if mode == "builder" {
+			expected := map[string]bool{"builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true}
+			for _, name := range def.ExternalTools {
+				if !expected[name] {
+					return fmt.Errorf("invalid Builder external tool %q", name)
+				}
+				delete(expected, name)
+			}
+			if len(expected) != 0 {
+				return fmt.Errorf("Builder external operations are incomplete")
+			}
 		}
 		if mode != "run" && len(def.ExternalDenylist) != 0 {
 			return fmt.Errorf("chat %s: external_denylist belongs on the run mode only", mode)
@@ -148,4 +157,9 @@ func ChatSkills(mode string) []string {
 func ChatDefinitionKey(mode string) string {
 	sum := sha256.Sum256([]byte(ChatPromptTemplate(mode) + "\x00" + strings.Join(ChatSkills(mode), "\x00") + "\x00" + strings.Join(ChatTools(mode), "\x00")))
 	return fmt.Sprintf("%x", sum[:])
+}
+
+// BuilderExternalTools exposes only the delegated Builder operation contract.
+func BuilderExternalTools() []string {
+	return append([]string(nil), mustAgentWorksManifest().Chat["builder"].ExternalTools...)
 }

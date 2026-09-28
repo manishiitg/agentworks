@@ -208,7 +208,8 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			allowed := map[string]bool{}
 			for _, wf := range visible {
 				if wf.Manifest != nil {
-					allowed[wf.Manifest.ID] = true
+					role := workflowAccessForManifest(c, wf.Manifest)
+					allowed[wf.Manifest.ID] = !t.Allows("builder:chat") || role == WorkflowAccessOwner || role == WorkflowAccessWrite
 				}
 			}
 			for _, id := range t.WorkflowIDs {
@@ -270,6 +271,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalCodeReviewTool(tool.Name) {
 		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
 	}
+	if strings.HasPrefix(tool.Name, "builder_") {
+		return externalBuilderEnabled() && c.AccessToken != nil && c.AccessToken.BuilderAccess()
+	}
 	if c.AccessToken == nil {
 		return true
 	}
@@ -284,9 +288,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			return t.Allows("crews:write")
 		}
 		return t.Allows("crews:read")
-	}
-	if strings.HasPrefix(tool.Name, "builder_") {
-		return t.FullBuilderAccess()
 	}
 	if tool.plan {
 		return t.Allows("plan:write")
@@ -324,6 +325,9 @@ func accessTokenSessionPrefix(c *UserClaims) string { return "pat-" + c.AccessTo
 func accessTokenRunToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.AccessToken == nil {
 		return false
+	}
+	if externalBuilderToolDenied(claims, name) {
+		return true
 	}
 	for _, denied := range agentworksproduct.RunExternalDenylist() {
 		if denied == name {

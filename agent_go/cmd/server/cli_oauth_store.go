@@ -25,7 +25,7 @@ func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context) (deviceCode, verifi
 	if _, err = s.db.ExecContext(ctx, `DELETE FROM cli_devices WHERE expires_at<=?`, time.Now().Unix()); err != nil {
 		return
 	}
-	scopes, _ := json.Marshal(mcpOAuthScopes)
+	scopes, _ := json.Marshal(mcpOAuthDefaultScopes)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO cli_devices(hash,verification_hash,scopes,status,expires_at) SELECT ?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM cli_devices)<10000`, mcpOAuthHash(deviceCode), mcpOAuthHash(verificationCode), string(scopes), time.Now().Add(10*time.Minute).Unix())
 	if err == nil {
 		var n int64

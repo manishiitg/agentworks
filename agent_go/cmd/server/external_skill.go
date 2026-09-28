@@ -39,7 +39,7 @@ func buildHostedSkillMarkdown(origin string) string {
 	fmt.Fprintf(&body, `
 # AgentWorks
 
-You are connected to an AgentWorks server at %s via MCP. This connection exposes exactly two tools and reads and runs through them: tools read, and run-mode tools execute in pinned Run-mode sessions. Nothing creates, edits, or authors. Workflows below are identified by workflow ID, never by filesystem path.
+You are connected to an AgentWorks server at %s via MCP. This connection exposes exactly two tools and reads and runs through them: tools read, and run-mode tools execute in pinned Run-mode sessions. Workflow editing requires the separately authorized Builder operations described below. Workflows below are identified by workflow ID, never by filesystem path.
 
 ## First step
 
@@ -63,9 +63,11 @@ Workflows expose typed functions (their Builder defines them): `+"`list_workflow
 
 Crews are persistent AgentWorks agents. Discover them with `+"`list_crews`"+` (IDs, never paths); `+"`get_crew`"+` shows identity, model, and functions. Read project files with `+"`list_crew_files`"+` / `+"`read_crew_file`"+`; find a file by name with `+"`list_crew_files`"+`' `+"`glob`"+` (e.g. `+"`**/*CHECKLIST*`"+`, with `+"`depth`"+` up to 8) or by content with `+"`search_crew_files`"+` instead of paging the whole listing. Call a Crew's typed functions with `+"`call_crew_function`"+` (arguments must match `+"`list_crew_functions`"+`), or ask anything with `+"`ask_crew`"+`. `+"`ask_crew`"+` is your own message in your own chat of that Crew, the same chat your web chat, Slack DMs and WhatsApp continue (for a Crew you own, its main chat), so repeated asks are a chat and you see them in the app. `+"`call_crew_function`"+` runs in a separate conversation for your calls. Functions are agentic and usually take minutes: a call returns at once with `+"`status: running`"+` and a `+"`call_id`"+`, then poll `+"`get_crew_function_call`"+` for progress and the result (pass `+"`wait_seconds`"+`, max 25, only for a quick one). Never call again for the same work: repeating an identical call while it runs returns the same `+"`call_id`"+`. To ask a Crew's owner for a change, use `+"`suggest_crew_change`"+` (`+"`crews:run`"+`); the owner reviews it in the Crew's Suggestions view. To author, `+"`create_crew`"+` makes a Crew you own from a spec, `+"`update_crew`"+` edits one you own, and `+"`export_crew`"+` / `+"`import_crew`"+` move a Crew between accounts or servers as a portable spec (`+"`crews:write`"+`; only the owner edits).
 
-## Answer from reading
+## Builder
 
-If the task needs a change, say so instead of attempting one — authoring is not exposed.
+When builder_chat appears in get_api_spec, the connection can delegate plan/code edits to the workflow's configured Builder model on selected workflows where you have write access. Check get_agent_context for the workflow's effective tools. builder_chat continues your existing workflow chat (the owner's main chat); send a unique submission_id with each new request. Poll builder_status using operation_id, answer that operation's pending questions with builder_reply_input, and cancel only that operation with builder_cancel. Reuse the submission_id to retry uncertain delivery; do not resend the same edit with a new ID. Native shell and account tools are unavailable to this Builder mode.
+
+If Builder is absent, describe or suggest the needed workflow change; do not attempt an unavailable authoring operation.
 `, server)
 	return body.String()
 }

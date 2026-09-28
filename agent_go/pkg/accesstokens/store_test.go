@@ -166,3 +166,49 @@ func TestOpenMigratesPreCrewDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestBuilderAccessRequiresExplicitBoundedConsent(t *testing.T) {
+	now := time.Now()
+	base := Token{Name: "Builder", UserID: "owner", Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}, ExpiresAt: now.Add(time.Hour)}
+	if !base.BuilderAccess() || Validate(base, now) != nil {
+		t.Fatal("valid bounded Builder grant rejected")
+	}
+	for _, scope := range base.Scopes {
+		token := base
+		token.Scopes = nil
+		for _, other := range base.Scopes {
+			if other != scope {
+				token.Scopes = append(token.Scopes, other)
+			}
+		}
+		if token.BuilderAccess() {
+			t.Errorf("missing %s admitted Builder", scope)
+		}
+	}
+	for _, ids := range [][]string{nil, {""}, {" invoices"}, {"invoices", "invoices"}} {
+		token := base
+		token.WorkflowIDs = ids
+		if token.BuilderAccess() || Validate(token, now) == nil {
+			t.Errorf("invalid bounds accepted: %q", ids)
+		}
+	}
+	token := base
+	token.AllWorkflows = true
+	token.WorkflowIDs = nil
+	if token.BuilderAccess() || Validate(token, now) == nil {
+		t.Fatal("all-workflow Builder admitted")
+	}
+	store, err := Open(filepath.Join(t.TempDir(), "tokens.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	_, raw, err := store.Issue(context.Background(), base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Authenticate(context.Background(), raw, now)
+	if err != nil || !got.BuilderAccess() || !got.AllowsWorkflow("invoices") || got.AllowsWorkflow("secret") {
+		t.Fatalf("Builder roundtrip: %+v %v", got, err)
+	}
+}

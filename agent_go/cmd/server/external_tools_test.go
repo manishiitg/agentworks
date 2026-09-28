@@ -239,7 +239,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	for _, name := range agentworksproduct.RunExternalDenylist() {
 		denied[name] = true
 	}
-	wantCatalog := append([]string(nil), admitted...)
+	wantCatalog := append(append([]string(nil), admitted...), agentworksproduct.BuilderExternalTools()...)
 	for _, name := range run {
 		if denied[name] {
 			continue
@@ -262,8 +262,8 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates {
-			t.Fatalf("admitted tool %s mutates: tokens never author", tool.Name)
+		if tool.mutates && !strings.HasPrefix(tool.Name, "builder_") {
+			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
 	// Only the run surface executes: the proxied run.tools names plus the
@@ -370,8 +370,12 @@ func TestExternalToolsHTTPMutationsAreNotExposed(t *testing.T) {
 		"builder_cancel":       {"workflow_id": "invoices", "session_id": "anything"},
 	}
 	for name, args := range calls {
-		body := externalTestBody(t, f.call(t, "owner", name, args), 404)
-		if body["error"].(map[string]any)["code"] != "unknown_tool" {
+		wantStatus, wantCode := 404, "unknown_tool"
+		if strings.HasPrefix(name, "builder_") {
+			wantStatus, wantCode = 403, "insufficient_scope"
+		}
+		body := externalTestBody(t, f.call(t, "owner", name, args), wantStatus)
+		if body["error"].(map[string]any)["code"] != wantCode {
 			t.Fatalf("wrong error for %s: %v", name, body)
 		}
 	}

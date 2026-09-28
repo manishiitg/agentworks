@@ -146,3 +146,13 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 		})
 	}
 }
+
+func TestWorkflowBrowserFollowupCannotInterruptActiveExternalBuilder(t *testing.T) {
+	canceled := false
+	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
+	api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{"chat": {id: "external-operation"}}
+	compatible, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
+	if err != nil || compatible || canceled {
+		t.Fatal("browser request could reconfigure MCP operation", compatible, err, canceled)
+	}
+}

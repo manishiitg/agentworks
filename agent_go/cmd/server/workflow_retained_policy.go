@@ -76,7 +76,7 @@ func (api *StreamingAPI) workflowRetainedPolicyCompatible(ctx context.Context, s
 		}
 	}
 	active, _ := api.getActiveSession(session)
-	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, access == WorkflowAccessRead))
+	key := api.chatPolicySessionKey(resolveWorkflowChatPolicy(session, req, active, readOnlyForRequest(access, req)))
 	api.conversationMux.RLock()
 	previous, known := api.lastChatPolicyBySession[session]
 	api.conversationMux.RUnlock()
@@ -139,7 +139,7 @@ func closeWorkflowPolicyCLI(session, provider, reason string) {
 // Synthetic notifications and explicit new turns must wait for their normal
 // lane; they cannot interrupt a foreground turn merely to try warm delivery.
 func (api *StreamingAPI) prepareWorkflowRetainedDelivery(ctx context.Context, session string, req QueryRequest, eligible bool) (bool, error) {
-	if !eligible {
+	if !eligible || api.externalBuilderOwnsSession(session) {
 		return false, nil
 	}
 	compatible, err := api.workflowRetainedPolicyCompatible(ctx, session, req)
