@@ -361,7 +361,9 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	postSlackMessage func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
+	externalBuilderRuntime      externalBuilderRuntime
+	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
+	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
 
 	botExecutionSessions sync.Map // session -> trusted connector request context
 
@@ -744,17 +746,18 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
-	ConnectionID    string   `json:"connection_id,omitempty"`
-	Query           string   `json:"query"`
-	Message         string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
-	SessionTitle    string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
-	ParentSessionID string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind     string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
-	Servers         []string `json:"servers,omitempty"`
-	EnabledServers  []string `json:"enabled_servers,omitempty"`
-	SelectedTools   []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
-	Provider        string   `json:"provider,omitempty"`
-	ModelID         string   `json:"model_id,omitempty"`
+	ExternalBuilderOperationID string   `json:"-"` // Set from authenticated execution claims.
+	ConnectionID               string   `json:"connection_id,omitempty"`
+	Query                      string   `json:"query"`
+	Message                    string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
+	SessionTitle               string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
+	ParentSessionID            string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
+	SessionKind                string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
+	Servers                    []string `json:"servers,omitempty"`
+	EnabledServers             []string `json:"enabled_servers,omitempty"`
+	SelectedTools              []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
+	Provider                   string   `json:"provider,omitempty"`
+	ModelID                    string   `json:"model_id,omitempty"`
 	// ReasoningEffort overrides the "reasoning_effort" key of an agent
 	// profile's provider_options[].Options for this turn only; every other
 	// key stays as declared. Ignored outside the profile query path.
@@ -1488,9 +1491,13 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	if !shouldUseDurableConversationTurnQueue(req) || conversationTurnQueueExecution(r.Context()) ||
-		!api.conversationTurnOccupied(sessionID) {
+		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID)) {
 		return false
 	}
+	return api.queueConversationTurnResponse(w, r, userID, sessionID, req)
+}
+
+func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
 	if err != nil {
 		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
@@ -3715,6 +3722,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
 	}
+	// External Builder authority is carried only by authenticated dispatch/queue
+	// context. JSON cannot supply it, including when reusing a browser chat.
+	if claims := GetUserFromContext(r.Context()); claims != nil {
+		req.ExternalBuilderOperationID = claims.ExternalBuilderOperationID
+	}
+	if req.ExternalBuilderOperationID != "" {
+		claims, err := api.validateExternalBuilderTurn(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
@@ -3737,7 +3757,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A workflow may keep durable read-only links in workflow.json. Merge those
 	// with one-message # references before the common authorization boundary so
 	// both forms receive identical access checks and folder guards.
-	if contextErr := admitTurnContextPaths(r.Context(), &req); contextErr != nil {
+	if contextErr := admitWorkflowBuilderContextPaths(r.Context(), &req); contextErr != nil {
 		http.Error(w, contextErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -3874,6 +3894,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Do not let a browser follow-up reconfigure or steer an MCP operation.
+	// Its own claims are persisted by the queue and restored on its next turn.
+	if api.externalBuilderOwnsSession(sessionID) && !conversationTurnQueueExecution(r.Context()) {
+		// Preserve browser retry idempotency before the early queue return.
+		// Enqueue even if the MCP turn finishes during journal admission;
+		// kickConversationTurnQueue will then execute the idle chat's turn.
+		var finish func()
+		var accepted bool
+		w, r, finish, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
+		if !accepted {
+			return
+		}
+		defer finish()
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		return
+	}
+
 	var resolvedProfileSkills []*llmtypes.Skill
 	if resolvedProfile != nil {
 		identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
@@ -3969,7 +4006,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer finishSubmission()
 	}
-	preferRetainedDelivery := shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
+	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
 	}
@@ -5552,9 +5589,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[PI_CLI_CONFLICT] Cleared %d conflicting Pi CLI session(s) before starting chat session %s in %s", closed, sessionID, chatWorkingDir)
 			}
 		}
+		if req.ExternalBuilderOperationID != "" {
+			req.DecryptedSecrets = nil
+			noGlobalSecrets := []string{}
+			req.SelectedGlobalSecrets = &noGlobalSecrets
+		}
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
+		}
+		if req.ExternalBuilderOperationID != "" {
+			codingAgentSecretEnvironment = map[string]string{}
 		}
 		nativeShellAPITransport := false
 		if resolvedProfile != nil && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.APITransport.Mode), "native_shell") {
@@ -5593,6 +5638,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
+		if req.ExternalBuilderOperationID != "" {
+			claims := GetUserFromContext(r.Context())
+			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
@@ -5701,6 +5750,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// Apply the external Builder boundary last, including after a Code
+		// profile has considered any personal server overrides.
+		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
 		} else {
@@ -5748,6 +5800,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// See conditional_grants.go for the registry. The result is reused across
 		// every folder guard and system prompt site below.
 		resolvedGrants := resolveConditionalGrants(req)
+		if req.ExternalBuilderOperationID != "" {
+			resolvedGrants = ResolvedGrants{}
+		}
 		// When skill-creator is selected, ensure it's installed (auto-fetch from GitHub
 		// if missing). This is the one piece of grant-specific logic that doesn't fit
 		// the registry — it's an install-on-demand side effect unique to skill-creator.
@@ -5775,6 +5830,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Extract #workflow read-only folders early — needed both inside isChatMode block
 		// (for folder guard setup) and in the workflow_phase block (for shell isolator).
 		_, workflowReadOnlyFolders := collectSplitFolderGuardFolders(req.Query, req.authorizedWorkflowContextReadPaths)
+		if req.ExternalBuilderOperationID != "" {
+			workflowReadOnlyFolders = nil
+		}
 
 		if isChatMode && llmAgent.GetUnderlyingAgent() != nil {
 			// Handle browser access: when enabled, add agent-browser skill
@@ -5843,6 +5901,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
 			}
+			if req.ExternalBuilderOperationID != "" {
+				chatAgentSecretEnv = map[string]string{}
+			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
 				WorkspaceAPIURL:      getWorkspaceAPIURL(),
 				UserID:               currentUserID,
@@ -5874,6 +5935,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Merge @context file paths into additional folder-guard write access.
 			// workflowReadOnlyFolders was computed above.
 			fileContextWriteFolders := extractFileContextWriteFolders(req.Query)
+			if req.ExternalBuilderOperationID != "" {
+				fileContextWriteFolders = nil
+			}
 			if len(fileContextWriteFolders) > 0 {
 				log.Printf("[FILE CONTEXT] Extracted write folder-guard paths from @context: %v", fileContextWriteFolders)
 			}
@@ -5890,6 +5954,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// workflow_layout.json must go through typed plan-mod tools that serialize
 			// full structs, not raw writes.
 			var fileContextBlockedWriteFolders []string
+			if req.ExternalBuilderOperationID != "" {
+				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/workflow.json")
+			}
 			if execution, ok := api.botExecutionForSession(sessionID); ok && execution.Request.PresetQueryID != "" {
 				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/runs/iteration-0/")
 			}
@@ -6081,6 +6148,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
+				if req.ExternalBuilderOperationID != "" {
+					readPaths, writePaths = externalBuilderFolderPaths(workflowPhaseFolder)
+					workspaceExecutors = wrapExecutorsWithFolderGuard(workspaceExecutors, "EXTERNAL BUILDER", "EXTERNAL BUILDER", folderGuardContextWorkflow, nil, fileContextBlockedWriteFolders, writePaths)
+				}
 				workspace.SetSessionFolderGuard(sessionID,
 					readPaths,
 					writePaths,
@@ -6104,11 +6175,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					!currentUserIsReadOnly,
 				)
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
-				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
+				if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
 				}
-				todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+				if req.ExternalBuilderOperationID == "" {
+					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+				}
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
+			}
+
+			if err := api.registerExternalBuilderWorkspaceTools(llmAgent, workflowPhaseFolder, GetUserFromContext(r.Context())); err != nil {
+				sendError(fmt.Sprintf("Failed to register external Builder file tools: %v", err), true)
+				return
 			}
 
 			// Coding-agent adapters project system instructions, selected skills,
@@ -6138,6 +6216,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				toolName := tool.Function.Name
+				if externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName) {
+					continue
+				}
 				if profileDisablesVirtualTool(resolvedProfile, toolName) {
 					log.Printf("[AGENT_PROFILE] Skipping disabled virtual tool %s for profile %s", toolName, resolvedProfile.Definition.ID)
 					continue
@@ -6269,7 +6350,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because AgentWorks product.yaml does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
-					if isWorkflowPhase && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) {
+					if isWorkflowPhase && (accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
 						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
 						continue
 					}
@@ -6413,7 +6494,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[SKILL TOOLS] Registered multi-agent skill tools")
 			}
-			if isWorkflowBuilderPhase {
+			if isWorkflowBuilderPhase && req.ExternalBuilderOperationID == "" {
 				if err := api.registerAccessibleWorkflowListTool(llmAgent, currentUserID, nil); err != nil {
 					logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Failed to register accessible workflow listing: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow discovery tools: %v", err), true)
@@ -6421,7 +6502,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Registered list_accessible_workflows for Builder")
 			}
-			if isWorkflowPhase {
+			if isWorkflowPhase && req.ExternalBuilderOperationID == "" {
 				if err := api.registerWorkflowLLMDiscoveryTools(llmAgent); err != nil {
 					logfWithContext(queryLogCtx, "[LLM TOOLS] Failed to register workflow LLM discovery tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow LLM discovery tools: %v", err), true)
@@ -6738,6 +6819,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseReadPaths,
 						[]string{phaseWorkspacePath, "Downloads"},
 					)
+					if req.ExternalBuilderOperationID != "" {
+						readPaths, writePaths := externalBuilderFolderPaths(phaseWorkspacePath)
+						workspace.SetSessionFolderGuard(sessionID, readPaths, writePaths)
+						workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, []string{phaseWorkspacePath + "/workflow.json", phaseWorkspacePath + "/planning/"})
+						protectOtherWorkflowBuilderChats(sessionID, phaseWorkspacePath, currentUserID)
+					}
 					// The phase setup above rebuilds the long-lived Builder guard.
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
@@ -6746,10 +6833,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseWorkspacePath,
 						!currentUserIsReadOnly,
 					)
-					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
+					if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
-					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+					if req.ExternalBuilderOperationID == "" {
+						todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+					}
 					if len(workflowReadOnlyFolders) > 0 {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
 					}
@@ -7048,6 +7137,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// surface — there is no per-turn narrowing for one path to
 				// apply and the other to miss.
 				syntheticReq := QueryRequest{
+					ExternalBuilderOperationID:  req.ExternalBuilderOperationID,
 					TriggeredBy:                 req.TriggeredBy,
 					ParentSessionID:             req.ParentSessionID,
 					SessionKind:                 req.SessionKind,
@@ -7063,7 +7153,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					PresetQueryID:               req.PresetQueryID,
 				}
 				if err := api.installWorkflowPhaseTools(
-					setupCtx, llmAgent, sessionID, currentUserID,
+					setupCtx, externalBuilderRegistrar(llmAgent, GetUserFromContext(r.Context())), sessionID, currentUserID,
 					workflowPhaseID, phaseWorkspacePath, phaseRunFolder,
 					phaseTemplateVars, selectedServers, mergedAPIKeys,
 					phaseReadFile, phaseWriteFile, phaseMoveFile,
@@ -10502,6 +10592,17 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	if !policyKnown && strings.HasPrefix(submissionProject, "Workflow/") {
 		http.Error(w, "Workflow session configuration is unavailable; reopen the workflow chat", http.StatusConflict)
 		return
+	}
+	policyRequest.ExternalBuilderOperationID = ""
+	if policyKnown && api.externalBuilderOwnsSession(sessionID) {
+		policyRequest.Query = req.Message
+		policyRequest.Message = ""
+		policyRequest.TriggeredBy = "interactive"
+		policyRequest.IsAutoNotification = false
+		policyRequest.DisableLiveInputDelivery = true
+		if api.queueOccupiedConversationTurn(w, r, GetUserIDFromContext(r.Context()), sessionID, policyRequest) {
+			return
+		}
 	}
 	if policyKnown {
 		compatible, policyErr := api.workflowRetainedPolicyCompatible(r.Context(), sessionID, policyRequest)

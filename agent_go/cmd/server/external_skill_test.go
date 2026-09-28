@@ -120,7 +120,7 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 		"get_agent_context",
 		"list_workflows",
 		"run_status",
-		"authoring is not exposed",
+		"If Builder is absent",
 	} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("skill.md missing %q", want)

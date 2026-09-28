@@ -34,12 +34,12 @@ const (
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; nothing creates, edits, or authors. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; if the task needs a change, say so instead of attempting one.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Tools read, and run-mode tools execute in pinned Run-mode sessions; workflow authoring requires separately granted Builder tools. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; use only operations present in this connection’s catalog.`
 
 const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a read-only connection. It gives access to the user's workflows (list_workflows) and Crews (list_crews); when asked what is available, cover both. Admins and Code reviewers also get read-only, audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat). Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. Discover workflow IDs with list_workflows first; IDs are never filesystem paths. Answer from what you read; if the task needs a change, say so instead of attempting one.`
 
 // Appended when the connection holds crews:write: the one authoring surface
-// external connections have.
+// available to separately authorized Crew connections.
 const externalMCPCrewAuthoringInstructions = `Exception: create_crew, update_crew and import_crew create and edit Crews you own (get_crew shows the full spec; export_crew returns a portable spec).`
 
 var externalMCPToolSchemas = map[string]map[string]any{
@@ -110,6 +110,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	for _, tool := range allowed {
 		if tool.Name == "create_crew" {
 			instructions += " " + externalMCPCrewAuthoringInstructions
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if tool.Name == "builder_chat" {
+			instructions += " Builder: use builder_chat to send editing requests to the configured model in your existing workflow chat. Use a unique submission_id, poll builder_status by operation_id, and answer pending questions with builder_reply_input. builder_cancel stops only that operation. Check get_agent_context(workflow_id) for current effective tools."
 			break
 		}
 	}
@@ -184,7 +190,11 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 	sub.ContentLength = int64(len(body))
 	rec := &externalMCPRecorder{header: http.Header{}}
 	api.handleExternalCall(rec, sub)
-	if rec.status != http.StatusOK {
+	return externalMCPDispatchResult(rec)
+}
+
+func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
+	if rec.status < 200 || rec.status >= 300 {
 		return mcp.NewToolResultError(externalMCPErrorText(rec))
 	}
 	var value any

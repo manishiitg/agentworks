@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -170,7 +171,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The Code review tools are listed only for admins and Code reviewers.
-	want := len(catalog)
+	want := len(catalog) - len(agentworksproduct.BuilderExternalTools())
 	if !claimsCanReviewCode(&UserClaims{UserID: "owner", Username: "owner"}) {
 		want -= len(externalCodeReviewTools)
 	}

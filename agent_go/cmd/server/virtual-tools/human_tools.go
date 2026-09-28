@@ -1098,6 +1098,7 @@ func handleHumanFeedback(ctx context.Context, args map[string]interface{}) (stri
 		options,
 		len(options) == 0,
 		waitTimeout,
+		feedbackOperationFromContext(ctx),
 	); err != nil {
 		return "", fmt.Errorf("failed to create feedback request: %w", err)
 	}

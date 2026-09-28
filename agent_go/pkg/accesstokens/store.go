@@ -30,23 +30,23 @@ var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:wri
 var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat"}
 
 type Token struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	UserID       string     `json:"-"`
-	Username     string     `json:"-"`
-	Email        string     `json:"-"`
-	Provider     string     `json:"-"`
-	Scopes       []string   `json:"scopes"`
-	WorkflowIDs  []string   `json:"workflow_ids"`
-	AllWorkflows bool       `json:"all_workflows"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	UserID       string   `json:"-"`
+	Username     string   `json:"-"`
+	Email        string   `json:"-"`
+	Provider     string   `json:"-"`
+	Scopes       []string `json:"scopes"`
+	WorkflowIDs  []string `json:"workflow_ids"`
+	AllWorkflows bool     `json:"all_workflows"`
 	// CrewIDs / AllCrews bound crews:read, crews:run and crews:write the same way
 	// WorkflowIDs / AllWorkflows bound the workflow permissions.
-	CrewIDs  []string `json:"crew_ids"`
-	AllCrews bool     `json:"all_crews"`
-	CreatedAt    time.Time  `json:"created_at"`
-	ExpiresAt    time.Time  `json:"expires_at"`
-	LastUsedAt   *time.Time `json:"last_used_at"`
-	RevokedAt    *time.Time `json:"revoked_at"`
+	CrewIDs    []string   `json:"crew_ids"`
+	AllCrews   bool       `json:"all_crews"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
 }
 
 func (t Token) Allows(scope string) bool { return slices.Contains(t.Scopes, scope) }
@@ -67,6 +67,28 @@ func (t Token) FullBuilderAccess() bool {
 	}
 	return true
 }
+
+// BuilderAccess is explicit authoring consent restricted to selected workflows.
+// Direct file/plan write scopes are deliberately unnecessary and remain unissued.
+func (t Token) BuilderAccess() bool {
+	if t.AllWorkflows || len(t.WorkflowIDs) == 0 || len(t.WorkflowIDs) > 200 {
+		return false
+	}
+	for _, scope := range []string{"builder:chat", "workflows:read", "files:read", "runs:execute"} {
+		if !t.Allows(scope) {
+			return false
+		}
+	}
+	seen := map[string]bool{}
+	for _, id := range t.WorkflowIDs {
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) != id || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return true
+}
+
 func Validate(t Token, now time.Time) error {
 	if strings.TrimSpace(t.Name) == "" || len(t.Name) > 80 || t.UserID == "" {
 		return errors.New("a token name (1–80 characters) and user are required")
@@ -82,12 +104,8 @@ func Validate(t Token, now time.Time) error {
 		if !slices.Contains(Scopes, s) || seen[s] {
 			return errors.New("invalid or duplicate permission")
 		}
-		// Tokens read and run, like the Slack and WhatsApp run-mode
-		// channels: authoring permissions are not issued. Existing stored
-		// tokens are unaffected; the external catalog exposes no authoring
-		// mutations for them.
-		if s == "files:write" || s == "plan:write" || s == "builder:chat" {
-			return errors.New("tokens cannot author: files:write, plan:write, and builder:chat are not issued")
+		if s == "files:write" || s == "plan:write" {
+			return errors.New("direct files:write and plan:write permissions are not issued; use scoped Builder chat")
 		}
 		seen[s] = true
 	}
@@ -116,8 +134,8 @@ func Validate(t Token, now time.Time) error {
 	if !hasCrewScope && (t.AllCrews || len(t.CrewIDs) > 0) {
 		return errors.New("Crew bounds need a Crew permission (crews:read, crews:run or crews:write)")
 	}
-	if t.Allows("builder:chat") && !t.FullBuilderAccess() {
-		return errors.New("Builder chat requires all permissions and all accessible workflows because its runtime can execute tools and shell commands")
+	if t.Allows("builder:chat") && !t.BuilderAccess() {
+		return errors.New("Builder chat requires workflows:read, files:read, runs:execute and specific workflow IDs; all-workflows authoring is not supported")
 	}
 	return nil
 }

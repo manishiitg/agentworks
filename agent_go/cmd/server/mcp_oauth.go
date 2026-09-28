@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,7 +24,10 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 
 // code:review is inert for anyone but an admin or Code reviewer: the tools
 // re-check the account on every call.
-var mcpOAuthScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
+var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
+
+// Builder is supported only when explicitly requested, never by default.
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -40,7 +44,7 @@ func mcpOAuthURLs() (origin, resource string, ok bool) {
 func mcpOAuthChallenge(w http.ResponseWriter) {
 	origin, _, ok := mcpOAuthURLs()
 	if ok {
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+mcpOAuthProtectedResourcePath+`", scope="`+strings.Join(mcpOAuthScopes, " ")+`"`)
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+mcpOAuthProtectedResourcePath+`", scope="`+strings.Join(mcpOAuthDefaultScopes, " ")+`"`)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 }
@@ -143,7 +147,7 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 func validMCPOAuthScopes(raw string) ([]string, bool) {
 	scopes := strings.Fields(raw)
 	if len(scopes) == 0 {
-		scopes = append([]string(nil), mcpOAuthScopes...)
+		scopes = append([]string(nil), mcpOAuthDefaultScopes...)
 	}
 	if len(scopes) > len(mcpOAuthScopes) {
 		return nil, false
@@ -154,6 +158,9 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 			return nil, false
 		}
 		seen[scope] = true
+	}
+	if seen["builder:chat"] && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
+		return nil, false
 	}
 	return scopes, true
 }
@@ -202,6 +209,49 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 	http.Redirect(w, r, "/oauth/consent?request="+url.QueryEscape(id), http.StatusSeeOther)
 }
 
+// builderConsentWorkflows applies the same live account and workflow ACL as
+// workflow discovery. Selection is revalidated when consent is submitted.
+func builderConsentWorkflows(ctx context.Context, claims *UserClaims) ([]map[string]string, error) {
+	discovered, err := DiscoverWorkflowManifests(ctx)
+	if err != nil {
+		return nil, err
+	}
+	choices := []map[string]string{}
+	for _, wf := range filterWorkflowManifestsForUser(claims, discovered) {
+		if wf.MyAccess == WorkflowAccessOwner || wf.MyAccess == WorkflowAccessWrite {
+			choices = append(choices, map[string]string{"id": wf.Manifest.ID, "label": wf.Manifest.Label})
+		}
+	}
+	return choices, nil
+}
+
+func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, scopes, ids []string) error {
+	if !slices.Contains(scopes, "builder:chat") {
+		if len(ids) != 0 {
+			return errors.New("workflow selection requires explicitly requested Builder permission")
+		}
+		return nil
+	}
+	token := accesstokens.Token{Scopes: scopes, WorkflowIDs: ids}
+	if !token.BuilderAccess() {
+		return errors.New("Builder requires companion read/run permissions and selected workflows")
+	}
+	choices, err := builderConsentWorkflows(ctx, claims)
+	if err != nil {
+		return err
+	}
+	allowed := map[string]bool{}
+	for _, wf := range choices {
+		allowed[wf["id"]] = true
+	}
+	for _, id := range ids {
+		if !allowed[id] {
+			return errors.New("selected workflow is not editable")
+		}
+	}
+	return nil
+}
+
 func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	claims := GetUserFromContext(r.Context())
@@ -231,23 +281,32 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			mcpOAuthError(w, http.StatusNotFound, "invalid_client")
 			return
 		}
+		var workflows []map[string]string
+		if slices.Contains(request.Scopes, "builder:chat") {
+			workflows, err = builderConsentWorkflows(r.Context(), claims)
+			if err != nil {
+				mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes)})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes), "editable_workflows": workflows})
 		return
 	}
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	r.Body = http.MaxBytesReader(w, r.Body, 32768)
 	var input struct {
-		Decision string `json:"decision"`
+		Decision    string   `json:"decision"`
+		WorkflowIDs []string `json:"workflow_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.Decision != "approve" && input.Decision != "deny" {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	request, code, err := store.Decide(r.Context(), id, claims, input.Decision == "approve")
+	request, code, err := store.Decide(r.Context(), id, claims, input.Decision == "approve", input.WorkflowIDs)
 	if err != nil {
 		mcpOAuthError(w, http.StatusNotFound, "invalid_request")
 		return
@@ -399,8 +458,8 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	if grant.ClientID == cliOAuthClientID {
 		name = "AgentWorks CLI"
 	}
-	// An OAuth grant reaches everything the user can: all their workflows and,
-	// when a Crew permission was approved, all Crews they can use.
+	// Legacy read/run grants reach all accessible workflows. Builder grants
+	// bind every workflow permission to the explicitly selected IDs.
 	allCrews := slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
-	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, AllWorkflows: true, AllCrews: allCrews, ExpiresAt: grant.Expires}
+	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && !slices.Contains(grant.Scopes, "builder:chat"), AllCrews: allCrews, ExpiresAt: grant.Expires}
 }

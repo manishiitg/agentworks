@@ -1,6 +1,7 @@
 package virtualtools
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"time"
@@ -35,10 +36,14 @@ func (s *HumanFeedbackStore) PendingForSession(sessionID string, now time.Time) 
 // store/waiter protocol used by the UI. Checking a public ListPending snapshot
 // before SubmitResponse would race IDs reused by another session.
 func (s *HumanFeedbackStore) SubmitResponseForSession(sessionID, requestID, response string, now time.Time) error {
+	return s.submitScopedResponse(sessionID, "", requestID, response, now)
+}
+
+func (s *HumanFeedbackStore) submitScopedResponse(sessionID, operationID, requestID, response string, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	request := s.requests[requestID]
-	if request == nil || sessionID == "" || request.SessionID != sessionID || request.IsCompleted || (!request.ExpiresAt.IsZero() && !now.Before(request.ExpiresAt)) {
+	if request == nil || sessionID == "" || request.SessionID != sessionID || (operationID != "" && request.OperationID != operationID) || request.IsCompleted || (!request.ExpiresAt.IsZero() && !now.Before(request.ExpiresAt)) {
 		return ErrFeedbackNotPending
 	}
 	if !request.AllowFeedback && len(request.Options) > 0 {
@@ -62,4 +67,36 @@ func (s *HumanFeedbackStore) SubmitResponseForSession(sessionID, requestID, resp
 		}
 	}
 	return nil
+}
+
+// Feedback operation provenance is attached by authenticated tool dispatch.
+type feedbackOperationContextKey struct{}
+
+func WithFeedbackOperation(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, feedbackOperationContextKey{}, id)
+}
+func feedbackOperationFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(feedbackOperationContextKey{}).(string)
+	return id
+}
+
+func (s *HumanFeedbackStore) WithdrawOperation(operationID string) {
+	if operationID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, request := range s.requests {
+		if request != nil && request.OperationID == operationID {
+			delete(s.requests, id)
+			if waiter, ok := s.waiters[id]; ok {
+				close(waiter)
+				delete(s.waiters, id)
+			}
+		}
+	}
+}
+
+func (s *HumanFeedbackStore) SubmitResponseForOperation(sessionID, operationID, requestID, response string, now time.Time) error {
+	return s.submitScopedResponse(sessionID, operationID, requestID, response, now)
 }

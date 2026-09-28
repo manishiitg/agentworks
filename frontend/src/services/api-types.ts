@@ -2932,6 +2932,8 @@ export interface PlanChangelogEntry {
     session_id?: string
     user_id?: string
     username?: string
+    operation_id?: string
+    via_token?: string
   }
   file?: string
 }

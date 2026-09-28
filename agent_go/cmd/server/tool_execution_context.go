@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	stepbased "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -36,7 +38,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if bound == nil || strings.TrimSpace(bound.UserID) == "" || strings.TrimSpace(authoritySession) == "" || strings.TrimSpace(toolSession) == "" {
 			return nil, fmt.Errorf("%s requires an authenticated session", tool)
 		}
-		if accessTokenRunToolDenied(bound, tool) {
+		if accessTokenRunToolDenied(bound, tool) || externalBuilderToolDenied(bound, tool) {
 			return nil, fmt.Errorf("%s is unavailable to external access tokens", tool)
 		}
 		callerSession := executor.SessionIDFromContext(ctx)
@@ -86,6 +88,21 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 		}
 		copy := *bound
+		if copy.ExternalBuilderOperationID != "" {
+			// Resolve the persisted grant for every tool, including delegated tools.
+			// The operation is bound to the durable parent, never the child ID.
+			validationCtx := context.WithValue(ctx, UserContextKey, &copy)
+			fresh, err := api.validateExternalBuilderTurn(validationCtx, copy.ExternalBuilderOperationID, authoritySession, req.SelectedFolder)
+			if err != nil {
+				return nil, err
+			}
+			copy = *fresh
+			ctx = virtualtools.WithFeedbackOperation(ctx, copy.ExternalBuilderOperationID)
+			ctx = stepbased.WithExternalBuilderPlanOrigin(ctx, copy.ExternalBuilderOperationID, copy.AccessToken.ID, copy.UserID, copy.Username, authoritySession)
+			if externalBuilderToolDenied(&copy, tool) {
+				return nil, fmt.Errorf("%s is unavailable to external Builder operations", tool)
+			}
+		}
 		ctx = context.WithValue(ctx, UserContextKey, &copy)
 		ctx = context.WithValue(ctx, common.UserIDKey, copy.UserID)
 		ctx = executor.WithSessionID(ctx, toolSession)

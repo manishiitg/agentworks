@@ -51,14 +51,15 @@ func sanitizedQueuedConversationRequest(req QueryRequest) QueryRequest {
 // attributes needed to reconstruct and revalidate a delayed turn. It never
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
-	Provider                string `json:"provider,omitempty"`
-	AccessTokenID           string `json:"access_token_id,omitempty"`
-	SlackTrustedApp         bool   `json:"slack_trusted_app,omitempty"`
-	BotRouteGrant           string `json:"bot_route_grant,omitempty"`
-	BotRouteWorkflowID      string `json:"bot_route_workflow_id,omitempty"`
-	BotRouteProfileID       string `json:"bot_route_profile_id,omitempty"`
-	BotRouteConversationKey string `json:"bot_route_conversation_key,omitempty"`
-	BotRouteWorkspacePath   string `json:"bot_route_workspace_path,omitempty"`
+	ExternalBuilderOperationID string `json:"external_builder_operation_id,omitempty"`
+	Provider                   string `json:"provider,omitempty"`
+	AccessTokenID              string `json:"access_token_id,omitempty"`
+	SlackTrustedApp            bool   `json:"slack_trusted_app,omitempty"`
+	BotRouteGrant              string `json:"bot_route_grant,omitempty"`
+	BotRouteWorkflowID         string `json:"bot_route_workflow_id,omitempty"`
+	BotRouteProfileID          string `json:"bot_route_profile_id,omitempty"`
+	BotRouteConversationKey    string `json:"bot_route_conversation_key,omitempty"`
+	BotRouteWorkspacePath      string `json:"bot_route_workspace_path,omitempty"`
 }
 
 type queuedConversationTurn struct {
@@ -92,7 +93,8 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 		return queuedConversationPrincipal{}
 	}
 	principal := queuedConversationPrincipal{
-		Provider: claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
+		ExternalBuilderOperationID: claims.ExternalBuilderOperationID,
+		Provider:                   claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
 		BotRouteGrant: claims.BotRouteGrant, BotRouteWorkflowID: claims.BotRouteWorkflowID,
 		BotRouteProfileID: claims.BotRouteProfileID, BotRouteConversationKey: claims.BotRouteConversationKey,
 		BotRouteWorkspacePath: claims.BotRouteWorkspacePath,
@@ -287,8 +289,15 @@ func (api *StreamingAPI) executeQueuedConversationTurn(turn queuedConversationTu
 			err = principalErr
 		} else {
 			ctx = withConversationTurnQueueExecution(ctx)
-			result, err = api.startSessionInternalWithResult(ctx, reqMap, turn.SessionID, turn.UserID, callback)
+			if turn.Principal.ExternalBuilderOperationID != "" {
+				result, err = api.runQueuedExternalBuilder(ctx, turn, reqMap)
+			} else {
+				result, err = api.startSessionInternalWithResult(ctx, reqMap, turn.SessionID, turn.UserID, callback)
+			}
 		}
+	}
+	if err != nil && turn.Principal.ExternalBuilderOperationID != "" {
+		_ = settleExternalBuilder(turn.Principal.ExternalBuilderOperationID, "failed", "", err.Error())
 	}
 	outcome, proof := "confirmed", "conversation_turn_completed"
 	if err != nil {
@@ -332,21 +341,16 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	copy.BotRouteConversationKey = turn.Principal.BotRouteConversationKey
 	copy.BotRouteWorkspacePath = turn.Principal.BotRouteWorkspacePath
 	if turn.Principal.AccessTokenID != "" {
-		store, err := openAccessTokens()
-		if err != nil {
-			return nil, err
-		}
-		token, activeErr := store.Active(ctx, turn.Principal.AccessTokenID, time.Now())
-		_ = store.Close()
-		if activeErr != nil {
-			return nil, activeErr
-		}
-		tokenClaims, claimsErr := accessTokenClaims(token)
+		tokenClaims, claimsErr := activeExternalGrantClaims(ctx, turn.Principal.AccessTokenID)
 		if claimsErr != nil {
 			return nil, claimsErr
 		}
+		if tokenClaims.UserID != turn.UserID {
+			return nil, errors.New("queued grant owner does not match the conversation")
+		}
 		copy = *tokenClaims
 	}
+	copy.ExternalBuilderOperationID = turn.Principal.ExternalBuilderOperationID
 	ctx = context.WithValue(ctx, UserContextKey, &copy)
 	if turn.SubmissionID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{

@@ -198,6 +198,7 @@ func externalTools() ([]externalTool, error) {
 		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
+		externalBuilderDefinitions(add)
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native
@@ -213,7 +214,7 @@ func externalTools() ([]externalTool, error) {
 		for _, name := range agentworksproduct.RunExternalDenylist() {
 			denied[name] = true
 		}
-		admitted := agentworksproduct.RunExternalTools()
+		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
 			if denied[name] {
@@ -416,7 +417,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// Conversation access follows the builder runtime: workflow readers may
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
-		api.externalBuilderCall(w, r, tool.Name, args, *selected)
+		api.externalBuilderOperationCall(w, r, tool.Name, args, *selected)
 		return
 	}
 	if tool.Name == "get_file_link" {

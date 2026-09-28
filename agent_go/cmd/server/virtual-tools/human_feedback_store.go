@@ -14,6 +14,7 @@ import (
 
 // HumanFeedbackRequest represents a pending feedback request
 type HumanFeedbackRequest struct {
+	OperationID    string    `json:"operation_id,omitempty"` // Trusted turn provenance, never model arguments.
 	UniqueID       string    `json:"unique_id"`
 	MessageForUser string    `json:"message_for_user"`
 	Context        string    `json:"context,omitempty"`
@@ -74,7 +75,7 @@ func (s *HumanFeedbackStore) CreateRequestWithoutNotification(uniqueID, message 
 // CreatePendingRequest registers the authoritative UI-visible state for a
 // blocking human request. Frontends list this store directly instead of
 // relying on whether the originating session's event stream is mounted.
-func (s *HumanFeedbackStore) CreatePendingRequest(uniqueID, message, contextMsg, sessionID string, options []string, allowFeedback bool, timeout time.Duration) error {
+func (s *HumanFeedbackStore) CreatePendingRequest(uniqueID, message, contextMsg, sessionID string, options []string, allowFeedback bool, timeout time.Duration, operationID ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -106,6 +107,9 @@ func (s *HumanFeedbackStore) CreatePendingRequest(uniqueID, message, contextMsg,
 		ExpiresAt:      time.Now().Add(timeout),
 	}
 
+	if len(operationID) > 0 {
+		s.requests[uniqueID].OperationID = operationID[0]
+	}
 	s.waiters[uniqueID] = make(chan string, 1)
 
 	return nil
@@ -311,7 +315,10 @@ func (s *HumanFeedbackStore) WaitForResponseCtx(parent context.Context, uniqueID
 	}
 	for {
 		select {
-		case response := <-waiter:
+		case response, open := <-waiter:
+			if !open {
+				return "", ErrFeedbackCancelled
+			}
 			return response, nil
 		case <-timer.C:
 			return "", fmt.Errorf("timeout waiting for feedback: %w", context.DeadlineExceeded)
