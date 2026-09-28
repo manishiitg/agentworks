@@ -2426,6 +2426,14 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				return fmt.Sprintf("Step %q is ALREADY RUNNING (execution_id: %q) — not starting a duplicate. You'll be notified when it completes. End the current agent turn instead of polling; use query_step(step_id=%q) only if the user explicitly requests a live status check, or stop that execution first if the user wants a fresh run. (Concurrent runs of the same step race on shared state and can double-act.)", stepID, existing.ID, stepID), nil
 			}
+			// Pulse runs alongside the workflow's own schedules; it must not run
+			// a step the workflow is running right now, or the step acts twice.
+			if check := iwm.pulseStepBusyCheck(); check != nil {
+				if busy := check(ctx, iwm.controller.GetWorkspacePath(), stepID); busy != "" {
+					logger.Info(fmt.Sprintf("⏭️ Workshop: execute_step(%q) held — %s", stepID, busy))
+					return fmt.Sprintf("Step %q is being run right now by the workflow's own run (%s), so it was NOT started again: two runs of one step can act twice (send or post twice). Check that run's result when it finishes (query_step or the run history) and verify from it; re-run the step later only if that result shows it is still needed.", stepID, busy), nil
+				}
+			}
 
 			// The plan type decides (PLAT-287); step_config.json is consulted
 			// only for the transitional legacy-agentic shim.
@@ -2550,8 +2558,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			execCtx = virtualtools.WithBackgroundAgentID(execCtx, execID)
 			execCtx = context.WithValue(execCtx, orchestrator_events.ParentExecutionIDKey, execID)
+			releaseRunningStep := RegisterRunningWorkflowStep(iwm.controller.GetWorkspacePath(), stepID, execID, iwm.mainSessionID)
 
 			go func() {
+				defer releaseRunningStep()
 				if workflowSessionID != "" {
 					defer virtualtools.UnregisterParentChat(workflowSessionID)
 				}
@@ -9334,4 +9344,13 @@ func notifySecretsAttached(callback func(set map[string]string, removed []string
 		}
 	}
 	callback(set, removed)
+}
+
+// pulseStepBusyCheck is the Pulse workshop's check for a step the workflow is
+// running right now, or nil outside Pulse.
+func (iwm *InteractiveWorkshopManager) pulseStepBusyCheck() func(context.Context, string, string) string {
+	if iwm == nil || iwm.workshopConfig == nil {
+		return nil
+	}
+	return iwm.workshopConfig.StepBusyForPulse
 }

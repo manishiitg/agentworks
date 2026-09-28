@@ -1,3 +1,16 @@
+## Scheduled runs lost to pauses and to Pulse, and Pulse did not act — PLAT-363
+
+[PLAT-363](pulse_platform/scheduler-runs/plat-363.md) explains 21 missed local
+runs: 18 were skipped by a global "Pause all", and 3 were refused while a
+Pulse fix run held the workflow's lock. Fix runs now use Pulse's own lock, so
+they no longer block schedules.
+- **Pulse:** its evidence now separates lost runs from deliberate skips.
+  Technical Review may set `queue_latest` on a real-work schedule that lost a
+  run, and Pulse holds off a step the workflow is running right now.
+- **UI:** the missed badge says why a run didn't happen, pause and resume leave
+  a history, and a resume offers a catch-up of the skipped runs.
+Pushed to main; restart and deploy pending.
+
 ## Agents could act as another session or workflow — PLAT-362
 
 [PLAT-362](pulse_platform/security-sandbox/plat-362.md) closes the path for an

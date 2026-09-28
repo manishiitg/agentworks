@@ -599,6 +599,10 @@ type WorkshopConfig struct {
 	// has). A reviewer about to finish without one gets one more turn, in its
 	// own conversation, to record it.
 	PulseReviewResultCheck func(ctx context.Context, module, pulseRunID string) error
+	// StepBusyForPulse, set only on Pulse workshops, returns a non-empty
+	// explanation when stepID is being run right now by the workflow's own
+	// (non-Pulse) run, so Pulse waits instead of running it a second time.
+	StepBusyForPulse func(ctx context.Context, workspacePath, stepID string) string
 	UseKnowledgebase       bool
 	LLMAllocationMode      string
 	TieredConfig           *TieredLLMConfig

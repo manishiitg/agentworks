@@ -49,7 +49,6 @@ import (
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	orchtypes "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/types"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
@@ -11753,28 +11752,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					sb.WriteString("\n")
 				}
 			}
-			// Every scheduled occurrence is recorded here, including ones the
-			// scheduler correctly decided NOT to run (a global pause, another
-			// schedule already owning the workflow, a queued dependency) — those
-			// never produce a schedule_runs row above at all. A schedule that
-			// looks silent in Run History can be a scheduler working exactly as
-			// designed the whole time; this is the only way to tell that apart
-			// from an actual missed/dropped occurrence.
+			// Every scheduled occurrence is recorded here, including the ones
+			// that never produce a schedule_runs row. They are grouped by what
+			// they mean: lost work, deferred work, or deliberately not run
+			// (schedule_fire_decision_kind.go).
 			if api.scheduler != nil {
 				if decisions, decErr := api.scheduler.ListFireDecisions(ctx, workspacePath, jobID, limit); decErr == nil {
-					var skipped []schedulerstate.FireDecision
-					for _, d := range decisions {
-						if d.Decision != "started" {
-							skipped = append(skipped, d)
-						}
-					}
-					if len(skipped) > 0 {
-						sb.WriteString(fmt.Sprintf("\n## Skipped/Non-Run Occurrences (%d)\n\n", len(skipped)))
-						for _, d := range skipped {
-							sb.WriteString(fmt.Sprintf("- scheduled_for=%s decision=%q reason=%q\n",
-								d.ScheduledFor.Format("2006-01-02 15:04:05"), d.Decision, d.Reason))
-						}
-					}
+					sb.WriteString(formatScheduleNonRunOccurrences(decisions, collisionPolicyForSchedule(ctx, workspacePath, jobID)))
 				}
 			}
 			return sb.String(), nil

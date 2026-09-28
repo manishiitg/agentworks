@@ -57,8 +57,25 @@ resource/file list as proof that overlap is safe. Preserve sequential behavior
 unless the schedule has `concurrency_mode="parallel"` and
 `parallel_risk_acknowledged=true`, recording human approval after the
 shared-state overwrite and duplicate-action risks were disclosed. A separate
-`iteration-N-sched` folder isolates output/logs only; dependencies, self-overlap,
-manual work and Pulse remain serialized.
+`iteration-N-sched` folder isolates output/logs only; dependencies, self-overlap
+and manual work remain serialized. Pulse runs hold their own
+one-per-workflow lock and run alongside the workflow's schedules.
+
+`get_schedule_runs` groups occurrences that did not start:
+- **Lost runs**: the work never happened. When a schedule that does real work
+  (sends, posts, bids, writes, grows) lost a run because the workflow was busy
+  and its `collision_policy` is `skip`, repair it yourself. Use
+  `update_schedule` to set `collision_policy="queue_latest"` with a
+  `max_start_delay_minutes` that fits its purpose: short for a time-of-day post,
+  hours for daily work, most of a day for a weekly job. Verify the saved policy,
+  and record what was lost and what you set. A pure check or reminder may stay
+  on `skip`.
+- **Deferred runs** will still run.
+- **Deliberately not run** (paused, disabled) is the owner's choice: not a
+  defect, and no policy change.
+
+Parallel mode, new dependency edges or reordering stay with Architecture Review
+and the user.
 
 Use `get_pulse_state(view="backlog", detail="compact")` and semantic issue IDs.
 New step-raised `CONCERNS:` lines since the previous Pulse are in

@@ -1,3 +1,4 @@
+import { missedScheduleReasonText } from '../../../utils/scheduleRunPresentation'
 import type { ScheduledJob } from '../../../services/api-types'
 import { normalizeWorkspacePath } from '../../../utils/workspacePathUtils'
 
@@ -223,12 +224,7 @@ export function getScheduleDependencyIds(job: ScheduledJob): string[] {
 }
 
 export function formatMissedScheduleReason(job: ScheduledJob): string {
-  switch (job.missed_run_reason) {
-    case 'no_execution_recorded':
-      return 'No run started at the scheduled time'
-    default:
-      return 'No run record was found for the scheduled time'
-  }
+  return missedScheduleReasonText(job.missed_run_reason)
 }
 
 export function formatOverdueDuration(durationMs: number): string {

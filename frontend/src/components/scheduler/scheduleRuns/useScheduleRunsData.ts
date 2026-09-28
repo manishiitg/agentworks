@@ -10,7 +10,7 @@ import { selectWorkflowPreset } from '../../../utils/workflowNavigation'
 import { scheduleTabLabel } from '../../../utils/scheduleTabLabel'
 import { resolveWorkflowTabForSession } from '../../../utils/workflowTabResolution'
 import { hydrateExecutionConversation } from '../../../utils/executionConversationRestore'
-import type { ScheduledJob, ScheduledJobRun, SchedulerConfig } from '../../../services/api-types'
+import type { ScheduledJob, ScheduledJobRun, SchedulerConfig, SkippedWhilePaused } from '../../../services/api-types'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import {
   WORKFLOW_SCHEDULE_PANEL_LIMIT,
@@ -76,6 +76,9 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedWorkflowFilter, setSelectedWorkflowFilter] = useState('all')
   const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig | null>(null)
+  // After a resume: the runs the pause skipped, offered for a manual catch-up.
+  const [pauseCatchUp, setPauseCatchUp] = useState<SkippedWhilePaused[]>([])
+  const [isRunningCatchUp, setIsRunningCatchUp] = useState(false)
   const [isUpdatingSchedulerPause, setIsUpdatingSchedulerPause] = useState(false)
   const [bulkUpdatingGroupKey, setBulkUpdatingGroupKey] = useState<string | null>(null)
 
@@ -747,11 +750,30 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
         paused_by: !isSchedulerPaused ? 'frontend-user' : '',
       })
       setSchedulerConfig(updated)
+      if (isSchedulerPaused) setPauseCatchUp(updated.skipped_while_paused ?? [])
     } catch (e) {
       console.error('Failed to update scheduler config:', e)
     } finally {
       setIsUpdatingSchedulerPause(false)
     }
+  }
+
+  // Runs each chosen schedule once now. A pause may have skipped several
+  // occurrences of one schedule; one catch-up run stands for them.
+  const runPauseCatchUp = async (scheduleIds: string[]) => {
+    if (scheduleIds.length === 0) return
+    setIsRunningCatchUp(true)
+    const failed: string[] = []
+    for (const id of scheduleIds) {
+      try {
+        await schedulerApi.triggerJob(id)
+      } catch {
+        failed.push(id)
+      }
+    }
+    setIsRunningCatchUp(false)
+    setPauseCatchUp(prev => prev.filter(item => failed.includes(item.schedule_id)))
+    if (failed.length > 0) useChatStore.getState().addToast(`${failed.length} catch-up run(s) could not start.`, 'error')
   }
 
   const toggleWorkflowGroup = useCallback((workflowKey: string) => {
@@ -784,6 +806,10 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const activeFilterLabel = filterPills.find((pill) => pill.key === activeFilter)?.label ?? 'All'
 
   return {
+    pauseCatchUp,
+    isRunningCatchUp,
+    runPauseCatchUp,
+    dismissPauseCatchUp: () => setPauseCatchUp([]),
     isReadOnlyUser,
     isLoading,
     error,

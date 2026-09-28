@@ -305,12 +305,14 @@ func errBadRequest(format string, args ...interface{}) error {
 
 type workflowMissedStatusResolver struct {
 	ctx     context.Context
+	svc     *SchedulerService
 	history map[string]*WorkflowScheduleExecutionHistoryFile
 }
 
-func newWorkflowMissedStatusResolver(ctx context.Context) *workflowMissedStatusResolver {
+func newWorkflowMissedStatusResolver(ctx context.Context, svc *SchedulerService) *workflowMissedStatusResolver {
 	return &workflowMissedStatusResolver{
 		ctx:     ctx,
+		svc:     svc,
 		history: make(map[string]*WorkflowScheduleExecutionHistoryFile),
 	}
 }
@@ -351,7 +353,17 @@ func (r *workflowMissedStatusResolver) get(workspacePath string, sched WorkflowS
 	if !sched.Enabled {
 		return WorkflowScheduleMissedStatus{}
 	}
-	return ComputeWorkflowScheduleMissedStatus(sched, &tracker, now)
+	missed := ComputeWorkflowScheduleMissedStatus(sched, &tracker, now)
+	// "No run" has causes the scheduler records: a global pause, a busy
+	// workflow, an expired queue. Report that instead of a bare "missed".
+	if missed.MissedRunCount > 0 && missed.LatestMissedRunAt != nil && r.svc != nil {
+		if decisions, err := r.svc.ListFireDecisions(r.ctx, workspacePath, sched.ID, 50); err == nil {
+			if reason := missedReasonFromDecisions(decisions, *missed.LatestMissedRunAt); reason != "" {
+				missed.MissedRunReason = reason
+			}
+		}
+	}
+	return missed
 }
 
 // SchedulerRoutes registers the scheduler API routes.
@@ -509,7 +521,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 		entityTypeFilter := r.URL.Query().Get("entity_type")
 
 		var allJobs []ScheduledJobResponse
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 
 		if (entityTypeFilter == "" || entityTypeFilter == "workflow") &&
 			(modeFilter == "" || modeFilter == "workflow" || modeFilter == "workshop") {
@@ -739,7 +751,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		state := svc.GetRuntimeStateForWorkflow(req.WorkspacePath, newSched.ID)
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		resp := buildJobResponse(req.WorkspacePath, manifest, newSched, state, missedResolver.get(req.WorkspacePath, newSched))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -769,7 +781,7 @@ func getScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		state := runtimeStateForScheduleResult(svc, result, id)
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 
@@ -974,7 +986,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		state := svc.GetRuntimeStateForWorkflow(workspacePath, id)
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		resp := buildJobResponse(workspacePath, manifest, *sched, state, missedResolver.get(workspacePath, *sched))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1047,7 +1059,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			scheduleLogf("[SCHEDULER] Failed to reload schedule %s after enable: %v", id, err)
 		}
 		state := svc.GetRuntimeStateForWorkflow(result.WorkspacePath, id)
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 
@@ -1085,7 +1097,7 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, state, missedResolver.get(result.WorkspacePath, sched))
 
@@ -1195,7 +1207,7 @@ func stopScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		updatedState := runtimeStateForScheduleResult(svc, result, id)
-		missedResolver := newWorkflowMissedStatusResolver(r.Context())
+		missedResolver := newWorkflowMissedStatusResolver(r.Context(), svc)
 		sched := result.Manifest.Schedules[result.Index]
 		resp := buildJobResponse(result.WorkspacePath, result.Manifest, sched, updatedState, missedResolver.get(result.WorkspacePath, sched))
 

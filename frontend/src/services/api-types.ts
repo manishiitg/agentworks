@@ -3344,11 +3344,34 @@ export interface ListScheduledJobRunsResponse {
   offset: number
 }
 
+export interface SchedulerPauseEvent {
+  at: string
+  action: 'paused' | 'resumed'
+  user_id?: string
+  username?: string
+  via?: string
+  user_agent?: string
+  paused_since?: string
+}
+
+export interface SkippedWhilePaused {
+  workspace_path: string
+  workflow_label?: string
+  schedule_id: string
+  schedule_name?: string
+  count: number
+  latest_scheduled_for: string
+}
+
 export interface SchedulerConfig {
   globally_paused: boolean
   paused_at?: string
   paused_by?: string
   updated_at?: string
+  // Newest first: who paused or resumed all schedules, and through what client.
+  recent_pause_events?: SchedulerPauseEvent[]
+  // On a resume: the runs the pause skipped, per schedule.
+  skipped_while_paused?: SkippedWhilePaused[]
 }
 
 // --- Workflow Manifest Types (file-backed workflow definitions) ---

@@ -104,10 +104,14 @@ parallel opt-in must contain `concurrency_mode="parallel"` and
 `parallel_risk_acknowledged=true`, recording human approval after those fixed
 risks were disclosed; otherwise sequential execution remains authoritative.
 The server-bound `iteration-N-sched` folder protects run outputs/logs only;
-dependencies still wait, self-overlap is forbidden, and manual/Pulse work stays exclusive.
-Route a working but inefficient topology to
-Architecture Review, and a concrete missed-run, incorrect transition, or unsafe
-configuration repair to Technical Review. Load `references/schedules.md` in the
+dependencies still wait, self-overlap is forbidden, and manual work stays
+exclusive. Pulse runs hold their own lock and run alongside the workflow's
+schedules.
+Route a working but inefficient topology to Architecture Review, and a concrete
+missed-run, incorrect transition, or unsafe configuration repair to Technical
+Review. Any **Lost runs** in `get_schedule_runs` on a schedule that does real
+work is such a repair: make Technical Review due for it.
+**Deliberately not run** (paused or disabled) is not a finding. Load `references/schedules.md` in the
 selected reviewer before reasoning about or changing schedule policy.
 
 Compare exact pins against `list_provider_models` and
