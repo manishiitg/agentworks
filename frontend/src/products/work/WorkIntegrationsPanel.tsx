@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { AlertTriangle, Search, Server } from 'lucide-react'
 import ConnectorsBrowser from '../../components/connectors/ConnectorsBrowser'
@@ -12,6 +12,7 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
 import { useMCPStore } from '../../stores/useMCPStore'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { crewTemplates } from './crewTemplates'
 
@@ -61,9 +62,34 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
   // Selected for this project but not connected to the platform (e.g. a Crew
   // the Builder created with an app that still needs sign-in). Its tools do
   // not work until someone connects it, so say so and offer the way.
-  const needsConnecting = useMemo(() => toolsLoading ? [] : actualSelected.filter(serverName =>
-    !toolList.some(tool => tool.server && serverNamesMatch(tool.server, serverName) && tool.connection === 'connected')),
-  [toolsLoading, actualSelected, toolList])
+  // While the tool list reloads, keep showing what was last known instead of
+  // blinking the notice away (it vanished right after Connect on RTS: the
+  // reload hid it mid-action, 2026-09-28 QA #205 BUG_ID_004).
+  const lastNeedsConnecting = useRef<string[]>([])
+  const needsConnecting = useMemo(() => {
+    if (toolsLoading) return lastNeedsConnecting.current
+    const next = actualSelected.filter(serverName =>
+      !toolList.some(tool => tool.server && serverNamesMatch(tool.server, serverName) && tool.connection === 'connected'))
+    lastNeedsConnecting.current = next
+    return next
+  }, [toolsLoading, actualSelected, toolList])
+  // Connecting a platform app is admin-only (ConnectorsBrowser's rule); for
+  // anyone else Connect cannot do anything, so say who can.
+  const canConnectApps = useAuthStore(state =>
+    state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
+  )
+  const connectSectionRef = useRef<HTMLDivElement>(null)
+  const [connectFocus, setConnectFocus] = useState<string | null>(null)
+  useEffect(() => {
+    if (!connectFocus) return
+    connectSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    const timer = window.setTimeout(() => setConnectFocus(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [connectFocus])
+  const startConnect = (serverName: string) => {
+    setSearchQuery(serverName)
+    setConnectFocus(serverName)
+  }
 
   const setSelected = async (servers: string[]) => {
     const store = useChatStore.getState()
@@ -96,13 +122,17 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
             {needsConnecting.map(serverName => (
               <li key={serverName} className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{serverName}</span>
-                <button
-                  type="button"
-                  className="rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/40"
-                  onClick={() => setSearchQuery(serverName)}
-                >
-                  Connect
-                </button>
+                {canConnectApps ? (
+                  <button
+                    type="button"
+                    className="rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/40"
+                    onClick={() => startConnect(serverName)}
+                  >
+                    Connect
+                  </button>
+                ) : (
+                  <span className="text-xs text-amber-800/80 dark:text-amber-200/80">Only an admin can connect it.</span>
+                )}
                 <button
                   type="button"
                   className="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
@@ -169,9 +199,13 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
           className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </div>
-      <div className="mt-3 border-t border-border pt-3">
+      <div
+        ref={connectSectionRef}
+        data-testid="work-mcp-connect-section"
+        className={`mt-3 scroll-mt-3 border-t border-border pt-3 transition-colors ${connectFocus ? 'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/20 dark:ring-amber-700/60' : ''}`}
+      >
         <div className="mb-3 text-sm font-medium text-muted-foreground">
-          Connect a new app
+          {connectFocus ? `Connect ${connectFocus}` : 'Connect a new app'}
         </div>
         <ConnectorsBrowser
           compact
