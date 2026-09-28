@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -9317,6 +9318,11 @@ func validateStepLLMConfig(label, publishedID, provider, modelID string) string 
 	}
 	if provider == "" {
 		return fmt.Sprintf("%s sets model_id %q with no provider. Use get_llm_config to see which provider serves that model.", label, modelID)
+	}
+	if strings.EqualFold(provider, "agy-cli") {
+		if err := llmguard.RequireCodingAgentProvider(provider); err != nil {
+			return fmt.Sprintf("%s: %v", label, err)
+		}
 	}
 	if modelID == "" {
 		return fmt.Sprintf("%s sets provider %q with no model_id. Use get_llm_config (or list_coding_agent_models for a CLI provider) to pick one.", label, provider)

@@ -33,7 +33,20 @@ var supportedLLMProviders = []string{
 }
 
 func isPublishedLLMProviderAllowed(provider string) bool {
-	return llmguard.IsCodingAgentProvider(provider)
+	if !llmguard.IsCodingAgentProvider(provider) {
+		return false
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	for _, offered := range getSupportedProviders() {
+		if provider == offered {
+			return true
+		}
+	}
+	return false
+}
+
+func agyAlphaEnabled() bool {
+	return llmguard.AgyAlphaEnabled()
 }
 
 func defaultPublishedLLMProviderAndModel() (string, string) {
@@ -48,15 +61,21 @@ func defaultPublishedLLMProviderAndModel() (string, string) {
 
 // getSupportedProviders returns the list of supported LLM providers based on environment configuration
 func getSupportedProviders() []string {
+	offered := make([]string, 0, len(supportedLLMProviders))
+	for _, provider := range supportedLLMProviders {
+		if provider != "agy-cli" || agyAlphaEnabled() {
+			offered = append(offered, provider)
+		}
+	}
 	envValue := os.Getenv("SUPPORTED_LLM_PROVIDERS")
 	if envValue == "" {
-		return supportedLLMProviders
+		return offered
 	}
 
 	// Parse comma-separated list
 	parts := strings.Split(envValue, ",")
 	validProviders := make(map[string]bool)
-	for _, p := range supportedLLMProviders {
+	for _, p := range offered {
 		validProviders[p] = true
 	}
 
@@ -76,7 +95,7 @@ func getSupportedProviders() []string {
 	// If no valid providers found, return all
 	if len(supported) == 0 {
 		log.Printf("Warning: no valid providers found in SUPPORTED_LLM_PROVIDERS, enabling all providers")
-		return supportedLLMProviders
+		return offered
 	}
 
 	return supported
@@ -659,7 +678,7 @@ func getDefaultPublishedLLMs(locked bool, primaryConfig interface{}) []map[strin
 	// 3) Auto-generate defaults from AvailableModels for locked providers
 	var entries []map[string]interface{}
 	defaults := llm.GetLLMDefaults()
-	providers := append([]string(nil), supportedLLMProviders...)
+	providers := getSupportedProviders()
 
 	for _, p := range providers {
 		// If provider is locked (or global lock is on), include its available models

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
 
@@ -369,6 +370,9 @@ func validateCodingAgentProvider(provider, name string) error {
 	}
 	if !llmproviders.IsCodingAgentProvider(llmproviders.Provider(strings.ToLower(strings.TrimSpace(provider))), "") {
 		return fmt.Errorf("provider %q for %s is not supported: only coding-agent CLIs can run agents", provider, name)
+	}
+	if err := llmguard.RequireCodingAgentProvider(provider); err != nil {
+		return fmt.Errorf("provider for %s: %w", name, err)
 	}
 	return nil
 }

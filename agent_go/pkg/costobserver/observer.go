@@ -282,7 +282,7 @@ func (o *Observer) recordMCPCall(event *unifiedevents.AgentEvent, server, tool, 
 
 func isCodingCLIProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude-code", "claude_code", "codex-cli", "codex_cli", "cursor-cli", "cursor_cli", "pi-cli", "pi_cli", "muse-cli", "muse_cli":
+	case "claude-code", "claude_code", "codex-cli", "codex_cli", "cursor-cli", "cursor_cli", "pi-cli", "pi_cli", "muse-cli", "muse_cli", "agy-cli", "agy_cli":
 		return true
 	default:
 		return false
