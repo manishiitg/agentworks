@@ -277,10 +277,10 @@ Code ships a basic setup first; integrations come later. In Code's
 
 - **Code to Crew:** not supported. A Code does not become a Crew.
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
-- **Private MCP servers per Code:** deferred, to be handled later. For now a
-  Code uses the shared platform MCP servers like a Crew. When built: remote
-  (HTTP/SSE) only, never stdio, since a stdio server runs an arbitrary
-  command on the server outside the sandbox.
+- **MCP servers are private to the Code only** (user, 2026-09-28). A Code
+  never uses the shared platform servers. Design, for review:
+  [code_private_mcp.md](code_private_mcp.md). Until it is built, Code has no
+  MCP servers.
 - **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
   standalone shell panel (user, 2026-09-28; it was built and then removed):
   commands run through the agent's sandboxed shell tool, under the Code's
