@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/viper"
 )
 
@@ -105,5 +106,82 @@ func TestInteractiveShellIsSandboxedE2E(t *testing.T) {
 	}
 	if code, _ := call("/stop", map[string]any{"shell_id": id}); code != 200 || interactiveShellRunning(socket) {
 		t.Fatal("stop did not end the shell")
+	}
+}
+
+// The attach client runs in the shell's sandbox: a command the tmux server
+// hands the attached client (`detach-client -E`) gets the shell's rights, not
+// the service's. Opt-in like the test above.
+func TestInteractiveShellAttachIsSandboxedE2E(t *testing.T) {
+	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
+		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
+	}
+	gin.SetMode(gin.TestMode)
+	docs := t.TempDir()
+	viper.Set("docs-dir", docs)
+	own := "_users/alice/Chats/Code/projects/a"
+	other := "_users/bob/Chats/Code/projects/b"
+	for _, d := range []string{own, other} {
+		if err := os.MkdirAll(filepath.Join(docs, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := gin.New()
+	router.POST("/start", StartInteractiveShell)
+	router.POST("/stop", StopInteractiveShell)
+	router.GET("/attach", AttachInteractiveShell)
+	server := httptest.NewServer(router)
+	defer server.Close()
+	post := func(path string, body any) int {
+		raw, _ := json.Marshal(body)
+		resp, err := http.Post(server.URL+path, "application/json", bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	id := strings.ToLower("att-" + strings.ReplaceAll(filepath.Base(docs), "_", "-"))
+	if len(id) > 40 {
+		id = id[:40]
+	}
+	defer post("/stop", map[string]any{"shell_id": id})
+	guard := map[string]any{"enabled": true, "read_paths": []string{own}, "write_paths": []string{own}}
+	if code := post("/start", map[string]any{"shell_id": id, "working_directory": own, "folder_guard": guard}); code != 200 {
+		t.Fatalf("start = %d", code)
+	}
+	if _, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/attach?shell_id=unknown-shell", nil); err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("attach to an unknown shell must be refused")
+	}
+	browserHeader := http.Header{"Origin": {"https://example.com"}}
+	if conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/attach?shell_id="+id, browserHeader); err == nil {
+		conn.Close()
+		t.Fatal("a browser-origin attach must be refused")
+	}
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/attach?shell_id="+id+"&cols=80&rows=24", nil)
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	defer conn.Close()
+	planted := filepath.Join(docs, other, "planted-by-attach")
+	ownMarker := filepath.Join(docs, own, "attach-ran")
+	line := "tmux -S \"$(tmux display -p '#{socket_path}')\" detach-client -E " +
+		shellQuote("touch "+shellQuote(ownMarker)+"; touch "+shellQuote(planted)) + "\r"
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(line)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(ownMarker); err == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if _, err := os.Stat(ownMarker); err != nil {
+		t.Fatal("the attach client never ran the command; the test proves nothing")
+	}
+	time.Sleep(500 * time.Millisecond)
+	if _, err := os.Stat(planted); err == nil {
+		t.Fatal("a command run by the attach client wrote outside the shell's sandbox")
 	}
 }

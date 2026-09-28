@@ -161,6 +161,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.POST("/shell/interactive/start", requireWorkspaceAPIToken(), handlers.StartInteractiveShell)
 		api.POST("/shell/interactive/stop", requireWorkspaceAPIToken(), handlers.StopInteractiveShell)
 		api.POST("/shell/interactive/resize", requireWorkspaceAPIToken(), handlers.ResizeInteractiveShell)
+		api.GET("/shell/interactive/attach", requireWorkspaceAPIToken(), handlers.AttachInteractiveShell)
 		api.GET("/processes", handlers.ListWorkflowProcesses)
 		api.POST("/processes/cleanup", handlers.CleanupWorkflowProcesses)
 

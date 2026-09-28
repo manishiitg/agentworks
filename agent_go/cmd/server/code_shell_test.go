@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
 func TestCodeShellAccessFollowsRole(t *testing.T) {
@@ -92,8 +95,9 @@ func TestIdleCodeShellsAreStopped(t *testing.T) {
 }
 
 // The WebSocket bridge end to end against a real tmux server standing in for
-// the workspace's sandboxed shell: keystrokes reach the shell and its output
-// comes back.
+// the workspace's sandboxed shell: keystrokes reach the shell through the
+// workspace's attach and its output comes back. Nothing here attaches to the
+// shell's tmux server itself.
 func TestCodeShellStreamBridgesARealTmuxShell(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux not installed")
@@ -118,6 +122,56 @@ func TestCodeShellStreamBridgesARealTmuxShell(t *testing.T) {
 	}
 	t.Cleanup(func() { codeShellStart = previous })
 
+	// The workspace service's in-sandbox attach, stood in by a plain attach
+	// in a PTY: this test covers the agent server's side of the bridge.
+	var attachQuery, attachToken string
+	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/shell/interactive/attach" {
+			http.NotFound(w, r)
+			return
+		}
+		attachQuery, attachToken = r.URL.RawQuery, r.Header.Get(wsauth.HeaderName)
+		attach := exec.Command("tmux", "-S", socket, "attach", "-t", "shell")
+		attach.Env = append(os.Environ(), "TERM=xterm-256color")
+		terminal, err := pty.StartWithSize(attach, &pty.Winsize{Cols: 80, Rows: 24})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer func() { _ = terminal.Close(); _ = attach.Process.Kill(); _ = attach.Wait() }()
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		go func() {
+			buf := make([]byte, 4096)
+			for {
+				n, err := terminal.Read(buf)
+				if n > 0 && conn.WriteMessage(websocket.BinaryMessage, buf[:n]) != nil {
+					return
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+		for {
+			kind, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if kind == websocket.BinaryMessage {
+				_, _ = terminal.Write(data)
+			}
+		}
+	}))
+	defer workspaceServer.Close()
+	previousBase := codeShellAttachBase
+	codeShellAttachBase = func() string { return workspaceServer.URL }
+	t.Cleanup(func() { codeShellAttachBase = previousBase })
+	t.Setenv("WORKSPACE_API_TOKEN", "ws-token")
+
 	router := mux.NewRouter()
 	router.HandleFunc("/shell/{project_id}", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"}))
@@ -125,8 +179,12 @@ func TestCodeShellStreamBridgesARealTmuxShell(t *testing.T) {
 	})
 	server := httptest.NewServer(router)
 	defer server.Close()
-	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/shell/c0de0001-0000?cols=80&rows=24", nil)
+	conn, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/shell/c0de0001-0000?cols=80&rows=24", nil)
 	if err != nil {
+		if resp != nil {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("dial: %v: %d %s", err, resp.StatusCode, body)
+		}
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
@@ -149,6 +207,9 @@ func TestCodeShellStreamBridgesARealTmuxShell(t *testing.T) {
 		}
 		seen.Write(data)
 		if strings.Contains(seen.String(), "code-shell-42") {
+			if attachToken != "ws-token" || !strings.Contains(attachQuery, "shell_id=code-") {
+				t.Fatalf("attach went to the workspace without its token or shell: %q %q", attachToken, attachQuery)
+			}
 			return
 		}
 	}

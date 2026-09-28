@@ -265,6 +265,7 @@ var workspaceProxyRefusedRoutes = map[string]bool{
 	"api/shell/interactive/start":  true,
 	"api/shell/interactive/stop":   true,
 	"api/shell/interactive/resize": true,
+	"api/shell/interactive/attach": true,
 }
 
 func workspaceProxyJSONHasServerOnlyField(node any) bool {

@@ -10,13 +10,12 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"os/exec"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
@@ -178,21 +177,17 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	}
 	codeShellReaperOnce.Do(func() { go codeShellReaper() })
 
-	attach := exec.Command("tmux", "-S", socket, "attach", "-t", "shell")
-	attach.Env = append(os.Environ(), "TERM=xterm-256color")
-	terminal, err := pty.StartWithSize(attach, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	// The attach client runs in the shell's own sandbox on the workspace
+	// service: a tmux client executes what its server tells it to
+	// (`detach-client -E`), so one attached from here would give the shell
+	// this server's rights.
+	shell, err := codeShellAttach(r.Context(), shellID, cols, rows)
 	if err != nil {
 		log.Printf("[CODE_SHELL] attach %s: %v", shellID, err)
 		http.Error(w, "could not attach to the shell", http.StatusServiceUnavailable)
 		return
 	}
-	defer func() {
-		_ = terminal.Close()
-		if attach.Process != nil {
-			_ = attach.Process.Kill()
-		}
-		_ = attach.Wait()
-	}()
+	defer shell.Close()
 	upgrader := api.liveAttachUpgrader()
 	conn, err := upgrader.Upgrade(unwrapResponseWriter(w), r, nil)
 	if err != nil {
@@ -205,15 +200,15 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		buf := make([]byte, 32*1024)
 		for {
-			n, err := terminal.Read(buf)
-			if n > 0 {
-				if conn.WriteMessage(websocket.BinaryMessage, buf[:n]) != nil {
+			kind, data, err := shell.ReadMessage()
+			if err != nil || kind != websocket.BinaryMessage {
+				if err != nil {
 					return
 				}
+				continue
 			}
-			if err != nil {
+			if conn.WriteMessage(websocket.BinaryMessage, data) != nil {
 				return
 			}
 		}
@@ -229,7 +224,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 		}
 		switch kind {
 		case websocket.BinaryMessage:
-			if _, err := terminal.Write(data); err != nil {
+			if shell.WriteMessage(websocket.BinaryMessage, data) != nil {
 				return
 			}
 		case websocket.TextMessage:
@@ -239,10 +234,43 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 				Rows int    `json:"rows"`
 			}
 			if json.Unmarshal(data, &control) == nil && control.Type == "resize" && control.Cols > 0 && control.Rows > 0 {
-				_ = pty.Setsize(terminal, &pty.Winsize{Cols: uint16(min(control.Cols, liveAttachMaxCols)), Rows: uint16(min(control.Rows, liveAttachMaxRows))})
+				resize, _ := json.Marshal(map[string]interface{}{"type": "resize", "cols": min(control.Cols, liveAttachMaxCols), "rows": min(control.Rows, liveAttachMaxRows)})
+				if shell.WriteMessage(websocket.TextMessage, resize) != nil {
+					return
+				}
 			}
 		}
 	}
+}
+
+// codeShellAttach opens the workspace service's in-sandbox attach to a
+// running shell (binary frames = terminal bytes, text frames = JSON resize).
+var codeShellAttachBase = getWorkspaceAPIURL
+
+func codeShellAttach(ctx context.Context, shellID string, cols, rows int) (*websocket.Conn, error) {
+	base := strings.TrimSuffix(codeShellAttachBase(), "/")
+	switch {
+	case strings.HasPrefix(base, "https://"):
+		base = "wss://" + strings.TrimPrefix(base, "https://")
+	case strings.HasPrefix(base, "http://"):
+		base = "ws://" + strings.TrimPrefix(base, "http://")
+	}
+	target := base + "/api/shell/interactive/attach?" + url.Values{
+		"shell_id": {shellID}, "cols": {strconv.Itoa(cols)}, "rows": {strconv.Itoa(rows)},
+	}.Encode()
+	header := http.Header{}
+	if token := wsauth.Token(); token != "" {
+		header.Set(wsauth.HeaderName, token)
+	}
+	dialer := websocket.Dialer{HandshakeTimeout: 30 * time.Second}
+	conn, resp, err := dialer.DialContext(ctx, target, header)
+	if err != nil {
+		if resp != nil {
+			return nil, fmt.Errorf("workspace attach: status %d: %w", resp.StatusCode, err)
+		}
+		return nil, err
+	}
+	return conn, nil
 }
 
 // POST /api/agent-profiles/code/projects/{project_id}/shell/stop — ends the

@@ -26,9 +26,11 @@ import (
 // it is the only binary the host's AppArmor userns exception covers; a tmux
 // pane could not. The shell and everything it starts inherit the sandbox.
 // The tmux socket lives in the shell's own folder, the one /tmp path the
-// shell is granted; the agent server (outside the sandbox) attaches with
-// `tmux -S <socket> -CC attach -t <session>`. Other sandboxed commands never
-// see it: their /tmp is private.
+// shell is granted. Other sandboxed commands never see it: their /tmp is
+// private. Nothing outside the sandbox ever attaches to it: an attached tmux
+// client runs whatever the server tells it to (`detach-client -E`), so the
+// attach client runs in the shell's own sandbox too
+// (interactive_shell_attach.go).
 //
 // Only the agent server calls these routes (workspace token); it authorizes
 // the user for the project first and passes the project's Folder Guard.
@@ -117,6 +119,22 @@ func StartInteractiveShell(c *gin.Context) {
 		workingDir = full
 	}
 	dir, socket := interactiveShellSocket(req.ShellID)
+	isolator := &security.Isolator{
+		ReadPaths:         req.FolderGuard.ReadPaths,
+		WritePaths:        append(append([]string{}, req.FolderGuard.WritePaths...), dir),
+		BlockedPaths:      req.FolderGuard.BlockedPaths,
+		BlockedWritePaths: req.FolderGuard.BlockedWritePaths,
+		WorkDir:           workingDir,
+		BaseDir:           docsDir,
+		StrictAllowlist:   req.FolderGuard.StrictAllowlist,
+		AllowNetwork:      !req.FolderGuard.DenyNetwork,
+		BrowserSession:    req.FolderGuard.BrowserSession,
+		AllowPTY:          true,
+	}
+	// Attaches run in this same sandbox (interactive_shell_attach.go). The
+	// agent server calls start before every attach, so a restarted service
+	// learns the sandbox of a shell that outlived it.
+	rememberInteractiveShell(req.ShellID, *isolator)
 	if interactiveShellRunning(socket) {
 		c.JSON(http.StatusOK, models.APIResponse[InteractiveShellHandle]{Success: true, Data: InteractiveShellHandle{ShellID: req.ShellID, Socket: socket, Session: interactiveShellSession, Running: true}})
 		return
@@ -134,18 +152,6 @@ func StartInteractiveShell(c *gin.Context) {
 			physical = filepath.Join(docsDir, physical)
 		}
 		_ = os.MkdirAll(physical, 0o755)
-	}
-	isolator := &security.Isolator{
-		ReadPaths:         req.FolderGuard.ReadPaths,
-		WritePaths:        append(append([]string{}, req.FolderGuard.WritePaths...), dir),
-		BlockedPaths:      req.FolderGuard.BlockedPaths,
-		BlockedWritePaths: req.FolderGuard.BlockedWritePaths,
-		WorkDir:           workingDir,
-		BaseDir:           docsDir,
-		StrictAllowlist:   req.FolderGuard.StrictAllowlist,
-		AllowNetwork:      !req.FolderGuard.DenyNetwork,
-		BrowserSession:    req.FolderGuard.BrowserSession,
-		AllowPTY:          true,
 	}
 	cols, rows := clampShellSize(req.Cols, req.Rows)
 	shell := "/bin/bash"
@@ -196,6 +202,7 @@ func StopInteractiveShell(c *gin.Context) {
 	defer cancel()
 	_ = exec.CommandContext(ctx, "tmux", "-S", socket, "kill-server").Run()
 	_ = os.RemoveAll(dir)
+	forgetInteractiveShell(req.ShellID)
 	c.JSON(http.StatusOK, models.APIResponse[InteractiveShellHandle]{Success: true, Data: InteractiveShellHandle{ShellID: req.ShellID, Socket: socket, Session: interactiveShellSession, Running: false}})
 }
 
