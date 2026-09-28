@@ -180,3 +180,30 @@ func TestCodeReviewerSeesEveryCodesCost(t *testing.T) {
 		t.Fatal("an owner lost their own Code cost")
 	}
 }
+
+// Inspection lists each person's own servers switched on in the Code (name,
+// URL without its query, signed-in state), audited; never to a member.
+func TestCodeInspectionListsPersonalServers(t *testing.T) {
+	api, mock := newCodeAdminFixture(t, true)
+	withPersonalMCPRoot(t)
+	if _, err := addPersonalMCPServer("owner", personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setPersonalMCPEnabled("owner", codePrivacyOwnerRoot, "deepwiki", true); err != nil {
+		t.Fatal(err)
+	}
+	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
+	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeMCP, "other", "/x", project); rec.Code != http.StatusForbidden {
+		t.Fatalf("a member inspected MCP: %d", rec.Code)
+	}
+	rec := adminGet(api, (*StreamingAPI).handleAdminCodeMCP, "boss", "/x", project)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"deepwiki"`) || strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("inspection = %d %s", rec.Code, rec.Body.String())
+	}
+	mock.mu.Lock()
+	log := mock.files[codeAdminAuditPath(time.Now())]
+	mock.mu.Unlock()
+	if !strings.Contains(log, `"action":"list_mcp"`) {
+		t.Fatalf("MCP inspection not audited:\n%s", log)
+	}
+}

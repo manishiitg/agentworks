@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // Admin inspection of Code workspaces (docs/design/code_product.md, "Admin
@@ -402,4 +403,63 @@ func (api *StreamingAPI) handleAdminCodeAudit(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"month": month.Format("2006-01"), "entries": entries})
+}
+
+// codeAdminPersonalServer is one person's server switched on in a Code, as
+// inspection shows it: never a token, a secret or a URL query string.
+type codeAdminPersonalServer struct {
+	UserID    string `json:"user_id"`
+	Username  string `json:"username,omitempty"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Transport string `json:"transport"`
+	OAuth     bool   `json:"oauth"`
+	Connected bool   `json:"connected"`
+}
+
+// GET /api/admin/code/workspaces/{owner}/{project_id}/mcp — every person's
+// own MCP servers switched on in this Code (docs/design/code_private_mcp.md).
+func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	_, claims, ownerID, projectID, root, ok := api.codeAdminProject(w, r)
+	if !ok {
+		return
+	}
+	if err := recordCodeAdminView(r.Context(), claims, "list_mcp", ownerID, projectID, ""); err != nil {
+		writeAgentProfileError(w, http.StatusServiceUnavailable, "the admin audit log is unavailable")
+		return
+	}
+	root = cleanCodeRoot(root)
+	rows := []codeAdminPersonalServer{}
+	for _, person := range codeChatParticipants(r.Context(), ownerID, projectID) {
+		enabled, err := personalMCPEnabled(person, root)
+		if err != nil || len(enabled) == 0 {
+			continue
+		}
+		servers, err := listPersonalMCPServers(person)
+		if err != nil {
+			continue
+		}
+		dir, _ := personalMCPDir(person)
+		on := map[string]bool{}
+		for _, name := range enabled {
+			on[name] = true
+		}
+		for _, server := range servers {
+			if !on[server.Name] {
+				continue
+			}
+			row := codeAdminPersonalServer{UserID: person, Username: crewOwnerDisplayName(sanitizeUserIDForPath(person)), Name: server.Name,
+				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Connected: server.OAuth == nil}
+			if server.OAuth != nil {
+				_, loadErr := oauth.NewTokenStore(personalMCPTokenFile(dir, person, server.Name)).Load()
+				row.Connected = loadErr == nil
+			}
+			rows = append(rows, row)
+		}
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})
 }

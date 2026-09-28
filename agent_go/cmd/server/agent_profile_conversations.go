@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -375,8 +376,19 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	// Other crews and workflows that attached this crew stop pointing at it.
 	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
-		// A deleted Code takes its share list with it.
+		// A deleted Code takes its share list with it, and everyone's
+		// personal MCP switches for it.
 		owner := sanitizeUserIDForPath(userID)
+		codeRoot := cleanCodeRoot(agentProfileRuntimeWorkspace(userID, binding.WorkspacePath))
+		people := []string{owner}
+		for _, grant := range codeSharesView(r.Context(), owner, projectID, codeRoleOwner).Grants {
+			people = append(people, grant.UserID)
+		}
+		for _, person := range people {
+			if err := forgetPersonalMCPCode(person, codeRoot); err != nil {
+				log.Printf("[PERSONAL_MCP] forget deleted Code for %s: %v", person, err)
+			}
+		}
 		_ = codeShares.update(context.WithoutCancel(r.Context()), func(doc *codeSharesDoc) error {
 			delete(doc.Projects, codeShareKey(owner, projectID))
 			return nil

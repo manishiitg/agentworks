@@ -1243,6 +1243,11 @@ export const agentApi = {
     return response.data
   },
 
+  adminListCodeMCP: async (ownerId: string, projectId: string): Promise<{ servers: Array<{ user_id: string; username?: string; name: string; url: string; transport: string; oauth: boolean; connected: boolean }> }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/mcp`)
+    return response.data
+  },
+
   adminCodeAudit: async (month?: string): Promise<{ month: string; entries: CodeAdminAuditEntry[] }> => {
     const response = await api.get('/api/admin/code/audit', { params: month ? { month } : undefined })
     return response.data

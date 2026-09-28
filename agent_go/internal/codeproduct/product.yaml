@@ -20,7 +20,9 @@ profile:
     - files
     - browser
     - secrets
-    # mcp: later. Code starts without MCP servers (docs/design/code_product.md).
+    # Global platform servers selected per Code (as in a Crew), plus each
+    # person's own servers in their own chats (docs/design/code_private_mcp.md).
+    - mcp
     - skills
     - attached-folders
     - id: workflow-references

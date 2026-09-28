@@ -44,11 +44,19 @@ var mcpProbeHTTPClient = &http.Client{Timeout: 10 * time.Second}
 // non-nil, RegistrationEndpoint empty) — the caller decides what to do with
 // that, since it may still support CIMD or a manually registered client.
 func ProbeMCPServerAuth(ctx context.Context, serverURL string) (*MCPServerAuthProbe, error) {
+	return ProbeMCPServerAuthWith(ctx, mcpProbeHTTPClient, serverURL)
+}
+
+// ProbeMCPServerAuthWith probes with client, which also follows the OAuth
+// metadata links: a person's own server is probed with a public-only client
+// (netguard) so neither the server nor its metadata can point the platform at
+// its own network.
+func ProbeMCPServerAuthWith(ctx context.Context, client *http.Client, serverURL string) (*MCPServerAuthProbe, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := mcpProbeHTTPClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not reach %s: %w", serverURL, err)
 	}
@@ -58,7 +66,7 @@ func ProbeMCPServerAuth(ctx context.Context, serverURL string) (*MCPServerAuthPr
 		return &MCPServerAuthProbe{NoAuthRequired: true}, nil
 	}
 
-	endpoints, err := oauth.DiscoverFromResponse(resp)
+	endpoints, err := oauth.Discoverer{Client: client}.DiscoverFromResponse(resp)
 	if err != nil {
 		return nil, fmt.Errorf("%s requires authentication but published no discoverable OAuth metadata (WWW-Authenticate / RFC 9728 / RFC 8414): %w", serverURL, err)
 	}

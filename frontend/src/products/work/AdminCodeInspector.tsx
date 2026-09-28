@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, FileText, Loader2, MessageSquare, ScrollText, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, FileText, Loader2, MessageSquare, Plug, ScrollText, ShieldCheck, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { CodeAdminAuditEntry, CodeAdminChat, CodeAdminWorkspace, SharedProjectFileEntry } from '../../services/api-types'
 
-type Tab = 'files' | 'chats'
+type Tab = 'files' | 'chats' | 'mcp'
+type PersonalServerRow = { user_id: string; username?: string; name: string; url: string; transport: string; oauth: boolean; connected: boolean }
 type ChatMessage = { role: string; parts: Array<Record<string, unknown>> }
 
 function errorText(cause: unknown, fallback: string): string {
@@ -29,6 +30,7 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
   const [files, setFiles] = useState<SharedProjectFileEntry[]>([])
   const [file, setFile] = useState<{ path: string; content: string; binary?: boolean; truncated?: boolean } | null>(null)
   const [chats, setChats] = useState<CodeAdminChat[]>([])
+  const [mcpServers, setMcpServers] = useState<PersonalServerRow[]>([])
   const [chat, setChat] = useState<{ chat: CodeAdminChat; messages: ChatMessage[] } | null>(null)
   const [audit, setAudit] = useState<CodeAdminAuditEntry[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -51,7 +53,9 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
     setChat(null)
     const load = tab === 'files'
       ? agentApi.adminListCodeFiles(selected.owner_id, selected.id).then(response => { if (!cancelled) setFiles(response.files) })
-      : agentApi.adminListCodeChats(selected.owner_id, selected.id).then(response => { if (!cancelled) setChats(response.chats) })
+      : tab === 'chats'
+        ? agentApi.adminListCodeChats(selected.owner_id, selected.id).then(response => { if (!cancelled) setChats(response.chats) })
+        : agentApi.adminListCodeMCP(selected.owner_id, selected.id).then(response => { if (!cancelled) setMcpServers(response.servers) })
     void load
       .catch(cause => { if (!cancelled) setError(errorText(cause, 'Could not load this workspace.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -156,6 +160,7 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
             <div className="flex gap-1 border-b border-border p-2">
               <button type="button" onClick={() => setTab('files')} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${tab === 'files' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}><FileText className="h-3.5 w-3.5" />Files</button>
               <button type="button" onClick={() => setTab('chats')} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${tab === 'chats' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}><MessageSquare className="h-3.5 w-3.5" />Chats</button>
+              <button type="button" onClick={() => setTab('mcp')} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${tab === 'mcp' ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}><Plug className="h-3.5 w-3.5" />MCP</button>
             </div>
             {loading ? <p className="p-3 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading…</p> : null}
             {!loading && tab === 'files' ? files.map(entry => (
@@ -166,6 +171,13 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
                 <span className="block truncate text-foreground">{entry.title || entry.session_id}</span>
                 <span className="block truncate">{entry.username || entry.user_id} · {entry.message_count} messages{entry.updated_at ? ` · ${new Date(entry.updated_at).toLocaleString()}` : ''}</span>
               </button>
+            ))) : null}
+            {!loading && tab === 'mcp' ? (mcpServers.length === 0 ? <p className="p-3 text-sm text-muted-foreground">Nobody has switched on their own MCP servers in this Code.</p> : mcpServers.map(row => (
+              <div key={`${row.user_id}/${row.name}`} className="border-b border-border px-3 py-1.5 text-xs">
+                <span className="block truncate text-foreground">{row.name} <span className="text-muted-foreground">· {row.username || row.user_id}</span></span>
+                <span className="block truncate font-mono text-muted-foreground">{row.url}</span>
+                <span className="block text-muted-foreground">{row.transport}{row.oauth ? (row.connected ? ' · signed in' : ' · not signed in') : ''}</span>
+              </div>
             ))) : null}
           </section>
           <section className="min-h-0 overflow-auto p-3">
@@ -179,6 +191,7 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
                 {message.parts.map((part, partIndex) => <pre key={partIndex} className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">{partText(part)}</pre>)}
               </div>
             )) : null}
+            {tab === 'mcp' ? <p className="text-sm text-muted-foreground">Each person's own servers switched on in this Code. Their logins and secrets are never shown.</p> : null}
             {(tab === 'files' && !file) || (tab === 'chats' && !chat) ? <p className="text-sm text-muted-foreground">Pick a {tab === 'files' ? 'file' : 'chat'} to read it.</p> : null}
           </section>
         </>) : (
