@@ -9,6 +9,35 @@ This is internal tracking closure, not a claim of a new deployed end-to-end run.
 Previous SQLite records are retained in audit events; unrelated findings remain
 open. No business data or historical schedule outcome was rewritten.
 
+## Diagnostic narrowed, and a new case on rtsaws — 2026-09-28
+
+**Log line.** The `[PLAT-280]` log line checked only the session's
+registered env for `WORKFLOW_DB_ACCESS` without `DB_PATH`. Every agentic step
+matches that by design: only scripted steps get direct database access
+(`isScriptedStep`), and agentic steps have `db.sqlite` on their blocked list
+and use `query_workflow_db` / `mutate_workflow_db`. The line fired about 2,500
+times a day on RTS as noise.
+
+It now checks the command's final environment, and fires only when the session
+was granted direct access (the database file is not blocked) yet `DB_PATH` is
+missing (`shellMissingGrantedDBPath`). That is the real anomaly this ticket was
+about.
+
+**Same class on rtsaws.** `aws-infra-health` is typed `regular` (agentic), but
+its job is a ported script (`main.py`) that writes `infra_daily_metrics`
+straight into SQLite.
+- It never gets `DB_PATH`, so the script skips saving.
+- `infra_daily_metrics` has exactly one row, 2026-09-14, so the daily
+  coverage number has been lost every day since.
+- Goal Work noticed it ("infra map measurement was stale since
+  mid-September"; "skipped saving the daily coverage row because DB_PATH was
+  unset") but could not fix it, since promoting an existing step to scripted
+  is the user's call.
+
+Fix options, for the user:
+- (a) convert the step to scripted, as was done for upwork;
+- (b) make `main.py` write through `mutate_workflow_db`.
+
 # PLAT-280 — `upwork`'s scripted-mode DB steps lose `$DB_PATH` because their plan type never matched their declared execution mode
 
 | Coordination | Value |
