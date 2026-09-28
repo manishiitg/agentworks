@@ -262,11 +262,21 @@ Code ships a basic setup first; integrations come later. In Code's
 
 ## To think about
 
-- [ ] **Gmail in Code (later).** Code has no Gmail today: its `bots` feature
-  is `dm_only`, which drops the Gmail and Google Workspace tools, and Setup
-  hides the Gmail tab. To add it later, allow Gmail in Code's bots options
-  (a Code's mailbox grants stay with that Code, like its other connections)
-  and show the tab again.
+- [ ] **Gmail in Code (later): private to the Code** (user, 2026-09-28).
+  Today a Gmail/Google account connected through gog sits in one
+  server-wide registry: any workflow or Crew can use it by ID, or fall back to
+  the default connection. A Gmail account added in a Code must instead be
+  that Code's own:
+  - The connection records the Code it belongs to (its project root).
+    Crews, workflows and the user's other Codes never list, select, default to
+    or use it; the Google CLI tool, the grant tools, workflow Gmail settings
+    and notifications all refuse it outside that Code.
+  - Only the Code's owner connects it (from the Code's Setup), like WhatsApp.
+  - Grants work as today: read needs the read grant, drafting/sending needs
+    the explicit agent-write opt-in plus the compose grant.
+  - Open: whether a Code may also use the owner's shared (account) Gmail
+    connections, and whether editors of a shared Code may use its Gmail
+    through the agent (never seeing credentials) or only the owner's chat.
 
 - [ ] **App preview.** When someone builds a web app in a Code, the agent runs
   it on the server (for example `npm run dev` on port 3000). A private
