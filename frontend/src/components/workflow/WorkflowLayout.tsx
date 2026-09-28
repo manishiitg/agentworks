@@ -127,7 +127,8 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = f
         {relayMode ? <>
           <li>• Add agents with your own system prompts and message templates</li>
           <li>• Connect them with scripts and define the final JSON output</li>
-          <li>• Set up API triggers or schedules and inspect execution logs</li>
+          <li>• Run a test with sample JSON and inspect the result and logs</li>
+          <li>• Set up API triggers or schedules</li>
         </> : <>
           <li>• Build or change the workflow and its plan</li>
           <li>• Create a schedule, webhook, bot, dashboard, or database</li>
