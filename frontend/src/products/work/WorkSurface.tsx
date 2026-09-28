@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Eye, Loader2, PanelLeftOpen, PanelRightOpen, Plus, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -19,6 +19,9 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
+import { CodeShareDialog } from './CodeShareDialog'
+import { AdminCodeInspector } from './AdminCodeInspector'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -41,7 +44,6 @@ import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../pla
 import { usePresentationEvents } from '../../platform/presentations/usePresentationEvents'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
@@ -81,6 +83,7 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // data (transcripts, run databases, usage) the proxy will not serve
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
+const SHARED_CODE_WORKSPACE_PANELS: Set<string> = new Set(['files'])
 
 function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
   if (typeof window === 'undefined' || !projectId) return null
@@ -359,6 +362,8 @@ function useWorkChatTab(
   useEffect(() => {
     const target = sessionRef.current
     if (!target || target.id !== projectId) return
+    // A viewer of a shared Code reads its files but has no chat of it.
+    if (target.shared?.role === 'viewer') return
     let cancelled = false
     const prepare = async () => {
       try {
@@ -594,6 +599,7 @@ function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: P
 
 function WorkTopBarControl({
   product,
+  onInspect,
   sessions,
   selected,
   onSelect,
@@ -603,6 +609,8 @@ function WorkTopBarControl({
   deletingProjectId,
 }: {
   product: ProjectProductConfig
+  /** Admins of a product with admin inspection: open the inspector. */
+  onInspect?: () => void
   sessions: WorkSession[]
   selected: WorkSession | null
   onSelect: (id: string) => void
@@ -640,6 +648,15 @@ function WorkTopBarControl({
             {creating ? `Creating ${product.itemNoun}…` : `+ New ${product.itemNoun}`}
           </span>
         </button>
+        {onInspect ? (
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onInspect() }}
+            className="w-full rounded-md p-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700"
+          >
+            Inspect everyone’s {product.noun} (admin)
+          </button>
+        ) : null}
         {sessions.length === 0 ? (
           <div className="p-2 text-center text-sm text-gray-500 dark:text-gray-400">No projects yet. Create one to get started.</div>
         ) : (<>
@@ -679,7 +696,7 @@ function WorkTopBarControl({
           ))}
           {sessions.some(session => session.shared) && (
             <div aria-hidden="true" className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Shared by others · read-only
+              {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared by others · read-only'}
             </div>
           )}
           {sessions.filter(session => session.shared).map(session => (
@@ -700,6 +717,7 @@ function WorkTopBarControl({
                     <span className="block truncate font-medium">{session.identity?.name || session.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {session.shared?.ownerUsername || session.shared?.ownerId || 'Another user'}
+                      {session.shared?.role ? ` · ${session.shared.role === 'co_owner' ? 'co-owner' : session.shared.role}` : ''}
                       {session.identity?.name && session.identity.name !== session.title ? ` · ${session.title}` : ''}
                     </span>
                   </span>
@@ -770,6 +788,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [inspectOpen, setInspectOpen] = useState(false)
+  // Code opts into admin inspection; Crew chats stay owner-only for admins.
+  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
+  const isCodeReviewer = useAuthStore(state => state.user?.is_code_reviewer === true)
+  const canInspect = (isAdmin || isCodeReviewer) && product.profileId === 'code'
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -799,19 +823,22 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
-  const workspacePanels = selected?.shared ? SHARED_CREW_WORKSPACE_PANELS : enabledWorkspacePanels
+  const isShared = Boolean(selected?.shared)
+  // A Code has no Memory: someone else's Code offers only its files.
+  const sharedPanels = product.profileId === 'code' ? SHARED_CODE_WORKSPACE_PANELS : SHARED_CREW_WORKSPACE_PANELS
+  const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
-    if (selected?.shared && !SHARED_CREW_WORKSPACE_PANELS.has(panel)) return
+    if (selected?.shared && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
     setPanelOpen(true)
     selectWorkspaceView(panel)
-  }, [selected?.shared, selectWorkspaceView, workspacePanels])
+  }, [selected?.shared, selectWorkspaceView, sharedPanels, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -957,7 +984,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (selected?.shared) {
       // Identity is always "enabled", so shared Crews need their own
       // fallback: a stale saved view must land on the inspect surface.
-      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView)) selectWorkspaceView('files')
+      if (!sharedPanels.has(workspaceView)) selectWorkspaceView('files')
       return
     }
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
@@ -966,7 +993,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView(product.defaultView)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, sharedPanels, workspaceView])
 
   useEffect(() => {
     if (!selected) return
@@ -1049,6 +1076,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const topBarControl = useMemo(() => (
     <WorkTopBarControl
       product={product}
+      onInspect={canInspect ? () => setInspectOpen(true) : undefined}
       sessions={sessions}
       selected={selected}
       onSelect={select}
@@ -1057,7 +1085,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       creating={creating}
       deletingProjectId={deletingProjectId}
     />
-  ), [creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
+  ), [canInspect, creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
 
   const error = sessionsError || chatError
 
@@ -1071,8 +1099,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         reduced
         walkthroughSurface={selected ? 'crew' : 'empty-crew'}
         walkthroughReady={!sessionsLoading && !creating && !error}
-        walkthroughPaused={createOpen || deleteCandidate !== null}
+        // The guided tour is Crew's (identity, templates, automation); a Code
+        // never opens it on its own.
+        walkthroughPaused={createOpen || deleteCandidate !== null || !product.hasIdentity}
       />
+      {inspectOpen ? <AdminCodeInspector onClose={() => setInspectOpen(false)} /> : null}
+      {shareOpen && selected && product.profileId === 'code' ? (
+        <CodeShareDialog projectId={selected.id} projectTitle={selected.identity?.name || selected.title} onClose={() => setShareOpen(false)} />
+      ) : null}
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
@@ -1094,7 +1128,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         onConfirm={() => { void deleteProject() }}
         title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, ' : ''}bots, dashboard, and database? This cannot be undone.`
+          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database? This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}
@@ -1126,7 +1160,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
                     Files, an editor and a terminal on the team server, with a coding agent beside them. Only you can see your workspaces until you share them.
                   </p>
-                  <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-muted-foreground">Admins on this server can view your {product.noun} workspaces.</p>
+                  <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">Files and a terminal</span>
+                      Your own project folder and a coding agent that works in it, sandboxed to this workspace.
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">A coding agent beside you</span>
+                      Ask it to write, run and fix code here. It can call the Crews and workflows you can use.
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">Private until you share</span>
+                      Add a teammate as viewer, editor or co-owner. Each person keeps their own chats.
+                    </div>
+                  </div>
+                  <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
                   <button
                     type="button"
                     onClick={openCreateProject}
@@ -1205,10 +1253,22 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               >
                 <WorkspaceTopToolbar className={layout.toolbarClassName}>
                   {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
+                  {product.profileId === 'code' && selected ? (
+                    <button
+                      type="button"
+                      onClick={() => setShareOpen(true)}
+                      title={selected.shared ? `${selected.shared.ownerUsername || selected.shared.ownerId}’s ${product.noun} · you are ${selected.shared.role === 'co_owner' ? 'a co-owner' : `a ${selected.shared.role || 'viewer'}`}` : 'Share this workspace'}
+                      className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                    >
+                      <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
+                    </button>
+                  ) : null}
                   {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
-                  {selected.shared ? (
+                  {/* A Code's privacy notice lives in Setup → General and the
+                      Share dialog, not above every chat. */}
+                  {product.profileId !== 'code' && selected.shared ? (
                     <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                       <span className="min-w-0 flex-1 text-muted-foreground">
                         {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · read-only. Your chats stay private to you.
@@ -1245,7 +1305,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       }}
                     />
                   ))}
-                  {tabId ? (
+                  {selected.shared?.role === 'viewer' ? (
+                    <div className="grid h-full place-items-center p-6 text-center">
+                      <div className="max-w-sm">
+                        <Eye className="mx-auto h-6 w-6 text-muted-foreground" />
+                        <p className="mt-2 text-sm font-medium text-foreground">You can view this workspace</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Browse its files beside this panel. To run the agent here, ask {selected.shared.ownerUsername || selected.shared.ownerId} for editor access.</p>
+                      </div>
+                    </div>
+                  ) : tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
                           tabId={tabId}
@@ -1282,7 +1350,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     data-ui-view={workPresentationView(workspaceView)}
                     className={layout.panelClassName}
                   >
-                  {tabId ? (
+                  {tabId || selected.shared?.role === 'viewer' ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
@@ -1292,7 +1360,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         projectIdentity={selected.identity}
                         projectTemplates={selected.templates}
                         onInstallTemplate={installSelectedTemplate}
-                        tabId={tabId}
+                        tabId={tabId ?? ''}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}

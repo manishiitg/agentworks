@@ -217,7 +217,7 @@ func isolateGogClientStore(t *testing.T) {
 	t.Setenv("GOG_HOME", t.TempDir())
 	original := storeGogClient
 	t.Cleanup(func() { storeGogClient = original })
-	storeGogClient = func(ctx context.Context, name string, raw []byte) error {
+	storeGogClient = func(ctx context.Context, _ string, name string, raw []byte) error {
 		id, secret, err := parseGmailClientSecretJSON(raw)
 		if err != nil {
 			return err

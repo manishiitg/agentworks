@@ -390,6 +390,14 @@ chat:
       - update_crew
       - export_crew
       - import_crew
+      # Code review (code:review; admins and Code reviewers; read-only, audited).
+      - list_code_workspaces
+      - get_code_costs
+      - list_code_files
+      - read_code_file
+      - list_code_chats
+      - read_code_chat
+      - get_code_audit
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

@@ -196,6 +196,8 @@ func externalTools() ([]externalTool, error) {
 		add("export_crew", "Export a Crew as a portable spec (identity, skills with their project-local skill files, functions, schedules, template references). Chats, memory, databases, secrets, and model connections are never included. Pass the result to import_crew on any AgentWorks server. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		importSpec := map[string]any{"type": "object", "properties": specProps, "required": []any{"name", "role", "purpose"}, "description": "A spec from export_crew (or a Crew Agent Playbook catalog entry)."}
 		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
+		// Code review (code:review; admins and Code reviewers only).
+		externalCodeReviewDefinitions(add)
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native
@@ -343,6 +345,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if isExternalCodeReviewTool(tool.Name) {
+		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	discovered, err := DiscoverWorkflowManifests(r.Context())

@@ -36,7 +36,7 @@ describe("identity tab Ask AI messages", () => {
     }
     expect(getIdentityTabAskAIMessage("general")).toContain("Identity · General");
     expect(getIdentityTabAskAIMessage("secrets")).toContain("Identity · Secrets");
-    expect(getIdentityTabAskAIMessage("folders")).toContain("Identity · File access");
+    expect(getIdentityTabAskAIMessage("folders")).toContain("Identity · Connected work");
     expect(getIdentityTabAskAIMessage("llm")).toContain("Identity · Models");
     expect(getIdentityTabAskAIMessage("upgrades")).toContain("Identity · Upgrades");
   });

@@ -115,26 +115,38 @@ function WorkToolbarButton({ active, icon: Icon, label, onClick, badge }: { acti
 }
 
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean }) {
-  const visibleViews = readOnly
-    ? VIEW_BUTTONS.filter(item => item.id === 'memory')
-    : enabledPanels ? VIEW_BUTTONS.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : VIEW_BUTTONS
-  const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly, view)
+  // Suggestions are Crew's: people who use a Crew suggest changes to its
+  // owner. A Code has no such audience, so it never shows them.
+  const isCode = useProjectProduct().profileId === 'code'
+  const hasSuggestions = !isCode
+  // A Code keeps its working tools together in Ops (always open): Browser
+  // moves there, and the Database view is not offered.
+  const viewButtons = isCode ? VIEW_BUTTONS.filter(item => item.id !== 'browser') : VIEW_BUTTONS
+  const opsButtons = isCode
+    ? [...OPS_BUTTONS.filter(item => item.id !== 'database' && item.id !== 'costs'), ...VIEW_BUTTONS.filter(item => item.id === 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    : OPS_BUTTONS
+  const visibleViews = (readOnly
+    ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
+    : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
+    .filter(item => item.id !== 'suggestions' || hasSuggestions)
+  const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions, view)
   const visibleOps = readOnly
-    ? OPS_BUTTONS.filter(item => item.id === 'files')
-    : enabledPanels ? OPS_BUTTONS.filter(item => enabledPanels.has(item.id)) : OPS_BUTTONS
+    ? opsButtons.filter(item => item.id === 'files')
+    : enabledPanels ? opsButtons.filter(item => enabledPanels.has(item.id)) : opsButtons
   // Setup (identity, integrations) edits owner state, so someone else's
   // Crew offers no setup views at all — not even the always-on identity.
   const visibleSetup = readOnly
     ? []
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS
   // Setup stays permanently expanded (no toggle); only Ops collapses.
+  // A Code's Ops never collapses.
   const [openGroup, setOpenGroup] = useState<'ops' | null>(() =>
-    OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null,
+    isCode || OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null,
   )
 
   useEffect(() => {
-    setOpenGroup(OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null)
-  }, [view])
+    setOpenGroup(isCode || OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null)
+  }, [isCode, view])
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
@@ -144,7 +156,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           <div className="inline-flex items-center gap-0.5 px-0.5">
             {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
           </div>
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={() => setOpenGroup(current => current === 'ops' ? null : 'ops')} title="Operations: project files, database and costs">
+          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={isCode ? undefined : () => setOpenGroup(current => current === 'ops' ? null : 'ops')} title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open title="Setup: identity and integrations">
@@ -248,8 +260,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const noun = product.noun
   const ask = useCallback((message: string) => sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId])
   const sharedFiles = useMemo(
-    () => (readOnly ? sharedCrewFileClient(projectId, workspacePath) : null),
-    [readOnly, projectId, workspacePath],
+    () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
+    [readOnly, projectId, workspacePath, product.profileId],
   )
   const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
   const openHistoryChat = useResumePreviousChat()
@@ -338,6 +350,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         />} /></Suspense>)}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
+          projectId={projectId}
           projectTitle={projectTitle}
           projectDescription={projectDescription}
           projectIdentity={projectIdentity}

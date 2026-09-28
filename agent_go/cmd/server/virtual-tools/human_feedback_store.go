@@ -2,6 +2,7 @@ package virtualtools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -267,8 +268,21 @@ func (s *HumanFeedbackStore) SubmitResponse(uniqueID, response string) error {
 	return nil
 }
 
+// ErrFeedbackCancelled is returned when the run that asked was stopped.
+var ErrFeedbackCancelled = errors.New("feedback request cancelled: the run was stopped")
+
 // WaitForResponse blocks until user responds or timeout occurs
 func (s *HumanFeedbackStore) WaitForResponse(uniqueID string, timeout time.Duration) (string, error) {
+	return s.WaitForResponseCtx(context.Background(), uniqueID, timeout)
+}
+
+// WaitForResponseCtx is WaitForResponse that also ends when ctx is
+// cancelled (the run or turn was stopped): the question is removed at once,
+// so it stops showing as waiting and a late answer is refused. A deadline on
+// ctx does not end the wait; only an explicit cancellation does. Before,
+// a stopped workflow kept its question pending and its goroutine blocked
+// until the wait timed out (PLAT-368).
+func (s *HumanFeedbackStore) WaitForResponseCtx(parent context.Context, uniqueID string, timeout time.Duration) (string, error) {
 	s.mu.RLock()
 	waiter, exists := s.waiters[uniqueID]
 	s.mu.RUnlock()
@@ -277,22 +291,37 @@ func (s *HumanFeedbackStore) WaitForResponse(uniqueID string, timeout time.Durat
 		return "", fmt.Errorf("feedback request %s not found", uniqueID)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	defer func() {
 		// Answers can contain OTPs or other private input. Remove both the answer
 		// and waiter as soon as the waiting tool consumes or expires the request.
+		// Only this wait's own entry: a later request reusing the ID stays.
 		s.mu.Lock()
-		delete(s.requests, uniqueID)
-		delete(s.waiters, uniqueID)
+		if s.waiters[uniqueID] == waiter {
+			delete(s.requests, uniqueID)
+			delete(s.waiters, uniqueID)
+		}
 		s.mu.Unlock()
 	}()
 
-	select {
-	case response := <-waiter:
-		return response, nil
-	case <-ctx.Done():
-		return "", fmt.Errorf("timeout waiting for feedback: %w", ctx.Err())
+	var cancelled <-chan struct{}
+	if parent != nil && parent.Done() != nil {
+		cancelled = parent.Done()
+	}
+	for {
+		select {
+		case response := <-waiter:
+			return response, nil
+		case <-timer.C:
+			return "", fmt.Errorf("timeout waiting for feedback: %w", context.DeadlineExceeded)
+		case <-cancelled:
+			if errors.Is(parent.Err(), context.Canceled) {
+				return "", ErrFeedbackCancelled
+			}
+			// A deadline elapsed: keep waiting for the requested time.
+			cancelled = nil
+		}
 	}
 }
 

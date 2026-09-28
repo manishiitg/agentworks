@@ -23,7 +23,7 @@ func gogClientCredentialsPath(name string) (string, error) {
 
 var storeGogClient = writeGogClient
 
-func writeGogClient(ctx context.Context, name string, secretJSON []byte) error {
+func writeGogClient(ctx context.Context, home, name string, secretJSON []byte) error {
 	if err := ValidateGmailOAuthClientName(name); err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func writeGogClient(ctx context.Context, name string, secretJSON []byte) error {
 	if err := os.WriteFile(path, secretJSON, 0600); err != nil {
 		return err
 	}
-	args := gogBaseArgs(nil)
+	args := gogBaseArgs(home, nil)
 	args = append(args, "auth", "credentials", "set", path, "--client", name, "--insecure", "--no-input", "--force")
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -54,13 +54,13 @@ type gogStoredAccount struct {
 	Valid  bool     `json:"valid"`
 }
 
-func checkedGogAccount(ctx context.Context, binary, email, client string) (gogStoredAccount, error) {
+func checkedGogAccount(ctx context.Context, binary, home, email, client string) (gogStoredAccount, error) {
 	if binary == "" {
 		binary = "gog"
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	args := gogBaseArgs(nil)
+	args := gogBaseArgs(home, nil)
 	args = append(args, "--client", client, "auth", "list", "--check", "--timeout=15s", "--json", "--no-input")
 	out, err := exec.CommandContext(ctx, binary, args...).Output()
 	if err != nil {
@@ -95,7 +95,7 @@ func (g *GmailService) CompleteGogConnection(ctx context.Context, id, email stri
 		if conn.ID != id {
 			continue
 		}
-		account, err := checkedGogAccount(ctx, cfg.GogPath, email, conn.ClientName)
+		account, err := checkedGogAccount(ctx, cfg.GogPath, gogHomeForConnection(*conn), email, conn.ClientName)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func VerifyGmailConfigGog(ctx context.Context, cfg *GmailConfig) error {
 		if conn.Email == "" || conn.ClientName == "" {
 			return fmt.Errorf("connection %s is missing its email or client", conn.ID)
 		}
-		if _, err := checkedGogAccount(ctx, cfg.GogPath, conn.Email, conn.ClientName); err != nil {
+		if _, err := checkedGogAccount(ctx, cfg.GogPath, gogHomeForConnection(conn), conn.Email, conn.ClientName); err != nil {
 			return err
 		}
 	}
@@ -164,16 +164,16 @@ func MigrateGmailConfigToGog(ctx context.Context, cfg *GmailConfig) (*GmailConfi
 		if conn.Email == "" || conn.ClientName == "" {
 			return nil, fmt.Errorf("connection %s needs an email and named OAuth client before migration", conn.ID)
 		}
-		account, err := checkedGogAccount(ctx, copy.GogPath, conn.Email, conn.ClientName)
+		account, err := checkedGogAccount(ctx, copy.GogPath, gogHomeForConnection(*conn), conn.Email, conn.ClientName)
 		if err != nil {
 			token, ok := loadGmailOAuthToken(conn.ID)
 			if !ok || token.RefreshToken == "" {
 				return nil, err
 			}
-			if err := ImportRefreshTokenIntoGog(ctx, conn.Email, conn.ClientName, token.RefreshToken); err != nil {
+			if err := ImportRefreshTokenIntoGog(ctx, gogHomeForConnection(*conn), conn.Email, conn.ClientName, token.RefreshToken); err != nil {
 				return nil, err
 			}
-			account, err = checkedGogAccount(ctx, copy.GogPath, conn.Email, conn.ClientName)
+			account, err = checkedGogAccount(ctx, copy.GogPath, gogHomeForConnection(*conn), conn.Email, conn.ClientName)
 			if err != nil {
 				return nil, err
 			}

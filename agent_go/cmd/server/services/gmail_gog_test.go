@@ -374,7 +374,7 @@ func TestImportRefreshTokenIntoGogRegistersClientBeforeToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ImportRefreshTokenIntoGog(context.Background(), "me@example.com", "primary", "refresh-token"); err != nil {
+	if err := ImportRefreshTokenIntoGog(context.Background(), gogHomeDir(), "me@example.com", "primary", "refresh-token"); err != nil {
 		t.Fatalf("ImportRefreshTokenIntoGog: %v", err)
 	}
 	argv := strings.Join(readArgvLines(t, argvFile), " ")
@@ -409,7 +409,7 @@ func TestImportRefreshTokenIntoGogReportsImportFailureDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := ImportRefreshTokenIntoGog(context.Background(), "me@example.com", "primary", "refresh-token")
+	err := ImportRefreshTokenIntoGog(context.Background(), gogHomeDir(), "me@example.com", "primary", "refresh-token")
 	if err == nil || !strings.Contains(err.Error(), "entry already exists; use --force") {
 		t.Fatalf("ImportRefreshTokenIntoGog error = %v, want gog stderr detail", err)
 	}

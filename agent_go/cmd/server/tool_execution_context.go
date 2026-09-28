@@ -73,7 +73,15 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			if _, bot := api.botExecutionForSession(authoritySession); bot {
 				return nil, fmt.Errorf("%s session origin changed; start a new turn", tool)
 			}
-			if active, _ := api.getActiveSession(authoritySession); active != nil && (active.BotPlatform != "" || strings.HasPrefix(active.TriggeredBy, "bot:")) {
+			// A bot-marked session whose current turn is the owner's own
+			// Slack DM or WhatsApp message keeps the tools its CLI was
+			// launched with: the owner check above holds, and one person has
+			// one chat (senderProfileTurn), so a DM continues a warm CLI a
+			// web turn started. Only a shared channel route may not run on a
+			// person's tools. Refusing every bot-marked session broke all
+			// tools of a Crew's main chat when a Slack DM followed a web turn
+			// (RTS 2026-09-28).
+			if active, _ := api.getActiveSession(authoritySession); active != nil && (active.BotPlatform != "" || strings.HasPrefix(active.TriggeredBy, "bot:")) && !ownersOwnBotTurn(active.TurnProvider) {
 				return nil, fmt.Errorf("%s session origin changed; start a new turn", tool)
 			}
 		}
@@ -99,4 +107,11 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		}
 		return ctx, nil
 	}
+}
+
+// ownersOwnBotTurn reports a bot turn that runs as the session's own person:
+// their 1:1 Slack DM or their WhatsApp. A channel route, or a turn whose
+// principal is unknown, is not.
+func ownersOwnBotTurn(provider string) bool {
+	return provider == slackDMProvider || provider == "bot_owner"
 }

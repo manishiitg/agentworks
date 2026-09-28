@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -373,6 +374,14 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
 	// Other crews and workflows that attached this crew stop pointing at it.
 	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
+		// A deleted Code takes its share list with it.
+		owner := sanitizeUserIDForPath(userID)
+		_ = codeShares.update(context.WithoutCancel(r.Context()), func(doc *codeSharesDoc) error {
+			delete(doc.Projects, codeShareKey(owner, projectID))
+			return nil
+		})
+	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 

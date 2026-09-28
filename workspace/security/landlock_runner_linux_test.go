@@ -112,9 +112,9 @@ func TestLandlockSystemReadPathsGrantAllOfEtcReadOnly(t *testing.T) {
 			t.Fatalf("expected the resolved /etc/resolv.conf target %q in the read baseline", target)
 		}
 	}
-	for _, p := range landlockSystemWritePaths(false) {
+	for _, p := range landlockSystemWritePaths(false, false) {
 		if p == "/etc" || filepath.HasPrefix(p, "/etc/") {
-			t.Fatalf("/etc must never be in the Landlock write baseline, got %v", landlockSystemWritePaths(false))
+			t.Fatalf("/etc must never be in the Landlock write baseline, got %v", landlockSystemWritePaths(false, false))
 		}
 	}
 }
@@ -137,7 +137,7 @@ func TestLandlockSystemWritePathsCoverSharedProfileUserAndWorkflowSiblings(t *te
 	// The sibling roots are created on demand, so a deployment that never
 	// had a project browser still grants the first one.
 	want := []string{profile, profile + "-users", profile + "-workflows", profile + "-projects"}
-	got := landlockSystemWritePaths(false)
+	got := landlockSystemWritePaths(false, false)
 	for _, w := range want {
 		found := false
 		for _, p := range got {

@@ -64,7 +64,7 @@ func BrowserRecording(c *gin.Context) {
 		return
 	}
 	if liveErr != nil {
-		for _, candidate := range browserSocketDirs() {
+		for _, candidate := range browserSocketDirs(session) {
 			if _, err := os.Stat(filepath.Join(candidate, session+".capture.json")); err == nil {
 				socketDir = candidate
 				break

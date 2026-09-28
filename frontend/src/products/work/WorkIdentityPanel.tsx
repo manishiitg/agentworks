@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Loader2, Tag, Target, Trash2 } from 'lucide-react'
+import { Fingerprint, FolderOpen, Loader2, Lock, Tag, Target, Trash2 } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
@@ -25,6 +25,7 @@ import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
+import { CodeShareDialog } from './CodeShareDialog'
 import type { WorkRuntimeSelection } from './workTabs'
 
 export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
@@ -32,7 +33,7 @@ export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'secrets', label: 'Secrets' },
-  { value: 'folders', label: 'File access' },
+  { value: 'folders', label: 'Connected work' },
   { value: 'models', label: 'Models' },
 ]
 
@@ -48,7 +49,8 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
 }
 
 // Code has a name only: rename and delete, no identity, purpose or templates.
-function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+function CodeGeneralPanel({ projectId, projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+  projectId?: string
   projectTitle: string
   projectIdentity?: ProductIdentity
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
@@ -58,6 +60,7 @@ function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onD
   const [nameDraft, setNameDraft] = useState(current)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   useEffect(() => { setNameDraft(current); setError(null) }, [current])
   const dirty = nameDraft.trim() !== current
   const save = async () => {
@@ -90,6 +93,18 @@ function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onD
           </Button>
         </div>
       </SettingsCard>
+      <SettingsCard
+        icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
+        title="Access"
+        description="Private to you and the people you share it with. Admins and Code reviewers on this server can view it, read-only, and every view is logged."
+      >
+        {projectId ? (
+          <div>
+            <Button variant="outline" onClick={() => setShareOpen(true)}>Manage sharing</Button>
+          </div>
+        ) : null}
+      </SettingsCard>
+      {shareOpen && projectId ? <CodeShareDialog projectId={projectId} projectTitle={current || projectTitle} onClose={() => setShareOpen(false)} /> : null}
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Delete workspace"
@@ -326,8 +341,10 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
+  /** The project's id; a Code's General tab manages sharing with it. */
+  projectId?: string
   projectTitle: string
   projectDescription: string
   projectIdentity?: ProductIdentity
@@ -364,7 +381,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
         icon={Fingerprint}
         title={product.hasIdentity ? 'Identity' : 'Setup'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
-        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, file access, and models for this project.' : 'Name, secrets, file access, and models for this workspace.'}
+        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, connected work, and models for this project.' : 'Name, secrets, connected work, and models for this workspace.'}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
@@ -378,6 +395,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
+          projectId={projectId}
           projectTitle={projectTitle}
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}

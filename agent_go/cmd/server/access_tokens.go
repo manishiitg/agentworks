@@ -177,6 +177,10 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", err.Error())
 			return
 		}
+		if t.Allows("code:review") && !currentUserCanReviewCode(r) {
+			externalError(w, 403, "forbidden", "code:review is for admins and Code reviewers.")
+			return
+		}
 		if !t.AllCrews && len(t.CrewIDs) > 0 {
 			crews, err := listAccessibleCrewProjects(r.Context(), c.UserID, "")
 			if err != nil {
@@ -260,6 +264,11 @@ func tokenSessionWorkflowReadRoot(claims *UserClaims, workflowPhaseFolder string
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil {
 		return false
+	}
+	// Code review tools exist only for admins and Code reviewers, and a token
+	// also needs code:review; both are re-checked on every call.
+	if isExternalCodeReviewTool(tool.Name) {
+		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
 	}
 	if c.AccessToken == nil {
 		return true

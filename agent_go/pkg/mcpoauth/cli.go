@@ -101,7 +101,7 @@ func (s *Server) HandleDeviceConsent(w http.ResponseWriter, r *http.Request) {
 			name = "CLI"
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": name, "scopes": scopes, "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": name, "scopes": s.consentScopes(r, scopes), "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -116,7 +116,17 @@ func (s *Server) HandleDeviceConsent(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if err := store.DecideCLIDevice(r.Context(), code, *user, input.Decision == "approve"); err != nil {
+	requestedScopes, err := store.CLIDeviceRequest(r.Context(), code)
+	if err != nil {
+		oauthError(w, http.StatusNotFound, "invalid_request")
+		return
+	}
+	allowedScopes := s.consentScopes(r, requestedScopes)
+	if input.Decision == "approve" && len(allowedScopes) == 0 {
+		oauthError(w, http.StatusForbidden, "access_denied")
+		return
+	}
+	if err := store.DecideCLIDevice(r.Context(), code, *user, input.Decision == "approve", allowedScopes); err != nil {
 		oauthError(w, http.StatusNotFound, "invalid_request")
 		return
 	}

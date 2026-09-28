@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,9 +39,9 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 			// Crew projects have workflow.json because they reuse the shared
 			// project manifest, but they are not workflows and are not gated
 			// by a workflow browser_mode. Classify the path first.
-			if isCrewProjectPath(workspace) {
+			if isProjectWorkspacePath(workspace) {
 				if api.crewBrowserAccess(claims, workspace) != WorkflowAccessNone {
-					item["label"] = "Crew browser"
+					item["label"] = api.projectProductName(userID, workspace) + " browser"
 					result = append(result, item)
 				}
 				continue
@@ -77,6 +78,23 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 // crewBrowserAccess follows Crew Run mode: the owner has full access and any
 // other signed-in user with the Crew product has read (view-only) access.
 func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string) WorkflowAccessLevel {
+	if claims != nil && strings.TrimSpace(claims.UserID) != "" && isCodeProjectPath(workspace) {
+		// A Code's live browser: its owner, and people it is shared with
+		// (view-only below editor).
+		if crewProjectOwnedByCaller(claims.UserID, workspace) {
+			return WorkflowAccessOwner
+		}
+		owner, ok := crewProjectOwnerID(workspace)
+		product, project, found := projectProductForPath(workspace)
+		if !ok || !found || product.ProfileID != codeproduct.ProfileID {
+			return WorkflowAccessNone
+		}
+		root := "_users/" + owner + "/" + product.ProjectsRoot + "/" + project
+		if !codeLinkReadAllowed(context.Background(), claims, owner, root) {
+			return WorkflowAccessNone
+		}
+		return WorkflowAccessRead
+	}
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !isCrewProjectPath(workspace) {
 		return WorkflowAccessNone
 	}
@@ -130,7 +148,7 @@ func (api *StreamingAPI) canControlLiveBrowser(ctx context.Context, claims *User
 	if claims != nil {
 		userID = claims.UserID
 	}
-	if isCrewProjectPath(workspace) {
+	if isProjectWorkspacePath(workspace) {
 		return api.crewBrowserAccess(claims, workspace) == WorkflowAccessOwner
 	}
 	level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)

@@ -15,6 +15,7 @@ Servers:
   rts, video-studio     video.realtrainingsys.com
   confida               Confida rootless Linux deployment
   sparkquill            SparkQuill rootless Linux deployment
+  excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
 
 dominion optionally takes --activate (stage-only otherwise):
@@ -307,6 +308,12 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
     ;;
+  excellence)
+    # agents.excellencetechnologies.in; its account, units and product
+    # folder are named "agents" on the host.
+    reject_extra_arguments "$@"
+    deploy_rootless_product agents
+    ;;
   dominion)
     ACTIVATE_FLAG=""
     if [[ $# -gt 0 ]]; then
@@ -347,7 +354,7 @@ case "$SERVER" in
     usage
     ;;
   --list)
-    printf '%s\n' rts confida sparkquill dominion
+    printf '%s\n' rts confida sparkquill excellence dominion
     ;;
   "")
     usage >&2

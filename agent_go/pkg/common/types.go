@@ -731,6 +731,7 @@ func CopySessionFolderGuard(fromSessionID, toSessionID string) bool {
 		return false
 	}
 	SetSessionFolderGuard(toSessionID, src.ReadPaths, src.WritePaths)
+	InheritCodeSession(fromSessionID, toSessionID)
 	if src.WorkflowPath != "" {
 		SetSessionWorkflowPath(toSessionID, src.WorkflowPath)
 	}
@@ -756,6 +757,8 @@ func ClearSessionShellConfig(sessionID string) {
 	sessionShellConfigsMu.Lock()
 	defer sessionShellConfigsMu.Unlock()
 	delete(sessionShellConfigs, sessionID)
+	// The Code mark goes with the session's other config (MarkCodeSession).
+	codeSessionRoots.Delete(strings.TrimSpace(sessionID))
 }
 
 // GetSessionShellConfig looks up the shell config for a session.
@@ -811,6 +814,19 @@ func GetSessionShellConfig(sessionID string) *SessionShellConfig {
 
 func workflowCapabilityEnv(key string) bool {
 	return strings.HasPrefix(key, "WORKFLOW_FOLDER_") || strings.HasPrefix(key, "WORKFLOW_KB_") || strings.HasPrefix(key, "WORKFLOW_CREW_")
+}
+
+// SandboxBrowserSession is the managed browser a session's shell and browser
+// commands may use: its workflow's, project's or session's browser, derived
+// from the server-side binding (never from model input). The workspace
+// sandbox then grants only that browser's socket folder and profile. Empty
+// for an unbound session, which keeps the shared browser grants.
+func SandboxBrowserSession(sessionID string) string {
+	cfg := GetSessionShellConfig(sessionID)
+	if cfg == nil || strings.TrimSpace(cfg.BrowserSessionNamespace) == "" {
+		return ""
+	}
+	return PrefixBrowserSessionID(strings.TrimSpace(cfg.BrowserSessionNamespace) + "--browser")
 }
 
 // ResolveBrowserSessionID ignores agent-chosen names within an ownership boundary.

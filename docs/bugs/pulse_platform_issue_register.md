@@ -1,3 +1,27 @@
+## External crew/workflow interaction follow-ups — PLAT-365–370
+
+The 2026-09-28 bidirectional MCP review found these. Three are fixed on
+`main` and not yet deployed to RTS; three are open.
+
+- [PLAT-365](pulse_platform/human-decisions/plat-365.md), P1, **fixed**
+  (`ca65b9886`): workflow questions were stored without their session, so
+  `run_status` never listed them and `run_reply_input` refused the answer.
+  They now keep their session, choices and wait time.
+- [PLAT-366](pulse_platform/security-sandbox/plat-366.md), P1, **fixed**
+  (`39b468a8b`): a Crew-only token could read a known workflow call's result.
+  Crew polling now requires a Crew target and re-checks current access.
+- [PLAT-367](pulse_platform/human-decisions/plat-367.md), P1, open: workflow
+  Ask's `wfask-` session fails the external reply API's `pat-` ownership
+  check, even for its own caller.
+- [PLAT-368](pulse_platform/human-decisions/plat-368.md), P2, **fixed**
+  (`b616789cd`): stopping a run did not release its question wait. Now a
+  cancellation withdraws the question at once and refuses late answers.
+- [PLAT-369](pulse_platform/integrations/plat-369.md), P2, open: external
+  function-call polling shows no pending questions and has no call-scoped
+  reply tool.
+- [PLAT-370](pulse_platform/human-decisions/plat-370.md), P2, open: questions
+  and function-call lookup live in process memory, so a restart loses them.
+
 ## Coding CLIs and the tmux socket are outside the sandbox — PLAT-364
 
 [PLAT-364](pulse_platform/security-sandbox/plat-364.md) covers what the

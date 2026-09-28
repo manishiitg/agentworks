@@ -41,6 +41,11 @@ interface SkillsManagerPanelProps {
   /** Split the list into "This workflow" (selected) and "Platform connected"
    * groups instead of one flat sorted list. Empty groups are hidden. */
   splitSelectionGroups?: boolean
+  /** The shared library is read-only here: no Import or Delete. A private
+   * Code installs its own skills through its agent, into its own folder. */
+  libraryReadOnly?: boolean
+  /** Shown instead of Import when the library is read-only. */
+  libraryReadOnlyHint?: string
 }
 
 export default function SkillsManagerPanel({
@@ -59,6 +64,8 @@ export default function SkillsManagerPanel({
   onAddViaChat,
   headerAction,
   splitSelectionGroups = false,
+  libraryReadOnly = false,
+  libraryReadOnlyHint,
 }: SkillsManagerPanelProps) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [internalQuery, setInternalQuery] = useState('')
@@ -152,7 +159,7 @@ export default function SkillsManagerPanel({
         <SkillRow
           key={skill.file_path || skill.folder_name}
           skill={skill}
-          onDelete={() => handleDelete(skill.folder_name)}
+          onDelete={libraryReadOnly ? undefined : () => handleDelete(skill.folder_name)}
           selected={onToggleSkill ? (selectedSkills || []).includes(skill.folder_name) : undefined}
           onToggleSelect={onToggleSkill ? () => onToggleSkill(skill.folder_name) : undefined}
           onRequestAdd={onToggleSkill && onAddViaChat ? () => onAddViaChat(skill) : undefined}
@@ -216,7 +223,7 @@ export default function SkillsManagerPanel({
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           )}
-          <button
+          {!libraryReadOnly && <button
             onClick={() => setShowImportDialog(true)}
             disabled={readOnly}
             title={readOnly ? READ_ONLY_TITLE : undefined}
@@ -224,7 +231,7 @@ export default function SkillsManagerPanel({
           >
             <Plus className="w-3.5 h-3.5" />
             Import
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -260,9 +267,9 @@ export default function SkillsManagerPanel({
             <WandSparkles className={`${compact ? 'w-8 h-8 mb-2' : 'w-12 h-12 mb-4'} opacity-50`} />
             <p className={`${compact ? 'text-sm' : 'text-lg'} font-medium mb-2`}>No skills installed</p>
             <p className="text-sm text-center mb-4">
-              Import skills to extend your agent's capabilities
+              {libraryReadOnly ? libraryReadOnlyHint : "Import skills to extend your agent's capabilities"}
             </p>
-            <button
+            {!libraryReadOnly && <button
               onClick={() => setShowImportDialog(true)}
               disabled={readOnly}
               title={readOnly ? READ_ONLY_TITLE : undefined}
@@ -270,7 +277,7 @@ export default function SkillsManagerPanel({
             >
               <Plus className="w-4 h-4" />
               Import
-            </button>
+            </button>}
           </div>
         ) : visibleSkills.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">

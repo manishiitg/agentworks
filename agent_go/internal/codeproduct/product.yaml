@@ -20,7 +20,7 @@ profile:
     - files
     - browser
     - secrets
-    - mcp
+    # mcp: later. Code starts without MCP servers (docs/design/code_product.md).
     - skills
     - attached-folders
     - id: workflow-references
@@ -30,11 +30,14 @@ profile:
     - terminal
     - models
     - id: bots
-      # 1:1 only: Slack DMs and WhatsApp, each sender in their own chat. No
-      # channel routes, group chats, Gmail or Google Workspace.
-      options: {channels: "slack,whatsapp", dm_only: "true"}
+      # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
+      # editor access or more, each in their own chat); never the shared bot
+      # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
+      # gmail: own -- Google accounts connected in this Code only, private to
+      # it and usable only in its owner's chats; never the shared accounts.
+      options: {channels: "slack,whatsapp", dm_only: "true", gmail: own}
     - dashboard
-    - memory
+    # No project Memory (user, 2026-09-28): a Code keeps notes in its files.
     - costs
     - background-work
     - workspace-ui
@@ -52,11 +55,6 @@ profile:
     enabled:
       - get_file_link
       - get_report_link
-  commands:
-    - name: update-memory
-      description: Update project memory and skills from this conversation
-      icon: brain
-      file: commands/update-memory.md
   runtime:
     transport: auto
     provider_options:
@@ -134,6 +132,9 @@ profile:
     capabilities:
       workflow_execution: disabled
   built_in: true
+  # Admins can open every user's Code read-only, and every view is audited
+  # (docs/design/code_product.md, "Admin inspection").
+  admin_inspection: true
 
 branding:
   icon: code

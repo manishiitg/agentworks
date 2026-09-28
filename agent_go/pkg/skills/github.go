@@ -171,6 +171,12 @@ func ValidateGitHubSkill(workspaceAPIURL, gitHubURL, token string) (*ValidateSki
 
 // ImportGitHubSkill imports a skill from a GitHub URL to the workspace
 func ImportGitHubSkill(workspaceAPIURL, gitHubURL, token string) (*ImportSkillResponse, error) {
+	return ImportGitHubSkillInto(workspaceAPIURL, gitHubURL, token, SkillsBasePath)
+}
+
+// ImportGitHubSkillInto is ImportGitHubSkill into basePath (a project's
+// skills folder) instead of the account-wide skills/ library.
+func ImportGitHubSkillInto(workspaceAPIURL, gitHubURL, token, basePath string) (*ImportSkillResponse, error) {
 	validation, err := ValidateGitHubSkill(workspaceAPIURL, gitHubURL, token)
 	if err != nil {
 		return &ImportSkillResponse{Success: false, Error: err.Error()}, nil
@@ -192,7 +198,7 @@ func ImportGitHubSkill(workspaceAPIURL, gitHubURL, token string) (*ImportSkillRe
 	skillName = sanitizeFolderName(skillName)
 
 	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	skillFolderPath := path.Join(SkillsBasePath, skillName)
+	skillFolderPath := path.Join(basePath, skillName)
 
 	if err := client.CreateFolder(skillFolderPath); err != nil {
 		if !strings.Contains(err.Error(), "exists") {

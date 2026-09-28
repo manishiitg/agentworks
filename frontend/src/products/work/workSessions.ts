@@ -4,7 +4,6 @@ import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
 import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
-import { WORK_PROFILE_ID } from './workData'
 import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
 import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
@@ -138,7 +137,7 @@ export async function deleteWorkSession(session: WorkSession): Promise<void> {
   await agentApi.deleteAgentProfileProject(session.product, session.id)
 }
 
-export function sharedProjectToWorkSession(row: SharedProjectSummary): WorkSession {
+export function sharedProjectToWorkSession(row: SharedProjectSummary, product: ProjectProductConfig = CREW_PRODUCT): WorkSession {
   const llm = row.llm?.provider && row.llm.model_id
     ? {
       schema_version: 2,
@@ -152,9 +151,9 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary): WorkSessi
     : undefined
   return {
     schemaVersion: 1,
-    product: WORK_PROFILE_ID,
+    product: product.profileId,
     id: row.id,
-    title: row.title || 'Untitled Crew',
+    title: row.title || `Untitled ${product.noun}`,
     description: row.description || '',
     templates: [],
     identity: row.icon || row.name ? { icon: row.icon || undefined, name: row.name || undefined } : undefined,
@@ -179,15 +178,16 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary): WorkSessi
     shared: {
       ownerId: row.owner_id,
       ownerUsername: row.owner_username || undefined,
+      ...(row.role ? { role: row.role } : {}),
       triggers: row.triggers || [],
       schedules: row.schedules || [],
     },
   }
 }
 
-export async function loadSharedWorkSessions(): Promise<WorkSession[]> {
-  const response = await agentApi.listSharedProjects(WORK_PROFILE_ID)
-  return (response?.projects || []).map(sharedProjectToWorkSession)
+export async function loadSharedWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
+  const response = await agentApi.listSharedProjects(product.profileId)
+  return (response?.projects || []).map(row => sharedProjectToWorkSession(row, product))
 }
 
 /**
@@ -200,7 +200,7 @@ export async function loadWorkSessionsIncludingShared(product: ProjectProductCon
   if (!product.listsSharedProjects) return loadWorkSessions(product)
   const [owned, shared] = await Promise.all([
     loadWorkSessions(product),
-    loadSharedWorkSessions().catch(() => [] as WorkSession[]),
+    loadSharedWorkSessions(product).catch(() => [] as WorkSession[]),
   ])
   const ownedIds = new Set(owned.map(session => session.id))
   return [...owned, ...shared.filter(session => !ownedIds.has(session.id))]

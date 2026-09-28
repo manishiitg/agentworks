@@ -960,6 +960,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, subAgentWorkspace, readPaths, writePaths...)
 			workspace.SetSessionWorkingDir(subAgentSessionID, subAgentWorkspace)
 			workspace.SetSessionFolderGuard(subAgentSessionID, readPaths, writePaths)
+			common.InheritCodeSession(sessionID, subAgentSessionID)
 			if parentGuard != nil {
 				workspace.SetSessionFolderGuardBlockedPaths(subAgentSessionID, parentGuard.BlockedPaths)
 				workspace.SetSessionFolderGuardBlockedWritePaths(subAgentSessionID, parentGuard.BlockedWritePaths)
@@ -988,7 +989,16 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 				readPaths,
 				append([]string{subPerUserChatsWrite, "Downloads/", subPerUserChatHistory}, extraFolders...),
 			)
+			// Tool calls execute under the isolated session ID. Give that session
+			// the same grants before its coding-agent bridge adds managed-file
+			// write denials.
+			workspace.SetSessionWorkingDir(subAgentSessionID, subPerUserChatsFolder)
+			workspace.SetSessionFolderGuard(subAgentSessionID,
+				readPaths,
+				append([]string{subPerUserChatsWrite, "Downloads/", subPerUserChatHistory}, extraFolders...),
+			)
 			if hostDownloads := common.GrantSessionCDPHostDownloadsReadOnly(sessionID, browserReq.BrowserMode); hostDownloads != "" {
+				common.GrantSessionCDPHostDownloadsReadOnly(subAgentSessionID, browserReq.BrowserMode)
 				log.Printf("[DELEGATION FOLDER GUARD] Added read-only CDP host Downloads for sub-agent: %s", hostDownloads)
 			}
 		}

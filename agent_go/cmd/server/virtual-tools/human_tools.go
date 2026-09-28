@@ -3,6 +3,7 @@ package virtualtools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	htmlstd "html"
 	"maps"
@@ -1109,10 +1110,12 @@ func handleHumanFeedback(ctx context.Context, args map[string]interface{}) (stri
 	}
 
 	// Wait only for the bounded duration selected by the agent.
-	response, err := feedbackStore.WaitForResponse(uniqueID, waitTimeout)
+	response, err := feedbackStore.WaitForResponseCtx(ctx, uniqueID, waitTimeout)
 	if resolver, ok := ctx.Value(SessionEventEmitterKey).(HumanFeedbackResolutionEmitter); ok && resolver != nil {
 		outcome := "answered"
-		if err != nil {
+		if errors.Is(err, ErrFeedbackCancelled) {
+			outcome = "cancelled"
+		} else if err != nil {
 			outcome = "expired"
 		}
 		resolver.EmitHumanFeedbackResolved(uniqueID, outcome)

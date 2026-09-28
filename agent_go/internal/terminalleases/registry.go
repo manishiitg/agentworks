@@ -272,6 +272,8 @@ func providerFromTmuxSession(tmuxSession string) string {
 		return "pi-cli"
 	case strings.HasPrefix(tmuxSession, "mlp-muse-"):
 		return "muse-cli"
+	case strings.HasPrefix(tmuxSession, "agy-int-"):
+		return "agy-cli"
 	default:
 		return "coding-cli"
 	}

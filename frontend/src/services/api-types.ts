@@ -297,6 +297,55 @@ export interface SharedProjectSummary {
   workflow_context_paths?: string[]
   triggers?: SharedProjectTrigger[]
   schedules?: SharedProjectSchedule[]
+  /** The caller's role on a shared Code: viewer, editor or co_owner. */
+  role?: CodeShareRole
+}
+
+export type CodeShareRole = 'viewer' | 'editor' | 'co_owner'
+
+export interface CodeShareGrant {
+  user_id: string
+  username?: string
+  role: CodeShareRole
+}
+
+export interface CodeAdminWorkspace {
+  owner_id: string
+  owner_username?: string
+  id: string
+  title: string
+  workspace_path: string
+  updated_at?: string
+  shares: CodeShareGrant[]
+}
+
+export interface CodeAdminChat {
+  user_id: string
+  username?: string
+  session_id: string
+  title?: string
+  updated_at?: string
+  message_count: number
+}
+
+export interface CodeAdminAuditEntry {
+  at: string
+  admin_id: string
+  admin_username?: string
+  /** What let this account in: an admin, or a Code reviewer. */
+  role?: 'admin' | 'reviewer'
+  action: string
+  owner_id?: string
+  project_id?: string
+  target?: string
+}
+
+export interface CodeSharesResponse {
+  owner_id: string
+  owner_username?: string
+  /** The caller's own role: owner, co_owner, editor or viewer. */
+  role: CodeShareRole | 'owner'
+  grants: CodeShareGrant[]
 }
 
 export interface SharedProjectFileEntry {
@@ -3066,6 +3115,8 @@ export interface GmailConnectionsResponse {
 }
 
 export interface GmailConnectionRequest {
+  /** On create: make the connection private to this Code workspace. */
+  workspace_path?: string
   display_name?: string
   config_home?: string
   credentials_file?: string

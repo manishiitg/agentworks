@@ -135,6 +135,22 @@ func (s *Server) validScopes(raw string) ([]string, bool) {
 	return scopes, true
 }
 
+func (s *Server) consentScopes(r *http.Request, requested []string) []string {
+	if s.cfg.FilterScopes == nil {
+		return requested
+	}
+	filtered := s.cfg.FilterScopes(r, slices.Clone(requested))
+	allowed := make([]string, 0, len(filtered))
+	seen := make(map[string]bool, len(filtered))
+	for _, scope := range filtered {
+		if slices.Contains(requested, scope) && !seen[scope] {
+			allowed = append(allowed, scope)
+			seen[scope] = true
+		}
+	}
+	return allowed
+}
+
 // HandleAuthorize validates the request and redirects to the consent UI.
 func (s *Server) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -213,7 +229,7 @@ func (s *Server) HandleConsent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": request.Scopes})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": s.consentScopes(r, request.Scopes)})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -228,7 +244,17 @@ func (s *Server) HandleConsent(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	request, code, err := store.Decide(r.Context(), id, *user, input.Decision == "approve")
+	request, err := store.Request(r.Context(), id)
+	if err != nil {
+		oauthError(w, http.StatusNotFound, "invalid_request")
+		return
+	}
+	allowedScopes := s.consentScopes(r, request.Scopes)
+	if input.Decision == "approve" && len(allowedScopes) == 0 {
+		oauthError(w, http.StatusForbidden, "access_denied")
+		return
+	}
+	request, code, err := store.Decide(r.Context(), id, *user, input.Decision == "approve", allowedScopes)
 	if err != nil {
 		oauthError(w, http.StatusNotFound, "invalid_request")
 		return

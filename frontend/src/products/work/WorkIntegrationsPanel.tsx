@@ -39,10 +39,10 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
   }
 }
 
-// Code has no Gmail. Its Slack and WhatsApp tabs stay hidden until Code's
-// 1:1 direct-message bots land (docs/design/code_product.md step 3): the
-// shared bots panel creates channel routes, which Code must not have.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'slack', 'whatsapp'])
+// Code: Slack (its own bot, 1:1 DMs), WhatsApp (owner) and Gmail (its own
+// private accounts, owner only). MCP connections come later
+// (docs/design/code_product.md), so the always-on MCP "Connect" tab is hidden.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string
@@ -319,12 +319,16 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             selectionLabel="Skills for this project"
             emptySelectionText="No project skills yet — pick one below."
             selectionScopeLabel="project"
+            libraryReadOnly={product.profileId === 'code'}
+            libraryReadOnlyHint="Ask the agent to install or create a skill; it stays private to this workspace."
           />
+          {product.profileId === 'code' ? <p className="text-xs text-muted-foreground">Skills you add here stay in this workspace’s skills/ folder: ask the agent to install or create one. The shared library above is read-only from a Code.</p> : null}
         </div>}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
           fixedChannel="slack"
           scopeNoun="project"
+          ownBotOnly={product.profileId === 'code'}
           onAsk={onAsk}
           target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}

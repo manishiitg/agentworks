@@ -187,6 +187,9 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// Skills CLI routes (npx skills — runs inside container)
 		api.POST("/skills/cli/install", handleSkillInstall)
+		api.POST("/skills/project/delete", handleProjectSkillDelete)
+		// Append-only Code admin audit log (agent server only; the proxy refuses it).
+		api.POST("/audit/code-admin/append", handlers.AppendCodeAdminAudit)
 		api.GET("/skills/cli/search", handleSkillSearch)
 		api.GET("/skills/cli/available", handleSkillCLIAvailable)
 

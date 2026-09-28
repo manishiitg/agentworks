@@ -9,7 +9,8 @@ server. It works like a Crew project (files, coding CLIs in a terminal, the
 same chat), with four differences:
 
 - **Private by default.** Only the owner sees a Code until they share it.
-  MCP servers and skills added in a Code are private to it too.
+  Skills added in a Code are private to it too. MCP servers are, for now,
+  the shared platform ones, as in Crew (private MCP comes later).
   Admins can inspect every Code (see [Admin inspection](#admin-inspection)).
 - **Files first.** The files view opens by default. The dashboard is
   secondary.
@@ -39,7 +40,7 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Identity / purpose / role | Yes | No, just a name |
 | Templates (Crew catalog, playbooks) | Yes | No |
 | Reaching others | Crews and workflows (as caller) | Crews and workflows the person can access (as caller); never another Code |
-| MCP servers used inside | Yes, shared per server/Crew | Yes, but private: ones added in a Code belong to that Code |
+| MCP servers used inside | Yes, shared per server/Crew | Yes, the shared platform ones (as Crew); private per-Code servers later |
 | Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
 | Exposed over MCP (`ask_crew`, functions) | Yes | No |
 | Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
@@ -60,7 +61,8 @@ Proposed features for `code`:
 
 - **Keep:** `live-chat`, `coding`, `files`, `terminal`, `models`,
   `secrets`, `browser`, `costs`, `background-work`, `workspace-ui`,
-  `memory`, `attached-folders`.
+  `attached-folders`. (`memory` was removed on 2026-09-28: a Code keeps
+  notes in its own files. Crew's Suggestions view is not shown either.)
 - **Keep, restricted:** `bots` limited to `slack,whatsapp` and 1:1 only
   (a new `dm_only` option). Slack channel and group routes can't be
   created for a Code, and a message from a Slack channel or group is
@@ -74,14 +76,14 @@ Proposed features for `code`:
   valid target: calls, reads and attached folders pointing at a Code are
   refused.
 - **Keep, private:**
-  - `mcp`: MCP servers added in a Code, and their credentials, are stored
-    with that Code. Other Codes, Crews and workflows never see or use them,
-    and a Code sees none of the MCP servers another Code added.
+  - `mcp`: for now a Code selects from the shared platform MCP servers,
+    exactly as a Crew does (admins add them). Private per-Code servers, with
+    their credentials stored with that Code, are deferred (see Decisions).
   - `skills`: skills added, installed or created in a Code live in its own
     `skills/` folder and aren't published to the shared skills list. Other
     Codes and Crews never load them.
-  - Viewers and editors of a shared Code use its MCP servers and skills, but
-    never see MCP credentials.
+  - Viewers and editors of a shared Code use its selected MCP servers and
+    skills, but never see MCP credentials.
 - **Leave out:** `triggers`, `schedules`, `voice`, `database`.
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.
 
@@ -141,11 +143,34 @@ everyone does in Code.**
 - **Read-only.** An admin can open any user's Code: chats, terminal
   transcripts, files and usage. They cannot send messages, resume a session,
   or edit files as that user.
-- **Visible to users.** Code shows a note: "Admins on this server can view
-  your Code workspaces." "Private" means private from colleagues, not from
-  admins.
+- **Visible to users.** Setup → General ("Access") and the Share dialog say
+  that admins and Code reviewers can view the workspace, read-only and
+  logged. It is not a strip above every chat (user, 2026-09-28). "Private"
+  means private from colleagues, not from admins.
 - **Audited.** Every admin view is logged: who, which Code, what, and when.
   An admin can see the log, so the audit trail covers admins too.
+- **Code reviewers** (user, 2026-09-28; built). An admin can tick "Code
+  reviewer" on any account, on top of its role (`UserRecord.code_reviewer`).
+  A reviewer is not an admin but reviews like one, for Code only:
+  - every Code's cost row and per-person split in the cost overview (other
+    products' rows stay owner/admin-only);
+  - every Code's chats and files, read-only, through the same inspection
+    endpoints; each view is audited with `role: "reviewer"`;
+  - the audit log itself (admins and reviewers both read it).
+  A disabled account loses it. Ticking it also enables the Code product for an
+  account whose products are a restricted list, since the inspector lives in
+  Code. Only an admin sets it (`/api/admin/users` is admin-only).
+- **Review over MCP / the external API** (built). Token scope `code:review`
+  plus seven read-only tools: `list_code_workspaces`, `get_code_costs`,
+  `list_code_files`, `read_code_file`, `list_code_chats`, `read_code_chat`,
+  `get_code_audit`. They run the same inspection handlers, so every call
+  (lists and cost reads included) is audited, with `via: "token:<id>"`. The
+  account is re-checked on every call: a token whose user stops being an admin
+  or reviewer gets 403 at once, and a token holding the scope without such an
+  account gets 403 and does not even list the tools. Only admins and reviewers
+  can mint `code:review` or see and grant it on the OAuth consent screen. This
+  is review of Codes, not calling one: a Code itself is still not callable
+  over MCP.
 - **Scoped to Code.** Today chat history is owner-only even for admins
   (`chatHistoryVisibleTo`, `agent_go/cmd/server/chat_history_routes.go:167`),
   and that deliberate rule stays for Crews and personal chats. Admin
@@ -215,9 +240,9 @@ users has to hold:
    - The owner's Slack DM and WhatsApp messages continue the owner's own
      chat of the Code.
    - A DM from someone without access is refused.
-   - An MCP server or skill added in A's Code is usable there. It is
-     absent from B's Codes, every Crew and the shared skills list, and B
-     can't read A's MCP credentials even when A's Code is shared with B.
+   - A skill added in A's Code is usable there. It is absent from B's
+     Codes, every Crew and the shared skills list. (Private MCP servers are
+     deferred; a Code uses the shared platform ones.)
    - From a Code, calling a Crew function, asking a Crew and running a
      workflow the person can access all work.
    - The same calls against another Code (by ID, path or attached folder)
@@ -227,14 +252,79 @@ users has to hold:
    check).
 5. **Regression.** Crews work exactly as before.
 
+## Basic setup first (2026-09-28)
+
+Code ships a basic setup first; integrations come later. In Code's
+`product.yaml` today:
+
+- **On:** chat with the coding agent (`live-chat`, `coding`), `files`,
+  `terminal`, `models`, `costs`, `secrets`, `skills` (private to
+  the Code), `attached-folders`, `browser`, `dashboard` with its `database`,
+  outbound `workflow-references` (calling Crews and workflows) and
+  `background-work`. Sharing and admin inspection are on.
+- **Chat apps, 1:1 only** (user, 2026-09-28): `bots` with `dm_only`.
+  - Slack: only the Code's **own dedicated Slack app**, never the shared
+    server bot or a channel; it answers **1:1 DMs** from people with editor
+    access or more, each in their own chat of the Code. The Setup tab offers
+    only "this Code's own bot".
+  - WhatsApp: private per person, as everywhere in AgentWorks. A Code is
+    offered on WhatsApp to its **owner only**; people it is shared with use
+    its Slack bot or the web.
+  - Gmail / Google Workspace: the Code's own private accounts only (below).
+- **Later:** `mcp` (MCP servers).
+
 ## Decisions (2026-09-28)
 
 - **Code to Crew:** not supported. A Code does not become a Crew.
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
-- **Terminal:** both, the vendor CLI's own terminal (as in Crew today) and a
-  plain shell, in the same sandbox as the shell tool.
+- **MCP in Code: global + personal** (user, 2026-09-28). Everyone who chats in
+  a Code uses MCP with their own servers and personal secrets; the global
+  platform servers and global secrets work too. Design, for review:
+  [code_private_mcp.md](code_private_mcp.md). Until it is built, Code has no
+  MCP servers.
+- **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
+  standalone shell panel (user, 2026-09-28; it was built and then removed):
+  commands run through the agent's sandboxed shell tool, under the Code's
+  Folder Guard.
 
 ## To think about
+
+- [ ] **Share a provider connection with chosen people** (user, 2026-09-28;
+  later). Today a personal provider connection (a Cursor key, a Claude login)
+  is its owner's alone (`provider_connections.go`: owner-only listing and use),
+  and the only shared option is the admin's server account. Wanted: person X
+  shares their connection with specific users A, B, C, who can then pick it
+  in their own chats. Platform-wide, not Code-only. Open points: who pays and
+  sees the cost (the owner), revoking a share, and whether a shared login's
+  CLI home is safe to use from several people's sessions at once.
+
+- [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built).
+  Today a Gmail/Google account connected through gog sits in one
+  server-wide registry: any workflow or Crew can use it by ID, or fall back to
+  the default connection. A Gmail account added in a Code must instead be
+  that Code's own:
+  - The connection records the Code it belongs to (its project root).
+    Crews, workflows and the user's other Codes never list, select, default to
+    or use it; the Google CLI tool, the grant tools, workflow Gmail settings
+    and notifications all refuse it outside that Code.
+  - Only the Code's owner connects it (from the Code's Setup), like WhatsApp.
+  - Grants work as today: read needs the read grant, drafting/sending needs
+    the explicit agent-write opt-in plus the compose grant.
+  - Decided: a Code uses **only its own** accounts, never the owner's
+    shared ones; and only in the **owner's chats** (web, Slack DM,
+    WhatsApp), never an editor's.
+  - Built as `bots` option `gmail: own`, `GmailConnection.ScopeWorkspace` /
+    `OwnerID`, `services.GmailUseScope` enforced by the Google CLI tool, the
+    grant tools, the settings API (`workspace_path`), workflow notification
+    senders and the default connection.
+  - Decided (user, 2026-09-28): stored **separately**. Each private
+    connection has its own gog store (`<gog home>/../gog-private/<hash>`, 0700),
+    never the shared GOG_HOME that trusted terminals, workflows and Crews are
+    handed. Sign-in imports there; status, send and the Google CLI tool run
+    with `--home` pointing there; deleting the connection deletes the store.
+  - Decided (user, 2026-09-28): a Code **may call** Crews and workflows (ask /
+    call_function) that use Gmail. They run in their own context with
+    whatever Gmail they are set up with, never the Code's.
 
 - [ ] **App preview.** When someone builds a web app in a Code, the agent runs
   it on the server (for example `npm run dev` on port 3000). A private

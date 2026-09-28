@@ -23,7 +23,11 @@ var sandboxCapability SandboxCapability
 
 func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command string, args []string) (*exec.Cmd, func(), error) {
 	if abi, err := landlockABI(); err == nil && abi >= 1 {
-		if policy, policyErr := iso.landlockPolicy(); policyErr == nil {
+		policy, policyErr := iso.landlockPolicy()
+		if policyErr == nil && len(policy.ReadOnlyOverlays) > 0 && !landlockNamespacesAvailable() {
+			policyErr = fmt.Errorf("blocked-write paths inside writable paths need the launcher's namespaces")
+		}
+		if policyErr == nil {
 			return iso.landlockCommand(ctx, policy, command, args)
 		} else if mountNamespaceAvailable() {
 			return iso.executeIsolatedMountNamespace(ctx, command, args)
@@ -70,18 +74,28 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 			}
 		}
 	}
+	// A blocked-write path inside a writable one cannot be a Landlock rule
+	// (rules only add access); the launcher mounts it read-only instead, which
+	// needs its namespaces (see landlockNamespacesAvailable). One that
+	// contains a writable path cannot be expressed either way.
+	var overlays []string
 	for _, deniedWrite := range blockedWrites {
 		for _, writable := range writes {
-			if pathsOverlapByContainment(deniedWrite, writable) {
+			if !pathsOverlapByContainment(deniedWrite, writable) {
+				continue
+			}
+			if !pathWithin(deniedWrite, writable) || deniedWrite == writable {
 				return LandlockPolicy{}, fmt.Errorf("blocked-write path overlaps writable path")
 			}
+			overlays = append(overlays, deniedWrite)
+			break
 		}
 	}
 
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir)}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", ReadOnlyOverlays: overlays}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {
@@ -134,6 +148,9 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	_ = os.MkdirAll(browserSocketDir, 0o700)
 	_ = os.MkdirAll(browserTempDir(), 0o700)
 	privateTmp := privateTmpAvailable(runner)
+	if len(policy.ReadOnlyOverlays) > 0 && !privateTmp {
+		return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: read-only overlays need the launcher's namespaces")
+	}
 	policy.PrivateTmp = privateTmp
 	config, err := os.CreateTemp("", "agentworks-landlock-*.json")
 	if err != nil {
@@ -172,6 +189,13 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	// with a bare permission error -- see sandbox_tool_env.go.
 	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist), policy.WorkDir, policy.WritePaths)
 	return cmd, cleanup, nil
+}
+
+// landlockNamespacesAvailable reports whether the launcher can start in its
+// own user and mount namespaces here (the private /tmp probe).
+func landlockNamespacesAvailable() bool {
+	runner, err := landlockRunnerPath()
+	return err == nil && privateTmpAvailable(runner)
 }
 
 func landlockRunnerPath() (string, error) {

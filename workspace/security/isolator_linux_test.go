@@ -206,10 +206,13 @@ func TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy(t *testing.
 		BaseDir: root,
 	}
 
-	if _, err := isolator.landlockPolicy(); err == nil {
-		t.Skip("this environment's Landlock did not reject the overlap policy (e.g. already namespaced) -- cannot exercise the fallback path here")
-	} else if !strings.Contains(err.Error(), "overlaps writable path") {
-		t.Fatalf("landlockPolicy() error = %v, want the overlap rejection", err)
+	// Landlock now carries the blocked subfolder as a read-only overlay the
+	// launcher mounts in its namespaces; without them, dispatch falls back
+	// to the mount-namespace backend. Either backend must enforce it.
+	if policy, err := isolator.landlockPolicy(); err != nil {
+		t.Fatalf("landlockPolicy() error = %v, want the subfolder as a read-only overlay", err)
+	} else if len(policy.ReadOnlyOverlays) != 1 || policy.ReadOnlyOverlays[0] != canonicalPath(blockedSubdir) {
+		t.Fatalf("ReadOnlyOverlays = %v, want [%s]", policy.ReadOnlyOverlays, blockedSubdir)
 	}
 
 	command := fmt.Sprintf(

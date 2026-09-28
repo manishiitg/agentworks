@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -54,6 +55,9 @@ type sharedProjectSummary struct {
 	WorkflowContextPaths []string                   `json:"workflow_context_paths,omitempty"`
 	Triggers             []sharedProjectTrigger     `json:"triggers,omitempty"`
 	Schedules            []productschedule.Schedule `json:"schedules,omitempty"`
+	// Role is the caller's role on a shared Code (viewer, editor, co_owner).
+	// Crew rows leave it empty: every Crew reader has the same access.
+	Role string `json:"role,omitempty"`
 }
 
 type sharedProjectLLM struct {
@@ -96,6 +100,30 @@ var sharedProjectExcludedTopSegments = map[string]bool{"builder": true, "db": tr
 // summary, so raw access adds nothing but the secrets.
 var sharedProjectExcludedRootFiles = map[string]bool{"product.json": true, "workflow.json": true}
 
+// sharedProjectHiddenPath reports a crew-relative path readers may never
+// list or open: the private subtrees, the raw manifests, and anything under
+// a dot-segment at any depth. Dot-folders hold credentials and tool state:
+// .sandbox-cache/home is the project's HOME (git credentials, ssh keys, CLI
+// logins), plus .git (remote URLs with tokens), .env files, .ssh, .claude.
+// Before this, any reader could open .sandbox-cache/home/.git-credentials
+// of a Crew (RTS 2026-09-28).
+func sharedProjectHiddenPath(rel string) bool {
+	rel = strings.Trim(rel, "/")
+	if sharedProjectExcludedRootFiles[rel] {
+		return true
+	}
+	parts := strings.Split(rel, "/")
+	if sharedProjectExcludedTopSegments[parts[0]] {
+		return true
+	}
+	for _, part := range parts {
+		if strings.HasPrefix(part, ".") && part != "." {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	sharedProjectFileTreeDepth  = 4
 	sharedProjectFileTreeCap    = 1000
@@ -126,8 +154,26 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusNotFound, "shared projects not found")
 		return
 	}
-	// Crews are readable server-wide; no other profile lists other owners'
-	// projects (a Code is private to its owner).
+	// Crews are readable server-wide. A Code lists only the workspaces
+	// shared with the caller (config/code-shares.json), with their role.
+	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
+		rows := []sharedProjectSummary{}
+		for _, entry := range codeProjectsSharedWith(r.Context(), claims.UserID) {
+			project, err := resolveProductProjectBindingWithStore(r.Context(), entry.OwnerID, profile, entry.ProjectID, defaultProductProjectStore())
+			if err != nil {
+				continue
+			}
+			manifest, err := readCrewProjectManifests(r.Context(), profile.ID, project.WorkspacePath)
+			if err != nil {
+				continue
+			}
+			row := summarizeSharedProject(r.Context(), claims, entry.OwnerID, project.WorkspacePath, manifest)
+			row.Role = string(entry.Grants[codeGranteeID(claims.UserID)])
+			rows = append(rows, row)
+		}
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
+		return
+	}
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
@@ -192,7 +238,7 @@ func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string
 	if !strings.EqualFold(strings.TrimSpace(manifest.Product), strings.TrimSpace(profileID)) || strings.TrimSpace(manifest.ID) == "" {
 		return productProjectManifest{}, errSharedProjectNotFound
 	}
-	if strings.EqualFold(strings.TrimSpace(profileID), "work") {
+	if isProjectProfileID(profileID) {
 		// Falls back to product.json when workflow.json is absent;
 		// merging that over itself is a no-op.
 		if runtimeRaw, runtimeFound, runtimeErr := readProjectRuntimeManifest(ctx, profileID, projectRoot); runtimeErr == nil && runtimeFound {
@@ -408,14 +454,7 @@ func confineSharedProjectPath(root, rel string) (string, bool) {
 	if rel == "" || rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
 		return "", false
 	}
-	if sharedProjectExcludedRootFiles[rel] {
-		return "", false
-	}
-	top := rel
-	if idx := strings.IndexByte(rel, '/'); idx >= 0 {
-		top = rel[:idx]
-	}
-	if sharedProjectExcludedTopSegments[top] {
+	if sharedProjectHiddenPath(rel) {
 		return "", false
 	}
 	return workflowtypes.CanonicalCrewAttachmentRoot(root) + "/" + rel, true
@@ -432,11 +471,7 @@ func flattenSharedProjectFiles(root string, listing virtualtools.WorkspaceFolder
 			// crew-relative form; still descend so children are visited.
 			clean := workflowtypes.CanonicalCrewAttachmentRoot(item.FilePath)
 			if rel := strings.TrimPrefix(clean, prefix); rel != clean && rel != "" {
-				top := rel
-				if idx := strings.IndexByte(rel, '/'); idx >= 0 {
-					top = rel[:idx]
-				}
-				if !sharedProjectExcludedTopSegments[top] && !sharedProjectExcludedRootFiles[rel] {
+				if !sharedProjectHiddenPath(rel) {
 					kind := "file"
 					if strings.EqualFold(strings.TrimSpace(item.Type), "folder") {
 						kind = "folder"

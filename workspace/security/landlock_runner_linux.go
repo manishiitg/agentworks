@@ -84,7 +84,7 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return err
 		}
 	}
-	for _, path := range landlockSystemWritePaths(policy.PrivateTmp) {
+	for _, path := range landlockSystemWritePaths(policy.PrivateTmp, policy.BrowserScoped) {
 		if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
 			return err
 		}
@@ -222,7 +222,7 @@ func landlockSystemReadPaths() []string {
 	return existingCanonicalPaths(paths)
 }
 
-func landlockSystemWritePaths(privateTmp bool) []string {
+func landlockSystemWritePaths(privateTmp, browserScoped bool) []string {
 	// Never the host /tmp: every sandboxed command runs as the same service
 	// user, so a shared /tmp let one user's agent read what another's left
 	// there -- on RTS a Crew's repository clones, and git credentials written
@@ -233,7 +233,12 @@ func landlockSystemWritePaths(privateTmp bool) []string {
 	// memory (/dev/shm is not granted). Without that grant every sandboxed
 	// browser launch failed ("Creating shared memory in /tmp/aw-browser-<uid>
 	// failed: Permission denied", RTS 2026-09-28).
-	paths := []string{browserSocketDir}
+	// A command scoped to its own browser has that browser's socket folder
+	// and profile in its policy; every other browser stays out of reach.
+	var paths []string
+	if !browserScoped {
+		paths = append(paths, browserSocketDir)
+	}
 	if privateTmp {
 		paths = append(paths, "/tmp")
 	} else {
@@ -242,7 +247,7 @@ func landlockSystemWritePaths(privateTmp bool) []string {
 	paths = append(paths,
 		"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty",
 	)
-	if profile := browserconfig.SharedProfile(); profile != "" {
+	if profile := browserconfig.SharedProfile(); profile != "" && !browserScoped {
 		// A user or workflow browser never actually writes to `profile` itself --
 		// HeadlessArgsForSession launches Chrome against `<profile>-users/<id>`
 		// or `<profile>-workflows/<id>` instead (see workspace/browserconfig/

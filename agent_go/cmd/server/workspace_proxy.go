@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -149,6 +150,9 @@ func workspaceProxyRelativePath(r *http.Request) string {
 func workspaceProxyCrossUserBlock(r *http.Request, callerID string) (status int, detail string, cleanup func()) {
 	policy := newWorkspaceProxyPolicy(r, callerID)
 	rel := workspaceProxyRelativePath(r)
+	if workspaceProxyRefusedRoutes[strings.Trim(rel, "/")] {
+		return http.StatusForbidden, "server-only route", nil
+	}
 	if workspaceProxyURLIsOtherUser(rel, policy.own) {
 		return http.StatusForbidden, "url path", nil
 	}
@@ -237,6 +241,43 @@ var workspaceProxyBodyPathFields = map[string]bool{
 	"workspace_path":    true,
 	"working_directory": true, "working_dir": true,
 	"read_paths": true, "write_paths": true, "blocked_paths": true, "blocked_write_paths": true,
+	"target_dir": true,
+}
+
+// workspaceProxyServerOnlyBodyFields are request fields only the agent server
+// may set on the workspace API: a browser request carrying one is refused
+// outright, whatever path it names. target_dir points a skill install at a
+// project's private skills folder (a Code's); browsers install into the
+// shared library only.
+var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true}
+
+// workspaceProxyServerOnlyRoutes are workspace routes whose JSON body is
+// vetted for server-only fields whatever Content-Type the browser claims:
+// the workspace binds them with ShouldBindJSON, which ignores Content-Type.
+var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": true, "api/skills/project/delete": true}
+
+// workspaceProxyRefusedRoutes are workspace routes only the agent server may
+// call; a browser never reaches them, not even an admin's.
+var workspaceProxyRefusedRoutes = map[string]bool{
+	"api/audit/code-admin/append": true,
+}
+
+func workspaceProxyJSONHasServerOnlyField(node any) bool {
+	switch value := node.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if workspaceProxyServerOnlyBodyFields[key] || workspaceProxyJSONHasServerOnlyField(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, entry := range value {
+			if workspaceProxyJSONHasServerOnlyField(entry) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // workspaceProxyMultipartPathFields are the multipart form fields that
@@ -276,6 +317,26 @@ func (s *workspaceProxySpooledBody) open() io.Reader {
 		return s.file
 	}
 	return bytes.NewReader(s.mem)
+}
+
+// looksLikeJSON reports whether the body's first non-space byte opens a JSON
+// object or array: what a JSON binder would accept.
+func (s *workspaceProxySpooledBody) looksLikeJSON() bool {
+	reader := bufio.NewReader(s.open())
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			return false
+		}
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{', '[':
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 func (s *workspaceProxySpooledBody) close() {
@@ -416,19 +477,34 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 		return 0, "", nil
 	}
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	if strings.Contains(contentType, "json") {
+	// The workspace binds JSON bodies with ShouldBindJSON, which ignores
+	// Content-Type: a path field sent as text/plain (or with no type) is
+	// bound all the same. So every body that could be JSON is decoded and
+	// vetted, whatever type it claims, and one that looks like JSON but does
+	// not parse is refused. That includes a body labelled multipart: a JSON
+	// value before the first boundary is a preamble to the multipart walk but
+	// is still bound by a JSON endpoint. Real multipart bodies are also walked
+	// below.
+	multipartBody := strings.HasPrefix(contentType, "multipart/")
+	if spooled.looksLikeJSON() || workspaceProxyServerOnlyRoutes[strings.Trim(workspaceProxyRelativePath(r), "/")] || (!multipartBody && strings.Contains(contentType, "json")) {
 		var decoded any
 		if err := json.NewDecoder(spooled.open()).Decode(&decoded); err != nil {
 			spooled.close()
 			return http.StatusBadRequest, "request body is not valid JSON", nil
 		}
+		if workspaceProxyJSONHasServerOnlyField(decoded) {
+			spooled.close()
+			return http.StatusForbidden, "request body field reserved for the server", nil
+		}
 		if workspaceProxyJSONAddressesOtherUser(decoded, policy) {
 			spooled.close()
 			return http.StatusForbidden, "request body path", nil
 		}
-		return replay()
+		if !multipartBody {
+			return replay()
+		}
 	}
-	if strings.HasPrefix(contentType, "multipart/") {
+	if multipartBody {
 		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || !strings.HasPrefix(mediaType, "multipart/") || params["boundary"] == "" {
 			spooled.close()

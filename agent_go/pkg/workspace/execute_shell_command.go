@@ -440,6 +440,9 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 		len(params.FolderGuard.ReadPaths) == 0 && len(params.FolderGuard.WritePaths) == 0 {
 		return ShellCommandResult{}, fmt.Errorf("ACCESS DENIED: execute_shell_command has no granted workspace paths")
 	}
+	if params.FolderGuard != nil {
+		params.FolderGuard.BrowserSession = common.SandboxBrowserSession(sessionID)
+	}
 
 	// Block absolute host paths when folder guard is active.
 	// Docker: VirtioFS auto-mounts /Users/ into containers, so absolute paths bypass sandbox.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"log"
 	"net/http"
@@ -60,7 +61,18 @@ func IsAvailable() bool {
 // ImportToWorkspace installs skills via the workspace container's CLI.
 // Calls POST /api/skills/cli/install on the workspace API.
 func ImportToWorkspace(ctx context.Context, workspaceAPIURL, source string) (*CLIImportResult, error) {
-	reqBody, _ := json.Marshal(map[string]string{"source": source})
+	return ImportToWorkspaceDir(ctx, workspaceAPIURL, source, "")
+}
+
+// ImportToWorkspaceDir is ImportToWorkspace into targetDir, a project's
+// skills folder (docs-relative, e.g. _users/<u>/Chats/Code/projects/<p>/skills),
+// instead of the account-wide skills/ library. Empty means the library.
+func ImportToWorkspaceDir(ctx context.Context, workspaceAPIURL, source, targetDir string) (*CLIImportResult, error) {
+	payload := map[string]string{"source": source}
+	if targetDir = strings.Trim(strings.TrimSpace(targetDir), "/"); targetDir != "" {
+		payload["target_dir"] = targetDir
+	}
+	reqBody, _ := json.Marshal(payload)
 
 	apiURL := fmt.Sprintf("%s/api/skills/cli/install", workspaceAPIURL)
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqBody))
@@ -89,6 +101,34 @@ func ImportToWorkspace(ctx context.Context, workspaceAPIURL, source string) (*CL
 
 	log.Printf("[SKILLS CLI] Installed via workspace API: %v", result.InstalledSkills)
 	return &result, nil
+}
+
+// DeleteProjectSkill removes one skill from a project's skills folder
+// (targetDir, docs-relative) through the workspace service, which refuses any
+// path through a link. A project folder is writable by its agent, so the
+// generic file API, which follows links, must not be used for it.
+func DeleteProjectSkill(ctx context.Context, workspaceAPIURL, targetDir, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
+		return fmt.Errorf("invalid skill folder name %q", name)
+	}
+	reqBody, _ := json.Marshal(map[string]string{"target_dir": strings.Trim(strings.TrimSpace(targetDir), "/"), "name": name})
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/skills/project/delete", workspaceAPIURL), bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	wsauth.SetHeader(httpReq)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("workspace API call failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
 
 // FindSkills searches for skills via the workspace container's CLI.

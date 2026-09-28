@@ -189,7 +189,9 @@ type GoogleCLIAccess struct {
 	Account string
 	Client  string
 	GogPath string
-	Token   string // legacy connections only; gog accounts supply Account/Client
+	// Home is the gog store the account lives in (a private connection's own).
+	Home  string
+	Token string // legacy connections only; gog accounts supply Account/Client
 	// Grants maps service -> write-allowed. A service absent from this map is
 	// not authorized at all for this connection.
 	Grants map[string]bool
@@ -203,19 +205,16 @@ type GoogleCLIAccess struct {
 // which backend serves Gmail send/status, but Drive/Sheets/Slides/etc. have
 // no gws equivalent, so this always resolves to gog.
 func (g *GmailService) GoogleCLIAccessForConnection(ctx context.Context, connectionID string) (GoogleCLIAccess, error) {
-	connectionID = strings.TrimSpace(connectionID)
-	var conn GmailConnection
-	var ok bool
-	if connectionID == "" {
-		conn, ok = g.DefaultConnection()
-		if !ok {
-			return GoogleCLIAccess{}, fmt.Errorf("no default Google account connection is configured — connect one in workflow bots settings")
-		}
-	} else {
-		conn, ok = g.GetConnection(connectionID)
-		if !ok {
-			return GoogleCLIAccess{}, fmt.Errorf("Google account connection %q not found", connectionID)
-		}
+	return g.GoogleCLIAccessForConnectionIn(ctx, connectionID, GmailUseScope{})
+}
+
+// GoogleCLIAccessForConnectionIn is GoogleCLIAccessForConnection for a use in
+// scope: a Code session reaches only its own private accounts (as its owner),
+// every other session only shared ones.
+func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, connectionID string, scope GmailUseScope) (GoogleCLIAccess, error) {
+	conn, err := g.ConnectionForScope(connectionID, scope)
+	if err != nil {
+		return GoogleCLIAccess{}, err
 	}
 	if !conn.Enabled {
 		return GoogleCLIAccess{}, fmt.Errorf("Google account connection %q (%s) is disabled — reconnect it before use", conn.ID, conn.DisplayName)
@@ -278,7 +277,7 @@ func (g *GmailService) GoogleCLIAccessForConnection(ctx context.Context, connect
 	if len(grants) == 0 {
 		return GoogleCLIAccess{}, fmt.Errorf("connection %q (%s) has no Google read/service grant available to agents — enable Gmail read access or another service in Bots settings and reconnect", conn.ID, conn.DisplayName)
 	}
-	return GoogleCLIAccess{GogPath: gogPath, Token: token, Account: conn.Email, Client: conn.ClientName, Grants: grants}, nil
+	return GoogleCLIAccess{GogPath: gogPath, Home: gogHomeForConnection(conn), Token: token, Account: conn.Email, Client: conn.ClientName, Grants: grants}, nil
 }
 
 // sortedGoogleServiceNames lists catalog keys for an error message enumerating
@@ -318,6 +317,11 @@ const googleCLIOutputLimit = 20000
 // too, so gogcli itself refuses any mutating call rather than trusting the
 // caller not to attempt one.
 func RunGoogleCLI(ctx context.Context, connectionID string, args []string) (string, error) {
+	return RunGoogleCLIIn(ctx, connectionID, args, GmailUseScope{})
+}
+
+// RunGoogleCLIIn is RunGoogleCLI for a use in scope (see GmailUseScope).
+func RunGoogleCLIIn(ctx context.Context, connectionID string, args []string, scope GmailUseScope) (string, error) {
 	trimmed := make([]string, 0, len(args))
 	for _, a := range args {
 		if v := strings.TrimSpace(a); v != "" {
@@ -347,7 +351,7 @@ func RunGoogleCLI(ctx context.Context, connectionID string, args []string) (stri
 	if svc == nil {
 		return "", fmt.Errorf("Google account connections are not configured on this server")
 	}
-	access, err := svc.GoogleCLIAccessForConnection(ctx, connectionID)
+	access, err := svc.GoogleCLIAccessForConnectionIn(ctx, connectionID, scope)
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +360,11 @@ func RunGoogleCLI(ctx context.Context, connectionID string, args []string) (stri
 		return "", fmt.Errorf("this connection is not authorized for %q — enable it in workflow bots settings and reconnect", service)
 	}
 
-	finalArgs := append([]string{"--home", gogHomeDir()}, trimmed...)
+	home := access.Home
+	if home == "" {
+		home = gogHomeDir()
+	}
+	finalArgs := append([]string{"--home", home}, trimmed...)
 	if access.Token != "" {
 		finalArgs = append(finalArgs, "--access-token", access.Token)
 	} else {

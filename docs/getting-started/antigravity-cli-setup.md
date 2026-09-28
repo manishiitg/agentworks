@@ -6,6 +6,9 @@ Maintainers: record integration gaps and manual test results in
 AgentWorks uses the locally installed `agy` CLI (Google Antigravity) as a
 coding-agent provider. This is a different product from `gemini-cli`: do not
 substitute one's config, key, or login for the other's.
+The backend offers this alpha only in single-user mode with `AGY_ALPHA=1`
+(for the local launcher, add it to `agent_go/.env`). Multi-user servers keep
+it disabled until per-user AGY accounts and conversations are isolated.
 
 ## 1. Install
 
@@ -41,8 +44,9 @@ direct server access is required.
 First launch also shows a one-time theme picker, and each new workspace
 folder asks "Do you trust the contents of this project?". Trust is
 exact-path: trusting a folder does not trust its subdirectories. AgentWorks
-trusts the exact Chat or private workflow directory it creates before AGY
-boots. For a separately selected directory, confirm its prompt yourself;
+trusts the exact Chat or private workflow directory in AGY's private per-run
+settings before it boots; the global trust list stays intact. For a
+separately selected directory, confirm its prompt yourself;
 AgentWorks turns fail loudly if that trust gate remains open.
 
 ## 3. Verify in AgentWorks

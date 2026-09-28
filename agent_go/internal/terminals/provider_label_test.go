@@ -15,3 +15,12 @@ func TestProviderLabelRecognizesMuse(t *testing.T) {
 		t.Fatalf("providerLabel(pane header) = %q, want %q", got, "Muse")
 	}
 }
+
+func TestProviderLabelRecognizesAgy(t *testing.T) {
+	if got := providerLabel("", map[string]interface{}{"provider": "agy-cli"}); got != "Antigravity CLI" {
+		t.Fatalf("providerLabel(metadata provider=agy-cli) = %q", got)
+	}
+	if got := providerLabel("Antigravity CLI\n> ", nil); got != "Antigravity CLI" {
+		t.Fatalf("providerLabel(pane header) = %q", got)
+	}
+}

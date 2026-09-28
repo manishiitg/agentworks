@@ -316,7 +316,12 @@ type ServerConfig struct {
 
 // ActiveSessionInfo represents an active session for page refresh recovery
 type ActiveSessionInfo struct {
-	SessionID                   string           `json:"session_id"`
+	SessionID string `json:"session_id"`
+	// TurnProvider is the principal the current turn runs as (its claims
+	// provider): the web chat's login provider, "bot_user" for the person's
+	// 1:1 Slack DM, "bot_owner" for their WhatsApp, "bot_route" for a shared
+	// Slack channel route. Set on every turn, never inherited.
+	TurnProvider                string           `json:"-"`
 	ParentSessionID             string           `json:"parent_session_id,omitempty"`
 	SessionKind                 string           `json:"session_kind,omitempty"`
 	AgentMode                   string           `json:"agent_mode"`
@@ -2366,6 +2371,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
+	// Admin inspection of Code (read-only, audited; admin checked in-handler).
+	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/files", api.handleAdminCodeFiles).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/file", api.handleAdminCodeFile).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")
@@ -4086,6 +4100,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	api.activeSessionsMux.Lock()
 	if sess, ok := api.activeSessions[sessionID]; ok {
 		sess.Username = queryLogCtx.Username
+		sess.TurnProvider = ""
+		if claims := GetUserFromContext(r.Context()); claims != nil {
+			sess.TurnProvider = claims.Provider
+		}
 		if label := strings.TrimSpace(req.TriggeredByLabel); label != "" {
 			sess.TriggeredByLabel = label
 		}
@@ -5424,12 +5442,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if !isWorkflowPhase {
-			if err := trustAgyWorkingDir(finalProvider, chatWorkingDir); err != nil {
-				sendError(fmt.Sprintf("Failed to trust AGY CLI working directory: %v", err), true)
-				return
-			}
-		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
 		if chatWorkingDir != sharedChatWorkingDir {
@@ -5860,6 +5872,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
+					if strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+						// Google accounts and other Code-private resources key off
+						// this mark, which survives shell-config clears.
+						common.MarkCodeSession(sessionID, profileRoot)
+					}
 					workspace.SetSessionFolderGuard(sessionID,
 						append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...),
 						append(append(append(guardWrite, chatHistoryGrants...), workGrantWrite...), crewRefWrite...),
@@ -6252,9 +6269,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if resolvedProfile != nil {
 					skillProductID = resolvedProfile.Definition.ID
 				}
-				if err := api.registerMultiAgentSkillTools(llmAgent, func(toolName string) bool {
+				// A Code's skills are private to it: installs and removals act on
+				// its own skills/ folder, never the shared library.
+				projectSkillsDir := ""
+				if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) && isActiveWorkProjectWorkspace(currentUserID, req.SelectedFolder) {
+					projectSkillsDir = strings.TrimSuffix(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), "/") + "/skills"
+				}
+				if err := api.registerMultiAgentSkillToolsIn(llmAgent, func(toolName string) bool {
 					return profileDisablesVirtualTool(resolvedProfile, toolName)
-				}, skillProductID); err != nil {
+				}, skillProductID, projectSkillsDir); err != nil {
 					logfWithContext(queryLogCtx, "[SKILL TOOLS] Failed to register multi-agent skill tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register multi-agent skill tools: %v", err), true)
 					return
@@ -11821,6 +11844,37 @@ func skillSelectionHint(productID, skillNames string) string {
 	return fmt.Sprintf("Use update_workflow_config to add %s to the workflow's selected skills.", skillNames)
 }
 
+// projectSkillCallbacks points install, import and uninstall at one project's
+// skills folder; listing and search still see the shared library.
+func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkillsDir, productID string) *todo_creation_human.SkillCallbacks {
+	wsURL := getWorkspaceAPIURL()
+	scoped := *base
+	scoped.InstallSkill = func(ctx context.Context, source string) (string, error) {
+		result, err := skills.ImportToWorkspaceDir(ctx, wsURL, source, projectSkillsDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to install skill: %w", err)
+		}
+		if len(result.InstalledSkills) == 0 {
+			return "No skills were installed. Check the source format (e.g., 'owner/repo@skill-name').", nil
+		}
+		return fmt.Sprintf("Installed into this workspace's private skills/ folder: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHint(productID, "These skills")), nil
+	}
+	scoped.ImportSkill = func(ctx context.Context, githubURL, token string) (string, error) {
+		resp, err := skills.ImportGitHubSkillInto(wsURL, githubURL, token, projectSkillsDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to import skill: %w", err)
+		}
+		if !resp.Success {
+			return fmt.Sprintf("Failed to import skill: %s", resp.Error), nil
+		}
+		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
+	}
+	scoped.DeleteSkill = func(ctx context.Context, folderName string) error {
+		return skills.DeleteProjectSkill(ctx, wsURL, projectSkillsDir, folderName)
+	}
+	return &scoped
+}
+
 func (api *StreamingAPI) buildSkillCallbacksForProduct(productID string) *todo_creation_human.SkillCallbacks {
 	wsURL := getWorkspaceAPIURL() // workspace container URL, not backend URL
 	return &todo_creation_human.SkillCallbacks{
@@ -11900,9 +11954,22 @@ func (api *StreamingAPI) registerMultiAgentSkillTools(registrar interface {
 	if len(productID) > 0 {
 		activeProductID = productID[0]
 	}
+	return api.registerMultiAgentSkillToolsIn(registrar, disabled, activeProductID, "")
+}
+
+// registerMultiAgentSkillToolsIn registers the skill tools. A non-empty
+// projectSkillsDir (a private Code's docs-relative skills folder) makes
+// install, import and uninstall act on that folder only: the account-wide
+// library stays readable but is never written from the project.
+func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
+	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
+}, disabled func(string) bool, activeProductID, projectSkillsDir string) error {
 	skillFuncs := api.buildSkillCallbacksForProduct(activeProductID)
 	if skillFuncs == nil {
 		return fmt.Errorf("skill callbacks unavailable")
+	}
+	if projectSkillsDir = strings.Trim(strings.TrimSpace(projectSkillsDir), "/"); projectSkillsDir != "" {
+		skillFuncs = projectSkillCallbacks(skillFuncs, projectSkillsDir, activeProductID)
 	}
 
 	registerTool := func(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error)) error {

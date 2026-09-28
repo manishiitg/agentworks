@@ -7,6 +7,8 @@ type FolderGuardConfig struct {
 	WritePaths        []string `json:"write_paths"`
 	BlockedPaths      []string `json:"blocked_paths"`
 	BlockedWritePaths []string `json:"blocked_write_paths,omitempty"`
+	// BrowserSession scopes the sandbox to this session's own managed browser.
+	BrowserSession string `json:"browser_session,omitempty"`
 }
 
 // ShellExecuteRequest represents the request body for workspace-api /api/execute

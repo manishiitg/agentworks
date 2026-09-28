@@ -360,6 +360,12 @@ var botsNonDirectMessageTools = map[string]bool{
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 }
 
+// botsOwnGmailTools are the Google account tools a product keeps with
+// gmail=own (its own private accounts only; see services.GmailUseScope).
+var botsOwnGmailTools = map[string]bool{
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+}
+
 // featureTools applies a binding's tool-narrowing options. Options only ever
 // remove tools from the shared bundle; they never add one.
 func featureTools(id string, tools []string, options map[string]string) ([]string, error) {
@@ -381,6 +387,21 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 		default:
 			return nil, fmt.Errorf("feature %q: invalid dm_only %q (want true or false)", id, dmOnly)
 		}
+		switch gmail := strings.TrimSpace(options["gmail"]); gmail {
+		case "":
+		case "own":
+			// The product's own private Google accounts (a Code's): keep the
+			// Gmail/Workspace tools that dm_only would drop.
+			kept := map[string]bool{}
+			for tool := range drop {
+				if !botsOwnGmailTools[tool] {
+					kept[tool] = true
+				}
+			}
+			drop = kept
+		default:
+			return nil, fmt.Errorf("feature %q: invalid gmail %q (want own)", id, gmail)
+		}
 	}
 	out := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -397,6 +418,8 @@ func featurePromptExtension(id, extension string, options map[string]string) str
 	switch {
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
 		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
+	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":
+		return "Direct-message chat is enabled: people with access can message this workspace 1:1 from a Slack DM (its own Slack app) or, for its owner, WhatsApp; each person continues their own chat. Slack channels and group chats are not available, and you cannot send Slack messages yourself. Google (Gmail, Drive, Calendar...) is available only through this workspace's own private accounts, and only in its owner's chats: check list_gmail_connections first, then use google_workspace_cli. Read the attached `work-schedules-and-bots` skill for the Google CLI syntax; mailbox reads need a read grant, and drafting or sending needs the owner's agent-write opt-in plus the compose grant."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true":
 		return "Direct-message chat is enabled: people with access can message this workspace 1:1 from a Slack DM or WhatsApp, and each person continues their own chat. Slack channels, group chats, Gmail and Google Workspace are not available here, and you cannot send Slack messages yourself."
 	}

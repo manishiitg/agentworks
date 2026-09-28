@@ -15,12 +15,12 @@ for command in git go gcc npm jq rsync python3 ffmpeg; do command -v "$command" 
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
 # building or touching the server if either checked-in allowlist drifts.
-grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work"]' "$SCRIPT_DIR/server/runtime-config.js" || {
-  echo "RTS deployment must expose exactly AgentWorks, Video Studio, and Work" >&2
+grep -Fq 'enabledProductSurfaces: ["agentworks", "video-studio", "work", "code"]' "$SCRIPT_DIR/server/runtime-config.js" || {
+  echo "RTS deployment must expose exactly AgentWorks, Video Studio, Work, and Code" >&2
   exit 1
 }
-grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
-  echo "RTS deployment must load the video-studio and work product backends" >&2
+grep -Fq 'Environment=AGENT_PRODUCTS=video-studio,work,code' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {
+  echo "RTS deployment must load the video-studio, work and code product backends" >&2
   exit 1
 }
 grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$SCRIPT_DIR/rootless/video-studio-agent.service" || {

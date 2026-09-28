@@ -34,6 +34,7 @@ const PRODUCT_LABELS: Record<string, string> = {
   'video-studio': 'Video Studio',
   finance: 'Finance',
   dominion: 'Dominion',
+  code: 'Code',
 }
 const productLabel = (id: string) => PRODUCT_LABELS[id] ?? id
 
@@ -86,6 +87,17 @@ const UsersAdminPanel: React.FC = () => {
 
   const toggleProduct = (list: string[], id: string) => (list.includes(id) ? list.filter((p) => p !== id) : [...list, id])
 
+  // Turning Code review on also opens the Code product (the inspector lives
+  // there) for an account whose products are a restricted list.
+  const codeReviewerPatch = (u: AdminUser, role: Role, next: boolean): AdminUserWrite => {
+    const patch: AdminUserWrite = { code_reviewer: next }
+    const restricted = role === 'viewer' || role === 'editor' || u.products.length > 0
+    if (next && role !== 'admin' && restricted && products.includes('code') && !u.products.includes('code')) {
+      patch.products = [...u.products, 'code']
+    }
+    return patch
+  }
+
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
 
   return (
@@ -94,7 +106,7 @@ const UsersAdminPanel: React.FC = () => {
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
         count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description="Everyone who can open this deployment, and what each account may do. A creator owns what they create; an editor may edit assigned workflows but cannot create new ones; a viewer only sees shared workflows. Product boxes decide which surfaces an account may open."
+        description="Everyone who can open this deployment, and what each account may do. A creator owns what they create; an editor may edit assigned workflows but cannot create new ones; a viewer only sees shared workflows. Product boxes decide which surfaces an account may open. A Code reviewer (any role) reviews every Code workspace's cost, chats and files, read-only, and every view is audited."
       >
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
@@ -141,6 +153,20 @@ const UsersAdminPanel: React.FC = () => {
                       >
                         {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
+                      {role !== 'admin' && (
+                        <label
+                          className="mt-1.5 flex items-center gap-1.5 text-xs"
+                          title="Reviews every Code workspace's cost, chats and files, read-only. Every view is recorded in the audit log."
+                        >
+                          <Checkbox
+                            disabled={busy}
+                            checked={u.code_reviewer === true}
+                            onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.code_reviewer !== true))) }}
+                            aria-label={`Code reviewer for ${u.username}`}
+                          />
+                          Code reviewer
+                        </label>
+                      )}
                     </td>
                     <td className="py-2 pr-3 align-top">
                       {role === 'admin' ? (

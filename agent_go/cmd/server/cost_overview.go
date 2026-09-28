@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
 
@@ -111,8 +112,26 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 }
 
 func costOverviewProductVisible(id, userID string, admin bool) bool {
-	_, kind, _, ownerID := costOverviewRoot(id)
-	return kind == costOverviewKindProduct && (admin || (userID != "" && ownerID == sanitizeUserIDForPath(userID)))
+	return costOverviewProductVisibleTo(id, userID, admin, false)
+}
+
+// costOverviewProductVisibleTo also lets a Code reviewer see every Code's
+// row (and its per-person split), and no other product's.
+func costOverviewProductVisibleTo(id, userID string, admin, codeReviewer bool) bool {
+	root, kind, _, ownerID := costOverviewRoot(id)
+	if kind != costOverviewKindProduct {
+		return false
+	}
+	if admin || (userID != "" && ownerID == sanitizeUserIDForPath(userID)) {
+		return true
+	}
+	return codeReviewer && costOverviewIsCode(root)
+}
+
+// costOverviewIsCode reports whether a product row is a Code workspace.
+func costOverviewIsCode(root string) bool {
+	parts := strings.SplitN(root, "/", 3)
+	return len(parts) == 3 && parts[0] == "_users" && strings.HasPrefix(parts[2], codeproduct.ProjectsRoot+"/")
 }
 
 func mergeWorkflowAggregate(target *costledger.WorkflowAggregate, source *costledger.WorkflowAggregate) {
@@ -413,7 +432,7 @@ func (api *StreamingAPI) handleCostOverview(w http.ResponseWriter, r *http.Reque
 			return true
 		}
 		if kind == costOverviewKindProduct {
-			return costOverviewProductVisible(id, GetUserIDFromContext(r.Context()), currentUserIsAdmin(r))
+			return costOverviewProductVisibleTo(id, GetUserIDFromContext(r.Context()), currentUserIsAdmin(r), currentUserCanReviewCode(r))
 		}
 		return currentUserWorkflowAccess(r, id) != WorkflowAccessNone
 	}

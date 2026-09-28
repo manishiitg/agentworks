@@ -46,6 +46,11 @@ import type {
   AgentProfileConversationResponse,
   SharedProjectFileEntry,
   SharedProjectSummary,
+  CodeShareRole,
+  CodeSharesResponse,
+  CodeAdminWorkspace,
+  CodeAdminChat,
+  CodeAdminAuditEntry,
   GetEventsResponse,
   PollingEvent,
   TerminalEventsResponse,
@@ -1202,6 +1207,47 @@ export const agentApi = {
     return response.data
   },
 
+  getCodeShares: async (projectId: string): Promise<CodeSharesResponse> => {
+    const response = await api.get(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shares`)
+    return response.data
+  },
+
+  putCodeShares: async (projectId: string, grants: Array<{ user: string; role: CodeShareRole }>): Promise<CodeSharesResponse> => {
+    const response = await api.put(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shares`, { grants })
+    return response.data
+  },
+
+  // Admin inspection of Code (read-only; every call is audited server-side).
+  adminListCodeWorkspaces: async (): Promise<{ workspaces: CodeAdminWorkspace[] }> => {
+    const response = await api.get('/api/admin/code/workspaces')
+    return response.data
+  },
+
+  adminListCodeFiles: async (ownerId: string, projectId: string): Promise<{ files: SharedProjectFileEntry[]; truncated?: boolean }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
+    return response.data
+  },
+
+  adminGetCodeFile: async (ownerId: string, projectId: string, path: string): Promise<{ path: string; content: string; binary?: boolean; truncated?: boolean }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
+    return response.data
+  },
+
+  adminListCodeChats: async (ownerId: string, projectId: string): Promise<{ chats: CodeAdminChat[] }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
+    return response.data
+  },
+
+  adminGetCodeChat: async (ownerId: string, projectId: string, sessionId: string, userId: string): Promise<{ conversation_history?: Array<{ Role?: string; role?: string; Parts?: Array<Record<string, unknown>>; parts?: Array<Record<string, unknown>> }> }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
+    return response.data
+  },
+
+  adminCodeAudit: async (month?: string): Promise<{ month: string; entries: CodeAdminAuditEntry[] }> => {
+    const response = await api.get('/api/admin/code/audit', { params: month ? { month } : undefined })
+    return response.data
+  },
+
   listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,
@@ -1645,8 +1691,9 @@ export const agentApi = {
 
   // --- Gmail connections (multi-account senders) ---
 
-  listGmailConnections: async (): Promise<GmailConnectionsResponse> => {
-    const apiResponse = await api.get('/api/human-feedback/gmail/connections', { timeout: 15000 })
+  /** With a Code workspace path: that Code's own private accounts only. */
+  listGmailConnections: async (workspacePath?: string): Promise<GmailConnectionsResponse> => {
+    const apiResponse = await api.get('/api/human-feedback/gmail/connections', { timeout: 15000, params: workspacePath ? { workspace_path: workspacePath } : undefined })
     return apiResponse.data
   },
 
@@ -2699,6 +2746,8 @@ export interface AuthUser {
   // Account level (docs/design/user_accounts_and_workflow_sharing.md):
   // one role per account. The booleans stay for older servers.
   is_admin?: boolean
+  /** Reviews every Code workspace's cost, chats and files (read-only, audited). */
+  is_code_reviewer?: boolean
   can_create?: boolean
   can_edit?: boolean
   /** Effective access per visible workflow id. Gate workflow actions on this, never on the global flags alone. */
@@ -2717,6 +2766,8 @@ export interface AdminUser {
   can_edit: boolean
   role: 'admin' | 'creator' | 'editor' | 'viewer'
   products: string[]
+  /** A permission on top of the role: reviews every Code, read-only and audited. */
+  code_reviewer?: boolean
   disabled: boolean
   created_at?: string
   updated_at?: string
@@ -2731,6 +2782,7 @@ export interface AdminUserWrite {
   can_edit?: boolean
   role?: 'admin' | 'creator' | 'editor' | 'viewer'
   products?: string[]
+  code_reviewer?: boolean
   disabled?: boolean
 }
 

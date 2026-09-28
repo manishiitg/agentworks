@@ -6,8 +6,26 @@ import {
   getInitialExpandedWorkspaceFolders,
   isIterationFolder,
   publicWorkspacePathForUser,
+  resolveWorkspaceUploadPath,
   workspacePathsEqualForUser,
 } from './workspacePathUtils'
+
+describe('workspace upload destinations', () => {
+  const crewPath = 'Chats/Work/projects/my-crew'
+
+  it('uses the crew path for its displayed root and children', () => {
+    expect(resolveWorkspaceUploadPath('/', crewPath)).toBe(crewPath)
+    expect(resolveWorkspaceUploadPath('notes', crewPath)).toBe(`${crewPath}/notes`)
+    expect(resolveWorkspaceUploadPath('/notes', crewPath)).toBe(`${crewPath}/notes`)
+    expect(resolveWorkspaceUploadPath(`${crewPath}/notes`, crewPath)).toBe(`${crewPath}/notes`)
+    expect(resolveWorkspaceUploadPath(`${crewPath}-other`, crewPath)).toBe(`${crewPath}/${crewPath}-other`)
+  })
+
+  it('keeps the global root for an unscoped workspace', () => {
+    expect(resolveWorkspaceUploadPath('/')).toBe('/')
+    expect(resolveWorkspaceUploadPath('Chats', null)).toBe('Chats')
+  })
+})
 
 describe('shared workspace folder defaults', () => {
   it('opens only the workspace root and keeps every first-level folder collapsed', () => {

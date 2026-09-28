@@ -5,7 +5,7 @@ package security
 import "testing"
 
 func TestLandlockDoesNotGrantTheSharedTmp(t *testing.T) {
-	for _, path := range landlockSystemWritePaths(false) {
+	for _, path := range landlockSystemWritePaths(false, false) {
 		if path == "/tmp" {
 			t.Fatal("sandboxed commands may write the shared /tmp")
 		}

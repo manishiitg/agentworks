@@ -227,7 +227,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");
   expect(panels[1].textContent).not.toContain("Detach");
-  expect(panels[1].textContent).toContain("Setup → File access");
+  expect(panels[1].textContent).toContain("Setup → Connected work");
   expect(panels[1].querySelectorAll('[role="group"] button')).toHaveLength(2);
   expect(panels[0].querySelector("select")).toBeNull();
   await act(async () => {
@@ -268,7 +268,7 @@ it("shows unavailable sources to readers without offering write or detach contro
   expect(host.querySelectorAll("button, select")).toHaveLength(0);
 });
 
-it("keeps the file access view free of manual attach forms", async () => {
+it("keeps the connected work view free of manual attach forms", async () => {
   vi.mocked(workflowManifestApi.getWorkflowManifest).mockResolvedValue({
     success: true,
     manifest: {},

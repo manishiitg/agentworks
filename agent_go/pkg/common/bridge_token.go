@@ -31,6 +31,7 @@ import (
 // for another session.
 
 const bridgeTokenPrefix = "mcps2."
+
 // bridgeTokenLifetime bounds how long a leaked token stays usable within one
 // server run (the signing secret is random per start, so a restart revokes
 // every token anyway). A running CLI keeps the token it was launched with:

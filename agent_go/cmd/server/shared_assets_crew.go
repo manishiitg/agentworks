@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"path"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -42,11 +44,17 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	if owner == "" || owner == caller || sanitizeUserIDForPath(owner) != owner {
 		return "", "", false, false, false
 	}
-	if len(parts) < 4 || parts[0] != "Chats" || parts[1] != "Work" || parts[2] != "projects" || parts[3] == "" {
+	if len(parts) < 4 || parts[0] != "Chats" || (parts[1] != "Work" && parts[1] != "Code") || parts[2] != "projects" || parts[3] == "" {
 		return "", "", false, false, false
 	}
-	crewRoot := path.Join("_users", owner, "Chats/Work/projects", parts[3])
-	if !crewLinkReadAllowed(api, claims, crewRoot) {
+	crewRoot := path.Join("_users", owner, "Chats", parts[1], "projects", parts[3])
+	if parts[1] == "Code" {
+		// A Code link opens for the people its owner shared it with.
+		if !codeLinkReadAllowed(r.Context(), claims, owner, crewRoot) {
+			externalError(w, 403, "forbidden", "You do not have access to this Code workspace.")
+			return "", "", false, true, false
+		}
+	} else if !crewLinkReadAllowed(api, claims, crewRoot) {
 		externalError(w, 403, "forbidden", "You do not have access to this crew.")
 		return "", "", false, true, false
 	}
@@ -72,13 +80,19 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 // crewRootListingVisible hides the crew's private areas from a reader's
 // listing of the crew root. name is relative to the crew root.
 func crewRootListingVisible(name string) bool {
-	name = strings.Trim(name, "/")
-	if sharedProjectExcludedRootFiles[name] {
+	return !sharedProjectHiddenPath(name)
+}
+
+// codeLinkReadAllowed reports whether claims may read the Code rooted at
+// codeRoot ("_users/<owner>/Chats/Code/projects/<p>"): any role its owner
+// granted them. The project id comes from the Code's own product.json.
+var codeLinkReadAllowed = func(ctx context.Context, claims *UserClaims, ownerID, codeRoot string) bool {
+	if claims == nil {
 		return false
 	}
-	top := name
-	if index := strings.IndexByte(name, '/'); index >= 0 {
-		top = name[:index]
+	manifest, err := readCrewProjectManifests(ctx, codeproduct.ProfileID, codeRoot)
+	if err != nil {
+		return false
 	}
-	return !sharedProjectExcludedTopSegments[top]
+	return codeRoleFor(ctx, claims.UserID, ownerID, manifest.ID) != codeRoleNone
 }

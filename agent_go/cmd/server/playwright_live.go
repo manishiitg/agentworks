@@ -40,7 +40,7 @@ type playwrightLiveRegistry struct {
 // (logical path) and Crew members (physical path) name the same crew.
 func playwrightScope(userID, workspace string) string {
 	workspace = strings.TrimRight(workspace, "/")
-	if isCrewProjectPath(workspace) {
+	if isProjectWorkspacePath(workspace) {
 		return browserProjectKey(userID, workspace)
 	}
 	return workspace
@@ -55,7 +55,7 @@ func (api *StreamingAPI) playwrightVisible(claims *UserClaims, workspace, owner,
 		userID = claims.UserID
 	}
 	workspace = strings.TrimRight(workspace, "/")
-	if isCrewProjectPath(workspace) {
+	if isProjectWorkspacePath(workspace) {
 		return api.crewBrowserAccess(claims, workspace) != WorkflowAccessNone && playwrightScope(userID, workspace) == scope
 	}
 	return userID != "" && owner == userID && scope == workspace
@@ -155,7 +155,7 @@ func (api *StreamingAPI) playwrightWorkflowOwner(run string) (string, string) {
 func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *http.Request) {
 	run := mux.Vars(r)["session_id"]
 	user, workspace := api.playwrightWorkflowOwner(run)
-	if user == "" || (!strings.HasPrefix(workspace, "Workflow/") && !isCrewProjectPath(workspace)) {
+	if user == "" || (!strings.HasPrefix(workspace, "Workflow/") && !isProjectWorkspacePath(workspace)) {
 		http.Error(w, "An active workflow or Crew session is required", http.StatusNotFound)
 		return
 	}

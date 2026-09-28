@@ -3,6 +3,7 @@ package llmguard
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/manishiitg/mcpagent/llm"
@@ -31,11 +32,19 @@ func CodingAgentProviders() []string {
 // RequireCodingAgentProvider rejects direct-API providers (openai, anthropic,
 // vertex, bedrock, ...). Their native loop is unmaintained and no longer offered.
 func RequireCodingAgentProvider(provider string) error {
+	if normalize(provider) == "agy-cli" && !AgyAlphaEnabled() {
+		return fmt.Errorf("LLM provider %q is unavailable: AGY alpha requires AGY_ALPHA=1 in single-user mode", strings.TrimSpace(provider))
+	}
 	if IsCodingAgentProvider(provider) {
 		return nil
 	}
 	return fmt.Errorf("LLM provider %q is not supported: agents run only through coding-agent CLIs (%s)",
 		strings.TrimSpace(provider), strings.Join(CodingAgentProviders(), ", "))
+}
+
+// AgyAlphaEnabled is the runtime gate, shared by publication and execution.
+func AgyAlphaEnabled() bool {
+	return strings.TrimSpace(os.Getenv("AGY_ALPHA")) == "1" && os.Getenv("MULTI_USER_MODE") != "true"
 }
 
 func normalize(provider string) string {

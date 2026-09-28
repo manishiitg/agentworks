@@ -29,6 +29,7 @@ import {
   hideManagedWorkspaceRootEntries,
   restoreExpandedFolders,
   getOriginalPath,
+  resolveWorkspaceUploadPath,
   isPathWithinFolder,
   adjustFilePathsRecursive
 } from '../utils/workspacePathUtils'
@@ -1603,7 +1604,7 @@ export default function Workspace({
 
   // Upload functionality
   const handleUploadClick = () => {
-    openUploadDialog('/')
+    openUploadDialog(resolveWorkspaceUploadPath('/', scopedWorkspacePath || effectiveWorkflowFolderPath))
   }
 
   // Upload to specific folder
@@ -1657,8 +1658,10 @@ export default function Workspace({
     setError(null)
     setUploadResults(null)
 
-    const rawFolderPath = uploadDialog.folderPath || '/'
-    const folderPath = rawFolderPath === '/' ? '/' : getFullFilePath(rawFolderPath)
+    const folderPath = resolveWorkspaceUploadPath(
+      uploadDialog.folderPath || '/',
+      scopedWorkspacePath || effectiveWorkflowFolderPath,
+    )
     const results: { name: string; success: boolean; error?: string }[] = []
 
     for (let i = 0; i < pendingFiles.length; i++) {
@@ -1697,7 +1700,7 @@ export default function Workspace({
       setPendingFiles(prev => prev.filter(f => failedNames.has(f.name)))
       setUploadDialog({ isLoading: false })
     }
-  }, [pendingFiles, uploadDialog.folderPath, uploadDialog.commitMessage, setUploadDialog, closeUploadDialog, fetchFiles, activeFolder, setError, getFullFilePath, validateFile, wsFileApi])
+  }, [pendingFiles, uploadDialog.folderPath, uploadDialog.commitMessage, setUploadDialog, closeUploadDialog, fetchFiles, activeFolder, setError, scopedWorkspacePath, effectiveWorkflowFolderPath, validateFile, wsFileApi])
 
   const cancelUpload = useCallback(() => {
     setPendingFiles([])

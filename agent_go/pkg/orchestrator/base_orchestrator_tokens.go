@@ -11,6 +11,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/anthropic"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/azure"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/bedrock"
@@ -88,6 +89,8 @@ func getModelMetadata(provider, modelID string) (*llmtypes.ModelMetadata, error)
 		return picli.NewPiCLIAdapter("", resolvedModelID, nil).GetModelMetadata(resolvedModelID)
 	case "muse-cli":
 		return musecli.NewMuseCLIAdapter("", resolvedModelID, nil).GetModelMetadata(resolvedModelID)
+	case "agy-cli":
+		return agycli.GetAgyModelMetadata(resolvedModelID)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", provider)
 	}

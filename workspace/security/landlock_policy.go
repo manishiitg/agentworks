@@ -12,6 +12,14 @@ type LandlockPolicy struct {
 	// PrivateTmp: the launcher was started in its own user and mount
 	// namespaces and must give the command a private /tmp (Linux).
 	PrivateTmp bool `json:"private_tmp,omitempty"`
+	// BrowserScoped: the command's own browser socket folder and profile are
+	// in WritePaths, so the shared browser folders are not granted.
+	BrowserScoped bool `json:"browser_scoped,omitempty"`
+	// ReadOnlyOverlays are blocked-write paths inside a writable path.
+	// Landlock rules only add access, so it cannot take write back from a
+	// subpath; the launcher bind-mounts each one read-only in its own mount
+	// namespace instead. Requires PrivateTmp (the namespaces).
+	ReadOnlyOverlays []string `json:"read_only_overlays,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

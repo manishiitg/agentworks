@@ -69,8 +69,8 @@ func GmailOAuthClientRoutes(router *mux.Router, api *StreamingAPI) {
 	r := router.PathPrefix("/api/human-feedback/gmail/oauth-clients").Subrouter()
 	r.HandleFunc("", listGmailOAuthClientsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailOAuthClientHandler(api)).Methods("POST", "OPTIONS")
-	r.HandleFunc("/import-legacy", importLegacyGmailOAuthClientHandler(api)).Methods("POST", "OPTIONS")
-	r.HandleFunc("/{name}", deleteGmailOAuthClientHandler(api)).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/import-legacy", requireAdminWrite(importLegacyGmailOAuthClientHandler(api))).Methods("POST", "OPTIONS")
+	r.HandleFunc("/{name}", requireAdminWrite(deleteGmailOAuthClientHandler(api))).Methods("DELETE", "OPTIONS")
 }
 
 func listGmailOAuthClientsHandler(api *StreamingAPI) http.HandlerFunc {
@@ -102,6 +102,13 @@ func createGmailOAuthClientHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		if len(req.ClientSecretJSON) == 0 {
 			http.Error(w, "client_secret_json is required", http.StatusBadRequest)
+			return
+		}
+		// Anyone may register a new OAuth client (a Code owner connecting
+		// their own account needs one); replacing one invalidates every
+		// connection using it, so only an admin may.
+		if req.Replace && !currentUserIsAdmin(r) {
+			writeWorkflowPermissionDenied(w, "admin")
 			return
 		}
 		client, err := services.CreateOAuthClient(r.Context(), req.Name, req.ClientSecretJSON, req.Replace)

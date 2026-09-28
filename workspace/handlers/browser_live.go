@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 var browserLiveSessionName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
@@ -51,7 +52,7 @@ func browserLiveEndpoint(session string) (int, string, error) {
 	if !browserLiveSessionName.MatchString(session) {
 		return 0, "", fmt.Errorf("invalid session")
 	}
-	for _, dir := range browserSocketDirs() {
+	for _, dir := range browserSocketDirs(session) {
 		data, err := os.ReadFile(filepath.Join(dir, session+".stream"))
 		if err != nil {
 			continue
@@ -64,9 +65,13 @@ func browserLiveEndpoint(session string) (int, string, error) {
 	return 0, "", fmt.Errorf("stream metadata unavailable")
 }
 
-func browserSocketDirs() []string {
+func browserSocketDirs(session string) []string {
 	home, _ := os.UserHomeDir()
 	dirs := []string{filepath.Join(home, ".agent-browser"), filepath.Join(os.TempDir(), "agent-browser"), filepath.Join(os.TempDir(), ".agent-browser"), "/tmp/.agent-browser"}
+	// A managed browser keeps its sockets in its own folder.
+	if own := browserconfig.SocketDirForSession(session); own != browserconfig.SocketRoot {
+		dirs = append([]string{own}, dirs...)
+	}
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 		dirs = append([]string{filepath.Join(runtimeDir, "agent-browser")}, dirs...)
 	}

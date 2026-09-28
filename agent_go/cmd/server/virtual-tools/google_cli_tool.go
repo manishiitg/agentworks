@@ -3,6 +3,7 @@ package virtualtools
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"sort"
 	"strings"
 
@@ -90,7 +91,13 @@ func handleGoogleWorkspaceCLI(ctx context.Context, args map[string]interface{}) 
 	}
 	connectionID, _ := args["connection_id"].(string)
 
-	output, err := services.RunGoogleCLI(ctx, strings.TrimSpace(connectionID), cliArgs)
+	// A Code session uses only its own private accounts, as their owner;
+	// every other session only shared ones.
+	codeWorkspace, userID, scopeErr := common.GmailScopeFromContext(ctx)
+	if scopeErr != nil {
+		return "", scopeErr
+	}
+	output, err := services.RunGoogleCLIIn(ctx, strings.TrimSpace(connectionID), cliArgs, services.GmailUseScope{CodeWorkspace: codeWorkspace, UserID: userID})
 	if err != nil {
 		if strings.TrimSpace(output) != "" {
 			return "", fmt.Errorf("%w\noutput:\n%s", err, output)

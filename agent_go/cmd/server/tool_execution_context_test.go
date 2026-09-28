@@ -271,3 +271,37 @@ func TestToolExecutionContextTopologyMatrix(t *testing.T) {
 		}
 	})
 }
+
+// One person, one chat: the owner's Slack DM or WhatsApp message continues
+// the chat a web turn started, in the same warm CLI whose tools were bound to
+// that web turn. Those tools keep working for the owner's own bot turn; a
+// shared channel route's turn (or an unknown principal) is still refused.
+func TestToolExecutionContextOwnersDMContinuesWebBoundTools(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	incoming := executor.WithSessionID(context.Background(), "crew-main")
+	webBound := func(api *StreamingAPI) func(context.Context, string) (context.Context, error) {
+		return api.bindToolExecutionContext(
+			context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Provider: "local"}),
+			"crew-main", QueryRequest{}, false)
+	}
+	for _, tc := range []struct {
+		name, platform, turnProvider string
+		allowed                      bool
+	}{
+		{"owner's Slack DM", "slack", slackDMProvider, true},
+		{"owner's WhatsApp", "whatsapp", "bot_owner", true},
+		{"shared channel route", "slack", "bot_route", false},
+		{"unknown principal", "slack", "", false},
+	} {
+		api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
+			"crew-main": {SessionID: "crew-main", UserID: "owner", BotPlatform: tc.platform, TriggeredBy: "bot:" + tc.platform, TurnProvider: tc.turnProvider},
+		}}
+		_, err := webBound(api)(incoming, "read_image")
+		if tc.allowed && err != nil {
+			t.Errorf("%s: tools refused: %v", tc.name, err)
+		}
+		if !tc.allowed && err == nil {
+			t.Errorf("%s: tools ran on a person's web-bound session", tc.name)
+		}
+	}
+}

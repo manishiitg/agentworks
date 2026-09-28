@@ -11,6 +11,7 @@ const scopeDescriptions: Record<string, string> = {
   'crews:read': 'See Crews you can use, their functions, and project files (never their private chats)',
   'crews:run': 'Ask Crews questions and call their functions; the work runs in each Crew\'s own chat',
   'crews:write': 'Create Crews and edit the Crews you own (identity, skills, functions, schedules, files)',
+  'code:review': 'Review every Code workspace: cost, chats and files, read-only. Every view is recorded in the audit log',
 }
 
 export function MCPOAuthConsent() {

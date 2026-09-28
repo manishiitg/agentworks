@@ -169,8 +169,13 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	if err := json.Unmarshal([]byte(listed), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Count != len(catalog) {
-		t.Fatalf("spec count %d, want full catalog %d", decoded.Count, len(catalog))
+	// The Code review tools are listed only for admins and Code reviewers.
+	want := len(catalog)
+	if !claimsCanReviewCode(&UserClaims{UserID: "owner", Username: "owner"}) {
+		want -= len(externalCodeReviewTools)
+	}
+	if decoded.Count != want {
+		t.Fatalf("spec count %d, want %d", decoded.Count, want)
 	}
 
 	// Spec accepts a single name or an array and returns JSON schemas.

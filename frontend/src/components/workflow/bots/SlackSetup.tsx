@@ -80,7 +80,13 @@ type SlackSetupBots = Pick<WorkflowBots,
   | 'myBotSaving' | 'myBotError' | 'setMyBotError' | 'addMyBotChannel' | 'removeMyBotChannel'
 >
 
-export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackSetupBots; headerAction?: ReactNode; homeTabAction?: ReactNode }) {
+export function SlackSetup({ bots, headerAction, homeTabAction, ownBotOnly = false }: {
+  bots: SlackSetupBots
+  headerAction?: ReactNode
+  homeTabAction?: ReactNode
+  /** Only this target's own dedicated app, answering 1:1 DMs (a Code). */
+  ownBotOnly?: boolean
+}) {
   const {
     readOnly, workflowId, slackOriginal, slackLoading, slackError, slackSuccess,
     canManageWorkflowSlack, hasProfileTarget, slackSelection,
@@ -101,13 +107,13 @@ export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackS
 
   // The own bot is the source of truth: it answers whenever it exists. The
   // radio only chooses what to show while nothing is set up yet.
-  const [mode, setMode] = useState<SlackMode>(own ? 'own' : sharingBots.length > 0 ? 'mine' : slackRoutes.length > 0 ? 'shared' : 'own')
+  const [mode, setMode] = useState<SlackMode>(ownBotOnly || own ? 'own' : sharingBots.length > 0 ? 'mine' : slackRoutes.length > 0 ? 'shared' : 'own')
   const ownId = own?.id || null
   const hasSharingBots = sharingBots.length > 0
   useEffect(() => {
     if (ownId) setMode('own')
-    else if (hasSharingBots) setMode(prev => prev === 'own' ? 'mine' : prev)
-  }, [ownId, hasSharingBots])
+    else if (hasSharingBots && !ownBotOnly) setMode(prev => prev === 'own' ? 'mine' : prev)
+  }, [ownId, hasSharingBots, ownBotOnly])
   const [editing, setEditing] = useState(false)
   const ownFormOpen = mode === 'own' && (editing || !own)
   useEffect(() => { setEditing(false) }, [ownId])
@@ -123,6 +129,11 @@ export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackS
       {slackError && !ownFormOpen && <StatusBanner tone="error">{slackError}</StatusBanner>}
       {slackSuccess && <StatusBanner tone="success">{slackSuccess}</StatusBanner>}
 
+      {ownBotOnly ? (
+        <FormSection title={`This ${noun}'s own Slack bot`} actions={headerAction}>
+          <p className="text-sm text-muted-foreground">A Slack app of its own that answers 1:1 direct messages only, never in channels. Each person with editor access or more gets their own chat of the {noun}; everyone else is refused.</p>
+        </FormSection>
+      ) : (
       <FormSection title={`Who answers for this ${noun} in Slack?`} actions={headerAction}>
         <div className="flex flex-col gap-2 sm:flex-row">
           <ModeOption
@@ -153,12 +164,13 @@ export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackS
           )}
         </div>
       </FormSection>
+      )}
 
-      {mode === 'own' && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={editing || !own} onEdit={setEditing} homeTabAction={homeTabAction} />}
-      {mode === 'mine' && <MyBotsSection bots={bots} noun={noun} />}
-      {mode === 'shared' && showShared && <SharedBotSection bots={bots} noun={noun} ownTitle={ownTitle} shared={shared} />}
+      {mode === 'own' && <OwnBotSection bots={bots} noun={noun} ownTitle={ownTitle} editing={editing || !own} onEdit={setEditing} homeTabAction={homeTabAction} directMessagesOnly={ownBotOnly} />}
+      {mode === 'mine' && !ownBotOnly && <MyBotsSection bots={bots} noun={noun} />}
+      {mode === 'shared' && showShared && !ownBotOnly && <SharedBotSection bots={bots} noun={noun} ownTitle={ownTitle} shared={shared} />}
 
-      {mode === 'own' && sharingBots.length > 0 && (
+      {mode === 'own' && !ownBotOnly && sharingBots.length > 0 && (
         <section className="space-y-2">
           <h3 className="text-xs font-medium text-muted-foreground">Also answers through your other bots in</h3>
           <div className="grid gap-2">
@@ -169,7 +181,7 @@ export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackS
         </section>
       )}
 
-      {mode === 'own' && slackRoutes.length > 0 && (
+      {mode === 'own' && !ownBotOnly && slackRoutes.length > 0 && (
         <section className="space-y-2">
           <h3 className="text-xs font-medium text-muted-foreground">Also answers through the shared bot in</h3>
           <div className="grid gap-2">
@@ -184,8 +196,8 @@ export function SlackSetup({ bots, headerAction, homeTabAction }: { bots: SlackS
   )
 }
 
-function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction }: {
-  bots: SlackSetupBots; noun: string; ownTitle?: string; editing: boolean; onEdit: (editing: boolean) => void; homeTabAction?: ReactNode
+function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction, directMessagesOnly = false }: {
+  bots: SlackSetupBots; noun: string; ownTitle?: string; editing: boolean; onEdit: (editing: boolean) => void; homeTabAction?: ReactNode; directMessagesOnly?: boolean
 }) {
   const {
     canManageWorkflowSlack, slackSelection, slackConnConfirmDelete, removeWorkflowSlackConnection,
@@ -195,7 +207,9 @@ function OwnBotSection({ bots, noun, ownTitle, editing, onEdit, homeTabAction }:
     slackError,
   } = bots
   const own = slackSelection.own
-  const inviteHint = <>Invite it to a channel with <code className="rounded bg-muted px-1 font-mono">/invite @{own?.display_name || 'YourBot'}</code>, then @mention it. No channel setup needed here.</>
+  const inviteHint = directMessagesOnly
+    ? <>People with access open a direct message with <code className="rounded bg-muted px-1 font-mono">@{own?.display_name || 'YourBot'}</code> in Slack. It does not answer in channels.</>
+    : <>Invite it to a channel with <code className="rounded bg-muted px-1 font-mono">/invite @{own?.display_name || 'YourBot'}</code>, then @mention it. No channel setup needed here.</>
 
   if (own && !editing) {
     const status = connStatus(own)

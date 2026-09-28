@@ -32,7 +32,16 @@ const cliOAuthAccessPrefix = "aw_cli_"
 const cliOAuthRefreshPrefix = "aw_cli_refresh_"
 const cliOAuthClientID = "agentworks-cli"
 
-var mcpOAuthScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write"}
+// code:review is issued only to an admin or Code reviewer. The tools also
+// re-check that role on every call.
+var mcpOAuthScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
+
+func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
+	if claimsCanReviewCode(user) {
+		return scopes
+	}
+	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool { return scope == "code:review" })
+}
 
 // mcpOAuthConfig wires the shared authorization server to this deployment.
 // PUBLIC_URL is read per call so tests and reloads see the current value.
@@ -56,8 +65,11 @@ func mcpOAuthConfig() mcpoauth.Config {
 		TokenPath:             mcpOAuthTokenPath,
 		OpenStore:             openMCPOAuthStore,
 		CurrentUser:           mcpOAuthCurrentUser,
-		CLIBrowserOrigin:      cliOAuthBrowserOrigin,
-		CLIBrowserPath:        cliOAuthBrowserPath,
+		FilterScopes: func(r *http.Request, scopes []string) []string {
+			return mcpOAuthScopesFor(GetUserFromContext(r.Context()), scopes)
+		},
+		CLIBrowserOrigin: cliOAuthBrowserOrigin,
+		CLIBrowserPath:   cliOAuthBrowserPath,
 	}
 }
 

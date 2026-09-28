@@ -143,7 +143,7 @@ function isDismissedComposerTrigger(trigger: { kind: string; start: number; quer
 }
 
 const AUTO_NOTIFICATION_PREFIX = '[AUTO-NOTIFICATION]'
-const FALLBACK_CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
+const FALLBACK_CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 const FALLBACK_LIVE_INPUT_PROVIDERS = FALLBACK_CODING_AGENT_PROVIDERS
 
 interface ChatInputProps {

@@ -3,6 +3,8 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"mime"
@@ -35,6 +37,32 @@ import (
 // manages.
 func gogHomeDir() string { return gogconfig.Home() }
 
+// gogHomeForConnection is the store a connection's gog account lives in.
+// A private (Code) connection has its own store beside the shared one, never
+// inside it: the shared store is what trusted terminals, workflows and Crews
+// are handed (gogconfig.Environment), so a private account kept there would
+// be reachable by them.
+func gogHomeForConnection(conn GmailConnection) string {
+	if !conn.IsPrivate() {
+		return gogHomeDir()
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(conn.OwnerID) + "\x00" + strings.TrimSpace(conn.ScopeWorkspace) + "\x00" + conn.ID))
+	return filepath.Join(gogPrivateHomesDir(), hex.EncodeToString(sum[:16]))
+}
+
+// gogPrivateHomesDir holds every private connection's store.
+func gogPrivateHomesDir() string {
+	return filepath.Join(filepath.Dir(gogHomeDir()), "gog-private")
+}
+
+// home is the store cfg's account lives in (the shared one by default).
+func (cfg *GmailConfig) home() string {
+	if cfg != nil && strings.TrimSpace(cfg.gogHome) != "" {
+		return cfg.gogHome
+	}
+	return gogHomeDir()
+}
+
 // gogArgsForAuth picks how one gog invocation authenticates, from the same
 // per-connection knobs gmailConnectionConfig already resolves:
 //   - cfg.Token set (server-managed OAuth, gmail_oauth.go) -> --access-token.
@@ -58,10 +86,10 @@ func gogArgsForAuth(cfg *GmailConfig) ([]string, error) {
 	return nil, fmt.Errorf("gog: this connection has no access token and is not migrated to a named account/client — reconnect it, or run the legacy-client import")
 }
 
-// gogBaseArgs prefixes every gog invocation with the shared home directory.
-func gogBaseArgs(authArgs []string) []string {
+// gogBaseArgs prefixes every gog invocation with the store it runs against.
+func gogBaseArgs(home string, authArgs []string) []string {
 	args := make([]string, 0, len(authArgs)+2)
-	args = append(args, "--home", gogHomeDir())
+	args = append(args, "--home", home)
 	args = append(args, authArgs...)
 	return args
 }
@@ -115,7 +143,7 @@ func (g *GmailService) computeAuthStatusGog(ctx context.Context, gogPath string,
 				// Best-effort only (a token granted without userinfo.email):
 				// a failure here leaves the address unknown, never the
 				// connection unauthenticated — it can still send.
-				if email, err := gogFetchGmailProfileEmail(ctx, gogPath, authArgs); err == nil {
+				if email, err := gogFetchGmailProfileEmail(ctx, gogPath, cfg.home(), authArgs); err == nil {
 					st.Email = email
 				}
 			}
@@ -129,7 +157,7 @@ func (g *GmailService) computeAuthStatusGog(ctx context.Context, gogPath string,
 	// Preserve the legacy explicitly supplied access-token fallback while
 	// migrated connections use only gog's own token store.
 	if cfg.Token != "" {
-		email, err := gogFetchGmailProfileEmail(ctx, gogPath, authArgs)
+		email, err := gogFetchGmailProfileEmail(ctx, gogPath, cfg.home(), authArgs)
 		if err != nil {
 			st.Detail = "not authenticated — reconnect this account"
 			return st
@@ -138,7 +166,7 @@ func (g *GmailService) computeAuthStatusGog(ctx context.Context, gogPath string,
 		st.Scopes = gmailOAuthScopesFor(false, false, nil)
 		return st
 	}
-	account, err := checkedGogAccount(ctx, gogPath, cfg.gogAccountEmail, cfg.gogClientName)
+	account, err := checkedGogAccount(ctx, gogPath, cfg.home(), cfg.gogAccountEmail, cfg.gogClientName)
 	if err != nil {
 		st.Detail = err.Error()
 		return st
@@ -226,8 +254,8 @@ func scopesGrantGmailSend(scopes []string) bool {
 // gogFetchGmailProfileEmail calls gmail.users.getProfile through gog's
 // generic Discovery API passthrough (`gog api call`), the direct equivalent
 // of the `gws gmail users getProfile` call fetchGmailAccountEmail makes.
-func gogFetchGmailProfileEmail(ctx context.Context, gogPath string, authArgs []string) (string, error) {
-	args := gogBaseArgs(authArgs)
+func gogFetchGmailProfileEmail(ctx context.Context, gogPath, home string, authArgs []string) (string, error) {
+	args := gogBaseArgs(home, authArgs)
 	args = append(args, "api", "call", "gmail", "v1", "gmail.users.getProfile",
 		"--params", `{"userId":"me"}`, "--json")
 	cmd := exec.CommandContext(ctx, gogPath, args...)
@@ -258,7 +286,7 @@ func (g *GmailService) sendGog(ctx context.Context, gogPath string, cfg *GmailCo
 	if err != nil {
 		return "", err
 	}
-	args := gogBaseArgs(authArgs)
+	args := gogBaseArgs(cfg.home(), authArgs)
 	args = append(args, "gmail", "send",
 		"--to", to,
 		"--subject", mime.QEncoding.Encode("UTF-8", subject),
@@ -286,7 +314,7 @@ func (g *GmailService) sendComposedGog(ctx context.Context, gogPath string, cfg 
 		return "", err
 	}
 	htmlBody = gmailHTMLBody(body, htmlBody)
-	args := gogBaseArgs(authArgs)
+	args := gogBaseArgs(cfg.home(), authArgs)
 	args = append(args, "gmail", "send",
 		"--to", to,
 		"--subject", subject)
@@ -322,7 +350,10 @@ func (g *GmailService) sendComposedGog(ctx context.Context, gogPath string, cfg 
 // This is required for new sign-ins and used by legacy migration. Failure is
 // returned to the caller; the application must not report a successful gog
 // connection or retire legacy credentials until import and verification pass.
-func ImportRefreshTokenIntoGog(ctx context.Context, email, clientName, refreshToken string) error {
+//
+// home is the store the account goes into (gogHomeForConnection); a private
+// connection's store gets its own copy of the OAuth client too.
+func ImportRefreshTokenIntoGog(ctx context.Context, home, email, clientName, refreshToken string) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	email = strings.TrimSpace(email)
@@ -333,6 +364,11 @@ func ImportRefreshTokenIntoGog(ctx context.Context, email, clientName, refreshTo
 	const gogPath = "gog"
 	if _, err := exec.LookPath(gogPath); err != nil {
 		return fmt.Errorf("gog binary not found on PATH: %w", err)
+	}
+	// Owner-only from the start: a private store is created here, on its
+	// connection's first sign-in.
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return fmt.Errorf("prepare gog store: %w", err)
 	}
 
 	// A refresh token is tied to its OAuth client. Register the exact named
@@ -348,7 +384,7 @@ func ImportRefreshTokenIntoGog(ctx context.Context, email, clientName, refreshTo
 	if err != nil {
 		return err
 	}
-	if err := storeGogClient(ctx, clientName, secretJSON); err != nil {
+	if err := storeGogClient(ctx, home, clientName, secretJSON); err != nil {
 		return err
 	}
 
@@ -362,7 +398,7 @@ func ImportRefreshTokenIntoGog(ctx context.Context, email, clientName, refreshTo
 		return fmt.Errorf("write refresh token: %w", err)
 	}
 
-	args := gogBaseArgs(nil)
+	args := gogBaseArgs(home, nil)
 	args = append(args, "auth", "import",
 		"--email", email,
 		"--client", clientName,

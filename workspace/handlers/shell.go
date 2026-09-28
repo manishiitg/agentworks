@@ -151,6 +151,7 @@ func ExecuteShellCommand(c *gin.Context) {
 			// the Linux path applies the folder rules only).
 			StrictAllowlist: req.FolderGuard.StrictAllowlist,
 			AllowNetwork:    !req.FolderGuard.DenyNetwork,
+			BrowserSession:  req.FolderGuard.BrowserSession,
 		}
 
 		// Debug: log isolator configuration for troubleshooting mount namespace issues

@@ -124,8 +124,8 @@ func TestWorkflowCLIWorkingDirTrustsPrivateAgyRuntime(t *testing.T) {
 		if err := json.Unmarshal(raw, &settings); err != nil {
 			t.Fatal(err)
 		}
-		if len(settings.TrustedWorkspaces) != 1 || settings.TrustedWorkspaces[0] != dir {
-			t.Fatalf("AGY trusted workspaces = %v, want only %s", settings.TrustedWorkspaces, dir)
+		if len(settings.TrustedWorkspaces) != 0 {
+			t.Fatalf("AGY global trusted workspaces leaked %q: %v", dir, settings.TrustedWorkspaces)
 		}
 	}
 }

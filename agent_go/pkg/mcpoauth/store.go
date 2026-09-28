@@ -149,7 +149,7 @@ func (s *Store) Request(ctx context.Context, raw string) (AuthRequest, error) {
 
 // Decide consumes a pending request. On approve it issues an authorization
 // code bound to the user; on deny it just consumes the request.
-func (s *Store) Decide(ctx context.Context, raw string, user User, approve bool) (AuthRequest, string, error) {
+func (s *Store) Decide(ctx context.Context, raw string, user User, approve bool, approvedScopes ...[]string) (AuthRequest, string, error) {
 	req, err := s.Request(ctx, raw)
 	if err != nil {
 		return req, "", err
@@ -175,7 +175,11 @@ func (s *Store) Decide(ctx context.Context, raw string, user User, approve bool)
 		return req, "", sql.ErrNoRows
 	}
 	if approve {
-		scopes, _ := json.Marshal(req.Scopes)
+		scopesToIssue := req.Scopes
+		if len(approvedScopes) > 0 {
+			scopesToIssue = approvedScopes[0]
+		}
+		scopes, _ := json.Marshal(scopesToIssue)
 		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, hashToken(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.ID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix())
 		if err != nil {
 			return req, "", err
@@ -460,10 +464,25 @@ func (s *Store) CLIDeviceRequest(ctx context.Context, verificationCode string) (
 }
 
 // DecideCLIDevice approves or denies a pending device approval.
-func (s *Store) DecideCLIDevice(ctx context.Context, verificationCode string, user User, approve bool) error {
+func (s *Store) DecideCLIDevice(ctx context.Context, verificationCode string, user User, approve bool, approvedScopes ...[]string) error {
 	status := "denied"
 	if approve {
 		status = "approved"
+	}
+	if len(approvedScopes) > 0 {
+		scopes, _ := json.Marshal(approvedScopes[0])
+		result, err := s.db.ExecContext(ctx, `UPDATE cli_devices SET status=?,scopes=?,user_id=?,username=?,email=?,provider=? WHERE verification_hash=? AND status='pending' AND expires_at>?`, status, string(scopes), user.ID, user.Username, user.Email, user.Provider, hashToken(verificationCode), time.Now().Unix())
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return sql.ErrNoRows
+		}
+		return nil
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE cli_devices SET status=?,user_id=?,username=?,email=?,provider=? WHERE verification_hash=? AND status='pending' AND expires_at>?`, status, user.ID, user.Username, user.Email, user.Provider, hashToken(verificationCode), time.Now().Unix())
 	if err != nil {

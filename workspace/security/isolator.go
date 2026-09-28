@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
 )
 
@@ -46,6 +47,11 @@ type Isolator struct {
 	// caller intends. Leave false (default) for callers — like a child's own
 	// shell — that should stay fully network-denied.
 	AllowNetwork bool
+	// BrowserSession is the managed browser this command's owner (workflow,
+	// Crew, Code project) uses. When set, the command gets only that
+	// browser's socket folder and profile (see scopeBrowser); when empty it
+	// keeps the shared browser grants.
+	BrowserSession string
 }
 
 const defaultBaseDir = "/app/workspace-docs"
@@ -155,6 +161,7 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		return nil, nil, fmt.Errorf("prepare browser helper: %w", err)
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
+	browserSocket := local.scopeBrowser()
 	if home := gogconfig.TerminalHome(iso.StrictAllowlist); home != "" {
 		if err := os.MkdirAll(home, 0700); err != nil {
 			releaseScratch()
@@ -192,6 +199,9 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	// No workflow or Crew folder to keep a home in: this command's own
 	// scratch, never the shared /tmp.
 	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(tmp, "home"))
+	if browserSocket != "" {
+		cmd.Env = replaceEnv(cmd.Env, "AGENT_BROWSER_SOCKET_DIR", browserSocket)
+	}
 	pythonPath := tmp
 	filtered := cmd.Env[:0]
 	for _, value := range cmd.Env {
@@ -803,4 +813,38 @@ func (iso *Isolator) generateMountScript(command string, args []string) string {
 	sb.WriteString(fmt.Sprintf("exec sh -c '%s'\n", escapedCmd))
 
 	return sb.String()
+}
+
+// scopeBrowser grants the command only its own managed browser: the socket
+// folder its daemon listens in and its Chrome profile. It returns the socket
+// folder, or "" when the command has no managed browser (then the shared
+// browser grants apply, as before).
+func (iso *Isolator) scopeBrowser() string {
+	session := strings.TrimSpace(iso.BrowserSession)
+	if !browserconfig.IsUserSession(session) {
+		iso.BrowserSession = ""
+		return ""
+	}
+	socketDir := browserconfig.SocketDirForSession(session)
+	if err := os.MkdirAll(socketDir, 0o700); err != nil {
+		iso.BrowserSession = ""
+		return ""
+	}
+	iso.WritePaths = append(iso.WritePaths, socketDir)
+	if profile := browserconfig.ProfilePathForSession(session); profile != "" {
+		if err := os.MkdirAll(profile, 0o700); err == nil {
+			iso.WritePaths = append(iso.WritePaths, profile)
+		}
+	}
+	return socketDir
+}
+
+func replaceEnv(env []string, key, value string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, key+"=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, key+"="+value)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"os"
 	"strings"
 
@@ -42,7 +43,20 @@ const gmailGrantMismatchNote = "granted_scopes reflects the last SUCCESSFUL conn
 // tell the user to open the link and reconnect, and should also open the
 // Integrations panel (workflowWorkspaceViews "mcp", Gmail tab) so they can see the
 // updated request and click Reconnect there too if the link doesn't suit.
+// gmailToolScope is where Gmail tools registered for workspacePath act: a
+// Code's own private accounts (as its owner, whose chats alone register these
+// tools there), or the shared accounts everywhere else.
+func gmailToolScope(workspacePath string) services.GmailUseScope {
+	root := common.CodeProjectRoot("", workspacePath)
+	if root == "" {
+		return services.GmailUseScope{}
+	}
+	owner, _ := crewProjectOwnerID(root)
+	return services.GmailUseScope{CodeWorkspace: root, UserID: owner}
+}
+
 func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar definitionToolRegistrar, sessionID, workspacePath string) error {
+	scope := gmailToolScope(workspacePath)
 	serviceNames := services.GoogleServiceCatalog()
 	serviceKeys := make([]string, 0, len(serviceNames))
 	for key := range serviceNames {
@@ -58,7 +72,7 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 			},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			return api.listGmailConnectionsFromTool(ctx, args)
+			return api.listGmailConnectionsFromTool(ctx, args, scope)
 		},
 		"gmail_connection_management",
 	); err != nil {
@@ -103,11 +117,11 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 		},
 	}
 	return registrar.RegisterCustomTool("update_gmail_connection_grants", description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		return api.updateGmailConnectionGrantsFromTool(ctx, sessionID, workspacePath, args)
+		return api.updateGmailConnectionGrantsFromTool(ctx, sessionID, workspacePath, args, scope)
 	}, "gmail_connection_management")
 }
 
-func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}) (string, error) {
+func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}, scope services.GmailUseScope) (string, error) {
 	svc := services.GetGmailService()
 	if svc == nil {
 		return "", fmt.Errorf("gmail is not configured on this deployment")
@@ -115,13 +129,8 @@ func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context
 
 	connectionID, _ := args["connection_id"].(string)
 	connectionID = strings.TrimSpace(connectionID)
-	var conn services.GmailConnection
-	var found bool
-	if connectionID != "" {
-		conn, found = svc.GetConnection(connectionID)
-	} else {
-		conn, found = svc.DefaultConnection()
-	}
+	conn, scopeErr := svc.ConnectionForScope(connectionID, scope)
+	found := scopeErr == nil
 	if !found {
 		return "", fmt.Errorf("gmail connection %q not found; call list_gmail_connections or check the Sending accounts panel for valid IDs", connectionID)
 	}
@@ -228,7 +237,7 @@ type gmailConnectionStatusReport struct {
 	StoredButNotGranted      []string                  `json:"stored_but_not_granted,omitempty"`
 }
 
-func (api *StreamingAPI) listGmailConnectionsFromTool(_ context.Context, args map[string]interface{}) (string, error) {
+func (api *StreamingAPI) listGmailConnectionsFromTool(_ context.Context, args map[string]interface{}, scope services.GmailUseScope) (string, error) {
 	svc := services.GetGmailService()
 	if svc == nil {
 		return "", fmt.Errorf("gmail is not configured on this deployment")
@@ -240,12 +249,12 @@ func (api *StreamingAPI) listGmailConnectionsFromTool(_ context.Context, args ma
 	var conns []services.GmailConnection
 	if connectionID != "" {
 		conn, found := svc.GetConnection(connectionID)
-		if !found {
+		if !found || !conn.UsableFrom(scope) {
 			return "", fmt.Errorf("gmail connection %q not found", connectionID)
 		}
 		conns = []services.GmailConnection{conn}
 	} else {
-		conns = svc.ListConnections()
+		conns = svc.ConnectionsUsableFrom(scope)
 	}
 
 	reports := make([]gmailConnectionStatusReport, 0, len(conns))

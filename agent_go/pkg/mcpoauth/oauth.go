@@ -110,6 +110,9 @@ type Config struct {
 	// CurrentUser resolves the logged-in human for consent/connections.
 	// Returning ok=false denies with access_denied.
 	CurrentUser func(r *http.Request) (*User, bool)
+	// FilterScopes narrows requested scopes for the consenting human. Hosts
+	// use it for role-gated scopes; it must never add scopes.
+	FilterScopes func(r *http.Request, scopes []string) []string
 	// CLIBrowserOrigin overrides the device-flow verification host (local
 	// dev). Nil means the server origin.
 	CLIBrowserOrigin func(serverOrigin string) string
