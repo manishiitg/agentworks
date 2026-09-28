@@ -108,9 +108,11 @@ resolves another person's personal secret.
   file access to a Code can read its files. The Landlock read set is an
   allowlist that never includes this directory; the browser workspace proxy
   cannot reach it (not under the docs root).
-- Per-Code enablement lives with the Code, keyed by person, and holds no
-  secrets: `workflow.json` capabilities gain
-  `personal_servers: { "<user>": ["linear", ...] }` (names only).
+- Per-Code enablement lives **in the person's own store**
+  (`enabled.json`: `{ "<code root>": ["linear", ...] }`), not in the Code's
+  `workflow.json`: editors can write `workflow.json`, and nobody but the
+  person may switch their servers on or off. Access to the Code is re-checked
+  at resolution, so a stale entry for a Code the person lost grants nothing.
 
 ### Outbound HTTP guard (SSRF)
 
@@ -217,10 +219,11 @@ the global secrets the Code selects.
 - **Remove a personal server:** delete its token and client files, close the
   person's connection and its pooled entries in the codeexec registry and
   `mcpcache`, drop it from every Code's enablement.
-- **Person loses access to a Code:** their enablement entry is dropped; their
-  servers stay theirs.
-- **Code deleted:** its enablement map goes with `workflow.json`; personal
-  stores are untouched.
+- **Person loses access to a Code:** their `enabled.json` entry for it is
+  dropped (and ignored meanwhile, since access is re-checked); their servers
+  stay theirs.
+- **Code deleted:** entries for it in every `enabled.json` are dropped;
+  personal servers are untouched.
 - **Account deleted/disabled:** disabled sessions cannot start; on delete the
   personal store is deleted.
 
