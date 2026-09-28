@@ -193,6 +193,11 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 	// access to it (senderProfileTurn refuses anyone else and viewers).
 	// Slack channels, group DMs and anything else are refused.
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
+		// Chat apps are a later step for Code: without the bots feature it
+		// takes no Slack or WhatsApp messages at all.
+		if !agentprofiles.HasFeature(profile, "bots") {
+			return nil, "", false, fmt.Errorf("%s does not take chat-app messages yet", profile.Name)
+		}
 		if !((msg.Platform == "slack" && msg.DirectMessage) || msg.Platform == "whatsapp") {
 			return nil, "", false, fmt.Errorf("%s answers only 1:1 Slack DMs and WhatsApp, not channels or group chats", profile.Name)
 		}

@@ -39,10 +39,11 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
   }
 }
 
-// Code has no Gmail. Its Slack and WhatsApp tabs stay hidden until Code's
-// 1:1 direct-message bots land (docs/design/code_product.md step 3): the
-// shared bots panel creates channel routes, which Code must not have.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'slack', 'whatsapp'])
+// Code's basic setup has skills only: chat apps (Slack, WhatsApp, Gmail) and
+// MCP connections come later (docs/design/code_product.md). The server feature
+// list already leaves out bots and mcp; this also hides the always-on MCP
+// "Connect" tab.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'slack', 'whatsapp', 'cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string

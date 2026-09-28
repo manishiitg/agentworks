@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func putCodeShares(t *testing.T, api *StreamingAPI, caller, body string) *httptest.ResponseRecorder {
@@ -188,6 +189,24 @@ func TestCodeBotTurnsAreDirectMessageOnly(t *testing.T) {
 		msg.PresetProfile = route
 		_, _, _, err := api.botProfileTurn(ctx, sender, msg, services.ThreadID{Platform: msg.Platform, ChannelID: "c", ThreadTS: "t"})
 		return err
+	}
+	// Basic setup: without the bots feature a Code takes no chat-app
+	// message at all, not even the owner's DM.
+	if err := turn("owner", services.BotIncomingMessage{Platform: "slack", DirectMessage: true}); err == nil || !strings.Contains(err.Error(), "does not take chat-app messages yet") {
+		t.Fatalf("a Code without bots took a DM: %v", err)
+	}
+	// With bots switched on (a later step), only 1:1 DMs are taken.
+	withBots, err := api.agentProfiles.Resolve("code", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withBots.Version = 2
+	withBots.Features = []agentprofiles.FeatureBinding{{ID: "bots", Options: map[string]string{"channels": "slack,whatsapp", "dm_only": "true"}}}
+	if err := agentprofiles.ResolveFeatures(&withBots); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.agentProfiles.RegisterProfile(withBots); err != nil {
+		t.Fatal(err)
 	}
 	if err := turn("owner", services.BotIncomingMessage{Platform: "slack", ChannelID: "C123"}); err == nil || !strings.Contains(err.Error(), "only 1:1") {
 		t.Fatalf("a Slack channel message reached the Code: %v", err)

@@ -1101,7 +1101,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         onConfirm={() => { void deleteProject() }}
         title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, ' : ''}bots, dashboard, and database? This cannot be undone.`
+          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database? This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}

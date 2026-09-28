@@ -20,7 +20,7 @@ profile:
     - files
     - browser
     - secrets
-    - mcp
+    # mcp: later. Code starts without MCP servers (docs/design/code_product.md).
     - skills
     - attached-folders
     - id: workflow-references
@@ -29,10 +29,9 @@ profile:
       options: {direction: outbound}
     - terminal
     - models
-    - id: bots
-      # 1:1 only: Slack DMs and WhatsApp, each sender in their own chat. No
-      # channel routes, group chats, Gmail or Google Workspace.
-      options: {channels: "slack,whatsapp", dm_only: "true"}
+    # bots: later. When added: Slack DMs and WhatsApp only, 1:1, each sender
+    # in their own chat -- {id: bots, options: {channels: "slack,whatsapp",
+    # dm_only: "true"}} (the dm_only narrowing is built and tested).
     - dashboard
     - memory
     - costs

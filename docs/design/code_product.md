@@ -228,6 +228,21 @@ users has to hold:
    check).
 5. **Regression.** Crews work exactly as before.
 
+## Basic setup first (2026-09-28)
+
+Code ships a basic setup first; integrations come later. In Code's
+`product.yaml` today:
+
+- **On:** chat with the coding agent (`live-chat`, `coding`), `files`,
+  `terminal`, `models`, `memory`, `costs`, `secrets`, `skills` (private to
+  the Code), `attached-folders`, `browser`, `dashboard` with its `database`,
+  outbound `workflow-references` (calling Crews and workflows) and
+  `background-work`. Sharing and admin inspection are on.
+- **Later:** `bots` (Slack DMs, WhatsApp, Gmail) and `mcp` (MCP servers).
+  The server refuses chat-app messages to a Code without `bots`, and the
+  DM-only narrowing (`bots` with `dm_only`) is already built and tested for
+  when it is switched on.
+
 ## Decisions (2026-09-28)
 
 - **Code to Crew:** not supported. A Code does not become a Crew.
