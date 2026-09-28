@@ -98,6 +98,8 @@ describe('GatewayServersPanel', () => {
     const add = container!.querySelector('[data-testid="gateway-add-linear"]')
     expect(add).not.toBeNull()
     expect(add!.textContent).toContain('Connect to gateway')
+    expect(available.textContent).toContain('Requires OAuth · coming later')
+    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).toBeNull()
   })
 
   it('discovers and shows tools for an AgentWorks-only connected server', async () => {
@@ -238,14 +240,13 @@ describe('GatewayServersPanel', () => {
     expect(container!.textContent).toContain('Added 1 server: acme')
   })
 
-  it('offers catalog-only servers with one-click add on a fresh workspace', async () => {
+  it('marks OAuth-only catalog servers as unavailable until upstream auth exists', async () => {
     await renderPanel(vi.fn(healthyFetch()))
 
     // Slack is in neither AgentWorks nor the gateway: it still gets a row.
     expect(container!.textContent).toContain('Slack')
-    const add = container!.querySelector('[data-testid="gateway-add-slack"]')
-    expect(add).not.toBeNull()
-    expect(add!.textContent).toContain('Connect to gateway')
+    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).toBeNull()
+    expect(container!.textContent).toContain('Requires OAuth · coming later')
   })
 
   it('adds a custom server by name and URL', async () => {

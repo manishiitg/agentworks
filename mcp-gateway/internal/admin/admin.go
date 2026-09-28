@@ -211,6 +211,9 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	if !ok {
 		return store.Connector{}, errors.New("unknown provider")
 	}
+	if p.OAuth {
+		return store.Connector{}, errors.New("this provider requires upstream OAuth, which the gateway does not support yet")
+	}
 	if err := a.Gateway.ValidateUpstreamURL(p.URL); err != nil {
 		return store.Connector{}, err
 	}

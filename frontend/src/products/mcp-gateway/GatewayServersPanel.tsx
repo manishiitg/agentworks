@@ -190,7 +190,7 @@ export function GatewayServersPanel({ base }: { base: string }) {
   }, [connected])
 
   async function onAddToGateway(row: ServerRow) {
-    if (!row.catalogMatch) return
+    if (!row.catalogMatch || row.catalogMatch.OAuth) return
     setAddingKey(row.key)
     setActionError(null)
     try {
@@ -492,6 +492,8 @@ export function GatewayServersPanel({ base }: { base: string }) {
                                     )
                                   })}
                                 </span>
+                              ) : row.catalogMatch?.OAuth ? (
+                                <span className="text-muted-foreground" title="Upstream OAuth is not supported by CapLayer yet">Requires OAuth · coming later</span>
                               ) : row.catalogMatch ? (
                                 <Button
                                   variant="outline"
@@ -574,7 +576,9 @@ export function GatewayServersPanel({ base }: { base: string }) {
                         </span>
                       </td>
                       <td className={tdClass}>
-                        {row.catalogMatch ? (
+                        {row.catalogMatch?.OAuth ? (
+                          <span className="text-muted-foreground" title="Upstream OAuth is not supported by CapLayer yet">Requires OAuth · coming later</span>
+                        ) : row.catalogMatch ? (
                           <Button
                             variant="outline"
                             size="xs"

@@ -335,15 +335,42 @@ func (s *MemoryStore) GetConnector(id string) (Connector, bool) {
 	return c, ok
 }
 
-// DeleteConnector removes a connector and its tool snapshots. Grants naming
-// those tools become dangling and deny (Authorize requires a live tool).
+// DeleteConnector removes a connector and policy tied to its public names.
+// A future connector may reuse the namespace, so dangling grants and rules
+// must not become active again when that connector discovers its tools.
 func (s *MemoryStore) DeleteConnector(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.connectors, id)
+	names := make(map[string]bool)
 	for name, t := range s.tools {
 		if t.ConnectorID == id {
+			names[name] = true
 			delete(s.tools, name)
+			delete(s.toolVersions, name)
+		}
+	}
+	for _, grants := range s.grants {
+		for name := range names {
+			delete(grants, name)
+		}
+	}
+	for _, grants := range s.groupGrants {
+		for name := range names {
+			delete(grants, name)
+		}
+	}
+	for _, servers := range s.groupServers {
+		delete(servers, id)
+	}
+	for ruleID, rule := range s.piiRules {
+		if rule.ConnectorID == id || names[rule.PublicName] {
+			delete(s.piiRules, ruleID)
+		}
+	}
+	for reviewID, review := range s.piiReviews {
+		if review.ConnectorID == id || names[review.PublicName] {
+			delete(s.piiReviews, reviewID)
 		}
 	}
 }
