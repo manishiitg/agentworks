@@ -2,16 +2,11 @@ package server
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
-	"fmt"
-	"io"
 	"log"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/sealbox"
 )
 
 // Workflow secrets belong to the workflow, not to whichever user typed them
@@ -39,46 +34,16 @@ func sharedWorkflowSecretAAD(workflowPath string) ([]byte, error) {
 
 // encryptSecretValueWithAAD seals plaintext with the server secrets key and
 // the given additional data; the result is base64(nonce || ciphertext), the
-// same wire shape /api/secrets/encrypt produces.
+// same wire shape /api/secrets/encrypt produces. (pkg/sealbox is the one
+// AES-GCM helper; secrets_routes.go, provider_keys_store.go and
+// services/workspace_config.go still carry their own copies to migrate.)
 func encryptSecretValueWithAAD(plaintext string, aad []byte) (string, error) {
-	block, err := aes.NewCipher(deriveSecretsKey())
-	if err != nil {
-		return "", fmt.Errorf("cipher error: %w", err)
-	}
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("GCM error: %w", err)
-	}
-	nonce := make([]byte, aesGCM.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("nonce error: %w", err)
-	}
-	return base64.StdEncoding.EncodeToString(aesGCM.Seal(nonce, nonce, []byte(plaintext), aad)), nil
+	return sealbox.Seal(deriveSecretsKey(), plaintext, aad)
 }
 
 // decryptSecretValueWithAAD is the inverse of encryptSecretValueWithAAD.
 func decryptSecretValueWithAAD(encryptedBase64 string, aad []byte) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(encryptedBase64)
-	if err != nil {
-		return "", fmt.Errorf("invalid base64: %w", err)
-	}
-	block, err := aes.NewCipher(deriveSecretsKey())
-	if err != nil {
-		return "", fmt.Errorf("cipher error: %w", err)
-	}
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("GCM error: %w", err)
-	}
-	nonceSize := aesGCM.NonceSize()
-	if len(data) < nonceSize {
-		return "", fmt.Errorf("encrypted data too short")
-	}
-	plaintext, err := aesGCM.Open(nil, data[:nonceSize], data[nonceSize:], aad)
-	if err != nil {
-		return "", fmt.Errorf("decryption failed: %w", err)
-	}
-	return string(plaintext), nil
+	return sealbox.Open(deriveSecretsKey(), encryptedBase64, aad)
 }
 
 // upsertSharedWorkflowSecret stores plaintext for everyone with access to the

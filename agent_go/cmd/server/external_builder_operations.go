@@ -190,7 +190,7 @@ func externalBuilderMCPServers(req QueryRequest, selected []string) []string {
 	if req.ExternalBuilderOperationID != "" {
 		return []string{mcpclient.NoServers}
 	}
-	return runtimeMCPServers(selected)
+	return selected
 }
 func (api *StreamingAPI) validateExternalBuilderTurn(ctx context.Context, id, session, workspace string) (*UserClaims, error) {
 	op, err := readExternalBuilder(ctx, id)

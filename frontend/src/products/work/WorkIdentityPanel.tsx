@@ -25,7 +25,6 @@ import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
-import { CodeShareDialog } from './CodeShareDialog'
 import type { WorkRuntimeSelection } from './workTabs'
 
 export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
@@ -49,8 +48,7 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
 }
 
 // Code has a name only: rename and delete, no identity, purpose or templates.
-function CodeGeneralPanel({ projectId, projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
-  projectId?: string
+function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
   projectTitle: string
   projectIdentity?: ProductIdentity
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
@@ -60,7 +58,6 @@ function CodeGeneralPanel({ projectId, projectTitle, projectIdentity, onUpdateId
   const [nameDraft, setNameDraft] = useState(current)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [shareOpen, setShareOpen] = useState(false)
   useEffect(() => { setNameDraft(current); setError(null) }, [current])
   const dirty = nameDraft.trim() !== current
   const save = async () => {
@@ -96,15 +93,10 @@ function CodeGeneralPanel({ projectId, projectTitle, projectIdentity, onUpdateId
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"
-        description="Private to you and the people you share it with. Admins and Code reviewers on this server can view it, read-only, and every view is logged."
+        description="Private to you and the people you share it with (Setup → Share). Admins and Code reviewers on this server can view it, read-only, and every view is logged."
       >
-        {projectId ? (
-          <div>
-            <Button variant="outline" onClick={() => setShareOpen(true)}>Manage sharing</Button>
-          </div>
-        ) : null}
+        {null}
       </SettingsCard>
-      {shareOpen && projectId ? <CodeShareDialog projectId={projectId} projectTitle={current || projectTitle} onClose={() => setShareOpen(false)} /> : null}
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Delete workspace"
@@ -341,7 +333,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
   /** The project's id; a Code's General tab manages sharing with it. */
   projectId?: string
@@ -395,7 +387,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, projectTitle, proj
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
-          projectId={projectId}
           projectTitle={projectTitle}
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}

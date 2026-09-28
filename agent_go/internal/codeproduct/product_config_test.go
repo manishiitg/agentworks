@@ -12,13 +12,13 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	if err := agentprofiles.ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	// Basic setup: MCP servers come later; chat apps are 1:1 bots only.
-	for _, feature := range []string{"triggers", "schedules", "voice", "mcp", "memory"} {
+	// No schedules, triggers, voice or project Memory; chat apps are 1:1 bots only.
+	for _, feature := range []string{"triggers", "schedules", "voice", "memory"} {
 		if agentprofiles.HasFeature(profile, feature) {
 			t.Fatalf("Code must not enable %s", feature)
 		}
 	}
-	for _, feature := range []string{"live-chat", "coding", "files", "terminal", "skills", "secrets", "attached-folders", "browser", "workflow-references", "dashboard", "database", "costs", "background-work", "models", "bots"} {
+	for _, feature := range []string{"live-chat", "coding", "files", "terminal", "skills", "secrets", "attached-folders", "browser", "workflow-references", "dashboard", "database", "costs", "mcp", "background-work", "models", "bots"} {
 		if !agentprofiles.HasFeature(profile, feature) {
 			t.Fatalf("Code must enable %s", feature)
 		}

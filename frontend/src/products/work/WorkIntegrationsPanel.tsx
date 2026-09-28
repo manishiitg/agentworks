@@ -8,6 +8,7 @@ import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
+import { PersonalMcpSection } from './PersonalMcpSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
@@ -292,6 +293,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
+        {activeTab === 'apps' && product.profileId === 'code' && <PersonalMcpSection projectId={projectId} />}
         {activeTab === 'apps' && <WorkMCPTabBody
           tabId={tabId}
           projectId={projectId}

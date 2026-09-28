@@ -73,11 +73,14 @@ func saveProviderConnections(ctx context.Context, records []storedProviderConnec
 
 func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPIKeys, error) {
 	if record.AuthMethod == "cli_login" {
-		if record.Provider != "codex-cli" && record.Provider != "muse-cli" {
+		// The CLI's own login, kept in the account's private HOME (and
+		// CLAUDE_CONFIG_DIR / XDG dirs, see connectionAPIKeys). Empty keys
+		// mean "use the stored login", never the server's.
+		if !providerSupportsPrivateCLILogin(record.Provider) {
 			return nil, fmt.Errorf("isolated browser login is unavailable for this provider; use a token or API key")
 		}
 		empty := ""
-		return &llm.ProviderAPIKeys{CodexCLI: &empty, MuseCLI: &empty}, nil
+		return &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &empty, CodexCLI: &empty, CursorCLI: &empty, MuseCLI: &empty}, nil
 	}
 	if strings.TrimSpace(record.Credential) == "" {
 		return nil, fmt.Errorf("provider connection needs authentication")
@@ -345,6 +348,17 @@ func providerConnectionSetupEnvironment(keys *llm.ProviderAPIKeys) []string {
 		}
 	}
 	return env
+}
+
+// providerSupportsPrivateCLILogin lists the CLIs whose login lives under
+// the HOME / XDG / CLAUDE_CONFIG_DIR a private account gets, so signing in
+// for the account never touches the server's own login.
+func providerSupportsPrivateCLILogin(provider string) bool {
+	switch provider {
+	case "claude-code", "codex-cli", "cursor-cli", "muse-cli":
+		return true
+	}
+	return false
 }
 
 func canonicalProviderConnectionID(provider, id string) string {

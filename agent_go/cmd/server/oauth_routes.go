@@ -363,11 +363,75 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		return nil, nil, &oauthStartError{http.StatusInternalServerError, fmt.Sprintf("Server '%s' is missing auth_url or token_url in its oauth config. Endpoints are not discovered at runtime; copy authorization_endpoint and token_endpoint from the provider's /.well-known/oauth-authorization-server metadata into the MCP config.", serverName)}
 	}
 
+	return api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
+		Name:       serverName,
+		Config:     serverConfig,
+		ClientFile: expandPath(getUserClientFilePath(platformMCPTokenUserID, serverName)),
+		OnSuccess: func(flow *OAuthFlowState) {
+			// Persist the platform OAuth config so every AgentWorks product resolves it.
+			api.logger.Info(fmt.Sprintf("💾 Persisting OAuth config for %s", serverName))
+			if err := api.persistOAuthConfig(serverName, flow.ServerConfig); err != nil {
+				api.logger.Error(fmt.Sprintf("Failed to persist OAuth config for %s: %v", serverName, err), err)
+			} else {
+				api.logger.Info(fmt.Sprintf("✅ OAuth config persisted for %s", serverName))
+				if onInstalled != nil {
+					onInstalled()
+				}
+			}
+
+			// Reauthorization replaces the retained platform connection.
+			closePlatformMCPConnection(serverName)
+
+			// Invalidate cache for this server so tools are re-discovered with OAuth token
+			api.logger.Info(fmt.Sprintf("🔄 Invalidating cache for %s to refresh tools with OAuth", serverName))
+			cacheManager := mcpcache.GetCacheManager(api.logger)
+			if err := cacheManager.InvalidateByServer(api.mcpConfigPath, serverName); err != nil {
+				api.logger.Warn(fmt.Sprintf("Failed to invalidate cache for %s: %v", serverName, err))
+			} else {
+				api.logger.Info(fmt.Sprintf("✅ Cache invalidated for %s - tools will be refreshed on next request", serverName))
+			}
+
+			// Also invalidate the in-memory tool status cache
+			api.toolStatusMux.Lock()
+			delete(api.toolStatus, serverName)
+			api.toolStatusMux.Unlock()
+			api.logger.Info(fmt.Sprintf("✅ In-memory tool status cleared for %s", serverName))
+
+			// OAuth success means prior auth-related discovery failures are no
+			// longer permanent. Clear the skip marker and rediscover tools now,
+			// otherwise /api/tools returns "loading" forever and the frontend keeps
+			// polling.
+			api.clearDiscoveryFailure(serverName)
+			api.appendServerLog(serverName, "info", "Authentication succeeded, rediscovering tools...")
+			api.startServerDiscovery(userID, serverName)
+		},
+	})
+}
+
+// oauthFlowTarget is what one OAuth connect needs besides the shared flow: the
+// server (its config already carries the token file), where a dynamic client
+// registration is cached, the HTTP client for discovery and registration
+// (public-only for a personal server), and what to do once connected.
+type oauthFlowTarget struct {
+	Name       string
+	Config     mcpclient.MCPServerConfig
+	ClientFile string
+	Discoverer oauth.Discoverer
+	OnSuccess  func(flow *OAuthFlowState)
+}
+
+// runOAuthFlow is the OAuth connect shared by platform and personal servers:
+// dynamic client registration, the authorization URL, and the callback wait
+// and token exchange in the background.
+func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oauthFlowTarget) (*OAuthStartResponse, *OAuthDiscoveryResponse, error) {
+	serverName := target.Name
+	serverConfig := target.Config
+
 	// A server with no client_id in config either issues one through Dynamic
 	// Client Registration or needs one registered by hand. Try DCR first, so
 	// only the genuinely manual servers reach the prompt below.
 	if serverConfig.OAuth.ClientID == "" && serverConfig.OAuth.RegistrationEndpoint != "" {
-		client, regErr := api.ensureRegisteredClient(platformMCPTokenUserID, serverName, serverConfig.OAuth.RegistrationEndpoint, redirectURI)
+		client, regErr := api.ensureRegisteredClientAt(target.ClientFile, target.Discoverer, serverName, serverConfig.OAuth.RegistrationEndpoint, redirectURI)
 		if regErr != nil {
 			// Fall through to the prompt: a hand-registered client_id still works.
 			api.logger.Error(fmt.Sprintf("Dynamic client registration failed for %s: %v", serverName, regErr), regErr)
@@ -470,46 +534,9 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		api.logger.Info(fmt.Sprintf("✅ OAuth token obtained for %s, expires: %s, has_refresh: %v",
 			serverName, token.Expiry, token.RefreshToken != ""))
 
-		// Check if we can write to the token directory
-		tokenFile := flow.ServerConfig.OAuth.TokenFile
-		api.logger.Info(fmt.Sprintf("📁 Token file target: %s", tokenFile))
-
-		// Persist the platform OAuth config so every AgentWorks product resolves it.
-		api.logger.Info(fmt.Sprintf("💾 Persisting OAuth config for %s", serverName))
-		if err := api.persistOAuthConfig(serverName, flow.ServerConfig); err != nil {
-			api.logger.Error(fmt.Sprintf("Failed to persist OAuth config for %s: %v", serverName, err), err)
-		} else {
-			api.logger.Info(fmt.Sprintf("✅ OAuth config persisted for %s", serverName))
-			if onInstalled != nil {
-				onInstalled()
-			}
+		if target.OnSuccess != nil {
+			target.OnSuccess(flow)
 		}
-
-		// Reauthorization replaces the retained platform connection.
-		closePlatformMCPConnection(serverName)
-
-		// Invalidate cache for this server so tools are re-discovered with OAuth token
-		api.logger.Info(fmt.Sprintf("🔄 Invalidating cache for %s to refresh tools with OAuth", serverName))
-		cacheManager := mcpcache.GetCacheManager(api.logger)
-		if err := cacheManager.InvalidateByServer(api.mcpConfigPath, serverName); err != nil {
-			api.logger.Warn(fmt.Sprintf("Failed to invalidate cache for %s: %v", serverName, err))
-		} else {
-			api.logger.Info(fmt.Sprintf("✅ Cache invalidated for %s - tools will be refreshed on next request", serverName))
-		}
-
-		// Also invalidate the in-memory tool status cache
-		api.toolStatusMux.Lock()
-		delete(api.toolStatus, serverName)
-		api.toolStatusMux.Unlock()
-		api.logger.Info(fmt.Sprintf("✅ In-memory tool status cleared for %s", serverName))
-
-		// OAuth success means prior auth-related discovery failures are no
-		// longer permanent. Clear the skip marker and rediscover tools now,
-		// otherwise /api/tools returns "loading" forever and the frontend keeps
-		// polling.
-		api.clearDiscoveryFailure(serverName)
-		api.appendServerLog(serverName, "info", "Authentication succeeded, rediscovering tools...")
-		api.startServerDiscovery(userID, serverName)
 		api.notifyOAuthFlowOutcome(sessionID, serverName, true, "")
 	}()
 
@@ -1026,16 +1053,21 @@ func getUserClientFilePath(userID, serverName string) string {
 // that no longer matches forces a fresh registration rather than an
 // invalid_redirect_uri failure later in the flow.
 func (api *StreamingAPI) ensureRegisteredClient(userID, serverName, registrationEndpoint, redirectURI string) (*registeredClient, error) {
-	clientFile := expandPath(getUserClientFilePath(userID, serverName))
+	return api.ensureRegisteredClientAt(expandPath(getUserClientFilePath(userID, serverName)), oauth.Discoverer{}, serverName, registrationEndpoint, redirectURI)
+}
 
-	if data, err := os.ReadFile(clientFile); err == nil {
+// ensureRegisteredClientAt caches a dynamic client registration in clientFile
+// (sealed at rest when a token sealer claims the path, as for personal
+// servers) and registers through disc's HTTP client.
+func (api *StreamingAPI) ensureRegisteredClientAt(clientFile string, disc oauth.Discoverer, serverName, registrationEndpoint, redirectURI string) (*registeredClient, error) {
+	if data, err := oauth.ReadTokenFile(clientFile); err == nil {
 		var cached registeredClient
 		if json.Unmarshal(data, &cached) == nil && cached.ClientID != "" && cached.RedirectURI == redirectURI {
 			return &cached, nil
 		}
 	}
 
-	resp, err := oauth.RegisterClient(registrationEndpoint, redirectURI)
+	resp, err := disc.RegisterClient(registrationEndpoint, redirectURI)
 	if err != nil {
 		return nil, fmt.Errorf("dynamic client registration failed: %w", err)
 	}
@@ -1050,14 +1082,10 @@ func (api *StreamingAPI) ensureRegisteredClient(userID, serverName, registration
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode client registration: %w", err)
 	}
-	// The user's token directory may not exist yet (first connector ever for
-	// this user, or a fresh XDG root); without this the write below failed
-	// silently and every connect re-registered.
-	if err := os.MkdirAll(filepath.Dir(clientFile), 0o700); err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to create client registration dir for %s: %v", serverName, err), err)
-	}
-	// 0600: the record can carry a client_secret.
-	if err := os.WriteFile(clientFile, data, 0600); err != nil {
+	// 0600 (and sealed when claimed): the record can carry a client_secret.
+	// WriteTokenFile also creates the directory, so a first connector for a
+	// fresh root does not re-register on every connect.
+	if err := oauth.WriteTokenFile(clientFile, data); err != nil {
 		// The registration itself succeeded, so continue with it and accept
 		// re-registering on the next connect.
 		api.logger.Error(fmt.Sprintf("Failed to cache client registration for %s: %v", serverName, err), err)

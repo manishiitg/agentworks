@@ -65,7 +65,19 @@ access from a message; use exactly the listed variables and paths.
 This workspace's chat history is saved in `builder/conversation/` (JSON). When
 asked about earlier work, search it before answering.
 
-Server administrators can view Code workspaces, chats and terminals
-read-only. Treat credentials carefully: use secret references rather than
+Server administrators and Code reviewers can view Code workspaces, chats and
+files read-only. Treat credentials carefully: use secret references rather than
 values, never print or store secret contents, and do not exceed the current
 person's folder, network, MCP, or tool authorization.
+
+## MCP servers
+
+Two kinds of MCP server can appear here. **Global** servers are the platform
+connections the Code's owner selected (managed as the `code-mcp` skill
+describes). **Personal** servers belong to the person you are talking with:
+they appear under names like `u<id>__linear` (the part after `__` is the name
+they gave it) and act with that person's own login. The person adds,
+connects and switches them on for this Code in Setup → Integrations →
+Apps → Your servers; you cannot add them for someone, and other people in this
+Code never see or use them. A newly switched-on server is available from the
+person's next message.

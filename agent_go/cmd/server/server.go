@@ -2386,7 +2386,20 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// Pins of Code chats whose Code is gone, once the workspace is up.
+	go func() {
+		time.Sleep(3 * time.Minute)
+		api.sweepOrphanCodeSessionPins(context.Background())
+	}()
+	// A person's own MCP servers and secrets (docs/design/code_private_mcp.md).
+	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
+	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
+	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
+	apiRouter.HandleFunc("/me/secrets/{name}", api.handlePutPersonalSecret).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")
@@ -2429,7 +2442,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Tool execution APIs - handlers provided by mcpagent/executor library
 	// Pass server logger for proper debugging of session registry usage
 	executorHandlers := executor.NewExecutorHandlers(api.mcpConfigPath, api.logger)
-	executorHandlers.SetMCPServerResolver(api.resolveWorkshopMCPServer)
+	executorHandlers.SetMCPServerResolver(api.resolveMCPServer)
 
 	apiRouter.HandleFunc("/mcp/execute", api.requireOwnBodySession(executorHandlers.HandleMCPExecute)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/custom/execute", executorHandlers.HandleCustomExecute).Methods("POST", "OPTIONS")
@@ -3797,6 +3810,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Get current user ID for session isolation
 	currentUserID := GetUserIDFromContext(r.Context())
+	// A Code chat belongs to its pinned person: nothing else (a live-input
+	// delivery below, a queued turn) may run in it as anyone else.
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
+		return
+	}
 	queryLogCtx := requestLogContext(r.Context(), req, sessionID)
 	registerServerLogContext(queryLogCtx, sessionID, queryID)
 	queryLogger := queryLogCtx.Logger(api.logger)
@@ -5637,6 +5656,39 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Legacy manifests may still place built-in tool categories in
 		// SelectedServers. Keep those categories for direct tool registration,
 		// but never attempt to connect to them as MCP servers.
+		selectedServers = runtimeMCPServers(selectedServers)
+		// A Code chat: pin its person before anything connects, then add that
+		// person's own servers switched on for this Code (never anyone
+		// else's), carried as complete configs (docs/design/code_private_mcp.md).
+		if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+			codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+			// A channel-route turn acts for arbitrary channel members: a
+			// Code (DM-only) never pins one to a person.
+			if claims := GetUserFromContext(r.Context()); claims != nil && claims.Provider == "bot_route" {
+				sendError("Code chats are direct messages only.", true)
+				return
+			}
+			if pinErr := pinCodeSession(sessionID, currentUserID, codeRoot); pinErr != nil {
+				if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
+					sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
+				} else {
+					sendError(fmt.Sprintf("Could not start this Code chat: %v", pinErr), true)
+				}
+				return
+			}
+			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot)
+			selectedServers = mergeServerLists(selectedServers, personalNames)
+			if len(personalOverrides) > 0 {
+				if agentConfig.RuntimeOverrides == nil {
+					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
+				}
+				for name, override := range personalOverrides {
+					agentConfig.RuntimeOverrides[name] = override
+				}
+			}
+		}
+		// Apply the external Builder boundary last, including after a Code
+		// profile has considered any personal server overrides.
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
@@ -5937,9 +5989,25 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
 					if strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+						// The chat's person is pinned once; personal MCP servers
+						// and secrets follow the pin, never the mutable session
+						// owner, and a turn from anyone else is refused.
+						if pinErr := pinCodeSession(sessionID, currentUserID, profileRoot); pinErr != nil {
+							if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
+								sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
+							} else {
+								sendError(fmt.Sprintf("Could not start this Code chat: %v", pinErr), true)
+							}
+							return
+						}
 						// Google accounts and other Code-private resources key off
 						// this mark, which survives shell-config clears.
 						common.MarkCodeSession(sessionID, profileRoot)
+						// workflow.json (MCP selection, sharing-relevant settings)
+						// and product.json change only through the role-checked
+						// API and tools, never a file write from a chat.
+						guardBlocked = append(guardBlocked,
+							filepath.Join(profileRoot, "workflow.json"), filepath.Join(profileRoot, "product.json"))
 					}
 					workspace.SetSessionFolderGuard(sessionID,
 						append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...),
@@ -10392,6 +10460,10 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	}
 	if !api.canAccessTerminalSession(r, sessionID) {
 		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
 		return
 	}
 
