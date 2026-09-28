@@ -18,13 +18,16 @@ import (
 type projectProduct struct {
 	ProfileID    string
 	ProjectsRoot string // logical, below _users/<owner>/
+	// FallbackName is shown when the profile is not registered; the name in
+	// the product's product.yaml wins otherwise.
+	FallbackName string
 }
 
 const crewProfileID = "work"
 
 var projectProducts = []projectProduct{
-	{ProfileID: crewProfileID, ProjectsRoot: "Chats/Work/projects"},
-	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot},
+	{ProfileID: crewProfileID, ProjectsRoot: "Chats/Work/projects", FallbackName: "Crew"},
+	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code"},
 }
 
 // isProjectProfileID reports whether profileID is a project product.
@@ -77,7 +80,7 @@ func isCodeProjectPath(workspacePath string) bool {
 
 // projectProductName is the display name its product.yaml gives the project
 // product that owns workspacePath (profile.name: "Crew", "Code"). It falls
-// back to the profile id when the profile is not registered.
+// back to FallbackName when the profile is not registered.
 func (api *StreamingAPI) projectProductName(userID, workspacePath string) string {
 	product, _, ok := projectProductForPath(workspacePath)
 	if !ok {
@@ -88,5 +91,5 @@ func (api *StreamingAPI) projectProductName(userID, workspacePath string) string
 			return strings.TrimSpace(profile.Name)
 		}
 	}
-	return product.ProfileID
+	return product.FallbackName
 }

@@ -248,8 +248,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const noun = product.noun
   const ask = useCallback((message: string) => sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId])
   const sharedFiles = useMemo(
-    () => (readOnly ? sharedCrewFileClient(projectId, workspacePath) : null),
-    [readOnly, projectId, workspacePath],
+    () => (readOnly ? sharedCrewFileClient(projectId, workspacePath, product.profileId) : null),
+    [readOnly, projectId, workspacePath, product.profileId],
   )
   const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
   const openHistoryChat = useResumePreviousChat()

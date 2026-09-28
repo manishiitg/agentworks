@@ -29,12 +29,12 @@ export const proxyCrewFileClient: CrewFileClient = {
   readFile: async (filePath: string, timeoutMs?: number) => agentApi.getPlannerFileContent(filePath, timeoutMs),
 }
 
-export function sharedCrewFileClient(projectId: string, workspaceRoot: string): CrewFileClient {
+export function sharedCrewFileClient(projectId: string, workspaceRoot: string, profileId: string = WORK_PROFILE_ID): CrewFileClient {
   const root = workspaceRoot.replace(/\\/g, '/').replace(/\/+$/, '')
   const blank = (message: string) => ({ success: false as const, message, data: { filepath: '', content: '' } })
   return {
     listFiles: async (folder?: string, _limit: number = -1, maxDepth?: number) => {
-      const response = await agentApi.listSharedProjectFiles(WORK_PROFILE_ID, projectId)
+      const response = await agentApi.listSharedProjectFiles(profileId, projectId)
       const scope = folder ? sharedCrewRelativePath(root, folder.replace(/\\/g, '/')) : ''
       const files: PlannerFile[] = []
       if (scope !== null) {
@@ -59,7 +59,7 @@ export function sharedCrewFileClient(projectId: string, workspaceRoot: string): 
       const rel = sharedCrewRelativePath(root, filePath)
       if (rel === null || rel === '') return blank('File is outside this Crew project.')
       try {
-        const response = await agentApi.getSharedProjectFile(WORK_PROFILE_ID, projectId, rel)
+        const response = await agentApi.getSharedProjectFile(profileId, projectId, rel)
         if (typeof response?.content !== 'string') return blank('Could not open shared Crew file.')
         return { success: true, message: '', data: { filepath: filePath, content: response.content } }
       } catch (cause) {

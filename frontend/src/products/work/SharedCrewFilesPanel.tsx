@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Folder, Loader2 } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { sharedCrewFileClient, sharedCrewRelativePath } from './sharedCrewFiles'
+import { useProjectProduct } from './projectProduct'
 import { WorkspacePanelGuideButton } from '../../components/workflow/WorkspacePanelGuideButton'
 import { panelGuideAskFromNode } from '../../components/workflow/workspacePanelGuideAsk'
 import { WorkspaceViewIconButton } from '../../components/workflow/WorkspaceViewIconButton'
@@ -21,6 +22,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
   request?: { path: string; nonce: number } | null
   headerAction?: React.ReactNode
 }) {
+  const product = useProjectProduct()
   const [entries, setEntries] = useState<PlannerFile[]>([])
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -38,7 +40,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
     setError(null)
     setOpenPath(null)
     setContent('')
-    const client = sharedCrewFileClient(projectId, crewRoot)
+    const client = sharedCrewFileClient(projectId, crewRoot, product.profileId)
     void client.listFiles()
       .then(response => {
         if (cancelled) return
@@ -53,7 +55,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [projectId, crewRoot, reloadNonce])
+  }, [projectId, crewRoot, reloadNonce, product.profileId])
 
   const openEntry = async (entry: PlannerFile) => {
     setOpenPath(entry.filepath)
@@ -61,7 +63,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
     setContentError(null)
     setContentLoading(true)
     try {
-      const response = await sharedCrewFileClient(projectId, crewRoot).readFile(entry.filepath)
+      const response = await sharedCrewFileClient(projectId, crewRoot, product.profileId).readFile(entry.filepath)
       if (!response?.success) throw new Error(response?.message || 'Could not open file.')
       setContent(String(response.data?.content ?? ''))
     } catch (cause) {

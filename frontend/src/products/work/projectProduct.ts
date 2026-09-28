@@ -22,7 +22,10 @@ export type ProjectProductConfig = {
   hasIdentity: boolean
   /** Crew templates, playbooks and role installs. */
   hasTemplates: boolean
-  /** Other owners' projects listed read-only (Crew Run mode). */
+  /**
+   * Other owners' projects in the list: every Crew (Crew Run mode), or only
+   * the Codes shared with the caller.
+   */
   listsSharedProjects: boolean
   /** The "Native agent tools" (hybrid) switch. */
   hasNativeAgentToolsSetting: boolean
@@ -58,7 +61,7 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   itemNoun: 'Code workspace',
   hasIdentity: false,
   hasTemplates: false,
-  listsSharedProjects: false,
+  listsSharedProjects: true,
   // Code stays on MCP-only agent tools until native reads are sandboxed.
   hasNativeAgentToolsSetting: false,
   defaultView: 'files',

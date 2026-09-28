@@ -2366,6 +2366,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversations/{session_id}", api.handleDeleteAgentProfileConversation).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")

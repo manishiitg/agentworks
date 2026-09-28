@@ -131,8 +131,10 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 		return level, nil
 	}
 	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), codeproduct.ProfileID) || isCodeProjectPath(req.SelectedFolder) {
-		// A Code is private: only its owner reaches it, resolved in the
-		// owner's own tree. There is no reader tier.
+		// A Code is private: its owner, and the people it is shared with
+		// (config/code-shares.json), reach it. Owners and co-owners get owner
+		// access, editors write access in their own chat, and a viewer
+		// cannot run the agent at all.
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
 			return WorkflowAccessNone, fmt.Errorf("Code access denied")
 		}
@@ -144,11 +146,15 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 		if key == "" {
 			return WorkflowAccessNone, fmt.Errorf("Code conversation is required")
 		}
-		binding, err := resolveProductConversationBinding(ctx, claims.UserID, profile, key)
-		if err != nil || !workspacePathsMatchForUser(claims.UserID, binding.WorkspacePath, req.SelectedFolder) {
+		project, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, key, req.SelectedFolder)
+		if err != nil || !workspacePathsMatchForUser(claims.UserID, project.Binding.WorkspacePath, req.SelectedFolder) {
 			return WorkflowAccessNone, fmt.Errorf("Code access denied")
 		}
-		return WorkflowAccessOwner, nil
+		role := codeRoleFor(ctx, claims.UserID, project.OwnerID, project.Binding.ResourceID)
+		if !role.atLeast(codeRoleEditor) {
+			return WorkflowAccessNone, fmt.Errorf("Code access denied")
+		}
+		return role.workflowAccess(), nil
 	}
 	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {

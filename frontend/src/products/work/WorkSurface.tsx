@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Eye, Loader2, PanelLeftOpen, PanelRightOpen, Plus, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -19,6 +19,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
+import { CodeShareDialog } from './CodeShareDialog'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -336,6 +337,8 @@ function useWorkChatTab(
   useEffect(() => {
     const target = sessionRef.current
     if (!target || target.id !== projectId) return
+    // A viewer of a shared Code reads its files but has no chat of it.
+    if (target.shared?.role === 'viewer') return
     let cancelled = false
     const prepare = async () => {
       try {
@@ -656,7 +659,7 @@ function WorkTopBarControl({
           ))}
           {sessions.some(session => session.shared) && (
             <div aria-hidden="true" className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Shared by others · read-only
+              {product.listsSharedProjects && !product.hasIdentity ? 'Shared with you' : 'Shared by others · read-only'}
             </div>
           )}
           {sessions.filter(session => session.shared).map(session => (
@@ -677,6 +680,7 @@ function WorkTopBarControl({
                     <span className="block truncate font-medium">{session.identity?.name || session.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {session.shared?.ownerUsername || session.shared?.ownerId || 'Another user'}
+                      {session.shared?.role ? ` · ${session.shared.role === 'co_owner' ? 'co-owner' : session.shared.role}` : ''}
                       {session.identity?.name && session.identity.name !== session.title ? ` · ${session.title}` : ''}
                     </span>
                   </span>
@@ -747,6 +751,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -1050,6 +1055,9 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         walkthroughReady={!sessionsLoading && !creating && !error}
         walkthroughPaused={createOpen || deleteCandidate !== null}
       />
+      {shareOpen && selected && product.profileId === 'code' ? (
+        <CodeShareDialog projectId={selected.id} projectTitle={selected.identity?.name || selected.title} onClose={() => setShareOpen(false)} />
+      ) : null}
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
@@ -1185,7 +1193,22 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
-                  {selected.shared ? (
+                  {product.profileId === 'code' ? (
+                    <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        {selected.shared
+                          ? `${selected.shared.ownerUsername || selected.shared.ownerId}’s ${product.noun} · you are ${selected.shared.role === 'co_owner' ? 'a co-owner' : `a ${selected.shared.role || 'viewer'}`}. Admins on this server can view it.`
+                          : 'Private to you and the people you share it with. Admins on this server can view it.'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShareOpen(true)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-background"
+                      >
+                        <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
+                      </button>
+                    </div>
+                  ) : selected.shared ? (
                     <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                       <span className="min-w-0 flex-1 text-muted-foreground">
                         {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · read-only. Your chats stay private to you.
@@ -1222,7 +1245,15 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       }}
                     />
                   ))}
-                  {tabId ? (
+                  {selected.shared?.role === 'viewer' ? (
+                    <div className="grid h-full place-items-center p-6 text-center">
+                      <div className="max-w-sm">
+                        <Eye className="mx-auto h-6 w-6 text-muted-foreground" />
+                        <p className="mt-2 text-sm font-medium text-foreground">You can view this workspace</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Browse its files beside this panel. To run the agent here, ask {selected.shared.ownerUsername || selected.shared.ownerId} for editor access.</p>
+                      </div>
+                    </div>
+                  ) : tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
                           tabId={tabId}
@@ -1259,7 +1290,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                     data-ui-view={workPresentationView(workspaceView)}
                     className={layout.panelClassName}
                   >
-                  {tabId ? (
+                  {tabId || selected.shared?.role === 'viewer' ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}
@@ -1269,7 +1300,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                         projectIdentity={selected.identity}
                         projectTemplates={selected.templates}
                         onInstallTemplate={installSelectedTemplate}
-                        tabId={tabId}
+                        tabId={tabId ?? ''}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}

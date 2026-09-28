@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,7 +73,7 @@ func isCrewProjectPath(workspacePath string) bool {
 func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
 	trimmed := strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/")
 	if !strings.HasPrefix(trimmed, "_users/") {
-		return isCrewProjectPath(trimmed)
+		return isProjectWorkspacePath(trimmed)
 	}
 	ownerID, ok := crewProjectOwnerID(trimmed)
 	return ok && ownerID == sanitizeUserIDForPath(callerID)
@@ -84,6 +86,18 @@ func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
 // manifest path, so registry operations on them never touch the owner's
 // manifest.
 func resolveConversationBindingForUser(ctx context.Context, userID string, profile agentprofiles.Profile, requestedKey string) (productConversationBinding, bool, error) {
+	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
+		// A shared Code gives editors and co-owners their own chat of it; a
+		// viewer has no chat, and nobody else can address it.
+		project, err := resolveCrewProjectBinding(ctx, userID, profile, requestedKey, "")
+		if err != nil {
+			return productConversationBinding{}, true, err
+		}
+		if !project.OwnedByCaller && !codeRoleFor(ctx, userID, project.OwnerID, project.Binding.ResourceID).atLeast(codeRoleEditor) {
+			return productConversationBinding{}, true, fmt.Errorf("Code workspace %q is view-only for you", strings.TrimSpace(requestedKey))
+		}
+		return project.Binding, project.OwnedByCaller, nil
+	}
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), "work") {
 		binding, err := resolveProductConversationBinding(ctx, userID, profile, requestedKey)
 		if err != nil {
@@ -103,7 +117,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 // from the reader's own central store only, never from the owner's
 // builder/conversation transcripts on disk.
 func crewBuilderDiskHiddenFromUser(userID, workflowPath string) bool {
-	return isCrewProjectPath(workflowPath) && !crewProjectOwnedByCaller(userID, workflowPath)
+	return isProjectWorkspacePath(workflowPath) && !crewProjectOwnedByCaller(userID, workflowPath)
 }
 
 // isCrewReaderTurn reports whether a turn addresses someone else's crew
@@ -137,8 +151,27 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if binding, err := resolveProductProjectBindingWithStore(ctx, callerID, profile, projectID, store); err == nil {
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}
-	// Only Crews resolve under other owners. Every other profile -- a
-	// private Code above all -- is the caller's own or nothing.
+	// A Code resolves under another owner only when that owner shared it
+	// with the caller (config/code-shares.json); nothing scans users' trees.
+	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
+		owners := codeShareOwnersFor(ctx, callerID, projectID)
+		if hinted, ok := crewProjectOwnerID(selectedFolder); ok {
+			if !slices.Contains(owners, hinted) {
+				return denied()
+			}
+			owners = []string{hinted}
+		}
+		if len(owners) != 1 {
+			return denied()
+		}
+		binding, err := resolveProductProjectBindingWithStore(ctx, owners[0], profile, projectID, store)
+		if err != nil {
+			return denied()
+		}
+		return readerCrewProjectBinding(owners[0], binding), nil
+	}
+	// Otherwise only Crews resolve under other owners; every other profile
+	// is the caller's own or nothing.
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		return denied()
 	}

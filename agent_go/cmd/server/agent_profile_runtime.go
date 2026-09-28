@@ -330,18 +330,26 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewRoot := ""
 	folderForClean := selectedFolder
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// A Code is private: it resolves in the caller's own tree only, so
-		// no other owner's Code can be addressed here. It never switches to
-		// native agent tools (their reads are not sandboxed yet, PLAT-364).
+		// A Code resolves in the caller's own tree, or under an owner who
+		// shared it with them; turn access (owner/co-owner/editor) was
+		// checked by conversationTargetAccess. It never switches to native
+		// agent tools (their reads are not sandboxed yet, PLAT-364).
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
 			return nil, fmt.Errorf("agent_profile_conversation_key is required for Code")
 		}
-		binding, bindErr := resolveProductConversationBinding(ctx, userID, profile, conversationKey)
+		project, bindErr := resolveCrewProjectBinding(ctx, userID, profile, conversationKey, selectedFolder)
 		if bindErr != nil {
 			return nil, fmt.Errorf("resolve Code workspace: %w", bindErr)
 		}
-		crewRoot = binding.WorkspacePath
+		crewOwned = project.OwnedByCaller
+		crewRoot = project.Binding.WorkspacePath
+		if !crewOwned {
+			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
+				return nil, fmt.Errorf("Code conversation does not match the selected session")
+			}
+			folderForClean = crewRoot
+		}
 	} else if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
@@ -374,7 +382,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// The verified non-owned binding root is the one cross-owner path
 		// a turn may address; its shape was verified by the projects-root
 		// scan that produced it.
-		if crewOwned || !isCrewProjectPath(folderForClean) {
+		if crewOwned || !isProjectWorkspacePath(folderForClean) {
 			return nil, err
 		}
 		workspacePath = strings.Trim(filepath.ToSlash(strings.TrimSpace(folderForClean)), "/")

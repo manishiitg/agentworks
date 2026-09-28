@@ -130,21 +130,25 @@ func TestProjectProductPaths(t *testing.T) {
 func TestCodeFileLinkOpensForOwnerOnly(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	target := codePrivacyOwnerRoot + "/code/main.go"
-	open := func(userID string) (int, bool) {
+	request := func(userID string) *http.Request {
 		req := httptest.NewRequest(http.MethodGet, "/file?uid=owner", nil)
-		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: userID, Username: userID}))
-		rec := httptest.NewRecorder()
-		// Crew's cross-user reader path must never take a Code link.
-		if _, _, _, handled, _ := api.crewReaderSharedAsset(rec, req, target); handled {
-			t.Fatalf("crew reader path handled a Code link for %s", userID)
-		}
-		_, _, ok := authorizedSharedAsset(rec, req, target)
-		return rec.Code, ok
+		return req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: userID, Username: userID}))
 	}
-	if _, ok := open("owner"); !ok {
+	// The owner opens it through the ordinary personal-file rules.
+	rec := httptest.NewRecorder()
+	if _, _, _, handled, _ := api.crewReaderSharedAsset(rec, request("owner"), target); handled {
+		t.Fatal("the owner's own link took the cross-user path")
+	}
+	if _, _, ok := authorizedSharedAsset(rec, request("owner"), target); !ok {
 		t.Fatal("the owner could not open their own Code link")
 	}
-	if code, ok := open("other"); ok || code != http.StatusForbidden {
-		t.Fatalf("another user opened the owner's Code link: ok=%v code=%d", ok, code)
+	// Anyone the Code is not shared with is refused on both paths.
+	rec = httptest.NewRecorder()
+	if _, _, _, handled, ok := api.crewReaderSharedAsset(rec, request("other"), target); !handled || ok || rec.Code != http.StatusForbidden {
+		t.Fatalf("unshared Code link: handled=%v ok=%v code=%d", handled, ok, rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	if _, _, ok := authorizedSharedAsset(rec, request("other"), target); ok || rec.Code != http.StatusForbidden {
+		t.Fatalf("another user opened the owner's Code link: ok=%v code=%d", ok, rec.Code)
 	}
 }
