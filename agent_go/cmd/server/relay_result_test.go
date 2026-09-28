@@ -112,13 +112,17 @@ func TestRelayManifestKindValidation(t *testing.T) {
 		t.Fatal("Relay enabled Pulse")
 	}
 	manifest.Capabilities.SlackConnectionID = "slack-app"
-	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted a Slack connection")
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("Relay rejected a Slack connection: %v", err)
 	}
 	manifest.Capabilities.SlackConnectionID = ""
-	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"slack"}}
+	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"slack"}, SlackWebhookSecretName: "slack-webhook"}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("Relay rejected Slack notifications: %v", err)
+	}
+	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"whatsapp"}}
 	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted Slack notifications")
+		t.Fatal("Relay accepted WhatsApp notifications")
 	}
 	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"gmail"}}
 	if err := ValidateManifest(manifest); err != nil {
@@ -155,7 +159,7 @@ func TestRelayScheduledInputUsesDirectGraphContract(t *testing.T) {
 	manifest.Kind = "relay"
 	sctx := buildScheduleContext("Workflow/relay", manifest, WorkflowSchedule{GroupNames: []string{"prod"}, TriggerPayload: json.RawMessage(`{"question":"status"}`)})
 	if sctx.WorkflowKind != "relay" || sctx.Capabilities.Notifications == nil ||
-		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "slack") ||
+		strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "slack") ||
 		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "whatsapp") {
 		t.Fatalf("Relay schedule context = %+v", sctx)
 	}

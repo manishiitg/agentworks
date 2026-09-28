@@ -111,19 +111,20 @@ describe('Workflow MCP panel layout', () => {
     expect(connectors).toContain('hideConnectedSection')
   })
 
-  it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills, and Gmail', () => {
+  it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills, Slack, and Gmail', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
     expect(panel).toContain("relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp'")
     expect(panel).toContain("{ value: 'apps', label: 'MCPs' }")
     expect(panel).toMatch(/MCP_TABS[^=]*=[\s\S]*?'apps'[\s\S]*?'skills'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
-    expect(panel).toContain("const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'gmail')")
+    expect(panel).toContain("const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'slack' || option.value === 'gmail')")
     expect(panel).toContain('const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS')
     expect(panel).toContain('tabs={section ===')
     expect(panel).toContain('options: mcpTabs')
     expect(panel).toContain("ariaLabel: 'Integrations'")
     expect(panel).toContain('fixedChannel="slack"')
     expect(panel).toContain('fixedChannel="whatsapp"')
+    expect(panel).toContain('<WorkflowRelaySlackPanel workspacePath={workspacePath} />')
   })
 
   it('embeds bots and gmail inside the Integrations tabs instead of standalone views', () => {
