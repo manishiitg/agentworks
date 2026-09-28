@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -369,6 +370,17 @@ func (api *StreamingAPI) handlePutCodeShares(w http.ResponseWriter, r *http.Requ
 	for _, user := range removed {
 		closeCodeSessionsForGrantee(r.Context(), user, projectID)
 	}
+	// People removed entirely (not just demoted) drop their personal MCP
+	// switches for this Code.
+	if codeRoot := api.codeRootForOwner(r.Context(), ownerID, projectID); codeRoot != "" {
+		for _, user := range removed {
+			if _, kept := grants[user]; !kept {
+				if err := forgetPersonalMCPCode(user, codeRoot); err != nil {
+					log.Printf("[PERSONAL_MCP] forget unshared Code for %s: %v", user, err)
+				}
+			}
+		}
+	}
 	writeAgentProfileJSON(w, http.StatusOK, codeSharesView(r.Context(), ownerID, projectID, role))
 }
 
@@ -384,4 +396,20 @@ func closeCodeSessionsForGrantee(ctx context.Context, userID, projectID string) 
 	for sessionID := range sessions {
 		closeAllCodingCLIInteractiveSessionsForOwner(sessionID, "code access changed")
 	}
+}
+
+// codeRootForOwner is the physical root of an owner's Code, or "".
+func (api *StreamingAPI) codeRootForOwner(ctx context.Context, ownerID, projectID string) string {
+	if api == nil || api.agentProfiles == nil {
+		return ""
+	}
+	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, ownerID)
+	if err != nil {
+		return ""
+	}
+	binding, err := resolveProductProjectBindingWithStore(ctx, ownerID, profile, projectID, defaultProductProjectStore())
+	if err != nil {
+		return ""
+	}
+	return cleanCodeRoot(agentProfileRuntimeWorkspace(ownerID, binding.WorkspacePath))
 }

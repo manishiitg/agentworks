@@ -1,0 +1,510 @@
+package server
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/netguard"
+	"github.com/manishiitg/mcpagent/oauth"
+)
+
+// Personal MCP servers (docs/design/code_private_mcp.md): a person's own
+// remote MCP servers, logins and secrets, used only in that person's own chats
+// in the Codes where they switched them on. One store per person, server-owned
+// and outside every workspace:
+//
+//	<state root>/personal-mcp/<store id>/   (0700)
+//	  servers.json   the person's servers (no secrets)
+//	  enabled.json   { "<code root>": ["linear", ...] }
+//	  secrets.json   { "<name>": "<AES-GCM ciphertext>" }
+//	  tokens/        OAuth tokens, sealed at rest (personalMCPTokenSealer)
+//
+// It reuses the platform pieces: the state root (workflowCLIStateRoot), the
+// secrets key and AES-GCM helpers (encryptSecretValueWithAAD), mcpagent's
+// OAuth token store (sealed through oauth.SetTokenSealer) and its public-only
+// connections (MCPServerConfig.PublicOnly).
+
+const personalMCPDirName = "personal-mcp"
+
+// Letters, digits and underscores only: the bridge lowercases server names
+// and turns "-" into "_" in tool paths, so a name must survive that unchanged
+// to resolve exactly.
+var personalMCPNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_]{0,39}$`)
+
+// personalMCPServer is one of a person's servers. It never holds a secret:
+// credential headers name a personal secret, resolved at connect time.
+type personalMCPServer struct {
+	Name      string                       `json:"name"`
+	URL       string                       `json:"url"`
+	Transport string                       `json:"transport"` // "http" or "sse"
+	OAuth     *oauth.OAuthConfig           `json:"oauth,omitempty"`
+	Headers   map[string]personalMCPHeader `json:"headers,omitempty"`
+	AddedAt   string                       `json:"added_at,omitempty"`
+}
+
+// personalMCPHeader is a credential header built from one personal secret:
+// Format holds "{}" where the value goes (default: the value itself).
+type personalMCPHeader struct {
+	Secret string `json:"secret"`
+	Format string `json:"format,omitempty"`
+}
+
+var personalMCPMu sync.Mutex
+
+func personalMCPRoot() (string, error) {
+	root, err := workflowCLIStateRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, personalMCPDirName), nil
+}
+
+// personalMCPStoreID names a person's store without putting the user id in a
+// path or a connection name.
+func personalMCPStoreID(userID string) string {
+	sum := sha256.Sum256([]byte("personal-mcp\x00" + sanitizeUserIDForPath(strings.TrimSpace(userID))))
+	return hex.EncodeToString(sum[:16])
+}
+
+func personalMCPDir(userID string) (string, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", errors.New("personal MCP servers need a signed-in person")
+	}
+	root, err := personalMCPRoot()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, personalMCPStoreID(userID))
+	if err := os.MkdirAll(filepath.Join(dir, "tokens"), 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// personalMCPInternalName is the name every cache, connection and generated
+// package uses for a person's server, so a personal "linear" never shares a
+// cached tool list or connection with the platform "linear" or with another
+// person's. The model and the UI see the plain name.
+func personalMCPInternalName(userID, name string) string {
+	return "u" + personalMCPStoreID(userID)[:8] + "__" + name
+}
+
+// personalMCPPlainName reverses personalMCPInternalName for this person.
+func personalMCPPlainName(userID, internal string) (string, bool) {
+	prefix := "u" + personalMCPStoreID(userID)[:8] + "__"
+	if !strings.HasPrefix(internal, prefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(internal, prefix), true
+}
+
+func readPersonalMCPJSON(path string, into any) error {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is inside the person's own store
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, into)
+}
+
+// writePersonalMCPJSON replaces a store file atomically, owner-only.
+func writePersonalMCPJSON(path string, value any) error {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".personal-mcp-*.json")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
+}
+
+// validatePersonalMCPServer applies the personal-server rules: a plain name,
+// a remote transport and a public https URL. Headers may name only a secret
+// (resolved from this person's own secrets), never carry a value.
+func validatePersonalMCPServer(server *personalMCPServer) error {
+	server.Name = strings.ToLower(strings.TrimSpace(server.Name))
+	if !personalMCPNamePattern.MatchString(server.Name) {
+		return fmt.Errorf("server name must be 1-40 lowercase letters, digits or underscores")
+	}
+	server.URL = strings.TrimSpace(server.URL)
+	if err := netguard.CheckURL(server.URL, true); err != nil {
+		return fmt.Errorf("server URL refused: %w", err)
+	}
+	switch server.Transport = strings.ToLower(strings.TrimSpace(server.Transport)); server.Transport {
+	case "":
+		server.Transport = "http"
+	case "http", "sse":
+	default:
+		return fmt.Errorf("personal MCP servers are remote only (http or sse)")
+	}
+	for header, ref := range server.Headers {
+		if strings.TrimSpace(header) == "" || strings.ContainsAny(header, "\r\n:") {
+			return fmt.Errorf("invalid header name %q", header)
+		}
+		if !personalSecretNamePattern.MatchString(ref.Secret) {
+			return fmt.Errorf("header %q must name one of your personal secrets", header)
+		}
+		if ref.Format != "" && !strings.Contains(ref.Format, "{}") {
+			return fmt.Errorf("header %q format must contain {} where the secret goes", header)
+		}
+	}
+	if server.OAuth != nil {
+		copied := *server.OAuth
+		copied.TokenFile = "" // set per person at resolve time, never stored
+		copied.PublicOnly = true
+		server.OAuth = &copied
+	}
+	return nil
+}
+
+func listPersonalMCPServers(userID string) ([]personalMCPServer, error) {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	return listPersonalMCPServersLocked(userID)
+}
+
+func listPersonalMCPServersLocked(userID string) ([]personalMCPServer, error) {
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return nil, err
+	}
+	var servers []personalMCPServer
+	if err := readPersonalMCPJSON(filepath.Join(dir, "servers.json"), &servers); err != nil {
+		return nil, err
+	}
+	sort.Slice(servers, func(i, j int) bool { return servers[i].Name < servers[j].Name })
+	return servers, nil
+}
+
+// addPersonalMCPServer adds or replaces one of the person's servers.
+func addPersonalMCPServer(userID string, server personalMCPServer) (personalMCPServer, error) {
+	if err := validatePersonalMCPServer(&server); err != nil {
+		return personalMCPServer{}, err
+	}
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	servers, err := listPersonalMCPServersLocked(userID)
+	if err != nil {
+		return personalMCPServer{}, err
+	}
+	server.AddedAt = time.Now().UTC().Format(time.RFC3339)
+	kept := servers[:0]
+	for _, existing := range servers {
+		if existing.Name != server.Name {
+			kept = append(kept, existing)
+		}
+	}
+	kept = append(kept, server)
+	dir, _ := personalMCPDir(userID)
+	return server, writePersonalMCPJSON(filepath.Join(dir, "servers.json"), kept)
+}
+
+// removePersonalMCPServer deletes the server, its login and every Code's
+// switch for it. Open connections are closed by the caller.
+func removePersonalMCPServer(userID, name string) error {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	servers, err := listPersonalMCPServersLocked(userID)
+	if err != nil {
+		return err
+	}
+	kept := servers[:0]
+	found := false
+	for _, existing := range servers {
+		if existing.Name == name {
+			found = true
+			continue
+		}
+		kept = append(kept, existing)
+	}
+	if !found {
+		return fmt.Errorf("you have no MCP server named %q", name)
+	}
+	dir, _ := personalMCPDir(userID)
+	if err := writePersonalMCPJSON(filepath.Join(dir, "servers.json"), kept); err != nil {
+		return err
+	}
+	_ = os.Remove(personalMCPTokenFile(dir, userID, name))
+	enabled := map[string][]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
+		return err
+	}
+	for root, names := range enabled {
+		enabled[root] = removeString(names, name)
+		if len(enabled[root]) == 0 {
+			delete(enabled, root)
+		}
+	}
+	return writePersonalMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
+}
+
+func personalMCPTokenFile(dir, userID, name string) string {
+	return filepath.Join(dir, "tokens", personalMCPInternalName(userID, name)+".json")
+}
+
+// personalMCPEnabled lists the person's servers switched on in one Code.
+func personalMCPEnabled(userID, codeRoot string) ([]string, error) {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return nil, err
+	}
+	enabled := map[string][]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
+		return nil, err
+	}
+	return append([]string(nil), enabled[cleanCodeRoot(codeRoot)]...), nil
+}
+
+// setPersonalMCPEnabled switches one of the person's servers on or off in a
+// Code. Only the person's own store changes: nobody else, and nothing written
+// into the Code, can switch their servers on.
+func setPersonalMCPEnabled(userID, codeRoot, name string, on bool) error {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	servers, err := listPersonalMCPServersLocked(userID)
+	if err != nil {
+		return err
+	}
+	known := false
+	for _, server := range servers {
+		known = known || server.Name == name
+	}
+	if on && !known {
+		return fmt.Errorf("you have no MCP server named %q", name)
+	}
+	dir, _ := personalMCPDir(userID)
+	enabled := map[string][]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
+		return err
+	}
+	root := cleanCodeRoot(codeRoot)
+	names := removeString(enabled[root], name)
+	if on {
+		names = append(names, name)
+		sort.Strings(names)
+	}
+	if len(names) == 0 {
+		delete(enabled, root)
+	} else {
+		enabled[root] = names
+	}
+	return writePersonalMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
+}
+
+// forgetPersonalMCPCode drops one Code from a person's switches (they lost
+// access, or the Code was deleted).
+func forgetPersonalMCPCode(userID, codeRoot string) error {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	enabled := map[string][]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
+		return err
+	}
+	root := cleanCodeRoot(codeRoot)
+	if _, ok := enabled[root]; !ok {
+		return nil
+	}
+	delete(enabled, root)
+	return writePersonalMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
+}
+
+// ---- personal secrets --------------------------------------------------
+
+var personalSecretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+
+func personalSecretAAD(userID, name string) []byte {
+	return []byte("personal-secret\x00" + personalMCPStoreID(userID) + "\x00" + name)
+}
+
+func setPersonalSecret(userID, name, value string) error {
+	if !personalSecretNamePattern.MatchString(name) {
+		return fmt.Errorf("secret names are UPPER_SNAKE_CASE, up to 64 characters")
+	}
+	if value == "" {
+		return fmt.Errorf("a secret needs a value")
+	}
+	sealed, err := encryptSecretValueWithAAD(value, personalSecretAAD(userID, name))
+	if err != nil {
+		return err
+	}
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	secrets := map[string]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
+		return err
+	}
+	secrets[name] = sealed
+	return writePersonalMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
+}
+
+func deletePersonalSecret(userID, name string) error {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	secrets := map[string]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
+		return err
+	}
+	delete(secrets, name)
+	return writePersonalMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
+}
+
+// listPersonalSecretNames lists names only; values are write-only.
+func listPersonalSecretNames(userID string) ([]string, error) {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return nil, err
+	}
+	secrets := map[string]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(secrets))
+	for name := range secrets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// personalSecretValue resolves one of the person's own secrets. There is no
+// fallback to global or project secrets: a personal server naming one of
+// those would otherwise receive its value.
+func personalSecretValue(userID, name string) (string, error) {
+	personalMCPMu.Lock()
+	defer personalMCPMu.Unlock()
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return "", err
+	}
+	secrets := map[string]string{}
+	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
+		return "", err
+	}
+	sealed, ok := secrets[name]
+	if !ok {
+		return "", fmt.Errorf("you have no personal secret named %s", name)
+	}
+	return decryptSecretValueWithAAD(sealed, personalSecretAAD(userID, name))
+}
+
+// ---- resolution ---------------------------------------------------------
+
+// personalMCPServerConfig builds the connection config for one of the
+// person's servers: public-only (mcpagent refuses anything but a public https
+// remote), credential headers from their own secrets, OAuth tokens in their
+// own sealed token file.
+func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerConfig, error) {
+	servers, err := listPersonalMCPServers(userID)
+	if err != nil {
+		return "", mcpclient.MCPServerConfig{}, err
+	}
+	for _, server := range servers {
+		if server.Name != name {
+			continue
+		}
+		cfg := mcpclient.MCPServerConfig{URL: server.URL, Protocol: mcpclient.ProtocolType(server.Transport), PublicOnly: true}
+		if len(server.Headers) > 0 {
+			cfg.Headers = map[string]string{}
+			for header, ref := range server.Headers {
+				value, err := personalSecretValue(userID, ref.Secret)
+				if err != nil {
+					return "", mcpclient.MCPServerConfig{}, err
+				}
+				if ref.Format != "" {
+					value = strings.ReplaceAll(ref.Format, "{}", value)
+				}
+				cfg.Headers[header] = value
+			}
+		}
+		if server.OAuth != nil {
+			dir, err := personalMCPDir(userID)
+			if err != nil {
+				return "", mcpclient.MCPServerConfig{}, err
+			}
+			copied := *server.OAuth
+			copied.PublicOnly = true
+			copied.TokenFile = personalMCPTokenFile(dir, userID, name)
+			cfg.OAuth = &copied
+		}
+		return personalMCPInternalName(userID, name), cfg, nil
+	}
+	return "", mcpclient.MCPServerConfig{}, fmt.Errorf("you have no MCP server named %q", name)
+}
+
+// ---- tokens at rest ----------------------------------------------------
+
+// personalMCPTokenSealer encrypts every token file under the personal store
+// (mcpagent's oauth.SetTokenSealer), bound to its own path so a sealed token
+// cannot be moved to another person's store and opened there.
+type personalMCPTokenSealer struct{}
+
+func (personalMCPTokenSealer) Handles(path string) bool {
+	root, err := personalMCPRoot()
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Clean(path))
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
+}
+
+func personalMCPTokenAAD(path string) []byte {
+	root, _ := personalMCPRoot()
+	rel, _ := filepath.Rel(root, filepath.Clean(path))
+	return []byte("personal-mcp-token\x00" + filepath.ToSlash(rel))
+}
+
+func (personalMCPTokenSealer) Seal(path string, plaintext []byte) ([]byte, error) {
+	sealed, err := encryptSecretValueWithAAD(string(plaintext), personalMCPTokenAAD(path))
+	return []byte(sealed), err
+}
+
+func (personalMCPTokenSealer) Open(path string, sealed []byte) ([]byte, error) {
+	plaintext, err := decryptSecretValueWithAAD(strings.TrimSpace(string(sealed)), personalMCPTokenAAD(path))
+	return []byte(plaintext), err
+}
+
+func init() { oauth.SetTokenSealer(personalMCPTokenSealer{}) }

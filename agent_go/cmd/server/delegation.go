@@ -961,6 +961,10 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			workspace.SetSessionWorkingDir(subAgentSessionID, subAgentWorkspace)
 			workspace.SetSessionFolderGuard(subAgentSessionID, readPaths, writePaths)
 			common.InheritCodeSession(sessionID, subAgentSessionID)
+			// A sub-agent works for its parent chat's person.
+			if pinErr := inheritCodeSessionPin(sessionID, subAgentSessionID); pinErr != nil {
+				log.Printf("[CODE_SESSION] sub-agent %s could not inherit %s's person: %v", subAgentSessionID, sessionID, pinErr)
+			}
 			if parentGuard != nil {
 				workspace.SetSessionFolderGuardBlockedPaths(subAgentSessionID, parentGuard.BlockedPaths)
 				workspace.SetSessionFolderGuardBlockedWritePaths(subAgentSessionID, parentGuard.BlockedWritePaths)
