@@ -220,6 +220,25 @@ func writeGmailConnection(w http.ResponseWriter, svc *services.GmailService, con
 	json.NewEncoder(w).Encode(projectGmailConnection(svc, conn, svc.GetConfig().DefaultConnectionID))
 }
 
+// gmailCredentialPathsAllowed refuses (403) a config_home or credentials_file
+// from anyone but an admin, and on a Code's private account from anyone at
+// all: they are host paths, and one aimed at a shared account's gws dir or
+// key file would read and send as that account.
+func gmailCredentialPathsAllowed(w http.ResponseWriter, r *http.Request, private bool, req GmailConnectionRequest) bool {
+	if strings.TrimSpace(req.ConfigHome) == "" && strings.TrimSpace(req.CredentialsFile) == "" {
+		return true
+	}
+	if private {
+		http.Error(w, services.ErrPrivateGmailCredentialPaths.Error(), http.StatusForbidden)
+		return false
+	}
+	if !currentUserIsAdmin(r) {
+		writeWorkflowPermissionDenied(w, "admin")
+		return false
+	}
+	return true
+}
+
 // gmailConnectionService resolves the service and the {id} path variable,
 // writing the error response itself when either is unavailable.
 func gmailConnectionService(w http.ResponseWriter, r *http.Request) (*services.GmailService, string, bool) {
@@ -342,6 +361,9 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			writeWorkflowPermissionDenied(w, "admin")
 			return
 		}
+		if !gmailCredentialPathsAllowed(w, r, scope.CodeWorkspace != "", req) {
+			return
+		}
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{
 			ScopeWorkspace:        scope.CodeWorkspace,
 			OwnerID:               scope.UserID,
@@ -378,6 +400,10 @@ func updateGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 		var req GmailConnectionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		existing, _ := svc.GetConnection(id)
+		if !gmailCredentialPathsAllowed(w, r, existing.IsPrivate(), req) {
 			return
 		}
 		conn, err := svc.UpdateConnection(r.Context(), id, services.GmailConnectionInput{

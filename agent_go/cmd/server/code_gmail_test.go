@@ -68,3 +68,38 @@ func TestSharedGmailWritesNeedAnAdmin(t *testing.T) {
 		}
 	}
 }
+
+// config_home and credentials_file are host paths: aimed at a shared
+// account's gws dir or key file they read and send as that account. A Code's
+// private account never takes them (not even from an admin); a shared one
+// only from an admin.
+func TestGmailCredentialPathsNeedAnAdminAndNeverAPrivateAccount(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"boss","username":"boss","admin":true},{"id":"alice","username":"alice","can_create":true}]}`)
+	call := func(userID string, private bool, req GmailConnectionRequest) int {
+		r := httptest.NewRequest(http.MethodPost, "/x", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: userID, Username: userID}))
+		rec := httptest.NewRecorder()
+		if gmailCredentialPathsAllowed(rec, r, private, req) {
+			return http.StatusOK
+		}
+		return rec.Code
+	}
+	for _, req := range []GmailConnectionRequest{{ConfigHome: "/srv/gmail/connections/gmail_001"}, {CredentialsFile: "/srv/keys/org.json"}} {
+		if code := call("alice", true, req); code != http.StatusForbidden {
+			t.Fatalf("a Code owner pinned %+v on a private account (%d)", req, code)
+		}
+		if code := call("boss", true, req); code != http.StatusForbidden {
+			t.Fatalf("an admin pinned %+v on a private account (%d)", req, code)
+		}
+		if code := call("alice", false, req); code != http.StatusForbidden {
+			t.Fatalf("a member pinned %+v on a shared account (%d)", req, code)
+		}
+		if code := call("boss", false, req); code != http.StatusOK {
+			t.Fatalf("an admin was refused %+v on a shared account (%d)", req, code)
+		}
+	}
+	if code := call("alice", true, GmailConnectionRequest{DisplayName: "mine"}); code != http.StatusOK {
+		t.Fatalf("a plain private create was refused (%d)", code)
+	}
+}

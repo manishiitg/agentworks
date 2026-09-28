@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -58,6 +57,10 @@ var codeShells = struct {
 }{byID: map[string]*codeShellState{}}
 
 var codeShellReaperOnce sync.Once
+
+// codeShellSweepOnStart lets tests keep the reaper from stopping a developer's
+// real shells.
+var codeShellSweepOnStart = true
 
 // codeShellID names one person's shell of one Code (the workspace allows
 // ^[a-z0-9][a-z0-9-]{0,47}$).
@@ -461,7 +464,7 @@ func codeShellReaper() {
 	for range time.Tick(time.Minute) {
 		// The first tick, not startup itself: the workspace server may not
 		// be up yet when this process starts.
-		if !swept && !testing.Testing() {
+		if !swept && codeShellSweepOnStart {
 			sweepOrphanCodeShells()
 			swept = true
 		}

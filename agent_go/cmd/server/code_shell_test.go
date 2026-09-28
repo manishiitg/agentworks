@@ -256,3 +256,6 @@ func TestRevokedCodeShellsAreStoppedAndClosed(t *testing.T) {
 		t.Fatalf("another Code's shell must survive; stopped=%v", stopped)
 	}
 }
+
+// The test binary must never stop a developer's real Code shells.
+func init() { codeShellSweepOnStart = false }

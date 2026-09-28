@@ -757,6 +757,8 @@ func ClearSessionShellConfig(sessionID string) {
 	sessionShellConfigsMu.Lock()
 	defer sessionShellConfigsMu.Unlock()
 	delete(sessionShellConfigs, sessionID)
+	// The Code mark goes with the session's other config (MarkCodeSession).
+	codeSessionRoots.Delete(strings.TrimSpace(sessionID))
 }
 
 // GetSessionShellConfig looks up the shell config for a session.

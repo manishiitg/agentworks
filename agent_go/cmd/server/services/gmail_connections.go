@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -460,6 +461,9 @@ type GmailConnectionInput struct {
 // connection depends on (the shared client_secret.json failure mode this
 // registry replaces).
 func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionInput) (GmailConnection, error) {
+	if strings.TrimSpace(in.ScopeWorkspace) != "" && pinsGmailCredentialPaths(in) {
+		return GmailConnection{}, ErrPrivateGmailCredentialPaths
+	}
 	name := strings.TrimSpace(in.DisplayName)
 	if name == "" {
 		return GmailConnection{}, fmt.Errorf("gmail connection: display name is required")
@@ -510,6 +514,16 @@ func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionI
 	return conn, nil
 }
 
+// ErrPrivateGmailCredentialPaths refuses a private (Code) connection that
+// names a gws config dir or key file: those are host paths, and pointing one
+// at a shared account's dir or key would send and read as that account.
+// A private connection signs in through OAuth into its own store only.
+var ErrPrivateGmailCredentialPaths = errors.New("a Code's Google account signs in with Google; it cannot use a config_home or credentials_file")
+
+func pinsGmailCredentialPaths(in GmailConnectionInput) bool {
+	return strings.TrimSpace(in.ConfigHome) != "" || strings.TrimSpace(in.CredentialsFile) != ""
+}
+
 // UpdateConnection edits the mutable fields of one connection.
 func (g *GmailService) UpdateConnection(ctx context.Context, id string, in GmailConnectionInput) (GmailConnection, error) {
 	cfg := g.GetConfig()
@@ -525,6 +539,9 @@ func (g *GmailService) UpdateConnection(ctx context.Context, id string, in Gmail
 	}
 
 	conn := &cfg.Connections[idx]
+	if conn.IsPrivate() && pinsGmailCredentialPaths(in) {
+		return GmailConnection{}, ErrPrivateGmailCredentialPaths
+	}
 	if v := strings.TrimSpace(in.DisplayName); v != "" {
 		conn.DisplayName = v
 	}
@@ -643,7 +660,7 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 	// Only remove directories this registry created. A migrated connection may
 	// point at ~/.config/gws or an operator-managed path, and deleting a
 	// bookkeeping row must never destroy credentials we do not own.
-	if ownsGmailConnectionDir(conn.ConfigHome) {
+	if ownsGmailConnectionDir(conn.ConfigHome) && !gmailConfigHomeReferenced(kept, conn.ConfigHome) {
 		if err := os.RemoveAll(conn.ConfigHome); err != nil {
 			return fmt.Errorf("gmail connection: remove config dir: %w", err)
 		}
@@ -659,6 +676,18 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 	// removing the connection must not leave a token that can still send.
 	deleteGmailOAuthToken(conn.ID)
 	return nil
+}
+
+// gmailConfigHomeReferenced reports whether another connection still uses
+// dir: deleting one row must never remove credentials another depends on.
+func gmailConfigHomeReferenced(conns []GmailConnection, dir string) bool {
+	target := filepath.Clean(strings.TrimSpace(dir))
+	for _, c := range conns {
+		if other := strings.TrimSpace(c.ConfigHome); other != "" && filepath.Clean(other) == target {
+			return true
+		}
+	}
+	return false
 }
 
 // ownsGmailConnectionDir reports whether dir is a registry-provisioned config

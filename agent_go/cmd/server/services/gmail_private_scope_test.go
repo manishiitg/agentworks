@@ -168,3 +168,24 @@ func TestPrivateGmailConnectionsHaveTheirOwnStore(t *testing.T) {
 		t.Fatal("the deleted connection is still in the saved registry")
 	}
 }
+
+// The service refuses credential paths on a private account too, and deleting
+// a connection never removes a gws dir another connection still uses.
+func TestPrivateGmailConnectionsTakeNoCredentialPaths(t *testing.T) {
+	g := &GmailService{config: &GmailConfig{Connections: []GmailConnection{
+		{ID: "mine", ClientName: "primary", ScopeWorkspace: "_users/alice/Chats/Code/projects/app-1", OwnerID: "alice"},
+	}}}
+	if _, err := g.CreateConnection(context.Background(), GmailConnectionInput{DisplayName: "x", ClientName: "primary", ScopeWorkspace: "_users/alice/Chats/Code/projects/app-1", OwnerID: "alice", ConfigHome: "/srv/shared"}); err != ErrPrivateGmailCredentialPaths {
+		t.Fatalf("private create with config_home = %v", err)
+	}
+	if _, err := g.UpdateConnection(context.Background(), "mine", GmailConnectionInput{CredentialsFile: "/srv/keys/org.json"}); err != ErrPrivateGmailCredentialPaths {
+		t.Fatalf("private update with credentials_file = %v", err)
+	}
+	dir := "/srv/gmail/connections/gmail_001"
+	if !gmailConfigHomeReferenced([]GmailConnection{{ID: "shared", ConfigHome: dir + "/"}}, dir) {
+		t.Fatal("a dir another connection uses would be removed")
+	}
+	if gmailConfigHomeReferenced([]GmailConnection{{ID: "shared", ConfigHome: dir + "-2"}}, dir) {
+		t.Fatal("an unrelated dir counted as referenced")
+	}
+}
