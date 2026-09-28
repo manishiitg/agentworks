@@ -153,17 +153,37 @@ func buildPulseTestMCPBridge(t *testing.T) string {
 		t.Fatal("resolve test source path")
 	}
 	moduleRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
-	// Resolve the module selected by go.work, including isolated worktrees.
-	resolve := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/manishiitg/mcpagent")
-	resolve.Dir = moduleRoot
-	moduleDir, err := resolve.Output()
-	if err != nil {
-		t.Fatalf("resolve mcpagent module: %v", err)
+	// Building a dependency directly from the module cache does not resolve its
+	// local replace directives relative to this repository. Use the same
+	// provider module selected by agent_go in a temporary workspace instead.
+	resolveModule := func(name string) string {
+		t.Helper()
+		cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", name)
+		cmd.Dir = moduleRoot
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("resolve %s module: %v\n%s", name, err, output)
+		}
+		return strings.TrimSpace(string(output))
 	}
-	source := filepath.Join(strings.TrimSpace(string(moduleDir)), "cmd", "mcpbridge")
-	binary := filepath.Join(t.TempDir(), "mcpbridge")
+	moduleDir := resolveModule("github.com/manishiitg/mcpagent")
+	providerDir := resolveModule("github.com/manishiitg/multi-llm-provider-go")
+	workDir := t.TempDir()
+	initWork := exec.Command("go", "work", "init", moduleDir)
+	initWork.Dir = workDir
+	if output, err := initWork.CombinedOutput(); err != nil {
+		t.Fatalf("init mcpbridge workspace: %v\n%s", err, output)
+	}
+	replaceProvider := exec.Command("go", "work", "edit", "-replace=github.com/manishiitg/multi-llm-provider-go="+providerDir)
+	replaceProvider.Dir = workDir
+	if output, err := replaceProvider.CombinedOutput(); err != nil {
+		t.Fatalf("replace mcpbridge provider module: %v\n%s", err, output)
+	}
+	source := filepath.Join(moduleDir, "cmd", "mcpbridge")
+	binary := filepath.Join(workDir, "mcpbridge")
 	cmd := exec.Command("go", "build", "-o", binary, ".")
 	cmd.Dir = source
+	cmd.Env = append(os.Environ(), "GOWORK="+filepath.Join(workDir, "go.work"))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build mcpbridge: %v\n%s", err, output)
 	}

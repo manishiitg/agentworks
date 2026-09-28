@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
 func crewWriter(userID string) *UserClaims {
@@ -194,7 +195,7 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	if !externalTokenAllows(readOnly, externalTool{Name: "export_crew"}) {
 		t.Fatal("export_crew is a read")
 	}
-	if grant := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "u", Scopes: []string{"crews:write"}}); !grant.AllCrews {
+	if grant := mcpOAuthTokenForGrant(mcpoauth.Grant{UserID: "u", Scopes: []string{"crews:write"}}); !grant.AllCrews {
 		t.Fatal("an OAuth grant with crews:write must reach the user's Crews")
 	}
 }

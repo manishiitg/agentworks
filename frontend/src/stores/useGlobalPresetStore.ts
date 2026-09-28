@@ -733,6 +733,7 @@ export const usePresetApplication = () => {
 export const usePresetManagement = () => {
   return useGlobalPresetStore(useShallow(store => ({
     workflowPresets: store.workflowPresets,
+    workflowPresetsLoaded: store.workflowPresetsLoaded,
     loading: store.loading,
     error: store.error,
     refreshPresets: store.refreshPresets,

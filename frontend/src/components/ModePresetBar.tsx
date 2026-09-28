@@ -112,7 +112,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     savePreset,
     duplicatePreset,
     refreshPresets,
-    loading: presetsLoading
+    loading: presetsLoading,
+    workflowPresetsLoaded,
   } = usePresetManagement()
 
   const {
@@ -546,14 +547,15 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     }
   }, [duplicatePreset, duplicatingPreset, handlePresetClick, pendingDuplicatePreset])
 
-  // Refresh presets when switching to workflow mode
+  // An empty automation list is a valid loaded state. Checking its length here
+  // retriggers refresh after every empty response and blocks the UI thread.
   useEffect(() => {
-    if (selectedModeCategory === 'workflow' && workflowPresets.length === 0 && !presetsLoading) {
+    if (selectedModeCategory === 'workflow' && !workflowPresetsLoaded && !presetsLoading) {
       refreshPresets().catch(error => {
         console.error('[ModePresetBar] Failed to refresh presets:', error)
       })
     }
-  }, [selectedModeCategory, workflowPresets.length, presetsLoading, refreshPresets])
+  }, [selectedModeCategory, workflowPresetsLoaded, presetsLoading, refreshPresets])
 
   // Refresh presets when dropdown is opened for workflow mode
   const handlePresetDropdownToggle = useCallback(() => {
@@ -581,7 +583,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div className="flex-shrink-0 border-b border-border bg-muted px-4 py-2">
         <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
           {/* Product and current automation */}
           <div className="flex min-w-0 items-center gap-3">

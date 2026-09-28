@@ -1,0 +1,64 @@
+// Package policy evaluates the gateway's deny-by-default authorization.
+//
+// Rule order: disabled connector/tool → missing grant (direct or via group).
+// M1 adds PII policy and schema validation ahead of the upstream call.
+package policy
+
+import (
+	"errors"
+
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
+)
+
+var (
+	ErrUnknownTool       = errors.New("unknown tool")
+	ErrToolNotActive     = errors.New("tool is not active")
+	ErrConnectorDisabled = errors.New("connector is disabled")
+	ErrUnknownUser       = errors.New("user is not in this workspace")
+	ErrUnknownGroup      = errors.New("group is not in this workspace")
+	ErrNoGrant           = errors.New("no grant for tool")
+)
+
+// Authorize resolves the registered tool and checks the caller's grant.
+// It returns the snapshot on allow.
+func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
+	t, ok := s.GetTool(publicName)
+	if !ok || t.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrUnknownTool
+	}
+	if t.Status != store.StatusActive {
+		return store.ToolSnapshot{}, ErrToolNotActive
+	}
+	c, ok := s.GetConnector(t.ConnectorID)
+	if !ok || c.Status != store.StatusActive {
+		return store.ToolSnapshot{}, ErrConnectorDisabled
+	}
+	if id.ViaGroup != "" {
+		// Group API key: exactly the key's group applies.
+		group, ok := s.GetGroup(id.ViaGroup)
+		if !ok || group.WorkspaceID != id.WorkspaceID {
+			return store.ToolSnapshot{}, ErrUnknownGroup
+		}
+		if !s.GroupHasTool(id.ViaGroup, publicName) && !s.GroupHasServer(id.ViaGroup, t.ConnectorID) {
+			return store.ToolSnapshot{}, ErrNoGrant
+		}
+		return t, nil
+	}
+	user, ok := s.GetUser(id.UserID)
+	if !ok || user.WorkspaceID != id.WorkspaceID {
+		return store.ToolSnapshot{}, ErrUnknownUser
+	}
+	if !s.HasGrant(id.UserID, publicName) && !s.HasGroupGrant(id.UserID, publicName) &&
+		!s.HasServerGrant(id.UserID, t.ConnectorID) {
+		return store.ToolSnapshot{}, ErrNoGrant
+	}
+	return t, nil
+}
+
+// Visible reports whether the tool may appear in the caller's tools/list.
+// Execution-time Authorize stays authoritative; this only shapes the listing.
+func Visible(s *store.MemoryStore, id auth.Identity, publicName string) bool {
+	_, err := Authorize(s, id, publicName)
+	return err == nil
+}

@@ -18,10 +18,12 @@ import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
 import { deploymentDefaultProductSurface, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
+import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { normalizeEventViewMode, waitForChatStoreHydration, type ChatTab } from "./stores/useChatStore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { ProductSurfaceSwitcher } from './components/ProductSurfaceSwitcher';
 import "./App.css";
 
 // Extend window interface for global functions
@@ -42,15 +44,28 @@ const queryClient = new QueryClient();
 
 const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
-const VideoStudioSurface = lazy(() => import('./products/video-studio/VideoStudioSurface').then(module => ({ default: module.VideoStudioSurface })))
-const DominionSurface = lazy(() => import('./products/dominion/DominionSurface').then(module => ({ default: module.DominionSurface })))
-const SparkQuillSurface = lazy(() => import('./products/sparkquill/SparkQuillSurface').then(module => ({ default: module.SparkQuillSurface })))
-const WorkSurface = lazy(() => import('./products/work/WorkSurface').then(module => ({ default: module.WorkSurface })))
+const VideoStudioSurface = lazy(() => loadVideoStudioSurface().then(module => ({ default: module.VideoStudioSurface })))
+const DominionSurface = lazy(() => loadDominionSurface().then(module => ({ default: module.DominionSurface })))
+const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ default: module.SparkQuillSurface })))
+const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
+const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
     Loading viewer...
+  </div>
+)
+
+const ProductSurfaceFallback = ({ label }: { label: string }) => (
+  <div className="flex h-screen flex-col bg-background">
+    <header className="flex items-center border-b border-border px-5 py-2.5">
+      <ProductSurfaceSwitcher />
+    </header>
+    <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Opening {label}…
+    </div>
   </div>
 )
 
@@ -921,15 +936,17 @@ function App() {
           />
         )}
         {productSurface === 'video-studio' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><VideoStudioSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'dominion' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><DominionSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Dominion" />}><DominionSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><SparkQuillSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'work' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="work" /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'code' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Code" />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
+        ) : productSurface === 'mcp-gateway' ? (
+          <Suspense fallback={<ProductSurfaceFallback label="CapLayer" />}><GatewaySurface /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />

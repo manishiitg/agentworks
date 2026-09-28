@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
 func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
@@ -173,11 +174,11 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reqID, err := store.SaveRequest(t.Context(), mcpOAuthRequest{ClientID: fresh.ID, RedirectURI: "https://second.example/callback", Resource: resource, State: "state", Scopes: []string{"workflows:read"}, Challenge: pkce, ExpiresAt: grant.Expires})
+	reqID, err := store.SaveRequest(t.Context(), mcpoauth.AuthRequest{ClientID: fresh.ID, RedirectURI: "https://second.example/callback", Resource: resource, State: "state", Scopes: []string{"workflows:read"}, Challenge: pkce, ExpiresUnix: grant.Expires})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, freshCode, err := store.Decide(t.Context(), reqID, &UserClaims{UserID: GetDefaultUserID(), Username: "owner"}, true)
+	_, freshCode, err := store.Decide(t.Context(), reqID, mcpoauth.User{ID: GetDefaultUserID(), Username: "owner"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

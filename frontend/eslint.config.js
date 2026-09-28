@@ -49,6 +49,7 @@ export default tseslint.config([
       'src/components/workflow/ReportViewer.tsx',
       'src/components/workflow/reportWidgets/reportEmbedContext.tsx',
       'src/components/workflow/reportWidgets/shared.tsx',
+      'src/products/work/WorkSurface.tsx',
     ],
     rules: {
       'react-refresh/only-export-components': 'off',

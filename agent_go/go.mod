@@ -16,6 +16,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/k2-fsa/sherpa-onnx-go v1.13.5
+	github.com/manishiitg/coding-agent-loop/mcpoauth v0.0.0
 	github.com/manishiitg/coding-agent-loop/workspace v0.0.0
 	github.com/manishiitg/mcpagent v1.7.12-0.20260928151750-076f1ba6113d
 	github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20260928152458-c0e3363593a4
@@ -38,11 +39,10 @@ require (
 
 replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
 
-// Local checkouts so in-flight work is exercised before it is tagged. Drop
-// these and bump the pinned versions above once the changes are released.
-replace github.com/manishiitg/multi-llm-provider-go => ../../multi-llm-provider-go
+replace github.com/manishiitg/coding-agent-loop/mcpoauth => ./pkg/mcpoauth
 
-replace github.com/manishiitg/mcpagent => ../../mcpagent
+// Keep the multi-llm-provider checkout until its in-flight work is tagged.
+replace github.com/manishiitg/multi-llm-provider-go => ../../multi-llm-provider-go
 
 require (
 	cloud.google.com/go v0.123.0 // indirect

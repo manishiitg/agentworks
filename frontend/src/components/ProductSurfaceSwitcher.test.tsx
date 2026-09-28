@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // fragility rather than trying to fix it as part of an unrelated feature.
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: () => undefined }))
 
-import { visibleProductSurfaceIDs } from './ProductSurfaceSwitcher'
+import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 
 afterEach(() => {
   vi.unstubAllGlobals()

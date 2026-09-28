@@ -2274,7 +2274,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     return (
       <div className={`flex flex-col h-full ${className}`}>
 
-        <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex-1 flex items-center justify-center bg-muted">
         <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
             <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
             <span className="text-4xl">🚀</span>

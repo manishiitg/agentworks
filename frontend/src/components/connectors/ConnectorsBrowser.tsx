@@ -8,32 +8,12 @@ import {
 } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import { brandSlugFor } from './brandSlug'
-import { GROUP_ORDER, descriptionFor, groupFor } from './catalog'
+import { GROUP_ORDER, descriptionFor, groupFor, statusIndicator } from './catalog'
 import { useMCPStore } from '../../stores'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import MCPConfigPopup from '../MCPConfigPopup'
 import { AskAIButton } from '../workflow/AskAIButton'
-
-/**
- * The card's status dot answers whether this platform connection exists.
- * `status` answers a different question — whether the server is
- * currently reachable — so a connected-but-down server is surfaced as an
- * amber dot against the connected state rather than silently reading as not
- * connected. Every connected-but-not-ready state pulses: flat grey is
- * reserved for truly disconnected cards, so a connected card can never
- * read as "not connected". A dot beside the provider name keeps status
- * visible without adding another row to the card.
- */
-const statusIndicator = (connection: string | undefined, status: string | undefined) => {
-  if (connection === 'connected') {
-    if (status === 'error') return { dot: 'bg-amber-500', title: 'Connected — unreachable' }
-    if (status === 'loading') return { dot: 'bg-gray-400 animate-pulse', title: 'Connected — checking...' }
-    if (status === 'not_loaded') return { dot: 'bg-gray-400 animate-pulse', title: 'Connected — tools load when used' }
-    return { dot: 'bg-green-500', title: 'Connected' }
-  }
-  return { dot: 'bg-gray-300 dark:bg-gray-600', title: 'Not connected' }
-}
 
 interface ConnectorsBrowserProps {
   // The embedded workflow panel uses tighter spacing for a narrow side panel.
