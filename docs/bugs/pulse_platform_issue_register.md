@@ -8,8 +8,10 @@ private `/tmp` change (e59220636, deployed on RTS) left open.
   it can read or type into other users' CLI sessions. This is the most serious
   item.
 
-Proposed: fix the tmux socket first, then run the coding CLIs under the
-Landlock runner with per-user CLI homes, and later Seatbelt on macOS. Open.
+tmux socket fixed and deployed on RTS (ab6bb0b4f): each sandboxed command
+gets a private `/tmp` in its own namespace. QA is #236. Still open: run the
+coding CLIs under the Landlock runner with per-user CLI homes, then Seatbelt
+on macOS.
 
 ## Scheduled runs lost to pauses and to Pulse, and Pulse did not act — PLAT-363
 

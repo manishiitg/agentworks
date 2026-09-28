@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | Open: design proposed; step 0 done and deployed on RTS (e59220636) |
+| State | tmux socket fixed and deployed on RTS (ab6bb0b4f); CLI confinement (native reads) open |
 | Date | 2026-09-28 |
 | Owner | security-sandbox |
 | Related | [PLAT-362](plat-362.md) D1 (shared `/tmp`, tmux socket) and its native-read note; [remote workspace server plan](../../../core/remote_workspace_server_plan.md) (agents run on the laptop); GitHub #235 (agy review, M6) |
@@ -43,6 +43,29 @@ e59220636, deployed on RTS 2026-09-28.
 - The opt-in e2e test is `TestPrivateTmpBetweenCrewsE2E`.
 
 This closes the file side of PLAT-362 D1, but not the tmux socket (item 2).
+
+## Done (step 1): tmux socket, ab6bb0b4f, deployed on RTS 2026-09-28
+
+- **Private `/tmp`:** each sandboxed command gets its own. The workspace
+  service starts the Landlock launcher in new user and mount namespaces; it
+  holds the host's AppArmor userns exception (`video-studio-userns`).
+- **What the launcher does:**
+  - mounts an empty tmpfs on `/tmp`;
+  - binds back only the policy's `/tmp` paths and `/tmp/.agent-browser`;
+  - clears its mount capability, then applies Landlock.
+- **Result:** the tmux socket does not exist for the command. `/proc/<pid>/root`
+  is no way around it, because Landlock denies access to processes outside
+  its domain.
+- **Fallback:** hosts that refuse namespaces keep the host `/tmp` and report
+  it in sandbox health. `AGENTWORKS_SANDBOX_PRIVATE_TMP_DISABLED=true` turns
+  it off.
+- **Health on RTS:** "filesystem ABI 8; launcher preflight passed; private /tmp".
+- **Browser regression fixed in the same commit.** It came from
+  e59220636: sandboxed Chrome could not create shared memory in
+  `/tmp/aw-browser-<uid>`.
+- **Tests:** opt-in e2e tests `TestPrivateTmpBetweenCrewsE2E` and
+  `TestPrivateTmpBrowserE2E`, run from the live release on RTS.
+- **QA:** GitHub #236.
 
 ## Proposed
 
