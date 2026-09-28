@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -289,6 +290,10 @@ func requireWorkflowWriteAccess(next http.HandlerFunc) http.HandlerFunc {
 		// record must grant write (owners and editors). A path with no
 		// workflow yet is creation, which the account tier covers.
 		if workspacePath := requestWorkflowWorkspacePath(r); workspacePath != "" {
+			if strings.Contains("/"+filepath.ToSlash(filepath.Clean(workspacePath))+"/", "/.relay_releases/") {
+				writeWorkflowPermissionDenied(w, "write")
+				return
+			}
 			level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath)
 			if manifest != nil && level != WorkflowAccessOwner && level != WorkflowAccessWrite {
 				writeWorkflowPermissionDenied(w, "write")

@@ -2922,6 +2922,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
+	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")

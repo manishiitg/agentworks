@@ -54,6 +54,21 @@ export interface APITriggerOptions {
   route_error?: string
 }
 
+export interface RelayRelease {
+  version: string
+  workspace_path: string
+  hash: string
+  published_at: string
+  functions: string[]
+  output_step_id: string
+  file_count: number
+}
+
+export interface RelayReleasesResponse {
+  active_version: string
+  releases: RelayRelease[]
+}
+
 export type APITriggerRequest = Pick<WorkflowAPITrigger, 'name' | 'enabled' | 'auth_mode' | 'route_selections' | 'group_names'> & {
   workspace_path: string
   step_id?: string
@@ -67,6 +82,7 @@ function config() {
 }
 
 export const workflowWebhooksApi = {
+  relayReleases: (relayID: string) => axios.get<RelayReleasesResponse>(`/api/relays/${encodeURIComponent(relayID)}/releases`, config()).then(r => r.data),
   list: (workspacePath: string) => axios.get<APITriggerOptions>('/api/workflow-webhooks', {
     ...config(), params: { workspace_path: workspacePath },
   }).then(r => r.data),

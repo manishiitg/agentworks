@@ -339,11 +339,12 @@ func workflowFunctionInputValue(input WorkflowFunctionInput, raw interface{}) (s
 
 // workflowFunctionCall is one call of a workflow function.
 type workflowFunctionCall struct {
-	WorkflowID string
-	Function   string
-	Caller     triggerCaller
-	DeliveryID string
-	Args       map[string]interface{}
+	WorkflowID   string
+	Function     string
+	RelayVersion string
+	Caller       triggerCaller
+	DeliveryID   string
+	Args         map[string]interface{}
 	// Payload is the JSON the run sees (arguments, call id, caller).
 	Payload map[string]interface{}
 }
@@ -354,6 +355,24 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	workspacePath, manifest, err := findWorkflowManifestByID(ctx, call.WorkflowID)
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
+	}
+	if manifest.Kind == "relay" {
+		release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
+		if releaseErr != nil {
+			return "", internalTriggerDeliveryResult{}, releaseErr
+		}
+		if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
+			return "", internalTriggerDeliveryResult{}, err
+		}
+		workspacePath = releaseWorkspace
+		manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
+		if err != nil || manifest == nil {
+			return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Relay %s: %w", release.Version, err)
+		}
+		if call.Payload == nil {
+			call.Payload = map[string]interface{}{}
+		}
+		call.Payload["relay_version"] = release.Version
 	}
 	sched, err := findWorkflowFunctionTrigger(manifest, call.Function)
 	if err != nil {
