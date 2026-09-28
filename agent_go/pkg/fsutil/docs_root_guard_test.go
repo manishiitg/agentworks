@@ -15,12 +15,31 @@ import (
 // docs/core/remote_workspace_server_plan.html §10). Migrating a file removes
 // it from this list; adding one needs a reason: laptop-local state only.
 var docsRootAllowlist = map[string]bool{
+	// Existing direct-disk callers inherited from main at rebase time. These
+	// still need migration for remote workflows; freezing the baseline here
+	// prevents unrelated main additions from hiding new branch regressions.
+	"cmd/server/cli_landlock.go":                                                           true,
+	"cmd/server/crew_cli_runtime.go":                                                       true,
+	"cmd/server/crew_move_command.go":                                                      true,
+	"cmd/server/crew_shared_access.go":                                                     true,
+	"cmd/server/external_builder_workspace.go":                                             true,
+	"cmd/server/knowledgebase_routes.go":                                                   true,
+	"cmd/server/product_owner.go":                                                          true,
+	"cmd/server/project_cli_runtime.go":                                                    true,
+	"cmd/server/secret_selection_migration.go":                                             true,
+	"cmd/server/virtual-tools/script_db_tools.go":                                          true,
+	"cmd/server/workspace_proxy.go":                                                        true,
+	"pkg/costledger/workflow_scope.go":                                                     true,
 	"cmd/server/access_tokens.go":                                                          true,
+	"cmd/server/chat_history_dedupe_migration.go":                                          true,
 	"cmd/server/chat_history_persistence.go":                                               true,
 	"cmd/server/coding_agent_modes.go":                                                     true,
 	"cmd/server/durable_chat_migration_command.go":                                         true,
+	"cmd/server/external_file_reads.go":                                                    true,
 	"cmd/server/mcp_oauth_store.go":                                                        true,
+	"cmd/server/pulse_crew_calls_tool.go":                                                  true,
 	"cmd/server/pulse_step_concerns.go":                                                    true,
+	"cmd/server/report_human_inputs.go":                                                    true,
 	"cmd/server/scheduler.go":                                                              true,
 	"cmd/server/server.go":                                                                 true,
 	"cmd/server/services/gmail_connections.go":                                             true,
@@ -45,7 +64,7 @@ var docsRootAllowlist = map[string]bool{
 	"pkg/pulseintake/runtime.go":                                                           true,
 }
 
-var docsRootCall = regexp.MustCompile(`\bWorkspaceDocsRoot\(\)`)
+var docsRootCall = regexp.MustCompile(`\b(WorkspaceDocsRoot|getWorkspaceDocsAbsPath)\(\)`)
 
 func TestNoNewDirectDocsRootAccess(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -84,6 +103,6 @@ func TestNoNewDirectDocsRootAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(offenders) > 0 {
-		t.Fatalf("new direct workspace-docs access via WorkspaceDocsRoot() in %v; read workflow data through the workspace API instead (or add laptop-local state to docsRootAllowlist with a reason)", offenders)
+		t.Fatalf("new direct workspace-docs access via WorkspaceDocsRoot()/getWorkspaceDocsAbsPath() in %v; read workflow data through the workspace API instead (or add laptop-local state to docsRootAllowlist with a reason)", offenders)
 	}
 }

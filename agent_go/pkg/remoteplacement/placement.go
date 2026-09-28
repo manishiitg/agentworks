@@ -1,10 +1,11 @@
 // Package remoteplacement reports which workflows live on a remote workspace
 // server instead of this machine.
 //
-// Placement is laptop-local state kept in <docs>/_system/remote-workflows.json
-// and owned by the local workspace-api, which routes every workspace request
-// for a placed workflow to its server. agent_go only needs to know that such a
-// workflow has no local folder, so it reads the file directly.
+// Placement is laptop-local state owned by the local workspace-api, which
+// routes every workspace request for a placed workflow to its server. It lives
+// next to the docs root, never inside it, because it also holds server tokens
+// (see workspace/remote_router.go remotePlacementFile). agent_go only needs to
+// know that such a workflow has no local folder, so it reads the file directly.
 package remoteplacement
 
 import (
@@ -15,8 +16,17 @@ import (
 	"strings"
 )
 
-// RelPath is the placement file's location relative to the docs root.
-const RelPath = "_system/remote-workflows.json"
+// FileEnv overrides the placement file location (shared with workspace-api).
+const FileEnv = "WORKSPACE_REMOTE_WORKFLOWS_FILE"
+
+// File is the placement file for a docs root.
+func File(docsRoot string) string {
+	if v := strings.TrimSpace(os.Getenv(FileEnv)); v != "" {
+		return filepath.Clean(v)
+	}
+	root := filepath.Clean(docsRoot)
+	return filepath.Join(filepath.Dir(root), "."+filepath.Base(root)+".remote-workflows.json")
+}
 
 type file struct {
 	Workflows map[string]string `json:"workflows"`
@@ -29,7 +39,7 @@ func ServerFor(docsRoot, workspacePath string) string {
 	if rel == "" || strings.TrimSpace(docsRoot) == "" {
 		return ""
 	}
-	raw, err := os.ReadFile(filepath.Join(docsRoot, filepath.FromSlash(RelPath))) // #nosec G304 -- fixed path under the docs root
+	raw, err := os.ReadFile(File(docsRoot)) // #nosec G304 -- operator-owned path next to the docs root
 	if err != nil {
 		return ""
 	}

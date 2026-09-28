@@ -72,6 +72,12 @@ func (s *serverUserTokens) lookup(token string) (string, bool) {
 	return "", false
 }
 
+// serverModeEnabled reports whether this workspace-api serves other people's
+// laptops (per-user tokens + server authorization).
+func serverModeEnabled() bool {
+	return strings.TrimSpace(os.Getenv(serverUserTokensEnv)) != ""
+}
+
 func requestToken(c *gin.Context) string {
 	if token := strings.TrimSpace(c.GetHeader("X-Workspace-Token")); token != "" {
 		return token

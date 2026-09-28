@@ -1,5 +1,9 @@
 package handlers
 
+// Archive transport for remote workflow moves. The removed workspace backup
+// routes stay unavailable; these handlers are mounted only in server mode
+// behind per-user authentication and workflow authorization.
+
 import (
 	"archive/zip"
 	"fmt"
@@ -17,21 +21,21 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ExportWorkspaceRequest represents the request to export a workspace
-type ExportWorkspaceRequest struct {
+// ExportRemoteWorkflowRequest represents the request to export a workspace
+type ExportRemoteWorkflowRequest struct {
 	WorkspacePath string `json:"workspace_path" binding:"required"`
 }
 
-// ImportWorkspaceRequest represents the request to import a workspace backup
-type ImportWorkspaceRequest struct {
+// ImportRemoteWorkflowRequest represents the request to import a workspace backup
+type ImportRemoteWorkflowRequest struct {
 	WorkspacePath string `form:"workspace_path" binding:"required"`
 	Overwrite     bool   `form:"overwrite"` // Whether to overwrite existing files
 }
 
-// ExportWorkspace handles POST /api/workspace/export
+// ExportRemoteWorkflow supplies the archive used by a server-to-laptop workflow move.
 // Creates a ZIP archive of the entire workspace folder
-func ExportWorkspace(c *gin.Context) {
-	var req ExportWorkspaceRequest
+func ExportRemoteWorkflow(c *gin.Context) {
+	var req ExportRemoteWorkflowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 			Success: false,
@@ -189,13 +193,13 @@ func ExportWorkspace(c *gin.Context) {
 	})
 }
 
-// ImportWorkspace handles POST /api/workspace/import
+// ImportRemoteWorkflow receives a laptop-to-server workflow move.
 // Extracts a ZIP archive to restore a workspace folder
-func ImportWorkspace(c *gin.Context) {
-	fmt.Println("📥 Received ImportWorkspace request")
+func ImportRemoteWorkflow(c *gin.Context) {
+	fmt.Println("📥 Received ImportRemoteWorkflow request")
 
 	// Parse form data
-	var req ImportWorkspaceRequest
+	var req ImportRemoteWorkflowRequest
 	if err := c.ShouldBind(&req); err != nil {
 		fmt.Printf("❌ Failed to bind request: %v\n", err)
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
@@ -330,7 +334,7 @@ func ImportWorkspace(c *gin.Context) {
 
 		// Sanitize the file path to prevent directory traversal
 		filePath := filepath.Join(fullWorkspacePath, cleanName)
-		
+
 		// Ensure the extracted path is within the workspace directory
 		if !strings.HasPrefix(filePath, fullWorkspacePath) {
 			fmt.Printf("⚠️  Skipping invalid path: %s\n", zipFile.Name)
@@ -415,12 +419,9 @@ func ImportWorkspace(c *gin.Context) {
 		Success: true,
 		Message: "Workspace backup imported successfully",
 		Data: map[string]interface{}{
-			"workspace_path":   workspacePath,
-			"files_extracted":  len(extractedFiles),
+			"workspace_path":  workspacePath,
+			"files_extracted": len(extractedFiles),
 			"extracted_files": extractedFiles,
 		},
 	})
 }
-
-
-

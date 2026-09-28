@@ -73,7 +73,7 @@
 <body>
 <button class="theme" onclick="var h=document.documentElement,t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t)">◐ Theme</button>
 <div class="wrap">
-  <div class="eyebrow">Design · First slice built and tested locally · 2026-09-23</div>
+  <div class="eyebrow">Design · First slice built, reviewed and hardened · branch remote-workflows-router · 2026-09-28</div>
   <h1>Server-Hosted Workflows, Local Agents</h1>
   <p class="sub">A workflow lives either on your laptop or on a shared server — never both. Agents always run on the laptop, so they use your own LLM login and your own browser. Several users can drive the same server workflow, each from their own laptop.</p>
 
@@ -102,50 +102,52 @@
 
 
   <!-- 00 -->
-  <h2 id="status"><span class="n">00</span>Implementation status (2026-09-23)</h2>
-  <p class="lead">First slice built in the worktree trio <code>ai-work/remote-ws/</code> and tested locally on isolated ports: laptop <code>agent_go</code> :19743, laptop <code>workspace-api</code> (router) :19744, "server" <code>workspace-api</code> :19745, separate docs folders. Not committed yet.</p>
+  <h2 id="status"><span class="n">00</span>Implementation status (2026-09-28)</h2>
+  <p class="lead">Branch <code>remote-workflows-router</code>, rebased onto main. Built in a worktree trio and tested locally on isolated ports: laptop <code>agent_go</code> :19743, laptop <code>workspace-api</code> (router) :19744, server-mode <code>workspace-api</code> :19745, separate docs folders. Not merged; not deployed anywhere.</p>
   <h3>Verified live with real Claude (claude-code, claude-sonnet-5)</h3>
   <table>
     <thead><tr><th>Check</th><th>Result</th></tr></thead>
     <tbody>
-      <tr><td>Workflow list shows local + server workflows together</td><td><span class="tag ok">Pass</span> <code>/api/workflows/manifests</code> returns both</td></tr>
-      <tr><td>Builder chat on a server workflow</td><td><span class="tag ok">Pass</span> shell ran on the server; agent sees laptop-style paths</td></tr>
-      <tr><td>Full workflow run (<code>run_full_workflow</code>) on a server workflow</td><td><span class="tag ok">Pass</span> run folders, logs, step output, costs JSON, builder history all written on the server</td></tr>
-      <tr><td>Nothing written under the laptop's <code>Workflow/&lt;server workflow&gt;</code></td><td><span class="tag ok">Pass</span> after the fixes below; laptop-only scratch goes to <code>_system/remote-scratch/</code></td></tr>
-      <tr><td>Files / shell / SQLite query + mutate routed to the server</td><td><span class="tag ok">Pass</span></td></tr>
-      <tr><td><code>agent-browser</code> and tool-API <code>curl</code> commands stay on the laptop</td><td><span class="tag ok">Pass</span> (browser proven with <code>agent-browser --version</code>; no real browser session launched)</td></tr>
-      <tr><td>Move local → server → local → server</td><td><span class="tag ok">Pass</span> file counts verified, old copy archived, paths rewritten</td></tr>
-      <tr><td>Server-mode per-user tokens</td><td><span class="tag ok">Pass</span> no/bad/shared token → 401; spoofed <code>X-User-ID</code> ignored (write landed in the token user's folder); full run still passes</td></tr>
-      <tr><td>Local workflows unchanged</td><td><span class="tag ok">Pass</span> control workflow ran locally before and after</td></tr>
-      <tr><td>Test suites</td><td><span class="tag ok">Pass</span> all <code>workspace</code> packages; touched <code>agent_go</code> packages + related <code>cmd/server</code> tests; new router, auth, placement, CLI-runtime and atomic-write tests</td></tr>
+      <tr><td>Workflow list shows local + server workflows together</td><td><span class="tag ok">Pass</span></td></tr>
+      <tr><td>Builder chat and full workflow run (<code>run_full_workflow</code>) on a server workflow</td><td><span class="tag ok">Pass</span> run folders, logs, outputs, costs JSON, builder history all on the server; nothing under the laptop's <code>Workflow/&lt;server workflow&gt;</code></td></tr>
+      <tr><td>Browser and tool-API commands stay on the laptop</td><td><span class="tag ok">Pass</span> (browser proven with <code>agent-browser --version</code>, not a real session)</td></tr>
+      <tr><td>Move local → server → local → server</td><td><span class="tag ok">Pass</span> <code>.sandbox-cache</code> stays behind; the mover becomes an owner on the server; the server copy is archived in the mover's <code>_users/&lt;id&gt;/</code></td></tr>
+      <tr><td>Laptop router without the workspace token</td><td><span class="tag ok">Pass</span> forwarded execute and <code>/api/remote/*</code> → 401</td></tr>
+      <tr><td>Server: non-owner, null Folder Guard, wide client guard, paths outside workflows, skills install</td><td><span class="tag ok">Pass</span> 404/403; an owner's command with a client guard of <code>""</code> still cannot read another user's file</td></tr>
+      <tr><td>Local workflows unchanged</td><td><span class="tag ok">Pass</span></td></tr>
     </tbody>
   </table>
-  <h3>What was built</h3>
+  <h3>What is built</h3>
   <ul>
-    <li><b>Router</b> (<code>workspace/remote_router.go</code>): placement file <code>_system/remote-workflows.json</code>; forwards any request inside a server workflow (documents, list/glob/search, folders, versions, upload, query/mutate/db, execute); merges listings; rewrites the docs root both ways; keeps browser and tool-API commands local and remaps their paths to <code>_system/remote-scratch/</code>; rejects cross-placement copy and commands spanning two servers.</li>
-    <li><b>Move</b> (<code>workspace/remote_router_move.go</code>): <code>POST /api/remote/move-to-server</code>, <code>/api/remote/move-to-local</code>, <code>GET /api/remote/placements</code>. Refuses to overwrite a non-empty server folder; verifies file counts before flipping placement.</li>
-    <li><b>Server-mode auth</b> (<code>workspace/server_user_auth.go</code>): <code>WORKSPACE_SERVER_USER_TOKENS_FILE</code> = SHA-256 token hashes per user; every <code>/api</code> call needs one; the server sets <code>X-User-ID</code> from the token.</li>
-    <li><b>agent_go guards</b> (<code>pkg/remoteplacement</code>): CLI isolation without a local workflow folder (<code>cliruntime.PrepareForRemoteWorkflow</code>); remote-aware CLI instructions; step Folder Guard paths created on the server through the API; step working dir → local scratch; per-workflow SQLite stores and local cost ledger skipped; local chat-history lookup skipped.</li>
-    <li><b>Fixes that help everyone</b>: atomic document writes (temp + rename); workspace import failed on macOS (<code>SaveUploadedFile</code> chmods the system temp dir); guard test <code>TestNoNewDirectDocsRootAccess</code> freezes the 28 files that read <code>WorkspaceDocsRoot()</code>.</li>
+    <li><b>Router</b> (<code>workspace/remote_router.go</code>) in the laptop's <code>workspace-api</code>: forwards any request inside a server workflow (documents, list/glob/search, folders, versions, upload, export/import, query/mutate/db, execute), merges listings and globs, rewrites the docs root both ways, keeps browser and tool-API commands local with their paths remapped to <code>_system/remote-scratch/</code>, rejects operations spanning two placements, shows an unreachable server's workflows as <code>remote_status: unreachable</code>.</li>
+    <li><b>Placement file outside the docs root</b>: <code>WORKSPACE_REMOTE_WORKFLOWS_FILE</code>, default <code>&lt;parent&gt;/.&lt;docs-dir-name&gt;.remote-workflows.json</code>, written 0600. It holds server tokens, so no workspace tool or sandboxed agent can read or repoint it. <code>agent_go</code> (<code>pkg/remoteplacement</code>) reads the same file.</li>
+    <li><b>Token check before the router</b>: every <code>/api</code> request needs the workspace token (or a verified per-user token) before anything is forwarded; <code>/api/remote/*</code> included.</li>
+    <li><b>Server mode</b> (<code>WORKSPACE_SERVER_USER_TOKENS_FILE</code>): per-user tokens (SHA-256), identity pinned from the token, then <b>server authorization</b> (<code>workspace/server_authz.go</code>): route allowlist; every path inside a <code>Workflow/&lt;name&gt;</code> the caller may access per its <code>workflow.json</code> access lists, or the caller's <code>_users/&lt;id&gt;/</code>; owners/editors write and execute, readers read; no-access reads answer 404 (no probing of names); listings filtered; <code>/api/execute</code> runs under a server-computed Folder Guard (the workflow folder), only with a working sandbox; <code>/health</code> hides <code>docs_dir</code>; <code>GET /api/remote/whoami</code> for laptops.</li>
+    <li><b>Forwarding hygiene</b>: <code>SECRET_*</code>, <code>MCP_*</code> and <code>WORKSPACE_API_TOKEN</code> are stripped from forwarded commands (and again on the server); the laptop's <code>X-User-ID</code> is never forwarded; https required except loopback; redirects are not followed; 75-minute timeout (above the 1-hour execute cap).</li>
+    <li><b>Moves</b>: use server-mode-only <code>/api/remote/workflow/import</code> and <code>/api/remote/workflow/export</code> transport; the removed <code>/api/workspace/*</code> backup routes remain unavailable. Moves are serialized; refuse a non-empty server folder; stream the archive from a temp file; exclude <code>.sandbox-cache</code>; verify file counts; a failed move to the server removes the partial copy so it can be retried.</li>
+    <li><b>agent_go guards</b>: CLI isolation without a local folder, Folder Guard paths created on the server, step working dir in local scratch, per-workflow SQLite stores and the local cost ledger skipped for server workflows, guard test <code>TestNoNewDirectDocsRootAccess</code> (<code>WorkspaceDocsRoot()</code> and <code>getWorkspaceDocsAbsPath()</code>).</li>
+    <li><b>Fixes for everyone</b>: atomic document writes (kept alongside main's chat-log save), workspace import on macOS.</li>
   </ul>
   <h3>Found while testing (not predicted)</h3>
   <ul>
-    <li><b>Code-execution tool calls are shell commands.</b> Agents call tools with <code>curl "$MCP_CUSTOM/&lt;tool&gt;"</code> inside <code>execute_shell_command</code>. Routed to a real server, that would call the server's own localhost. Fixed: commands using <code>$MCP_*</code> or the tool-API URL always run on the laptop.</li>
-    <li><b>Folder Guard materialization</b> (<code>workspace_path_policy.go</code>) created every granted directory on local disk before each step. Fixed: created on the server via <code>/api/folders</code>.</li>
-    <li><b>CLI isolation already existed</b> — the CLI runs in a private runtime dir, not the workflow folder; only its path resolution needed the folder to exist locally.</li>
-    <li>Builder conversation history and phase cost JSON already went through the API — they landed on the server with no change.</li>
+    <li>Code-execution tool calls are <code>curl "$MCP_CUSTOM/…"</code> shell commands; they must run on the laptop.</li>
+    <li>Folder Guard materialization created every granted directory on local disk before each step.</li>
+    <li>A move's empty-folder check on the server hit the new authorization as "no access"; fixed by answering no-access reads with 404, and covered by a round-trip test against the real server-mode engine.</li>
   </ul>
-  <h3>Not built yet</h3>
+  <h3>Known limits / not built yet</h3>
   <table>
     <thead><tr><th>Gap</th><th>Effect today</th></tr></thead>
     <tbody>
-      <tr><td>Server-side stores for per-workflow SQLite (Pulse state, background-agent log, report human inputs, run concerns, advisor specialization) and the per-workflow cost ledger</td><td>Disabled for server workflows (no local split-brain copy is created); costs still land in the laptop's global ledger</td></tr>
-      <tr><td>Browser artifact copy laptop → server</td><td>Screenshots/downloads from a server workflow stay in local scratch</td></tr>
-      <tr><td>Workflow lock, pinned schedules, claim leases, folder versions</td><td>Two users can edit/run the same server workflow at once; the laptop's workflow list can be stale for up to its cache window</td></tr>
-      <tr><td>Session registration on the server; process list/cleanup scoped per user</td><td>Server trusts the client's folder guard (identity is pinned, paths are not)</td></tr>
-      <tr><td>Server-side secret decrypt + inject</td><td>Secrets of a server workflow can't be decrypted from the laptop</td></tr>
-      <tr><td>Device-token connect flow; token in keychain; UI for placement/move</td><td>Server URL + token are written into the placement file by hand; moves are API calls</td></tr>
-      <tr><td>Deploy to Confida (Caddy route, TLS, server-mode env)</td><td>Only proven locally</td></tr>
+      <tr><td>Scripts that read <code>$MCP_API_URL</code> themselves (scripted steps, fetchers, <code>window.report.run</code>)</td><td>Run on the server with <code>MCP_*</code> stripped, so they cannot call laptop tools. Needs a reverse channel or an explicit "runs locally" marker.</td></tr>
+      <tr><td>Server-side SQLite stores (Pulse state, background-agent log, report human inputs, run concerns, advisor specialization) and the per-workflow cost ledger</td><td>Disabled for server workflows; costs still land in the laptop's global ledger</td></tr>
+      <tr><td>Server-side secret decrypt + inject</td><td>Secrets are stripped from forwarded commands; server workflows cannot use them yet</td></tr>
+      <tr><td>Browser artifact copy laptop → server</td><td>Screenshots/downloads of a server workflow stay in local scratch</td></tr>
+      <tr><td>Workflow lock, pinned schedules, claim leases, folder versions; moves don't check for a run in progress</td><td>Two users can edit/run the same server workflow at once</td></tr>
+      <tr><td>Server session registration and per-user process scoping</td><td>Server refuses <code>/api/processes*</code> instead</td></tr>
+      <tr><td><code>/api/processes</code> not routed; <code>/api/search</code> at the root not merged</td><td>Server workflows are missing from those two views</td></tr>
+      <tr><td>Root rewriting is a plain string replace</td><td>User content that literally contains the laptop's docs path is rewritten in transit</td></tr>
+      <tr><td>Device-token connect flow, keychain storage, UI for placement/move</td><td>Placement file is edited by hand; moves are API calls</td></tr>
+      <tr><td>Confida</td><td>Needs its own server-mode <code>workspace-api</code> instance and docs root (server mode rejects Confida's own agent_go shared token), a Caddy route with TLS, and committed live e2e for identity/guard spoofing and moves</td></tr>
     </tbody>
   </table>
 

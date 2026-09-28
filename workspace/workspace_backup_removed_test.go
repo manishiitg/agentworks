@@ -26,3 +26,18 @@ func TestWorkspaceBackupRoutesRemoved(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteWorkflowTransfersUnavailableOnLaptop(t *testing.T) {
+	t.Setenv(serverUserTokensEnv, "")
+	t.Setenv(workspaceAPITokenEnv, "")
+	t.Setenv(remotePlacementFileEnv, t.TempDir()+"/placements.json")
+	gin.SetMode(gin.TestMode)
+	r := newWorkspaceEngine(t.TempDir())
+	for _, target := range []string{"/api/remote/workflow/export", "/api/remote/workflow/import"} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, target, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("POST %s status = %d, want 404", target, rec.Code)
+		}
+	}
+}
