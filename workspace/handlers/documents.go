@@ -2211,8 +2211,10 @@ func sanitizeFilename(title string) string {
 		filename = strings.ReplaceAll(filename, "--", "-")
 	}
 
-	// Trim leading/trailing dots/hyphens/spaces to avoid special path names
-	filename = strings.Trim(filename, " .-")
+	// Keep valid dotfiles such as .env, but remove trailing dots and unsafe
+	// surrounding spaces/hyphens. The special names . and .. still collapse.
+	filename = strings.Trim(filename, " -")
+	filename = strings.TrimRight(filename, ".")
 
 	// Avoid relative path special names
 	if filename == "" || filename == "." || filename == ".." {

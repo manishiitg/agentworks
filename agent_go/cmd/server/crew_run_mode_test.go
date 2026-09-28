@@ -452,6 +452,7 @@ type errTestReadFailure struct{}
 func (errTestReadFailure) Error() string { return "test read failure" }
 
 func TestWorkspaceProxyMultipartFailsClosed(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
 	// fileFirstRequest mirrors the client's own upload order: the file
 	// part precedes the folder_path field on the wire.
 	fileFirstRequest := func(t *testing.T, folderPath, fileBody string) *http.Request {
@@ -499,6 +500,9 @@ func TestWorkspaceProxyMultipartFailsClosed(t *testing.T) {
 
 	// Field order never hides a path: the whole body is inspected.
 	t.Run("file first", func(t *testing.T) {
+		if status, _ := verdict(t, fileFirstRequest(t, "/", "")); status != http.StatusForbidden {
+			t.Fatalf("whole-workspace upload status = %d, want 403", status)
+		}
 		if status, _ := verdict(t, fileFirstRequest(t, "_users/owner/Chats", "hi")); status != http.StatusForbidden {
 			t.Fatalf("file-first cross-user status = %d, want 403", status)
 		}
