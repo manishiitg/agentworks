@@ -11,9 +11,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -29,17 +31,25 @@ import (
 // The workspace service starts the shell in the same sandbox as the shell
 // tool (POST /api/shell/interactive/start: Landlock, private /tmp, its own
 // tmux server) under the Code's Folder Guard, built here from the project
-// exactly as a chat turn builds it. The browser attaches over a WebSocket
-// bridged to `tmux -S <socket> attach` in a PTY. Each person with editor
+// exactly as a chat turn builds it. The browser's WebSocket is bridged to the
+// workspace's in-sandbox attach (codeShellAttach). Each person with editor
 // access or more gets their own shell of the Code; viewers get none. A shell
 // with no viewer for codeShellIdleTimeout is stopped.
 
-const codeShellIdleTimeout = 30 * time.Minute
+const (
+	codeShellIdleTimeout  = 30 * time.Minute
+	codeShellRoleInterval = 30 * time.Second
+	codeShellSocketsDir   = "/tmp/.agentworks-shells"
+)
 
 type codeShellState struct {
-	socket   string
-	viewers  int
-	lastSeen time.Time
+	socket    string
+	viewers   int
+	lastSeen  time.Time
+	ownerID   string
+	projectID string
+	userID    string
+	conns     map[*websocket.Conn]bool
 }
 
 var codeShells = struct {
@@ -86,24 +96,29 @@ func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root 
 // codeShellTarget authorizes the caller (owner, co-owner or editor) and
 // returns their shell id and the Code's root.
 func (api *StreamingAPI) codeShellTarget(r *http.Request) (userID, shellID, root string, status int, message string) {
+	userID, shellID, root, _, _, status, message = api.codeShellTargetFull(r)
+	return
+}
+
+func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, root, ownerID, projectID string, status int, message string) {
 	claims := GetUserFromContext(r.Context())
-	projectID := strings.TrimSpace(mux.Vars(r)["project_id"])
+	projectID = strings.TrimSpace(mux.Vars(r)["project_id"])
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
-		return "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
 	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, claims.UserID)
 	if err != nil || !userAllowedProduct(claims, profile.Product) {
-		return "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), claims.UserID, profile, projectID, "")
 	if err != nil {
-		return "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
 	if !codeRoleFor(r.Context(), claims.UserID, project.OwnerID, project.Binding.ResourceID).atLeast(codeRoleEditor) {
-		return "", "", "", http.StatusForbidden, "the shell needs editor access to this Code workspace"
+		return "", "", "", "", "", http.StatusForbidden, "the shell needs editor access to this Code workspace"
 	}
 	root = agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath)
-	return claims.UserID, codeShellID(project.OwnerID, projectID, claims.UserID), root, 0, ""
+	return claims.UserID, codeShellID(project.OwnerID, projectID, claims.UserID), root, project.OwnerID, projectID, 0, ""
 }
 
 // codeShellStart starts (or reuses) the sandboxed shell; the workspace call is
@@ -163,19 +178,28 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	userID, shellID, root, status, message := api.codeShellTarget(r)
+	userID, shellID, root, ownerID, projectID, status, message := api.codeShellTargetFull(r)
 	if status != 0 {
 		http.Error(w, message, status)
 		return
 	}
+	// Only a real WebSocket may start a shell: a plain GET would otherwise
+	// start one nobody attaches to.
+	if !websocket.IsWebSocketUpgrade(r) {
+		http.Error(w, "a WebSocket upgrade is required", http.StatusBadRequest)
+		return
+	}
+	codeShellReaperOnce.Do(func() { go codeShellReaper() })
 	cols, rows := liveAttachInitialSize(r)
+	// Tracked before it starts, so a failed start or upgrade never leaves an
+	// untracked shell: the idle reaper stops it.
+	codeShellTrack(shellID, ownerID, projectID, userID)
 	socket, err := codeShellStart(r.Context(), shellID, root, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
 	if err != nil {
 		log.Printf("[CODE_SHELL] start %s: %v", shellID, err)
 		http.Error(w, "could not start the shell", http.StatusServiceUnavailable)
 		return
 	}
-	codeShellReaperOnce.Do(func() { go codeShellReaper() })
 
 	// The attach client runs in the shell's own sandbox on the workspace
 	// service: a tmux client executes what its server tells it to
@@ -195,7 +219,33 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	}
 	defer conn.Close()
 	codeShellViewer(shellID, socket, +1)
+	codeShellConn(shellID, conn, true)
 	defer codeShellViewer(shellID, socket, -1)
+	defer codeShellConn(shellID, conn, false)
+
+	// Access is re-checked while the shell is open: a viewer demoted or
+	// removed loses it within codeShellRoleInterval (sharing changes and Code
+	// deletion also close it at once, see stopCodeShellsFor).
+	roleCtx, stopRoleCheck := context.WithCancel(context.Background())
+	defer stopRoleCheck()
+	go func() {
+		ticker := time.NewTicker(codeShellRoleInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-roleCtx.Done():
+				return
+			case <-ticker.C:
+				if !codeRoleFor(roleCtx, userID, ownerID, projectID).atLeast(codeRoleEditor) {
+					log.Printf("[CODE_SHELL] %s lost access to %s/%s; closing shell %s", userID, ownerID, projectID, shellID)
+					// Both ends: the in-sandbox attach client exits too.
+					_ = shell.Close()
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
 
 	done := make(chan struct{})
 	go func() {
@@ -296,14 +346,108 @@ func (api *StreamingAPI) handleCodeShellStop(w http.ResponseWriter, r *http.Requ
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"stopped": true})
 }
 
+func codeShellTrack(shellID, ownerID, projectID, userID string) {
+	codeShells.Lock()
+	defer codeShells.Unlock()
+	state := codeShells.byID[shellID]
+	if state == nil {
+		state = &codeShellState{}
+		codeShells.byID[shellID] = state
+	}
+	state.ownerID, state.projectID, state.userID = ownerID, projectID, userID
+	state.lastSeen = time.Now()
+}
+
+func codeShellConn(shellID string, conn *websocket.Conn, open bool) {
+	codeShells.Lock()
+	defer codeShells.Unlock()
+	state := codeShells.byID[shellID]
+	if state == nil {
+		return
+	}
+	if state.conns == nil {
+		state.conns = map[*websocket.Conn]bool{}
+	}
+	if open {
+		state.conns[conn] = true
+	} else {
+		delete(state.conns, conn)
+	}
+}
+
+// stopCodeShellsFor ends the shells of one Code at once: every person's when
+// users is empty (the Code was deleted), else only theirs (they lost access).
+func stopCodeShellsFor(ownerID, projectID string, users []string) []string {
+	match := map[string]bool{}
+	for _, user := range users {
+		match[codeGranteeID(user)] = true
+		match[user] = true
+	}
+	codeShells.Lock()
+	var ids []string
+	var conns []*websocket.Conn
+	for id, state := range codeShells.byID {
+		if state.ownerID != ownerID || state.projectID != projectID {
+			continue
+		}
+		if len(users) > 0 && !match[state.userID] && !match[codeGranteeID(state.userID)] {
+			continue
+		}
+		ids = append(ids, id)
+		for conn := range state.conns {
+			conns = append(conns, conn)
+		}
+		delete(codeShells.byID, id)
+	}
+	codeShells.Unlock()
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+	for _, id := range ids {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := codeShellStop(ctx, id); err != nil {
+			log.Printf("[CODE_SHELL] stop %s: %v", id, err)
+		}
+		cancel()
+	}
+	return ids
+}
+
+// sweepOrphanCodeShells stops Code shells a previous server process left
+// running: at startup nothing tracks them, so nothing would ever stop them.
+func sweepOrphanCodeShells() {
+	entries, err := os.ReadDir(codeShellSocketsDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		id := entry.Name()
+		if !entry.IsDir() || !strings.HasPrefix(id, "code-") {
+			continue
+		}
+		codeShells.Lock()
+		_, tracked := codeShells.byID[id]
+		codeShells.Unlock()
+		if tracked {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := codeShellStop(ctx, id); err != nil {
+			log.Printf("[CODE_SHELL] sweep %s: %v", id, err)
+		}
+		cancel()
+	}
+}
+
 func codeShellViewer(shellID, socket string, delta int) {
 	codeShells.Lock()
 	defer codeShells.Unlock()
 	state := codeShells.byID[shellID]
 	if state == nil {
-		state = &codeShellState{socket: socket}
+		state = &codeShellState{}
 		codeShells.byID[shellID] = state
 	}
+	state.socket = socket
 	state.viewers += delta
 	if state.viewers < 0 {
 		state.viewers = 0
@@ -313,7 +457,14 @@ func codeShellViewer(shellID, socket string, delta int) {
 
 // codeShellReaper stops shells nobody has watched for codeShellIdleTimeout.
 func codeShellReaper() {
+	swept := false
 	for range time.Tick(time.Minute) {
+		// The first tick, not startup itself: the workspace server may not
+		// be up yet when this process starts.
+		if !swept && !testing.Testing() {
+			sweepOrphanCodeShells()
+			swept = true
+		}
 		stopIdleCodeShells(time.Now())
 	}
 }

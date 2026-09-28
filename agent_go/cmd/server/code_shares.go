@@ -369,6 +369,17 @@ func (api *StreamingAPI) handlePutCodeShares(w http.ResponseWriter, r *http.Requ
 	for _, user := range removed {
 		closeCodeSessionsForGrantee(r.Context(), user, projectID)
 	}
+	// Removed or demoted people lose their shell of the Code at once (a
+	// viewer has no shell; editors and co-owners keep theirs).
+	var lostShell []string
+	for _, user := range removed {
+		if !grants[user].atLeast(codeRoleEditor) {
+			lostShell = append(lostShell, user)
+		}
+	}
+	if len(lostShell) > 0 {
+		stopCodeShellsFor(ownerID, projectID, lostShell)
+	}
 	writeAgentProfileJSON(w, http.StatusOK, codeSharesView(r.Context(), ownerID, projectID, role))
 }
 

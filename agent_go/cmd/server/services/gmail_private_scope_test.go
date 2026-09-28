@@ -34,10 +34,10 @@ func TestPrivateGmailConnectionsStayInTheirCode(t *testing.T) {
 		scope GmailUseScope
 		want  string
 	}{
-		"owner in the Code": {own, "mine"},
+		"owner in the Code":  {own, "mine"},
 		"editor in the Code": {editor, ""},
-		"another Code":      {otherCode, ""},
-		"Crew or workflow":  {outside, "shared"},
+		"another Code":       {otherCode, ""},
+		"Crew or workflow":   {outside, "shared"},
 	} {
 		if got := ids(g.ConnectionsUsableFrom(tc.scope)); got != tc.want {
 			t.Errorf("%s lists %q, want %q", name, got, tc.want)

@@ -215,3 +215,44 @@ func TestCodeShellStreamBridgesARealTmuxShell(t *testing.T) {
 	}
 	t.Fatalf("shell output never arrived: %q", seen.String())
 }
+
+// Losing access closes an open shell at once: unsharing or demoting a person
+// stops only their shell, deleting the Code stops everyone's.
+func TestRevokedCodeShellsAreStoppedAndClosed(t *testing.T) {
+	previous := codeShellStop
+	var stopped []string
+	codeShellStop = func(_ context.Context, id string) error {
+		stopped = append(stopped, id)
+		return nil
+	}
+	t.Cleanup(func() { codeShellStop = previous })
+	codeShells.Lock()
+	saved := codeShells.byID
+	codeShells.byID = map[string]*codeShellState{}
+	codeShells.Unlock()
+	t.Cleanup(func() {
+		codeShells.Lock()
+		codeShells.byID = saved
+		codeShells.Unlock()
+	})
+
+	ownerShell := codeShellID("owner", "p1", "owner")
+	editorShell := codeShellID("owner", "p1", "editor")
+	otherCode := codeShellID("owner", "p2", "editor")
+	codeShellTrack(ownerShell, "owner", "p1", "owner")
+	codeShellTrack(editorShell, "owner", "p1", "editor")
+	codeShellTrack(otherCode, "owner", "p2", "editor")
+
+	if got := stopCodeShellsFor("owner", "p1", []string{"editor"}); len(got) != 1 || got[0] != editorShell {
+		t.Fatalf("unshare stopped %v, want only the editor's shell", got)
+	}
+	if got := stopCodeShellsFor("owner", "p1", nil); len(got) != 1 || got[0] != ownerShell {
+		t.Fatalf("delete stopped %v, want the owner's remaining shell", got)
+	}
+	codeShells.Lock()
+	_, kept := codeShells.byID[otherCode]
+	codeShells.Unlock()
+	if !kept || len(stopped) != 2 {
+		t.Fatalf("another Code's shell must survive; stopped=%v", stopped)
+	}
+}
