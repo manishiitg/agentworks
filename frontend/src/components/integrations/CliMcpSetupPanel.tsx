@@ -5,7 +5,7 @@ import { Button } from '../ui/Button'
 import api, { externalSkillApi, getApiBaseUrl } from '../../services/api'
 
 type Destination = 'local-assistant' | 'hosted-assistant'
-type LocalClient = 'claude-code' | 'codex' | 'json-client'
+type LocalClient = 'claude-code' | 'codex' | 'cursor' | 'muse' | 'json-client'
 type HostedClient = 'chatgpt' | 'cowork'
 interface OAuthConnection { id: string; client_name: string; scopes: string[]; expires_at: string }
 
@@ -53,6 +53,7 @@ export function CliMcpSetupPanel() {
   const quoted = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
   const mcpUrl = `${origin}/api/external/v1/mcp`
   const mcpJson = JSON.stringify({ mcpServers: { agentworks: { url: mcpUrl } } }, null, 2)
+  const museJson = JSON.stringify({ schema_version: 1, mcpServers: { agentworks: { url: mcpUrl } } }, null, 2)
   const isLoopbackOrigin = (() => { try { return ['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(new URL(origin).hostname) } catch { return false } })()
 
   useEffect(() => {
@@ -117,7 +118,7 @@ export function CliMcpSetupPanel() {
   }
 
   const destinations = [
-    { id: 'local-assistant', icon: Terminal, title: 'AI agent on this computer', description: 'Claude Code, Codex, or another local MCP client.' },
+    { id: 'local-assistant', icon: Terminal, title: 'AI agent on this computer', description: 'Claude Code, Codex, Cursor, Muse, or another local MCP client.' },
     { id: 'hosted-assistant', icon: Globe, title: 'Hosted AI app', description: 'ChatGPT or Claude Cowork.' },
   ] as const
 
@@ -140,10 +141,14 @@ export function CliMcpSetupPanel() {
           <div className="flex flex-wrap gap-2" role="group" aria-label="Local MCP client">
             <Button variant={localClient === 'claude-code' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'claude-code'} onClick={() => setLocalClient('claude-code')}>Claude Code</Button>
             <Button variant={localClient === 'codex' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'codex'} onClick={() => setLocalClient('codex')}>Codex</Button>
+            <Button variant={localClient === 'cursor' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'cursor'} onClick={() => setLocalClient('cursor')}>Cursor</Button>
+            <Button variant={localClient === 'muse' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'muse'} onClick={() => setLocalClient('muse')}>Muse</Button>
             <Button variant={localClient === 'json-client' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'json-client'} onClick={() => setLocalClient('json-client')}>JSON MCP client</Button>
           </div>
           {localClient === 'claude-code' ? <CommandRow label="Add AgentWorks to Claude Code" command={`claude mcp add --transport http agentworks ${quoted(mcpUrl)}`} />
             : localClient === 'codex' ? <div className="space-y-2"><CommandRow label="Add AgentWorks to Codex" command={`codex mcp add agentworks --url ${quoted(mcpUrl)}`} /><CommandRow label="Sign in to AgentWorks" command="codex mcp login agentworks" /></div>
+              : localClient === 'cursor' ? <div className="space-y-2"><JsonBlock label="Add to ~/.cursor/mcp.json" json={mcpJson} hint="Merge the agentworks entry into mcpServers if the file already has servers." /><CommandRow label="Sign in to AgentWorks" command="cursor-agent mcp login agentworks" /></div>
+              : localClient === 'muse' ? <div className="space-y-2"><JsonBlock label="Add to ~/.config/muse/settings.json" json={museJson} hint="Merge the agentworks entry into mcpServers if the file already has settings." /><CommandRow label="Sign in to AgentWorks" command="muse mcp login agentworks" /></div>
               : <JsonBlock label="MCP client config" json={mcpJson} hint="Use the URL with your client's HTTP MCP transport and OAuth sign-in." />}
         </div>
         <p className="text-xs text-muted-foreground">Approve the OAuth connection in your browser when your agent asks. A local server URL works only for agents on this computer.</p>

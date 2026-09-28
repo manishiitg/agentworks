@@ -468,6 +468,20 @@ secondary evidence. The exceptions are pane-only safety states with no
 structured record (trust/login, a draft visibly stuck in the editor). Every
 change below was proven with live end-to-end tests against the real CLI;
 unit tests are supplementary.</p>
+<p><strong>AGY onboarding branch (2026-09-28):</strong> AGY's conversation SQLite
+now proves intake with the matching type-14 user step and supplies the final
+answer from the last type-15 field 20.1 after that step. Earlier assistant
+rows are progress updates, not pieces of the final answer. The turn waits for a stable,
+completed assistant step at the end of the SQLite trail. AGY 1.2.12 has no
+separate observed run-terminal row, so tmux composer readiness remains a
+secondary completion guard as well as the keystroke and blocker surface;
+pane capture still streams coarse terminal display updates.
+Retained-turn final text and progress also come from SQLite rather than pane
+scraping. The retained-session and 25-second MCP tool live tests pass with
+this gate;
+the live-input durable receipt also passed twice with an identical message.
+The isolated full application P0 runner passed with AGY 1.2.12 in Gemini
+API-key mode, including retained Chat and two-step workflow completion.</p>
 <ul>
 <li><strong>Unattended runs auto-answer questions.</strong> Persistent Muse
   enabled user choice, and schedules keep the native session alive, so a

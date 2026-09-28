@@ -1,50 +1,50 @@
 ---
 name: seo-intelligence
-description: Build evidence-backed SEO analysis in AgentWorks for an AI Growth Analyst. Use to find keyword opportunities, diagnose technical SEO issues, close content gaps, track rankings, and brief page-level optimization.
+description: Coordinate technical SEO and buyer-question Crews for a source-backed, owner-reviewed site opportunity.
 ---
 
 # SEO Intelligence
 
 ## Outcome
 
-Create versioned keyword, technical-health, and content-gap analysis that shows where search demand is winnable, what blocks crawling and ranking, and which page changes to brief next.
+Produce a validated technical issue list and buyer-question map for an approved site. The first outcome is an owner-reviewed action.
 
 ## When to use
 
-Use after Growth Data Foundation covers traffic sources and landing pages, or an equivalent search and crawl setup exists. Use it for organic acquisition growth, launch and migration readouts, traffic-drop investigation, and recurring SEO monitoring. It does not own conversion funnels, lifecycle cohorts, or AI-answer citations; those belong to their respective intelligence playbooks.
+Use for two-Crew search review, including a new site without Search Console history. Reuse Growth Data Foundation when available; otherwise mark demand and ranking unknown. Website Growth Loop handles publication and measurement.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, source coverage, capabilities, stores, dashboards, and schedules before proposing changes. Summarize reusable foundations and gaps, ask focused questions for unresolved scope, markets, competitors, approvals, ownership, and success criteria, and record the answers as customer direction. Installation alone does not approve workflow changes or execution.
+Inspect existing Crews, access and source coverage. Propose distinct SEO Analyst and Search Opportunity Mapper bindings, boundaries, validators, a manual case and owner review. Record the owner's direction. Installation does not approve execution.
 
 ## Required inputs
 
-Resolve domains and Search Console properties, locales and devices, crawl scope and frequency, keyword universe and competitor set, ranking and traffic targets, attribution window, minimum data quality, reporting audience, and decision ownership.
+Confirm canonical site, approved host/page scope, locale, device, offer, buyer, market, one sourced buyer question, crawl limits and page-change owner. Record an authorized Search Console property and comparable-window policy when available; otherwise record a baseline-first choice. Competitor and rank-tracker sources are optional.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps for deterministic rank snapshots, crawl analysis, Search Console pulls, content-gap scoring, internal-link mapping, and completeness checks. Use a message sequence to interpret supported changes, diagnose technical causes, prioritize opportunities, and draft page briefs. Prove an on-demand analysis first, then recommend scheduled monitoring with explicit scope, cadence, timezone, and notification policy. Keep publication behind configured review.
+SEO Analyst saves `seo-issue-list/v1` at the Crew step's path. Builder runs the blocking issue validator before Search Opportunity Mapper reads that exact artifact. The mapper combines it with buyer-question and page evidence, then saves `seo-opportunity-list/v1`. Builder validates this second file before reporting or creating an action. Ask Builder to repair a missing output path or validator. Prove one manual run before proposing paused recurrence. Page edits and publication need separate approval.
 
 ## Knowledge and persistence
 
-Store keyword universes, rank snapshots, crawl findings, gap analyses, page briefs, recommendations, and follow-up outcomes in durable tables. Keep customer definitions/preferences in KB context and verified interpretation rules in notes or learnings. Preserve links to source records rather than copying private content.
+Store site and metric policy, Crew IDs, artifact paths, source revisions, validator results, owner decisions and stable issue/opportunity IDs. Retain the action ledger across runs. Re-read changed pages and buyer sources before reopening a case. Keep observed issue, proposed update, approved edit, verified publication and measured result as separate states.
 
 ## Validation and reporting
 
-Validate input freshness, crawl coverage, rank-sample integrity, Search Console reconciliation, comparison-window compatibility, brief-evidence linkage, and evidence for every finding. The dashboard exposes rankings, technical health, gaps, opportunities, confidence, limitations, and drill-downs to pages and queries.
+Run `scripts/validate_handoff.py issue <issue.json>` and `scripts/validate_handoff.py opportunity <issue.json> <opportunity.json>` as blocking Workflow steps. Match site, market, locale, device, issue artifact and cited IDs. A public fetch cannot prove indexation. For measured demand, verify property, filters, equal windows, clicks, impressions, CTR, freshness and coverage. The dashboard shows page issues, buyer questions, evidence, blockers, owner decisions, unknowns and next checks; show trends only from comparable authorized data. A structural pass does not prove source truth.
 
 ## Guardrails
 
-Do not use cloaking, link schemes, keyword stuffing, or any deceptive practice. Do not change robots rules, sitemaps, redirects, or canonicals without approval. Do not report traffic changes without denominators, compare incompatible locales/windows, or crawl outside the authorized scope and politeness limits.
+Do not crawl outside scope, use deceptive SEO, invent search volume, or alter robots, redirects, canonicals or content without approval. A proposed fix is neither shipped nor measured. Retest the exact page after an approved change; ranking movement alone does not prove cause.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, and current-versus-separate workflow decisions.
-- [Growth data model](../references/growth-data-model.md): shared entities, identity, lineage, and metric governance.
-- [SEO intelligence workflow](references/seo-intelligence-workflow.md): keywords, technical audits, gaps, briefs, and acceptance cases.
-- [Example SEO opportunity](examples/seo-opportunity.json): fictional finding and evidence shape.
-- [Catalog metadata](playbook.json): presentation and optional recommendations.
+- [Shared workflow design and outcomes](../../references/workflow-design-and-outcomes.md).
+- [Team, handoff and repeat method](references/team-and-handoffs.md).
+- [SEO analysis rules](references/seo-intelligence-workflow.md).
+- [Fictional issue](examples/seo-issue-list.json), [opportunity](examples/seo-opportunity-list.json) and [rejected claim](examples/invalid-seo-opportunity-list.json).
+- [Pending setup checklist](SETUP.json) and [catalog metadata](playbook.json).
 
 ## Completion contract
 
-Return installed playbook and SEO policy revisions, scope and comparison windows, customer overrides, data-quality status, calculated rankings and gaps, evidence-backed findings with page briefs, report locations, capability resolution, and unresolved limitations.
+Return Playbook version, reviewed Crew roster, site and metric policy, saved artifact paths, blocking validator results, source coverage, manual run IDs, owner-reviewed action and next check, plus the manual or paused recurrence decision. Claim publication or measured impact only from separate provider and comparable source evidence.

@@ -1,0 +1,21 @@
+{
+  "artifact_type": "launch-catalog-readiness/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "launch_id": "launch-linen-shirt-us",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "publication_id": "publication-online-us",
+  "observed_at": "2026-09-26T12:00:00Z",
+  "currency": "USD",
+  "price_minor": 8500,
+  "available_qty": 12,
+  "inventory_policy": "US launch requires at least one available unit; no preorder",
+  "publication_state": "scheduled_not_yet_live",
+  "product_state": "active; reviewed title, description and sizing",
+  "media_ready": true,
+  "blockers": [],
+  "ready_for_review": true,
+  "owner_id": "merch-owner",
+  "source_refs": ["shopify:variant-81-m@2026-09-26T12:00Z", "shopify:publication-online-us@2026-09-26T12:00Z", "inventory:variant-81-m-location-3@2026-09-26T11:58Z"]
+}

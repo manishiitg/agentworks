@@ -1,0 +1,39 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "renewal-risk-to-owned-decision",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a health-to-renewal proposal with exact contract, notice, billing and owner-decision checks."}],
+  "title": "Renewal Risk to Owned Decision",
+  "description": "Join bounded customer-health evidence to current SaaS contract and billing terms for an owner-reviewed renewal decision.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Customer Success"],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Renewal Risk to Owned Decision as a chat-led proposal for one contracted SaaS account. Inspect existing Customer Health Coordinator and Renewal Coordinator Crews, exact account and legal entity, executed contract/revision, subscription, notice rule/timezone, billing and health sources, prior notice and renewal owner. Propose Crew reuse or reviewed creation, blocking artifact validators, one real manual case with an unknown or missing-terms control, owner review and a paused repeat choice. Selection does not contact a customer, change contract or CRM, grant a credit, cancel or claim renewal.",
+  "setup_inputs": [
+    {"id":"account_scope","label":"Tenant, customer account, legal entity and renewal owner","required":true},
+    {"id":"contract_terms","label":"Executed agreement, revision, subscription, renewal and notice terms with timezone","required":true},
+    {"id":"health_policy","label":"Approved health window, source coverage and observed-versus-hypothesis rule","required":true},
+    {"id":"billing_policy","label":"Current invoice/payment source and disputed or open-state interpretation","required":true},
+    {"id":"action_policy","label":"Owner decision, customer contact and contract-change authority","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed renewal-event and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create a reviewed missing Customer Success capability with a stable key","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated bounded health brief to the authorized Renewal Crew","capability":"durable_artifacts","optional":true},
+    {"id":"health-source","name":"Product usage, support or CS source or export","type":"mcp","purpose":"Read exact account signals and coverage for a bounded health window","capability":"account_health_read","optional":true},
+    {"id":"contract-source","name":"Executed agreement and CRM contract source","type":"mcp","purpose":"Verify current contract revision, renewal date and notice rule","capability":"contract_read","optional":true},
+    {"id":"billing-source","name":"Subscription billing source or export","type":"mcp","purpose":"Verify subscription, invoice/payment state and any prior notice receipt","capability":"subscription_read","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Renewal decision readiness","focus_areas":["Contracts approaching notice with current owner decisions", "Accounts with source gaps, unresolved billing or health questions"],"review_when":["A notice deadline approaches, agreement changes, prior notice arrives, invoice state changes or health evidence is corrected"]}],
+  "outputs": ["Reviewed Crew roster and contract, health and billing source map", "Validated renewal-health-brief/v1", "Validated renewal-decision-register/v1 with notice timing and owner state", "Manual case, blockers and activation choice"],
+  "agent_slots": [
+    {"id":"health","agent_playbook_id":"customer-health-coordinator","required":true,"output":"renewal-health-brief/v1"},
+    {"id":"renewal","agent_playbook_id":"renewal-coordinator","required":true,"output":"renewal-decision-register/v1"}
+  ],
+  "handoffs": [{"id":"health-to-renewal","from":"health","to":"renewal","artifact_type":"renewal-health-brief/v1","required":true}],
+  "setup_checks": ["goal_owner", "account_scope", "contract_policy", "health_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

@@ -1,0 +1,50 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "invoice-intake-to-reviewed-payable",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led document-to-payables proposal with exact invoice identity, duplicate checks, approval state, and no implicit payment."}
+  ],
+  "title": "Invoice Intake to Reviewed Payable",
+  "description": "Extract an authorized vendor invoice, reconcile it against current payables, and prepare an owner-reviewed decision without posting or paying it.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Finance"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Invoice Intake to Reviewed Payable as a chat-led proposal. Inspect compatible existing Document Intake Assistant and Spend & Payables Coordinator Crews, source documents, current payable and vendor records, schema, duplicate rule, approval policy, and payment authority. Propose reuse or reviewed creation, exact artifacts and validator steps, one manual invoice, and an owner review. Show the concrete plan before Builder applies it. Selection does not upload documents, create vendors or bills, approve expenses, pay an invoice, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "invoice_source", "label": "Authorized invoice document, immutable document ID/hash and version", "required": true},
+    {"id": "entity_scope", "label": "Legal entity, vendor identity, currency, period and time zone", "required": true},
+    {"id": "schema_policy", "label": "Required invoice fields, tax/total validation and duplicate rules", "required": true},
+    {"id": "payables_source", "label": "Current vendor, bill, credit and payment source or export", "required": true},
+    {"id": "approval_owner", "label": "Payables review owner, approval policy and payment authority boundary", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed document-arrival event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing roles with stable idempotency keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass only the validated invoice extraction to the payables Crew", "capability": "durable_artifacts", "optional": true},
+    {"id": "document-source", "name": "Authorized document store or bounded files", "type": "mcp", "purpose": "Read exact invoice version and page-level evidence", "capability": "document_read", "optional": true},
+    {"id": "payables-source", "name": "Accounting or AP provider or export", "type": "mcp", "purpose": "Read current vendor, bill, credit, approval and payment state", "capability": "payables_read", "optional": true},
+    {"id": "record-destination", "name": "Approved AP record destination", "type": "mcp", "purpose": "Apply a separately approved exact bill write and return a provider receipt", "capability": "payables_write", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Invoice intake and payable review", "focus_areas": ["Whether every proposed payable has verified source fields and a current duplicate check", "Whether pending approval, scheduled payment and paid state remain distinct"], "review_when": ["A document version changes, a possible duplicate appears, an invoice approaches due date, or approval or payment state changes"]}
+  ],
+  "outputs": [
+    "Reviewed document and payable source map with two Crew bindings",
+    "Validated document-intake-record/v1 with field spans and duplicate key",
+    "Validated payable-review/v1 with current ledger, policy and owner decision state",
+    "One manual invoice review, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "intake", "agent_playbook_id": "document-intake-assistant", "required": true, "output": "document-intake-record/v1"},
+    {"id": "payables", "agent_playbook_id": "spend-payables-coordinator", "required": true, "output": "payable-review/v1"}
+  ],
+  "handoffs": [
+    {"id": "intake-to-payables", "from": "intake", "to": "payables", "artifact_type": "document-intake-record/v1", "required": true}
+  ],
+  "setup_checks": ["goal_owner", "document_scope", "invoice_schema", "duplicate_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

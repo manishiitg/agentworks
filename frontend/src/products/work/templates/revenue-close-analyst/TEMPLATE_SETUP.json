@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "template_id": "revenue-close-analyst",
+  "template_version": 1,
+  "checks": [
+    { "id": "identity", "title": "Confirm close owner", "instructions": "Verify whether this is the Crew's primary role or an added capability, the entity and close owner, and the independent reviewer if any. Preserve an existing Crew identity." },
+    { "id": "skill", "title": "Verify the close skill", "instructions": "Confirm skills/revenue-close-analyst/SKILL.md exists and revenue-close-analyst is selected for this Crew." },
+    { "id": "period_policy", "title": "Set period and accounting basis", "instructions": "Agree on fiscal period, timezone, reporting currency, accounting method, materiality threshold, and company revenue policy. Record stable choices in MEMORY.md; leave unknown treatment open for an accountant." },
+    { "id": "sources", "title": "Verify source records", "instructions": "Read representative authorized billing, credit/refund, ledger, and revenue schedule records or exports for the period. Record which are missing and do not claim a full close when a required source is absent." },
+    { "id": "mapping", "title": "Map IDs and accounts", "instructions": "Confirm customer, contract, subscription, invoice, credit, payment, and ledger identifiers, chart-of-account mapping, and opening balances on a sample." },
+    { "id": "reconciliation", "title": "Test a reconciliation", "instructions": "Trace one actual invoice through credit, successful gross payment, processing fee, bank deposit, revenue schedule and ledger by exact IDs, entity, currency, source revision and cutoff. Reproduce net billed, open balance and deposited cash separately from recognized/deferred amounts. Record every unexplained schedule-to-ledger variance with an accountant owner; a missing source blocks a full close claim." },
+    { "id": "first_close", "title": "Review the first close memo", "instructions": "Produce a dated close checklist, source-linked exception table, calculations, and review status. Complete only after the owner or accountant reviews the result." },
+    { "id": "delivery", "title": "Decide on close handoff", "optional": true, "instructions": "Choose chat-only or an approved accountant/finance handoff. Chat-only completes this decision. Do not deliver records elsewhere without authorization." },
+    { "id": "recurrence", "title": "Decide on recurring close", "optional": true, "instructions": "Choose no recurrence, a reviewed period schedule, or an authenticated event source. No recurrence completes this decision. Configure and test separately before enabling." }
+  ],
+  "completed_steps": []
+}

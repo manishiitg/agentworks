@@ -34,11 +34,12 @@ user selected.
 | View ID | Shows | Open it when |
 |---|---|---|
 | `pulse` | Decisions, saved answers, findings, work areas, and gate state | The user asks about a decision or what Pulse found. |
+| `human-actions` | Everything waiting for a person: open decisions and questions, and user suggestions for the owner | The user asks what needs their decision, or about a suggestion someone left. |
 | `backup` | Backup configuration and history | You configured or ran a backup. |
 | `publish` | Published Dashboard state | You published or refreshed the public report. |
 | `notify` | Notification settings and recent deliveries | You changed notification behavior; `expand` may expose an advertised instruction section. |
 
-“Needs your decision” belongs to `pulse`; it is not part of the HTML Dashboard.
+“Needs your decision” belongs to `human-actions` (and `pulse`); it is not part of the HTML Dashboard.
 Read the current request before explaining it. Discussion alone does not choose
 an option. Once the user gives a clear final answer, save it with the dedicated
 decision tool; saving means answered, not applied or consumed.

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "ai-visibility-intelligence",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm visibility question and owner","instructions":"Name the decision owner, brand, site, audience and useful customer action. Agree what one small answer sample can and cannot establish; do not set a ranking or traffic target from it."},
+    {"id":"question_scope","title":"Freeze the approved question set","instructions":"Record exact buyer question text, source, version, persona, locale, brand aliases and named competitors. Keep unsupported invented prompts out of the first run."},
+    {"id":"sample_method","title":"Freeze the answer sampling method","instructions":"Record answer engine and surface, account/session mode, locale, timestamp rule, planned run count, rate and cost limits. Save unavailable or failed runs separately from valid answers without a mention."},
+    {"id":"citation_rule","title":"Approve mention and citation rules","instructions":"Distinguish exact brand mention from an answer citation to a brand-owned URL. Preserve cited URL and raw answer reference; define duplicate and ambiguous URL handling. A cited competitor is not a brand citation."},
+    {"id":"team_bindings","title":"Bind two distinct Crews","instructions":"Inspect and reuse or create authorized AI Visibility Analyst and Search Opportunity Mapper Crew IDs with their selected skills. Their source access and output responsibilities differ; one Crew identity does not fill both slots."},
+    {"id":"source_access","title":"Probe both sources","instructions":"Capture one authorized answer with question, engine, locale and citations; have the mapper inspect one exact existing site page and dated buyer-question source. Record missing engine or site access instead of inventing observations."},
+    {"id":"handoff_contract","title":"Test the citation handoff","instructions":"Save ai-visibility-snapshot/v1 and run its blocking validator. Pass the exact validated artifact to the mapper, save ai-citation-opportunity/v1 and validate both. Record Crew run IDs, artifact paths and a rejected false ranking or publication case."},
+    {"id":"plan_review","title":"Review Builder proposal","instructions":"Show Crew reuse/creation, sources, sampling cost and limits, blocking validator, page-inspection task, owner decision and proposed repeat policy. Selecting this Playbook authorizes none of these actions."},
+    {"id":"manual_test","title":"Run one bounded case","instructions":"Use one approved buyer question and one selected answer surface. Capture at least two valid or explicitly failed attempts, the inspected page, validator output, owner corrections and unresolved limitations. Keep manual if evidence or validator is missing."},
+    {"id":"activation_choice","title":"Choose repeat policy","instructions":"Record manual-only or a reviewed paused schedule with timezone, question-set version, engine access, run budget, duplicate handling, freshness and notification rules. Completing setup does not enable recurrence or page writes."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

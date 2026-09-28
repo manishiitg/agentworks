@@ -20,7 +20,7 @@ export const scheduleStatusPresentation = (item: ScheduleActivityItem): {
       label: 'Missed slot',
       className: 'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300',
       Icon: CircleAlert,
-      detail: item.job.missed_run_reason || 'No execution was created for this scheduled time.',
+      detail: missedScheduleReasonText(item.job.missed_run_reason),
     }
   }
 
@@ -85,4 +85,30 @@ export const formatScheduleRunDuration = (durationMs?: number): string | undefin
   const hours = Math.floor(durationMs / 3_600_000)
   const minutes = Math.round((durationMs % 3_600_000) / 60_000)
   return minutes ? `${hours}h ${minutes}m` : `${hours}h`
+}
+
+// Why a scheduled slot has no run, from the scheduler's recorded decision.
+export function missedScheduleReasonText(reason?: string): string {
+  switch (reason) {
+    case 'no_execution_recorded':
+      return 'No run started at the scheduled time'
+    case 'skipped_paused':
+      return 'Skipped: all schedules were paused'
+    case 'skipped_disabled':
+      return 'Skipped: this schedule was disabled'
+    case 'skipped_busy':
+      return 'Lost: the workflow was busy and this schedule skips when busy'
+    case 'expired_busy':
+      return 'Lost: queued while the workflow was busy, then expired before it could start'
+    case 'expired_dependency_deadline':
+      return 'Lost: its prerequisite schedules did not finish before the deadline'
+    case 'blocked_dependency':
+      return 'Not run: a prerequisite schedule did not finish as required'
+    case 'failed_to_start':
+      return 'Lost: the run failed to start'
+    case 'missed_scheduler_gap':
+      return 'Lost: the scheduler was not running at that time'
+    default:
+      return 'No run record was found for the scheduled time'
+  }
 }

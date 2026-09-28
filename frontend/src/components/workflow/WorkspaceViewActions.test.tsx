@@ -1,21 +1,20 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
 
-vi.mock('./AskAIButton', () => ({
-  AskAIButton: () => <button type="button" data-testid="ask-ai">Ask AI</button>,
-}))
-
 describe('WorkspaceViewActions', () => {
-  it('keeps Ask AI left of refresh in every right-pane header', () => {
+  it('renders walkthrough and refresh in the row while Ask AI lives in the popup', () => {
     const html = renderToStaticMarkup(
-      <WorkspaceViewActions workspacePath="Workflow/one" message="help" onRefresh={() => {}} />,
+      <WorkspaceViewActions
+        workspacePath="Workflow/one"
+        message="help"
+        onRefresh={() => {}}
+        walkthrough={<span data-testid="walkthrough" />}
+      />,
     )
-    const askIndex = html.indexOf('data-testid="ask-ai"')
-    const refreshIndex = html.indexOf('aria-label="Refresh view"')
-    expect(askIndex).toBeGreaterThanOrEqual(0)
-    expect(refreshIndex).toBeGreaterThanOrEqual(0)
-    expect(askIndex).toBeLessThan(refreshIndex)
+    expect(html).not.toContain('Ask AI')
+    expect(html).toContain('data-testid="walkthrough"')
+    expect(html).toContain('aria-label="Refresh view"')
   })
 })

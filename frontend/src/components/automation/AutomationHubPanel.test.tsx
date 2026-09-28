@@ -102,7 +102,18 @@ describe('AutomationHubPanel Ask AI', () => {
     return { host, unmount: async () => { await act(async () => root.unmount()); host.remove() } }
   }
 
-  it('renders one header Ask AI whose message follows the active tab', async () => {
+  async function openWalkthrough(host: HTMLElement) {
+    await act(async () => {
+      (host.querySelector('button[aria-label^="Walkthrough:"]') as HTMLButtonElement).click()
+      await Promise.resolve()
+    })
+  }
+
+  function popupAskMessage(host: HTMLElement) {
+    return host.querySelector('[role="dialog"] [data-testid="ask-ai"]')?.getAttribute('data-message')
+  }
+
+  it('renders one popup Ask AI whose message follows the active tab', async () => {
     const { host, unmount } = await mountHub({
       entityType: 'workflow',
       workflowScope: { workspacePath: 'Workflow/one' },
@@ -110,14 +121,15 @@ describe('AutomationHubPanel Ask AI', () => {
     })
     try {
       const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Automation center"] [role="tab"]'))
-      const message = () => host.querySelector('[data-testid="ask-ai"]')?.getAttribute('data-message')
+      expect(host.querySelector('[data-testid="ask-ai"]')).toBeNull()
+      await openWalkthrough(host)
       expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(1)
-      expect(message()).toContain('set up or change a schedule')
+      expect(popupAskMessage(host)).toContain('set up or change a schedule')
       await act(async () => { tabs.find(tab => tab.textContent === 'Chats')!.click(); await Promise.resolve() })
       expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(1)
-      expect(message()).toContain('past chats and automatic jobs')
+      expect(popupAskMessage(host)).toContain('past chats and automatic jobs')
       await act(async () => { tabs.find(tab => tab.textContent === 'Webhooks')!.click(); await Promise.resolve() })
-      expect(message()).toContain('set up or change a webhook')
+      expect(popupAskMessage(host)).toContain('set up or change a webhook')
       expect(host.querySelector('[data-testid="schedules"] [data-testid="ask-ai"]')).toBeNull()
     } finally {
       await unmount()
@@ -135,10 +147,11 @@ describe('AutomationHubPanel Ask AI', () => {
     })
     try {
       const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Automation center"] [role="tab"]'))
-      expect(host.querySelector('[data-testid="ask-ai"]')?.getAttribute('data-message')).toBe('Crew schedules help')
+      await openWalkthrough(host)
+      expect(popupAskMessage(host)).toBe('Crew schedules help')
       expect(askAIProps.current?.onAsk).toBe(onAskAI)
       await act(async () => { tabs.find(tab => tab.textContent === 'Chats')!.click(); await Promise.resolve() })
-      expect(host.querySelector('[data-testid="ask-ai"]')?.getAttribute('data-message')).toBe('Crew chats help')
+      expect(popupAskMessage(host)).toBe('Crew chats help')
     } finally {
       await unmount()
     }
@@ -152,6 +165,8 @@ describe('AutomationHubPanel Ask AI', () => {
     })
     try {
       expect(host.querySelector('[data-testid="ask-ai"]')).toBeNull()
+      await openWalkthrough(host)
+      expect(host.querySelector('[role="dialog"] [data-testid="ask-ai"]')).toBeNull()
     } finally {
       await unmount()
     }
@@ -271,7 +286,7 @@ describe('AutomationHubPanel Ask AI', () => {
     }
   })
 
-  it('places Ask AI left of the per-tab refresh button', async () => {
+  it('places the walkthrough left of the per-tab refresh button', async () => {
     const { host, unmount } = await mountHub({
       entityType: 'workflow',
       workflowScope: { workspacePath: 'Workflow/one' },
@@ -279,11 +294,12 @@ describe('AutomationHubPanel Ask AI', () => {
     })
     try {
       const buttons = Array.from(host.querySelectorAll('header button'))
-      const askIndex = buttons.findIndex(button => button.getAttribute('data-testid') === 'ask-ai')
+      expect(buttons.some(button => button.getAttribute('data-testid') === 'ask-ai')).toBe(false)
+      const walkthroughIndex = buttons.findIndex(button => (button.getAttribute('aria-label') || '').startsWith('Walkthrough'))
       const refreshIndex = buttons.findIndex(button => (button.getAttribute('aria-label') || '').startsWith('Refresh'))
-      expect(askIndex).toBeGreaterThanOrEqual(0)
+      expect(walkthroughIndex).toBeGreaterThanOrEqual(0)
       expect(refreshIndex).toBeGreaterThanOrEqual(0)
-      expect(askIndex).toBeLessThan(refreshIndex)
+      expect(walkthroughIndex).toBeLessThan(refreshIndex)
     } finally {
       await unmount()
     }

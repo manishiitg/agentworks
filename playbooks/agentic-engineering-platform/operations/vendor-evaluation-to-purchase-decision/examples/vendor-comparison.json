@@ -1,0 +1,122 @@
+{
+  "artifact_type": "vendor-comparison/v1",
+  "artifact_id": "comparison-demo-1",
+  "tenant_id": "tenant-demo",
+  "entity_id": "entity-us",
+  "request_id": "request-helpdesk-1",
+  "requirements_revision": "requirements-r3",
+  "currency": "USD",
+  "seat_count": 20,
+  "term_months": 12,
+  "budget_amount": "8000.00",
+  "case_key": "entity-us/request-helpdesk-1",
+  "observed_at": "2026-09-25T10:00:00Z",
+  "source_refs": [
+    "requirements:r3",
+    "vendor-a:plan-pro@r2",
+    "vendor-a:quote-q11",
+    "vendor-a:region-page",
+    "vendor-a:shared-inbox-page",
+    "vendor-a:export-page",
+    "vendor-b:plan-team@r4",
+    "vendor-b:quote-q17",
+    "vendor-b:region-attestation",
+    "vendor-b:shared-inbox-page",
+    "vendor-b:export-page"
+  ],
+  "requirements_source_ref": "requirements:r3",
+  "criteria": [
+    {
+      "id": "eu-region",
+      "weight": 5,
+      "must_have": true
+    },
+    {
+      "id": "shared-inbox",
+      "weight": 3,
+      "must_have": false
+    },
+    {
+      "id": "api-export",
+      "weight": 2,
+      "must_have": false
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate-a",
+      "vendor_id": "vendor-a",
+      "product_id": "support-suite",
+      "plan_id": "pro",
+      "plan_revision": "r2",
+      "quote_id": "quote-q11",
+      "valid_until": "2026-12-31",
+      "currency": "USD",
+      "plan_source_ref": "vendor-a:plan-pro@r2",
+      "quote_source_ref": "vendor-a:quote-q11",
+      "minimum_seats": 10,
+      "seat_unit_monthly": "20.00",
+      "usage_monthly": "0.00",
+      "onboarding_fee": "0.00",
+      "term_total": "4800.00",
+      "criterion_results": [
+        {
+          "criterion_id": "eu-region",
+          "state": "unknown",
+          "source_ref": "vendor-a:region-page"
+        },
+        {
+          "criterion_id": "shared-inbox",
+          "state": "met",
+          "source_ref": "vendor-a:shared-inbox-page"
+        },
+        {
+          "criterion_id": "api-export",
+          "state": "met",
+          "source_ref": "vendor-a:export-page"
+        }
+      ],
+      "eligibility_state": "pending_due_diligence"
+    },
+    {
+      "candidate_id": "candidate-b",
+      "vendor_id": "vendor-b",
+      "product_id": "helpdesk",
+      "plan_id": "team",
+      "plan_revision": "r4",
+      "quote_id": "quote-q17",
+      "valid_until": "2026-12-31",
+      "currency": "USD",
+      "plan_source_ref": "vendor-b:plan-team@r4",
+      "quote_source_ref": "vendor-b:quote-q17",
+      "minimum_seats": 20,
+      "seat_unit_monthly": "25.00",
+      "usage_monthly": "80.00",
+      "onboarding_fee": "300.00",
+      "term_total": "7260.00",
+      "criterion_results": [
+        {
+          "criterion_id": "eu-region",
+          "state": "met",
+          "source_ref": "vendor-b:region-attestation"
+        },
+        {
+          "criterion_id": "shared-inbox",
+          "state": "met",
+          "source_ref": "vendor-b:shared-inbox-page"
+        },
+        {
+          "criterion_id": "api-export",
+          "state": "met",
+          "source_ref": "vendor-b:export-page"
+        }
+      ],
+      "eligibility_state": "eligible"
+    }
+  ],
+  "selected_candidate_id": "candidate-b",
+  "selection_reason": "All must-haves sourced and term cost fits budget; Vendor A region is unresolved.",
+  "contact_state": "none",
+  "purchase_action_state": "none",
+  "compliance_claim": "none"
+}

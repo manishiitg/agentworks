@@ -1,0 +1,30 @@
+{
+  "artifact_type": "access-remediation-ledger/v1",
+  "tenant_id": "tenant-example",
+  "scope_ref": "scope:staging-2026-09",
+  "policy_ref": "policy:roles-v4",
+  "policy_version": "roles-v4",
+  "environment": "staging-eu",
+  "observed_build": "sha:b912e",
+  "matrix_id": "matrix-17",
+  "selected_cell_id": "roles-v4/member/tenant-b-invoice/read",
+  "actor_id": "test-member-a",
+  "actor_role": "member",
+  "actor_tenant_id": "tenant-a",
+  "resource_type": "invoice",
+  "resource_id": "invoice-7",
+  "resource_tenant_id": "tenant-b",
+  "action": "read",
+  "expected_decision": "deny",
+  "issue_id": "issue-81",
+  "owner_id": "authorization-owner",
+  "next_action": "Review the scoped authorization fix; no deployed retest yet",
+  "observed_at": "2026-09-26T09:20:00Z",
+  "source_refs": [
+    "issue-81"
+  ],
+  "change_state": "proposed",
+  "deployment_state": "not_deployed",
+  "retest_state": "not_run",
+  "disposition": "open"
+}

@@ -1,0 +1,16 @@
+{
+  "artifact_type": "engineering-blocker-ledger/v1",
+  "incident_id": "INC-1042",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "owner_id": "release-checkout",
+  "change_id": "CHG-220",
+  "issue_ref": "issue:CHG-220",
+  "commit_sha": null,
+  "ci_ref": null,
+  "deployment_ref": null,
+  "delivery_state": "proposed",
+  "approval_state": "pending",
+  "source_refs": ["issue:CHG-220", "deploy:89"],
+  "next_evidence": "Owner decision on rollback or fix, then exact PR, CI, and deployment IDs."
+}

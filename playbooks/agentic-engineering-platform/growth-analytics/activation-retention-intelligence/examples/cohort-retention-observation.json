@@ -1,0 +1,79 @@
+{
+  "artifact_type": "cohort-retention-observation/v1",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "policy_id": "lifecycle-v2",
+  "activation_rule": "first scheduling workflow within seven days of signup, event-v2",
+  "retention_rule": "active paid subscription and qualifying use in days 23-30, billing-and-use-v2",
+  "maturity_days": 30,
+  "timezone": "Europe/London",
+  "minimum_identity_coverage_bps": 9500,
+  "owner": "Customer Success lead",
+  "artifact_id": "cohort-retention-example-001",
+  "comparison_state": "comparable",
+  "as_of": "2026-09-02T09:00:00Z",
+  "source_refs": [
+    {
+      "id": "june-product",
+      "uri": "exports/fictional-product-june.csv",
+      "observed_at": "2026-09-02T08:00:00Z"
+    },
+    {
+      "id": "june-billing",
+      "uri": "exports/fictional-billing-june.csv",
+      "observed_at": "2026-09-02T08:10:00Z"
+    },
+    {
+      "id": "july-product",
+      "uri": "exports/fictional-product-july.csv",
+      "observed_at": "2026-09-02T08:20:00Z"
+    },
+    {
+      "id": "july-billing",
+      "uri": "exports/fictional-billing-july.csv",
+      "observed_at": "2026-09-02T08:30:00Z"
+    }
+  ],
+  "cohorts": [
+    {
+      "cohort_id": "uk-self-serve-june",
+      "signup_start": "2026-06-01",
+      "signup_end": "2026-06-30",
+      "maturity_date": "2026-07-30",
+      "state": "mature",
+      "eligible_accounts": 200,
+      "matched_identity_accounts": 196,
+      "activated_accounts": 140,
+      "retained_accounts": 120,
+      "unmatured_accounts": 0,
+      "activation_rate_bps": 7000,
+      "retention_rate_bps": 6000,
+      "identity_coverage_bps": 9800,
+      "product_source_ref": "june-product",
+      "billing_source_ref": "june-billing"
+    },
+    {
+      "cohort_id": "uk-self-serve-july",
+      "signup_start": "2026-07-02",
+      "signup_end": "2026-07-31",
+      "maturity_date": "2026-08-30",
+      "state": "mature",
+      "eligible_accounts": 220,
+      "matched_identity_accounts": 216,
+      "activated_accounts": 140,
+      "retained_accounts": 110,
+      "unmatured_accounts": 0,
+      "activation_rate_bps": 6364,
+      "retention_rate_bps": 5000,
+      "identity_coverage_bps": 9818,
+      "product_source_ref": "july-product",
+      "billing_source_ref": "july-billing"
+    }
+  ],
+  "retention_change_bps": -1000,
+  "limitations": [
+    "Identity join coverage is about 98% in both cohorts; unmatched accounts may change rates.",
+    "The cohort difference does not establish an onboarding, feature or price cause."
+  ],
+  "next_check": "Review event version, customer mix and billing lag before proposing one guided setup test."
+}

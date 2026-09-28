@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Search, Server } from 'lucide-react'
+import { AlertTriangle, Search, Server } from 'lucide-react'
 import ConnectorsBrowser from '../../components/connectors/ConnectorsBrowser'
 import { ToolSelectionSection } from '../../components/ToolSelectionSection'
-import { isSelectedServer } from '../../utils/mcpServerAlias'
+import { isSelectedServer, serverNamesMatch } from '../../utils/mcpServerAlias'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
@@ -12,7 +12,9 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
 import { useMCPStore } from '../../stores/useMCPStore'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
+import { crewTemplates } from './crewTemplates'
 
 export type WorkIntegrationTab = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -34,7 +36,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<WorkIntegrationTab, string> = {
   cli: "Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.",
 }
 
-function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
+export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string
   projectId: string
   workspacePath: string
@@ -43,6 +45,7 @@ function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServ
 }) {
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const toolList = useMCPStore(state => state.toolList)
+  const toolsLoading = useMCPStore(state => state.isLoadingTools)
   // Mirror the workflow tab: connected servers plus already-selected ones
   // (a selected-but-since-disconnected server stays visible/manageable
   // instead of silently vanishing from the project's config).
@@ -56,6 +59,37 @@ function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServ
   const selectedAvailableServers = useMemo(() => availableServers.filter(serverName => isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
   const unselectedAvailableServers = useMemo(() => availableServers.filter(serverName => !isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
   const [searchQuery, setSearchQuery] = useState('')
+  // Selected for this project but not connected to the platform (e.g. a Crew
+  // the Builder created with an app that still needs sign-in). Its tools do
+  // not work until someone connects it, so say so and offer the way.
+  // While the tool list reloads, keep showing what was last known instead of
+  // blinking the notice away (it vanished right after Connect on RTS: the
+  // reload hid it mid-action, 2026-09-28 QA #205 BUG_ID_004).
+  const lastNeedsConnecting = useRef<string[]>([])
+  const needsConnecting = useMemo(() => {
+    if (toolsLoading) return lastNeedsConnecting.current
+    const next = actualSelected.filter(serverName =>
+      !toolList.some(tool => tool.server && serverNamesMatch(tool.server, serverName) && tool.connection === 'connected'))
+    lastNeedsConnecting.current = next
+    return next
+  }, [toolsLoading, actualSelected, toolList])
+  // Connecting a platform app is admin-only (ConnectorsBrowser's rule); for
+  // anyone else Connect cannot do anything, so say who can.
+  const canConnectApps = useAuthStore(state =>
+    state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
+  )
+  const connectSectionRef = useRef<HTMLDivElement>(null)
+  const [connectFocus, setConnectFocus] = useState<string | null>(null)
+  useEffect(() => {
+    if (!connectFocus) return
+    connectSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    const timer = window.setTimeout(() => setConnectFocus(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [connectFocus])
+  const startConnect = (serverName: string) => {
+    setSearchQuery(serverName)
+    setConnectFocus(serverName)
+  }
 
   const setSelected = async (servers: string[]) => {
     const store = useChatStore.getState()
@@ -75,6 +109,42 @@ function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServ
 
   return (
     <div className="flex flex-col gap-3">
+      {needsConnecting.length > 0 && (
+        <div data-testid="work-mcp-needs-connecting" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Needs connecting
+          </div>
+          <p className="mt-1 text-xs leading-5">
+            This project uses {needsConnecting.length === 1 ? 'an app that is' : 'apps that are'} not connected yet. Its tools won't work until {needsConnecting.length === 1 ? 'it is' : 'they are'} connected.
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {needsConnecting.map(serverName => (
+              <li key={serverName} className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{serverName}</span>
+                {canConnectApps ? (
+                  <button
+                    type="button"
+                    className="rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/40"
+                    onClick={() => startConnect(serverName)}
+                  >
+                    Connect
+                  </button>
+                ) : (
+                  <span className="text-xs text-amber-800/80 dark:text-amber-200/80">Only an admin can connect it.</span>
+                )}
+                <button
+                  type="button"
+                  className="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
+                  onClick={() => void onAsk(`Help me connect ${serverName} for this Crew project. It is selected but not connected yet; walk me through signing in or adding its credentials.`)}
+                >
+                  Ask agent
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {selectedAvailableServers.length > 0 && (
         <div>
           <div className="mb-3 text-sm font-medium text-muted-foreground">
@@ -129,9 +199,13 @@ function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServ
           className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </div>
-      <div className="mt-3 border-t border-border pt-3">
+      <div
+        ref={connectSectionRef}
+        data-testid="work-mcp-connect-section"
+        className={`mt-3 scroll-mt-3 border-t border-border pt-3 transition-colors ${connectFocus ? 'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/20 dark:ring-amber-700/60' : ''}`}
+      >
         <div className="mb-3 text-sm font-medium text-muted-foreground">
-          Connect a new app
+          {connectFocus ? `Connect ${connectFocus}` : 'Connect a new app'}
         </div>
         <ConnectorsBrowser
           compact
@@ -149,10 +223,11 @@ function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServ
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
+export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, projectTemplates, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
   workspacePath: string
   projectId: string
   projectTitle: string
+  projectTemplates: Array<{ id: string; version: number }>
   tabId: string
   enabledPanels?: Set<string>
   onAsk: (message: string) => Promise<void>
@@ -168,6 +243,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
+  const templates = crewTemplates.filter(item => projectTemplates.some(installed => installed.id === item.id && installed.version === item.version))
 
   const toggleSkill = async (folderName: string) => {
     const next = selectedSkills.includes(folderName)
@@ -213,16 +289,28 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
         />}
-        {activeTab === 'skills' && <SkillsManagerPanel
-          compact
-          manageOwnScroll={false}
-          workspacePath={workspacePath}
-          selectedSkills={selectedSkills}
-          onToggleSkill={folderName => { void toggleSkill(folderName) }}
-          selectionLabel="Skills for this project"
-          emptySelectionText="No project skills yet — pick one below."
-          selectionScopeLabel="project"
-        />}
+        {activeTab === 'skills' && <div className="space-y-3">
+          {templates.map(template => <div key={template.id} className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs font-semibold text-foreground">Included with {template.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">These skills live in this Crew’s files and are selected only for this Crew.</p>
+            {template.selectedSkills.map(skill => <div key={skill} className="mt-2 flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium text-foreground">{skill}</span>
+              <button type="button" onClick={() => { void toggleSkill(skill) }} className="rounded-md border border-border px-2 py-1 font-semibold text-primary hover:bg-primary/10">
+                {selectedSkills.includes(skill) ? 'Selected · remove' : 'Select skill'}
+              </button>
+            </div>)}
+          </div>)}
+          <SkillsManagerPanel
+            compact
+            manageOwnScroll={false}
+            workspacePath={workspacePath}
+            selectedSkills={selectedSkills}
+            onToggleSkill={folderName => { void toggleSkill(folderName) }}
+            selectionLabel="Skills for this project"
+            emptySelectionText="No project skills yet — pick one below."
+            selectionScopeLabel="project"
+          />
+        </div>}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
           fixedChannel="slack"

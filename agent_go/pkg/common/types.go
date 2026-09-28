@@ -179,6 +179,12 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 		env["MCP_VIRTUAL"] = baseURL + "/tools/virtual"
 	}
 
+	// An env that runs as a session carries that session's own token, so
+	// every place that sets MCP_SESSION_ID (steps, background agents, session
+	// changes) re-derives it here (bridge_token.go).
+	if sessionToken := BridgeTokenForSession(env["MCP_SESSION_ID"]); sessionToken != "" {
+		env["MCP_API_TOKEN"] = sessionToken
+	}
 	token := strings.TrimSpace(env["MCP_API_TOKEN"])
 	if token == "" {
 		delete(env, "MCP_AUTH")

@@ -81,7 +81,7 @@ export const REPORT_BOOTSTRAP = `<script>(function(){
       });
     };
   }
-  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
+  ['query', 'get', 'getText', 'getHtml', 'fileUrl', 'mediaUrl', 'updateField', 'updateFields', 'run', 'getGoalMetrics', 'renderGoalProgress', 'getCosts', 'renderCosts', 'renderTable', 'renderActivity'].forEach(function(name){
     api[name] = queueCall(name);
   });
   api.openFile = function(){
@@ -475,6 +475,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
     openFile: dataApi.openFile,
     updateField: dataApi.updateField,
     updateFields: dataApi.updateFields,
+    run: dataApi.run,
     sendChatMessage: dataApi.sendChatMessage,
     theme: options.theme,
   }
@@ -501,6 +502,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
     mediaUrl: dataApi.mediaUrl as (...args: unknown[]) => unknown,
     updateField: dataApi.updateField as (...args: unknown[]) => unknown,
     updateFields: dataApi.updateFields as (...args: unknown[]) => unknown,
+    run: dataApi.run as (...args: unknown[]) => unknown,
   }
   type QueuedReportCall = {
     name: string

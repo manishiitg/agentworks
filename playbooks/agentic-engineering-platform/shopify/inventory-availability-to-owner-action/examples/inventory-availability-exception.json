@@ -1,0 +1,18 @@
+{
+  "artifact_type": "inventory-availability-exception/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "inventory_item_id": "inventory-item-81-m",
+  "location_id": "location-3",
+  "case_id": "inventory-case-24",
+  "observed_at": "2026-09-26T10:00:00Z",
+  "available_qty": -2,
+  "committed_qty": 3,
+  "storefront_state": "Size M is selectable in the US market; merchant oversell policy is not yet confirmed",
+  "inventory_authority_ref": "shopify:inventory-level-81-m-location-3",
+  "owner_id": "catalog-owner",
+  "source_refs": ["shopify:variant-81-m@2026-09-26T10:00Z", "shopify:inventory-level-81-m-location-3@2026-09-26T10:00Z", "storefront:linen-shirt:81-m@2026-09-26T10:03Z"],
+  "proposed_action": "Review oversell and location eligibility before proposing a stock or storefront correction"
+}

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"log"
 	"os/exec"
 	"strings"
@@ -97,7 +99,15 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 				continue
 			}
 			reason := "tmux pane disappeared unexpectedly"
-			if snap.Active {
+			// A main pane can vanish because the running turn replaced it:
+			// the provider's submit retry starts a fresh pane. Cancelling the
+			// session then kills the very retry that could recover (RTS SDE
+			// crew, 2026-09-27). While a turn is in flight it owns the outcome
+			// -- the adapter fails the turn itself if its pane is truly lost --
+			// so only retire this terminal record.
+			if snap.Active && codingAgentSnapshotIsMainAgent(snap) && api.hasActiveTurnCancel(sessionID) {
+				log.Printf("[CODING_WATCHDOG] session %s main tmux %s is gone while a turn is in flight - leaving recovery to the turn", sessionID, tmux)
+			} else if snap.Active {
 				api.terminalStore.MarkFailed(snap.TerminalID)
 				api.reconcileUnexpectedTerminalExit(snap, reason)
 			}
@@ -144,6 +154,16 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 		captured := captureTmuxPanePlainForWatchdog(tmux)
 		evidence := codingWatchdogRateLimitEvidence(captured)
 		if evidence == "" {
+			continue
+		}
+		// The CLI's own usage numbers outrank screen text: when they are known
+		// and no window is exhausted, limit-looking text on screen is someone's
+		// words (a redrawn message, a quoted error), not a wall.
+		if known, exhausted := codingWatchdogStructuredUsage(tmux); known && !exhausted {
+			if streak[watchdogKey].count == 0 {
+				log.Printf("[CODING_WATCHDOG] session %s tmux %s shows limit-like text but the CLI reports usage below its limits - not a wall", sessionID, tmux)
+			}
+			delete(streak, watchdogKey)
 			continue
 		}
 		stillLimited[watchdogKey] = true
@@ -194,6 +214,21 @@ func (api *StreamingAPI) reapRateLimitedCodingSessionsOnce(streak map[string]cod
 	}
 }
 
+// codingWatchdogStructuredUsage reports a pane's plan usage from the coding
+// CLI's own data (known, and whether a window is exhausted): Claude's
+// statusline rate_limits (written after its first response) and Codex's
+// rollout rate-limit windows. Other CLIs, and panes without data yet, are
+// unknown and fall back to screen text. A var so tests can stub it.
+var codingWatchdogStructuredUsage = func(tmux string) (known, exhausted bool) {
+	switch {
+	case strings.HasPrefix(tmux, "mlp-claude-code-"):
+		return claudecode.UsageLimitState(tmux)
+	case strings.HasPrefix(tmux, "mlp-codex-cli-"):
+		return codexcli.UsageLimitState(tmux)
+	}
+	return false, false
+}
+
 // codingWatchdogRateLimitEvidence returns the normalized visible tail when it
 // contains a rate-limit marker. The watchdog confirms this entire value across
 // polls, so any new output proves the pane is progressing and resets the check.
@@ -206,6 +241,10 @@ func codingWatchdogRateLimitEvidence(content string) string {
 	normalized := make([]string, 0, len(lines))
 	hasRateLimit := false
 	inNarration := false
+	// The tail can start inside a wrapped block whose opening line ("● " reply
+	// or "> " user message) is above the window; its indented continuation
+	// lines cannot be attributed, so they are not evidence either.
+	atWindowStart := true
 	for _, raw := range lines {
 		line := strings.Join(strings.Fields(raw), " ")
 		if line == "" {
@@ -214,18 +253,26 @@ func codingWatchdogRateLimitEvidence(content string) string {
 		normalized = append(normalized, strings.ToLower(line))
 		// The assistant's own reply text ("● Notion rate-limited that query —
 		// retrying") is narration about the work, not the provider's limit
-		// wall. Claude prefixes reply blocks with "● " and indents their
-		// wrapped lines by two spaces; tool results ("⎿", where API errors
-		// appear) and CLI status lines are still checked.
+		// wall, and a user message redrawn in the transcript ("> we got rate
+		// limited in mcp", or the "❯" input box) is the user's words. Claude
+		// prefixes reply blocks with "● ", user messages with ">"/"❯", and
+		// indents their wrapped lines by two spaces; tool results ("⎿", where
+		// API errors appear) and CLI status lines are still checked. Seen on
+		// RTS 2026-09-27: a resumed SDE crew pane redrew the user's "we got rate
+		// limited" message, the watchdog read it as a limit wall and killed
+		// every new turn.
 		trimmedLeft := strings.TrimLeft(raw, " ")
+		continuation := strings.HasPrefix(raw, "  ") && !strings.HasPrefix(trimmedLeft, "⎿")
 		switch {
-		case strings.HasPrefix(trimmedLeft, "● "):
+		case strings.HasPrefix(trimmedLeft, "● "), strings.HasPrefix(trimmedLeft, ">"), strings.HasPrefix(trimmedLeft, "❯"):
 			inNarration = true
+			atWindowStart = false
 			continue
-		case inNarration && strings.HasPrefix(raw, "  ") && !strings.HasPrefix(trimmedLeft, "⎿"):
+		case (inNarration || atWindowStart) && continuation:
 			continue
 		default:
 			inNarration = false
+			atWindowStart = false
 		}
 		hasRateLimit = hasRateLimit || terminals.DetectRateLimit(line)
 	}

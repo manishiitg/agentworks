@@ -32,8 +32,12 @@ type CreateCrewRequest struct {
 	// seeded into the starter brief. There is intentionally no separate
 	// description field — one concept, one value.
 	Instructions string
-	Skills       []string
-	Servers      []string
+	// TemplateID selects a trusted first-party Crew Agent Playbook.
+	// Its local skill and checklist are copied after the Crew is created; no
+	// external account or recurring work is enabled by this selection.
+	TemplateID string
+	Skills     []string
+	Servers    []string
 	// Secrets and GlobalSecrets are references to existing authorized secret
 	// records by name. Values are never accepted: the schema has no
 	// value-bearing fields, so plaintext cannot enter by construction.
@@ -122,6 +126,13 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if userID == "" {
 		return CreatedCrew{}, fmt.Errorf("crew creation requires a user")
 	}
+	claims := GetUserFromContext(ctx)
+	if claims == nil || strings.TrimSpace(claims.UserID) != userID || userAccessForClaims(claims).Disabled {
+		return CreatedCrew{}, fmt.Errorf("crew creation requires the current authorized user")
+	}
+	if !userAllowedProduct(claims, "work") {
+		return CreatedCrew{}, fmt.Errorf("Crew product is unavailable or access denied")
+	}
 	if err := validateCrewCreationWorkflowPath(workflowPath); err != nil {
 		return CreatedCrew{}, err
 	}
@@ -152,12 +163,19 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if profileID != "work" {
 		return CreatedCrew{}, fmt.Errorf("crew creation currently supports only the work profile")
 	}
+	template, err := loadCrewAgentTemplate(strings.TrimSpace(req.TemplateID))
+	if err != nil {
+		return CreatedCrew{}, err
+	}
 	if _, err := authorizeWorkflowContextPaths(ctx, []string{workflowPath}); err != nil {
 		return CreatedCrew{}, fmt.Errorf("creating workflow is unavailable or access denied: %w", err)
 	}
 	creatingManifest, exists, err := ReadWorkflowManifest(ctx, workflowPath)
 	if err != nil || !exists || creatingManifest == nil {
 		return CreatedCrew{}, fmt.Errorf("creating workflow is unavailable or access denied")
+	}
+	if access := workflowAccessForManifest(claims, creatingManifest); access != WorkflowAccessWrite && access != WorkflowAccessOwner {
+		return CreatedCrew{}, fmt.Errorf("creating a Crew for this workflow requires write access")
 	}
 	if s == nil || s.registry == nil {
 		return CreatedCrew{}, fmt.Errorf("product profiles are unavailable")
@@ -240,6 +258,9 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	}
 
 	if err := applyCrewCreationStarter(ctx, created.WorkspacePath, title, workflowPath, req.Purpose, req.Instructions); err != nil {
+		return CreatedCrew{}, err
+	}
+	if err := applyCrewAgentTemplate(ctx, created.WorkspacePath, template); err != nil {
 		return CreatedCrew{}, err
 	}
 	if err := applyCrewCreationSelections(ctx, profileID, created.WorkspacePath, skills, servers, secrets, globalSecrets); err != nil {
@@ -423,12 +444,17 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if llmConfig := resolveCrewCreationLLMConfig(profile, inheritedLLM); llmConfig != nil {
 		capabilities["llm_config"] = llmConfig
 	}
+	// A Crew created outside a workflow (external authoring) references none.
+	contextPaths := []string{}
+	if workflowPath != "" {
+		contextPaths = append(contextPaths, workflowPath)
+	}
 	runtimeManifest := map[string]interface{}{
 		"schema_version":         1,
 		"id":                     crewID,
 		"label":                  title,
 		"capabilities":           capabilities,
-		"workflow_context_paths": []string{workflowPath},
+		"workflow_context_paths": contextPaths,
 		"schedules":              []string{},
 		"triggers":               []string{},
 		"created_at":             now,
@@ -929,16 +955,16 @@ func crewCreationFingerprint(userID, workflowPath, profileID string, req CreateC
 		return out
 	}
 	payload := struct {
-		UserID, WorkflowPath, ProfileID          string
-		Title, Icon, Role, Purpose, Instructions string
-		Skills, Servers, Secrets, GlobalSecrets  []string
-		Alias, TriggerName, TriggerMessage       string
-		StepID, StepTitle, StepInstruction       string
-		ContextDependencies                      []string
+		UserID, WorkflowPath, ProfileID                      string
+		Title, Icon, Role, Purpose, Instructions, TemplateID string
+		Skills, Servers, Secrets, GlobalSecrets              []string
+		Alias, TriggerName, TriggerMessage                   string
+		StepID, StepTitle, StepInstruction                   string
+		ContextDependencies                                  []string
 	}{
 		UserID: userID, WorkflowPath: workflowPath, ProfileID: profileID,
 		Title: trimmed(req.Title), Icon: trimmed(req.Icon), Role: trimmed(req.Role),
-		Purpose: trimmed(req.Purpose), Instructions: trimmed(req.Instructions),
+		Purpose: trimmed(req.Purpose), Instructions: trimmed(req.Instructions), TemplateID: trimmed(req.TemplateID),
 		Skills: lists(req.Skills), Servers: lists(req.Servers), Secrets: lists(req.Secrets), GlobalSecrets: lists(req.GlobalSecrets),
 		Alias: trimmed(req.Alias), TriggerName: trimmed(req.TriggerName), TriggerMessage: trimmed(req.TriggerMessage),
 		StepID: trimmed(req.StepID), StepTitle: trimmed(req.StepTitle), StepInstruction: trimmed(req.StepInstruction),

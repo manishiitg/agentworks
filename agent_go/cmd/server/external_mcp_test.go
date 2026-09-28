@@ -130,7 +130,8 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	defer cancel()
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
-	if initResult.Instructions != externalMCPInstructions {
+	// A session login holds every scope, so Crew authoring is announced too.
+	if initResult.Instructions != externalMCPInstructions+" "+externalMCPCrewAuthoringInstructions {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 

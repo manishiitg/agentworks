@@ -4,7 +4,7 @@ import { Settings2, X } from 'lucide-react'
 import BrowserAutomationSettings, { type BrowserAutomationMode } from '../BrowserAutomationSettings'
 import WorkflowLiveBrowser from './WorkflowLiveBrowser'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
-import { WorkspaceViewActions } from './WorkspaceViewActions'
+import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 
 interface BrowserWorkspacePanelProps {
@@ -49,8 +49,16 @@ export function BrowserWorkspacePanel({
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
-  const guidedAssistantControl = isValidElement<{ walkthrough?: ReactNode }>(assistantControl) && assistantControl.type === WorkspaceViewActions
-    ? cloneElement(assistantControl, { walkthrough })
+  const guidedAssistantControl = isValidElement<WorkspaceViewActionsProps>(assistantControl) && assistantControl.type === WorkspaceViewActions
+    ? cloneElement(assistantControl, {
+      walkthrough: cloneElement(walkthrough, {
+        ask: {
+          workspacePath: assistantControl.props.workspacePath,
+          message: assistantControl.props.message,
+          onAsk: assistantControl.props.onAsk,
+        },
+      }),
+    })
     : <>{assistantControl}{walkthrough}</>
 
   return (

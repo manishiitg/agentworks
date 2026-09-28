@@ -1,0 +1,58 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "website-growth-loop",
+  "version": "0.5.0",
+  "changelog": [
+    { "version": "0.5.0", "summary": "Adds an optional approved draft to verified publication, distribution plan and post-ship traffic readout route with separate artifact checks." },
+    { "version": "0.4.0", "summary": "Binds exact strategist and search artifacts and adds executable optional search-to-content-to-page draft handoff checks with approved-opportunity and claim gates." },
+    { "version": "0.3.0", "summary": "Adds executable strategist/search artifact checks, worked examples, an action ledger and repeat-run method, and separates technical SEO from buyer-question mapping." },
+    { "version": "0.2.0", "summary": "Adds a saved nine-check setup checklist with evidence references for Builder chat and the Playbook screen." },
+    { "version": "0.1.0", "summary": "Adds a chat-led Website Growth team proposal with two required Crew roles, typed handoffs, a baseline-first path, and a manual test before recurrence." }
+  ],
+  "title": "Website Growth Loop",
+  "description": "Help a newly launched website attract more relevant visitors by coordinating a growth strategist and search specialist, then extending to content and measurement when ready.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Website Growth"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Website Growth Loop as a proposal. Inspect this Automation and my existing Crews first. Ask for the website, offer, audience, primary visitor action, and measurement choice only where missing. Propose which Crews to reuse or create, their access, the handoffs, a bounded first run, and a goal metric. After I review the concrete proposal, set it up through Builder tools and verify each step. Do not create agents, enable recurrence, publish pages, or send outreach merely because I selected this Playbook.",
+  "setup_inputs": [
+    { "id": "website", "label": "Authorized canonical website URL or page export", "required": true },
+    { "id": "offer", "label": "Offer, target buyers, and market", "required": true },
+    { "id": "visitor_action", "label": "Primary useful visitor action", "required": true },
+    { "id": "measurement", "label": "Metric, source, baseline or baseline-first decision", "required": true },
+    { "id": "publishing", "label": "Page review and publication owner", "required": false },
+    { "id": "cadence", "label": "Manual-only or reviewed schedule and timezone", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create an approved specialist with an idempotency key and workflow-bound Crew step", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Read an authorized Crew artifact through a checked workflow alias", "capability": "durable_artifacts", "optional": true },
+    { "id": "search-console", "name": "Search Console connection or export", "type": "mcp", "purpose": "Provide authorized page and query evidence when available", "capability": "search_performance", "optional": true },
+    { "id": "analytics", "name": "Website analytics connection or export", "type": "mcp", "purpose": "Measure useful visitors and conversion actions after a valid baseline", "capability": "traffic_measurement", "optional": true }
+  ],
+  "pulse_focus": [{ "module": "strategic_review", "label": "Website growth progress", "focus_areas": ["Whether shipped work serves the target buyer and useful visitor action", "Evidence quality and comparability of traffic signals"], "review_when": ["The site or offer changes, an action ships, or comparable data becomes available"] }],
+  "outputs": ["Reviewed Crew roster and access map", "Versioned growth brief and search opportunity handoff", "Manual two-Crew test run", "Optional approved draft, verified shipped change, distribution plan and traffic readout", "Website Growth dashboard with evidence and open questions", "Paused recurrence proposal"],
+  "agent_slots": [
+    { "id": "strategist", "agent_playbook_id": "website-growth-starter", "required": true, "output": "growth-priority-brief/v1" },
+    { "id": "search", "agent_playbook_id": "search-opportunity-mapper", "required": true, "output": "search-opportunity-list/v1" },
+    { "id": "technical_seo", "agent_playbook_id": "seo-analyst", "required": false, "output": "seo-issue-list/v1" },
+    { "id": "content", "agent_playbook_id": "content-brief-writer", "required": false, "output": "content-brief/v1" },
+    { "id": "page", "agent_playbook_id": "content-page-builder", "required": false, "output": "reviewable-page-draft/v1" },
+    { "id": "publication", "agent_playbook_id": "website-publishing-coordinator", "required": false, "output": "shipped-change/v1" },
+    { "id": "distribution", "agent_playbook_id": "content-distribution-coordinator", "required": false, "output": "distribution-plan/v1" },
+    { "id": "measurement", "agent_playbook_id": "traffic-engagement-analyst", "required": false, "output": "traffic-readout/v1" }
+  ],
+  "handoffs": [
+    { "id": "strategy-to-search", "from": "strategist", "to": "search", "artifact_type": "growth-priority-brief/v1", "required": true },
+    { "id": "search-to-content", "from": "search", "to": "content", "artifact_type": "search-opportunity-list/v1", "required": false },
+    { "id": "content-to-page", "from": "content", "to": "page", "artifact_type": "content-brief/v1", "required": false },
+    { "id": "page-to-publication", "from": "page", "to": "publication", "artifact_type": "reviewable-page-draft/v1", "required": false },
+    { "id": "publication-to-distribution", "from": "publication", "to": "distribution", "artifact_type": "shipped-change/v1", "required": false },
+    { "id": "publication-to-measurement", "from": "publication", "to": "measurement", "artifact_type": "shipped-change/v1", "required": false },
+    { "id": "distribution-to-measurement", "from": "distribution", "to": "measurement", "artifact_type": "distribution-plan/v1", "required": false }
+  ],
+  "setup_checks": ["goal_owner", "metric_policy", "team_bindings", "site_scope", "capabilities", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

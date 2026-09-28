@@ -1,0 +1,42 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "order-exception-to-reviewed-update",
+  "version": "0.1.1",
+  "changelog": [
+    {"version": "0.1.1", "summary": "Requires payment, fulfillment, carrier and case source records to join the exact order and shipment."},
+    {"version": "0.1.0", "summary": "Adds a generic order exception to support update proposal with exact order and case joins and a rejected false-resolution example."}
+  ],
+  "title": "Order Exception to Reviewed Update",
+  "description": "Investigate a cross-system order exception and prepare a policy-safe, unsent customer update for the exact support case.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Operations"],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Order Exception to Reviewed Update as a chat-led proposal. Inspect existing Operations and Support Crews, one exact order and case, payment, fulfillment, carrier, prior contact, current policy and owners. Propose reuse or reviewed creation, a blocking order artifact validator before Support reads it, and one manual exception. Show the plan before Builder applies it. Selection does not send a message, refund, reship, alter an order or enable recurrence.",
+  "setup_inputs": [
+    {"id": "order_scope", "label": "Business, exact order, payment, fulfillment and shipment IDs", "required": true},
+    {"id": "case_scope", "label": "Exact support case, customer, recipient and channel", "required": true},
+    {"id": "source_state", "label": "Current order, payment, fulfillment, carrier and case records", "required": true},
+    {"id": "policy", "label": "Promised time, exception thresholds, customer contact policy and owners", "required": true},
+    {"id": "review_owner", "label": "Operations and message approval owners", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create a reviewed missing Operations or Support Crew with a stable key", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded order exception artifact", "capability": "durable_artifacts", "optional": true},
+    {"id": "orders", "name": "Commerce or ERP order source", "type": "mcp", "purpose": "Read exact order, payment and fulfillment state", "capability": "order_records", "optional": true},
+    {"id": "carrier", "name": "Carrier or fulfillment source", "type": "mcp", "purpose": "Read accepted, in-transit and delivered events by shipment ID", "capability": "shipment_records", "optional": true},
+    {"id": "helpdesk", "name": "Support case source", "type": "mcp", "purpose": "Read current case, recipient and prior contact; send only through a separate approved route", "capability": "support_records", "optional": true}
+  ],
+  "pulse_focus": [{"module": "strategic_review", "label": "Order exception follow-through", "focus_areas": ["Whether source states and customer-facing claims still agree", "Whether an exception has an owner and a safe next check"], "review_when": ["The order, payment, carrier or case revision changes, or the promised time passes"]}],
+  "outputs": ["Reviewed Operations and Support Crew bindings", "Validated exact-order exception", "Current case-linked unsent customer update or explicit no-message decision", "Owner review and manual run evidence", "Action ledger and activation choice"],
+  "agent_slots": [
+    {"id": "operations", "agent_playbook_id": "order-operations-coordinator", "required": true, "output": "order-exception/v1"},
+    {"id": "support", "agent_playbook_id": "support-reply-drafter", "required": true, "output": "order-customer-update-review/v1"}
+  ],
+  "handoffs": [{"id": "operations-to-support", "from": "operations", "to": "support", "artifact_type": "order-exception/v1", "required": true}],
+  "setup_checks": ["goal_owner", "order_scope", "case_scope", "state_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

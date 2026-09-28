@@ -1,5 +1,5 @@
 import { PulseMetricOutcomes } from "./PulseMetricOutcomes"
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, MessageSquareText, RefreshCw, Send, Sparkles, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { PulseImpactLedger, ReportHumanInput } from '../../services/api-types'
@@ -10,11 +10,15 @@ import {
   reportHumanInputImpact,
   reportHumanInputStatusLabel,
 } from '../../utils/reportHumanInputFormatting'
-import { delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat, openReportHumanInputQuestionInChat } from '../../utils/reportHumanInputChat'
+import { delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat, openReportHumanInputQuestionInChat, sendReportHumanInputAnswerToChat } from '../../utils/reportHumanInputChat'
 import { useContainerSizeTier } from './reportWidgets/tableHelpers'
 import { PlainMarkdown } from '../ui/PlainMarkdown'
 import { WORKFLOW_DECISIONS_REFRESH_EVENT } from './workflowEvents'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+
+// Same timing as AskAIButton's two-click confirm.
+const OPTION_ARM_TIMEOUT_MS = 4000
+const OPTION_CONFIRM_FLOOR_MS = 600
 
 type ReportHumanInputDraft = {
   selectedOptionId: string
@@ -106,6 +110,7 @@ interface ReportHumanInputPanelProps {
 	providedLoading?: boolean
 	providedError?: string | null
 	onRequestRefresh?: () => void
+	showEmptyState?: boolean
 }
 
 export function ReportHumanInputPanel({
@@ -121,6 +126,7 @@ export function ReportHumanInputPanel({
 	providedLoading,
 	providedError,
 	onRequestRefresh,
+	showEmptyState = false,
 }: ReportHumanInputPanelProps) {
   const [inputs, setInputs] = useState<ReportHumanInput[]>([])
   const [loading, setLoading] = useState(false)
@@ -129,6 +135,12 @@ export function ReportHumanInputPanel({
   const [refreshNonce, setRefreshNonce] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(historyMode === 'expanded')
   const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({})
+  // Two-click confirm for decision options (see clickOption).
+  const [armedOption, setArmedOption] = useState<{ inputId: string; optionId: string; at: number } | null>(null)
+  const disarmTimerRef = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (disarmTimerRef.current !== null) window.clearTimeout(disarmTimerRef.current)
+  }, [])
   const [panelRef, sizeTier] = useContainerSizeTier(560, 900)
 	const compactOptions = sizeTier === 'phone'
 	const externallyManaged = providedInputs !== undefined
@@ -180,7 +192,9 @@ export function ReportHumanInputPanel({
 
 	const pending = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'pending')
 	const history = contentMode === 'pending' ? [] : reportHumanInputHistory(visibleInputs, historyLimit)
-	if (!visibleLoading && !visibleError && pending.length === 0 && history.length === 0) return null
+	if (!visibleLoading && !visibleError && pending.length === 0 && history.length === 0) {
+		return showEmptyState ? <p className={`rounded-lg border bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground ${className}`}>No human actions are waiting for you.</p> : null
+	}
 
 	const requestRefresh = () => {
     window.dispatchEvent(new CustomEvent(WORKFLOW_DECISIONS_REFRESH_EVENT, { detail: { workspacePath } }))
@@ -212,13 +226,48 @@ export function ReportHumanInputPanel({
     }
   }
 
-  // Decisions are answered in chat: clicking an option pre-fills the choice in
-  // the automation chat, and the agent records and applies it in that turn.
+  // Two-click confirm, as on Ask AI buttons: the first click arms an option,
+  // a second click within OPTION_ARM_TIMEOUT_MS sends it. A second click
+  // faster than OPTION_CONFIRM_FLOOR_MS is the tail of a double-click and is
+  // ignored, so a misclick never sends an answer.
+  const clickOption = (input: ReportHumanInput, option: { id: string; title: string }) => {
+    const now = Date.now()
+    if (armedOption && armedOption.inputId === input.id && armedOption.optionId === option.id) {
+      if (now - armedOption.at < OPTION_CONFIRM_FLOOR_MS) return
+      if (disarmTimerRef.current !== null) window.clearTimeout(disarmTimerRef.current)
+      setArmedOption(null)
+      void answerInChat(input, option)
+      return
+    }
+    setArmedOption({ inputId: input.id, optionId: option.id, at: now })
+    if (disarmTimerRef.current !== null) window.clearTimeout(disarmTimerRef.current)
+    disarmTimerRef.current = window.setTimeout(() => setArmedOption(null), OPTION_ARM_TIMEOUT_MS)
+  }
+
+  // Decisions are answered in chat. Clicking an option is an explicit choice,
+  // so it is sent straight away and the agent records and applies it in that
+  // turn. A free-text answer opens the chat with the decision filled in, for
+  // the user to type and send.
   const answerInChat = async (input: ReportHumanInput, option?: { id: string; title: string }) => {
+    if (!option) {
+      try {
+        await openReportHumanInputAnswerInChat({ input, workspacePath })
+      } catch (err) {
+        useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open the chat.', 'error')
+      }
+      return
+    }
+    updateDraft(input.id, { delegating: true })
     try {
-      await openReportHumanInputAnswerInChat({ input, workspacePath, option })
+      const result = await sendReportHumanInputAnswerToChat({ input, workspacePath, option })
+      useChatStore.getState().addToast(
+        result.queuedBehindRunningTurn ? `"${option.title}" sent; it runs after the current chat turn.` : `"${option.title}" sent to chat.`,
+        'success',
+      )
     } catch (err) {
-      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open the chat.', 'error')
+      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to send the answer to chat.', 'error')
+    } finally {
+      updateDraft(input.id, { delegating: false })
     }
   }
 
@@ -448,24 +497,28 @@ export function ReportHumanInputPanel({
               {input.options.length > 0 && (
                 <div className={compactOptions ? 'mt-3 overflow-hidden rounded-md border border-border/70 bg-background/45' : 'mt-3 grid grid-cols-2 gap-2'}>
                   {input.options.map(option => {
+                    const isArmed = armedOption?.inputId === input.id && armedOption.optionId === option.id
                     return (
                       <button
                         key={option.id}
                         type="button"
-                        title="Answer with this option in chat"
+                        title={isArmed ? 'Click again to send this answer' : 'Click to choose, then click again to send'}
+                        aria-pressed={isArmed}
+                        disabled={busy}
                         onPointerDown={event => event.stopPropagation()}
                         onClick={event => {
                           event.stopPropagation()
-                          void answerInChat(input, option)
+                          clickOption(input, option)
                         }}
                         className={compactOptions
-                          ? `flex w-full cursor-pointer items-start gap-2 border-b border-border/60 p-2.5 text-left last:border-b-0 transition-colors hover:bg-cyan-400/10`
-                          : `flex cursor-pointer items-start gap-2 rounded-md border p-2 text-left transition-colors border-border bg-card/50 hover:border-cyan-400/50 hover:bg-cyan-400/10`
+                          ? `flex w-full cursor-pointer items-start gap-2 border-b border-border/60 p-2.5 text-left last:border-b-0 transition-colors ${isArmed ? 'bg-cyan-400/15' : 'hover:bg-cyan-400/10'}`
+                          : `flex cursor-pointer items-start gap-2 rounded-md border p-2 text-left transition-colors ${isArmed ? 'border-cyan-400 bg-cyan-400/15' : 'border-border bg-card/50 hover:border-cyan-400/50 hover:bg-cyan-400/10'}`
                         }
                       >
                         <span className="min-w-0 flex-1 text-left">
                           <span className="block break-words text-xs font-semibold text-foreground">{option.title}</span>
                           {option.description && <span className="mt-0.5 block break-words text-xs leading-5 text-muted-foreground">{option.description}</span>}
+                          {isArmed && <span className="mt-1 block text-xs font-semibold text-cyan-300">Click again to send</span>}
                         </span>
                       </button>
                     )

@@ -1,0 +1,29 @@
+{
+  "artifact_type": "experiment-outcome-readout/v1",
+  "artifact_id": "experiment-readout-pending-7",
+  "source_execution_artifact_id": "experiment-execution-7",
+  "experiment_id": "exp-guided-setup-7",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "owner": "Growth lead",
+  "primary_metric": "day30-retained-per-eligible-v2",
+  "guardrail_metric": "support-blocker-per-eligible-v2",
+  "as_of": "2026-10-10T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "execution",
+      "uri": "artifact:experiment-execution-7",
+      "observed_at": "2026-10-01T11:00:00Z"
+    }
+  ],
+  "state": "pending_window",
+  "arms": null,
+  "observed_change_bps": null,
+  "verdict": "pending",
+  "winner": null,
+  "shipping_state": "not_shipped",
+  "limitations": [
+    "Full day-30 outcome window has not closed."
+  ],
+  "next_check": "Wait until Oct 31 and billing/product source lag."
+}

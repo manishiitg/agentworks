@@ -11,7 +11,7 @@ import (
 
 const workspaceAPITokenEnv = "WORKSPACE_API_TOKEN"
 
-// requireWorkspaceAPIToken protects process-execution routes when AgentWorks
+// requireWorkspaceAPIToken protects every /api route when AgentWorks
 // launches the workspace service with a shared token. The token is deliberately
 // not exposed to coding CLI environments, preventing a sandboxed CLI from
 // asking this unsandboxed service to execute a broader command.

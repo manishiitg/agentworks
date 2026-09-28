@@ -1,0 +1,12 @@
+{
+  "artifact_type": "release-status-receipt/v1",
+  "release_id": "rc-28",
+  "sha": "987fed",
+  "build_id": "artifact:rc-28-987fed",
+  "environment": "preview-28",
+  "verdict": "pass",
+  "approval_ref": "gate-approval-28",
+  "provider_status_id": "check-run-28",
+  "published_at": "2026-09-25T10:20:00Z",
+  "source_refs": ["provider:check-run-28"]
+}

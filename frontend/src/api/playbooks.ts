@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { InstalledPlaybook } from '../services/api-types'
-import type { PlaybookCatalogItem, PlaybookChangelogEntry, PlaybookPulseFocus, PlaybookRecommendedTool, PlaybookSetupInput } from '../components/playbooks/playbookCatalog'
+import type { PlaybookAgentSlot, PlaybookCatalogItem, PlaybookChangelogEntry, PlaybookHandoff, PlaybookPulseFocus, PlaybookRecommendedTool, PlaybookSetupInput } from '../components/playbooks/playbookCatalog'
 
 type ServerPlaybook = {
   id: string
@@ -18,6 +18,9 @@ type ServerPlaybook = {
   recommended_tools?: PlaybookRecommendedTool[]
   pulse_focus?: Array<PlaybookPulseFocus | (Omit<PlaybookPulseFocus, 'module'> & { module: 'technical_review' | 'architecture_review' })>
   outputs?: string[]
+  agent_slots?: PlaybookAgentSlot[]
+  handoffs?: PlaybookHandoff[]
+  setup_checks?: string[]
 }
 
 const api = axios.create({ baseURL: getApiBaseUrl(), headers: { 'Content-Type': 'application/json' } })
@@ -44,6 +47,9 @@ const normalize = (item: ServerPlaybook): PlaybookCatalogItem => ({
   recommendedTools: item.recommended_tools || [],
   pulseFocus: (item.pulse_focus || []).filter((focus): focus is PlaybookPulseFocus => focus.module === 'strategic_review'),
   outputs: item.outputs || [],
+  agentSlots: item.agent_slots || [],
+  handoffs: item.handoffs || [],
+  setupChecks: item.setup_checks || [],
 })
 
 export const playbooksApi = {

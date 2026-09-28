@@ -19,7 +19,7 @@ export function buildReportHumanInputChatMessage(
   const lines = [
     `I want to discuss a pending ${sourceName(input.source)} decision. Do not submit, dismiss, or mark the decision handled yet; answer my question first.`,
     'If I later explicitly choose an option or give a final answer, call answer_human_input_request with the exact IDs below. Record it as answered only; do not mark it consumed.',
-    'This is a Needs your decision card in the pulse workspace view. Read its current status with get_human_input_request. After my final answer, save it in that turn without waiting for a separate request to mark it; the card refreshes automatically after a successful save.',
+    'This is a Needs your decision card in the Human actions view. Read its current status with get_human_input_request. After my final answer, save it in that turn without waiting for a separate request to mark it; the card refreshes automatically after a successful save.',
     '',
     `Automation: ${workspacePath}`,
     `Decision ID: ${input.id}`,
@@ -159,6 +159,26 @@ export function buildReportHumanInputAnswerMessage(
 }
 
 /** Opens the automation chat with the answer pre-filled for the user to send. */
+/**
+ * Sends the chosen option as the answer: clicking an option is already an
+ * explicit choice, so it goes straight to the automation chat (queued behind
+ * a running turn), like "Take best action". Use "Ask in chat" to add a note.
+ */
+export async function sendReportHumanInputAnswerToChat({
+  input,
+  workspacePath,
+  option,
+}: {
+  input: ReportHumanInput
+  workspacePath: string
+  option: { id: string; title: string }
+}): Promise<WorkspacePaneChatResult> {
+  return sendWorkspacePaneMessageToChat({
+    workspacePath,
+    message: buildReportHumanInputAnswerMessage(input, workspacePath, option),
+  })
+}
+
 export async function openReportHumanInputAnswerInChat({
   input,
   workspacePath,

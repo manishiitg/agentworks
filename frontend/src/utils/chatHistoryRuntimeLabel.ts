@@ -21,6 +21,7 @@ export function chatHistoryRuntimeShortLabel(session: ChatHistorySession): strin
     'gemini-cli': 'Gemini',
     'muse-cli': 'Muse',
     'pi-cli': 'Pi',
+    'agy-cli': 'AGY (Alpha)',
   }
   return knownLabels[provider.toLowerCase()] || provider.replace(/[-_](cli|code)$/i, '')
 }

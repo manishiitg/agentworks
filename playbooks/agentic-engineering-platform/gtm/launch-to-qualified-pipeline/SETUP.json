@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "launch-to-qualified-pipeline",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm launch and pipeline owners", "instructions": "Name the GTM, launch, Sales, contact, and budget owners; target buyer, market, useful outcome, launch window, and escalation path."},
+    {"id": "offer_claims", "title": "Review offer and claims", "instructions": "Record offer version, approved product claims, customer evidence and source dates. Separate observed problems from message hypotheses; verify the owner approves public claims before distribution."},
+    {"id": "launch_scope", "title": "Bind assets, channels, and budget", "instructions": "Record site and asset revisions, campaign and source IDs, channels, publish/send owners, budget caps, dependencies, and exact approval routes. An approved asset is not a provider-confirmed publication."},
+    {"id": "metric_policy", "title": "Define qualified pipeline evidence", "instructions": "Record useful visitor action, qualified lead criteria, duplicate and contact policy, CRM stage and meeting definitions, attribution limits, source coverage, baseline or baseline-first choice, and observation window."},
+    {"id": "team_bindings", "title": "Bind GTM and Sales Crews", "instructions": "Inspect existing compatible Crews before proposing new ones. Record ready GTM Strategy Analyst, Launch Coordinator, Lead Intake & Qualifier, and Sales Follow-up Coordinator IDs and selected skills. Add Website Growth or distribution capabilities only where useful."},
+    {"id": "source_access", "title": "Probe actual sources and permissions", "instructions": "Read one authorized offer source, campaign or publication state, inbound event, CRM lead, prior-contact/suppression state, and meeting source or mark gaps blocked. A named provider is not connected access."},
+    {"id": "handoff_contract", "title": "Validate all selected handoffs", "instructions": "Run this package's GTM validator on the reviewed strategy brief, launch signal register, and linked lead; reject mismatched offer, campaign, source, duplicate or consent state. Install and run the Sales Playbook validator before Follow-up reads qualification; invalid fixtures must stop consumers."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, source and output paths, validator steps, claimed and unknown attribution, exact publish/contact approval points, budget, notification and repeat policy, and provider receipts before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized route manually", "instructions": "Use one real or historical launch and inbound lead. Save run IDs, actual validator results, owner decisions and source state. A fictional fixture, draft, form event, or CRM stage without verification does not prove a qualified lead or meeting."},
+    {"id": "activation_choice", "title": "Choose recurrence and action ledger", "instructions": "Record stable launch, asset, campaign, event, lead and action IDs; deduplicate before retries. Choose manual-only or a reviewed authenticated event/schedule with concurrency, cost, delivery and contact policy. Setup completion alone enables no distribution or outreach."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

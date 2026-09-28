@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifact_type": "billing-exception-queue/v1",
+  "queue_id": "queue-example-2026-09",
+  "entity": "Example SaaS Inc",
+  "period": "2026-09",
+  "currency": "USD",
+  "created_at": "2026-09-25T09:00:00Z",
+  "source_refs": [
+    { "id": "billing-export", "uri": "exports/fictional-billing-2026-09.csv#row=12", "observed_at": "2026-09-25T08:00:00Z" },
+    { "id": "refund-policy", "uri": "docs/fictional-refund-policy.md#section=2", "observed_at": "2026-09-25T08:30:00Z" }
+  ],
+  "cases": [
+    {
+      "id": "case-refund-001",
+      "type": "refund",
+      "source_object_id": "ch_example_001",
+      "current_status": "paid; no refund issued",
+      "amount_minor": 2500,
+      "currency": "USD",
+      "evidence_refs": ["billing-export", "refund-policy"],
+      "proposed_action": "Owner reviews a $25.00 customer refund request; no refund executed",
+      "approval_required": true,
+      "owner": "Finance owner",
+      "refund": { "original_minor": 10000, "previously_refunded_minor": 1000, "proposed_minor": 2500, "remaining_after_proposal_minor": 6500 }
+    }
+  ],
+  "limitations": ["Fictional fixture; provider state and policy must be rechecked before action."]
+}

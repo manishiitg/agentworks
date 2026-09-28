@@ -10,7 +10,7 @@ vi.mock("../../../services/api", () => ({
   agentApi: { listReportHumanInputs: vi.fn() },
 }));
 import { agentApi } from "../../../services/api";
-import { usePendingDecisionCount } from "./usePendingDecisionCount";
+import { usePendingDecisionCount, usePendingDecisionState } from "./usePendingDecisionCount";
 import {
   WORKFLOW_DECISIONS_REFRESH_EVENT,
   WORKFLOW_LOG_REFRESH_EVENT,
@@ -18,6 +18,10 @@ import {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 function Count({ workspace }: { workspace: string }) {
   return <span>{usePendingDecisionCount(workspace)}</span>;
+}
+function DecisionState({ workspace }: { workspace: string }) {
+  const state = usePendingDecisionState(workspace);
+  return <span>{`${state.loaded}:${state.count}`}</span>;
 }
 const input = (status: string, workspace = "Workflow/a") =>
   ({ id: status, status, workspace_path: workspace }) as ReportHumanInput;
@@ -90,6 +94,20 @@ it("does not leak an old workflow count or apply an out-of-order response", asyn
     expect(container.textContent).toBe("1");
     await act(async () => resolveSlow({ success: true, inputs: [] }));
     expect(container.textContent).toBe("1");
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+it("reports the first workflow decision load before choosing a default view", async () => {
+  const container = document.createElement("div"), root = createRoot(container);
+  const fetch = vi.mocked(agentApi.listReportHumanInputs);
+  let resolve!: (response: ReportHumanInputsResponse) => void;
+  fetch.mockImplementationOnce(() => new Promise(response => { resolve = response; }));
+  try {
+    await act(async () => root.render(<DecisionState workspace="Workflow/entry" />));
+    expect(container.textContent).toBe("false:0");
+    await act(async () => resolve({ success: true, inputs: [input("pending", "Workflow/entry")] }));
+    expect(container.textContent).toBe("true:1");
   } finally {
     await act(async () => root.unmount());
   }

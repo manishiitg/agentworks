@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "template_id": "tax-export",
+  "template_version": 1,
+  "checks": [
+    { "id": "scope", "title": "Confirm export scope", "instructions": "Agree on reporting period, jurisdiction, currency, and recipient. Record stable preferences in MEMORY.md." },
+    { "id": "skill", "title": "Verify the skill", "instructions": "Confirm skills/tax-export/SKILL.md exists and tax-export is selected for this Crew." },
+    { "id": "records", "title": "Verify records", "instructions": "Locate authorized invoices, payments, or accounting exports and confirm they cover the agreed period. An upload is sufficient; an MCP is optional." },
+    { "id": "mapping", "title": "Agree on fields, signs and categories", "instructions": "Confirm recipient format, legal entity, required columns, accounting/tax basis, currency/FX source, date cutoff, original-to-normalized sign rule and classification policy with the owner or tax professional. Leave tax codes and missing fields blank/pending instead of guessing." },
+    { "id": "reconciliation", "title": "Reconcile a sample", "instructions": "Verify a payment, linked refund or reversal, processor fee and payout/deposit when available. Check source IDs/versions, duplicates, gaps, totals and tolerance; avoid counting a bank transfer as a second sale. Record unresolved exceptions." },
+    { "id": "sample_export", "title": "Review the first export", "instructions": "Produce a traceable sample export, source-to-column mapping, signed-amount calculation, reconciliation note and exceptions list. Complete only after the owner reviews them against the recipient's required format." },
+    { "id": "delivery", "title": "Decide on handoff", "optional": true, "instructions": "Ask whether to keep results in Crew chat or use an approved secure delivery route. Choosing chat-only completes this decision. Do not send without authorization." },
+    { "id": "recurrence", "title": "Decide on recurrence", "optional": true, "instructions": "Ask if a schedule or authenticated new-record trigger is needed. Choosing neither completes this decision; if requested, test before enabling." }
+  ],
+  "completed_steps": []
+}

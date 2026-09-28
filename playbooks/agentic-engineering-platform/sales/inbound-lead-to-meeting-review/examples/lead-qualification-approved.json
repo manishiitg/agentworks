@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "artifact_type": "lead-qualification-brief/v1",
+  "brief_id": "brief-example-001",
+  "lead_id": "lead-example-001",
+  "entity": "Example SaaS Inc",
+  "period": "2026-09",
+  "created_at": "2026-09-25T10:00:00Z",
+  "company_domain": "harborclinic.example",
+  "contact_ref": "crm-export:contact-001",
+  "inbound_request": "Requested a demo for multi-location appointment scheduling.",
+  "fit_status": "qualified",
+  "duplicate_state": "none",
+  "contact_policy_status": "approved",
+  "owner": "Sales owner",
+  "next_action": "Use the reviewed delivery route after a fresh suppression, reply, and booking check.",
+  "source_refs": [
+    {
+      "id": "inquiry",
+      "uri": "exports/fictional-inbound-leads.csv#row=7",
+      "observed_at": "2026-09-25T09:30:00Z"
+    },
+    {
+      "id": "fit-policy",
+      "uri": "docs/fictional-ideal-customer-profile.md#section=1",
+      "observed_at": "2026-09-25T09:35:00Z"
+    },
+    {
+      "id": "duplicate-check",
+      "uri": "exports/fictional-crm-open-leads.csv#query=lead-example-001",
+      "observed_at": "2026-09-25T09:40:00Z"
+    },
+    {
+      "id": "contact-policy-approval",
+      "uri": "decisions/contact-policy-example-001",
+      "observed_at": "2026-09-25T10:35:00Z"
+    }
+  ],
+  "evidence_refs": [
+    "inquiry",
+    "fit-policy",
+    "duplicate-check",
+    "contact-policy-approval"
+  ],
+  "criteria": [
+    {
+      "id": "market",
+      "result": "match",
+      "reason": "The inbound request names a clinic in the supported market.",
+      "evidence_refs": [
+        "inquiry",
+        "fit-policy"
+      ]
+    },
+    {
+      "id": "budget",
+      "result": "unknown",
+      "reason": "No budget was supplied; do not infer one.",
+      "evidence_refs": [
+        "inquiry"
+      ]
+    }
+  ],
+  "missing_info": [
+    "Budget and current scheduling system"
+  ],
+  "limitations": [
+    "Fictional fixture; current CRM and suppression state must be rechecked before contact."
+  ]
+}

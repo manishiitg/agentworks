@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "artifact_type": "lead-qualification-brief/v1",
+  "brief_id": "brief-invalid-001",
+  "lead_id": "lead-invalid-001",
+  "entity": "Example SaaS Inc",
+  "period": "2026-09",
+  "created_at": "2026-09-25T10:00:00Z",
+  "company_domain": "harborclinic.example",
+  "contact_ref": "crm-export:contact-001",
+  "inbound_request": "Requested a demo.",
+  "fit_status": "qualified",
+  "duplicate_state": "none",
+  "contact_policy_status": "review_required",
+  "owner": "Sales owner",
+  "next_action": "Review draft.",
+  "source_refs": [
+    { "id": "inquiry", "uri": "exports/fictional-inbound-leads.csv#row=7", "observed_at": "2026-09-25T09:30:00Z" }
+  ],
+  "evidence_refs": ["inquiry"],
+  "criteria": [
+    { "id": "market", "result": "match", "reason": "Claimed market fit without its source", "evidence_refs": ["missing-policy-source"] }
+  ],
+  "missing_info": [],
+  "limitations": []
+}

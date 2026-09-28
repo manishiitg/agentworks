@@ -1,0 +1,41 @@
+{
+  "artifact_type": "frozen-experiment-plan/v1",
+  "artifact_id": "frozen-retention-plan-7",
+  "revision": "rev3",
+  "experiment_id": "exp-guided-setup-7",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "owner": "Growth lead",
+  "as_of": "2026-09-30T12:00:00Z",
+  "source_refs": [
+    {
+      "id": "upstream-plan",
+      "uri": "artifact:retention-plan-001",
+      "observed_at": "2026-09-02T11:00:00Z"
+    },
+    {
+      "id": "owner-policy",
+      "uri": "owner-docs/experiment-policy-v2",
+      "observed_at": "2026-09-30T11:30:00Z"
+    }
+  ],
+  "source_plan_artifact_id": "retention-plan-001",
+  "frozen_policy": {
+    "assignment_unit": "account",
+    "control_variant_id": "current-setup",
+    "treatment_variant_id": "guided-setup",
+    "control_allocation_bps": 5000,
+    "treatment_allocation_bps": 5000,
+    "primary_metric": "day30-retained-per-eligible-v2",
+    "guardrail_metric": "support-blocker-per-eligible-v2",
+    "guardrail_max_bps": 500,
+    "minimum_sample_per_variant": 250,
+    "readout_start": "2026-10-01T10:00:00Z",
+    "readout_end": "2026-11-30T10:00:00Z",
+    "minimum_exposure_coverage_bps": 9500,
+    "allocation_tolerance_bps": 500,
+    "exposure_end": "2026-10-31T10:00:00Z"
+  },
+  "stop_rule": "Stop for a reviewed guardrail breach; otherwise wait for the full day-30 window and power target.",
+  "normalization_note": "Owner-reviewed mapping from pending retention proposal to frozen plan rev3; approval to launch is a separate dated decision."
+}

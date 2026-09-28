@@ -11,6 +11,7 @@ describe('isWorkWorkspaceViewEnabled', () => {
 
   it('always enables Identity and gates Integrations on any constituent panel', () => {
     expect(isWorkWorkspaceViewEnabled('identity', new Set())).toBe(true)
+    expect(isWorkWorkspaceViewEnabled('plan', new Set())).toBe(true)
     expect(isWorkWorkspaceViewEnabled('mcp', new Set())).toBe(false)
     expect(isWorkWorkspaceViewEnabled('mcp', new Set(['mcp']))).toBe(true)
     expect(isWorkWorkspaceViewEnabled('mcp', new Set(['skills']))).toBe(true)

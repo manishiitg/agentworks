@@ -143,6 +143,13 @@ var providerStaticInfoMap = map[string]providerStaticInfo{
 		requiresAPIKey:  false,
 		apiKeyEnv:       "META_API_KEY",
 	},
+	"agy-cli": {
+		displayName:     "Antigravity CLI (Alpha)",
+		description:     "Alpha: uses the locally installed agy CLI (Google Antigravity). The terminal shows live progress; assistant text and tool receipts appear after each turn. Sign in with Google in the guided terminal, or use API-key mode for unattended setups (see the setup guide).",
+		integrationKind: "coding_agent",
+		authDescription: "Local CLI (Google sign-in)",
+		requiresAPIKey:  false,
+	},
 	"claude-code": {
 		displayName:     "Claude Code",
 		description:     "Uses the locally installed claude CLI. Handles its own authentication, model selection, and tool execution.",
@@ -341,7 +348,7 @@ func (api *StreamingAPI) handleGetProviderManifest(w http.ResponseWriter, r *htt
 	capabilitiesByProvider := buildProviderCapabilities(ctx)
 
 	providerOrder := []string{
-		"claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli",
+		"claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli", "agy-cli",
 	}
 
 	supported := getSupportedProviders()

@@ -1,0 +1,31 @@
+{
+  "artifact_type": "dispute-finance-review/v1",
+  "entity_id": "entity-example",
+  "provider_account_id": "acct-example",
+  "provider_mode": "test",
+  "dispute_id": "du_42",
+  "payment_id": "ch_42",
+  "customer_id": "cus_42",
+  "currency": "USD",
+  "amount_minor": 20000,
+  "case_artifact_id": "case-dsp-42-rev5",
+  "provider_case_revision": "rev5",
+  "provider_observed_at": "2026-10-05T10:00:00Z",
+  "finance_source_id": "ledger-query-42@2026-09-26",
+  "finance_observed_at": "2026-10-06T10:00:00Z",
+  "finance_owner_id": "controller-1",
+  "finance_state": "reconciled",
+  "principal_ledger_match": {
+    "entry_id": "journal-42",
+    "observed_at": "2026-10-06T10:00:00Z",
+    "entity_id": "entity-example",
+    "dispute_id": "du_42",
+    "payment_id": "ch_42",
+    "amount_minor": 20000,
+    "currency": "USD"
+  },
+  "fee_state": "not_applicable",
+  "fee_ledger_match": null,
+  "next_review_at": "2026-09-28T10:00:00Z",
+  "fee_policy_source_id": "processor-fee-rule-42@v1"
+}

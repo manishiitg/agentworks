@@ -6,7 +6,9 @@ import {
   Files,
   Fingerprint,
   LayoutDashboard,
+  Lightbulb,
   Monitor,
+  Route,
   Server,
   Zap,
   type LucideIcon,
@@ -31,8 +33,10 @@ import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPa
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
+import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
+import { WorkPlanPanel } from './WorkPlanPanel'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 
@@ -40,9 +44,10 @@ const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
+const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-export type WorkWorkspaceView = 'dashboard' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'identity' | 'mcp'
+export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string) {
   return sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: projectId, message })
@@ -50,9 +55,12 @@ function sendWorkProjectPaneMessage(projectId: string, message: string) {
 
 const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'plan', label: 'Plan', icon: Route },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'browser', label: 'Browser', icon: Monitor },
   { id: 'schedules', label: 'Automation', icon: Zap },
+  // Change requests from other users of this Crew; the owner reviews them.
+  { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
 ]
 
 const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
@@ -66,16 +74,39 @@ const SETUP_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideI
   { id: 'mcp', label: 'Integrations', icon: Server },
 ]
 
-function WorkToolbarButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
+// usePendingCrewSuggestions counts suggestions waiting for the owner, for
+// the toolbar badge. Refreshed on view changes and every minute.
+function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view: WorkWorkspaceView): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled || !workspacePath) {
+      setCount(0)
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      agentApi.listReportHumanInputs(workspacePath, 'pending', 'user_suggestion')
+        .then(response => { if (!cancelled) setCount(response.inputs?.length ?? 0) })
+        .catch(() => { if (!cancelled) setCount(0) })
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [workspacePath, enabled, view])
+  return count
+}
+
+function WorkToolbarButton({ active, icon: Icon, label, onClick, badge }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void; badge?: number }) {
   const button = (
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-      aria-label={label}
+      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
+      aria-label={badge ? `${label} (${badge} pending)` : label}
       aria-pressed={active}
     >
       <Icon className="h-3.5 w-3.5" />
+      {!!badge && <span className="absolute -right-1 -top-1 min-w-[14px] rounded-full bg-amber-500 px-1 text-[9px] font-semibold leading-[14px] text-white">{badge > 9 ? '9+' : badge}</span>}
     </button>
   )
   if (active) return button
@@ -85,7 +116,8 @@ function WorkToolbarButton({ active, icon: Icon, label, onClick }: { active: boo
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean }) {
   const visibleViews = readOnly
     ? VIEW_BUTTONS.filter(item => item.id === 'memory')
-    : enabledPanels ? VIEW_BUTTONS.filter(item => enabledPanels.has(item.id)) : VIEW_BUTTONS
+    : enabledPanels ? VIEW_BUTTONS.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : VIEW_BUTTONS
+  const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly, view)
   const visibleOps = readOnly
     ? OPS_BUTTONS.filter(item => item.id === 'files')
     : enabledPanels ? OPS_BUTTONS.filter(item => enabledPanels.has(item.id)) : OPS_BUTTONS
@@ -109,7 +141,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
           <div className="inline-flex items-center gap-0.5 px-0.5">
-            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
           </div>
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={() => setOpenGroup(current => current === 'ops' ? null : 'ops')} title="Operations: project files, database and costs">
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
@@ -208,7 +240,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared }: { workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared }: { workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath) : null),
@@ -217,6 +249,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [sharedFileRequest, setSharedFileRequest] = useState<{ path: string; nonce: number } | null>(null)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
+  // The dashboard's only link to the chat beside it: a stable callback, so
+  // nothing on the chat side re-renders or re-runs the dashboard.
+  const sendDashboardMessage = useCallback(async (message: string) => ({
+    status: 'queued' as const,
+    ...await sendWorkProjectPaneMessage(projectId, `From this project's dashboard:\n\n${message}`),
+  }), [projectId])
   const canonicalSessionId = useChatStore(state => Object.values(state.chatTabs).find(tab =>
     tab.metadata?.agentProfileId === 'work' &&
     tab.metadata?.agentProfileProjectId === projectId &&
@@ -298,6 +336,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectTitle={projectTitle}
           projectDescription={projectDescription}
           projectIdentity={projectIdentity}
+          projectTemplates={projectTemplates}
+          onInstallTemplate={onInstallTemplate}
           tabId={tabId}
           selectedSecrets={selectedSecrets}
           selectedGlobalSecrets={selectedGlobalSecrets}
@@ -314,10 +354,12 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
+        {view === 'plan' && <WorkPlanPanel workspacePath={workspacePath} onAsk={message => sendWorkProjectPaneMessage(projectId, message)} />}
         {view === 'mcp' && <WorkIntegrationsPanel
           workspacePath={workspacePath}
           projectId={projectId}
           projectTitle={projectTitle}
+          projectTemplates={projectTemplates}
           tabId={tabId}
           enabledPanels={enabledPanels}
           onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
@@ -336,7 +378,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             workspacePath={workspacePath}
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
             emptyDescription="Ask Crew to create a visual dashboard for this project. It can organize tasks, notes, plans, status, research, or anything else you want to manage visually."
-            sendChatMessage={async (message) => ({ status: 'queued', ...await sendWorkProjectPaneMessage(projectId, `From this project's dashboard:\n\n${message}`) })}
+            sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}
               message="Help me with this Crew project's results page. Explain what it shows in plain words and ask what I want to change."
@@ -350,6 +392,18 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
             iconOnly
           />} />}
+          {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <p className="text-xs text-muted-foreground">Changes other people using this Crew asked for. Accepting records your decision; make the change in chat.</p>
+              <AskAIButton
+                workspacePath={workspacePath}
+                message="Look at the accepted suggestions in this Crew's Suggestions view and help me make those changes to the Crew."
+                onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+                iconOnly
+              />
+            </div>
+            <ReportHumanInputPanel workspacePath={workspacePath} source="user_suggestion" showEmptyState className="min-h-0 flex-1 overflow-auto p-3" />
+          </div>}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
             workspacePath={workspacePath}

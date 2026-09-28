@@ -1,0 +1,19 @@
+{
+  "artifact_type": "gtm-launch-brief/v1",
+  "launch_id": "launch-24",
+  "offer_version": "team-analytics-v2",
+  "market": "US B2B SaaS",
+  "audience": "RevOps leaders at 20-200 seat SaaS firms",
+  "buyer_problem": "Weekly renewal reporting requires manual exports",
+  "claim_refs": ["interview:7", "interview:11", "product:claim-review-24"],
+  "channels": ["approved-site-page", "customer-newsletter"],
+  "budget_minor": 200000,
+  "currency": "USD",
+  "qualified_lead_definition": "A demo request matching the approved account criteria and accepted by Sales",
+  "baseline_state": "baseline_first",
+  "approval_state": "approved",
+  "approval_ref": "owner-review:gtm-24",
+  "owner_id": "gtm-lead",
+  "observed_at": "2026-09-26T09:00:00Z",
+  "source_refs": ["interview:7", "interview:11", "product:claim-review-24", "owner-review:gtm-24"]
+}

@@ -80,6 +80,9 @@ func (api *StreamingAPI) handleGetPlanChangelog(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
+	if !requireWorkflowVisible(w, r, workspacePath) {
+		return
+	}
 
 	folder := path.Join(strings.Trim(workspacePath, "/"), "planning", "changelog")
 	listing, exists, err := listWorkspaceFolder(r.Context(), folder, 1)

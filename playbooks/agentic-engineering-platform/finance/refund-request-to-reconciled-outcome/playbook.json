@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "refund-request-to-reconciled-outcome",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Adds a chat-led refund decision and finance reconciliation with exact amount, provider receipt and ledger-state validation."
+    }
+  ],
+  "title": "Refund Request to Reconciled Outcome",
+  "description": "Review a SaaS customer refund against the exact payment and policy, then verify its provider and finance outcome without an implicit money action.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Finance"
+  ],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Refund Request to Reconciled Outcome as a proposal. Inspect compatible Billing Operations Coordinator and Revenue & Close Analyst Crews, the Refund Review pack, exact customer request, payment, prior refunds, policy and current ledger. Propose reuse or reviewed creation, validated artifacts, separate action approval, and one manual case. Show the concrete plan before Builder applies it. Selection neither issues a refund nor sends a message, posts a ledger entry, or enables recurrence.",
+  "setup_inputs": [
+    {
+      "id": "request_payment",
+      "label": "Exact customer refund request and original payment or charge ID",
+      "required": true
+    },
+    {
+      "id": "provider_scope",
+      "label": "Entity, provider account and mode, customer, currency and observation time",
+      "required": true
+    },
+    {
+      "id": "amount_policy",
+      "label": "Original, succeeded and pending refund amounts; requested amount; policy and approver",
+      "required": true
+    },
+    {
+      "id": "finance_source",
+      "label": "Authorized ledger, accounting export or settlement source",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Billing reviewer, finance owner and refund action authority",
+      "required": true
+    },
+    {
+      "id": "run_policy",
+      "label": "Manual-only or reviewed request event and cadence",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create only reviewed missing Crew identities with stable keys",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a bounded validated decision to the finance Crew",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "processor-source",
+      "name": "Stripe or another processor, or export",
+      "type": "mcp",
+      "purpose": "Read current payment, prior refunds, status and provider receipts",
+      "capability": "payment_read",
+      "optional": true
+    },
+    {
+      "id": "ledger-source",
+      "name": "Accounting ledger or export",
+      "type": "mcp",
+      "purpose": "Verify finance treatment and settlement state",
+      "capability": "finance_read",
+      "optional": true
+    },
+    {
+      "id": "refund-action",
+      "name": "Approved provider refund route",
+      "type": "mcp",
+      "purpose": "Issue an exact separately approved refund and retain the provider receipt",
+      "capability": "refund_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Refund decision and observed outcome",
+      "focus_areas": [
+        "Whether requests are decided against the exact current payment and remaining amount",
+        "Whether provider-processed refunds are reconciled without duplicate writes or unsupported closure"
+      ],
+      "review_when": [
+        "A refund request is added or changed, provider status changes, or a reconciliation remains open past owner policy"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed two-Crew roster and source map",
+    "Validated refund-decision/v1 with exact arithmetic and approval state",
+    "Validated refund-reconciliation/v1 with provider and ledger observations",
+    "Manual request result, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "billing",
+      "agent_playbook_id": "billing-operations-coordinator",
+      "required": true,
+      "output": "refund-decision/v1"
+    },
+    {
+      "id": "close",
+      "agent_playbook_id": "revenue-close-analyst",
+      "required": true,
+      "output": "refund-reconciliation/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "billing-to-close",
+      "from": "billing",
+      "to": "close",
+      "artifact_type": "refund-decision/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "request_scope",
+    "policy_amount",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "action_ledger",
+    "activation_choice"
+  ]
+}

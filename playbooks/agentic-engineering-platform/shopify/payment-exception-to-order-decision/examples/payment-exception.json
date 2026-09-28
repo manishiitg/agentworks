@@ -1,0 +1,17 @@
+{
+  "artifact_type": "payment-exception/v1",
+  "store_id": "store-example-1",
+  "order_id": "order-4102",
+  "case_id": "payment-case-19",
+  "transaction_id": "transaction-602",
+  "parent_transaction_ref": null,
+  "observed_at": "2026-09-26T11:00:00Z",
+  "transaction_kind": "AUTHORIZATION",
+  "transaction_status": "SUCCESS",
+  "amount_minor": 8500,
+  "currency": "USD",
+  "payment_policy_version": "capture-policy-2026-09",
+  "owner_id": "payments-owner",
+  "source_refs": ["shopify:order-4102@2026-09-26T11:00Z", "shopify:transaction-602@2026-09-26T11:00Z"],
+  "proposed_action": "Hold fulfillment release until current capture policy and transaction state are reviewed"
+}

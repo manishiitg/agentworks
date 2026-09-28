@@ -157,6 +157,15 @@ found. They apply to channel turns (Run mode) and DM turns alike:
    is titled `<name>: <first message> · #channel` so its tab is not just
    "Slack".
 
+## Delivery (added 2026-09-26)
+
+- A DM is one continuous chat: the bot replies directly in the DM, not in
+  threads; top-level messages share one conversation keyed by the DM channel.
+- A follow-up sent while a turn runs steers the running CLI in every bot
+  conversation, as in the web chat (`shouldTryRetainedDeliveryBeforeQueue`).
+- The `slack` tool opens every Slack Web API method for trusted full-mode turns
+  and keeps the read-and-reply allowlist for Run mode (user decision).
+
 ## Costs
 
 Checked 2026-09-26 against the cost ledger (`costobserver`, `cost_overview.go`):

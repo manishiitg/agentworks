@@ -23,7 +23,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "crews:read", "crews:run"}
+var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "crews:read", "crews:run", "crews:write"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -39,7 +39,7 @@ type Token struct {
 	Scopes       []string   `json:"scopes"`
 	WorkflowIDs  []string   `json:"workflow_ids"`
 	AllWorkflows bool       `json:"all_workflows"`
-	// CrewIDs / AllCrews bound crews:read and crews:run the same way
+	// CrewIDs / AllCrews bound crews:read, crews:run and crews:write the same way
 	// WorkflowIDs / AllWorkflows bound the workflow permissions.
 	CrewIDs  []string `json:"crew_ids"`
 	AllCrews bool     `json:"all_crews"`
@@ -111,7 +111,7 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("choose all accessible Crews or specific Crew IDs")
 	}
 	if !hasCrewScope && (t.AllCrews || len(t.CrewIDs) > 0) {
-		return errors.New("Crew bounds need a Crew permission (crews:read or crews:run)")
+		return errors.New("Crew bounds need a Crew permission (crews:read, crews:run or crews:write)")
 	}
 	if t.Allows("builder:chat") && !t.FullBuilderAccess() {
 		return errors.New("Builder chat requires all permissions and all accessible workflows because its runtime can execute tools and shell commands")

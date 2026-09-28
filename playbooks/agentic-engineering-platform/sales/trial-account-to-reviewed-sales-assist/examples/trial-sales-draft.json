@@ -1,0 +1,48 @@
+{
+  "artifact_type": "trial-sales-assist/v1",
+  "entity_id": "entity-example",
+  "product_id": "product-example",
+  "tenant_id": "tenant-42",
+  "product_account_id": "account-42",
+  "trial_id": "trial-42",
+  "subscription_id": "sub-42",
+  "usage_artifact_id": "trial-usage-42",
+  "trial_revision": "rev3",
+  "crm_account_id": "crm-account-42",
+  "account_link": {
+    "product_account_id": "account-42",
+    "crm_account_id": "crm-account-42",
+    "source_id": "account-map-42@v1",
+    "observed_at": "2026-09-26T10:10:00Z"
+  },
+  "owner_id": "seller-42",
+  "contact_policy_version": "policy-3",
+  "suppression_source_id": "suppression-check-42",
+  "prior_contact_source_id": "contact-check-42",
+  "fit_source_id": "fit-review-42",
+  "observed_at": "2026-09-26T10:20:00Z",
+  "seller_fit": "approved",
+  "contact_permission": "allowed",
+  "permission_source_id": "consent-42@v2",
+  "suppression": "clear",
+  "reply_state": "none",
+  "meeting_state": "none",
+  "send_state": "not_sent",
+  "provider_delivery_receipt": null,
+  "contact": {
+    "contact_id": "crm-contact-42",
+    "crm_account_id": "crm-account-42",
+    "source_id": "contact-42@v2",
+    "channel": "email"
+  },
+  "decision": "draft",
+  "offer_source_id": "offer-42@v1",
+  "booking_url": "https://example.test/book/seller-42",
+  "approval_required": true,
+  "draft": {
+    "recipient_id": "crm-contact-42",
+    "channel": "email",
+    "subject": "Help with your trial",
+    "body": "Would a short setup call be useful during your trial?"
+  }
+}

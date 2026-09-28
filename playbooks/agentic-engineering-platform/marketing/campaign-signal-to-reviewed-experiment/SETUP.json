@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "campaign-signal-to-reviewed-experiment",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm growth goal and decision owner", "instructions": "Name the offer and buyer outcome, campaign and experiment owners, first reviewable result, change authority and excluded actions."},
+    {"id": "campaign_scope", "title": "Bind exact campaign identity", "instructions": "Record tenant, platform account, campaign, offer, market, channel, audience, currency, current and baseline periods, time zone and attribution window."},
+    {"id": "metric_policy", "title": "Define qualified event and denominator", "instructions": "Record CRM or analytics event definition, deduplication and identity join, click denominator, spend currency, exclusions, data lag, and minimum source coverage. Clicks, leads, qualified demos and meetings remain distinct."},
+    {"id": "baseline_rule", "title": "Confirm comparable baseline and experiment rule", "instructions": "Check current and baseline period definitions, delivery/source coverage, confounders, eligible unit, primary and guardrail metrics, sample or duration rule and stop condition. If baseline is unavailable, plan a baseline-first run instead of claiming lift."},
+    {"id": "team_bindings", "title": "Bind ready Marketing Crews", "instructions": "Inspect existing compatible Crews. Bind Campaign Performance Analyst and Growth Experiment Planner skill and Crew IDs. Add Competitor Intelligence Analyst only when bounded dated context helps a distinct owner decision."},
+    {"id": "source_access", "title": "Probe platform and downstream records", "instructions": "Read one real current and baseline campaign record plus deduplicated downstream event data. Record IDs, timestamps, coverage and unavailable sources; a named platform is not verified access."},
+    {"id": "handoff_contract", "title": "Validate campaign and plan artifacts", "instructions": "Run the bundled validator before Experiment consumes Performance; validate optional Competitor context independently. Reject campaign, account, offer, market, metric or period mismatch, wrong arithmetic, unsupported baseline, and plan activation without a separate route."},
+    {"id": "plan_review", "title": "Review concrete Automation", "instructions": "Show Crew IDs, source and artifact paths, validator steps, exclusions, owner review, repeat and cost policy, sample/stop rule, and exact approval boundary before Builder applies the route."},
+    {"id": "test_run", "title": "Run one campaign manually", "instructions": "Use real authorized current and baseline records. Save run and validator IDs, source coverage, metric calculations, owner correction, proposed experiment and action receipts or none. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose event and action ledger", "instructions": "Record campaign, period, experiment, approval and provider IDs. Choose manual-only or a reviewed authenticated event/cadence with deduplication, lag, retries, cost and notifications. Setup completion does not start a variant or spend change."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

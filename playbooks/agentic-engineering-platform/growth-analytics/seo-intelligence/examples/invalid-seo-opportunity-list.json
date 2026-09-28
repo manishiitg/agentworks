@@ -1,0 +1,33 @@
+{
+  "artifact_type": "seo-opportunity-list/v1",
+  "artifact_id": "seo-opportunities-invalid-001",
+  "source_issue_artifact_id": "seo-issues-example-001",
+  "site_url": "https://arbordesk.example/",
+  "market": "UK physiotherapy clinics",
+  "locale": "en-GB",
+  "device": "mobile",
+  "observed_at": "2026-09-25T10:15:00Z",
+  "source_refs": [
+    { "id": "issue-artifact", "uri": "artifact:seo-issues-example-001", "observed_at": "2026-09-25T10:00:00Z" },
+    { "id": "buyer-question", "uri": "owner-notes:fictional-buyer-questions#Q-001", "observed_at": "2026-09-25T09:30:00Z" },
+    { "id": "page-capture", "uri": "https://arbordesk.example/clinics", "observed_at": "2026-09-25T09:50:00Z" }
+  ],
+  "opportunities": [
+    {
+      "id": "Q-001",
+      "buyer_question": "How do patient reminders work for a clinic?",
+      "question_source_ref": "buyer-question",
+      "page_url": "https://arbordesk.example/clinics",
+      "page_decision": "weak_answer",
+      "evidence_refs": ["page-capture"],
+      "blocking_issue_ids": ["SEO-001"],
+      "demand_state": "unknown",
+      "search_metrics": null,
+      "next_action": "Owner reviews the canonical mismatch first, then publish the update and claim ranking improvement.",
+      "owner": "Website owner",
+      "approval_state": "pending_owner_review",
+      "publication_state": "published"
+    }
+  ],
+  "limitations": ["Fictional invalid fixture: publication is asserted without a provider receipt or live retest."]
+}

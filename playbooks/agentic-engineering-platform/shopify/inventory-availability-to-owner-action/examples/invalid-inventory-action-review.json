@@ -1,0 +1,21 @@
+{
+  "artifact_type": "inventory-action-review/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "inventory_item_id": "inventory-item-81-m",
+  "location_id": "location-9",
+  "case_id": "inventory-case-24",
+  "observed_at": "2026-09-26T10:12:00Z",
+  "decision": "storefront_update_review",
+  "approval_state": "pending",
+  "approval_ref": null,
+  "action_state": "executed",
+  "action_receipt_ref": null,
+  "verification_ref": null,
+  "proposed_action": "Hide Size M",
+  "owner_id": "store-ops-owner",
+  "source_refs": ["shopify:inventory-level-81-m-location-9"],
+  "next_evidence": "None"
+}

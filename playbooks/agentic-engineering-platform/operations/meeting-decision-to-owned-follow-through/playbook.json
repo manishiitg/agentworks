@@ -1,0 +1,54 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "meeting-decision-to-owned-follow-through",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led Operations Crew proposal from sourced meeting decisions to accepted action status, with an optional operator review."}
+  ],
+  "title": "Meeting Decision to Owned Follow-through",
+  "description": "Turn authorized meeting notes into confirmed, deduplicated actions and a source-observed project status report, with optional leadership review.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Operations"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Meeting Decision to Owned Follow-through as a chat-led proposal. Inspect existing Operations Crews, authorized notes and transcript revision, meeting and project IDs, owner map, task tracker, status policy, review destination, and prior actions. Propose reuse or reviewed creation, exact artifact validators, one manual meeting, and a separate approved task-write route if requested. Show the plan before Builder applies it. Selection does not create tasks, assign people, notify stakeholders, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "meeting_source", "label": "Authorized meeting notes or transcript with stable meeting ID and revision", "required": true},
+    {"id": "project_scope", "label": "Exact project and milestone IDs, time zone and status policy", "required": true},
+    {"id": "owner_policy", "label": "Participant map, owner acceptance and decision authority", "required": true},
+    {"id": "task_source", "label": "Current task tracker or export for duplicate and completion checks", "required": true},
+    {"id": "review_owner", "label": "Operations or project owner for the first reviewed register and report", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed meeting-note event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Operations Crews with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded meeting or project artifact", "capability": "durable_artifacts", "optional": true},
+    {"id": "notes", "name": "Meeting notes or transcript source", "type": "mcp", "purpose": "Read exact meeting revision and source spans", "capability": "meeting_records", "optional": true},
+    {"id": "tracker", "name": "Project and task tracker", "type": "mcp", "purpose": "Read current action, duplicate and milestone state", "capability": "project_records", "optional": true},
+    {"id": "calendar", "name": "Calendar source", "type": "mcp", "purpose": "Verify meeting identity and participant map", "capability": "calendar_records", "optional": true},
+    {"id": "destination", "name": "Task write or reporting destination", "type": "mcp", "purpose": "Apply exact approved task or report action with provider receipt through a separate route", "capability": "operations_delivery", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Meeting action follow-through", "focus_areas": ["Whether decisions and assignments are explicit and accepted", "Whether open actions have current owners and source-observed completion"], "review_when": ["A meeting revision changes, an owner accepts an action, a task status changes, or a due date approaches"]}
+  ],
+  "outputs": [
+    "Reviewed Operations Crew roster and source map",
+    "Validated meeting action register with explicit owner acceptance",
+    "Project action status with source-observed open, blocked, done or pending state",
+    "Optional operations review brief with owner decisions",
+    "Manual route evidence, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "meeting", "agent_playbook_id": "meeting-actions-coordinator", "required": true, "output": "meeting-action-register/v1"},
+    {"id": "status", "agent_playbook_id": "project-status-reporter", "required": true, "output": "project-action-status/v1"},
+    {"id": "review", "agent_playbook_id": "chief-of-staff", "required": false, "output": "operations-review-brief/v1"}
+  ],
+  "handoffs": [
+    {"id": "meeting-to-status", "from": "meeting", "to": "status", "artifact_type": "meeting-action-register/v1", "required": true},
+    {"id": "status-to-review", "from": "status", "to": "review", "artifact_type": "project-action-status/v1", "required": false}
+  ],
+  "setup_checks": ["goal_owner", "meeting_scope", "owner_policy", "status_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

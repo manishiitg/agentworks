@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -693,6 +694,15 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	}
 	if workspacePath == "" {
 		http.Error(w, "workspace_path is required", http.StatusBadRequest)
+		return
+	}
+	// Only a workflow folder, and only by its owners (not editors).
+	if clean := strings.Trim(path.Clean("/"+workspacePath), "/"); !strings.HasPrefix(clean, "Workflow/") || strings.Count(clean, "/") != 1 {
+		http.Error(w, "workspace_path must be a Workflow/<name> folder", http.StatusBadRequest)
+		return
+	}
+	if currentUserWorkflowAccess(r, workspacePath) != WorkflowAccessOwner {
+		writeWorkflowPermissionDenied(w, "owner")
 		return
 	}
 

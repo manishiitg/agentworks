@@ -97,6 +97,15 @@ export const UI_CONTROL_CONTRACT = {
       "targets": []
     },
     {
+      "id": "human-actions",
+      "label": "Human actions",
+      "actions": [
+        "open",
+        "refresh"
+      ],
+      "targets": []
+    },
+    {
       "id": "backup",
       "label": "Backup",
       "actions": [

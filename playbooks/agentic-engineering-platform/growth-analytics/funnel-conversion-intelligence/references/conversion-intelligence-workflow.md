@@ -1,5 +1,7 @@
 # Conversion intelligence workflow
 
+The v0.2 chat-led proposal binds Funnel Analyst and Growth Experiment Planner for a bounded signup-to-paid case. Its [team and handoff](team-and-handoffs.md) requires a validated stage observation before a pending experiment plan. The broader monitoring design below is a later owner choice.
+
 ## Define funnels before analysis
 
 Version each funnel with its steps, event/taxonomy revision, population, filters, attribution rule, comparison window, target or threshold, owner, and exclusions. Reuse customer funnel definitions when their steps, population, and windows are compatible; never silently redefine a step to make a trend look better.
@@ -10,16 +12,16 @@ Record segment dimensions (plan, channel/campaign, page/screen, device, geograph
 
 Use scripted steps for funnel snapshots, conversion and drop-off calculations, segment breakdowns, statistical change detection against the comparison window, and completeness checks (freshness, denominators, missing events). A change is reportable only when it clears the customer's minimum detectable effect and data-quality gate.
 
-Use a message sequence to investigate a supported change: rank contributing segments by impact, inspect the responsible pages/devices/sources, pull consented session replays for the affected cohort, test alternative explanations (tracking change, seasonality, mix shift, outage), and converge on an attributed cause with confidence. Sessions are qualitative evidence for an attributed change, not a detection method on their own.
+Use a message sequence to investigate a supported change: rank observed segment contributions, inspect relevant pages/devices/sources, pull consented session replays when allowed, and test alternative explanations (tracking change, seasonality, mix shift, outage). State a cause as a hypothesis until independent evidence or a valid experiment supports it. Sessions are qualitative context, not a detection method or causal proof on their own.
 
-For recurring monitoring, prove an on-demand investigation first, then configure scheduled funnel runs or threshold alerts with explicit scope, cadence, timezone, and notification conditions. Never page a human for a change that fails the quality gate.
+For recurring monitoring, prove an on-demand investigation first, then propose paused scheduled funnel runs or threshold alerts with explicit scope, cadence, timezone, cost and notification conditions. Never page a human for a change that fails the quality gate.
 
 ## Validation and report
 
 Validate funnel reproducibility from durable snapshots, denominator presence on every rate, segment/window compatibility, comparison-window alignment, session linkage for qualitative claims, and evidence for every finding. Verify that taxonomy or tracking changes surface as data-quality events rather than silent conversion shifts.
 
-Build a live conversion dashboard showing funnel steps with drop-offs, trends with comparison bands, segment breakdowns, open investigations with attributed causes and confidence, linked sessions, limitations, and history. Incomplete or untrusted states stay visibly unrated.
+Build a live conversion dashboard showing funnel steps with denominators, trends only for comparable windows, segments, open hypotheses, consented session references, limitations, and history. A new company may have one baseline window and no trend. Incomplete or untrusted states stay visibly unrated.
 
 ## Handoff
 
-Growth Experimentation and Follow-Through consumes frozen findings with their evidence and confidence. Return funnel/policy versions, usable windows, attributed causes, session references, and recommended hypotheses. Do not require downstream agents to recompute funnels from raw events or chat history.
+Growth Experiment Planner consumes the exact validated `funnel-observation/v1` and returns a pending `funnel-experiment-plan/v1`. A later Growth Experimentation and Follow-Through route may consume approved plans and provider-backed outcomes. Keep observation, proposed cause, launch and verified result separate; downstream Crews should not reconstruct counts from chat history.

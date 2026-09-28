@@ -202,6 +202,7 @@ func (api *StreamingAPI) conversationTurnTreeSnapshot(rootExecutionID string, ig
 	}
 
 	if api.bgAgentRegistry != nil {
+		ownedSession := api.sessionCompletionsOwned(root.SessionID)
 		for _, agent := range api.bgAgentRegistry.GetAll(root.SessionID) {
 			if agent == nil {
 				continue
@@ -231,6 +232,12 @@ func (api *StreamingAPI) conversationTurnTreeSnapshot(rootExecutionID string, ig
 			// window — and it only ever matters when nothing else in the tree is
 			// running, since a busy session keeps the tree alive on its own.
 			suppressNotification := snapshot.Metadata != nil && snapshot.Metadata["suppress_auto_notification"] == "true"
+			// A session owned by a runner (a scheduled run) gets its results
+			// from that runner right after this turn, so a finished child is
+			// finished; holding it would only delay every round.
+			if ownedSession {
+				suppressNotification = true
+			}
 			if (snapshot.Status == BGAgentCompleted || snapshot.Status == BGAgentFailed) &&
 				!suppressNotification && !snapshot.CompletionNotified &&
 				withinContinuationHandoffGrace(snapshot, now) {

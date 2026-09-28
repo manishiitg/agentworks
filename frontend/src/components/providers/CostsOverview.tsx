@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronRight, CircleAlert, Loader2, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { CostAggregate, CostOverview, CostOverviewItem } from '../../services/api-types'
-import { formatTokens, formatUSD } from '../workflow/costs/helpers'
+import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
+import CostExplorer from './CostExplorer'
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -12,13 +13,23 @@ const RANGES = [
   { days: 90, label: '90 days' },
 ] as const
 
-// Ledger scopes shown as their own columns; everything else (chat,
-// evaluation, tool, unknown) sums into "Chat & other".
-const SCOPE_COLUMNS = [
-  { scope: 'workflow_execution', label: 'Runs' },
-  { scope: 'pulse', label: 'Pulse' },
-  { scope: 'builder', label: 'Builder' },
-] as const
+const overviewCurrency = (amount: number) => {
+  if (amount > 0 && amount < 0.0001) return '<$0.0001'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
+    maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2,
+  }).format(amount)
+}
+
+const costLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'call_count' | 'unpriced_call_count'>) =>
+  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0
+    ? 'Unknown'
+    : overviewCurrency(usage.total_cost_usd)
+
+const unpricedLabel = (count?: number) =>
+  count ? `${count.toLocaleString()} unpriced ${count === 1 ? 'call' : 'calls'}` : ''
 
 const utcDate = (date: Date) => date.toISOString().slice(0, 10)
 
@@ -27,13 +38,6 @@ const costRangeBounds = (days: number, now = new Date()) => {
   from.setUTCDate(from.getUTCDate() - (days - 1))
   return { from: utcDate(from), to: utcDate(now) }
 }
-
-const scopeCost = (item: CostOverviewItem, scope: string) => item.by_scope?.[scope]?.total_cost_usd ?? 0
-
-const otherScopeCost = (item: CostOverviewItem) =>
-  Object.entries(item.by_scope || {})
-    .filter(([scope]) => !SCOPE_COLUMNS.some(column => column.scope === scope))
-    .reduce((sum, [, aggregate]) => sum + (aggregate?.total_cost_usd ?? 0), 0)
 
 const tokenCount = (aggregate?: CostAggregate) =>
   (aggregate?.prompt_tokens ?? 0) + (aggregate?.completion_tokens ?? 0) + (aggregate?.cache_read_tokens ?? 0) + (aggregate?.cache_write_tokens ?? 0)
@@ -45,21 +49,11 @@ const crewProjectId = (workspacePath: string) => {
   return index >= 0 ? workspacePath.slice(index + marker.length).split('/')[0] : ''
 }
 
-function KindBadge({ item, crew }: { item: CostOverviewItem; crew?: WorkSession }) {
-  if (item.kind === 'workflow') return <span className="text-[11px] text-gray-500 dark:text-gray-400">Workflow</span>
-  if (item.kind === 'crew') {
-    const owner = crew?.shared ? ` · ${crew.shared.ownerUsername || crew.shared.ownerId}` : ''
-    return <span className="text-[11px] text-gray-500 dark:text-gray-400">Crew{owner}</span>
-  }
-  return <span className="text-[11px] text-gray-500 dark:text-gray-400">Chats and spend not tied to a workflow</span>
-}
-
 export default function CostsOverview() {
   const [days, setDays] = useState<number>(30)
   const [data, setData] = useState<CostOverview | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
   const [crews, setCrews] = useState<WorkSession[]>([])
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -117,17 +111,22 @@ export default function CostsOverview() {
     .filter(row => row.usage.total_cost_usd > 0 || row.usage.call_count > 0)
     .sort((a, b) => b.usage.total_cost_usd - a.usage.total_cost_usd), [data])
 
-  const items = data?.items?.filter(item => item.total_cost_usd > 0 || item.call_count > 0) ?? []
   const total = data?.total
   const maxProviderCost = Math.max(...providerRows.map(row => row.usage.total_cost_usd), 0)
+  const unpricedCalls = total?.unpriced_call_count ?? 0
+  const costSources = [
+    (total?.provider_actual_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.provider_actual_cost_usd ?? 0)} provider-reported` : '',
+    (total?.subscription_shadow_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.subscription_shadow_cost_usd ?? 0)} subscription-equivalent estimate` : '',
+    (total?.token_estimate_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.token_estimate_cost_usd ?? 0)} token estimate` : '',
+  ].filter(Boolean)
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Costs</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-            Spend across every workflow and Crew you can open{data?.includes_other ? ', plus chats and spend not tied to a workflow' : ''}.
+            Recorded AI usage by user, workflow, Crew, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -175,8 +174,8 @@ export default function CostsOverview() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Total spend', value: formatUSD(total?.total_cost_usd) },
-              { label: 'Workflows & Crews', value: String(items.filter(item => item.kind !== 'other').length) },
+              { label: 'Tracked cost', value: overviewCurrency(total?.total_cost_usd ?? 0) },
+              { label: 'Unpriced LLM calls', value: unpricedCalls.toLocaleString() },
               { label: 'LLM calls', value: (total?.call_count ?? 0).toLocaleString() },
               { label: 'Tokens', value: formatTokens(tokenCount(total)) },
             ].map(card => (
@@ -186,114 +185,37 @@ export default function CostsOverview() {
               </div>
             ))}
           </div>
-          {((total?.subscription_shadow_cost_usd ?? 0) > 0 || (total?.token_estimate_cost_usd ?? 0) > 0) && (
-            <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {formatUSD(total?.provider_actual_cost_usd)} reported by providers · {formatUSD(total?.subscription_shadow_cost_usd)} subscription-equivalent · {formatUSD(total?.token_estimate_cost_usd)} estimated from tokens
-            </p>
-          )}
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+            <span className="font-medium text-gray-900 dark:text-gray-100">How to read this: </span>
+            {costSources.length > 0 ? costSources.join(' · ') : (total?.total_cost_usd ?? 0) > 0 ? 'Recorded cost source unavailable' : 'No priced usage recorded'}.
+            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have unknown cost and are excluded from the tracked amount.`}
+            {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription-equivalent estimates are not your subscription bill.'}
+          </div>
+
+          <CostExplorer data={data} days={days} itemLabel={itemLabel} />
 
           {providerRows.length > 0 && (
-            <section className="mt-6">
-              <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">By coding agent</h3>
-              <div className="space-y-2">
+            <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+              <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">Coding agent breakdown</summary>
+              <div className="mt-3 space-y-2">
                 {providerRows.map(row => (
                   <div key={row.provider} className="grid grid-cols-[8rem_minmax(0,1fr)_5.5rem] items-center gap-3 text-sm">
                     <span className="truncate text-gray-700 dark:text-gray-200">{row.label}</span>
                     <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                      <div
+                      {row.usage.total_cost_usd > 0 && <div
                         className="h-full rounded-full bg-violet-500 dark:bg-violet-400"
                         style={{ width: `${maxProviderCost > 0 ? Math.max(2, (row.usage.total_cost_usd / maxProviderCost) * 100) : 0}%` }}
-                      />
+                      />}
                     </div>
-                    <span className="text-right tabular-nums text-gray-900 dark:text-gray-100">{formatUSD(row.usage.total_cost_usd)}</span>
+                    <span className="text-right tabular-nums text-gray-900 dark:text-gray-100" title={unpricedLabel(row.usage.unpriced_call_count)}>
+                      {costLabel(row.usage)}
+                      {(row.usage.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] text-gray-500 dark:text-gray-400">{unpricedLabel(row.usage.unpriced_call_count)}</span>}
+                    </span>
                   </div>
                 ))}
               </div>
-            </section>
+            </details>
           )}
-
-          <section className="mt-6">
-            <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">By workflow and Crew</h3>
-            {items.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500 dark:border-gray-700">
-                No spend recorded in the last {days} days.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                <table className="w-full min-w-[36rem] text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
-                    <tr>
-                      <th scope="col" className="px-3 py-2 text-left font-medium">Name</th>
-                      {SCOPE_COLUMNS.map(column => (
-                        <th scope="col" key={column.scope} className="px-3 py-2 text-right font-medium">{column.label}</th>
-                      ))}
-                      <th scope="col" className="px-3 py-2 text-right font-medium">Chat & other</th>
-                      <th scope="col" className="px-3 py-2 text-right font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {items.map(item => {
-                      const isExpanded = expanded === item.id
-                      const models = Object.entries(item.by_model || {})
-                        .filter(([, usage]) => usage.total_cost_usd > 0 || usage.call_count > 0)
-                        .sort(([, a], [, b]) => b.total_cost_usd - a.total_cost_usd)
-                      return (
-                        <Fragment key={item.id}>
-                          <tr className="text-gray-900 dark:text-gray-100">
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => setExpanded(isExpanded ? null : item.id)}
-                                aria-expanded={isExpanded}
-                                className="flex min-w-0 items-start gap-1.5 text-left"
-                              >
-                                <ChevronRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium">{itemLabel(item)}</span>
-                                  <KindBadge item={item} crew={item.kind === 'crew' ? crewByProject.get(item.name) : undefined} />
-                                </span>
-                              </button>
-                            </td>
-                            {SCOPE_COLUMNS.map(column => (
-                              <td key={column.scope} className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                                {scopeCost(item, column.scope) > 0 ? formatUSD(scopeCost(item, column.scope)) : '—'}
-                              </td>
-                            ))}
-                            <td className="px-3 py-2 text-right tabular-nums text-gray-600 dark:text-gray-300">
-                              {otherScopeCost(item) > 0 ? formatUSD(otherScopeCost(item)) : '—'}
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatUSD(item.total_cost_usd)}</td>
-                          </tr>
-                          {isExpanded && (
-                            <tr className="bg-gray-50/70 dark:bg-gray-950/30">
-                              <td colSpan={SCOPE_COLUMNS.length + 3} className="px-3 py-2 pl-8">
-                                {models.length === 0 ? (
-                                  <span className="text-xs text-gray-500">No per-model breakdown recorded.</span>
-                                ) : (
-                                  <ul className="space-y-1 text-xs">
-                                    {models.map(([modelId, usage]) => (
-                                      <li key={modelId} className="flex items-center justify-between gap-3 text-gray-600 dark:text-gray-300">
-                                        <span className="min-w-0 truncate">
-                                          {costAgentLabel(usage.provider || '', modelId)} · <span className="font-mono">{modelId}</span>
-                                        </span>
-                                        <span className="shrink-0 tabular-nums">
-                                          {usage.call_count.toLocaleString()} calls · {formatTokens(tokenCount(usage))} tokens · {formatUSD(usage.total_cost_usd)}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </>
       )}
     </div>

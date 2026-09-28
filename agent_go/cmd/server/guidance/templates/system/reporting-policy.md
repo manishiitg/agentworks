@@ -42,6 +42,10 @@ There is no Dashboard generation step or widget-layout registry.
   field on an already-existing row with `window.report.updateField`/
   `updateFields` (see below). Do not bake changing run results into the
   document or add a step that regenerates it each run.
+- For data that lives outside the workflow (Notion, a CRM, an API), a
+  Dashboard can run a script from `code/` on each load or Refresh with
+  `window.report.run(path, args)` — see "Live data from a script" below.
+  Prefer `db/` for anything a run already stores.
 - A user action button can offer a contextual workflow-agent request through
   `window.report.sendChatMessage`. The app sends it directly to an existing automation chat,
   creating one only if none exists. For Dashboard-owned approvals, save first and then offer the request;
@@ -196,6 +200,84 @@ platform's human-decision lifecycle. Platform decisions created through
 `create_human_input_request` retain their options, answers, consumption, and
 audit trail in the Pulse panel/chat; do not edit `report_human_inputs` through
 the business-field write API or invent a duplicate platform decision store.
+
+### Live data from a script: `window.report.run`
+
+`await window.report.run('code/reports/open_deals.py', { days: 7 })` runs
+that script on the server and resolves the one JSON value it printed. Use it
+when the Dashboard must show the latest state of an outside system (the
+workflow's MCP servers or an API behind its secrets) rather than what the last
+run stored. Anyone who can open the workflow — owner or read-only — can
+trigger it, and it always runs **as the workflow**: its selected MCP servers
+and tools, its selected secrets (`$SECRET_*`), its variables (`$VAR_*`), never
+the viewer's own connections. Published static copies cannot run scripts.
+
+The script contract:
+
+- Lives under `code/` (`.py` → `python3`, `.js`/`.mjs` → `node`); the
+  convention is `code/reports/<name>.py`. The validator rejects any other
+  path and a script that does not exist.
+- Args arrive as JSON in `$REPORT_ARGS` (`{}` when none); treat them as
+  untrusted input from any viewer: validate, bound, and never interpolate
+  them into SQL, shell commands, or MCP filters without checking.
+- Print exactly **one JSON value** to stdout; send logs to stderr. Non-JSON
+  stdout, a non-zero exit, more than 2 MB of output, or more than 60 s fails
+  the call, and the Dashboard receives the error plus the stderr tail.
+- Calls MCP tools the same way a scripted step does:
+  `POST $MCP_MCP/<server>/<tool>` with the `$MCP_AUTH` header. Only servers
+  and tools selected for the workflow are reachable.
+- Reads `db/db.sqlite` through `$DB_PATH`, which is a **read-only snapshot**
+  for this call (absent if the workflow has no DB yet). A script never
+  writes the store; a Dashboard writes only through `updateField(s)`.
+- The only writable folder is `$REPORT_CACHE_DIR` (shared by every viewer and
+  every script of this workflow). The workflow folder is readable.
+
+Best practices:
+
+- **Cache in the script, not the page.** Every call runs the script again and
+  the platform keeps no cache. When the source is slow, paid, or
+  rate-limited, keep a file per query in `$REPORT_CACHE_DIR` (named by the
+  script and its normalized args), return it while it is younger than a
+  sensible TTL, and include `fetched_at` in the output so the page can show
+  "as of". Write the cache atomically (temp file, then rename) because two
+  viewers can refresh at once. Let an explicit `{"refresh": true}` arg skip
+  the cache for a Refresh button.
+- **Return what the page renders.** Aggregate, filter, and trim in the script;
+  never ship whole upstream payloads to the browser.
+- **Degrade, don't fail.** If the upstream call fails and a cached copy
+  exists, return it with `stale: true` and the error message instead of
+  exiting non-zero; the page shows the stale notice.
+- **Keep it fast and read-only.** Aim well under the 60 s cap: bounded page
+  sizes, a timeout on every HTTP/MCP call, and no side effects on the
+  outside system — a report view must never create, update, or send
+  anything upstream.
+- **Never print secrets.** Output reaches every viewer; errors are redacted
+  of known secret values, but stdout is returned as written.
+- In the page, call it inside `window.report.ready`, show a loading state
+  (the call can take seconds), catch the error into a visible message, and
+  wire a Refresh button that calls it again with `{ refresh: true }`.
+
+```js
+window.report.ready(async function () {
+  const el = document.getElementById('deals');
+  async function load(refresh) {
+    el.textContent = 'Loading…';
+    try {
+      const out = await window.report.run('code/reports/open_deals.py', { days: 7, refresh });
+      renderDeals(el, out.deals, out.fetched_at, out.stale);
+    } catch (err) {
+      el.textContent = 'Could not load live deals: ' + err.message;
+    }
+  }
+  document.getElementById('refresh-deals').onclick = () => load(true);
+  await load(false);
+});
+```
+
+Test the script before wiring it: run it once from the shell with
+`REPORT_ARGS='{"days":7}'` set, confirm one JSON value on stdout, then
+`validate_report_html()` and `preview_report()` (the preview runs the script
+for real).
 
 ### Sending a Dashboard request to the workflow agent
 

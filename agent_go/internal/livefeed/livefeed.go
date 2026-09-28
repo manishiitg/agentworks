@@ -137,11 +137,12 @@ var Default = NewBus()
 // Publish publishes on the Default bus.
 func Publish(kind Kind, workflow string) { Default.Publish(kind, workflow) }
 
-// WorkflowRoot reduces any path inside a workflow to its "Workflow/<folder>"
-// root, the key clients subscribe with. Empty for non-workflow paths.
+// WorkflowRoot reduces any path inside a workflow ("Workflow/<folder>") or a
+// shared crew ("Crew/<id>") to that root, the key clients subscribe with.
+// Empty for other paths.
 func WorkflowRoot(p string) string {
 	parts := strings.Split(strings.Trim(strings.TrimSpace(p), "/"), "/")
-	if len(parts) < 2 || parts[0] != "Workflow" || parts[1] == "" {
+	if len(parts) < 2 || (parts[0] != "Workflow" && parts[0] != "Crew") || parts[1] == "" {
 		return ""
 	}
 	return parts[0] + "/" + parts[1]

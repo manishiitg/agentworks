@@ -65,7 +65,10 @@ func DiffPatchDocument(c *gin.Context) {
 	// open /dev/tty and ask whether the patch should be reversed.
 	createdNewFile := false
 	var currentContent []byte
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) && req.DryRun {
+		createdNewFile = true
+		currentContent = []byte{}
+	} else if os.IsNotExist(err) {
 		if mkErr := os.MkdirAll(filepath.Dir(filePath), 0755); mkErr != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 				Success: false,
@@ -200,6 +203,16 @@ func DiffPatchDocument(c *gin.Context) {
 		return
 	}
 
+	if req.DryRun {
+		log.Printf("[DIFF_PATCH] dry run ok path=%s would_create=%t diff_bytes=%d duration=%s", filePathParam, createdNewFile, len(req.Diff), time.Since(started))
+		c.JSON(http.StatusOK, models.APIResponse[models.DiffPatchResponse]{
+			Success: true,
+			Message: "Diff patch would apply",
+			Data:    models.DiffPatchResponse{Applied: false, DryRun: true, WouldCreate: createdNewFile},
+		})
+		return
+	}
+
 	// Write updated content back to file
 	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
@@ -225,6 +238,9 @@ func DiffPatchDocument(c *gin.Context) {
 // correctAgentGeneratedDiff exists). Only lines inside a hunk (after an @@
 // line) are counted.
 func diffClaimedLineDelta(diffContent string) int {
+	if isApplyPatchFormat(diffContent) {
+		return applyPatchClaimedLineDelta(diffContent)
+	}
 	delta := 0
 	inHunk := false
 	for _, line := range strings.Split(diffContent, "\n") {
@@ -796,6 +812,11 @@ func applyDiffPatchFlexibleContext(ctx context.Context, currentContent, diffCont
 	diffContent = normalizeLineEndings(diffContent)
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+
+	// Codex/Cursor's native "*** Begin Patch" envelope has no line numbers.
+	if isApplyPatchFormat(diffContent) {
+		return applyApplyPatchFormat(currentContent, diffContent)
 	}
 
 	var result string

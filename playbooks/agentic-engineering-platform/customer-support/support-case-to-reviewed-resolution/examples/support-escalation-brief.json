@@ -1,0 +1,14 @@
+{
+  "artifact_type": "support-escalation-brief/v1",
+  "tenant_id": "tenant-demo",
+  "case_id": "case-204",
+  "account_id": "acct-52",
+  "thread_revision": "rev-7",
+  "observed_at": "2026-09-25T09:07:00Z",
+  "receiving_owner_id": "billing-owner-2",
+  "acceptance_state": "accepted",
+  "acceptance_ref": "handoff-392",
+  "deadline_at": "2026-09-25T14:00:00Z",
+  "impact": "One customer cannot access an invoice.",
+  "source_refs": ["case-204:rev-7", "handoff-392"]
+}

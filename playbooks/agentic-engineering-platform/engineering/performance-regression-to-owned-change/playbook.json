@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "performance-regression-to-owned-change",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Turn a reproducible service or page regression into an owner-reviewed change plan tied to the exact build and performance budget."
+    }
+  ],
+  "title": "Performance Regression to Owned Change",
+  "description": "Turn a reproducible service or page regression into an owner-reviewed change plan tied to the exact build and performance budget.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Engineering"
+  ],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Performance Regression to Owned Change as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One service or page, endpoint or journey, baseline and regressed builds, environment, traffic condition and Engineering owner.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Use comparable trace or test runs, performance budget revision, deployment timeline, issue/PR/CI state and change policy.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "A metric change needs comparable conditions and coverage; correlation with a deploy is a hypothesis. An accepted change plan is not a deployed fix.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Observability traces or approved test exports",
+      "type": "mcp",
+      "purpose": "Compare bounded baseline and current evidence under one performance budget",
+      "capability": "telemetry_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Issue, CI and deployment records or exports",
+      "type": "mcp",
+      "purpose": "Verify exact build, change owner and whether a proposed fix shipped",
+      "capability": "delivery_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Performance Regression to Owned Change",
+      "focus_areas": [
+        "Produce a sourced regression diagnosis and an owned blocker ledger with reproduction, uncertainty and next verification.",
+        "A metric change needs comparable conditions and coverage; correlation with a deploy is a hypothesis. An accepted change plan is not a deployed fix."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "performance-regression-finding/v1",
+    "engineering-performance-action/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "investigation",
+      "agent_playbook_id": "performance-investigator",
+      "required": true,
+      "output": "performance-regression-finding/v1"
+    },
+    {
+      "id": "delivery",
+      "agent_playbook_id": "engineering-delivery-coordinator",
+      "required": true,
+      "output": "engineering-performance-action/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "investigation-to-delivery",
+      "from": "investigation",
+      "to": "delivery",
+      "artifact_type": "performance-regression-finding/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

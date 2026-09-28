@@ -12,6 +12,8 @@ func TestIsAllowedShellExtraEnvKey(t *testing.T) {
 		"STEP_OUTPUT_DIR",
 		"SCRIPT_VERBOSE",
 		"RUNLOOP_STEP_ID",
+		"REPORT_ARGS",
+		"REPORT_CACHE_DIR",
 		"DB_PATH",
 		"PYTHONDONTWRITEBYTECODE",
 	}

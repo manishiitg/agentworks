@@ -1,0 +1,12 @@
+{
+  "artifact_type": "support-case-outcome/v1",
+  "tenant_id": "tenant-demo",
+  "case_id": "case-204",
+  "account_id": "acct-52",
+  "status": "resolved",
+  "status_revision": "rev-9",
+  "observed_at": "2026-09-25T16:00:00Z",
+  "resolution_basis": "provider_delivery",
+  "provider_message_id": "message-711",
+  "source_refs": ["case-204:rev-9"]
+}

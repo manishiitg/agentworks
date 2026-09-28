@@ -1,0 +1,24 @@
+{
+  "artifact_type": "gtm-offer-decision/v1",
+  "artifact_id": "offer-to-seller-readiness-pricing-1",
+  "producer_id": "pricing-packaging-analyst",
+  "tenant_id": "tenant-1",
+  "subject_id": "business-v2",
+  "offer_id": "offer-v2",
+  "plan_id": "business-v2",
+  "price_revision": "price-44",
+  "source_revision": "pricing-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "pricing-source-1",
+    "pricing-source-2"
+  ],
+  "state": "accepted",
+  "action_state": "none",
+  "approval_ref": "pricing-owner-8",
+  "entitlement_revision": "entitlement-v6",
+  "unit_economics_ref": "cost-2026-q3",
+  "protected_contracts": [
+    "contract-9"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "incident-to-verified-recovery",
+  "playbook_version": "0.1.0",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm recovery goal and owners", "instructions": "Name the on-call owner, release owner, affected service, target recovery condition, and incident escalation policy." },
+    { "id": "incident_scope", "title": "Bound the incident", "instructions": "Record stable incident ID, service, environment, impact window and timezone, affected systems, and authorized investigation scope. Preserve unknown impact." },
+    { "id": "source_access", "title": "Test actual source access", "instructions": "Read an authorized incident record, representative telemetry, and issue, CI, or deploy record. Record source IDs, freshness, joins, missing coverage, and access limits; an integration name alone is not proof." },
+    { "id": "recovery_rule", "title": "Define recovery evidence", "instructions": "Agree on service indicators, thresholds, observation window, environment, and owner decision needed for closure. A deployment or green CI alone is not recovery." },
+    { "id": "team_bindings", "title": "Bind ready Engineering Crews", "instructions": "Record existing or reviewed new Incident Investigator and Engineering Delivery Coordinator Crew IDs. Verify both selected skills and checklist progress. One Crew may serve both only with compatible access and separate step outputs." },
+    { "id": "handoff_contract", "title": "Validate the incident handoff", "instructions": "Validate incident-investigation/v1 before Delivery reads it. Match incident ID, service, evidence, hypotheses, and owner decision. Validate engineering-blocker-ledger/v1 against the same incident and intended environment. Reject wrong-incident and unapproved-action examples." },
+    { "id": "plan_review", "title": "Review the Automation plan", "instructions": "Show exact Crew bindings, bounded source fields, artifact paths, validator steps, owner approvals, action and notification routes, run cost, and manual activation state." },
+    { "id": "test_run", "title": "Run one incident route manually", "instructions": "Use a real authorized incident or past incident with source records. Record run IDs, artifact paths, validator results, owner review, and observed recovery or unknown state. Fictional fixtures do not complete setup." },
+    { "id": "action_ledger", "title": "Track owner decisions and repeat state", "instructions": "Keep stable incident, issue, change, and action IDs, status, owner, source links, approval, attempted action, receipt, and next check. Avoid duplicate pages, tickets, and remediations." },
+    { "id": "activation_choice", "title": "Choose the run policy", "instructions": "Record manual-only or an authenticated trigger with concurrency, retry, notification, budget, and duplicate rules. Test a real event before enabling it. Setup completion does not perform a production action or close the incident." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

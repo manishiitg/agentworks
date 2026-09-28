@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "finding-to-verified-remediation",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "scope_owner", "title": "Confirm written scope and owners", "instructions": "Record written target, environment, allowed methods, time window, rate and side-effect limits, stop conditions, restricted evidence policy, Security and closure owners, and excluded actions."},
+    {"id": "finding_identity", "title": "Bind exact finding and asset", "instructions": "Record tenant, finding, asset, affected environment, observed build, source report, component, current disposition, stable deduplication key and retest target."},
+    {"id": "severity_policy", "title": "Set applicability and severity rules", "instructions": "Record policy revision, verification limits, scanner-only versus confirmed status, exposure and impact evidence, confidence, due date, and accepted-risk authority."},
+    {"id": "remediation_rule", "title": "Define fix and independent retest", "instructions": "Specify reviewed change path, expected fixed build, affected deployment source, finding-specific retest criterion, independent reviewer, closure authority, and risk-acceptance expiry rule."},
+    {"id": "team_bindings", "title": "Bind ready Security Crews", "instructions": "Inspect existing compatible Crews. Bind ready Security Findings Analyst and Security Remediation Coordinator IDs and selected skills; separate them when assessment, change authority or independent review requires it."},
+    {"id": "source_access", "title": "Probe real records", "instructions": "Read one authorized finding and affected asset/build, relevant issue or source record, current deployment and an appropriate retest source. A named scanner or repository is not verified access."},
+    {"id": "handoff_contract", "title": "Validate finding and remediation join", "instructions": "Run the bundled validator before Remediation consumes Finding. Reject wrong tenant, finding, asset or environment, unsupported applicability, missing scope proof, false deployed claims, retest on a different build, and unsupported closure."},
+    {"id": "plan_review", "title": "Review concrete Automation", "instructions": "Show Crew IDs, source and artifact paths, explicit validator steps, permissions, scope and stop conditions, owner decisions, change/deployment/retest routes, privacy limits, duplicate policy, cost and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized case manually", "instructions": "Use a real finding within written scope. Save source and validator IDs, owner decisions, actual change/deployment/retest status, closure or unknown, and blockers. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose event and action ledger", "instructions": "Choose manual-only or a reviewed authenticated finding event with stable IDs, replay protection, retries, cost and notifications. Setup completion alone enables no scan, ticket, change, deployment or closure."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

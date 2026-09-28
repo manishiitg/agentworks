@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "release-candidate-to-reviewed-gate",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm gate goal and owner", "instructions": "Name the exact release decision, QA and release owners, first review result, status authority, deadline, and excluded merge or deploy actions."},
+    {"id": "candidate_scope", "title": "Bind exact candidate", "instructions": "Record release or PR ID, SHA, immutable build artifact, environment, journey and policy revisions, cutoff, and stable attempt IDs. A branch name or green summary is not candidate identity."},
+    {"id": "suite_policy", "title": "Enumerate required evidence", "instructions": "Record every required suite, mandatory assertions, pass/fail/blocked and needs-review rules, waiver authority, retry limits, and treatment of skipped or stale results."},
+    {"id": "evidence_rules", "title": "Set browser and retention policy", "instructions": "Verify test account and fixtures, runner, expected journey, screenshots/video/console/network requirements, retention and sensitive-data handling."},
+    {"id": "team_bindings", "title": "Bind ready QA Crews", "instructions": "Inspect compatible existing Crews. Bind ready Browser Journey QA Analyst and Release Quality Assistant IDs and selected skills. Add Flaky Test Investigator only when intermittent evidence needs a distinct diagnosis owner."},
+    {"id": "source_access", "title": "Probe real source access", "instructions": "Read one exact candidate record, its required-suite policy, an actual attempt and diagnostics, and destination state if publication is proposed. A provider name is not verified access."},
+    {"id": "handoff_contract", "title": "Validate selected handoffs", "instructions": "Run the bundled validator before Gate consumes Journey or optional Flake artifacts. Reject mismatched SHA/build/environment, missing required evidence, hidden failed attempts, unreviewed waivers, and a pass with missing suites."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, runner/source and artifact paths, explicit validator steps, optional flake branch, gate owner and waiver boundaries, status publication route, duplicate rule, cost, and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one candidate manually", "instructions": "Use a real authorized candidate and policy. Save exact attempt and validator results, gate owner decision, publication receipt or none, and blockers. Fixtures alone do not complete setup."},
+    {"id": "activation_choice", "title": "Choose event and status policy", "instructions": "Keep manual-only or review an authenticated build event with stable release/build/run IDs, replay behavior, retry/cost limits, and notifications. Setup completion alone does not publish a status or approve release."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

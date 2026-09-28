@@ -1,3 +1,40 @@
+## Scheduled runs lost to pauses and to Pulse, and Pulse did not act — PLAT-363
+
+[PLAT-363](pulse_platform/scheduler-runs/plat-363.md) explains 21 missed local
+runs: 18 were skipped by a global "Pause all", and 3 were refused while a
+Pulse fix run held the workflow's lock. Fix runs now use Pulse's own lock, so
+they no longer block schedules.
+- **Pulse:** its evidence now separates lost runs from deliberate skips.
+  Technical Review may set `queue_latest` on a real-work schedule that lost a
+  run, and Pulse holds off a step the workflow is running right now.
+- **UI:** the missed badge says why a run didn't happen, pause and resume leave
+  a history, and a resume offers a catch-up of the skipped runs.
+Pushed to main; restart and deploy pending.
+
+## Agents could act as another session or workflow — PLAT-362
+
+[PLAT-362](pulse_platform/security-sandbox/plat-362.md) closes the path for an
+agent to act as another user's session or workflow. Pulse platform tools and
+decision answers now act only for the calling session's own workflow and owner.
+Each agent's tool calls carry a token for its own session, signed with an
+in-memory secret, and the server refuses any request that names another
+session through the path, header, virtual-tool scope or model-supplied shell
+env. The body-session execute routes now require the caller's own session.
+Reviewed and pushed to main. Deployment, Pi/Cursor live checks, and follow-ups
+D1–D7 (shared `/tmp` and tmux socket, unowned session routes, Cursor config in
+the workspace, and more) are listed in the ticket.
+
+## Scheduled runs and background agents stopped before their steps finished — PLAT-361
+
+[PLAT-361](pulse_platform/scheduler-runs/plat-361.md) fixes salesoutreach's
+email and LinkedIn schedules running 1 of 12 groups every day (Sep 19–26) and
+Pulse reviewers ending without recording a verification result. `execute_step`
+tells the agent to end its turn and wait for the result, but the scheduler and
+background agents treated "turn ended" as "work done". Both now own the steps
+they start, like a step owns its sub-agents: wait for every step, hand the
+results back as the next turn, finish only when a turn starts nothing new.
+Pushed to main; deployment and live acceptance pending.
+
 ## Completion turn colliding with a user turn closed the CLI — PLAT-360
 
 [PLAT-360](pulse_platform/chat-reliability/plat-360.md) fixes a lost user

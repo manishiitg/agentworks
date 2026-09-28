@@ -5,7 +5,7 @@ import { UI_CONTROL_CONTRACT } from './contract.generated'
 const base = { request_id: 'test', expires_at: '2030-01-01T00:00:00Z' }
 describe('closed semantic UI control contract', () => {
   it('accounts for all views but never advertises placeholder deep actions', () => {
-    expect(UI_CONTROL_CONTRACT.views).toHaveLength(18)
+    expect(UI_CONTROL_CONTRACT.views).toHaveLength(19)
     for (const { id } of UI_CONTROL_CONTRACT.views) {
       expect(supportedAction({ ...base, view: id, action: 'open' })).toBe(true)
       expect(supportedAction({ ...base, view: id, action: 'send' })).toBe(false)

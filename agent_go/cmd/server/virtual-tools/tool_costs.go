@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -137,6 +138,7 @@ func recordPricedToolCost(ctx context.Context, workspaceAPIURL, userID string, c
 		RunID:             target.RunFolder,
 		ExecutionID:       executionID,
 		SessionID:         sessionID,
+		SourcePlatform:    costobserver.SourcePlatformFromContext(ctx),
 		Scope:             scope,
 		Component:         "tool:" + cost.ToolName,
 		Provider:          cost.Provider,

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "funnel-conversion-intelligence",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm funnel question and owner","instructions":"Name the SaaS product, tenant, eligible signup cohort, commercial goal, decision owner and excluded populations. Decide whether the first result is a comparison or baseline-first observation."},
+    {"id":"funnel_definition","title":"Freeze ordered stage definitions","instructions":"Record eligible, signup, activated and paid states with event or billing source, event version, time ordering, deduplication rule and timezone. A trial or checkout click is not paid state."},
+    {"id":"identity_source","title":"Confirm identity and coverage","instructions":"Probe the join from event user/account ID to billing customer/subscription. Record source revisions, consent, internal/test exclusions, matched and unmatched counts, billing lag and latest paid-state cutoff."},
+    {"id":"comparison_rule","title":"Set comparison or baseline-first rules","instructions":"Choose equal baseline/current windows with the same population, filters and event versions, or one complete current window explicitly marked baseline-first. Define stage denominators, minimum coverage, freshness, small-sample rule and how changed instrumentation starts a new baseline."},
+    {"id":"team_bindings","title":"Bind two distinct Crews","instructions":"Inspect and reuse or create authorized Funnel Analyst and Growth Experiment Planner Crew IDs with selected skills and separate output paths. One Crew identity cannot satisfy both required slots."},
+    {"id":"source_access","title":"Probe both Crew inputs","instructions":"Have Funnel Analyst read one representative event and exact paid-state record or export. Have Growth Experiment Planner read the validated observation and owner policy. Save stable IDs, scopes, observed times and missing access."},
+    {"id":"handoff_contract","title":"Validate the stage-count handoff","instructions":"Save funnel-observation/v1 and run the blocking validator. Pass its exact ID to the planner, save funnel-experiment-plan/v1 and validate both. Record run IDs, paths, validation output and a rejected false-launch case."},
+    {"id":"plan_review","title":"Review the Builder proposal","instructions":"Show Crew reuse/creation, source access, event and identity rules, handoff validator, metric/guardrail, owner approval boundary, sample and cost policy. Playbook selection does not authorize a query, experiment or change."},
+    {"id":"manual_test","title":"Run one bounded funnel case","instructions":"Use two authorized comparable exports or a baseline-first case. Recompute stage counts and rates, check paid-state evidence and identity coverage, then have the owner review a pending experiment proposal. Keep the route manual if source or validation is missing."},
+    {"id":"activation_choice","title":"Choose monitoring policy","instructions":"Record manual-only or a reviewed paused schedule with timezone, source freshness, billing lag, query cost, deduplication, retries and notifications. Completing this check does not launch an experiment or enable recurrence."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

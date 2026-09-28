@@ -1,0 +1,17 @@
+{
+  "artifact_type": "security-finding/v1",
+  "tenant_id": "tenant-demo",
+  "finding_id": "sec-81",
+  "asset_id": "checkout-api",
+  "environment": "staging",
+  "observed_build": "sha:c100a",
+  "scope_ref": "scope:checkout-staging-2026",
+  "policy_version": "appsec-v2",
+  "observed_at": "2026-09-25T08:00:00Z",
+  "applicability": "confirmed",
+  "applicability_ref": "repro:sec-81-staging",
+  "severity": "high",
+  "owner_id": "appsec-owner",
+  "verification_criterion": "Unauthenticated GET /orders returns 401 without order data.",
+  "source_refs": ["report:sec-81", "repro:sec-81-staging", "scope:checkout-staging-2026"]
+}

@@ -291,17 +291,125 @@ func TestUpdateCrewStepToolRejectsNonCrew(t *testing.T) {
 	}
 }
 
+func TestUpdateValidationSchemaPersistsOnCrewStep(t *testing.T) {
+	seed := `{"objective":"test","steps":[{"type":"crew","id":"producer","title":"Produce artifact","crew_profile_id":"work","crew_project_id":"orders","trigger_id":"trigger-1","instruction":"Produce one order exception","context_output":"exception.json"}]}`
+	files, readFile, writeFile := testCrewToolFiles(seed)
+	update := createUpdateValidationSchemaExecutor("Workflow/test", loggerv2.NewNoop(), readFile, writeFile)
+	_, err := update(context.Background(), map[string]interface{}{
+		"existing_step_id": "producer", "reason": "Require an exact order exception before handoff",
+		"validation_schema": map[string]interface{}{"files": []interface{}{map[string]interface{}{
+			"file_name": "exception.json", "must_exist": true,
+			"json_checks": []interface{}{map[string]interface{}{"path": "$.order_id", "must_exist": true, "value_type": "string"}},
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("update_validation_schema: %v", err)
+	}
+	var written string
+	for path, content := range files {
+		if strings.HasSuffix(path, "plan.json") {
+			written = content
+		}
+	}
+	var plan PlanningResponse
+	if err := json.Unmarshal([]byte(written), &plan); err != nil {
+		t.Fatalf("written plan: %v", err)
+	}
+	crew, ok := plan.Steps[0].(*CrewPlanStep)
+	if !ok || crew.ValidationSchema == nil || len(crew.ValidationSchema.Files) != 1 || crew.ValidationSchema.Files[0].FileName != "exception.json" {
+		t.Fatalf("Crew schema was not saved: %+v", plan.Steps[0])
+	}
+}
+
 // fakeCrewRunner captures the request a crew step sends and replays a canned
 // outcome, so executor tests never touch Crew services.
 type fakeCrewRunner struct {
 	req    CrewStepRequest
 	result CrewStepResult
 	err    error
+	calls  int
 }
 
 func (f *fakeCrewRunner) RunCrewStep(_ context.Context, req CrewStepRequest) (CrewStepResult, error) {
+	f.calls++
 	f.req = req
 	return f.result, f.err
+}
+
+func TestExecuteCrewStepValidatesOutputBeforeNextCrew(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		response   string
+		shouldPass bool
+	}{
+		{"valid artifact", `{"artifact_type":"order-exception/v1","order_id":"ord-1"}`, true},
+		{"missing required identity", `{"artifact_type":"order-exception/v1"}`, false},
+		{"malformed JSON", `not json`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{}
+			base := newFakeWorkspaceAPIWithContent(t, files)
+			base.SetWorkspacePath("Workflow/instagram")
+			fake := &fakeCrewRunner{result: CrewStepResult{CrewRunID: "run-1", Status: "success", FinalResponse: tc.response}}
+			hcpo := &StepBasedWorkflowOrchestrator{
+				BaseOrchestrator: base, selectedRunFolder: "iteration-0",
+				executionOptions: &ExecutionOptions{CrewRunner: fake},
+			}
+			producer := &CrewPlanStep{
+				Type: StepTypeCrew,
+				CommonStepFields: CommonStepFields{
+					ID: "producer", Title: "Order exception", ContextOutput: "exception.json",
+					ValidationSchema: &ValidationSchema{Files: []FileValidationRule{{
+						FileName: "exception.json", MustExist: true,
+						JSONChecks: []JSONValidationCheck{
+							{Path: "$.artifact_type", MustExist: true, ValueType: "string", Pattern: "^order-exception/v1$"},
+							{Path: "$.order_id", MustExist: true, ValueType: "string"},
+						},
+					}}},
+				},
+				CrewProfileID: "work", CrewProjectID: "orders", TriggerID: "trigger-1", Instruction: "Review order",
+			}
+			consumer := &CrewPlanStep{
+				Type:             StepTypeCrew,
+				CommonStepFields: CommonStepFields{ID: "consumer", Title: "Customer update", ContextDependencies: []string{"exception.json"}},
+				CrewProfileID:    "work", CrewProjectID: "support", TriggerID: "trigger-2", Instruction: "Draft update",
+			}
+			steps := []PlanStepInterface{producer, consumer}
+			progress := &StepProgress{}
+			_, contextFiles, err := hcpo.executeCrewStep(context.Background(), producer, 0, progress, nil, &ExecutionContext{}, steps)
+			if tc.shouldPass {
+				if err != nil {
+					t.Fatalf("producer: %v", err)
+				}
+				if _, _, err := hcpo.executeCrewStep(context.Background(), consumer, 1, progress, contextFiles, &ExecutionContext{}, steps); err != nil {
+					t.Fatalf("consumer: %v", err)
+				}
+				if fake.calls != 2 {
+					t.Fatalf("crew calls = %d, want 2", fake.calls)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), "output failed validation") {
+					t.Fatalf("producer error = %v", err)
+				}
+				if fake.calls != 1 {
+					t.Fatalf("crew calls = %d, want producer only", fake.calls)
+				}
+				if len(progress.CompletedStepIndices) != 0 {
+					t.Fatalf("completed steps = %v", progress.CompletedStepIndices)
+				}
+				if len(contextFiles) != 0 {
+					t.Fatalf("available context files = %v", contextFiles)
+				}
+			}
+			var log PreValidationLogEntry
+			if err := json.Unmarshal([]byte(files["Workflow/instagram/runs/iteration-0/logs/producer/pre_validation.json"]), &log); err != nil {
+				t.Fatalf("validation log: %v", err)
+			}
+			if log.OverallPass != tc.shouldPass || log.ExecutionMode != "crew" {
+				t.Fatalf("validation log = %+v", log)
+			}
+		})
+	}
 }
 
 func TestExecuteCrewStep(t *testing.T) {

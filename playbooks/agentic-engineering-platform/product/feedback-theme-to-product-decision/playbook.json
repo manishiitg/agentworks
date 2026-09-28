@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "feedback-theme-to-product-decision",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Adds a chat-led Support feedback to Product decision route with source coverage, duplicate and issue-action contracts."
+    }
+  ],
+  "title": "Feedback Theme to Product Decision",
+  "description": "Validate a bounded customer feedback theme, compare it with current product work, and prepare an owner-reviewed decision without silently creating roadmap work.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Product"
+  ],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Feedback Theme to Product Decision as a chat-led proposal. Inspect existing Feedback & Review Analyst and Product Feedback Coordinator Crews, feedback source permissions, bounded product and segment scope, current issue/roadmap source, privacy rule and product owner. Propose reuse or reviewed creation, exact validated artifacts, one manual theme and separate action approvals. Show the concrete plan before Builder applies it. Selecting this Playbook creates no issue, roadmap commitment, customer message or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "feedback_scope",
+      "label": "Tenant, product, segment, channels, period and allowed feedback sources",
+      "required": true
+    },
+    {
+      "id": "count_policy",
+      "label": "Deduplication, numerator/denominator and source-coverage rules",
+      "required": true
+    },
+    {
+      "id": "product_source",
+      "label": "Current issue, roadmap and product evidence source or export",
+      "required": true
+    },
+    {
+      "id": "decision_owner",
+      "label": "Product owner, issue-match and prioritization policy",
+      "required": true
+    },
+    {
+      "id": "privacy_action",
+      "label": "Privacy, quotation and exact issue/customer action authority",
+      "required": true
+    },
+    {
+      "id": "run_policy",
+      "label": "Manual-only or reviewed feedback event and cadence",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create reviewed missing Support or Product Crew with stable keys",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a validated bounded theme with privacy scope to Product",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "feedback-source",
+      "name": "Helpdesk, survey or review export",
+      "type": "mcp",
+      "purpose": "Read exact feedback records and denominator coverage",
+      "capability": "feedback_read",
+      "optional": true
+    },
+    {
+      "id": "product-source",
+      "name": "Issue tracker, roadmap or product export",
+      "type": "mcp",
+      "purpose": "Verify existing issue, status and owner decisions",
+      "capability": "product_read",
+      "optional": true
+    },
+    {
+      "id": "issue-action",
+      "name": "Approved issue-tracker route",
+      "type": "mcp",
+      "purpose": "Apply only a separately approved exact issue change and retain receipt",
+      "capability": "issue_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Feedback to product decision",
+      "focus_areas": [
+        "Whether theme prevalence and affected segment match source coverage",
+        "Whether Product decisions and issue outcomes remain traceable without duplicate work or customer promises"
+      ],
+      "review_when": [
+        "A new comparable feedback window arrives, an existing issue changes, or an owner decision becomes due"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Support and Product Crew roster with source and privacy map",
+    "Validated feedback-theme-brief/v1",
+    "Validated product-feedback-decision/v1 with current issue observation",
+    "Manual theme, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "feedback",
+      "agent_playbook_id": "feedback-review-analyst",
+      "required": true,
+      "output": "feedback-theme-brief/v1"
+    },
+    {
+      "id": "product",
+      "agent_playbook_id": "product-feedback-coordinator",
+      "required": true,
+      "output": "product-feedback-decision/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "feedback-to-product",
+      "from": "feedback",
+      "to": "product",
+      "artifact_type": "feedback-theme-brief/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "feedback_scope",
+    "product_policy",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "action_ledger",
+    "activation_choice"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "illustrative": true,
+  "artifact_type": "growth-priority-brief/v1",
+  "artifact_id": "growth-arbordesk-2026-09-25-v1",
+  "site_url": "https://arbordesk.example/",
+  "offer": "Appointment software for independent physiotherapy clinics",
+  "audience": "UK clinic owners evaluating appointment software",
+  "visitor_action": "Request a demo",
+  "created_at": "2026-09-25T09:00:00Z",
+  "inspected_urls": ["https://arbordesk.example/", "https://arbordesk.example/clinics"],
+  "baseline": {
+    "state": "unavailable",
+    "metric": "Qualified demo requests from organic visitors",
+    "start_date": "2026-09-25",
+    "limitation": "No authorized analytics or Search Console data was available for a comparable history."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "page_url": "https://arbordesk.example/clinics",
+      "observation": "The clinic page describes scheduling but does not explain how patient reminders work.",
+      "source_ref": "https://arbordesk.example/clinics",
+      "observed_at": "2026-09-25T08:45:00Z",
+      "evidence_kind": "observed"
+    },
+    {
+      "id": "F-002",
+      "page_url": "https://arbordesk.example/",
+      "observation": "The homepage has a demo link; the owner has not confirmed whether a demo request is tracked.",
+      "source_ref": "https://arbordesk.example/",
+      "observed_at": "2026-09-25T08:45:00Z",
+      "evidence_kind": "observed"
+    }
+  ],
+  "priorities": [
+    {
+      "id": "ACT-001",
+      "action": "Draft a reviewed reminder explanation on the clinic page after confirming the product claim.",
+      "page_url": "https://arbordesk.example/clinics",
+      "evidence_refs": ["F-001"],
+      "owner": "Site owner",
+      "effort": "small",
+      "success_signal": "Approved explanation is published; visits and qualified demo requests are tracked from the agreed start date.",
+      "rank_reason": "The named buyer cannot find an answer on a relevant offer page; source evidence is directly observed."
+    },
+    {
+      "id": "ACT-002",
+      "action": "Confirm and test the demo-request event definition.",
+      "page_url": "https://arbordesk.example/",
+      "evidence_refs": ["F-002"],
+      "owner": "Analytics owner",
+      "effort": "small",
+      "success_signal": "A test request appears once in the authorized analytics or CRM source.",
+      "rank_reason": "The goal cannot be measured reliably until the event is confirmed."
+    }
+  ],
+  "unknowns": [
+    "Whether reminders are available on every product plan",
+    "Who approves public product claims",
+    "Whether a demo-request event already exists"
+  ],
+  "limitations": ["Only two public pages were inspected; search demand and indexing are unknown."]
+}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +15,9 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
 // workspaceProxyHandler creates an http.Handler that reverse-proxies to the workspace API.
@@ -103,6 +107,9 @@ func workspaceProxyHandler() http.Handler {
 		// auth of its own; it must carry the identity this server verified,
 		// never whatever the browser put in the header.
 		r.Header.Set("X-User-ID", GetUserIDFromContext(r.Context()))
+		// The workspace service token is this server's alone; the transport
+		// (wsauth, installed at startup) attaches it upstream.
+		r.Header.Del(wsauth.HeaderName)
 		// A write to a workflow's dashboard files refreshes open Report views.
 		if rel := workspaceProxyRelativePath(r); isWorkflowWorkspaceProxyWrite(r) && liveFeedReportPath(rel) {
 			defer publishReportChanged(strings.TrimPrefix(strings.TrimPrefix(rel, "api/documents/"), "api/folders/"))
@@ -140,19 +147,34 @@ func workspaceProxyRelativePath(r *http.Request) string {
 // which case the caller must defer it: it is idempotent with the
 // transport's own body close.
 func workspaceProxyCrossUserBlock(r *http.Request, callerID string) (status int, detail string, cleanup func()) {
-	own := sanitizeUserIDForPath(callerID)
-	if workspaceProxyURLIsOtherUser(workspaceProxyRelativePath(r), own) {
+	policy := newWorkspaceProxyPolicy(r, callerID)
+	rel := workspaceProxyRelativePath(r)
+	if workspaceProxyURLIsOtherUser(rel, policy.own) {
 		return http.StatusForbidden, "url path", nil
+	}
+	if target, ok := workspaceProxyURLTarget(rel); ok {
+		if reason := policy.denies("", target); reason != "" {
+			return http.StatusForbidden, "url path: " + reason, nil
+		}
 	}
 	query := r.URL.Query()
 	for _, key := range []string{"folder", "pattern", "db_path", "path", "filepath", "file_path", "source_path", "destination_path"} {
 		for _, value := range query[key] {
-			if workspaceProxyPathIsOtherUser(value, own) {
+			if workspaceProxyPathIsOtherUser(value, policy.own) {
 				return http.StatusForbidden, "query param " + key, nil
+			}
+			if reason := policy.denies(key, value); reason != "" {
+				return http.StatusForbidden, "query param " + key + ": " + reason, nil
 			}
 		}
 	}
-	return workspaceProxyBodyVerdict(r, own)
+	// Bulk routes without an explicit folder act on the whole docs root.
+	if policy.bulk && query.Get("folder") == "" && r.Method == http.MethodGet {
+		if reason := policy.denies("folder", ""); reason != "" {
+			return http.StatusForbidden, "whole workspace: " + reason, nil
+		}
+	}
+	return workspaceProxyBodyVerdict(r, policy)
 }
 
 // workspaceProxyRoutePathPrefixes are workspace routes whose trailing path
@@ -180,11 +202,21 @@ func workspaceProxyURLIsOtherUser(rel, own string) bool {
 
 // workspaceProxyPathIsOtherUser matches values that address another
 // user's tree: the bare _users root, or _users/<segment>/... with a
-// segment that is not the caller's own.
+// segment that is not the caller's own. A shared crew root, Crew/<id>, is
+// the owner's tree too: raw access is the manifest owner's only (readers
+// use the mediated /shared-projects endpoints), the bare Crew root is never
+// listable, and a crew nobody owns (or that does not exist yet: crews are
+// created server-side) is refused.
 func workspaceProxyPathIsOtherUser(raw, own string) bool {
 	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
-	if clean == "_users" {
+	if clean == "_users" || clean == crewSharedRootName {
 		return true
+	}
+	if strings.HasPrefix(clean, crewSharedRootName+"/") {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ref, ok := resolveCrewPath(ctx, own, clean)
+		return !ok || ref.OwnerID == "" || ref.OwnerID != own
 	}
 	if !strings.HasPrefix(clean, "_users/") {
 		return false
@@ -362,7 +394,7 @@ func (w *workspaceProxySpillWriter) abort() {
 // to the URL and query checks: no proxied endpoint binds paths from raw
 // bodies (JSON endpoints use ShouldBindJSON; the two multipart endpoints
 // require file parts).
-func workspaceProxyBodyVerdict(r *http.Request, own string) (status int, detail string, cleanup func()) {
+func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (status int, detail string, cleanup func()) {
 	spooled, status, detail := workspaceProxySpoolBody(r)
 	if status != 0 {
 		return status, detail, nil
@@ -390,7 +422,7 @@ func workspaceProxyBodyVerdict(r *http.Request, own string) (status int, detail 
 			spooled.close()
 			return http.StatusBadRequest, "request body is not valid JSON", nil
 		}
-		if workspaceProxyJSONAddressesOtherUser(decoded, own) {
+		if workspaceProxyJSONAddressesOtherUser(decoded, policy) {
 			spooled.close()
 			return http.StatusForbidden, "request body path", nil
 		}
@@ -418,7 +450,7 @@ func workspaceProxyBodyVerdict(r *http.Request, own string) (status int, detail 
 					spooled.close()
 					return http.StatusBadRequest, "request body could not be read", nil
 				}
-				if workspaceProxyPathIsOtherUser(string(value), own) {
+				if policy.deniesPath(part.FormName(), string(value)) {
 					spooled.close()
 					return http.StatusForbidden, "multipart form path", nil
 				}
@@ -436,24 +468,24 @@ func workspaceProxyBodyVerdict(r *http.Request, own string) (status int, detail 
 	return replay()
 }
 
-func workspaceProxyJSONAddressesOtherUser(node any, own string) bool {
+func workspaceProxyJSONAddressesOtherUser(node any, policy workspaceProxyPolicy) bool {
 	switch value := node.(type) {
 	case map[string]any:
 		for key, child := range value {
 			if !workspaceProxyBodyPathFields[key] {
-				if workspaceProxyJSONAddressesOtherUser(child, own) {
+				if workspaceProxyJSONAddressesOtherUser(child, policy) {
 					return true
 				}
 				continue
 			}
 			switch held := child.(type) {
 			case string:
-				if workspaceProxyPathIsOtherUser(held, own) {
+				if policy.deniesPath(key, held) {
 					return true
 				}
 			case []any:
 				for _, entry := range held {
-					if text, ok := entry.(string); ok && workspaceProxyPathIsOtherUser(text, own) {
+					if text, ok := entry.(string); ok && policy.deniesPath(key, text) {
 						return true
 					}
 				}
@@ -461,7 +493,7 @@ func workspaceProxyJSONAddressesOtherUser(node any, own string) bool {
 		}
 	case []any:
 		for _, entry := range value {
-			if workspaceProxyJSONAddressesOtherUser(entry, own) {
+			if workspaceProxyJSONAddressesOtherUser(entry, policy) {
 				return true
 			}
 		}

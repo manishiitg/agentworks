@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "inventory-availability-to-owner-action",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm inventory job and owners","instructions":"Name the merchant, catalog owner, store operations owner, buyer impact, service deadline, and approved decision path."},
+    {"id":"variant_location_scope","title":"Bind exact variant and location","instructions":"Record store, market, product, variant, inventory item, and location IDs. Explain which location can fulfill this market; do not sum ineligible locations."},
+    {"id":"inventory_authority","title":"Set stock and oversell rules","instructions":"Identify the authoritative available, committed, on-hand, and incoming source, sync lag, oversell policy, adjustment permission, and supplier lead time if used. Unknown remains unknown."},
+    {"id":"team_bindings","title":"Bind two ready Crews","instructions":"Record existing or reviewed new Catalog & Merchandising Analyst and Store Operations Coordinator IDs, skills, and setup status. One Crew may fill both only with separate outputs."},
+    {"id":"source_access","title":"Probe real source access","instructions":"Read one authorized ProductVariant, InventoryItem, InventoryLevel for the exact location, and market storefront observation; test warehouse or supplier source when a claim needs it."},
+    {"id":"handoff_contract","title":"Validate variant/location handoff","instructions":"Run the bundled validator on both artifacts. Reject wrong location, noninteger quantity, approved action without approval, and executed action without receipt."},
+    {"id":"plan_review","title":"Review concrete plan","instructions":"Show Crew IDs, source field scope, authority, artifact paths, exact proposed change, approval owner, cost, and manual route before Builder applies it."},
+    {"id":"test_run","title":"Run a real case manually","instructions":"Use one real authorized variant/location, preserve run IDs and validator results, and record merchant decision or blocker. Fictional fixtures do not complete setup."},
+    {"id":"action_ledger","title":"Record action and retest","instructions":"Keep stable case/action IDs, old and proposed values, approval, provider receipt, inventory re-read, storefront retest, and next owner check; prevent duplicate adjustments."},
+    {"id":"activation_choice","title":"Choose recurrence","instructions":"Record manual-only or a reviewed schedule/event route with source re-read, deduplication, concurrency, cost, and notifications. Test it before enabling; setup does not adjust stock."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

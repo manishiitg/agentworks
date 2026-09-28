@@ -12,6 +12,7 @@ import (
 
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
@@ -438,7 +439,7 @@ func claudeNativeTranscriptSyncSupported(raw []byte) bool {
 // parsed there for turn completion.
 func nativeTranscriptSyncSupportedProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli":
+	case "claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli", "agy-cli":
 		return true
 	}
 	return false
@@ -528,6 +529,15 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 			dataHome = filepath.Join(accountHome[0], ".local", "share")
 		}
 		transcript, found, err := musecli.ReadNativeTranscript(nativeSessionID, dataHome)
+		if err != nil || !found {
+			return nil, time.Time{}, "", false, err
+		}
+		return filterNativeContinuityMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+	case "agy-cli":
+		if nativeSessionID == "" {
+			return nil, time.Time{}, "", false, nil
+		}
+		transcript, found, err := agycli.ReadNativeTranscript(nativeSessionID, accountHome...)
 		if err != nil || !found {
 			return nil, time.Time{}, "", false, err
 		}

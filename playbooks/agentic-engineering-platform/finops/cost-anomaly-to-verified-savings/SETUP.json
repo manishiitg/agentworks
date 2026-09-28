@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "cost-anomaly-to-verified-savings",
+  "playbook_version": "0.6.0",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm cost goal and owners", "instructions": "Record the named platform, service and finance owners, desired cost outcome, affected service and excluded actions. A saving is not verified until comparable billing and health evidence exist." },
+    { "id": "billing_scope", "title": "Bind exact cloud scope", "instructions": "Record provider, account, service, resource, environment, region, currency, billing basis, allocation/tag policy and source cutoffs. Keep credits, one-time charges and commitment changes separate from usage or price effects." },
+    { "id": "cost_metric_rule", "title": "Agree on comparable cost evidence", "instructions": "Define equal baseline/current periods and resource-level post-change verification periods, workload comparability, price and discount treatment, data freshness and rounding. An export supports read-only review; incomplete or changing basis blocks a verified savings claim." },
+    { "id": "change_health_policy", "title": "Agree on change and health gates", "instructions": "Name IaC owner, repository/state, approval authority, deployment environment, rollback route and service health thresholds. An optimization proposal cannot deploy itself; a green plan is not an applied change." },
+    { "id": "team_bindings", "title": "Bind three distinct Crews", "instructions": "Inspect and reuse or propose authorized Cloud Cost Analyst, Engineering Delivery Coordinator and Finance Analyst Crews. Verify selected skills and source boundaries; record three Crew IDs, their owners and exact output artifact types." },
+    { "id": "source_access", "title": "Test actual source reads", "instructions": "Read representative authorized billing/usage, resource/health, IaC/deployment and finance records or exports. Record account, resource, source IDs, period coverage, observed times and missing sources; a provider name is not a connected account." },
+    { "id": "handoff_contract", "title": "Validate both handoffs", "instructions": "Save actual cloud-cost-review/v1, cloud-change-review/v1 and cloud-savings-readout/v1 paths. Run blocking validators in order, matching account, service, resource, environment, candidate and change IDs. Confirm a wrong resource, unapproved deployment or unsupported verified saving blocks its consumer. Save Crew run IDs and validator output." },
+    { "id": "plan_review", "title": "Review the Builder plan", "instructions": "Show Crew reuse or creation, source access, cost, IaC and finance steps, artifact paths, validators, approval boundaries, health/retest rule, run budget and activation choice to the owners before configuration." },
+    { "id": "manual_test", "title": "Run one bounded case manually", "instructions": "Use one authorized account/service/resource and two comparable cost periods. Record all three Crew run IDs, artifact paths, validator results, owner review and pending or verified finance state. A fictional fixture never completes setup. Keep the route manual when a source or validator is missing." },
+    { "id": "activation_choice", "title": "Choose manual or recurring policy", "instructions": "Record manual-only or a reviewed paused schedule/trigger with timezone, source freshness, cloud API limits, concurrency, retries, budget and notifications. Completing setup does not apply infrastructure, book savings or enable recurrence." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

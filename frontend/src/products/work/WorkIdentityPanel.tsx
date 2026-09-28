@@ -22,6 +22,8 @@ import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
+import type { CrewTemplateId } from './crewTemplates'
+import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
 
 export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
@@ -40,10 +42,12 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<WorkIdentityTab, string> = {
   models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
 }
 
-function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, projectTemplates, onInstallTemplate, onUpdateIdentity, onDeleteRequest }: {
   projectTitle: string
   projectPurpose: string
   projectIdentity?: ProductIdentity
+  projectTemplates: Array<{ id: string; version: number }>
+  onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
   onDeleteRequest: () => void
 }) {
@@ -93,6 +97,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   return (
     <div className="space-y-4">
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
+      <CrewTemplatePicker projectTemplates={projectTemplates} onInstallTemplate={onInstallTemplate} onError={setError} />
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Name and icon"
@@ -258,11 +263,13 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
+export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
   projectTitle: string
   projectDescription: string
   projectIdentity?: ProductIdentity
+  projectTemplates: Array<{ id: string; version: number }>
+  onInstallTemplate: (id: CrewTemplateId) => Promise<void>
   tabId: string
   selectedSecrets: string[]
   selectedGlobalSecrets: string[]
@@ -309,6 +316,8 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
           projectTitle={projectTitle}
           projectPurpose={projectDescription}
           projectIdentity={projectIdentity}
+          projectTemplates={projectTemplates}
+          onInstallTemplate={onInstallTemplate}
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
@@ -363,9 +372,8 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
 
 /**
  * Crew "Native agent tools" switch (workflow.json capabilities.native_agent_tools).
- * On: the coding agent (Claude Code, Codex, Cursor, Muse) may use its own file reading,
- * search, skills, todo list and subagents. Shell commands and file changes
- * always go through AgentWorks. Other coding CLIs keep AgentWorks tools only.
+ * On: supported coding agents may use native read and search tools. The
+ * exact native set varies by CLI; file changes stay on AgentWorks tools.
  */
 function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onChange?: (enabled: boolean) => Promise<unknown> }) {
   const [saving, setSaving] = useState(false)
@@ -374,7 +382,7 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
     <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
       <ToggleRow
         label="Native agent tools"
-        description="On by default. Let the coding agent use its own file reading, search, skills, todo list and subagents. Shell commands and file changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor and Muse."
+        description="On by default. Let the coding agent use its native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
         checked={enabled}
         disabled={!onChange || saving}
         disabledTitle={onChange ? 'Saving…' : 'Only the Crew owner can change this.'}

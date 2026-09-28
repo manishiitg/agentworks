@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "order-exception-to-resolution",
+  "playbook_version": "0.1.1",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm case goal and owners", "instructions": "Name the merchant, operations owner, refund approval owner, customer contact owner, service goal, and applicable escalation policy." },
+    { "id": "store_order_scope", "title": "Bind the exact store and order", "instructions": "Record stable store, order, customer reference, affected line-item IDs, exception window and timezone. Prove a fulfillment, payment, and support record belongs to the same store/order before joining it." },
+    { "id": "policy_money_rules", "title": "Confirm return, refund, and contact policy", "instructions": "Record the applicable policy version and dates, affected line fulfillment status, customer request versus actual Shopify Return, currency, captured and already-refunded amounts, taxes, shipping, discounts, gift cards, disputes, partial items, approval thresholds, and prior-contact rules. Only a fulfilled item can take the Shopify Return route; leave an unsupported refund amount unknown." },
+    { "id": "team_bindings", "title": "Bind ready Shopify Crews", "instructions": "Record existing or reviewed new Store Operations Coordinator and Returns & Refunds Coordinator Crew IDs, selected skills, and setup status. One Crew may fill both only with compatible access and separate validated outputs." },
+    { "id": "source_access", "title": "Test actual source access", "instructions": "Read one authorized Shopify order and transaction, the relevant fulfillment and return state, and prior support contact or bounded exports. Record exact IDs, freshness, missing records, and permitted write routes." },
+    { "id": "handoff_contract", "title": "Validate order and policy handoffs", "instructions": "Validate store-order-exception/v1 before the Returns Crew reads it, then validate return-resolution-review/v1 for the same store, order, case, and currency. Reject wrong-store, wrong-order, duplicate-refund, and unsupported-issued fixtures." },
+    { "id": "plan_review", "title": "Review the Automation plan", "instructions": "Show actual Crew IDs, source field scope, policy rule, artifact paths, validator steps, refund and message approval gates, run cost, and manual activation state to the merchant owner." },
+    { "id": "test_run", "title": "Run one real case manually", "instructions": "Use a real authorized order/return case or historical case with current source records. Record Crew run IDs, artifacts, validator results, owner review, and observed outcome or unknown state. Fictional fixtures do not complete setup." },
+    { "id": "action_ledger", "title": "Track decisions and receipts", "instructions": "Keep stable store, order, case, action, refund, and ticket IDs, owner, proposed versus approved action, exact customer draft, provider receipt, next check, and duplicate prevention state." },
+    { "id": "activation_choice", "title": "Choose the run policy", "instructions": "Record manual-only or an authenticated store/support event with concurrency, retries, persistent delivery-ID deduplication, stable case/action keys, budget, notifications, and approval rules. Test a real event before enabling it. A Shopify webhook signals a source re-read; it does not prove a refund or delivery. Setup completion does not refund, send, or close a case." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

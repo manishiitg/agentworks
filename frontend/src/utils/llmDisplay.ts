@@ -44,7 +44,7 @@ export const LLM_INTEGRATION_DISPLAY_INFO: Record<LLMIntegrationKind, LLMIntegra
   },
 }
 
-export const CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
+export const CODING_AGENT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 
 // Pi CLI routes to several different model backends via a `<backend>/<model>`
 // model id. Mirrors agent_go/cmd/server/llm_provider_manifest.go's
@@ -102,8 +102,8 @@ const PROVIDER_DISPLAY_INFO: Record<ProviderType, ProviderDisplayInfo> = {
     colorClass: 'text-slate-600 dark:text-slate-300',
   },
   'agy-cli': {
-    name: 'Antigravity CLI',
-    authDescription: 'Local CLI (Agy sign-in)',
+    name: 'Antigravity CLI (Alpha)',
+    authDescription: 'Local CLI (Google sign-in)',
     colorClass: 'text-zinc-600 dark:text-zinc-300',
   },
   'pi-cli': {
@@ -123,6 +123,7 @@ export const PROVIDER_ORDER: ProviderType[] = [
   'cursor-cli',
   'pi-cli',
   'muse-cli',
+  'agy-cli',
   'claude-code',
 ]
 

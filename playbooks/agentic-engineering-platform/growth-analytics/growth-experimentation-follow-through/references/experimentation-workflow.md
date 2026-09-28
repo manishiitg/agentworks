@@ -1,25 +1,17 @@
 # Experimentation workflow
 
-## Ground hypotheses in evidence
+## Freeze the source and decision
 
-Every hypothesis records its source finding, evidence links, confidence, target KPI with pre-registered target and readout window, guardrail metrics, expected impact, cost, owner, and status. Reject hypotheses without a linked finding or with incompatible evidence; they return to intelligence as open questions, not to the backlog.
+Start with a source-linked hypothesis and a versioned plan. Record product and tenant, eligible population, assignment unit, control and treatment IDs, allocation, primary and guardrail metric definitions, minimum sample, observation window, stop rule, rollback owner and decision owner before launch. Campaign, funnel, retention, SEO and AI-visibility signals can motivate a plan; none proves that a proposed treatment will work. A source proposal is not an approval record.
 
-Version the prioritization model (impact, confidence, cost weights) and record every input so rankings are reproducible. Never reorder the backlog silently after results arrive.
+## Verify execution
 
-## Adapt the plan
+Use Experiment Run Coordinator to check the exact plan revision and dated owner decision against the current provider object. An issue tracker task may coordinate work but cannot prove a flag, page, campaign or message is live. A launched record needs the provider receipt, configuration revision, launch time and exposure source; a pending decision remains pending. A separate authorized action route owns writes and rollback. Use stable IDs to prevent duplicate action and record configuration drift.
 
-Use scripted steps for backlog records, prioritization scoring, approved action creation with delivery receipts, rollout-state tracking, KPI snapshots, and readout comparisons against pre-registered targets. Use a message sequence to draft hypotheses from findings, challenge weak evidence, size expected impact, and judge readouts including guardrail checks.
+## Measure and review
 
-Use a human branch for experiment launches, customer-facing changes, and audience/segment exports. A launch requires the design, target, guardrails, rollout/rollback owner, and readout plan; anything missing stays a blocker. For unattended schedules, persist the proposal, leave it pending, and let a later authorized run consume the saved answer; never hold a blocking call open for a decision that may take hours or days.
+Use Growth Outcome Analyst after a provider-confirmed launch. Join exposure to authorized primary and guardrail outcome sources under the frozen identity and event rules. Distinguish eligible, exposed, excluded and unmatched units. Wait for the declared outcome window and source lag. Recompute numerators, denominators, rates, guardrail threshold and sample gate. Record instrumentation changes and contamination. An early, underpowered or breached result is inconclusive even if treatment's observed rate is higher. A numerically complete result still needs analysis and owner review before any ship/iterate/stop decision.
 
-For recurring operation, prove one manual hypothesis-to-readout cycle first, then configure scheduled backlog reviews or readout checks with explicit scope, cadence, timezone, and notification conditions.
+## Handoff and repeat
 
-## Validation and report
-
-Validate hypothesis-evidence linkage, pre-registered targets frozen before launch, guardrail evaluation on every readout, readout-window integrity, KPI reproducibility from durable snapshots, action delivery receipts, and approval records for launches and exports. Verify that underpowered or inconclusive readouts stay visibly inconclusive.
-
-Build a live experimentation dashboard showing the prioritized backlog, active experiments with rollout state, readouts with ship/iterate/kill verdicts, guardrail status, learning history, and follow-up actions. No readout appears trusted when its declared quality gate fails.
-
-## Handoff
-
-Intelligence playbooks consume readout verdicts and learnings as new evidence. Return backlog/policy versions, experiment records, verdicts with KPI deltas and confidence, guardrail outcomes, and recommended follow-ups. Do not require downstream agents to reconstruct experiment history from chat or tool logs.
+The typed path is `frozen-experiment-plan/v1` plus `experiment-execution-record/v1` → `experiment-outcome-readout/v1`, with blocking validators at both steps. Return exact plan, decision, provider and source IDs, artifact paths, maturity, rates or unknowns, limitations and owner decision. The [team guide](team-and-handoffs.md) contains examples and commands. Preserve prior readouts and source revisions; corrections supersede rather than silently overwrite. Keep any schedule paused until manual evidence, window timing, source freshness, cost and notifications are reviewed separately.

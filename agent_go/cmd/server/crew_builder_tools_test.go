@@ -120,6 +120,30 @@ func TestManageCrewTriggerRejectsUnknownCallerWorkflow(t *testing.T) {
 	}
 }
 
+func TestCrewBuilderMutationsRecheckWriteAccess(t *testing.T) {
+	tools, mock, _, _ := newCrewBuilderToolsTestEnv(t)
+	var manifest WorkflowManifest
+	if err := json.Unmarshal([]byte(mock.files[manifestPath("Workflow/test")]), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.CreatedBy = "different-owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"different-owner"}, Readers: []string{"owner"}}
+	raw, _ := json.Marshal(manifest)
+	mock.files[manifestPath("Workflow/test")] = string(raw)
+	before := len(mock.files)
+	for _, name := range []string{"create_crew", "manage_crew_attachment", "manage_crew_trigger"} {
+		if _, err := tools[name].exec(context.Background(), map[string]interface{}{"action": "create"}); err == nil || !strings.Contains(err.Error(), "write access") {
+			t.Errorf("%s failed to recheck write access: %v", name, err)
+		}
+	}
+	if len(mock.files) != before {
+		t.Fatal("revoked writer changed workspace files")
+	}
+	if _, err := tools["manage_crew_attachment"].exec(context.Background(), map[string]interface{}{"action": "list"}); err != nil {
+		t.Fatalf("read-only discovery should remain available: %v", err)
+	}
+}
+
 func TestDetachCrewAttachmentRevokesLiveSessionGrant(t *testing.T) {
 	tools, mock, _, _ := newCrewBuilderToolsTestEnv(t)
 	tool := tools["manage_crew_attachment"]

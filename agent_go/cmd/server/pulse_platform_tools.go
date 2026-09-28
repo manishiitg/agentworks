@@ -10,14 +10,19 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // Pulse Goal Work looks beyond its own workflow: other workflows the owner can
 // see (their plans, runs, files and knowledge) and the Crews on this server.
-// Both tools reuse the external API in-process, as the workflow's owner, so
-// visibility and access are exactly what that person gets from the agentworks
-// CLI; nothing here has its own permission logic.
+// Both tools reuse the external API in-process, as the calling session's
+// owner (pulseToolScope: never a model-chosen workflow or its owner), so
+// visibility and access are exactly what that person gets from the
+// agentworks CLI.
 
 // pulsePlatformAPI is set when the server starts. Nil (tests, CLI tools) means
 // the platform tools report that they are unavailable.
@@ -51,11 +56,11 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		return llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"workspace_path": map[string]interface{}{"type": "string", "description": "This workflow's path, e.g. Workflow/linkedin. The call runs with its owner's access."},
+				"workspace_path": map[string]interface{}{"type": "string", "description": "Optional. This workflow's own path; any other workflow is refused. The call runs as this session's owner."},
 				"operation":      map[string]interface{}{"type": "string", "enum": sortedOperations(ops)},
 				"arguments":      map[string]interface{}{"type": "object", "description": argsDescription},
 			},
-			"required": []string{"workspace_path", "operation"},
+			"required": []string{"operation"},
 		})
 	}
 	searchTool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
@@ -71,14 +76,20 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		Parameters: params(pulseCrewWorkOperations, "The operation's arguments: {\"crew_id\":\"...\",\"message\":\"...\"} or {\"crew_id\":\"...\",\"function\":\"...\",\"args\":{...}}; optional wait_seconds (max 25)."),
 	}}
 	executors := map[string]interface{}{
-		"search_platform":   func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulsePlatformReadOperations) },
-		"ask_platform_crew": func(ctx context.Context, args map[string]interface{}) (string, error) { return runPulsePlatformOperation(ctx, args, pulseCrewWorkOperations) },
+		"search_platform": func(ctx context.Context, args map[string]interface{}) (string, error) {
+			return runPulsePlatformOperation(ctx, args, pulsePlatformReadOperations, false)
+		},
+		"ask_platform_crew": func(ctx context.Context, args map[string]interface{}) (string, error) {
+			return runPulsePlatformOperation(ctx, args, pulseCrewWorkOperations, true)
+		},
 	}
-	categories := map[string]string{"search_platform": "workflow", "ask_platform_crew": "workflow"}
-	return []llmtypes.Tool{searchTool, crewTool}, executors, categories
+	crewCallsTool, crewCallsExecutor := createCrewCallsTool()
+	executors["read_crew_calls"] = crewCallsExecutor
+	categories := map[string]string{"search_platform": "workflow", "ask_platform_crew": "workflow", "read_crew_calls": "workflow"}
+	return []llmtypes.Tool{searchTool, crewTool, crewCallsTool}, executors, categories
 }
 
-func runPulsePlatformOperation(ctx context.Context, args map[string]interface{}, allowed map[string]bool) (string, error) {
+func runPulsePlatformOperation(ctx context.Context, args map[string]interface{}, allowed map[string]bool, needWrite bool) (string, error) {
 	operation, _ := args["operation"].(string)
 	operation = strings.TrimSpace(operation)
 	if !allowed[operation] {
@@ -88,8 +99,13 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 	if api == nil {
 		return "", fmt.Errorf("platform search is unavailable in this process")
 	}
-	workspacePath, _ := args["workspace_path"].(string)
-	claims, err := pulsePlatformClaims(ctx, workspacePath)
+	if needWrite {
+		if err := refuseUnattendedCrewWork(ctx); err != nil {
+			return "", err
+		}
+	}
+	requested, _ := args["workspace_path"].(string)
+	_, claims, err := api.pulseToolScope(ctx, requested, needWrite)
 	if err != nil {
 		return "", err
 	}
@@ -112,28 +128,21 @@ func runPulsePlatformOperation(ctx context.Context, args map[string]interface{},
 	return out, nil
 }
 
-// pulsePlatformClaims is the principal a Pulse platform call acts as: the
-// caller already on the context, else the workflow's first owner.
-func pulsePlatformClaims(ctx context.Context, workspacePath string) (*UserClaims, error) {
-	if claims := GetUserFromContext(ctx); claims != nil && strings.TrimSpace(claims.UserID) != "" {
-		copy := *claims
-		return &copy, nil
+// refuseUnattendedCrewWork keeps Crew work out of a scheduled run's own
+// conversation (the Pulse Gate, Plan Drift and finalizer turns). Pulse asks a
+// Crew only from a Goal Work agent, whose tool session is admitted there
+// only with the workflow's Run permission (background_review_scope.go). A
+// person's Builder chat is not scheduled and keeps the tool.
+func refuseUnattendedCrewWork(ctx context.Context) error {
+	sessionID := strings.TrimSpace(executor.SessionIDFromContext(ctx))
+	if sessionID == "" {
+		sessionID, _ = ctx.Value(common.ChatSessionIDKey).(string)
 	}
-	workspacePath = strings.TrimSpace(workspacePath)
-	if workspacePath == "" {
-		return nil, fmt.Errorf("workspace_path is required")
+	if _, background := step.LookupWorkshopToolSession(sessionID); background {
+		return nil
 	}
-	manifest, ok, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !ok {
-		return nil, fmt.Errorf("cannot read the workflow at %s to find its owner", workspacePath)
+	if isScheduledSession(strings.TrimSpace(sessionID)) {
+		return fmt.Errorf("ask_platform_crew is not available in a scheduled run's own turns; hand Crew work to Goal Work (record_pulse_goal_work)")
 	}
-	userID := GetDefaultUserID()
-	if owners := manifest.effectiveOwners(); len(owners) > 0 && strings.TrimSpace(owners[0]) != "" {
-		userID = strings.TrimSpace(owners[0])
-	}
-	claims := &UserClaims{UserID: userID}
-	if record := directoryUserFor(userID, "", ""); record != nil {
-		claims.Username, claims.Email = record.Username, record.Email
-	}
-	return claims, nil
+	return nil
 }

@@ -141,15 +141,21 @@ if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
   die "GitHub release already exists: $tag"
 fi
 
+# The repository's "Latest" release may be SparkQuill's (sparkquill-v*), so
+# the previous AgentWorks release is the highest published plain vX.Y.Z tag,
+# the same filter the desktop updater uses.
 previous_tag=""
-if previous_tag="$(gh release view --repo "$REPO" --json tagName --jq .tagName 2>/dev/null)"; then
-  if [[ ! "$previous_tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-    die "Latest release tag is not plain semver: $previous_tag"
+while IFS= read -r candidate; do
+  [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
+  if [[ -z "$previous_tag" ]] || semver_gt "$candidate" "$previous_tag"; then
+    previous_tag="$candidate"
   fi
-  semver_gt "$tag" "$previous_tag" || die "$tag must be greater than Latest release $previous_tag"
+done < <(gh release list --repo "$REPO" --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' 2>/dev/null)
+if [[ -n "$previous_tag" ]]; then
+  echo "==> Previous AgentWorks release: $previous_tag"
+  semver_gt "$tag" "$previous_tag" || die "$tag must be greater than the previous AgentWorks release $previous_tag"
 else
-  previous_tag=""
-  echo "==> No published release exists; validating this as the first release"
+  echo "==> No published AgentWorks release exists; validating this as the first release"
 fi
 
 echo "==> Building changelog"
@@ -157,13 +163,37 @@ notes_file="$(mktemp)"
 {
   echo "Desktop release $tag."
   echo
+  # Install through curl only: the app is not notarized, and macOS
+  # quarantines a browser download and then refuses to open it.
+  cat <<INSTALL
+## Install (macOS, Apple Silicon)
+
+Install from Terminal with \`curl\`. Do not download the DMG in a browser: AgentWorks is not notarized by Apple, so macOS blocks a browser-downloaded copy ("is damaged and can't be opened"). A curl download is not quarantined.
+
+\`\`\`bash
+curl -fL -o /tmp/AgentWorks.dmg https://github.com/$REPO/releases/download/$tag/AgentWorks-$version-arm64.dmg
+hdiutil attach -nobrowse -quiet -mountpoint /tmp/agentworks-dmg /tmp/AgentWorks.dmg
+rm -rf /Applications/AgentWorks.app && cp -R /tmp/agentworks-dmg/AgentWorks.app /Applications/
+hdiutil detach -quiet /tmp/agentworks-dmg && rm /tmp/AgentWorks.dmg
+open /Applications/AgentWorks.app
+\`\`\`
+
+Already installed? The app updates itself from this release.
+
+INSTALL
   if [[ -n "$previous_tag" ]]; then
     echo "Changes since $previous_tag:"
-    if ! git log --no-merges --pretty=format:'- %s (%h)' "$previous_tag"..HEAD; then
+    # GitHub caps a release body at 125,000 characters; list the newest
+    # commits and link the full comparison.
+    commit_count="$(git rev-list --no-merges --count "$previous_tag"..HEAD 2>/dev/null || echo 0)"
+    if ! git log --no-merges --pretty=format:'- %s (%h)' -n 100 "$previous_tag"..HEAD; then
       echo "- Unable to compute changelog from $previous_tag."
     fi
-    if [[ -z "$(git log --no-merges --pretty=format:%s "$previous_tag"..HEAD)" ]]; then
+    if [[ "$commit_count" == "0" ]]; then
       echo "- No non-merge commits."
+    elif (( commit_count > 100 )); then
+      echo
+      echo "…and $((commit_count - 100)) more. Full list: https://github.com/$REPO/compare/$previous_tag...$tag"
     fi
   else
     echo "Changes:"

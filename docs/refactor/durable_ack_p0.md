@@ -21,6 +21,18 @@ correctness bugs after the FIFO-receipt and append-then-apply fixes; the
 regression coverage. Historical live passes do not cover those cases, and the
 reviewer has not yet re-verified.
 
+### AGY onboarding extension (2026-09-27)
+
+AGY is the sixth coding CLI with a provider-side durable live-input receipt.
+The tmux send returns quickly; the existing server watcher then confirms the
+exact message against a new type-14 user step in AGY's conversation SQLite.
+The watcher snapshots the pre-send step index, and repeated identical sends
+require separate user rows. The real CLI test
+`TestAgyCLIRealDurableAckContract` passed for two identical retained turns.
+The isolated full application P0 runner and retained Chat live check passed
+with AGY 1.2.12 in Gemini API-key mode. This extends the live receipt proof
+to six providers; it does not revise the earlier historical five-provider run.
+
 ### RTS rapid-input follow-up (2026-09-21)
 
 Production session `c7d58080-0058-4f6f-a394-feea651f405b` clarified a UI

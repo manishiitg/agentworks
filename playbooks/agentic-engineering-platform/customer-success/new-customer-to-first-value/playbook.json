@@ -1,0 +1,48 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "new-customer-to-first-value",
+  "version": "0.2.0",
+  "changelog": [
+    { "version": "0.2.0", "summary": "Adds an exact accepted Sales handoff join before onboarding when the signed-deal route is selected." },
+    { "version": "0.1.0", "summary": "Adds a chat-led onboarding-to-adoption proposal with validated first-value evidence and an optional account health review." }
+  ],
+  "title": "New Customer to First Value",
+  "description": "Coordinate onboarding milestones and observed product adoption so a new B2B customer reaches an agreed first result.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Customer Success"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use New Customer to First Value as a proposal. Inspect existing Crews, the signed sales handoff, onboarding tracker, product event source, support scope, customer owner, and actual first-value definition. Propose which Crews to reuse or create, an owned milestone plan, validated onboarding-to-adoption handoff, optional health review, dashboard, and bounded manual first run. After I review the concrete proposal, configure it through Builder tools and verify it. Selecting this Playbook alone does not create Crews, connect accounts, message customers, update CRM, or enable recurrence.",
+  "setup_inputs": [
+    { "id": "account_handoff", "label": "Authorized new-customer account and signed handoff or export", "required": true },
+    { "id": "first_value", "label": "Agreed first-value result, observable event, and target date", "required": true },
+    { "id": "owner", "label": "Onboarding owner and customer contact policy", "required": true },
+    { "id": "milestone_source", "label": "Onboarding milestones and current status source", "required": true },
+    { "id": "adoption_source", "label": "Product usage or setup event source and coverage", "required": true },
+    { "id": "cadence", "label": "Manual-only or reviewed monitoring cadence and timezone", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create a reviewed missing Customer Success specialist with a stable idempotency key", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass only a validated bounded account artifact between authorized Crews", "capability": "durable_artifacts", "optional": true },
+    { "id": "account-source", "name": "CRM or signed handoff export", "type": "mcp", "purpose": "Read the customer identity, purchased scope, owner, and promised result", "capability": "account_records", "optional": true },
+    { "id": "product-events", "name": "Product analytics or bounded event export", "type": "mcp", "purpose": "Verify the agreed first-value event and source coverage", "capability": "product_events", "optional": true },
+    { "id": "support-source", "name": "Support inbox or case export", "type": "mcp", "purpose": "Ground an optional account health review in current open issues", "capability": "support_records", "optional": true }
+  ],
+  "pulse_focus": [
+    { "module": "strategic_review", "label": "Customer first-value progress", "focus_areas": ["Whether new customers reach the agreed first result by the target date", "Whether stalled onboarding is detected with enough evidence for an owner action"], "review_when": ["A milestone slips, first-value evidence arrives, source coverage changes, or an owner action remains open"] }
+  ],
+  "outputs": ["Reviewed Customer Success Crew roster and source map", "Validated onboarding milestone register", "Evidence-linked first-value readout", "Optional account health brief", "Manual route and activation decision"],
+  "agent_slots": [
+    { "id": "onboarding", "agent_playbook_id": "customer-onboarding-coordinator", "required": true, "output": "onboarding-milestone-register/v1" },
+    { "id": "adoption", "agent_playbook_id": "product-adoption-analyst", "required": true, "output": "first-value-readout/v1" },
+    { "id": "health", "agent_playbook_id": "customer-health-coordinator", "required": false, "output": "customer-health-brief/v1" }
+  ],
+  "handoffs": [
+    { "id": "onboarding-to-adoption", "from": "onboarding", "to": "adoption", "artifact_type": "onboarding-milestone-register/v1", "required": true },
+    { "id": "adoption-to-health", "from": "adoption", "to": "health", "artifact_type": "first-value-readout/v1", "required": false }
+  ],
+  "setup_checks": ["goal_owner", "account_scope", "first_value_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

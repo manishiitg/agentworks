@@ -19,7 +19,7 @@ up front. Don't repeat that.
 | SSH port | `2299` |
 | Runtime account | `dominion` |
 | Application root | `/srv/dominion` |
-| Product allowlist | `AGENT_PRODUCTS=dominion` |
+| Product allowlist | `AGENT_PRODUCTS=dominion,work`; `AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work` |
 
 The host already runs unrelated applications. Dominion must never change their
 containers, bound ports, systemd units, Caddy sites, or firewall rules.
@@ -131,6 +131,7 @@ host. A release contains:
 - `video-studio-landlock-runner` (yes, that literal filename regardless of
   product — see below), built from `workspace/cmd/landlock-runner`
 - the built frontend with a runtime configuration exposing only `dominion`
+- the versioned `playbooks/` catalog, including the local Finance, Website Growth, Sales, Customer Success, Engineering, and Shopify Crew catalogs and Automation Playbooks, copied into the release root; `validate_playbooks.py` must pass before staging
 - `mcp_servers_dominion.json` with an empty `mcpServers` object
 
 ### Logs are required, not automatic (found live 2026-08-31)
@@ -360,10 +361,12 @@ curl -sS -H "Accept-Encoding: gzip" -D - -o /dev/null \
 # expect: content-encoding: gzip
 ```
 
-By default the public site must show only Dominion and must not expose Video
-Studio, Finance, or unrelated server data. `AGENT_PRODUCTS=dominion` alone
-already guarantees this: it's process-wide and never registers Video
-Studio/Finance profiles on this host at all, regardless of frontend config.
+The public site shows Dominion to regular accounts. Crew (`work`) is enabled
+only for admins: the frontend product list includes it, while
+`AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES=work` hides it from non-admin users
+and rejects their product API requests. `AGENT_PRODUCTS=dominion,work` keeps
+Video Studio, Finance, and unrelated profiles unregistered on this host.
+Verify both admin and non-admin access after a release.
 
 AgentWorks (the generic, profile-less workflow builder) is the one
 deliberate exception: `frontend/current/runtime-config.js`'s
@@ -402,6 +405,13 @@ Live on the target host, first deployed 2026-08-24:
   unrestricted by design (see `agent_go/cmd/server/user_product_access.go`)
   — every user this deployment creates going forward needs an explicit
   entry to stay scoped the way this doc describes.
+- Crew is available to the `manish` admin account only. The deploy script
+  adds `work` to the staged frontend surfaces and sets the admin-only backend
+  boundary before activation. `john` remains limited to Dominion. Each release
+  also versions the `runtime-config.js` script URL in `index.html` because the
+  public CDN has served that file with a four-hour browser cache lifetime,
+  despite the gateway's `no-cache` header. This makes newly enabled surfaces
+  visible after a page reload.
 - `/srv/dominion/home/Downloads` created 2026-08-25 — its absence broke the
   shell sandbox's Folder Guard policy setup for every session
   (`SANDBOX_UNAVAILABLE: ... stat /srv/dominion/home/Downloads: no such file

@@ -2,15 +2,19 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "seo-intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Turns SEO Intelligence into a chat-led two-Crew proposal with a technical issue to buyer-question handoff, pending setup checks, and executable fictional contracts."
+    },
     {
       "version": "0.1.0",
       "summary": "Initial playbook release."
     }
   ],
   "title": "SEO Intelligence",
-  "description": "Find winnable keyword opportunities, diagnose technical SEO issues, close content gaps, and track rankings with page-level briefs — your AI Growth Analyst's organic acquisition readout.",
+  "description": "Coordinate a technical SEO analyst and buyer-question mapper to find source-backed search opportunities on an approved site, with review before any page change.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -20,22 +24,95 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use SEO Intelligence for my AI Growth Analyst. With my reconciled traffic and site data, track rankings against my keyword universe, audit technical health within authorized crawl scope, score content gaps with evidence, and brief page-level optimization without deceptive practices or unapproved site changes.",
+  "setup_prompt": "Treat SEO Intelligence as a proposal. Inspect my site, existing Crews, approved crawl scope, buyer and market first. Reuse or propose distinct SEO Analyst and Search Opportunity Mapper Crews, show their source access and exact artifact handoff, then ask for my review of the concrete plan. Builder sets up and manually tests the route in chat; selection alone creates no Crew, publication, schedule or site change.",
   "setup_inputs": [
-    {"id": "foundation", "label": "Reconciled Growth Data Foundation or equivalent model", "required": true},
-    {"id": "properties", "label": "Domains, Search Console properties, locales, and devices", "required": true},
-    {"id": "crawl", "label": "Crawl scope, frequency, and politeness limits", "required": true},
-    {"id": "market", "label": "Keyword universe and competitor set", "required": true},
-    {"id": "targets", "label": "Ranking and traffic targets with attribution window", "required": false, "default": "baseline_first"},
-    {"id": "quality_gate", "label": "Minimum freshness, coverage, and confidence policy", "required": true},
-    {"id": "audience", "label": "Reporting audience and decision owners", "required": true}
+    {
+      "id": "website",
+      "label": "Canonical website and approved crawl/page scope",
+      "required": true
+    },
+    {
+      "id": "buyer",
+      "label": "Offer, target buyer, market and primary useful visitor action",
+      "required": true
+    },
+    {
+      "id": "source",
+      "label": "Authorized site or crawl records and dated buyer-question evidence",
+      "required": true
+    },
+    {
+      "id": "measurement",
+      "label": "Search Console property/export or baseline-first decision",
+      "required": true
+    },
+    {
+      "id": "policy",
+      "label": "Page change owner, review policy and technical retest rule",
+      "required": true
+    },
+    {
+      "id": "cadence",
+      "label": "Manual-only or reviewed monitoring cadence and timezone",
+      "required": false
+    }
   ],
-  "required_capabilities": ["technical_seo_audit", "keyword_rank_analysis", "content_gap_analysis", "durable_workflow_storage", "workflow_reporting"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "search-console", "name": "Google Search Console MCP", "type": "mcp", "purpose": "Read authorized queries, impressions, clicks, and page performance behind a finding", "capability": "search_console_data", "optional": true},
-    {"id": "site-crawl", "name": "Site-crawl CLI", "type": "cli", "purpose": "Crawl authorized scope for indexation, links, redirects, metadata, and page experience signals", "capability": "technical_seo_audit", "optional": true},
-    {"id": "rank-tracker", "name": "Rank-tracker MCP", "type": "mcp", "purpose": "Read authorized keyword rankings across locales and devices for tracked universes", "capability": "keyword_rank_analysis", "optional": true},
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Persist rank snapshots, crawl findings, gaps, briefs, and follow-up outcomes", "capability": "durable_workflow_storage", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create an approved SEO or search Crew with an idempotency key and Workflow-bound Crew step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Read the validated SEO issue artifact through a checked Workflow alias",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "search-console",
+      "name": "Google Search Console MCP",
+      "type": "mcp",
+      "purpose": "Read authorized queries, impressions, clicks, and page performance behind a finding",
+      "capability": "search_console_data",
+      "optional": true
+    },
+    {
+      "id": "site-crawl",
+      "name": "Site-crawl CLI",
+      "type": "cli",
+      "purpose": "Crawl authorized scope for indexation, links, redirects, metadata, and page experience signals",
+      "capability": "technical_seo_audit",
+      "optional": true
+    },
+    {
+      "id": "rank-tracker",
+      "name": "Rank-tracker MCP",
+      "type": "mcp",
+      "purpose": "Read authorized keyword rankings across locales and devices for tracked universes",
+      "capability": "keyword_rank_analysis",
+      "optional": true
+    },
+    {
+      "id": "workflow-database",
+      "name": "AgentWorks workflow database",
+      "type": "builtin",
+      "purpose": "Persist rank snapshots, crawl findings, gaps, briefs, and follow-up outcomes",
+      "capability": "durable_workflow_storage",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -50,8 +127,48 @@
       ]
     }
   ],
-  "outputs": ["Versioned SEO and keyword policy", "Reproducible rank and crawl snapshots", "Technical-health findings with affected pages", "Scored content and linking gaps", "Page-level optimization briefs", "Live SEO intelligence report"],
-  "setup_playbook": "growth-data-foundation",
-  "accepts_equivalent_setup": true,
-  "next_playbooks": ["growth-experimentation-follow-through"]
+  "outputs": [
+    "Reviewed SEO Crew roster and access map",
+    "Validated technical SEO issue list and linked buyer-question opportunity map",
+    "Manual two-Crew run with blocked and reviewed next actions",
+    "Paused monitoring proposal with baseline or comparable search evidence"
+  ],
+  "next_playbooks": [
+    "growth-experimentation-follow-through"
+  ],
+  "agent_slots": [
+    {
+      "id": "technical_seo",
+      "agent_playbook_id": "seo-analyst",
+      "required": true,
+      "output": "seo-issue-list/v1"
+    },
+    {
+      "id": "search",
+      "agent_playbook_id": "search-opportunity-mapper",
+      "required": true,
+      "output": "seo-opportunity-list/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "technical-to-search",
+      "from": "technical_seo",
+      "to": "search",
+      "artifact_type": "seo-issue-list/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "site_scope",
+    "buyer_metric_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "action_ledger",
+    "activation_choice"
+  ]
 }

@@ -2,15 +2,19 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "engineering-operations-intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Promotes the workflow guide to a chat-led Engineering Operations Analyst to Delivery Coordinator proposal with typed metric/action handoff, pending setup and executable contract checks."
+    },
     {
       "version": "0.1.0",
       "summary": "Combines engineering data foundation, delivery/quality/reliability intelligence, and recurring operations review into one small-team workflow playbook."
     }
   ],
   "title": "Engineering Operations Intelligence",
-  "description": "Connect engineering data, calculate governed delivery, quality, and reliability intelligence, and run evidence-backed reviews in one small-team workflow.",
+  "description": "Reconcile one governed team engineering metric, then prepare an owned improvement review with current issue evidence.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -25,7 +29,7 @@
     "delivery-quality-reliability-intelligence",
     "engineering-operations-review"
   ],
-  "setup_prompt": "Use Engineering Operations Intelligence for my small engineering team. Build one workflow that connects only authorized sources, preserves provenance and customer metric definitions, calculates reproducible delivery, quality, and reliability signals, produces a recurring evidence-backed review, and tracks approved actions and outcomes.",
+  "setup_prompt": "Use Engineering Operations Intelligence as a chat-led proposal. Inspect existing Engineering Operations Analyst and Engineering Delivery Coordinator Crews, authorized source exports, exact team/service, versioned metric rule, equal-window policy, coverage and current issue state. Propose reuse or reviewed creation, blocking validators, one manual case, a bounded owner question and a later independent observation. Preserve the data-model guidance. Selecting the Playbook does not create issues, message a team or enable recurrence.",
   "setup_inputs": [
     {
       "id": "scope_sources",
@@ -59,16 +63,32 @@
     }
   ],
   "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
     "engineering_source_ingestion",
     "engineering_metrics_computation",
-    "cross_source_analysis",
-    "durable_workflow_storage",
     "workflow_reporting",
-    "human_decision",
-    "scheduled_workflow_execution",
-    "notifications"
+    "durable_artifacts",
+    "human_decision"
   ],
   "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create reviewed missing Analyst or Delivery capability",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a validated metric observation to Delivery",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
     {
       "id": "source-control",
       "name": "GitHub or GitLab MCP",
@@ -108,14 +128,6 @@
       "purpose": "Persist normalized records, metric snapshots, findings, reviews, decisions, actions, and receipts",
       "capability": "durable_workflow_storage",
       "optional": true
-    },
-    {
-      "id": "agentworks-schedules",
-      "name": "AgentWorks schedules and triggers",
-      "type": "builtin",
-      "purpose": "Refresh sources and run a proven review route at the approved cadence",
-      "capability": "scheduled_workflow_execution",
-      "optional": true
     }
   ],
   "pulse_focus": [
@@ -132,11 +144,44 @@
     }
   ],
   "outputs": [
-    "Authorized source and identity map",
-    "Normalized source-linked engineering records and freshness status",
-    "Versioned delivery, quality, and reliability metric snapshots",
-    "Evidence-backed findings and recommendations",
-    "Recurring engineering operations review and dashboard",
-    "Durable decisions, tracked actions, outcomes, and delivery receipts"
+    "Reviewed Crew roster and source/metric policy map",
+    "Validated engineering-metric-observation/v1 with coverage and comparable state",
+    "Validated engineering-improvement-review/v1 with current owner and issue state",
+    "Manual case, later observation rule, blockers and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "analysis",
+      "agent_playbook_id": "engineering-operations-analyst",
+      "required": true,
+      "output": "engineering-metric-observation/v1"
+    },
+    {
+      "id": "delivery",
+      "agent_playbook_id": "engineering-delivery-coordinator",
+      "required": true,
+      "output": "engineering-improvement-review/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "analysis-to-delivery",
+      "from": "analysis",
+      "to": "delivery",
+      "artifact_type": "engineering-metric-observation/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "team_scope",
+    "metric_rule",
+    "comparison_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
   ]
 }

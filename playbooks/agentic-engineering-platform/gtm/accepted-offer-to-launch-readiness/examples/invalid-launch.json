@@ -1,0 +1,32 @@
+{
+  "artifact_type": "gtm-launch-readiness/v1",
+  "artifact_id": "accepted-offer-to-launch-readiness-launch-1",
+  "producer_id": "launch-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "business-v2",
+  "offer_id": "offer-v2",
+  "plan_id": "business-v2",
+  "price_revision": "price-44",
+  "source_revision": "launch-rev-1",
+  "observed_at": "2026-09-27T12:00:00Z",
+  "source_refs": [
+    "launch-source-1",
+    "launch-source-2",
+    "docs-v5"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "claim_refs": [
+    "docs-v5"
+  ],
+  "asset_revisions": [
+    "site-page-r3"
+  ],
+  "channel_policy_ref": "channel-v2",
+  "launch_state": "published",
+  "blockers": [
+    "launch owner approval pending"
+  ],
+  "input_artifact_id": "accepted-offer-to-launch-readiness-strategy-1",
+  "input_revision": "strategy-rev-1"
+}

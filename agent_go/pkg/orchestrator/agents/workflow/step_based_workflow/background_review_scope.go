@@ -129,7 +129,7 @@ func goalWorkPermissionInstructions(perms goalWorkPermissions) string {
 }
 
 func validateBackgroundReviewScope(module, runID string) error {
-	if module != "technical_review" && module != "architecture_review" && module != "strategic_review" {
+	if module != "plan_drift_review" && module != "technical_review" && module != "architecture_review" && module != "strategic_review" {
 		return fmt.Errorf("unknown review_module %q", module)
 	}
 	if strings.TrimSpace(runID) == "" || strings.TrimSpace(runID) != runID || runID == "." || runID == ".." || strings.ContainsAny(runID, "/\\\x00") {
@@ -146,7 +146,7 @@ func researchReviewToolAllowed(name string) bool {
 		"agent_browser", "web_search", "web_fetch", "google_workspace_cli", "read_skill", "get_api_spec", "get_prompt", "get_resource",
 		"query_workflow_db", "query_workflow_costs", "get_step_prompts", "get_plan_prompt_health", "get_workflow_config", "get_llm_config", "get_cost_summary",
 		"list_llm_capabilities", "list_published_llms", "list_provider_models", "list_executions", "get_sub_agent_conversation", "get_route_description",
-		"get_goal_metrics", "get_pulse_state", "record_pulse_finding", "record_pulse_result", "merge_pulse_issues",
+		"get_goal_metrics", "get_pulse_state", "record_pulse_finding", "record_pulse_result", "merge_pulse_issues", "read_crew_calls",
 		"get_human_input_request", "list_human_input_requests", "create_human_input_request", "resolve_run_concern":
 		return true
 	}
@@ -201,6 +201,25 @@ func filterReadOnlyBackgroundTools(tools []llmtypes.Tool, executors map[string]i
 			if handler, ok := executors[tool.Function.Name]; ok {
 				handlers[tool.Function.Name] = handler
 			}
+		}
+	}
+	return result, handlers
+}
+
+// withoutBackgroundTool removes one tool from a background agent's bundle
+// without touching the shared parent bundle it was copied from.
+func withoutBackgroundTool(tools []llmtypes.Tool, executors map[string]interface{}, name string) ([]llmtypes.Tool, map[string]interface{}) {
+	result := make([]llmtypes.Tool, 0, len(tools))
+	for _, tool := range tools {
+		if tool.Function != nil && tool.Function.Name == name {
+			continue
+		}
+		result = append(result, tool)
+	}
+	handlers := make(map[string]interface{}, len(executors))
+	for key, handler := range executors {
+		if key != name {
+			handlers[key] = handler
 		}
 	}
 	return result, handlers

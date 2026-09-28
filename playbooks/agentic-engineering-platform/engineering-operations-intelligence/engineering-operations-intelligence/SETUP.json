@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "engineering-operations-intelligence",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm metric decision and owner","instructions":"Name the engineering owner, first reviewable metric and bounded improvement question. Exclude issue writes, staff rankings, notifications and claimed outcome effects."},
+    {"id":"team_scope","title":"Bind exact team and service","instructions":"Record tenant, team, service or repository, environment, ownership map, timezone, authorized sources and window boundaries."},
+    {"id":"metric_rule","title":"Freeze one versioned metric","instructions":"Agree on population, numerator, denominator, distinct item/event identity, exclusions, target and minimum coverage before observing results. Select delivery, quality or reliability family."},
+    {"id":"comparison_rule","title":"Freeze baseline and repeat policy","instructions":"Record equal window duration, nonoverlap, source revisions and compatibility checks. A changed team, service, source mapping or rule starts a new baseline; partial data stays not_evaluable."},
+    {"id":"team_bindings","title":"Bind Analyst and Delivery capabilities","instructions":"Inspect existing Engineering Operations Analyst and Engineering Delivery Coordinator Crews, owner and access; reuse compatible identities or propose reviewed creation."},
+    {"id":"source_access","title":"Probe engineering and issue records","instructions":"Read representative authorized metric rows and current issue/owner records; record exact IDs, revisions, times, missing partitions and privacy limits."},
+    {"id":"handoff_contract","title":"Validate observation and review","instructions":"Insert blocking validators before Delivery and reporting. Exercise wrong team/rule, rate arithmetic, partial coverage, false trend, duplicate case, stale issue, false approval and outcome claim."},
+    {"id":"plan_review","title":"Review concrete Automation plan","instructions":"Show Crew IDs, source paths, rule revision, validator steps, owner review, stable case key, later observation method, manual route, cost and notifications."},
+    {"id":"manual_test","title":"Run one real team metric manually","instructions":"Save authorized source reads, recomputed counts and rates, both artifacts, owner correction or decision and an incomplete-data control. Fictional examples do not complete setup."},
+    {"id":"activation_choice","title":"Choose manual or reviewed recurrence","instructions":"Manual-only is valid. A schedule or event requires authenticated scope, stable IDs, source freshness, deduplication, cost, notifications and explicit activation after a passing manual route."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

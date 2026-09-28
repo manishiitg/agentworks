@@ -2,33 +2,123 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "post-incident-review-actions",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "changelog": [
-    {"version": "0.4.0", "summary": "Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},
-    {"version": "0.3.0", "summary": "Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},
-    {"version": "0.2.0", "summary": "Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}
+    {
+      "version": "0.5.0",
+      "summary": "Adds a chat-led Post-Incident Reviewer to Improvement Follow-Through Coordinator route, review/action evidence and executable completion checks."
+    },
+    {
+      "version": "0.4.0",
+      "summary": "Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."
+    },
+    {
+      "version": "0.3.0",
+      "summary": "Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."
+    },
+    {
+      "version": "0.2.0",
+      "summary": "Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."
+    }
   ],
   "title": "Post-Incident Review and Actions",
-  "description": "Produce a sourced post-incident review, create governed follow-up work, and verify improvements through completion.",
-  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Reliability Operations"],
+  "description": "Reconstruct one stabilized incident from frozen sources, propose a blameless review, then track accepted improvements to independently verified completion.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Reliability Operations"
+  ],
   "order": 4,
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use Post-Incident Review and Actions with my resolved incident data. Configure the review snapshot, impact and milestone definitions, evidence-backed analysis, review/publication path, action ownership and issue integration, verification, Slack collaboration, and dashboard.",
+  "setup_prompt": "Treat Post-Incident Review and Actions as a proposal. Inspect my stable incident and recovery evidence, impact rule, review owner, action and publication policy, issue/verification sources, and existing Crews. Propose reuse or creation of Post-Incident Reviewer and Improvement Follow-Through Coordinator, exact artifact checks and a bounded manual case in Builder chat. Selection creates no Crew, issue, publication, reminder or schedule.",
   "setup_inputs": [
-    {"id": "incident_record", "label": "Resolved incident, timeline, evidence, remediation, and recovery records", "required": true},
-    {"id": "review_policy", "label": "Review scope, audience, template, approval, and sensitive-data policy", "required": true},
-    {"id": "metrics", "label": "Impact and response milestone definitions", "required": true},
-    {"id": "actions", "label": "Action taxonomy, ownership, due-date, and verification contract", "required": true},
-    {"id": "destinations", "label": "Issue, publication, and Slack destinations with authorization", "required": true}
+    {
+      "id": "incident",
+      "label": "Stable incident, exact service/environment and frozen source revision",
+      "required": true
+    },
+    {
+      "id": "impact",
+      "label": "Impact denominator, window, event and milestone rules",
+      "required": true
+    },
+    {
+      "id": "review",
+      "label": "Blameless review scope, evidence/privacy policy and approval owner",
+      "required": true
+    },
+    {
+      "id": "actions",
+      "label": "Action owner, due date, acceptance and independent verification policy",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Authorized incident, telemetry, issue and verification sources",
+      "required": true
+    },
+    {
+      "id": "publication",
+      "label": "Optional approved publication and notification destinations",
+      "required": false
+    },
+    {
+      "id": "cadence",
+      "label": "Manual-only or reviewed action-follow-up policy",
+      "required": false
+    }
   ],
-  "required_capabilities": ["incident_analysis", "durable_workflow_storage", "workflow_reporting", "human_decision", "work_item_tracking"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "human_decision",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Freeze review snapshots and persist findings, actions, verification, and receipts", "capability": "durable_workflow_storage", "optional": true},
-    {"id": "issue-tracker", "name": "Issue-tracker MCP", "type": "mcp", "purpose": "Create approved follow-up work and synchronize identity and status", "capability": "work_item_tracking", "optional": true},
-    {"id": "agentworks-slack-bot", "name": "AgentWorks Slack bot", "type": "builtin", "purpose": "Discuss the review and query durable follow-up action state", "capability": "interactive_reliability_collaboration", "optional": true},
-    {"id": "notification-destination", "name": "Notification MCP", "type": "mcp", "purpose": "Publish an approved review or action reminder and retain delivery receipts", "capability": "notifications", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create approved missing review or follow-through Crew with stable idempotency key and Workflow step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass an exact validated post-incident review by checked Workflow alias",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "incident-record",
+      "name": "Incident manager or monitoring MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read canonical incident status, recovery and dated impact/timeline records",
+      "capability": "incident_source_data",
+      "optional": true
+    },
+    {
+      "id": "issue-tracker",
+      "name": "Linear or Jira MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read exact accepted action work-item state and authorized write receipts",
+      "capability": "work_item_tracking",
+      "optional": true
+    },
+    {
+      "id": "verification-sources",
+      "name": "CI, deploy, monitoring or runbook MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Check actual action outcome from a dated independent source",
+      "capability": "improvement_verification_data",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -43,5 +133,45 @@
       ]
     }
   ],
-  "outputs": ["Versioned review and action policy", "Immutable incident review snapshot", "Approved evidence-backed post-incident review", "Created action and publication receipts", "Verified follow-up action state", "Review and action dashboard"]
+  "outputs": [
+    "Reviewed review and follow-through Crew roster with source and privacy scope",
+    "Validated sourced post-incident review with pending owner decision",
+    "Validated pending, accepted or verified improvement register",
+    "Manual first run and paused repeat choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "review",
+      "agent_playbook_id": "post-incident-reviewer",
+      "required": true,
+      "output": "post-incident-review/v1"
+    },
+    {
+      "id": "follow_through",
+      "agent_playbook_id": "improvement-follow-through-coordinator",
+      "required": true,
+      "output": "incident-improvement-register/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "review-to-follow-through",
+      "from": "review",
+      "to": "follow_through",
+      "artifact_type": "post-incident-review/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "incident_scope",
+    "impact_rule",
+    "review_policy",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
+  ]
 }

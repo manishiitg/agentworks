@@ -1,0 +1,17 @@
+{
+  "artifact_type": "support-delivery-receipt/v1",
+  "tenant_id": "tenant-demo",
+  "case_id": "case-204",
+  "account_id": "acct-52",
+  "thread_revision": "rev-7",
+  "draft_id": "draft-204-1",
+  "recipient_id": "contact-88",
+  "channel": "helpdesk",
+  "approval_ref": "approval-517",
+  "message_fingerprint": "sha256:1005c57633e7b0e72fc3fc6f0163231e2d3f2ac280fa62198dce8942cf690ee1",
+  "provider_message_id": "message-711",
+  "delivered_at": "2026-09-25T09:15:00Z",
+  "source_refs": [
+    "helpdesk-message-711"
+  ]
+}

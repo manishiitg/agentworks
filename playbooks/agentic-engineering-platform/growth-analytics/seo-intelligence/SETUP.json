@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "seo-intelligence",
+  "playbook_version": "0.2.0",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm search goal and owner", "instructions": "Record the named owner, canonical website, buyer, offer, market, primary useful visitor action and excluded actions. Decide which source can prove progress; use baseline-first when search data is unavailable." },
+    { "id": "site_scope", "title": "Verify the authorized site scope", "instructions": "Inspect the approved host and page set, robots and crawl limits, locale and device. Save an actual fetched or exported page reference with observation time. Do not treat a public fetch as proof of indexation." },
+    { "id": "buyer_metric_rule", "title": "Set buyer-question and metric rules", "instructions": "Record at least one owner, customer or approved-research buyer question with source and date. Define Search Console property, query/page filters, windows, denominator, freshness and coverage when available; otherwise explicitly mark demand and ranking unknown." },
+    { "id": "team_bindings", "title": "Bind two distinct Crews", "instructions": "Inspect and reuse or create two authorized Crew IDs with selected seo-analyst and search-opportunity-mapper skills. An SEO issue list and a buyer-question map are distinct outputs; one Crew identity does not satisfy both required slots." },
+    { "id": "source_access", "title": "Test each Crew's source access", "instructions": "Have SEO Analyst read a bounded real page/crawl source and Search Opportunity Mapper read a real buyer-question source and the same site scope. Record exact account or file, page/query coverage, observation time, missing access and any approved optional Search Console connection." },
+    { "id": "handoff_contract", "title": "Validate the technical-to-search handoff", "instructions": "Save an actual seo-issue-list/v1 artifact, run the blocking validator, then save a seo-opportunity-list/v1 linked to the exact issue artifact and rerun validation. Record paths, Crew run IDs and validator output. Confirm a mismatched site, missing issue citation or false publication claim blocks the consumer step." },
+    { "id": "plan_review", "title": "Review the Builder proposal", "instructions": "Show Crew reuse/creation, access, crawl cost and politeness, source coverage, handoff validator step, owner decision, possible page change and activation policy to the owner. Selecting the Playbook does not authorize execution." },
+    { "id": "manual_test", "title": "Run one bounded case manually", "instructions": "Use one authorized site/page and buyer question. Record source captures, both Crew run IDs, artifact paths, validator results, owner corrections and blockers. Keep the route manual if a validator is absent or a source/identity check fails." },
+    { "id": "action_ledger", "title": "Record the reviewed next action", "instructions": "Save stable issue/opportunity IDs, exact page and market, technical blocker, owner, approval state, proposed change, retest, success signal and next-check date. Distinguish observed issue, proposed update, approved edit, published page and measured search outcome with separate evidence." },
+    { "id": "activation_choice", "title": "Choose manual or recurring policy", "instructions": "Record manual-only or a reviewed paused schedule with timezone, crawl scope, source freshness, rate limit, budget, retries and notification rules. Do not enable recurrence by completing this check." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

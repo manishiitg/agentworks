@@ -774,9 +774,9 @@ func (api *StreamingAPI) handleReconnectSession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Check if session is active
+	// Check if session is active, and the caller's to see (PLAT-362 D5).
 	activeSession, exists := api.getActiveSession(sessionID)
-	if !exists || activeSession.Status != "running" {
+	if !exists || activeSession.Status != "running" || !api.canAccessTerminalSession(r, sessionID) {
 		http.Error(w, "Session not active or not found", http.StatusNotFound)
 		return
 	}

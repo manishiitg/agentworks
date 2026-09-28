@@ -1,0 +1,27 @@
+{
+  "artifact_type": "seo-issue-list/v1",
+  "artifact_id": "seo-issues-example-001",
+  "site_url": "https://arbordesk.example/",
+  "market": "UK physiotherapy clinics",
+  "locale": "en-GB",
+  "device": "mobile",
+  "crawl_scope": "https://arbordesk.example/clinics",
+  "observed_at": "2026-09-25T10:00:00Z",
+  "source_refs": [
+    { "id": "page-capture", "uri": "https://arbordesk.example/clinics", "observed_at": "2026-09-25T09:50:00Z" }
+  ],
+  "issues": [
+    {
+      "id": "SEO-001",
+      "page_url": "https://arbordesk.example/clinics",
+      "observation": "The fetched /clinics HTML declares the homepage as its canonical URL.",
+      "evidence_refs": ["page-capture"],
+      "confidence": "high",
+      "index_state": "unknown",
+      "change_state": "observed_unresolved",
+      "owner_action": "Ask the site owner to review the intended canonical before any edit.",
+      "retest": "After an approved change, fetch the same URL and inspect the rendered canonical; check Search Console separately for indexation."
+    }
+  ],
+  "limitations": ["Fictional site and capture; public HTML cannot prove Google indexation."]
+}

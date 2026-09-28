@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "template_id": "website-growth-starter",
+  "template_version": 1,
+  "checks": [
+    {
+      "id": "scope",
+      "title": "Confirm site and growth goal",
+      "instructions": "Confirm the owner controls or is authorized to assess the website, its canonical URL, the offer, target buyers, geography, and one primary visitor action. Save stable decisions in MEMORY.md."
+    },
+    {
+      "id": "skill",
+      "title": "Verify the growth skill",
+      "instructions": "Confirm skills/website-growth-starter/SKILL.md exists and website-growth-starter is selected for this Crew. Preserve any other installed skills."
+    },
+    {
+      "id": "site_access",
+      "title": "Inspect the website",
+      "instructions": "Read at least the homepage and one key offer or conversion page, or label which was unavailable. Save exact inspected URLs or export references, access time, and crawl limits. A screenshot cannot verify HTTP status and a public fetch cannot prove indexing."
+    },
+    {
+      "id": "audience",
+      "title": "Define useful traffic",
+      "instructions": "Agree on buyer questions, the target audience, and which visitor action matters. Record assumptions that still need validation."
+    },
+    {
+      "id": "baseline",
+      "title": "Record a starting baseline",
+      "instructions": "Use an authorized Search Console or analytics export if available, with property and date range. For a new site without enough data, explicitly record the baseline as unavailable and the date from which measurement will start. A connection is not required."
+    },
+    {
+      "id": "first_audit",
+      "title": "Verify the first site audit",
+      "instructions": "Save a first brief with at least one reproducible page observation, its URL or export reference, capture date, evidence type (observed, owner-reported, or hypothesis), and a limitation. Verify a reviewer can revisit the source. A generic audit summary does not pass."
+    },
+    {
+      "id": "first_plan",
+      "title": "Review the 30-day plan",
+      "instructions": "Present three to five stable action IDs with page, supporting finding ID, effort, owner, success signal, and reason for order. Save the brief path and the owner's decision for the first action. Do not complete from an unsourced list or an unanswered review request."
+    },
+    {
+      "id": "publishing",
+      "title": "Decide how page changes ship",
+      "optional": true,
+      "instructions": "Ask whether Crew should only draft changes in chat or use an authorized repository/CMS for reviewable edits. Chat-only is a valid completed choice. Do not publish or grant access as part of installing the template."
+    },
+    {
+      "id": "cadence",
+      "title": "Decide on measurement cadence",
+      "optional": true,
+      "instructions": "Ask whether the owner wants a weekly review or a new-page trigger. Choosing neither is valid. If requested, agree on data source, timezone or event source, and test one run before enabling."
+    },
+    {
+      "id": "automation",
+      "title": "Decide on broader growth automation",
+      "optional": true,
+      "instructions": "Ask whether a separate goal-chasing Website Growth Loop Automation or a typed site_audit function would be useful to other Crews. Choosing neither is valid. Review permissions and metrics before creating either."
+    }
+  ],
+  "completed_steps": []
+}

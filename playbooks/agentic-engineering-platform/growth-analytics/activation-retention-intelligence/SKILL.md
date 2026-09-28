@@ -1,50 +1,52 @@
 ---
 name: activation-retention-intelligence
-description: Build evidence-backed activation, retention, and feature-adoption analysis in AgentWorks for an AI Growth Analyst. Use to find what makes customers successful, why cohorts retain or churn differently, and whether features move retention or revenue.
+description: Propose a maturity-aware Lifecycle Analyst to Growth Experiment Planner route for SaaS cohort retention.
 ---
 
 # Activation and Retention Intelligence
 
 ## Outcome
 
-Create versioned activation, cohort-retention, and feature-adoption analysis that shows which behaviors predict customer success, why cohorts diverge, and how feature use and feedback relate to retention and revenue.
+Lifecycle Analyst measures day-7 activation and day-30 retention for signup cohorts. Growth Experiment Planner consumes a mature observation and proposes one test. Cohort differences do not prove cause or individual churn.
 
 ## When to use
 
-Use after Growth Data Foundation is reconciled and fresh enough for the requested scope. Use it for onboarding improvement, churn investigation, feature launch readouts, pricing/packaging questions, and recurring lifecycle monitoring. It does not own acquisition funnels or conversion-change attribution; those belong to Funnel and Conversion Intelligence.
+Use with authorized signup, usage and subscription records. New Customer to First Value covers one account's result; Funnel and Conversion Intelligence covers signup-to-paid conversion. This route compares mature cohorts or records one baseline. An immature cohort waits.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, source coverage, capabilities, stores, dashboards, and schedules before proposing changes. Summarize reusable foundations and gaps, ask focused questions for unresolved scope, definitions, cohorts, thresholds, ownership, and success criteria, and record the answers as customer direction. Installation alone does not approve workflow changes or execution.
+Builder inspects lifecycle definitions, maturity cutoff, source coverage, identity join, owner and existing Crews. It proposes reuse or creation of distinct Lifecycle Analyst and Growth Experiment Planner Crews, then shows the source and review plan in chat. Selection creates no Crew, customer contact, query, variant or schedule.
 
 ## Required inputs
 
-Resolve activation definition, cohort keys and retention windows, feature and flag inventory, revenue linkage scope, feedback sources and access, comparison cohorts, targets or thresholds, minimum data quality, reporting audience, and decision ownership.
+Record product and tenant, equal signup-cohort windows, eligible-account definition, activation and day-30 retention predicates with versions, identity and exclusion rules, timezone, maturity date, event and billing sources, minimum coverage, owner, metric, guardrail and approval policy. Feedback is optional and needs authorized access.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps for deterministic activation scoring, cohort retention curves, feature-adoption breakdowns, revenue joins, and completeness checks. Use a message sequence to interpret supported differences, correlate feedback themes, test alternative explanations, and propose bounded next actions. Prove an on-demand analysis first, then recommend scheduled monitoring with explicit scope, cadence, timezone, and notification policy. Keep publication behind configured review.
+1. Bind two Crew IDs and Workflow steps. Lifecycle Analyst saves `cohort-retention-observation/v1` with source references and one of `comparable`, `baseline_first` or `pending_maturity`. Run `python3 scripts/validate_handoff.py observation <observation.json>` as a blocking step.
+2. Stop if the cohort is immature. Otherwise pass the validated file by checked alias. Growth Experiment Planner preserves exact policy, cohort IDs and observed rates, then saves pending `retention-experiment-plan/v1`. Run `python3 scripts/validate_handoff.py plan <observation.json> <plan.json>` before reporting.
+3. Review the result and test proposal with the owner. Assignment, power calculation, variant launch, customer action and outcome measurement need separately reviewed routes.
 
 ## Knowledge and persistence
 
-Store lifecycle definitions, snapshots, cohorts, adoption analyses, feedback correlations, findings, recommendations, and follow-up outcomes in durable tables. Keep customer definitions/preferences in KB context and verified interpretation rules in notes or learnings. Preserve links to source records rather than copying private content.
+Store cohort and predicate versions, account join rule, source/artifact IDs, maturity dates, counts, corrections, Crew runs and owner decisions. Keep private feedback within its approved source scope.
 
 ## Validation and reporting
 
-Validate input freshness, expected scope, cohort comparability, survivorship and censoring handling, revenue-join integrity, feedback sampling, and evidence for every finding. The dashboard exposes activation, retention curves, adoption, revenue impact, confidence, limitations, and drill-downs.
+Recompute activation and retention numerators, denominators, maturity, censoring and identity coverage. Compare only equal windows under the same rule and report a new baseline after instrumentation changes. The dashboard shows cohorts, mature versus pending states, rates, source coverage, limitations, hypotheses and owner actions. No trend exists with only one mature cohort.
 
 ## Guardrails
 
-Do not infer causation from correlation, compare incompatible cohorts/windows, report retention without its denominator and censoring rules, quote customers without consent basis, or recommend consequential changes without evidence and ownership.
+Never call an immature cohort churned, use a cohort average as an individual risk label, or claim a feature caused retention without valid causal evidence. No customer message, CRM write or product change follows from this proposal. A pending experiment has no winner.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, and current-versus-separate workflow decisions.
-- [Growth data model](../references/growth-data-model.md): shared entities, identity, lineage, and metric governance.
-- [Lifecycle intelligence workflow](references/lifecycle-intelligence-workflow.md): activation, cohorts, adoption, feedback, and acceptance cases.
-- [Example cohort analysis](examples/cohort-analysis.json): fictional finding and evidence shape.
-- [Catalog metadata](playbook.json): presentation and optional recommendations.
+- [Team and handoff](references/team-and-handoffs.md)
+- [Shared workflow design and outcomes](../../references/workflow-design-and-outcomes.md)
+- [Lifecycle workflow](references/lifecycle-intelligence-workflow.md) and [growth data model](../references/growth-data-model.md)
+- [Comparable cohorts](examples/cohort-retention-observation.json), [baseline-first case](examples/cohort-retention-baseline-first.json), [pending maturity](examples/cohort-retention-pending-maturity.json), [pending plan](examples/retention-experiment-plan.json) and [rejected false plan](examples/invalid-retention-experiment-plan.json)
+- [Setup checklist](SETUP.json) and [catalog metadata](playbook.json)
 
 ## Completion contract
 
-Return installed playbook and lifecycle/metric policy revisions, scope and comparison cohorts, customer overrides, data-quality status, calculated indicators, evidence-backed findings with feedback references, report locations, capability resolution, and unresolved limitations.
+Return the Crew plan, source policy, validated artifact paths, maturity and coverage status, calculated rates or explicit unknowns, owner decision, manual-run proof and paused repeat choice.

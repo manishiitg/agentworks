@@ -1,0 +1,18 @@
+{
+  "artifact_type": "sales-call-brief/v1",
+  "artifact_id": "brief-opp-42-mtg-42-v1",
+  "tenant_id": "acme-saas",
+  "account_id": "acct-42",
+  "opportunity_id": "opp-42",
+  "meeting_id": "mtg-42",
+  "seller_id": "seller-2",
+  "calendar_source_id": "calendar-mtg-42@rev2",
+  "crm_source_id": "crm-opp-42@rev5",
+  "observed_at": "2026-10-02T08:00:00Z",
+  "verified_facts": [
+    {"text": "Buyer reported delays assembling monthly reports.", "source_id": "crm-note-12@rev1"}
+  ],
+  "unknowns": ["Attendee decision role", "Current reporting workflow"],
+  "seller_review": "pending",
+  "next_step": "Ask buyer to confirm workflow and success measure during the call."
+}

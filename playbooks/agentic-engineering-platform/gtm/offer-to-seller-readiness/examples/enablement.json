@@ -1,0 +1,29 @@
+{
+  "artifact_type": "gtm-enablement-brief/v1",
+  "artifact_id": "offer-to-seller-readiness-enablement-1",
+  "producer_id": "sales-enablement-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "business-v2",
+  "offer_id": "offer-v2",
+  "plan_id": "business-v2",
+  "price_revision": "price-44",
+  "source_revision": "enablement-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "enablement-source-1",
+    "enablement-source-2",
+    "docs-v5"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "claim_refs": [
+    "docs-v5"
+  ],
+  "distribution_state": "unpublished",
+  "persona": "RevOps buyer",
+  "stale_claims_removed": [
+    "ten-hour-saving"
+  ],
+  "input_artifact_id": "offer-to-seller-readiness-pricing-1",
+  "input_revision": "pricing-rev-1"
+}

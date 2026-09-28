@@ -1,0 +1,16 @@
+{
+  "artifact_type": "engineering-blocker-ledger/v1",
+  "incident_id": "INC-9999",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "owner_id": "release-checkout",
+  "change_id": "CHG-220",
+  "issue_ref": "issue:CHG-220",
+  "commit_sha": null,
+  "ci_ref": null,
+  "deployment_ref": null,
+  "delivery_state": "deployed",
+  "approval_state": "approved",
+  "source_refs": ["issue:CHG-220"],
+  "next_evidence": "Check service recovery."
+}

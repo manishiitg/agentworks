@@ -1,0 +1,39 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "vendor-evaluation-to-purchase-decision",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds exact-plan comparison to current vendor, budget, security and approval review without implicit purchase."}],
+  "title": "Vendor Evaluation to Purchase Decision",
+  "description": "Compare exact SaaS vendor plans against requirements and cost, then prepare a current, owner-reviewed purchase decision.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Operations"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Vendor Evaluation to Purchase Decision as a chat-led proposal. Inspect existing Vendor Researcher and Spend & Payables Coordinator Crews, buyer requirements, exact plans/quotes, term, currency, budget, vendor and overlapping subscription/PO records, security/privacy gates and approval owner. Propose reuse or reviewed creation, blocking handoff validation, a manual case and owner decision. Selecting this Playbook does not contact vendors, share customer data, create a vendor or PO, sign terms, pay, or enable recurrence.",
+  "setup_inputs": [
+    {"id":"purchase_scope","label":"Tenant, legal entity, request, decision owner and exact vendor set","required":true},
+    {"id":"requirements","label":"Versioned must-have and weighted requirements, region and evidence policy","required":true},
+    {"id":"commercial_rule","label":"Seats, term, comparable quote basis, currency and budget","required":true},
+    {"id":"source_access","label":"Current plan/quote, vendor, subscription/PO, budget and policy sources or exports","required":true},
+    {"id":"review_policy","label":"Security, privacy, procurement and approval gates","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed procurement request event","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing evaluation or payables capability","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass validated comparison to Payables","capability":"durable_artifacts","optional":true},
+    {"id":"vendor-source","name":"Vendor site, quote or approved document export","type":"mcp","purpose":"Read exact product, plan, dated quote, terms and criterion evidence","capability":"vendor_read","optional":true},
+    {"id":"ap-source","name":"Vendor register, subscriptions and purchase orders","type":"mcp","purpose":"Re-read duplicate vendor and committed spend state","capability":"payables_read","optional":true},
+    {"id":"budget-source","name":"Budget and approval policy source","type":"mcp","purpose":"Verify current available budget and purchase authority","capability":"budget_read","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Vendor purchase decisions","focus_areas":["Requirement and quote evidence for the exact plan", "Current duplicate, security, privacy, budget and owner review state"],"review_when":["A quote expires, a vendor or requirement changes, a gate is unresolved, or approval is pending"]}],
+  "outputs": ["Reviewed Crew and source map", "Validated vendor-comparison/v1 with cost assumptions and criterion evidence", "Validated vendor-purchase-review/v1 with current gates and owner state", "Manual case, blockers and activation choice"],
+  "agent_slots": [
+    {"id":"research","agent_playbook_id":"vendor-researcher","required":true,"output":"vendor-comparison/v1"},
+    {"id":"payables","agent_playbook_id":"spend-payables-coordinator","required":true,"output":"vendor-purchase-review/v1"}
+  ],
+  "handoffs": [{"id":"research-to-payables","from":"research","to":"payables","artifact_type":"vendor-comparison/v1","required":true}],
+  "setup_checks": ["goal_owner", "request_scope", "requirements_rule", "commercial_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

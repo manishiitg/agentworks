@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,7 +27,7 @@ type workspaceAPIResponse struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-// Entry is a single cost record — one LLM call.
+// Entry is one LLM call, paid tool charge, or unpriced MCP activity record.
 type Entry struct {
 	EventID        string    `json:"event_id,omitempty"`
 	IdempotencyKey string    `json:"idempotency_key,omitempty"`
@@ -202,7 +203,35 @@ type Summary struct {
 	// workflow_id land under "". Callers that present it fold subpaths and
 	// filter by the viewer's access.
 	ByWorkflow map[string]*WorkflowAggregate `json:"by_workflow,omitempty"`
-	Coverage   Coverage                      `json:"coverage"`
+	// ByWorkflowUser preserves actor attribution for views that first enforce
+	// workflow access. Keep it out of the general summary response: that route
+	// has no per-workflow permission filter.
+	ByWorkflowUser map[string]map[string]*UserAggregate `json:"-"`
+	// These dimensions are internal until the cost overview has applied the
+	// caller's workflow access rules.
+	ByWorkflowBot map[string]map[string]*BotAggregate `json:"-"`
+	ByWorkflowMCP map[string]map[string]*MCPAggregate `json:"-"`
+	Coverage      Coverage                            `json:"coverage"`
+}
+
+// UserAggregate is one actor's spend within one raw workflow ID.
+type UserAggregate struct {
+	Aggregate
+	ByScope map[string]*Aggregate `json:"by_scope,omitempty"`
+	ByModel map[string]*Aggregate `json:"by_model,omitempty"`
+}
+
+type BotAggregate struct {
+	Aggregate
+	Platform string `json:"platform"`
+	UserID   string `json:"user_id"`
+}
+
+type MCPAggregate struct {
+	Calls         int `json:"calls"`
+	UnpricedCalls int `json:"unpriced_calls"`
+	// Cost remains unknown when an MCP service does not report a price.
+	RecordedCostUSD float64 `json:"recorded_cost_usd"`
 }
 
 // WorkflowAggregate is one workflow_id's spend with the scope
@@ -278,11 +307,11 @@ func NewLedger(workspaceAPIURL string) *Ledger {
 		baseURL: strings.TrimRight(strings.TrimSpace(workspaceAPIURL), "/"),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
+			Transport: wsauth.Transport(&http.Transport{
 				MaxIdleConns:        20,
 				MaxIdleConnsPerHost: 20,
 				IdleConnTimeout:     90 * time.Second,
-			},
+			}),
 		},
 	}
 }
@@ -645,6 +674,8 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 	}
 	scopeBucket.Aggregate.add(e)
 	addEntryToWorkflowBucket(summary, scope, e)
+	addEntryToWorkflowUserBucket(summary, scope, e)
+	addEntryToBotAndMCPBuckets(summary, e)
 	executionID := strings.TrimSpace(e.ExecutionID)
 	if executionID == "" && strings.TrimSpace(e.SessionID) != "" {
 		executionID = "session:" + strings.TrimSpace(e.SessionID)
@@ -712,6 +743,85 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 		summary.ByModel[modelID] = mb
 	}
 	mb.add(e)
+}
+
+func addEntryToBotAndMCPBuckets(summary *Summary, e Entry) {
+	workflowID := strings.TrimSpace(e.WorkflowID)
+	platform := strings.TrimSpace(e.SourcePlatform)
+	if platform != "" {
+		if summary.ByWorkflowBot == nil {
+			summary.ByWorkflowBot = make(map[string]map[string]*BotAggregate)
+		}
+		bots := summary.ByWorkflowBot[workflowID]
+		if bots == nil {
+			bots = make(map[string]*BotAggregate)
+			summary.ByWorkflowBot[workflowID] = bots
+		}
+		key := platform + "\x00" + strings.TrimSpace(e.UserID)
+		bot := bots[key]
+		if bot == nil {
+			bot = &BotAggregate{Platform: platform, UserID: strings.TrimSpace(e.UserID)}
+			bots[key] = bot
+		}
+		bot.Aggregate.add(e)
+	}
+	if server, ok := strings.CutPrefix(strings.TrimSpace(e.Component), "mcp:"); ok && server != "" {
+		if summary.ByWorkflowMCP == nil {
+			summary.ByWorkflowMCP = make(map[string]map[string]*MCPAggregate)
+		}
+		servers := summary.ByWorkflowMCP[workflowID]
+		if servers == nil {
+			servers = make(map[string]*MCPAggregate)
+			summary.ByWorkflowMCP[workflowID] = servers
+		}
+		bucket := servers[server]
+		if bucket == nil {
+			bucket = &MCPAggregate{}
+			servers[server] = bucket
+		}
+		bucket.Calls++
+		if e.BillingBasis == "unpriced" {
+			bucket.UnpricedCalls++
+		}
+		bucket.RecordedCostUSD += e.TotalCostUSD
+	}
+}
+
+func addEntryToWorkflowUserBucket(summary *Summary, scope string, e Entry) {
+	if summary.ByWorkflowUser == nil {
+		summary.ByWorkflowUser = make(map[string]map[string]*UserAggregate)
+	}
+	workflowID := strings.TrimSpace(e.WorkflowID)
+	users := summary.ByWorkflowUser[workflowID]
+	if users == nil {
+		users = make(map[string]*UserAggregate)
+		summary.ByWorkflowUser[workflowID] = users
+	}
+	userID := strings.TrimSpace(e.UserID)
+	bucket := users[userID]
+	if bucket == nil {
+		bucket = &UserAggregate{ByScope: make(map[string]*Aggregate), ByModel: make(map[string]*Aggregate)}
+		users[userID] = bucket
+	}
+	bucket.Aggregate.add(e)
+	scopeBucket := bucket.ByScope[scope]
+	if scopeBucket == nil {
+		scopeBucket = &Aggregate{}
+		bucket.ByScope[scope] = scopeBucket
+	}
+	scopeBucket.add(e)
+	modelID := e.EffectiveModelID
+	if modelID == "" {
+		modelID = e.ModelID
+	}
+	if modelID != "" {
+		modelBucket := bucket.ByModel[modelID]
+		if modelBucket == nil {
+			modelBucket = &Aggregate{}
+			bucket.ByModel[modelID] = modelBucket
+		}
+		modelBucket.add(e)
+	}
 }
 
 func addEntryToWorkflowBucket(summary *Summary, scope string, e Entry) {

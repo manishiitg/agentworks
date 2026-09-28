@@ -1,0 +1,52 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "trial-account-to-reviewed-sales-assist",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a bounded trial usage to Sales handoff with exact CRM identity, contact-policy and unsent-draft gates."}
+  ],
+  "title": "Trial Account to Reviewed Sales Assist",
+  "description": "Review one SaaS trial account's actual product use, then prepare a permitted seller assist or an explicit no-contact decision.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Sales"],
+  "order": 4,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Trial Account to Reviewed Sales Assist as a chat-led proposal. Inspect the current Product Adoption Analyst and Sales Follow-up Coordinator Crews, trial/subscription source, product event coverage, exact CRM account mapping, seller fit policy, current contact permission, suppression, prior replies and meetings. Propose reuse or reviewed creation, exact JSON handoff and blocking validator, one manual trial and an owner-reviewed draft or no-contact result. Show the plan before Builder applies it. Selection does not email, update CRM, mark a trial converted, or activate recurrence.",
+  "setup_inputs": [
+    {"id": "trial_source", "label": "Authorized product account, trial/subscription state and revision", "required": true},
+    {"id": "usage_rule", "label": "Owner-defined product event rule, window, exclusions and coverage source", "required": true},
+    {"id": "crm_join", "label": "Exact product-account to CRM-account and recipient mapping", "required": true},
+    {"id": "sales_policy", "label": "Seller fit, offer, owner, contact permission, suppression and prior-contact rules", "required": true},
+    {"id": "outcome_source", "label": "Provider delivery and calendar or CRM meeting source when later outcomes are tracked", "required": false},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create only reviewed missing Crew identities with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a bounded validated trial observation to Sales", "capability": "durable_artifacts", "optional": true},
+    {"id": "product-events", "name": "Product analytics or bounded event export", "type": "mcp", "purpose": "Read exact tenant/account events and event coverage", "capability": "product_events", "optional": true},
+    {"id": "trial-billing", "name": "Trial or subscription source", "type": "mcp", "purpose": "Read current trial status, revision, dates and paid conversion state", "capability": "subscription_read", "optional": true},
+    {"id": "crm-read", "name": "CRM and contact-history source", "type": "mcp", "purpose": "Verify account mapping, recipient, suppression, prior contact and meeting state", "capability": "sales_read", "optional": true},
+    {"id": "contact-route", "name": "Separately approved sales delivery route", "type": "mcp", "purpose": "Send one exact approved message and retain a provider receipt", "capability": "sales_delivery", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Trial sales assists", "focus_areas": ["Whether trial observations are sourced and coverage-aware rather than intent scores", "Whether Sales reaches only exact permitted recipients without duplicate contact or false outcome claims"], "review_when": ["A trial status or usage window changes, contact permission changes, a customer replies, or an approved assist remains open"]}
+  ],
+  "outputs": [
+    "Reviewed Product and Sales Crew bindings and source map",
+    "Exact-account trial usage observation with status, rule and coverage",
+    "CRM-mapped no-contact, needs-review or unsent sales-assist decision",
+    "Separate provider delivery and meeting evidence only when authorized and observed",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "adoption", "agent_playbook_id": "product-adoption-analyst", "required": true, "output": "trial-usage-observation/v1"},
+    {"id": "sales", "agent_playbook_id": "sales-followup-coordinator", "required": true, "output": "trial-sales-assist/v1"}
+  ],
+  "handoffs": [
+    {"id": "adoption-to-sales", "from": "adoption", "to": "sales", "artifact_type": "trial-usage-observation/v1", "required": true}
+  ],
+  "setup_checks": ["goal_owner", "trial_scope", "usage_rule", "contact_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

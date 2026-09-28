@@ -1,0 +1,36 @@
+{
+  "artifact_type": "sales-proposal-draft/v1",
+  "artifact_id": "proposal-opp-42-v1",
+  "tenant_id": "acme-saas",
+  "account_id": "acct-42",
+  "opportunity_id": "opp-42",
+  "meeting_id": "mtg-42",
+  "brief_artifact_id": "brief-opp-42-mtg-42-v1",
+  "discovery": {
+    "note_id": "crm-note-13@rev2",
+    "meeting_id": "mtg-42",
+    "status": "approved",
+    "approved_by": "seller-2",
+    "approved_at": "2026-10-02T12:00:00Z"
+  },
+  "offer_source_id": "approved-offer-7@rev3",
+  "price_version": "price-list-v3",
+  "currency": "USD",
+  "commercial_owner_id": "sales-director-1",
+  "scope_claims": [
+    {"text": "Ten seats with monthly reporting setup.", "discovery_ref": "crm-note-13@rev2:line-4", "product_ref": "approved-offer-7@rev3:reporting"}
+  ],
+  "line_items": [
+    {"description": "Ten seats, monthly", "quantity": 10, "unit_price_minor": 2000, "line_total_minor": 20000, "price_source_id": "price-list-v3:seat-monthly"}
+  ],
+  "subtotal_minor": 20000,
+  "discount_minor": 0,
+  "discount_rule_id": null,
+  "discount_approved_by": null,
+  "total_minor": 20000,
+  "approval_state": "pending",
+  "delivery_state": "unsent",
+  "delivery_receipt": null,
+  "open_questions": ["Implementation timeline needs commercial owner confirmation."],
+  "next_step": "Commercial owner checks scope, price and terms before any send."
+}

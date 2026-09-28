@@ -1,0 +1,57 @@
+{
+  "artifact_type": "release-quality-brief/v1",
+  "release_id": "rc-28",
+  "sha": "987fed",
+  "build_id": "artifact:rc-28-987fed",
+  "environment": "preview-28",
+  "policy_version": "gate-v5",
+  "journey_revision": "signup-to-project@v3",
+  "observed_at": "2026-09-25T10:15:00Z",
+  "required_suites": [
+    "critical-signup",
+    "auth"
+  ],
+  "suite_results": [
+    {
+      "suite_id": "critical-signup",
+      "status": "blocked",
+      "attempt_ids": [
+        "journey-28-00",
+        "journey-28-01"
+      ],
+      "source_refs": [
+        "ci:journey-28-00",
+        "ci:journey-28-01"
+      ],
+      "sha": "987fed",
+      "build_id": "artifact:rc-28-987fed",
+      "environment": "preview-28",
+      "observed_at": "2026-09-25T10:00:00Z"
+    },
+    {
+      "suite_id": "auth",
+      "status": "pass",
+      "attempt_ids": [
+        "auth-28-01"
+      ],
+      "source_refs": [
+        "ci:auth-28-01"
+      ],
+      "sha": "987fed",
+      "build_id": "artifact:rc-28-987fed",
+      "environment": "preview-28",
+      "observed_at": "2026-09-25T09:30:00Z"
+    }
+  ],
+  "verdict": "needs_review",
+  "review_reason": "Original journey attempt failed; cause and stability are not established.",
+  "owner_id": "release-lead",
+  "approval_state": "pending",
+  "publication_state": "prepared",
+  "source_refs": [
+    "gate-policy-v5",
+    "ci:journey-28-00",
+    "ci:journey-28-01",
+    "ci:auth-28-01"
+  ]
+}

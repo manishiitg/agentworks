@@ -25,10 +25,17 @@ returned.
   also generates a `<crew>__<function>` tool.
 - **From MCP or the CLI:** use `ask_crew` / `call_crew_function`, or
   `agentworks crews ask` / `agentworks crews call`.
-- **Getting the result:** a call that finishes within about 2 minutes (25
-  seconds over MCP/CLI) returns its result directly. A longer call returns a
-  `call_id`; a calling Crew gets the result as an automatic notification, and
-  MCP/CLI clients poll `get_crew_function_call`.
+- **Getting the result:** functions are agentic and usually take minutes, so
+  `call_function` returns at once with `status: running` and a `call_id`; a
+  calling Crew or workflow gets the result as an automatic notification. Pass
+  `wait_seconds` (up to 120) to wait inline for a function you expect to be
+  quick. MCP/CLI calls (`call_crew_function`, `ask_crew`,
+  `call_workflow_function`) also return at once; clients poll
+  `get_crew_function_call` / `get_workflow_function_call`, or pass
+  `wait_seconds` (max 25).
+- **No duplicate runs:** calling the same function with the same arguments
+  while that call is still running returns the running call (`joined`), not a
+  new run.
 - **While a call runs:** `get_function_call` shows progress without
   interrupting. `ask_function_update` sends a question or extra details into
   the running call.

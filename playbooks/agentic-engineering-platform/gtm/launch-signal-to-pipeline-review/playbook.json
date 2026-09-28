@@ -1,0 +1,159 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "launch-signal-to-pipeline-review",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Reconcile an observed launch campaign with deduplicated form, lead and opportunity records under one attribution policy."
+    }
+  ],
+  "title": "Launch Signal to Pipeline Review",
+  "description": "Reconcile an observed launch campaign with deduplicated form, lead and opportunity records under one attribution policy.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "GTM"
+  ],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Launch Signal to Pipeline Review as a chat-led proposal. Inspect existing Crews, source permissions, exact subject, owner and action policy. Propose reuse or reviewed creation, typed handoffs, a real manual first case and separate approval for consequential actions. Show the plan before Builder applies it. Selection enables no write or recurrence.",
+  "setup_inputs": [
+    {
+      "id": "subject",
+      "label": "One approved offer, launch, campaign, time window and attribution model; no inferred qualified lead or revenue lift.",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Read provider publication evidence, campaign and form events, current CRM lead and opportunity records, identity rule and lookback window.",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "Stage counts must reconcile in order and unmatched events retain partial attribution; contact and sales acceptance remain separate.",
+      "required": true
+    },
+    {
+      "id": "owners",
+      "label": "Accountable source, decision and action owners",
+      "required": true
+    },
+    {
+      "id": "access",
+      "label": "Authorized connections or equivalent current exports",
+      "required": true
+    },
+    {
+      "id": "repeat",
+      "label": "Manual-only or reviewed event and schedule policy",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Propose a missing Crew with stable key after review",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated source-bound artifacts between Crews",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "source-one",
+      "name": "Customer source records or export",
+      "type": "mcp",
+      "purpose": "Read the exact first-stage source and revision",
+      "capability": "source_read",
+      "optional": true
+    },
+    {
+      "id": "source-two",
+      "name": "Customer downstream records or export",
+      "type": "mcp",
+      "purpose": "Independently verify downstream state and owner",
+      "capability": "downstream_read",
+      "optional": true
+    },
+    {
+      "id": "approved-action",
+      "name": "Separately approved provider action",
+      "type": "mcp",
+      "purpose": "Apply only an owner-approved exact-object change with receipt",
+      "capability": "reviewed_write",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Launch Signal to Pipeline Review",
+      "focus_areas": [
+        "Produce an observed launch register and a sourced funnel review with coverage, stage counts, gaps and owner action.",
+        "Stage counts must reconcile in order and unmatched events retain partial attribution; contact and sales acceptance remain separate."
+      ],
+      "review_when": [
+        "A new source revision, owner decision or manual case changes the current state"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "launch-signal-register/v1",
+    "gtm-funnel-reconciliation/v1",
+    "Manual case, owner decision, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "launch",
+      "agent_playbook_id": "launch-coordinator",
+      "required": true,
+      "output": "launch-signal-register/v1"
+    },
+    {
+      "id": "revenue",
+      "agent_playbook_id": "revenue-operations-analyst",
+      "required": true,
+      "output": "gtm-funnel-reconciliation/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "launch-to-revenue",
+      "from": "launch",
+      "to": "revenue",
+      "artifact_type": "launch-signal-register/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "subject_scope",
+    "source_policy",
+    "decision_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

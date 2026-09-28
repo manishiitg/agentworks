@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -38,8 +39,27 @@ type playbookCatalogItem struct {
 	RecommendedTools     []map[string]interface{} `json:"recommended_tools"`
 	PulseFocus           []map[string]interface{} `json:"pulse_focus"`
 	Outputs              []string                 `json:"outputs"`
+	AgentSlots           []playbookAgentSlot      `json:"agent_slots,omitempty"`
+	Handoffs             []playbookHandoff        `json:"handoffs,omitempty"`
+	SetupChecks          []string                 `json:"setup_checks,omitempty"`
 	Category             string                   `json:"category"`
 	SourceDir            string                   `json:"-"`
+}
+
+type playbookAgentSlot struct {
+	ID              string   `json:"id"`
+	AgentPlaybookID string   `json:"agent_playbook_id"`
+	Accepts         []string `json:"accepts,omitempty"`
+	Required        bool     `json:"required"`
+	Output          string   `json:"output"`
+}
+
+type playbookHandoff struct {
+	ID           string `json:"id"`
+	From         string `json:"from"`
+	To           string `json:"to"`
+	ArtifactType string `json:"artifact_type"`
+	Required     bool   `json:"required"`
 }
 
 type playbookChangelogEntry struct {
@@ -235,7 +255,7 @@ func (api *StreamingAPI) handleInstallPlaybook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "playbook has an invalid skill name", http.StatusInternalServerError)
 		return
 	}
-	hash, err := installPlaybookSkill(request.WorkspacePath, skillName, item)
+	hash, err := installPlaybookSkill(r.Context(), request.WorkspacePath, skillName, item)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("install playbook skill: %v", err), http.StatusInternalServerError)
 		return
@@ -264,7 +284,7 @@ func (api *StreamingAPI) handleInstallPlaybook(w http.ResponseWriter, r *http.Re
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "installed": installed})
 }
 
-func installPlaybookSkill(workspacePath, skillName string, item *playbookCatalogItem) (string, error) {
+func installPlaybookSkill(ctx context.Context, workspacePath, skillName string, item *playbookCatalogItem) (string, error) {
 	client := skills.NewWorkspaceAPIClient(getWorkspaceAPIURL())
 	destinationRoot := path.Join(workspacePath, skills.SkillsBasePath, skillName)
 	if err := createPlaybookWorkspaceFolder(client, destinationRoot); err != nil {
@@ -296,6 +316,9 @@ func installPlaybookSkill(workspacePath, skillName string, item *playbookCatalog
 		}
 		_, _ = hasher.Write([]byte(filepath.ToSlash(relative)))
 		_, _ = hasher.Write(content)
+		if relative == "SETUP.json" && len(item.SetupChecks) > 0 {
+			return installPlaybookSetupFile(ctx, client, workspacePath, destination, item, content)
+		}
 		return client.WriteFile(destination, string(content))
 	})
 	if err != nil {
@@ -323,6 +346,42 @@ func installPlaybookSkill(workspacePath, skillName string, item *playbookCatalog
 		}
 	}
 	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// Setup progress belongs to the customer. A repeated installation keeps it;
+// an update retains the old record before starting the new version's checks.
+func installPlaybookSetupFile(ctx context.Context, client *skills.WorkspaceAPIClient, workspacePath, destination string, item *playbookCatalogItem, content []byte) error {
+	current, found, err := readFileFromWorkspace(ctx, destination)
+	if err != nil {
+		return fmt.Errorf("read existing playbook setup: %w", err)
+	}
+	if found {
+		var existing struct {
+			ID      string `json:"playbook_id"`
+			Version string `json:"playbook_version"`
+		}
+		if json.Unmarshal([]byte(current), &existing) == nil && existing.ID == item.ID && existing.Version == item.Version {
+			return nil
+		}
+		digest := sha256.Sum256([]byte(current))
+		historyPath := path.Join(workspacePath, "playbooks", "setup-history", item.ID, hex.EncodeToString(digest[:])+".json")
+		if err := createPlaybookWorkspaceFolder(client, path.Dir(historyPath)); err != nil {
+			return err
+		}
+		if err := client.WriteFile(historyPath, current); err != nil {
+			return fmt.Errorf("preserve previous playbook setup: %w", err)
+		}
+		var next map[string]interface{}
+		if err := json.Unmarshal(content, &next); err != nil {
+			return err
+		}
+		next["previous_setup_path"] = historyPath
+		content, err = json.MarshalIndent(next, "", "  ")
+		if err != nil {
+			return err
+		}
+	}
+	return client.WriteFile(destination, string(content))
 }
 
 var markdownLinkPattern = regexp.MustCompile(`\]\(([^)#]+)(#[^)]*)?\)`)

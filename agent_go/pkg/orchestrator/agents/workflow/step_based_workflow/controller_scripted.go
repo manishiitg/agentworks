@@ -383,11 +383,14 @@ func detectSuccessfulLLMScriptedSelfRun(history []llmtypes.MessageContent, mainP
 						lastMainPyMutation = callIndex
 					}
 				case "diff_patch_workspace_file", "mcp_api-bridge_diff_patch_workspace_file":
-					var args struct {
-						Filepath string `json:"filepath"`
-					}
-					if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err == nil && strings.TrimSpace(args.Filepath) == mainPyAbsPath {
-						lastMainPyMutation = callIndex
+					// A multi-file "*** Begin Patch" names main.py inside the diff.
+					var args map[string]interface{}
+					if err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args); err == nil {
+						for _, target := range workspace.DiffPatchTargetPaths(args) {
+							if strings.TrimSpace(target) == mainPyAbsPath {
+								lastMainPyMutation = callIndex
+							}
+						}
 					}
 				}
 			}
@@ -1049,6 +1052,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Keeping one door means a test run and a real run cannot disagree again.
 	if hcpo.WorkspaceClient == nil {
 		return "", -1, fmt.Errorf("%w: no workspace client configured", ErrScriptedHarnessRejection)
+	}
+	// The script's bridge session comes from the orchestrator's own workspace
+	// env (trusted), so pass it as the context session: the shell binds its
+	// bridge token only to that, never to a session named in ExtraEnv.
+	if sid := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sid != "" {
+		if existing, _ := ctx.Value(common.ChatSessionIDKey).(string); strings.TrimSpace(existing) == "" {
+			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sid)
+		}
 	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)
 	if err != nil {

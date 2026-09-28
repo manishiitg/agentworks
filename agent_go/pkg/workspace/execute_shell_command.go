@@ -323,19 +323,6 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 	sessionID := c.sessionIDFromContext(ctx)
 	sessionCfg := GetSessionShellConfig(sessionID)
 	sessionEnv := common.GetSessionShellEnv(sessionID)
-	// PLAT-280 diagnostic: a scripted step (plan type regular) that was
-	// granted DB access should always have DB_PATH in its
-	// session env by the time its shell command runs. Its absence here, for a
-	// session the workflow believes it granted DB access to, is exactly the
-	// "database path access must be granted" failure reported against the
-	// upwork workflow's search-save-jobs/outreach-record/improve-read-history/
-	// bid-record steps (all codex-cli, code-execution mode) starting 2026-09-01.
-	// This never changes behavior — it only surfaces the anomaly if it recurs.
-	if strings.TrimSpace(sessionEnv["WORKFLOW_DB_ACCESS"]) != "" && strings.TrimSpace(sessionEnv["DB_PATH"]) == "" {
-		log.Printf("[PLAT-280] execute_shell_command: session %q has WORKFLOW_DB_ACCESS=%q but no DB_PATH in its registered shell env (client MCP_SESSION_ID=%q)",
-			sessionID, sessionEnv["WORKFLOW_DB_ACCESS"], clientEnv["MCP_SESSION_ID"])
-	}
-
 	// Block agent-browser browser-driving CLI calls via shell — catches direct calls,
 	// bash -c wrapping, piping, etc. The agent_browser tool handles CDP URL
 	// resolution, session tracking, and folder guard. Calling agent-browser directly
@@ -485,6 +472,16 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 		sessionEnv,
 		params.ExtraEnv,
 	)
+	bindShellBridgeSession(params.ExtraEnv, sessionID)
+	// PLAT-280: a session granted direct database access (a scripted step)
+	// must reach its command with DB_PATH. Agentic steps are denied raw
+	// database access by design (the file is on their blocked list) and use
+	// query_workflow_db / mutate_workflow_db instead, so their missing DB_PATH
+	// is not an anomaly. Checked on the final environment. Log-only.
+	if shellMissingGrantedDBPath(params.ExtraEnv, sessionCfg) {
+		log.Printf("[PLAT-280] execute_shell_command: session %q was granted direct DB access (WORKFLOW_DB_ACCESS=%q) but its command has no DB_PATH",
+			sessionID, params.ExtraEnv["WORKFLOW_DB_ACCESS"])
+	}
 	// Script-repair shells use the ordinary execute_shell_command executor, so
 	// infer the same snapshot behavior from their trusted session capability.
 	// The saved-script fast path sets DBReadSnapshot explicitly because it does
@@ -570,6 +567,58 @@ func isWorkflowStepShellRequest(envs ...map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// shellMissingGrantedDBPath reports a command that should have DB_PATH but
+// does not: its session has workflow DB access and raw access to the
+// database file is not blocked (only scripted steps get that), yet the final
+// environment carries no DB_PATH.
+func shellMissingGrantedDBPath(env map[string]string, cfg *common.SessionShellConfig) bool {
+	if strings.TrimSpace(env["WORKFLOW_DB_ACCESS"]) == "" || strings.TrimSpace(env["DB_PATH"]) != "" {
+		return false
+	}
+	if cfg == nil {
+		return false
+	}
+	for _, blocked := range cfg.BlockedPaths {
+		if strings.HasSuffix(filepath.ToSlash(strings.TrimSpace(blocked)), "/db/db.sqlite") {
+			return false // agentic: raw database access withheld on purpose
+		}
+	}
+	return true
+}
+
+// bindShellBridgeSession makes a shell's tool-call credentials those of the
+// session it runs as, and only that one. The bridge token is per session
+// (common/bridge_token.go), so it is derived last, after every env layer is
+// merged, and only from the trusted session: sessionIDFromContext (the
+// request context the token-bound bridge route or step wrapper set, else the
+// client's own env), never from the command's extra_env, which the model
+// controls. A model naming another session in extra_env still gets this
+// shell's session and token; a shell with no trusted session gets no token.
+func bindShellBridgeSession(env map[string]string, sessionID string) {
+	if env == nil || !common.BridgeTokensEnabled() {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		for _, key := range []string{"MCP_SESSION_ID", "MCP_API_TOKEN", "MCP_AUTH"} {
+			delete(env, key)
+		}
+		return
+	}
+	env["MCP_SESSION_ID"] = sessionID
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("MCP_API_URL")), "/")
+	if base == "" {
+		base = strings.TrimRight(strings.TrimSpace(env["MCP_API_URL"]), "/")
+		if i := strings.Index(base, "/s/"); i >= 0 {
+			base = base[:i]
+		}
+	}
+	if base != "" {
+		env["MCP_API_URL"] = base + "/s/" + sessionID
+	}
+	common.PopulateMCPBridgeShortEnv(env)
 }
 
 // mergeShellCommandEnv returns a new map for each request. Values are applied

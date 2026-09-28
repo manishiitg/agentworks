@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "dispute-to-reconciled-outcome",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm dispute goal and owners", "instructions": "Name the dispute reviewer, evidence-submission approver and finance owner. Define the first reviewable case packet and excluded actions; distinguish review from response submission and provider outcome."},
+    {"id": "case_scope", "title": "Bind one exact provider case", "instructions": "Record entity, processor account and live/test mode, dispute, linked payment, customer, amount minor units, currency, reason, status, revision and observed time. Reject joins by customer name or amount alone."},
+    {"id": "deadline_policy", "title": "Set status and response deadline rules", "instructions": "Read the provider response deadline with timezone, owner handoff buffer, current submission history and closed-case behavior. A stale deadline or changed status forces re-read before action."},
+    {"id": "evidence_policy", "title": "Set evidence and privacy boundary", "instructions": "List authorized agreement, usage, delivery and contact sources relevant to this dispute reason, permitted sensitive fields, missing evidence, retention, approver and exact submission route. A source title is not evidence access."},
+    {"id": "team_bindings", "title": "Bind compatible Finance Crews", "instructions": "Inspect existing Billing Operations Coordinator with Dispute Review and Revenue & Close Analyst. Record project and trigger IDs, selected skills and accountable owners; create a distinct Crew only for an actual access or owner boundary."},
+    {"id": "source_access", "title": "Probe current case and finance sources", "instructions": "Read one authorized dispute, linked payment, response history, relevant evidence source and a matching settlement or ledger record or explicit absence. Save source IDs, observation times and access limits."},
+    {"id": "handoff_contract", "title": "Validate the exact dispute handoff", "instructions": "Require the producer Crew's JSON context output and structural schema, then run the bundled validator before Finance consumes the same artifact path. Reject wrong account, payment, currency, invented submission, unsupported win or premature ledger closure; test a valid and rejected fixture."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, exact source and output paths, structural and business validator steps, deadline and re-read points, approval and submission action boundary, finance observation route, privacy rules and manual case before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized case manually", "instructions": "Use a real or historical authorized dispute with current provider and finance records. Save Crew run IDs, validation results, owner decision, actual submission and outcome receipts or pending states, and finance difference. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose follow-up and action ledger", "instructions": "Record dispute/revision, evidence packet hash, approval, submission idempotency key and provider receipt, outcome revision, ledger source and next check. Choose manual-only or a reviewed event/cadence; setup completion enables no processor write."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

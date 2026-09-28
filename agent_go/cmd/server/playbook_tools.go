@@ -21,6 +21,9 @@ type playbookSearchResult struct {
 	Outputs              []string                 `json:"outputs"`
 	RecommendedTools     []map[string]interface{} `json:"recommended_tools,omitempty"`
 	PulseFocus           []map[string]interface{} `json:"pulse_focus,omitempty"`
+	AgentSlots           []playbookAgentSlot      `json:"agent_slots,omitempty"`
+	Handoffs             []playbookHandoff        `json:"handoffs,omitempty"`
+	SetupChecks          []string                 `json:"setup_checks,omitempty"`
 	Installed            bool                     `json:"installed"`
 	InstalledStatus      string                   `json:"installed_status,omitempty"`
 	InstalledVersion     string                   `json:"installed_version,omitempty"`
@@ -74,6 +77,10 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 		}
 		searchable = append(searchable, item.RequiredCapabilities...)
 		searchable = append(searchable, item.Outputs...)
+		for _, slot := range item.AgentSlots {
+			searchable = append(searchable, slot.ID, slot.AgentPlaybookID)
+			searchable = append(searchable, slot.Accepts...)
+		}
 		for _, tool := range item.RecommendedTools {
 			for _, key := range []string{"name", "purpose", "capability", "type"} {
 				if value, _ := tool[key].(string); value != "" {
@@ -122,7 +129,8 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 		results = append(results, playbookSearchResult{
 			ID: item.ID, Title: item.Title, Category: item.Category, Description: item.Description,
 			Version: item.Version, Changelog: item.Changelog, SetupAreas: setupAreas, RequiredCapabilities: item.RequiredCapabilities,
-			Outputs: item.Outputs, RecommendedTools: item.RecommendedTools, PulseFocus: item.PulseFocus, Installed: isInstalled,
+			Outputs: item.Outputs, RecommendedTools: item.RecommendedTools, PulseFocus: item.PulseFocus,
+			AgentSlots: item.AgentSlots, Handoffs: item.Handoffs, SetupChecks: item.SetupChecks, Installed: isInstalled,
 			InstalledStatus: installedItem.Status, InstalledVersion: installedItem.Version,
 			UpdateAvailable: isInstalled && isNewerPlaybookVersion(item.Version, installedItem.Version),
 			Availability:    availability, RequiredAction: requiredAction, Score: score,
@@ -144,7 +152,7 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 }
 
 func (api *StreamingAPI) registerPlaybookSearchTool(registrar definitionToolRegistrar, workspacePath string) error {
-	description := "Search the AgentWorks small-team playbook catalog by the user's intent, operating area, capability, tool, expected outcome, or Strategic Pulse review focus. Use this before improvising a generic workflow setup when a reusable engineering playbook may fit. Results include setup areas, deliverables, recommended tools, Strategic Pulse focus, installed and latest versions, update availability, and the catalog changelog. Technical and Architecture Review retain their canonical evidence- and structure-driven scope; playbooks do not specialize them. The catalog is platform-wide, but installation and read_skill availability are workflow-specific. This tool never installs anything. A catalog_only result is not usable in the current workflow: when the user asked to use that playbook, do not recreate it manually or begin setup. Tell the user it is not installed here, perform_ui_action(action=\"open\", view=\"playbooks\"), and wait for the user to install it. After installation, inspect the current workflow, default to one workflow unless access or lifecycle boundaries require a split, summarize reuse and gaps, and ask focused questions for material unresolved customer choices before proposing changes; installation is not approval to edit or run the workflow."
+	description := "Search the AgentWorks playbook catalog by the user's intent, operating area, capability, tool, or expected outcome. Results include setup areas, deliverables, recommended tools, proposed Crew slots and handoffs when applicable, installed and latest versions, and update availability. The catalog is platform-wide, but installation and read_skill availability are workflow-specific. This tool never installs anything. A catalog_only result is not usable in the current workflow: when the user asks to use that Playbook, do not recreate it manually; tell the user it is not installed here, perform_ui_action(action=\"open\", view=\"playbooks\"), and wait for installation. For an installed Playbook, read its skill, inspect the current workflow and existing Crews, and propose a concrete plan for review before executing reviewed actions through Builder tools. Playbook installation is not approval to create Crews, enable recurrence, publish, or send outreach."
 	params := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{

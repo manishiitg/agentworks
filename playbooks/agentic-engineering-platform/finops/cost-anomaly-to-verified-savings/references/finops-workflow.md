@@ -1,5 +1,7 @@
 # FinOps cost anomaly and optimization workflow
 
+The installable v0.6 route starts with the three Crew jobs and blocking artifact checks in [team and handoff](team-and-handoffs.md). This reference supplies deeper provider, IaC and savings methods for that route. A first manual run may end with a pending action and unknown realized savings.
+
 ## Establish the cost and ownership contract
 
 Define exact cloud scope, environments, billing account/project/subscription identity, currency and conversion date, cost basis (for example invoiced, net, amortized, or unblended as supplied), time granularity, attribution rules, credits/refunds/tax treatment, commitments, allocation tags, shared-cost rules, owner mapping, history window, and data freshness.
@@ -49,7 +51,7 @@ Record gross and net savings, verification dates, comparison method, demand, con
 
 ## AgentWorks plan pattern
 
-A compact plan may use:
+A compact plan binds Cost Analyst → Delivery Coordinator → Finance Analyst as distinct Crew steps, with `cloud-cost-review/v1` and `cloud-change-review/v1` validated before the next Crew reads them. It may use:
 
 1. `ingest-and-detect` — scripted cost/utilization sync and anomaly candidates;
 2. `investigate-anomaly` — message sequence for cause, evidence, and candidate;

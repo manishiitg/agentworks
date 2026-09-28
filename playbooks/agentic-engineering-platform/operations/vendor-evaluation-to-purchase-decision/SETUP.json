@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "vendor-evaluation-to-purchase-decision",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm purchase decision and owner","instructions":"Name buyer, budget owner, decision scope, first read-only result and excluded vendor contact, document sharing, PO, contract and payment actions."},
+    {"id":"request_scope","title":"Bind one exact request and entity","instructions":"Record tenant, legal entity, purchase request ID, region, intended use, competing vendor set and decision deadline."},
+    {"id":"requirements_rule","title":"Freeze requirement and evidence policy","instructions":"Record must-haves, weights, security/privacy constraints, source freshness and how unknown or self-reported claims are shown; approve a version before scoring."},
+    {"id":"commercial_rule","title":"Freeze comparable total-cost basis","instructions":"Record seats, minimums, term, quote validity, onboarding and usage assumptions, one currency and budget. No unsourced FX or missing cost may become zero."},
+    {"id":"team_bindings","title":"Bind Research and Payables capabilities","instructions":"Inspect existing Vendor Researcher and Spend & Payables Coordinator Crews; reuse compatible identities/access or propose reviewed creation. Add Security only if a separate policy authority is required."},
+    {"id":"source_access","title":"Probe exact vendor and procurement sources","instructions":"Read plan/quote revisions, current vendor register, overlapping subscriptions and POs, budget, security/privacy reviews and approval policy; record IDs, timestamps and missing coverage."},
+    {"id":"handoff_contract","title":"Validate comparison and purchase review","instructions":"Insert blocking validators before Payables and reporting. Exercise wrong plan/quote, expired quote, arithmetic, unknown must-have, duplicate vendor, missing gate, false approval and purchase claims."},
+    {"id":"plan_review","title":"Review concrete Automation plan","instructions":"Show Crew IDs, source paths, exact schemas, validation steps, manual case, owner decision, stable request key, possible action routes, cost and notifications."},
+    {"id":"test_run","title":"Run one real request manually","instructions":"Save authorized comparison and fresh procurement reads, validated artifacts, owner correction or decision, and a blocked-control case. Fictional fixtures do not complete setup."},
+    {"id":"activation_choice","title":"Choose manual or reviewed repeat","instructions":"Manual-only is valid. A procurement event requires authenticated scope, stable request ID, quote refresh, duplicate handling, cost, owner notification and explicit activation."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

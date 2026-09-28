@@ -1,52 +1,48 @@
 ---
 name: engineering-operations-intelligence
-description: Build one small-team AgentWorks workflow that connects engineering data, calculates delivery, quality, and reliability intelligence, and produces recurring evidence-backed reviews with tracked actions.
+description: Propose governed team metric observation and a separate owned improvement review.
 ---
 
 # Engineering Operations Intelligence
 
 ## Outcome
 
-Create one compact workflow that turns authorized engineering-system data into trusted team metrics, evidence-backed findings, recurring reviews, and tracked improvement actions.
+Reconcile one team delivery, quality or reliability measure under a versioned rule, then prepare an owner-reviewed improvement question. The broader data model and recurring review guidance remain available; the first route proves one bounded metric and handoff.
 
 ## When to use
 
-Use when a small engineering team wants a shared view of delivery, quality, releases, and reliability without operating a separate data platform and review workflow. Start on demand and add ingestion triggers or a review schedule after the complete route succeeds.
+Use when an engineering team wants a reproducible metric linked to an accountable next step. An incident, performance regression or cloud cost exception uses its focused Playbook. Start manually; add recurrence only after a real source-backed case succeeds.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, configuration, capabilities, stores, reports, and triggers. Default to one workflow for one small team; split only for incompatible access or lifecycle boundaries. Summarize reuse and gaps, ask focused questions about unresolved scope, definitions, targets, ownership, cadence, and approvals, and record the answers. Installation is guidance, not approval.
+Builder inspects existing Engineering Operations Analyst and Engineering Delivery Coordinator Crews, source authorization, team/service identity, metric definitions and owner policy. Propose reuse or reviewed creation, validator steps, a manual route and a later observation before configuration. Selection starts no issue write or message.
 
 ## Required inputs
 
-Resolve team/repository/service scope, authorized sources, history and freshness, identity and workflow-state mappings, metric definitions and exclusions, goals or targets, review audience/cadence, action owners, retention, restricted fields, and approval/delivery policy.
+Bind tenant, team, service/repository, metric family and policy revision, distinct item/event identity, source coverage minimum, baseline and current windows, numerator and denominator rules, predeclared target, current issue source and decision owner. Missing coverage or changed definitions stay visible.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps to ingest and normalize source records, calculate reproducible metric snapshots, check data quality, freeze review periods, and persist reports. Use a message sequence to investigate supported changes and draft bounded actions. Keep mapping, publication, notification, or work-creation decisions asynchronous: save the proposal with `create_human_input_request`, then let a separate route validate and apply an approved decision. Prove on demand before enabling schedules or webhooks.
+Workflow steps: Analyst reads authorized engineering records and emits `engineering-metric-observation/v1` with exact scope, source revisions, count arithmetic, baseline/comparable/not-evaluable state and no causal claim. Run the [validator](scripts/validate_handoff.py) before Delivery. Delivery Coordinator re-reads current issue and ownership state, prepares `engineering-improvement-review/v1` bound to the exact observation, and asks the owner to accept, defer or reject a bounded next action. Validate the pair. Issue writes, notifications and deployment are separate reviewed routes with receipts.
 
 ## Knowledge and persistence
 
-Store source identities, mappings, sync state, metric definitions/snapshots, findings, reviews, decisions, actions, outcomes, and delivery receipts in durable tables. Keep customer definitions and verified source quirks in scoped KB context with source links; never rely on chat memory.
+Persist identity joins, source and policy revisions, windows, case key, owner decisions and later observations. Use the [operations data model](../references/operations-data-model.md). Changed populations, mappings or metric rules start a new baseline; do not silently rewrite a past result.
 
 ## Validation and reporting
 
-Validate authorization, freshness, completeness, identity, deduplication, metric reproducibility, comparable windows, evidence for each finding, review completeness, and action receipts. The dashboard shows source health, delivery/quality/reliability trends, limitations, findings, pending decisions, owners, outcomes, and historical reviews without individual ranking.
+The validator checks scope, complete versus partial coverage, count/rate arithmetic, equal comparable windows, target state, current issue read, duplicate case key and owner/action claims. Fictional [comparable](examples/engineering-metric-observation.json), [baseline](examples/engineering-metric-baseline.json), [not evaluable](examples/engineering-metric-not-evaluable.json), [pending review](examples/engineering-improvement-review.json) and [invalid claim](examples/invalid-engineering-improvement-review.json) teach the contract. The dashboard shows source health, population, metric, owner question, action state and later independently observed result.
 
 ## Guardrails
 
-Default sources to read-only. Do not infer mappings silently, treat missing data as zero, compare incompatible populations, claim causation from correlation, rank individuals, expose restricted content, invent targets, or publish/create work without configured authorization.
+Never rank individuals or infer productivity from one metric. Do not treat missing records as zero, compare changed scopes, claim causality from timing, create work or count improvement from a closed ticket. An owner decision is not an issue write or measured outcome.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, small-team workflow boundaries, activation, and Pulse focus.
-- [Operations data model](../references/operations-data-model.md): shared identity, lineage, and metric governance.
-- [Data foundation](references/data-foundation.md): ingestion, normalization, reconciliation, and freshness.
-- [Metrics and findings](references/metrics-and-findings.md): governed calculation and evidence-backed investigation.
-- [Recurring review](references/recurring-review.md): review, asynchronous decisions, delivery, and tracked actions.
-- [Examples](examples/source-map.json): begin with the fictional source map, metric policy, and review policy in this folder.
-- [Catalog metadata](playbook.json): setup and optional tool recommendations.
+- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md) for activation.
+- [Data foundation](references/data-foundation.md), [metrics and findings](references/metrics-and-findings.md), and [recurring review](references/recurring-review.md) for the broader method.
+- [Team and handoffs](references/team-and-handoffs.md) and [setup](SETUP.json) for the proposed Crew route.
 
 ## Completion contract
 
-Return the installed playbook and policy revisions, customer direction, scope and source resolution, data-quality status, metric snapshots and findings, dashboard/review locations, pending or completed decisions/actions, schedule or webhook receipts when enabled, and unresolved limitations.
+Return Crew IDs, source and metric rules, validated artifacts, limits, owner decision or pending state, real manual case, later observation rule, blockers and activation choice.

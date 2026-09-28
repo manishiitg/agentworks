@@ -21,6 +21,7 @@ import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
 import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
+import { followTranscriptLatest } from './useTranscriptScroll'
 import { MainAgentTerminal } from './MainAgentTerminal'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
@@ -3067,6 +3068,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // Enable auto-scroll and scroll to bottom
     chatStore.setAutoScroll(true)
     setTimeout(() => { scrollToBottom('smooth') }, 50)
+    // The conversation scrolls inside the transcript, not the chat container.
+    followTranscriptLatest(currentTab.tabId)
 
     // Clear query text
     useAppStore.getState().setCurrentQuery('')

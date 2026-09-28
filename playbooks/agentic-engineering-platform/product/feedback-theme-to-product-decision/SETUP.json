@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "feedback-theme-to-product-decision",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Confirm feedback decision goal and owners",
+      "instructions": "Name Support source owner, Product decision owner, exact first result and excluded issue, roadmap and customer actions."
+    },
+    {
+      "id": "feedback_scope",
+      "title": "Bind bounded feedback sources",
+      "instructions": "Record tenant, product, segment, period, channels, allowed quotations, privacy rule, deduplication key, numerator and denominator definitions."
+    },
+    {
+      "id": "product_policy",
+      "title": "Agree on product decision policy",
+      "instructions": "Record issue match criteria, severity and reach definitions, counterexample rule, current commitment source, owner authority and approved action routes."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Bind Support and Product Crews",
+      "instructions": "Inspect ready Feedback & Review Analyst and Product Feedback Coordinator Crews. Reuse compatible identities or propose reviewed creation with exact Crew IDs and source grants."
+    },
+    {
+      "id": "source_access",
+      "title": "Probe feedback and issue sources",
+      "instructions": "Read one real authorized feedback set plus current issue/roadmap state. Record stable IDs, observed times, coverage gaps and privacy scope; a named connector is not proof."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Validate theme and Product decision",
+      "instructions": "Run the packaged validator on feedback-theme-brief/v1 before Product consumes it and on product-feedback-decision/v1 after current-state review. Stop on wrong scope, duplicate IDs, invalid denominator, unsupported issue match or false action claim."
+    },
+    {
+      "id": "plan_review",
+      "title": "Review concrete Automation",
+      "instructions": "Show Crew IDs, sources, artifact paths, validator steps, owner decisions, privacy boundary, action approval, duplicate key, manual route, cost and notifications."
+    },
+    {
+      "id": "test_run",
+      "title": "Run one real theme manually",
+      "instructions": "Use authorized feedback and current product sources. Save both artifacts, validation, owner correction or decision, and action receipts or none. Fictional fixtures do not complete setup."
+    },
+    {
+      "id": "action_ledger",
+      "title": "Record issue and customer action outcomes",
+      "instructions": "Keep recommendation, owner decision, issue write and customer communication distinct. Bind exact issue or message provider receipt only after separately approved action."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Choose manual or reviewed repeat",
+      "instructions": "Manual-only is valid. Any schedule or authenticated feedback event needs window and theme deduplication, privacy, retries, cost and owner notification review."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

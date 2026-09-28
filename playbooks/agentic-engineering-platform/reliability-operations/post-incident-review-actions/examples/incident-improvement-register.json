@@ -1,0 +1,80 @@
+{
+  "artifact_type": "incident-improvement-register/v1",
+  "artifact_id": "improvement-register-INC-1042-001",
+  "source_review_artifact_id": "pir-INC-1042-rev1",
+  "review_id": "PIR-1042",
+  "review_revision": "rev1",
+  "incident_id": "INC-1042",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "owner": "reliability-lead",
+  "as_of": "2026-10-12T15:00:00Z",
+  "source_refs": [
+    {
+      "id": "review",
+      "uri": "artifact:pir-INC-1042-rev1",
+      "observed_at": "2026-10-03T12:00:00Z"
+    },
+    {
+      "id": "act1-decision",
+      "uri": "approval:DEC-ACT1",
+      "observed_at": "2026-10-04T09:00:00Z"
+    },
+    {
+      "id": "issue-create",
+      "uri": "issue-receipt:TKT-901",
+      "observed_at": "2026-10-05T09:00:00Z"
+    },
+    {
+      "id": "issue-current",
+      "uri": "issue:ENG-901@rev3",
+      "observed_at": "2026-10-12T14:00:00Z"
+    },
+    {
+      "id": "replay",
+      "uri": "verification:RUN-77",
+      "observed_at": "2026-10-12T13:00:00Z"
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "ACT-1",
+      "owner": "checkout-service-lead",
+      "due_date": "2026-10-14",
+      "verification_criterion": "A replayed checkout 5xx sample triggers the alert within five minutes.",
+      "state": "verified",
+      "decision": {
+        "id": "DEC-ACT1",
+        "state": "accepted",
+        "decided_at": "2026-10-04T09:00:00Z",
+        "source_ref": "act1-decision"
+      },
+      "issue": {
+        "id": "ENG-901",
+        "create_receipt_ref": "issue-create",
+        "current_source_ref": "issue-current",
+        "state": "closed",
+        "create_receipt_id": "TKT-901"
+      },
+      "verification": {
+        "source_ref": "replay",
+        "observed_at": "2026-10-12T13:00:00Z",
+        "result": "pass",
+        "finding": "Alert fired within four minutes in replay RUN-77."
+      }
+    },
+    {
+      "action_id": "ACT-2",
+      "owner": "observability-lead",
+      "due_date": "2026-10-20",
+      "verification_criterion": "A new timeout drill retains a query/DB saturation trace linked to the service.",
+      "state": "pending_review",
+      "decision": null,
+      "issue": null,
+      "verification": null
+    }
+  ],
+  "publication_state": "not_published",
+  "next_check": "Re-read ACT-1 control at the next review; ask owner for ACT-2 decision without creating a ticket.",
+  "source_review_ref": "review"
+}

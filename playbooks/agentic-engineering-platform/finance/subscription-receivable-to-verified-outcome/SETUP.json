@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "subscription-receivable-to-verified-outcome",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm recovery goal and owners", "instructions": "Name the Billing case owner, independent Finance reviewer, customer contact authority, business entity, first useful result and actions excluded from this Playbook."},
+    {"id": "invoice_scope", "title": "Bind one exact invoice", "instructions": "Record provider account, live/test mode, customer, invoice, subscription if present, currency, cutoff, due date and source revisions. Never merge distinct invoices or test and live data."},
+    {"id": "balance_policy", "title": "Verify balance and policy", "instructions": "Recompute invoice total minus applied credits and successful prior collections in minor units. Inspect retry schedule, prior or queued reminders, contact suppression, collection policy, approval thresholds and dispute state. Escalate unexplained differences."},
+    {"id": "team_bindings", "title": "Bind two ready Crews", "instructions": "Reuse distinct authorized Billing Operations Coordinator and Finance Analyst Crew IDs. Check the Billing Crew has Invoice Chasing or Failed Payment Recovery capability for this case; install that pack through the normal reviewed setup if missing."},
+    {"id": "source_access", "title": "Probe provider and finance records", "instructions": "Read the exact current invoice and payment attempt or export, plus finance payment, payout and ledger or bank sources available to the Finance Crew. Record IDs, observed times, unavailable data and per-Crew access boundaries."},
+    {"id": "handoff_contract", "title": "Wire blocking artifact checks", "instructions": "Validate the real receivable-review/v1 before Finance runs, and receivable-outcome/v1 against that exact review after Finance re-reads provider state. Save run IDs, artifact paths and validator output. Prove an invalid balance, fake send or unsupported collected/deposited claim blocks its consumer."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show exact Crew IDs, invoice scope, selected source fields, retry/contact suppression, approval and delivery route, action key, finance verification, cost and manual activation to the owner."},
+    {"id": "test_run", "title": "Run one real case manually", "instructions": "Use a current authorized invoice and source records for both Crews. Record the actual reviewer decision and truthful open, partial, collected or deposited state. Fictional fixtures alone cannot complete this check."},
+    {"id": "action_ledger", "title": "Track next action and result", "instructions": "Keep stable case and invoice IDs, owner, approval, unsent or provider-sent contact, retry status, current balance, collection receipt, payout and deposit evidence and next check date. Recheck before any second contact."},
+    {"id": "activation_choice", "title": "Choose manual or reviewed recurrence", "instructions": "Record manual-only or a paused authenticated event/schedule with deduplication key, timezone, concurrency, retries, source freshness, budget and notifications. Setup completion does not send or retry anything."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

@@ -1,0 +1,21 @@
+{
+  "artifact_type": "renewal-health-brief/v1",
+  "artifact_id": "health-acme-unknown-42",
+  "tenant_id": "tenant-demo",
+  "account_id": "account-acme",
+  "owner_id": "cs-2",
+  "window_start": "2026-08-27T00:00:00Z",
+  "window_end": "2026-09-26T10:00:00Z",
+  "observed_at": "2026-09-26T11:00:00Z",
+  "coverage": "partial",
+  "coverage_note": "Support case export is current, but product usage events were unavailable.",
+  "first_value_state": "unknown",
+  "source_refs": [
+    {"id":"training-case", "uri":"support:ticket-17", "observed_at":"2026-09-26T10:30:00Z"}
+  ],
+  "signals": [
+    {"id":"training-case-open", "kind":"observed", "occurred_at":"2026-09-26T09:30:00Z", "summary":"Training case remains open; adoption effect is unknown.", "evidence_refs":["training-case"]}
+  ],
+  "intent_claim": "none",
+  "customer_action_state": "none"
+}

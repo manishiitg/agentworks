@@ -128,6 +128,7 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       provider({ id: 'cursor-cli', display_name: 'Cursor CLI' }),
       provider({ id: 'pi-cli', display_name: 'Pi CLI', supports_dynamic_models: true, model_selection_mode: 'dynamic' }),
       provider({ id: 'muse-cli', display_name: 'Muse' }),
+      provider({ id: 'agy-cli', display_name: 'Antigravity CLI (Alpha)', runtime_command: 'agy', default_model_id: 'gemini-3.8-flash-high' }),
     ]
 
     const host = document.createElement('div')
@@ -138,7 +139,7 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
         <WorkflowLLMConfigurationPanel
           workspacePath="/work-project"
           onChange={vi.fn()}
-          allowedProviderIds={['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli']}
+          allowedProviderIds={['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli']}
           splitPiProviders={false}
         />,
       ))
@@ -149,7 +150,8 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       expect(host.textContent).toContain('Cursor CLI')
       expect(host.textContent).toContain('Pi CLI')
       expect(host.textContent).toContain('Muse')
-      expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(5)
+      expect(host.textContent).toContain('Antigravity CLI (Alpha)')
+      expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(6)
     } finally {
       await act(async () => root.unmount())
       host.remove()

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "inbound-lead-to-meeting-review",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Confirm sales goal and owner",
+      "instructions": "Record the named lead owner, offer, target buyer and market, intended useful meeting, excluded actions, and first review outcome."
+    },
+    {
+      "id": "source_scope",
+      "title": "Verify the inbound source",
+      "instructions": "Verify the customer website form or authorized CRM/export, account, fields, timezone, event ID, signature/authentication, freshness, duplicate IDs, and prior-contact visibility. A file supports a manual review; instant on-page booking requires a separate synchronous website integration."
+    },
+    {
+      "id": "policy_metric",
+      "title": "Agree on fit, contact policy, and metric",
+      "instructions": "Record qualification and rep routing, opt-out/suppression, allowed channels, message approval owner, useful-meeting definition and calendar/CRM source, and baseline or baseline-first decision. Choose an instant-booking or booking-link path only with a verified booking provider and owner policy."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Bind two ready Crews",
+      "instructions": "Record distinct authorized Crew IDs with lead-intake-qualifier and sales-followup-coordinator selected skills and verified setup. Add account-researcher only if needed, with its own access and setup evidence."
+    },
+    {
+      "id": "access",
+      "title": "Test source, delivery, and booking access",
+      "instructions": "Read one authorized inbound record, prior contact and suppression state. Verify an actual booking URL or provider and the calendar or CRM outcome source. For email, inspect exact account and Google read/compose grants or an approved MCP equivalent; a named provider is not connected access. Record missing access as blocked."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Validate every selected handoff",
+      "instructions": "Validate real qualification and optional research before Follow-up. Validate the unsent draft; for an authorized send, bind the exact recipient and message fingerprint to saved owner approval, recheck duplicate, contact, reply and meeting state, then record a provider-confirmed sales-delivery-receipt/v1. Count a booking only from a linked sales-meeting-outcome/v1 backed by a calendar or CRM event. Prove invalid fixtures block each handoff."
+    },
+    {
+      "id": "plan_review",
+      "title": "Review the Automation plan",
+      "instructions": "Show actual Crew IDs, form/CRM source, rep routing, booking URL/provider, approval point, email/Calendar connection scopes, CRM write boundary, retries and duplicate policy, and whether the selected path is manual, async booking-link, or a separately built synchronous website widget."
+    },
+    {
+      "id": "test_run",
+      "title": "Run the first route manually",
+      "instructions": "Test one real authorized lead through qualification and reviewed booking offer. If sending is approved, verify the exact message with the provider receipt; if the lead books, verify the calendar or CRM event. Record run IDs, validators, and explicit missing connections. Fictional fixtures or an unsent draft do not prove delivery or booking."
+    },
+    {
+      "id": "action_ledger",
+      "title": "Track reviewed next action",
+      "instructions": "Record stable lead/action IDs, approved message fingerprint, owner, saved decision, current suppression/reply/meeting checks, provider send ID, booking URL, actual meeting event ID, and next check. Deduplicate before every retry. A send receipt is not a booked meeting."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Choose run policy",
+      "instructions": "Choose manual-only or reviewed authenticated event/schedule with timezone, concurrency, retry, budget, notifications, and duplicate handling. Activate only after a real manual route and required connectors are verified; setup completion alone enables neither recurrence nor sending."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

@@ -74,6 +74,7 @@ func (bo *BaseOrchestrator) attachCostObserver(
 			runFolder,
 			agentCostExecutionID(ctx, config, stepID),
 		),
+		costobserver.WithSourcePlatform(costobserver.SourcePlatformFromContext(ctx)),
 		costobserver.WithLaunchPath(launchPath),
 	)
 	if err := agent.AddObserver(observer); err != nil {

@@ -29,6 +29,7 @@ var supportedLLMProviders = []string{
 	"cursor-cli",
 	"pi-cli",
 	"muse-cli",
+	"agy-cli",
 }
 
 func isPublishedLLMProviderAllowed(provider string) bool {
@@ -453,6 +454,8 @@ func discoveryModelOptions(provider string) []string {
 		return piCuratedModelIDs()
 	case "muse-cli":
 		return []string{"muse-spark-1.3-contributor"}
+	case "agy-cli":
+		return []string{"gemini-3.8-flash-high"}
 	case "claude-code":
 		options := append([]string{}, claudeCodeCapabilityModels()...)
 		for _, alias := range []string{"high", "medium", "low"} {
@@ -477,6 +480,8 @@ func discoverySetupHint(provider string, runtimeMissing bool) string {
 			return "Install Pi CLI with npm install -g @earendil-works/pi-coding-agent, or ensure npx is available on the backend PATH."
 		case "muse-cli":
 			return "Install Muse CLI so the muse command is available on the backend PATH."
+		case "agy-cli":
+			return "Install Antigravity CLI so the agy command is available on the backend PATH."
 		case "claude-code":
 			return "Install Claude Code so the claude command is available on the backend PATH."
 		default:
@@ -493,6 +498,8 @@ func discoverySetupHint(provider string, runtimeMissing bool) string {
 		return "Set PI_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY, then test again."
 	case "muse-cli":
 		return "Run muse login or set META_API_KEY, then test again."
+	case "agy-cli":
+		return "Launch agy and complete Google sign-in, then test again."
 	case "claude-code":
 		return "Run claude to finish Claude Code authentication, then test again."
 	default:

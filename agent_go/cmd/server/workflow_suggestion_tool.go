@@ -18,33 +18,10 @@ func (api *StreamingAPI) registerWorkflowSuggestionTool(registrar definitionTool
 			"step_id":    map[string]interface{}{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
 		}, "required": []string{"suggestion"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		claims := GetUserFromContext(ctx)
-		if claims == nil || claims.UserID == "" {
-			return "", fmt.Errorf("an authenticated workflow user is required to leave a suggestion")
-		}
-		level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
-		if manifest == nil || level == WorkflowAccessNone || !userAllowedWorkflowID(claims, manifest.ID) {
-			return "", fmt.Errorf("workflow access is required to leave a suggestion")
-		}
 		suggestion, _ := args["suggestion"].(string)
 		reason, _ := args["reason"].(string)
 		step, _ := args["step_id"].(string)
-		suggestion = strings.TrimSpace(suggestion)
-		if suggestion == "" || utf8.RuneCountInString(suggestion) > 4000 || utf8.RuneCountInString(reason) > 4000 || utf8.RuneCountInString(step) > 200 {
-			return "", fmt.Errorf("provide a suggestion of up to 4000 characters, an optional reason up to 4000 characters, and a step ID up to 200 characters")
-		}
-		actor := claims.UserID
-		if claims.ExecutionPrincipal != nil && claims.ExecutionPrincipal.AuditActor != "" {
-			actor = claims.ExecutionPrincipal.AuditActor
-		}
-		input, err := createReportHumanInput(ctx, workspace, ReportHumanInputCreateRequest{
-			Source: "user_suggestion", Priority: "medium", Question: "Review suggestion: " + suggestion,
-			Context: strings.TrimSpace(reason), Evidence: strings.TrimSpace(step), CreatedBy: actor,
-			CreatedByKind: "user", CreatedVia: "suggestion_tool", SessionID: session,
-			Options: []ReportHumanInputOption{{ID: "approve", Title: "Accept suggestion", Description: "The owner can implement this in Builder."}, {ID: "reject", Title: "Decline suggestion"}}, AllowFreeText: true,
-			// Suggestions carry no machine-generated implementation authority.
-			ApplyContract: ReportHumanInputApplyContract{Mode: "no_change"},
-		})
+		input, err := submitWorkflowSuggestion(ctx, GetUserFromContext(ctx), workspace, session, suggestion, reason, step)
 		if err != nil {
 			return "", err
 		}
@@ -52,11 +29,47 @@ func (api *StreamingAPI) registerWorkflowSuggestionTool(registrar definitionTool
 	}, "human_tools")
 }
 
+// submitWorkflowSuggestion records a suggestion for a workflow's owner from a
+// user with access to it. The Run-mode chat tool and the external
+// suggest_workflow_change tool share it.
+func submitWorkflowSuggestion(ctx context.Context, claims *UserClaims, workspace, session, suggestion, reason, step string) (*ReportHumanInput, error) {
+	if claims == nil || claims.UserID == "" {
+		return nil, fmt.Errorf("an authenticated workflow user is required to leave a suggestion")
+	}
+	level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
+	if manifest == nil || level == WorkflowAccessNone || !userAllowedWorkflowID(claims, manifest.ID) {
+		return nil, fmt.Errorf("workflow access is required to leave a suggestion")
+	}
+	suggestion = strings.TrimSpace(suggestion)
+	if suggestion == "" || utf8.RuneCountInString(suggestion) > 4000 || utf8.RuneCountInString(reason) > 4000 || utf8.RuneCountInString(step) > 200 {
+		return nil, fmt.Errorf("provide a suggestion of up to 4000 characters, an optional reason up to 4000 characters, and a step ID up to 200 characters")
+	}
+	actor := claims.UserID
+	if claims.ExecutionPrincipal != nil && claims.ExecutionPrincipal.AuditActor != "" {
+		actor = claims.ExecutionPrincipal.AuditActor
+	}
+	return createReportHumanInput(ctx, workspace, ReportHumanInputCreateRequest{
+		Source: "user_suggestion", Priority: "medium", Question: "Review suggestion: " + suggestion,
+		Context: strings.TrimSpace(reason), Evidence: strings.TrimSpace(step), CreatedBy: actor,
+		CreatedByKind: "user", CreatedVia: "suggestion_tool", SessionID: session,
+		Options: []ReportHumanInputOption{{ID: "approve", Title: "Accept suggestion", Description: "The owner can implement this in Builder."}, {ID: "reject", Title: "Decline suggestion"}}, AllowFreeText: true,
+		// Suggestions carry no machine-generated implementation authority.
+		ApplyContract: ReportHumanInputApplyContract{Mode: "no_change"},
+	})
+}
+
 func requireSuggestionOwner(ctx context.Context, workspace string, input *ReportHumanInput) error {
 	if input.Source != "user_suggestion" {
 		return nil
 	}
 	claims := GetUserFromContext(ctx)
+	// A Crew's suggestions are reviewed by the Crew's owner.
+	if ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), workspace); ok {
+		if claims == nil || claims.Provider == "bot_route" || crewAccessFor(claims, ref) != crewAccessOwner {
+			return fmt.Errorf("only the Crew's owner can review a user suggestion")
+		}
+		return nil
+	}
 	level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
 	if claims == nil || claims.Provider == "bot_route" || manifest == nil || level != WorkflowAccessOwner || !userAllowedWorkflowID(claims, manifest.ID) {
 		return fmt.Errorf("only a workflow owner can review a user suggestion")

@@ -1,50 +1,52 @@
 ---
 name: funnel-conversion-intelligence
-description: Build evidence-backed funnel and conversion analysis in AgentWorks for an AI Growth Analyst. Use to find where signup-to-purchase funnels drop, detect conversion changes, and attribute them to segments, pages, devices, or sources.
+description: Propose a two-Crew signup-to-paid investigation that reconciles stage counts and produces a reviewed experiment plan.
 ---
 
 # Funnel and Conversion Intelligence
 
 ## Outcome
 
-Create versioned funnels, conversion trends, and evidence-backed investigations that show where customers drop, which segment or surface caused a conversion change, and what session evidence supports it.
+Funnel Analyst reconciles eligible, signup, activated and paid accounts for a defined cohort. Growth Experiment Planner consumes the validated observation and proposes one bounded test. An observed rate change is not a causal explanation or an experiment result.
 
 ## When to use
 
-Use after Growth Data Foundation is reconciled and fresh enough for the requested scope. Use it for acquisition quality, funnel drops, conversion regressions, launch readouts, and recurring conversion monitoring. It does not own lifecycle cohorts, activation scoring, or retention analysis; those belong to Activation and Retention Intelligence.
+Use for a SaaS signup-to-paid question with authorized event and billing records. Campaign Signal covers campaign responses; Website Growth Loop covers site traffic. A new company can start with one complete baseline window and no trend.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, source coverage, capabilities, stores, dashboards, and schedules before proposing changes. Summarize reusable foundations and gaps, ask focused questions for unresolved scope, definitions, segments, thresholds, ownership, and success criteria, and record the answers as customer direction. Installation alone does not approve workflow changes or execution.
+Builder inspects sources, event definitions, identity join, existing Crews and owner. It proposes distinct Funnel Analyst and Growth Experiment Planner Crews in chat. Selection creates no Crew, query, experiment or schedule.
 
 ## Required inputs
 
-Resolve funnels and step definitions, analysis and comparison windows, segments and dimensions, traffic and campaign scope, conversion targets or thresholds, session-replay consent and sampling policy, minimum data quality, reporting audience, and decision ownership.
+Record product/tenant and eligible cohort, ordered stage versions, time zone, exclusions, identity and deduplication rules, event and paid-state sources, source freshness, comparison windows, minimum join coverage, owner, primary metric, guardrail and action policy. Consent is required before session replay; replay is optional.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps for deterministic funnel snapshots, conversion calculations, segment breakdowns, change detection, and completeness checks. Use a message sequence to attribute supported changes, inspect session evidence, test alternative explanations, and propose bounded next actions. Prove an on-demand investigation first, then recommend scheduled monitoring with explicit scope, cadence, timezone, and notification policy. Keep publication behind configured review.
+1. Bind two Crew IDs and Workflow steps. Funnel Analyst reads scoped event and billing records, captures unique-user counts and source revisions, and saves `funnel-observation/v1` at its step path. Run `python3 scripts/validate_handoff.py observation <observation.json>` as a blocking step.
+2. Growth Experiment Planner reads the validated artifact through a checked alias. It preserves cohort and metric IDs, states a falsifiable hypothesis, assignment unit, guardrail and pending sample calculation, then saves `funnel-experiment-plan/v1`. Run `python3 scripts/validate_handoff.py plan <observation.json> <plan.json>` before reporting.
+3. Review the result and proposed test with the owner. A separate approved route must calculate power, launch a variant and later compare outcomes. No schedule or external write follows from this proposal.
 
 ## Knowledge and persistence
 
-Store funnel definitions, snapshots, segments, investigations, session references, findings, recommendations, and follow-up outcomes in durable tables. Keep customer definitions/preferences in KB context and verified interpretation rules in notes or learnings. Preserve links to source records and sessions rather than copying private content.
+Store cohort/event versions, identity rules, source and artifact IDs, counts, gaps, Crew runs and owner decisions. Keep private sessions out of reports.
 
 ## Validation and reporting
 
-Validate input freshness, expected scope, denominators, segment compatibility, comparison windows, session-evidence linkage, and evidence for every finding. The dashboard exposes funnel steps, drop-offs, trends, segment breakdowns, confidence, limitations, and drill-downs into sessions.
+Recompute monotone stage counts, paid/eligible and activated/signup rates, identity coverage and billing cutoff for equal windows. The dashboard shows denominators, source freshness, drop-offs, uncertainty, owner action and drill-downs. Changed event semantics or incomplete paid evidence starts a new baseline rather than a comparable trend.
 
 ## Guardrails
 
-Do not infer causation from correlation, compare incompatible segments/windows, report a conversion change without its denominator, expose non-consented session content, or recommend consequential changes without evidence and ownership.
+A click or trial is not paid state. Do not claim a funnel change caused churn, expose unconsented sessions, or change billing, pricing, messaging or checkout without a separate reviewed route. A pending experiment has no winner.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, and current-versus-separate workflow decisions.
-- [Growth data model](../references/growth-data-model.md): shared entities, identity, lineage, and metric governance.
-- [Conversion intelligence workflow](references/conversion-intelligence-workflow.md): funnels, change detection, attribution, sessions, and acceptance cases.
-- [Example conversion investigation](examples/conversion-investigation.json): fictional finding and evidence shape.
-- [Catalog metadata](playbook.json): presentation and optional recommendations.
+- [Team and handoffs](references/team-and-handoffs.md)
+- [Shared workflow design and outcomes](../../references/workflow-design-and-outcomes.md)
+- [Conversion workflow](references/conversion-intelligence-workflow.md) and [growth data model](../references/growth-data-model.md)
+- [Reconciled observation](examples/funnel-observation.json), [baseline-first case](examples/funnel-baseline-first.json) and [plan](examples/funnel-baseline-first-plan.json), [pending experiment](examples/funnel-experiment-plan.json) and [rejected false plan](examples/invalid-funnel-experiment-plan.json)
+- [Setup checklist](SETUP.json) and [catalog metadata](playbook.json)
 
 ## Completion contract
 
-Return installed playbook and funnel/metric policy revisions, scope and comparison windows, customer overrides, data-quality status, calculated funnels and trends, evidence-backed findings with session references, report locations, capability resolution, and unresolved limitations.
+Return the reviewed team plan, source/metric policy, validated artifact paths, calculated rates, owner decision, missing evidence, manual-run proof and paused repeat choice.

@@ -1,0 +1,25 @@
+{
+  "artifact_type": "support-case-pattern/v1",
+  "artifact_id": "case-pattern-to-knowledge-review-triage-1",
+  "producer_id": "support-triage-assistant",
+  "tenant_id": "tenant-1",
+  "subject_id": "guest-invite-rights",
+  "product_id": "product-7",
+  "question_key": "guest-invite-rights",
+  "source_revision": "triage-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "triage-source-1",
+    "triage-source-2"
+  ],
+  "state": "reviewed",
+  "action_state": "none",
+  "case_ids": [
+    "case-701",
+    "case-716"
+  ],
+  "excluded_case_ids": [
+    "case-720"
+  ],
+  "priority_policy_ref": "support-priority-v3"
+}

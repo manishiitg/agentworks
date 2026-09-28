@@ -1,0 +1,52 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "finding-to-verified-remediation",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led Security Crew handoff from authorized finding validation to reviewed change, deployment and independent retest."}
+  ],
+  "title": "Finding to Verified Remediation",
+  "description": "Connect an authorized, validated security finding to owned remediation and independent retest of the affected deployed asset.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Security"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Finding to Verified Remediation as a chat-led proposal. Inspect existing Security Crews, written scope and allowed methods, finding and asset records, severity policy, issue and source records, change approval, deployment, retest source, and closure authority. Propose reuse or reviewed creation, an exact finding handoff, explicit validator steps, and one manual case. Show the plan before Builder applies it. Selection does not scan, create a ticket, merge, deploy, retest, close a finding, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "scope", "label": "Written target and environment scope, allowed methods and evidence handling", "required": true},
+    {"id": "finding_source", "label": "Authorized finding ID, source, affected asset and exact build", "required": true},
+    {"id": "policy", "label": "Severity, remediation, risk acceptance and closure rules", "required": true},
+    {"id": "owners", "label": "Security, change, release, retest and closure owners", "required": true},
+    {"id": "delivery_source", "label": "Issue, source, CI, deployment and retest records or exports", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated finding event", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Security Crews with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded finding artifact", "capability": "durable_artifacts", "optional": true},
+    {"id": "finding", "name": "Authorized scanner, report or bounded export", "type": "mcp", "purpose": "Read exact finding, scope, asset, evidence and current disposition", "capability": "security_findings", "optional": true},
+    {"id": "source", "name": "Repository and issue source", "type": "mcp", "purpose": "Trace approved issue and change identity", "capability": "change_records", "optional": true},
+    {"id": "deployment", "name": "Deployment and asset inventory", "type": "mcp", "purpose": "Verify changed build reached the affected environment", "capability": "deployment_records", "optional": true},
+    {"id": "retest", "name": "Authorized retest source", "type": "mcp", "purpose": "Observe finding-specific behavior on the deployed artifact", "capability": "security_retest", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Security remediation follow-through", "focus_areas": ["Whether applicable findings have owned decisions and authorized scope", "Whether a reviewed fix reached the affected environment and independent retest supports closure"], "review_when": ["Finding applicability changes, remediation stalls, a deployment changes, or a retest completes"]}
+  ],
+  "outputs": [
+    "Reviewed Security Crew roster and written scope",
+    "Validated source-linked finding with applicability and verification rule",
+    "Owned remediation ledger with exact change and deployment state",
+    "Independent retest and owner disposition or explicit unknown",
+    "Manual case evidence and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "finding", "agent_playbook_id": "security-findings-analyst", "required": true, "output": "security-finding/v1"},
+    {"id": "remediation", "agent_playbook_id": "security-remediation-coordinator", "required": true, "output": "security-remediation-ledger/v1"}
+  ],
+  "handoffs": [
+    {"id": "finding-to-remediation", "from": "finding", "to": "remediation", "artifact_type": "security-finding/v1", "required": true}
+  ],
+  "setup_checks": ["scope_owner", "finding_identity", "severity_policy", "remediation_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

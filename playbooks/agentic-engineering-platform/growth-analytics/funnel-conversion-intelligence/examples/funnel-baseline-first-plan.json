@@ -1,0 +1,39 @@
+{
+  "artifact_type": "funnel-experiment-plan/v1",
+  "artifact_id": "funnel-baseline-plan-001",
+  "source_observation_artifact_id": "funnel-baseline-first-001",
+  "source_comparison_state": "baseline_first",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "cohort_id": "uk-self-serve-new-accounts",
+  "metric_id": "paid-per-eligible-v2",
+  "timezone": "Europe/London",
+  "observed_at": "2026-10-04T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "observation",
+      "uri": "artifact:funnel-baseline-first-001",
+      "observed_at": "2026-10-04T09:00:00Z"
+    },
+    {
+      "id": "owner-policy",
+      "uri": "owner-docs/growth-experiment-policy@v3",
+      "observed_at": "2026-10-04T10:30:00Z"
+    }
+  ],
+  "hypothesis": "A clearer first-schedule prompt may help new users complete activation; the current cohort is only a starting baseline and shows no trend.",
+  "proposed_change": "Review one onboarding prompt variant for eligible new accounts, leaving price and billing rules unchanged.",
+  "assignment_unit": "account",
+  "eligible_population": "new UK self-serve accounts under cohort rule uk-self-serve-new-accounts",
+  "primary_metric": "paid-per-eligible-v2",
+  "baseline_rate_bps": 400,
+  "observed_change_bps": null,
+  "guardrail_metric": "signup-per-eligible-v2",
+  "sample_plan_state": "needs_power_review",
+  "minimum_sample_per_variant": null,
+  "stop_rule": "Before launch, approve a sample calculation and observation window; stop early on a guardrail breach under owner policy.",
+  "owner": "Growth lead",
+  "decision_state": "pending_owner_review",
+  "launch_state": "not_launched",
+  "next_check": "Review the baseline source coverage, instrumentation, variant scope and power calculation before any experiment route."
+}

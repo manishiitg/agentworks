@@ -1,0 +1,18 @@
+{
+  "artifact_type": "inventory-availability-exception/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "inventory_item_id": "inventory-item-81-m",
+  "location_id": "location-3",
+  "case_id": "stock-24",
+  "observed_at": "2026-09-26T10:00:00Z",
+  "available_qty": 5,
+  "committed_qty": 2,
+  "storefront_state": "Variant available to buy in US market; stock risk under review",
+  "inventory_authority_ref": "shopify:inventory-level-81-m-location-3",
+  "owner_id": "catalog-owner",
+  "source_refs": ["shopify:variant-81-m@2026-09-26T10:00Z", "shopify:inventory-level-81-m-location-3@2026-09-26T10:00Z"],
+  "proposed_action": "Review stock risk with procurement before ordering"
+}

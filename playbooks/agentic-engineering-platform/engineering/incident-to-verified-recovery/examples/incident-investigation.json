@@ -1,0 +1,19 @@
+{
+  "artifact_type": "incident-investigation/v1",
+  "incident_id": "INC-1042",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "window_start": "2026-09-24T10:00:00Z",
+  "window_end": "2026-09-24T10:30:00Z",
+  "owner_id": "oncall-checkout",
+  "timeline": [
+    { "event_id": "alert-71", "observed_at": "2026-09-24T10:04:00Z", "source_ref": "monitoring:alert-71", "summary": "Checkout errors exceeded the agreed threshold." },
+    { "event_id": "deploy-89", "observed_at": "2026-09-24T10:01:00Z", "source_ref": "deploy:89", "summary": "Checkout API version 89 reached production." }
+  ],
+  "hypotheses": [
+    { "statement": "The recent deploy may contribute to the error rise.", "confidence": "medium", "evidence_refs": ["monitoring:alert-71", "deploy:89"] }
+  ],
+  "proposed_actions": [
+    { "action_id": "INC-1042-review-change", "owner_id": "oncall-checkout", "approval_state": "pending", "next_evidence": "Review traces and decide whether to prepare a rollback." }
+  ]
+}

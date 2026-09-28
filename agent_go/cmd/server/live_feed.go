@@ -122,8 +122,17 @@ func (a *liveFeedAccess) visible(ctx context.Context, workflow string) bool {
 	if ok, cached := a.seen[workflow]; cached {
 		return ok
 	}
-	level, _ := workflowAccessForWorkspacePath(ctx, a.claims, workflow)
-	ok := level != WorkflowAccessNone
+	var ok bool
+	callerID := ""
+	if a.claims != nil {
+		callerID = a.claims.UserID
+	}
+	if ref, isCrew := resolveCrewPath(ctx, callerID, workflow); isCrew {
+		ok = crewAccessFor(a.claims, ref) != crewAccessNone
+	} else {
+		level, _ := workflowAccessForWorkspacePath(ctx, a.claims, workflow)
+		ok = level != WorkflowAccessNone
+	}
 	a.seen[workflow] = ok
 	return ok
 }

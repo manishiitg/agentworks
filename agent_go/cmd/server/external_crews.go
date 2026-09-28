@@ -16,7 +16,9 @@ import (
 
 var externalCrewTools = map[string]bool{
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
-	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true,
+	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "suggest_crew_change": true,
+	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
+	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 }
 
 const (
@@ -36,12 +38,19 @@ func externalCrewCaller(claims *UserClaims) triggerLinkCaller {
 	return triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: claims.UserID}, Label: label}
 }
 
+// externalCrewWait reads wait_seconds. Functions are agentic and usually
+// take minutes, so a call returns at once unless the caller asks to wait
+// (capped under the proxy timeout); a client whose request is cut short never
+// sees the call_id and calls again.
 func externalCrewWait(args map[string]any) time.Duration {
-	seconds := externalCrewMaxWaitSeconds
-	if raw, ok := args["wait_seconds"].(float64); ok && raw >= 0 && raw < float64(externalCrewMaxWaitSeconds) {
-		seconds = int(raw)
+	raw, ok := args["wait_seconds"].(float64)
+	if !ok || raw <= 0 {
+		return 0
 	}
-	return time.Duration(seconds) * time.Second
+	if raw > externalCrewMaxWaitSeconds {
+		raw = externalCrewMaxWaitSeconds
+	}
+	return time.Duration(raw * float64(time.Second))
 }
 
 // externalCrewCallResponse returns the call's state after waiting up to wait.
@@ -127,7 +136,7 @@ func externalCrewFunctionSummaries(ctx context.Context, crew crewProjectBinding,
 	out := []map[string]interface{}{}
 	for _, fn := range withDefaultAskFunction(functions) {
 		out = append(out, map[string]interface{}{
-			"name": fn.Name, "description": fn.Description,
+			"name": fn.Name, "description": fn.Description, "instructions": fn.Instructions,
 			"input_schema": fn.InputSchema, "result_schema": fn.ResultSchema,
 		})
 	}
@@ -140,6 +149,11 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	str := func(key string) string {
 		value, _ := args[key].(string)
 		return strings.TrimSpace(value)
+	}
+	switch name {
+	case "create_crew", "update_crew", "export_crew", "import_crew":
+		api.externalCrewAuthoringCall(w, r, name, args)
+		return
 	}
 	if name == "get_crew_function_call" {
 		call := lookupCrewFunctionCall(str("call_id"))
@@ -167,7 +181,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		items := make([]map[string]interface{}, 0, len(crews))
 		for _, crew := range crews {
 			items = append(items, map[string]interface{}{
-				"crew_id": crew["id"], "name": crew["name"], "identity": crew["identity_name"],
+				"crew_id": crew["id"], "name": crew["name"], "identity": crew["identity"],
 				"owner": crew["owner"], "access": crew["access"],
 			})
 		}
@@ -182,15 +196,16 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	label := fmt.Sprint(summary["name"])
 	switch name {
 	case "get_crew":
-		out := map[string]any{
-			"crew_id": manifest.ID, "name": label, "identity": summary["identity_name"],
-			"owner": summary["owner"], "description": strings.TrimSpace(manifest.Description),
-			"functions": externalCrewFunctionSummaries(ctx, crew, manifest, label),
+		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
+	case "suggest_crew_change":
+		// Stored at the owner's physical Crew root, where the owner reviews it.
+		crewPath := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
+		input, err := submitCrewSuggestion(ctx, claims, crewPath, "", str("suggestion"), str("reason"), str("about"))
+		if err != nil {
+			externalError(w, 400, "suggestion_refused", err.Error())
+			return
 		}
-		if llm := manifest.Capabilities.LLMConfig; llm != nil {
-			out["model"] = map[string]any{"mode": llm.Mode, "provider": llm.Provider}
-		}
-		externalJSON(w, out)
+		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "call_crew_function", "ask_crew":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)

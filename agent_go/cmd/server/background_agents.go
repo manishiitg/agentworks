@@ -488,6 +488,12 @@ func (api *StreamingAPI) deferWorkflowStepAutoNotification(sessionID, agentID st
 	if api == nil || api.bgAgentRegistry == nil {
 		return false
 	}
+	// A runner that owns this session delivers its step results itself, in
+	// order, as the next turn (scheduled_turn_followups.go). Leave the
+	// completion undelivered for it rather than racing it with a synthetic turn.
+	if api.sessionCompletionsOwned(sessionID) {
+		return true
+	}
 	agent := api.bgAgentRegistry.Get(sessionID, agentID)
 	if agent == nil {
 		return false
@@ -1847,6 +1853,11 @@ func (api *StreamingAPI) backgroundCompletionLoop(sessionID string) {
 }
 
 func (api *StreamingAPI) processBatchedBackgroundAgentStarts(sessionID string, agentIDs []string) {
+	// The owning runner knows what it started; a "started" turn would only
+	// race it for the session.
+	if api.sessionCompletionsOwned(sessionID) {
+		return
+	}
 	api.autoNotificationMu.Lock()
 	defer api.autoNotificationMu.Unlock()
 	if api.autoNotificationSessionUnreachable(sessionID) {

@@ -1,0 +1,38 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "inventory-availability-to-owner-action",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a location-aware inventory evidence handoff from Catalog to Store Operations with merchant approval and retest."}],
+  "title": "Inventory Availability to Owner Action",
+  "description": "Investigate a Shopify variant availability mismatch, prepare a location-aware merchant action, and verify the resulting inventory or storefront state.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Inventory Availability to Owner Action as a chat-led proposal for one Shopify store, market, product variant, and location. Discover existing Catalog & Merchandising Analyst and Store Operations Coordinator Crews; propose reuse or reviewed creation. Inspect the actual ProductVariant, InventoryItem, InventoryLevel, market storefront, and any warehouse or supplier source. Show a validated location-aware handoff, owner decision, manual first run, and verification plan before Builder applies anything. Selection alone does not connect inventory, adjust quantity, place a purchase order, change product availability, or enable recurrence.",
+  "setup_inputs": [
+    {"id":"variant_scope","label":"Store, market, product, variant, inventory item, and location IDs","required":true},
+    {"id":"inventory_sources","label":"Authorized inventory authority, storefront, and warehouse or supplier source","required":true},
+    {"id":"policy_owner","label":"Oversell, replenishment, and inventory adjustment policy with owner","required":true},
+    {"id":"first_case","label":"One bounded availability mismatch or stock-risk case","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed recurrence and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing Crews with stable keys","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated bounded variant/location artifact","capability":"durable_artifacts","optional":true},
+    {"id":"shopify-inventory","name":"Shopify Admin or bounded inventory export","type":"mcp","purpose":"Read ProductVariant, InventoryItem, and InventoryLevel by exact IDs","capability":"inventory_records","optional":true},
+    {"id":"warehouse","name":"Warehouse or supplier source","type":"mcp","purpose":"Confirm external stock or replenishment evidence when applicable","capability":"external_inventory_records","optional":true},
+    {"id":"storefront","name":"Public storefront browser","type":"browser","purpose":"Retest buyer-facing availability in the chosen market","capability":"public_storefront_read","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Inventory exception follow-through","focus_areas":["Whether high-impact variant/location mismatches reach a named owner","Whether approved corrections are confirmed in source and storefront"],"review_when":["An inventory mismatch repeats, a stock deadline approaches, or an approved action lacks retest evidence"]}],
+  "outputs": ["Reviewed Crew roster and source authority map", "Validated variant/location exception", "Owner-reviewed action and optional provider receipt", "Verified inventory/storefront state or unresolved case", "Manual route and activation choice"],
+  "agent_slots": [
+    {"id":"catalog","agent_playbook_id":"catalog-merchandising-analyst","required":true,"output":"inventory-availability-exception/v1"},
+    {"id":"operations","agent_playbook_id":"store-operations-coordinator","required":true,"output":"inventory-action-review/v1"}
+  ],
+  "handoffs": [{"id":"catalog-to-operations","from":"catalog","to":"operations","artifact_type":"inventory-availability-exception/v1","required":true}],
+  "setup_checks": ["goal_owner", "variant_location_scope", "inventory_authority", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

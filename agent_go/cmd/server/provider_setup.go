@@ -80,6 +80,13 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"inspect":      {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
 		"usage":        {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
 	},
+	"agy-cli": {
+		// agy has no login subcommand: Google sign-in completes inside the
+		// TUI, so authenticate opens the bare CLI like pi. No usage action:
+		// agy exposes no verified quota slash command to drive.
+		"authenticate": {command: "agy"},
+		"inspect":      {command: "agy", args: []string{"--sandbox"}},
+	},
 }
 
 var providerSetupANSI = regexp.MustCompile(`\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.`)

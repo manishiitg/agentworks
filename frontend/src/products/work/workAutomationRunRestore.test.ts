@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// Persisted stores need a Storage before they are created at import time.
+// Node < 25 has no global localStorage (CI runs Node 20), so provide one.
+vi.hoisted(() => {
+  const memory = new Map<string, string>()
+  const storage = { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => { memory.set(k, String(v)) }, removeItem: (k: string) => { memory.delete(k) }, clear: () => memory.clear(), key: (i: number) => [...memory.keys()][i] ?? null, get length() { return memory.size } }
+  if (typeof globalThis.localStorage === 'undefined') Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true })
+  if (typeof globalThis.sessionStorage === 'undefined') Object.defineProperty(globalThis, 'sessionStorage', { value: storage, configurable: true })
+})
 
 const resolveAgentProfileConversation = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({

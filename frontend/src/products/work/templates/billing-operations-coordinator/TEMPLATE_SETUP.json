@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "template_id": "billing-operations-coordinator",
+  "template_version": 1,
+  "checks": [
+    { "id": "identity", "title": "Confirm billing role", "instructions": "Confirm whether this is the primary Crew role or a supporting pack. Verify the owner and scope; preserve any existing identity." },
+    { "id": "skill", "title": "Verify the billing skill", "instructions": "Confirm skills/billing-operations-coordinator/SKILL.md exists and billing-operations-coordinator is selected for this Crew." },
+    { "id": "source", "title": "Verify billing records", "instructions": "Choose the authoritative billing/payment source and exact account or export. Confirm live/test mode, period, timezone, currencies, readable records, and data freshness. An export is sufficient; a connector is optional." },
+    { "id": "policy", "title": "Agree on billing policies", "instructions": "Confirm invoice terms, retry policy, refund rules, customer-contact limits, dispute owner, and approval thresholds. Record stable choices in MEMORY.md; flag missing policies." },
+    { "id": "case_mapping", "title": "Match case records", "instructions": "For one actual case, bind the exact billing account and live/test mode, customer, subscription, invoice or charge, payment, refund and dispute IDs where applicable, source revision and cutoff. Recompute the open or refundable amount in one currency from payments, credits and prior refunds. Check cancellations, provider dunning, prior customer contact, duplicate events and missing sources before proposing the owner action." },
+    { "id": "first_queue", "title": "Review the first queue", "instructions": "Produce a dated, source-linked exception queue with status, amount/currency, deadline, next step, approver, and separate verification gaps. Complete after the owner reviews a representative result." },
+    { "id": "action_policy", "title": "Set action boundaries", "instructions": "Confirm which case types remain drafts and which require a separately configured approval path. Do not enable messages, retries, refunds, subscription changes, or dispute submissions during template install." },
+    { "id": "delivery", "title": "Decide where results go", "optional": true, "instructions": "Choose Crew chat or an approved destination. Chat-only completes this decision. Verify destination, privacy, and approval before any outbound message." },
+    { "id": "recurrence", "title": "Decide on recurrence", "optional": true, "instructions": "Choose chat-only, a schedule, or an authenticated event trigger. Chat-only completes this decision. Test source freshness and duplicate handling before enabling a recurrence." }
+  ],
+  "completed_steps": []
+}

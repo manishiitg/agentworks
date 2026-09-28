@@ -1,0 +1,39 @@
+{
+  "illustrative": true,
+  "artifact_type": "search-opportunity-list/v1",
+  "artifact_id": "search-arbordesk-2026-09-25-v1",
+  "source_brief_artifact_id": "growth-arbordesk-2026-09-25-v1",
+  "site_url": "https://arbordesk.example/",
+  "created_at": "2026-09-25T09:15:00Z",
+  "inspected_urls": ["https://arbordesk.example/", "https://arbordesk.example/clinics"],
+  "buyer_questions": [
+    {
+      "id": "Q-001",
+      "question": "How do patient reminders work?",
+      "source_ref": "owner-confirmed buyer question, 2026-09-25",
+      "intent": "Evaluate appointment software for a clinic",
+      "answer_status": "weak_answer",
+      "existing_page_url": "https://arbordesk.example/clinics",
+      "evidence_refs": ["https://arbordesk.example/clinics"],
+      "confidence": "medium",
+      "search_demand": "unknown",
+      "source_finding_id": "F-001",
+      "next_action": "Improve the existing clinic page after verifying the reminder feature claim.",
+      "rank_reason": "The relevant offer page leaves an owner-confirmed buyer question unanswered."
+    },
+    {
+      "id": "Q-002",
+      "question": "Can patients reschedule themselves?",
+      "source_ref": "research hypothesis from inspected page gap, 2026-09-25",
+      "intent": "Evaluate self-service appointment options",
+      "answer_status": "gap",
+      "existing_page_url": null,
+      "evidence_refs": ["https://arbordesk.example/", "https://arbordesk.example/clinics"],
+      "confidence": "low",
+      "search_demand": "unknown",
+      "next_action": "Ask the owner whether this is a buyer question and inspect remaining pages before proposing new content.",
+      "rank_reason": "The question is plausible but has no customer or search evidence yet."
+    }
+  ],
+  "limitations": ["No Search Console data was available; the two inspected pages do not prove a site-wide content gap."]
+}

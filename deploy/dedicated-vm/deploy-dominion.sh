@@ -10,6 +10,7 @@
 # Usage:
 #   deploy-dominion.sh              # clone/pull, build, stage a new release. Does NOT touch `current` or restart anything.
 #   deploy-dominion.sh --activate   # also flip `current` to the just-built release and restart the services, with a health-check and automatic rollback.
+#   DOMINION_BUILDER_REF=<branch> deploy-dominion.sh --activate # test a builder branch while sibling repositories use main.
 #
 # Lessons baked in from a bad manual deploy this session:
 #   1. agent_go's actual `go build` target is the module root (agent_go/,
@@ -53,6 +54,8 @@ MLP="$SRC_ROOT/multi-llm-provider-go"
 MCPAGENT="$SRC_ROOT/mcpagent"
 
 ACTIVATE=0
+BUILDER_REF="${DOMINION_BUILDER_REF:-main}"
+git check-ref-format --branch "$BUILDER_REF" >/dev/null || { echo "Invalid DOMINION_BUILDER_REF: $BUILDER_REF" >&2; exit 1; }
 command -v python3 >/dev/null || { echo 'Missing python3 (required for release cleanup)' >&2; exit 1; }
 if [[ "${1:-}" == "--activate" ]]; then
   ACTIVATE=1
@@ -85,16 +88,18 @@ mkdir -p "$SRC_ROOT"
 
 echo "==> Syncing source repos (all public, no credentials needed)"
 sync_repo() {
-  local name="$1" dir="$2"
+  local name="$1" dir="$2" ref="${3:-main}"
   if [[ -d "$dir/.git" ]]; then
-    git -C "$dir" fetch origin main
-    git -C "$dir" reset --hard origin/main
+    git -C "$dir" fetch origin "$ref"
+    git -C "$dir" reset --hard FETCH_HEAD
   else
     git clone --depth 50 "https://github.com/manishiitg/${name}.git" "$dir"
+    git -C "$dir" fetch origin "$ref"
+    git -C "$dir" reset --hard FETCH_HEAD
   fi
   echo "    $name -> $(git -C "$dir" rev-parse --short HEAD)"
 }
-sync_repo "coding-agent-loop" "$REPO"
+sync_repo "coding-agent-loop" "$REPO" "$BUILDER_REF"
 sync_repo "multi-llm-provider-go" "$MLP"
 
 # This script's own on-disk copy at /srv/dominion/deploy-dominion.sh is what
@@ -117,6 +122,8 @@ bash "$REPO/agent_go/scripts/install-slack-cli.sh" /srv/dominion/tools
 command -v slack >/dev/null
 echo "==> Ensuring gog (Gmail connector CLI) is the latest release"
 bash "$REPO/deploy/common/install-gog.sh" /srv/dominion/tools
+echo "==> Validating authored Playbook packages before staging"
+python3 "$REPO/playbooks/scripts/validate_playbooks.py"
 
 # workspace/ and mcpagent/'s own go.mod carry no `replace` directives (only
 # agent_go/go.mod does), so without a go.work tying all three siblings
@@ -129,12 +136,19 @@ rm -f "$GOWORK_FILE" # regenerate fresh each run so it can never point at a stal
 
 RELEASE_ID="$(git -C "$REPO" rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)"
 RELEASE_DIR="$RELEASES_ROOT/$RELEASE_ID"
-mkdir -p "$RELEASE_DIR/bin" "$RELEASE_DIR/configs" "$RELEASE_DIR/frontend"
+mkdir -p "$RELEASE_DIR/bin" "$RELEASE_DIR/configs" "$RELEASE_DIR/frontend" "$RELEASE_DIR/playbooks"
 touch "$RELEASE_DIR/.deploying"
 trap 'rm -f "$RELEASE_DIR/.deploying"' EXIT
 cp "$REPO/deploy/common/prune-releases.py" "$RELEASE_DIR/prune-releases.py"
 ln -sfn /srv/dominion/logs "$RELEASE_DIR/logs"
 echo "==> Staging release $RELEASE_ID at $RELEASE_DIR"
+cp -a "$REPO/playbooks/." "$RELEASE_DIR/playbooks/"
+for category in website-growth finance sales customer-success engineering shopify; do
+  test -f "$RELEASE_DIR/playbooks/crew-agents/$category/catalog.json" || {
+    echo "FATAL: $category Crew catalog is missing from release" >&2
+    exit 1
+  }
+done
 
 export GOWORK="$GOWORK_FILE"
 
@@ -204,6 +218,18 @@ echo "    all 5 binaries verified as real, runnable ELF executables"
 echo "==> Building frontend"
 (cd "$REPO/frontend" && npm ci && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
 cp -R "$REPO/frontend/dist/." "$RELEASE_DIR/frontend/"
+# Cloudflare can override the gateway's no-cache header for runtime-config.js.
+# Give each release a new script URL so browsers reload the product allowlist.
+python3 - "$RELEASE_DIR/frontend/index.html" "$RELEASE_ID" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+source = path.read_text()
+updated, count = re.subn(r'(/runtime-config\.js)(?:\?[^"\s]*)?',
+                         lambda match: match.group(1) + '?v=' + sys.argv[2], source)
+if count != 1:
+    raise SystemExit(f'FATAL: expected one runtime-config.js script in {path}, found {count}')
+path.write_text(updated)
+PY
 node "$REPO/frontend/scripts/check-release-assets.mjs" "$RELEASE_DIR/frontend"
 
 # frontend's build:report-preview step (part of `npm run build` above) writes
@@ -231,6 +257,22 @@ grep -Fq 'cdpEnabled: false' "$RELEASE_DIR/frontend/runtime-config.js" || {
   echo "FATAL: Dominion runtime config does not display CDP as disabled" >&2
   exit 1
 }
+python3 - "$RELEASE_DIR/frontend/runtime-config.js" <<'PY'
+import json, pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+source = path.read_text()
+pattern = r'enabledProductSurfaces:\s*(\[[^\]]*\])'
+match = re.search(pattern, source)
+if not match:
+    raise SystemExit('FATAL: Dominion runtime config has no product surface list')
+surfaces = json.loads(match.group(1))
+if 'dominion' not in surfaces:
+    raise SystemExit('FATAL: Dominion runtime config does not include Dominion')
+if 'work' not in surfaces:
+    surfaces.append('work')
+path.write_text(source[:match.start(1)] + json.dumps(surfaces) + source[match.end(1):])
+PY
+grep -Fq '"work"' "$RELEASE_DIR/frontend/runtime-config.js" || { echo 'FATAL: Crew is absent from Dominion runtime config' >&2; exit 1; }
 
 echo "==> Copying configs/ unchanged from the current release"
 if [[ -d "$CURRENT_LINK/configs" ]]; then
@@ -258,6 +300,18 @@ fi
 PREVIOUS_RELEASE="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
 echo ""
 echo "==> Activating: flipping $CURRENT_LINK -> $RELEASE_DIR and restarting dominion-workspace, dominion-agent, dominion-gateway"
+python3 - /srv/dominion/.env <<'PY'
+import os, pathlib, sys, tempfile
+path = pathlib.Path(sys.argv[1])
+managed = {'AGENT_PRODUCTS': 'dominion,work', 'AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES': 'work'}
+lines = [line for line in path.read_text().splitlines() if line.partition('=')[0] not in managed]
+lines += [f'{key}={value}' for key, value in managed.items()]
+with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, prefix='.env.next.', delete=False) as output:
+    output.write('\n'.join(lines) + '\n')
+    staged = output.name
+os.chmod(staged, 0o600)
+os.replace(staged, path)
+PY
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 mkdir -p "$HOME/.config/systemd/user/dominion-agent.service.d"
 printf '%s\n' '[Service]' 'Environment=AGENTWORKS_MCP_STATE_DIR=/srv/dominion/state/mcp' > "$HOME/.config/systemd/user/dominion-agent.service.d/30-durable-mcp.conf"

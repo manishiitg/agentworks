@@ -1,0 +1,33 @@
+{
+  "artifact_type":"ai-visibility-snapshot/v1",
+  "artifact_id":"ai-snapshot-001",
+  "site":"https://arbordesk.example",
+  "brand":"ArborDesk",
+  "brand_domains":["arbordesk.example"],
+  "competitors":["ClinicFlow"],
+  "question_id":"Q-CLINIC-1",
+  "question_version":"1",
+  "question":"Which scheduling tools support UK physiotherapy clinics?",
+  "question_source_ref":"buyer-question",
+  "engine":"Example Answer Engine",
+  "surface":"public-web-answer",
+  "locale":"en-GB",
+  "session_mode":"clean-session",
+  "observed_at":"2026-09-26T10:15:00Z",
+  "source_refs":[
+    {"id":"buyer-question","uri":"owner-notes/Q-CLINIC-1@v1","observed_at":"2026-09-26T09:00:00Z"},
+    {"id":"answer-1","uri":"captures/answer-1.json","observed_at":"2026-09-26T10:00:00Z"},
+    {"id":"answer-2","uri":"captures/answer-2.json","observed_at":"2026-09-26T10:10:00Z"}
+  ],
+  "attempts":[
+    {"attempt_id":"run-1","status":"valid","source_ref":"answer-1","brand_mentioned":true,"brand_cited_urls":["https://arbordesk.example/clinics"],"competitor_cited_urls":["https://clinicflow.example/physio"]},
+    {"attempt_id":"run-2","status":"valid","source_ref":"answer-2","brand_mentioned":true,"brand_cited_urls":[],"competitor_cited_urls":[]}
+  ],
+  "valid_attempts":2,
+  "failed_attempts":0,
+  "brand_mention_count":2,
+  "brand_citation_count":1,
+  "competitor_citation_count":1,
+  "limitation":"Two stochastic answers for one question and surface are a sample, not a rank or a share of all AI answers.",
+  "claim_state":"sample_observation"
+}

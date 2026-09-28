@@ -163,6 +163,21 @@ function createPreviewDataApi(): ReportDataApi {
     openFile: (path: string) => { openedFiles.push(path) },
     updateField: async () => { throw new Error('window.report.updateField is not available in the preview') },
     updateFields: async () => { throw new Error('window.report.updateFields is not available in the preview') },
+    run: async (path: string, args?: unknown) => {
+      const response = await fetch(apiUrl('run', {}), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ workspace, path, args: args ?? {} }),
+      })
+      const text = await response.text()
+      let body: { success?: boolean; data?: unknown; error?: string; stderr?: string } = {}
+      try { body = JSON.parse(text) } catch { /* plain-text error */ }
+      if (!response.ok || !body.success) {
+        const message = body.error || text.trim() || `Script failed (HTTP ${response.status}).`
+        throw new Error(body.stderr ? `${message}\n${body.stderr}` : message)
+      }
+      return body.data
+    },
     sendChatMessage: async () => { throw new Error('window.report.sendChatMessage is not available in the preview. Open the report in the app to send a message.') },
   }
 }

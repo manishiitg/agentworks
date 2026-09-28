@@ -1,0 +1,54 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "campaign-signal-to-reviewed-experiment",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led Marketing proposal from comparable campaign evidence to a bounded, owner-reviewed growth experiment."}
+  ],
+  "title": "Campaign Signal to Reviewed Experiment",
+  "description": "Explain a campaign conversion change from matched spend and CRM evidence, then prepare one bounded experiment plan with an optional sourced competitor context.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Marketing"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Campaign Signal to Reviewed Experiment as a chat-led proposal. Inspect existing Marketing Crews, exact campaign/account/offer IDs, platform and downstream conversion sources, attribution and baseline definitions, owner, and experiment authority. Propose reuse or reviewed creation, validator steps, one manual campaign readout, an optional competitor context, and a proposed experiment with a predeclared decision rule. Show the concrete plan before Builder applies it. Selection does not change spend, publish a variant, send a message, activate a flag, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "campaign_scope", "label": "Campaign, account, offer, market, period, time zone and currency", "required": true},
+    {"id": "conversion_rule", "label": "Qualified-event definition, identity join, attribution window and data-lag policy", "required": true},
+    {"id": "baseline_source", "label": "Comparable baseline and current spend, click and CRM sources or exports", "required": true},
+    {"id": "experiment_owner", "label": "Decision owner, eligible audience, primary and guardrail metrics, change authority", "required": true},
+    {"id": "competitor_scope", "label": "Optional bounded competitor set and current dated source scope", "required": false},
+    {"id": "run_policy", "label": "Manual-only or reviewed campaign-event cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Marketing Crews with stable idempotency keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass validated bounded campaign and optional competitor artifacts", "capability": "durable_artifacts", "optional": true},
+    {"id": "campaign-source", "name": "Ad or email platform or export", "type": "mcp", "purpose": "Read current and baseline delivery, clicks and spend", "capability": "campaign_read", "optional": true},
+    {"id": "conversion-source", "name": "CRM or analytics source or export", "type": "mcp", "purpose": "Read deduplicated qualified events for the same periods", "capability": "qualified_event_read", "optional": true},
+    {"id": "competitor-source", "name": "Approved public vendor source", "type": "mcp", "purpose": "Read dated primary pages for optional context", "capability": "market_read", "optional": true},
+    {"id": "experiment-destination", "name": "Experiment or campaign destination", "type": "mcp", "purpose": "Apply only a separately approved exact change with provider receipt", "capability": "experiment_write", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Campaign evidence to experiment decision", "focus_areas": ["Whether qualified results changed under comparable definitions", "Whether the proposed experiment has a predeclared success and guardrail rule"], "review_when": ["A campaign period closes, attribution finishes, an experiment decision is due, or a guardrail is breached"]}
+  ],
+  "outputs": [
+    "Reviewed Marketing Crew roster, campaign source map and metric policy",
+    "Validated campaign-performance-brief/v1 with current and baseline numerators and denominators",
+    "Optional dated competitor-context/v1 kept separate from measurement",
+    "Validated growth-experiment-plan/v1 with owner, test and stop rule",
+    "Manual route evidence, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "performance", "agent_playbook_id": "campaign-performance-analyst", "required": true, "output": "campaign-performance-brief/v1"},
+    {"id": "competitor", "agent_playbook_id": "competitor-intelligence-analyst", "required": false, "output": "competitor-context/v1"},
+    {"id": "experiment", "agent_playbook_id": "growth-experiment-planner", "required": true, "output": "growth-experiment-plan/v1"}
+  ],
+  "handoffs": [
+    {"id": "performance-to-experiment", "from": "performance", "to": "experiment", "artifact_type": "campaign-performance-brief/v1", "required": true},
+    {"id": "competitor-to-experiment", "from": "competitor", "to": "experiment", "artifact_type": "competitor-context/v1", "required": false}
+  ],
+  "setup_checks": ["goal_owner", "campaign_scope", "metric_policy", "baseline_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

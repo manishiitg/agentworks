@@ -1,0 +1,18 @@
+{
+  "artifact_type": "operations-review-brief/v1",
+  "tenant_id": "tenant-demo",
+  "project_id": "site-launch-17",
+  "source_status_id": "project-status-17-20260926",
+  "brief_id": "ops-review-17-20260926",
+  "observed_at": "2026-09-26T13:00:00Z",
+  "owner_id": "operations-lead",
+  "decision_requests": [
+    {
+      "action_id": "launch-sync-42-A2",
+      "question": "Who approves the release notes, and will product lead accept this action?",
+      "owner_id": "product-lead",
+      "source_ref": "project-status-17-20260926"
+    }
+  ],
+  "source_refs": ["project-status-17-20260926"]
+}

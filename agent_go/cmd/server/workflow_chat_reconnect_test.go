@@ -82,8 +82,8 @@ func TestBuildCodingAgentContinuityNoticePointsAtProjectArchive(t *testing.T) {
 		"_users/u/Chats/Work/projects/demo/builder/conversation/2026-09-17/session-chat-conversation.json",
 		"_users/u/Chats/Work/projects/demo",
 	)
-	if !strings.Contains(got, "read the complete conversation archive") || !strings.Contains(got, "Before answering that message") {
-		t.Fatalf("notice does not require the complete archive read: %s", got)
+	if !strings.Contains(got, "read its last 10 dialogue turns") || !strings.Contains(got, "Before answering that message") {
+		t.Fatalf("notice does not require reading the recent turns: %s", got)
 	}
 	if !strings.Contains(got, "builder/conversation/2026-09-17/session-chat-conversation.json") {
 		t.Fatalf("notice does not expose the project-relative archive: %s", got)
@@ -123,18 +123,16 @@ func TestPrependCodingAgentContinuityNoticeUsesSameVisibleUserTurn(t *testing.T)
 	}
 }
 
-func TestCodingAgentContinuityNoticeCarriesRecentDialogue(t *testing.T) {
-	history := []llmtypes.MessageContent{
-		{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "fix the login redirect bug"}}},
-		{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Fixed it in auth.go and opened PR 42."}}},
-	}
-	got := prependCodingAgentContinuityNotice("what did we work on yesterday", "builder/conversation/c.json", "", history...)
-	for _, want := range []string{"fix the login redirect bug", "opened PR 42", "builder/conversation/c.json", "[USER MESSAGE]\nwhat did we work on yesterday"} {
+// The notice carries only the archive path and how to read it, never a
+// pasted copy of the dialogue (that made the typed prompt tens of KB).
+func TestCodingAgentContinuityNoticeIsPathOnly(t *testing.T) {
+	got := prependCodingAgentContinuityNotice("what did we work on yesterday", "builder/conversation/c.json", "")
+	for _, want := range []string{"builder/conversation/c.json", ".[-10:][]", "Read further back yourself", "Do not rely on chat-index.json", "[USER MESSAGE]\nwhat did we work on yesterday"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("notice missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Index(got, "fix the login") > strings.Index(got, "opened PR 42") {
-		t.Fatal("recent dialogue must be oldest first")
+	if len(got) > 1500 {
+		t.Fatalf("notice is %d bytes; it must stay a short path reference", len(got))
 	}
 }

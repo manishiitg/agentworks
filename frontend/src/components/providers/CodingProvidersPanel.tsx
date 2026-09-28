@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CircleAlert,
   Clipboard,
-  Code2,
   DollarSign,
   Gauge,
   Loader2,
@@ -75,7 +74,7 @@ const STATUS_STYLES: Record<ProviderStatus, { label: string; className: string }
   },
 }
 
-const GUIDED_SETUP_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
+const GUIDED_SETUP_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli', 'agy-cli'])
 
 const PROVIDER_INSPECTION: Record<string, { label: string; note: string }> = {
   'claude-code': {
@@ -97,6 +96,10 @@ const PROVIDER_INSPECTION: Record<string, { label: string; note: string }> = {
   'muse-cli': {
     label: 'Open terminal',
     note: 'Use Muse’s built-in commands to inspect the connected account. Shell and workspace writes are disabled in this terminal.',
+  },
+  'agy-cli': {
+    label: 'Open terminal',
+    note: 'Use Antigravity’s built-in commands to inspect the connected account and models. The terminal runs sandboxed with terminal restrictions enabled.',
   },
 }
 
@@ -298,44 +301,11 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
         <div
           role={embedded ? 'region' : 'dialog'}
           aria-modal={embedded ? undefined : true}
-          aria-labelledby="providers-title"
+          aria-label="Providers"
           className={embedded
             ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-900'
             : 'flex h-[min(860px,calc(100vh-1rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:h-[min(860px,calc(100vh-2.5rem))]'}
         >
-          <header className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Code2 className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                <h2 id="providers-title" className="text-base font-semibold text-gray-950 dark:text-white sm:text-lg">
-                  Providers
-                </h2>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400 sm:text-sm">
-                Coding agents are installed by AgentWorks. Connect them once, then use them in any workflow.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={refresh}
-                disabled={loading}
-                aria-label="Refresh provider status"
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                type="button"
-                onClick={closePanel}
-                aria-label={embedded ? 'Back from providers' : 'Close providers'}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-              >
-                {embedded ? <ArrowLeft className="h-4 w-4" /> : <X className="h-4 w-4" />}
-              </button>
-            </div>
-          </header>
-
           {error && (
             <div className="mx-4 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 sm:mx-6">
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
@@ -346,7 +316,28 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
 
           <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[14rem_minmax(0,1fr)]">
             <aside className="border-b border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-950/30 md:overflow-y-auto md:border-b-0 md:border-r md:p-3">
-              <div className="mb-1 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Available providers</div>
+              <div className="mb-1 flex min-h-8 items-center justify-between gap-1 pl-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available providers</span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {view === 'provider' && <button
+                    type="button"
+                    onClick={refresh}
+                    disabled={loading}
+                    aria-label="Refresh provider status"
+                    className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  </button>}
+                  <button
+                    type="button"
+                    onClick={closePanel}
+                    aria-label={embedded ? 'Back from providers' : 'Close providers'}
+                    className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                  >
+                    {embedded ? <ArrowLeft className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
               {loading && providers.length === 0 ? (
                 <div className="flex items-center gap-2 px-2 py-4 text-sm text-gray-500">
                   <Loader2 className="h-4 w-4 animate-spin" /> Checking the server…

@@ -632,3 +632,33 @@ func TestStripReportJSKeepsInterpolationsAndBlanksLiterals(t *testing.T) {
 		t.Fatalf("division must survive stripping: %q", stripped)
 	}
 }
+
+func TestValidateHTMLReportChecksRunScripts(t *testing.T) {
+	t.Parallel()
+	html := `<!doctype html><html><head><title>Live</title></head><body><div id="deals"></div>
+<script>window.report.ready(async()=>{
+  const a = await window.report.run('code/reports/deals.py', {days: 7});
+  const b = await window.report.run("code/reports/missing.py");
+  const c = await window.report.run('db/scripts/x.py');
+  document.getElementById('deals').textContent = JSON.stringify([a, b, c]);
+})</script>
+</body></html>`
+	hooks := ReportHTMLValidationHooks{
+		FileExists: func(_ context.Context, path string) (bool, error) {
+			return path == "code/reports/deals.py", nil
+		},
+	}
+	result := validateReport(t, html, hooks)
+	for _, want := range []string{
+		`"valid": false`,
+		`window.report.run script \"code/reports/missing.py\" does not exist`,
+		`window.report.run(\"db/scripts/x.py\"): only a .py or .js script under code/`,
+	} {
+		if !strings.Contains(result, want) {
+			t.Fatalf("expected %q in result: %s", want, result)
+		}
+	}
+	if strings.Contains(result, `code/reports/deals.py\" does not exist`) || strings.Contains(result, `unknown window.report method`) {
+		t.Fatalf("existing script or run() itself flagged: %s", result)
+	}
+}

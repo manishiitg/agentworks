@@ -1,0 +1,32 @@
+{
+  "artifact_type": "meeting-action-register/v1",
+  "tenant_id": "tenant-demo",
+  "project_id": "site-launch-17",
+  "meeting_id": "launch-sync-42",
+  "meeting_revision": "notes-rev-3",
+  "register_id": "register-42-3",
+  "observed_at": "2026-09-26T10:00:00Z",
+  "actions": [
+    {
+      "action_id": "launch-sync-42-A1",
+      "summary": "Supply the hero image for review.",
+      "source_ref": "notes:42:lines-24-25",
+      "owner_id": "design-lead",
+      "owner_state": "accepted",
+      "owner_acceptance_ref": "notes:42:lines-24-25",
+      "due_at": "2026-09-28T17:00:00Z",
+      "duplicate_state": "linked_existing",
+      "linked_task_id": "task-41"
+    },
+    {
+      "action_id": "launch-sync-42-A2",
+      "summary": "Confirm who approves the final release notes.",
+      "source_ref": "notes:42:lines-28-29",
+      "owner_id": "product-lead",
+      "owner_state": "pending",
+      "due_at": "2026-09-29T17:00:00Z",
+      "duplicate_state": "none"
+    }
+  ],
+  "source_refs": ["notes:42:lines-24-25", "notes:42:lines-28-29", "tracker:task-41"]
+}

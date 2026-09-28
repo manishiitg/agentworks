@@ -42,13 +42,13 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	orchtypes "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/types"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
@@ -63,6 +63,7 @@ import (
 	"github.com/manishiitg/mcpagent/toolcalllog"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxcapture"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
@@ -240,6 +241,20 @@ func cleanupStepDelegation(workshopStepCorrelationID string) {
 
 const envMCPServerAPIToken = "MCP_SERVER_API_TOKEN"
 
+// envBridgeTokenSecret pins the session-token signing secret across restarts
+// (so retained CLI sessions keep working). It is read once and removed from
+// the environment; without it a random secret is made per start.
+const envBridgeTokenSecret = "MCP_BRIDGE_TOKEN_SECRET"
+
+func resolveBridgeTokenSecret() string {
+	secret := strings.TrimSpace(os.Getenv(envBridgeTokenSecret))
+	os.Unsetenv(envBridgeTokenSecret)
+	if secret != "" {
+		return secret
+	}
+	return common.NewBridgeTokenSecret()
+}
+
 func resolveServerAPIToken() string {
 	if token := strings.TrimSpace(os.Getenv(envMCPServerAPIToken)); token != "" {
 		return token
@@ -319,6 +334,7 @@ type ActiveSessionInfo struct {
 	WorkshopMode                string           `json:"workshop_mode,omitempty"`
 	BotPlatform                 string           `json:"bot_platform,omitempty"`
 	TriggeredBy                 string           `json:"triggered_by,omitempty"`
+	TriggeredByLabel            string           `json:"triggered_by_label,omitempty"`
 	LLMGuidance                 string           `json:"llm_guidance,omitempty"` // LLM guidance message for this session
 	ChatsFolder                 string           `json:"chats_folder,omitempty"` // Per-user Chats folder (default: _users/<userID>/Chats)
 	UserID                      string           `json:"-"`                      // User ID for session isolation (not exposed in JSON)
@@ -574,6 +590,11 @@ type StreamingAPI struct {
 	pendingStartMu                  sync.RWMutex
 	autoNotificationMu              sync.Mutex
 
+	// completionOwners marks sessions whose step completions are delivered by
+	// a runner that owns the session (a scheduled run), not by the
+	// auto-notification path. sessionID -> *int32 claim count.
+	completionOwners sync.Map
+
 	// Last query request per session — used to construct synthetic turns
 	lastQueryRequests       map[string]QueryRequest
 	lastQueryMu             sync.RWMutex
@@ -624,6 +645,8 @@ type StreamingAPI struct {
 	// Interactive workshop chat sessions — per-session controller + step registry
 	// Key: sessionID, Value: *todo_creation_human.WorkshopChatSession
 	workshopChatSessions sync.Map
+	// reportRunSessions: live window.report.run MCP bridge sessions (report_run.go).
+	reportRunSessions sync.Map
 
 	// Cron scheduler service for scheduled workflow executions
 	scheduler           *SchedulerService
@@ -753,6 +776,12 @@ type QueryRequest struct {
 	// it: authoring stays impossible. Set server-side by the external run
 	// tools, which are execution-only by contract.
 	PinRunMode bool `json:"pin_run_mode,omitempty"`
+	// CrewGuestCaller is the user a Crew turn works for when that user is not
+	// the Crew's owner: a function call or ask from someone else's workflow,
+	// Crew or external connection runs in the owner's namespace but only
+	// as a guest (read-only, may answer and suggest). Honoured only on the
+	// owner's own Crew turn, where it can only narrow access.
+	CrewGuestCaller string `json:"crew_guest_caller,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
 	// Workspace access configuration (legacy field, ignored — workspace is always enabled)
@@ -854,6 +883,9 @@ type QueryRequest struct {
 
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
+	// TriggeredByLabel names who or what started the run, for display only
+	// ("Called by RTS Flow Tester", "Schedule: Daily digest").
+	TriggeredByLabel string `json:"triggered_by_label,omitempty"`
 	// Auto-notification flag: when true, this is a background agent completion notification
 	// (not user-initiated). Backend treats it as a synthetic turn so frontend doesn't block input.
 	IsAutoNotification bool `json:"is_auto_notification,omitempty"`
@@ -1426,11 +1458,22 @@ func shouldSerializeInteractiveQueryInput(req QueryRequest) bool {
 func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest, sessionID string) bool {
 	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
 	claims := GetUserFromContext(ctx)
-	return !conversationTurnQueueExecution(ctx) && !req.DisableLiveInputDelivery &&
-		!req.IsAutoNotification && !req.PulseLifecycleTurn &&
-		(claims == nil || claims.AccessToken == nil) &&
-		!isScheduledSessionIdentity(sessionID, req.TriggeredBy) &&
-		strings.TrimSpace(req.BotPlatform) == "" && !strings.HasPrefix(trigger, "bot:") &&
+	if conversationTurnQueueExecution(ctx) || req.DisableLiveInputDelivery ||
+		req.IsAutoNotification || req.PulseLifecycleTurn ||
+		(claims != nil && claims.AccessToken != nil) {
+		return false
+	}
+	// A person's follow-up in a bot conversation (Slack DM or thread,
+	// WhatsApp) steers the running CLI, like a message in the web chat
+	// (user decision 2026-09-26: always steer with tmux). Workflow bot turns
+	// carry the schedule builder's "cron" trigger, so the platform, not the
+	// trigger, marks them. A Slack workflow trigger run is a direct webhook
+	// execution with its own session and keeps its turn boundary.
+	if strings.TrimSpace(req.BotPlatform) != "" && ctx.Value(directWebhookExecutionKey{}) == nil {
+		return true
+	}
+	return !isScheduledSessionIdentity(sessionID, req.TriggeredBy) &&
+		!strings.HasPrefix(trigger, "bot:") &&
 		(trigger == "" || trigger == "manual" || trigger == "interactive" || trigger == "workflow_builder")
 }
 
@@ -1713,6 +1756,11 @@ func runServer(cmd *cobra.Command, args []string) {
 		if n := sweepOrphanedOwnedTmuxSessions(sweepCtx); n > 0 {
 			fmt.Printf("🧹 Swept %d orphaned coding-agent tmux session(s) from a previous run\n", n)
 			log.Printf("[STARTUP] swept %d orphaned coding-agent tmux sessions", n)
+		}
+		// Bridge token files of backends that exited (their tokens no longer
+		// verify); a live backend's are kept (PLAT-362 D2).
+		if n := cursorcli.SweepStaleBridgeTokenFiles(); n > 0 {
+			log.Printf("[STARTUP] swept bridge token files of %d exited backend(s)", n)
 		}
 		cancelSweep()
 	}
@@ -2212,6 +2260,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	// E2E processes can authenticate against this same server without exposing
 	// a token read endpoint.
 	api.apiToken = resolveServerAPIToken()
+	// Agents get a token for their own session (pkg/common/bridge_token.go,
+	// bridge_auth.go), signed with a secret that exists only in this
+	// process's memory: never the API token, never in the environment, so no
+	// child process can mint a token for another session. Set before any
+	// shell client or bridge env is built.
+	common.SetBridgeTokenSecret(resolveBridgeTokenSecret())
+	// Neither the API token nor the signing secret stays in the environment
+	// children inherit (tmux panes, live-attach terminals, anything exec'd with
+	// the default env). Agents get only their own session's token.
+	os.Unsetenv(envMCPServerAPIToken)
+	os.Unsetenv("MCP_API_TOKEN")
 
 	// Set env vars for code execution mode (mcpagent reads these as fallback).
 	// MCP_API_URL may be explicitly configured for a rootless deployment; otherwise
@@ -2219,7 +2278,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// MCP_BRIDGE_API_URL = host-reachable URL (for mcpbridge binary running on the host)
 	os.Setenv("MCP_API_URL", api.GetCodeExecAPIURL())
 	os.Setenv("MCP_BRIDGE_API_URL", api.GetAPIURL())
-	os.Setenv("MCP_API_TOKEN", api.apiToken)
 	seedMCPBridgeCodeExecRegistry(api.logger)
 
 	// Load global secrets from GLOBAL_SECRET_* environment variables
@@ -2337,9 +2395,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	executorHandlers := executor.NewExecutorHandlers(api.mcpConfigPath, api.logger)
 	executorHandlers.SetMCPServerResolver(api.resolveWorkshopMCPServer)
 
-	apiRouter.HandleFunc("/mcp/execute", executorHandlers.HandleMCPExecute).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/execute", api.requireOwnBodySession(executorHandlers.HandleMCPExecute)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/custom/execute", executorHandlers.HandleCustomExecute).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/virtual/execute", executorHandlers.HandleVirtualExecute).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/virtual/execute", api.requireOwnBodySession(executorHandlers.HandleVirtualExecute)).Methods("POST", "OPTIONS")
 
 	// Per-tool endpoints for code execution mode (bearer token auth, bypasses JWT)
 	// LLM-generated code calls these directly, so they use API token auth instead of JWT.
@@ -2367,10 +2425,11 @@ func runServer(cmd *cobra.Command, args []string) {
 			return
 		}
 		executorHandlers.HandlePerToolMCPRequest(w, r, server, tool)
+		api.recordMCPBridgeCall(strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
 	}
 
 	toolsRouter := router.PathPrefix("/tools").Subrouter()
-	toolsRouter.Use(executor.AuthMiddleware(api.apiToken))
+	toolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
 	toolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		routeMCPRequest(w, r, vars["server"], vars["tool"])
@@ -2394,7 +2453,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The session_id is extracted from the path and injected as X-Session-ID header,
 	// which the per-tool handler reads as a fallback when body session_id is empty.
 	sessionToolsRouter := router.PathPrefix("/s/{session_id}/tools").Subrouter()
-	sessionToolsRouter.Use(executor.AuthMiddleware(api.apiToken))
+	sessionToolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
 	sessionToolsRouter.HandleFunc("/browser/packages/{package}", api.handlePlaywrightPackage).Methods("GET")
 	sessionToolsRouter.HandleFunc("/browser/live", api.handlePlaywrightPublisher).Methods("GET")
 	sessionToolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
@@ -2547,12 +2606,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Human Feedback API
 	apiRouter.HandleFunc("/human-feedback/submit", api.handleSubmitHumanFeedback).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/human-feedback/pending", api.handleListPendingHumanFeedback).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", api.handleListReportHumanInputs).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(false, api.handleListReportHumanInputs)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/aggregate", api.handleListReportHumanInputsAggregate).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs", api.handleCreateReportHumanInput).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", api.handleAnswerReportHumanInput).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", api.handleDismissReportHumanInput).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", api.handleConsumeReportHumanInput).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/report-human-inputs", requireReportHumanInputAccess(true, api.handleCreateReportHumanInput)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/pulse-module-state", api.handleGetPulseModuleState).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/pulse-findings", api.handleGetPulseFindings).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/pulse-reviews", api.handleGetPulseReviews).Methods("GET", "OPTIONS")
@@ -2756,6 +2815,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-preview/costs", api.handleReportPreviewMetrics).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/media-url", api.handleReportMediaURL).Methods("POST")
+	apiRouter.HandleFunc("/workflow/report-preview/run", api.handleReportRun).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-media", api.handleReportMediaStream).Methods("GET", "HEAD")
 
 	// Generic AgentWorks chat defaults (skills, servers, secrets, browser).
@@ -2815,6 +2875,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", api.handleGetWorkflowManifest).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/workflows/goal-setup", api.handleWorkflowGoalSetup).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/workflows/goal-setup", requireWorkflowWriteAccess(api.handleWorkflowGoalSetup)).Methods("POST")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowCreateAccess(api.handleCreateWorkflowManifest)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowWriteAccess(api.handleUpdateWorkflowManifest)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", requireWorkflowWriteAccess(api.handleDeleteWorkflowManifest)).Methods("DELETE", "OPTIONS")
@@ -3709,6 +3771,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	crewGuest := crewGuestCallerForTurn(req, currentUserID)
+	if crewGuest != "" {
+		currentUserIsReadOnly = true
+	}
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -4005,6 +4071,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	api.activeSessionsMux.Lock()
 	if sess, ok := api.activeSessions[sessionID]; ok {
 		sess.Username = queryLogCtx.Username
+		if label := strings.TrimSpace(req.TriggeredByLabel); label != "" {
+			sess.TriggeredByLabel = label
+		}
 		if strings.TrimSpace(req.PresetQueryID) != "" {
 			sess.PresetQueryID = strings.TrimSpace(req.PresetQueryID)
 		}
@@ -4608,6 +4677,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Inject user ID into the workflow context
 		workflowCtx = context.WithValue(workflowCtx, common.UserIDKey, currentUserID)
+		workflowCtx = costobserver.ContextWithSourcePlatform(workflowCtx, req.BotPlatform)
 		// Inject chat session ID so execute_shell_command can look up the session's
 		// working directory and folder guard config from the global session map.
 		// Without this, execution agents always get workspace root as their shell cwd.
@@ -5307,7 +5377,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
-		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
+		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
 		claudeCodeTransport := codingAgentClaudeCodeChatTransport(finalProvider)
 		if forceStructuredCodingAgent {
 			// A structured coding CLI is a one-shot native JSON process. There is
@@ -5318,6 +5388,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			cursorPersistentInteractive = false
 			piPersistentInteractive = false
 			musePersistentInteractive = false
+			agyPersistentInteractive = false
 			claudeCodeTransport = ""
 		}
 		chatWorkingFolder := perUserChatsFolder
@@ -5335,6 +5406,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatWorkingDir, isolationErr = workflowCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly))
 			if isolationErr != nil {
 				sendError(isolationErr.Error(), true)
+				return
+			}
+		}
+		if !isWorkflowPhase {
+			if err := trustAgyWorkingDir(finalProvider, chatWorkingDir); err != nil {
+				sendError(fmt.Sprintf("Failed to trust AGY CLI working directory: %v", err), true)
 				return
 			}
 		}
@@ -5380,10 +5457,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// inheriting the broad server shell executor.
 			nativeAPIEnv := map[string]string{
 				"MCP_API_URL":    strings.TrimRight(os.Getenv("MCP_API_URL"), "/") + "/s/" + sessionID,
-				"MCP_API_TOKEN":  os.Getenv("MCP_API_TOKEN"),
 				"MCP_SESSION_ID": sessionID,
 			}
-			if strings.TrimSpace(os.Getenv("MCP_API_URL")) != "" && strings.TrimSpace(os.Getenv("MCP_API_TOKEN")) != "" {
+			if strings.TrimSpace(os.Getenv("MCP_API_URL")) != "" && common.BridgeTokensEnabled() {
 				common.PopulateMCPBridgeShortEnv(nativeAPIEnv)
 				for name, value := range nativeAPIEnv {
 					codingAgentSecretEnvironment[name] = value
@@ -5457,6 +5533,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			BridgeRoutingInstructionsOverride:      profileBridgeRoutingInstructions,
 			PiPersistentInteractiveSession:         piPersistentInteractive,
 			MusePersistentInteractiveSession:       musePersistentInteractive,
+			AgyPersistentInteractiveSession:        agyPersistentInteractive,
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
@@ -5691,6 +5768,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				blockedPlanning := effectiveWorkflowPhaseFolderForWrites + "/" + todo_creation_human.PlanningFolderName + "/"
 				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedPlanning)
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Write access: %s/ (whole workflow) with blocked-write prefix: %s", effectiveWorkflowPhaseFolderForWrites, blockedPlanning)
+				// workflow.json carries the access record and created_by (whom
+				// schedules run as): only an owner's session may write it, so an
+				// editor cannot have the agent promote them or change run-as.
+				if blockedManifest := workflowManifestBlockedWriteForNonOwner(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()), effectiveWorkflowPhaseFolderForWrites); blockedManifest != "" {
+					fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, blockedManifest)
+					log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Non-owner session: blocked writes to %s", blockedManifest)
+				}
 			} else if isWorkflowPhase && currentUserIsReadOnly {
 				log.Printf("[WORKFLOW_PHASE FOLDER GUARD] Read-only identity — no whole-workflow write grant for session=%s", sessionID)
 			}
@@ -6292,6 +6376,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// coherent instead of confused retries.
 				if isCrewReaderTurn(req, currentUserID) {
 					_ = llmAgent.AddInstructions(crewReaderSystemPrompt(req.SelectedFolder))
+				} else if crewGuest != "" {
+					_ = llmAgent.AddInstructions(crewGuestSystemPrompt(crewGuest))
 				}
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
@@ -7106,6 +7192,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Inject user ID into the agent context
 		agentCtx = context.WithValue(agentCtx, common.UserIDKey, currentUserID)
+		agentCtx = costobserver.ContextWithSourcePlatform(agentCtx, req.BotPlatform)
 		agentCtx = context.WithValue(agentCtx, common.ChatSessionIDKey, sessionID)
 		if dest := notificationDestinationFromQuery(req, currentUserID); dest != nil {
 			virtualtools.RegisterSessionNotificationDestination(sessionID, dest)
@@ -7352,7 +7439,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						chatQuery,
 						codingFallbackConversationPath,
 						codingFallbackWorkspace,
-						historyForAgent...,
 					)
 					historyToReplay = nil
 					logfWithContext(queryLogCtx, "[CONVERSATION] Native coding-agent continuation unavailable; sending visible archive-read instruction with the current user message for conversation archive %s (in-memory history: %d messages)", codingFallbackConversationPath, len(historyForAgent))
@@ -8250,6 +8336,8 @@ func retainedCodingAgentProvider(snapshot terminals.Snapshot) string {
 		return string(llm.ProviderMuseCLI)
 	case strings.HasPrefix(tmuxSession, "mlp-pi-cli"):
 		return string(llm.ProviderPiCLI)
+	case strings.HasPrefix(tmuxSession, "agy-int-"):
+		return string(llm.ProviderAgyCLI)
 	}
 
 	label := strings.ToLower(strings.TrimSpace(snapshot.Status.ProviderLabel))
@@ -8264,6 +8352,8 @@ func retainedCodingAgentProvider(snapshot terminals.Snapshot) string {
 		return string(llm.ProviderMuseCLI)
 	case strings.Contains(label, "pi-cli") || strings.HasPrefix(label, "pi "):
 		return string(llm.ProviderPiCLI)
+	case strings.Contains(label, "agy-cli"):
+		return string(llm.ProviderAgyCLI)
 	default:
 		return ""
 	}
@@ -9262,6 +9352,11 @@ func (api *StreamingAPI) handleDismissSession(w http.ResponseWriter, r *http.Req
 
 	if sessionID == "" {
 		http.Error(w, "Session ID is required", http.StatusBadRequest)
+		return
+	}
+	// Only someone who may see the session can dismiss it (PLAT-362 D5).
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, "Session not found or access denied", http.StatusNotFound)
 		return
 	}
 
@@ -11681,28 +11776,13 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					sb.WriteString("\n")
 				}
 			}
-			// Every scheduled occurrence is recorded here, including ones the
-			// scheduler correctly decided NOT to run (a global pause, another
-			// schedule already owning the workflow, a queued dependency) — those
-			// never produce a schedule_runs row above at all. A schedule that
-			// looks silent in Run History can be a scheduler working exactly as
-			// designed the whole time; this is the only way to tell that apart
-			// from an actual missed/dropped occurrence.
+			// Every scheduled occurrence is recorded here, including the ones
+			// that never produce a schedule_runs row. They are grouped by what
+			// they mean: lost work, deferred work, or deliberately not run
+			// (schedule_fire_decision_kind.go).
 			if api.scheduler != nil {
 				if decisions, decErr := api.scheduler.ListFireDecisions(ctx, workspacePath, jobID, limit); decErr == nil {
-					var skipped []schedulerstate.FireDecision
-					for _, d := range decisions {
-						if d.Decision != "started" {
-							skipped = append(skipped, d)
-						}
-					}
-					if len(skipped) > 0 {
-						sb.WriteString(fmt.Sprintf("\n## Skipped/Non-Run Occurrences (%d)\n\n", len(skipped)))
-						for _, d := range skipped {
-							sb.WriteString(fmt.Sprintf("- scheduled_for=%s decision=%q reason=%q\n",
-								d.ScheduledFor.Format("2006-01-02 15:04:05"), d.Decision, d.Reason))
-						}
-					}
+					sb.WriteString(formatScheduleNonRunOccurrences(decisions, collisionPolicyForSchedule(ctx, workspacePath, jobID)))
 				}
 			}
 			return sb.String(), nil

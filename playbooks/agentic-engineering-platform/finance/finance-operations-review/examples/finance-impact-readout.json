@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "artifact_type": "finance-impact-readout/v1",
+  "source_queue_id": "queue-example-2026-09",
+  "entity": "Example SaaS Inc",
+  "period": "2026-09",
+  "currency": "USD",
+  "created_at": "2026-09-25T09:15:00Z",
+  "source_refs": [
+    { "id": "ledger-export", "uri": "exports/fictional-ledger-2026-09.csv#row=32", "observed_at": "2026-09-25T08:45:00Z" }
+  ],
+  "metrics": [
+    { "name": "collected", "value_minor": 10000, "formula": "one settled charge of 10000 minor units", "source_refs": ["billing-export", "ledger-export"] },
+    { "name": "previously_refunded", "value_minor": 1000, "formula": "one prior refund of 1000 minor units", "source_refs": ["billing-export", "ledger-export"] }
+  ],
+  "impacts": [
+    { "case_id": "case-refund-001", "assessment": "If approved and executed, cash refunds increase by 2500 minor units; revenue treatment needs accountant review.", "next_action": "Owner reviews request and current provider state", "owner": "Finance owner", "source_refs": ["billing-export", "ledger-export"] }
+  ],
+  "limitations": ["Proposed refund has not been executed; recognized revenue is unavailable from these records."]
+}

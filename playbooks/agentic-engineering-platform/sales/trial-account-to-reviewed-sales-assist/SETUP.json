@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "trial-account-to-reviewed-sales-assist",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm trial assist goal and owners", "instructions": "Name the product-data owner, seller, contact approver and first reviewable result. Decide whether the job is assistance, qualification or no-contact review; record excluded sends and CRM writes."},
+    {"id": "trial_scope", "title": "Bind one exact trial account", "instructions": "Record entity, product, tenant, product account, trial and subscription IDs, current status/revision, trial start/end, timezone, internal/test exclusions and observation cutoff. A company name or email alone is not the join."},
+    {"id": "usage_rule", "title": "Freeze use and coverage rules", "instructions": "Choose one customer-defined qualifying event rule and bounded window. Read exact event IDs and coverage source; distinguish observed use, complete-window non-observation and unknown partial coverage. Usage is not purchase intent."},
+    {"id": "contact_policy", "title": "Set Sales fit and contact policy", "instructions": "Record exact product-account-to-CRM-account mapping, approved recipient and channel, fit decision, consent basis, suppression scope, prior replies, meetings, current trial/paid state, offer revision and review owner. A trial signup is not blanket outreach permission."},
+    {"id": "team_bindings", "title": "Bind existing Product and Sales Crews", "instructions": "Inspect Product Adoption Analyst and Sales Follow-up Coordinator for compatible owner, access and selected v3 skills. Record project/trigger IDs and only propose a new Crew where an actual boundary requires it."},
+    {"id": "source_access", "title": "Probe real source access", "instructions": "Read one authorized current trial/subscription record, matching product event or coverage proof, exact CRM mapping and current contact/suppression and prior-contact state. Save source IDs, revisions, observation times and missing access."},
+    {"id": "handoff_contract", "title": "Gate the trial-to-Sales artifact", "instructions": "Save Product Adoption's exact JSON context output, require load-bearing fields with a Crew validation schema, then run the bundled business validator before Sales consumes it. Reject wrong account, partial-coverage inactivity, converted-trial outreach, mismatched recipient, unknown permission, false send or false meeting. Test valid and rejected fixtures."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, source and output paths, structural and business gates, CRM join, no-contact branch, recipient and draft review, action ledger, later delivery/meeting receipts and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized trial manually", "instructions": "Use one real or historical authorized trial with current source records. Save Crew run IDs, validator results, owner fit/contact decision, an unsent draft or no-contact result and actual later provider state or unknown. Fictional examples do not complete setup."},
+    {"id": "activation_choice", "title": "Choose recurrence and action ledger", "instructions": "Record trial/account/status revision, usage artifact ID, CRM mapping, recipient, contact policy revision, message fingerprint, owner approval, provider receipt and next check. Choose manual-only or a reviewed authenticated event/schedule; setup completion enables no send."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

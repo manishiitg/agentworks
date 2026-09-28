@@ -706,6 +706,12 @@ func (store productConversationRegistryStore) writeDocument(ctx context.Context,
 	return nil
 }
 
+// displayTitle is the name people know the project by: the Crew's identity
+// name ("SDE") when it has one, else its folder title ("gptlive1").
+func (m productProjectManifest) displayTitle() string {
+	return firstNonEmptyTrimmed(m.Identity.Name, m.Title)
+}
+
 type productProjectManifest struct {
 	SchemaVersion int    `json:"schema_version"`
 	Product       string `json:"product,omitempty"`
@@ -719,6 +725,8 @@ type productProjectManifest struct {
 	Identity      struct {
 		Name string `json:"name,omitempty"`
 		Icon string `json:"icon,omitempty"`
+		// Role is carried so manifest rewrites preserve the Crew's role.
+		Role string `json:"role,omitempty"`
 	} `json:"identity,omitempty"`
 	Schedules            []productschedule.Schedule `json:"schedules,omitempty"`
 	Triggers             []productWebhookTrigger    `json:"triggers,omitempty"`

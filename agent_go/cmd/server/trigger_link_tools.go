@@ -320,7 +320,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	}
 	var conversationBinding productConversationBinding
 	if trigger.ownConversation() {
-		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "trigger", trigger.ID, manifest.Title+" · "+trigger.Name)
+		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "trigger", trigger.ID, manifest.displayTitle()+" · "+trigger.Name)
 	} else {
 		conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, target.CrewID)
 	}
@@ -344,6 +344,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		return nil, err
 	}
 	reqMap["triggered_by"] = "manual"
+	reqMap["triggered_by_label"] = "Follow-up from " + caller.Label
 	reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, profile.Name)
 	body, err := json.Marshal(reqMap)
 	if err != nil {

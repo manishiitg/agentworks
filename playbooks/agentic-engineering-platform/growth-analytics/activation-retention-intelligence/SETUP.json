@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "activation-retention-intelligence",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm lifecycle question and owner","instructions":"Name the product, tenant, signup population, decision owner, 30-day retention question and excluded accounts. Agree that cohort averages do not create individual churn labels."},
+    {"id":"cohort_policy","title":"Freeze cohort and event policy","instructions":"Record signup windows, eligible account definition, activation predicate and day-30 retention predicate with versions, identity join, deduplication, timezone and internal/test exclusions."},
+    {"id":"maturity_rule","title":"Set maturity and censoring rule","instructions":"Compute the last signup date plus 30 days for each cohort. A not-yet-mature cohort is pending_maturity with null retained count and no trend. One mature cohort is baseline_first; compare two only when duration, rule and source coverage match."},
+    {"id":"identity_source","title":"Verify identity and source coverage","instructions":"Probe authorized signup and product event records and active subscription state for the same account/tenant. Record source revisions, matched/unmatched accounts, billing lag, observation cutoff and minimum coverage."},
+    {"id":"team_bindings","title":"Bind two distinct Crews","instructions":"Inspect and reuse or create Lifecycle Analyst and Growth Experiment Planner Crew IDs with selected skills and distinct output paths. Do not use an account-specific first-value readout as a cohort denominator."},
+    {"id":"source_access","title":"Test both source and handoff reads","instructions":"Have Lifecycle Analyst read a representative authorized event and subscription record. Have Growth Experiment Planner read the validated mature observation and experiment policy. Save exact source, account scope, timestamps and missing access."},
+    {"id":"handoff_contract","title":"Validate maturity-aware artifacts","instructions":"Save cohort-retention-observation/v1, run the blocking validator and verify an immature cohort stops planning. For one mature case, pass the exact artifact ID to Growth Experiment Planner, save retention-experiment-plan/v1 and validate both. Record paths, Crew run IDs and rejected false-churn case."},
+    {"id":"plan_review","title":"Review Builder proposal","instructions":"Show Crew reuse/creation, cohort/source coverage, maturity threshold, validator, owner, change authority, metric, guardrail and sample policy. Selection authorizes no query, customer contact or experiment launch."},
+    {"id":"manual_test","title":"Run one bounded cohort case","instructions":"Use authorized records for one mature or still-immature cohort and, when available, a comparable second mature cohort. Recompute counts/rates, review limitations with the owner and keep the route manual if source truth or validator is missing."},
+    {"id":"activation_choice","title":"Choose repeat policy","instructions":"Record manual-only or a reviewed paused schedule with timezone, cohort maturity wait, source freshness, billing lag, query cost, retries and notifications. Completing setup does not enable recurrence or customer actions."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

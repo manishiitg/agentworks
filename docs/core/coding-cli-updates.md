@@ -18,6 +18,15 @@ After updating, AgentWorks resolves the executable from the normal process
 an absolute executable path and is updated in place. Muse remains probe-only
 because its launcher already performs its own background updates.
 
+After a successful update AgentWorks keeps one release per CLI. Cursor Agent's
+updater (and Claude Code's native installer) download each release beside the
+previous ones under `~/.local/share/<cli>/versions/` and never delete them
+(Cursor is ~0.5 GB per release). The updater removes every release there except
+the one the verified executable resolves to, and skips any release a running
+process still uses; that one goes on a later check. Only those two exact
+stores are pruned: npm-global installs update in place, and other "versions"
+directories (e.g. nvm's) are never touched.
+
 An uninstalled CLI is recorded as `not_installed`; AgentWorks does not install
 it. A successful check is due again after 24 hours. A failure is retried after
 one hour without rerunning providers that are not due. Each attempt has a

@@ -122,6 +122,11 @@ func buildNativeEnvironment() []string {
 	blockedExact := map[string]bool{
 		"MCP_API_TOKEN":       true,
 		"WORKSPACE_API_TOKEN": true,
+		// The server's API token, and the secret that signs per-session bridge
+		// tokens when an operator pins it: a shell holding the secret could
+		// mint a token for any session.
+		"MCP_SERVER_API_TOKEN":    true,
+		"MCP_BRIDGE_TOKEN_SECRET": true,
 	}
 
 	var env []string

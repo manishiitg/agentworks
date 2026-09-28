@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "artifact_type": "account-research-brief/v1",
+  "research_id": "research-example-001",
+  "source_brief_id": "brief-example-001",
+  "company_domain": "harborclinic.example",
+  "created_at": "2026-09-25T10:10:00Z",
+  "source_refs": [
+    { "id": "company-site", "uri": "https://harborclinic.example/locations", "observed_at": "2026-09-25T09:50:00Z" }
+  ],
+  "findings": [
+    { "id": "locations", "finding": "The public site lists three clinic locations.", "evidence_kind": "observed", "evidence_refs": ["company-site"] },
+    { "id": "scheduling-need", "finding": "Coordinating locations may matter, but the account has not confirmed this need.", "evidence_kind": "hypothesis", "evidence_refs": ["company-site", "inquiry"] }
+  ],
+  "questions": ["How are appointments coordinated across the locations today?"],
+  "limitations": ["Fictional company and site; no private contacts were researched."]
+}

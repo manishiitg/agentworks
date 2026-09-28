@@ -726,7 +726,14 @@ func executionAttemptResultLogs(pattern string) []string {
 
 func requireWorkspaceAPIReachable(baseURL string) error {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(strings.TrimRight(baseURL, "/") + "/api/documents/_index.json")
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+"/api/documents/_index.json", nil)
+	if err != nil {
+		return err
+	}
+	if token := strings.TrimSpace(os.Getenv("WORKSPACE_API_TOKEN")); token != "" {
+		req.Header.Set("X-Workspace-Token", token)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

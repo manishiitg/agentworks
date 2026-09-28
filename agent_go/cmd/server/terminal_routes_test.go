@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxinput"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -2076,4 +2077,58 @@ func cloneTerminalRouteMetadata(metadata map[string]interface{}) map[string]inte
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func TestCompactTerminalStatusMetaForListKeepsPlanUsageLists(t *testing.T) {
+	meta := map[string]interface{}{
+		"status_extras": []interface{}{"5h 17% →3:30pm", "ctx 42%"},
+		"rate_limit_windows": []llmtypes.RateLimitWindow{
+			{Name: "five_hour", UsedPercent: 17, ResetsAt: time.Date(2026, 9, 27, 15, 30, 0, 0, time.UTC)},
+		},
+		"nested":      map[string]interface{}{"a": 1},
+		"total_cost":  1.5,
+		"huge_extras": []interface{}{strings.Repeat("x", 4096)},
+	}
+	for i := 0; i < 20; i++ {
+		meta[fmt.Sprintf("a%02d", i)] = i
+	}
+	out := compactTerminalStatusMetaForList(meta)
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	extras, ok := decoded["status_extras"].([]interface{})
+	if !ok || len(extras) != 2 || extras[0] != "5h 17% →3:30pm" {
+		t.Fatalf("status_extras not kept: %s", encoded)
+	}
+	windows, ok := decoded["rate_limit_windows"].([]interface{})
+	if !ok || len(windows) != 1 {
+		t.Fatalf("rate_limit_windows not kept: %s", encoded)
+	}
+	window := windows[0].(map[string]interface{})
+	if window["name"] != "five_hour" || window["used_percent"] != float64(17) || window["resets_at"] != "2026-09-27T15:30:00Z" {
+		t.Fatalf("unexpected window: %#v", window)
+	}
+	if _, ok := decoded["nested"]; ok {
+		t.Fatalf("non-allowlisted structured values must still be dropped: %s", encoded)
+	}
+	if _, ok := decoded["huge_extras"]; ok {
+		t.Fatalf("huge list must be dropped: %s", encoded)
+	}
+	if len(decoded) != 12 {
+		t.Fatalf("entry cap not honored: %d entries", len(decoded))
+	}
+}
+
+func TestCompactTerminalStatusMetaForListDropsOversizedUsageList(t *testing.T) {
+	out := compactTerminalStatusMetaForList(map[string]interface{}{
+		"status_extras": []interface{}{strings.Repeat("x", 4096)},
+	})
+	if out != nil {
+		t.Fatalf("oversized status_extras should be dropped, got %#v", out)
+	}
 }

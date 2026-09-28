@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "artifact_type": "sales-followup-draft/v1",
+  "draft_id": "draft-example-001",
+  "source_brief_id": "brief-example-001",
+  "source_research_id": "research-example-001",
+  "lead_id": "lead-example-001",
+  "recipient_ref": "crm-export:contact-001",
+  "created_at": "2026-09-25T10:20:00Z",
+  "status": "draft",
+  "send_state": "not_sent",
+  "approval_required": true,
+  "owner": "Sales owner",
+  "channel": "email",
+  "subject": "Your scheduling demo request",
+  "body": "Thanks for asking about multi-location scheduling. I can show how our scheduling workflow works and answer your questions about coordinating clinics. Would a short conversation next week help?",
+  "next_action": "Owner reviews the exact recipient, claims, timing, and suppression state before any send.",
+  "next_check_at": "2026-09-26T10:00:00Z",
+  "source_refs": [
+    { "id": "approved-offer", "uri": "docs/fictional-product-overview.md#scheduling", "observed_at": "2026-09-25T09:45:00Z" }
+  ],
+  "claim_refs": ["inquiry", "approved-offer"],
+  "limitations": ["Fictional fixture; no message has been sent or meeting booked."]
+}

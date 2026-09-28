@@ -2,8 +2,10 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { Activity } from 'lucide-react'
+import { AskAIButton } from './AskAIButton'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
+import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { TooltipProvider } from '../ui/tooltip'
 
 describe('WorkspaceViewHeader', () => {
@@ -43,17 +45,37 @@ describe('WorkspaceViewHeader', () => {
     expect(render('skills')).not.toContain('data-testid="tab-action"')
   })
 
-  it('keeps Refresh rightmost for the shared Ask AI action pair', () => {
+  it('moves the shared Ask AI action into the walkthrough popup, keeping Refresh rightmost', () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
         <WorkspaceViewHeader title="Memory" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain memory" onRefresh={() => {}} />} />
       </TooltipProvider>,
     )
-    const ask = html.indexOf('aria-label="Ask AI"')
+    expect(html).not.toContain('aria-label="Ask AI"')
     const walkthrough = html.indexOf('aria-label="Walkthrough: Memory"')
     const refresh = html.indexOf('aria-label="Refresh view"')
-    expect(ask).toBeGreaterThanOrEqual(0)
-    expect(ask).toBeLessThan(walkthrough)
+    expect(walkthrough).toBeGreaterThanOrEqual(0)
+    expect(walkthrough).toBeLessThan(refresh)
+  })
+
+  it('moves an icon-only Ask AI fragment child into the popup but keeps labeled ones inline', () => {
+    const html = renderToStaticMarkup(
+      <TooltipProvider>
+        <WorkspaceViewHeader
+          title="Notifications"
+          actions={<>
+            <AskAIButton workspacePath="Workflow/one" message="/notify" label="Change" />
+            <AskAIButton workspacePath="Workflow/one" message="Explain notifications" iconOnly />
+            <WorkspaceViewIconButton label="Refresh notifications" onClick={() => {}} />
+          </>}
+        />
+      </TooltipProvider>,
+    )
+    expect(html).toContain('>Change<')
+    expect(html).not.toContain('aria-label="Ask AI"')
+    const walkthrough = html.indexOf('aria-label="Walkthrough: Notifications"')
+    const refresh = html.indexOf('aria-label="Refresh notifications"')
+    expect(walkthrough).toBeGreaterThanOrEqual(0)
     expect(walkthrough).toBeLessThan(refresh)
   })
 

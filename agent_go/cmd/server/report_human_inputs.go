@@ -165,6 +165,12 @@ func reportHumanInputDBPath(workspacePath string) (string, string, error) {
 }
 
 func openReportHumanInputDB(ctx context.Context, workspacePath string, create bool) (string, *sql.DB, error) {
+	// A Crew is addressed several ways ("Chats/Work/projects/<id>" for its
+	// owner, "_users/<owner>/...", "Crew/<id>"); its decisions live once, at
+	// its physical root, so the owner and its other users meet the same store.
+	if ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), workspacePath); ok {
+		workspacePath = ref.Root
+	}
 	normalized, dbPath, err := reportHumanInputDBPath(workspacePath)
 	if err != nil {
 		return "", nil, err
@@ -1090,12 +1096,16 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			return marshalReportHumanInputToolResult("created", input)
 		},
 		"answer_human_input_request": func(ctx context.Context, args map[string]interface{}) (string, error) {
-			workspacePath, _ := args["workspace_path"].(string)
+			requestedWorkspace, _ := args["workspace_path"].(string)
+			workspacePath, claims, err := humanAnswerScope(ctx, requestedWorkspace)
+			if err != nil {
+				return "", err
+			}
 			inputID, _ := args["input_id"].(string)
 			req := ReportHumanInputAnswerRequest{}
 			req.SelectedOptionID, _ = args["selected_option_id"].(string)
 			req.Note, _ = args["note"].(string)
-			req.AnsweredBy = GetUserIDFromContext(ctx)
+			req.AnsweredBy = claims.UserID
 			req.AnsweredByKind = "human_via_chat"
 			req.AnsweredVia = "agent_chat"
 			req.SessionID = mcpexecutor.SessionIDFromContext(ctx)
@@ -1236,6 +1246,11 @@ func (api *StreamingAPI) handleListReportHumanInputsAggregate(w http.ResponseWri
 			continue
 		}
 		seen[normalized] = struct{}{}
+		// Only workspaces the caller may read contribute; others are skipped
+		// rather than failing the whole header count.
+		if read, _ := reportHumanInputAccess(r.Context(), normalized); !read {
+			continue
+		}
 		workspaceInputs, err := listReportHumanInputs(r.Context(), normalized, r.URL.Query().Get("status"), r.URL.Query().Get("source"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

@@ -29,14 +29,17 @@ func TestPulseGateAssessesImpactAndAccumulatesEvidence(t *testing.T) {
 		"reviewer must inspect each surface and record",
 		"until those structured receipts are complete",
 		"plan_drift_review.due=true",
-		"Plan Drift is an exclusive prerequisite pass",
-		"Technical, Architecture, and Strategic Review skipped",
+		// Plan Drift runs first, not alone: Technical and Goal Work are still
+		// decided on their merits; only Architecture waits (2026-09-25).
+		"Plan Drift runs first, not alone",
+		"Do not skip them because Plan Drift is",
+		"Only Architecture waits for a later cycle",
 	} {
 		if !strings.Contains(gate, want) {
 			t.Errorf("missing Gate contract: %q", want)
 		}
 	}
-	for _, stale := range []string{"A failed verified deterministic intake cannot be cooled down or skipped", "Select **at most two**"} {
+	for _, stale := range []string{"A failed verified deterministic intake cannot be cooled down or skipped", "Select **at most two**", "Plan Drift is an exclusive prerequisite pass"} {
 		if strings.Contains(gate, stale) {
 			t.Errorf("stale mandatory runtime review contract: %q", stale)
 		}

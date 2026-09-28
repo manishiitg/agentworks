@@ -125,6 +125,31 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeCrewStep(
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to write crew step run record: %v", err))
 	}
 
+	// Crew responses are written directly by the runner, so they do not pass
+	// through the regular step executor's pre-validation gate. Apply the same
+	// declared schema here before the output is made available to consumers.
+	if schema := crewStep.GetValidationSchema(); schema != nil && (len(schema.Files) > 0 || len(schema.DB) > 0) {
+		validation, validationErr := RunPreValidation(ctx, schema, stepExecutionPath, hcpo.BaseOrchestrator)
+		if validationErr != nil {
+			validation = &WorkspaceVerificationResult{
+				OverallPass: false,
+				Summary: ValidationSummary{
+					FailedChecks: 1,
+					Errors:       []ValidationError{{CheckType: "pre_validation_error", Message: validationErr.Error()}},
+				},
+			}
+		}
+		hcpo.emitPreValidationCompletedEvent(ctx, step, stepIndex, stepPath, false, validation)
+		SavePreValidationLog(ctx, hcpo.BaseOrchestrator, runWorkspacePath, crewStep.GetID(), stepPath,
+			validation, schema, hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName,
+			PreValidationAttempt{ExecutionMode: "crew", ValidationPhase: "final-gate", ExecutionAttempt: 1, ValidationAttempt: 1})
+		if !validation.OverallPass {
+			reason := formatWorkspaceResults(validation)
+			hcpo.emitStepFailedEvent(ctx, step, stepIndex, stepPath, reason)
+			return CrewStepResult{}, updatedContextFiles, fmt.Errorf("crew step %q output failed validation: %s", crewStep.GetID(), reason)
+		}
+	}
+
 	updatedContextFiles = append(updatedContextFiles, resolvedContextOutput)
 	hcpo.emitStepFinishedEvent(ctx, step, stepIndex, stepPath)
 	hcpo.addCompletedStepIndex(progress, stepIndex)

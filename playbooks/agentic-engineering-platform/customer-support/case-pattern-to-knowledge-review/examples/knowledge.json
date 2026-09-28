@@ -1,0 +1,28 @@
+{
+  "artifact_type": "support-knowledge-update/v1",
+  "artifact_id": "case-pattern-to-knowledge-review-knowledge-1",
+  "producer_id": "support-knowledge-curator",
+  "tenant_id": "tenant-1",
+  "subject_id": "guest-invite-rights",
+  "product_id": "product-7",
+  "question_key": "guest-invite-rights",
+  "source_revision": "knowledge-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "knowledge-source-1",
+    "knowledge-source-2"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "case_ids": [
+    "case-701",
+    "case-716"
+  ],
+  "article_id": "kb-18",
+  "article_revision": "kb-18-v3",
+  "publication_state": "unpublished",
+  "deflection_state": "unknown",
+  "draft_summary": "Explain guest invite permissions from docs-v5",
+  "input_artifact_id": "case-pattern-to-knowledge-review-triage-1",
+  "input_revision": "triage-rev-1"
+}

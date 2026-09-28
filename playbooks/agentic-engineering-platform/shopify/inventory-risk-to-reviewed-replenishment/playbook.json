@@ -1,0 +1,38 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "inventory-risk-to-reviewed-replenishment",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a supplier-aware, integer-recomputable reorder proposal from a location-specific inventory signal, with separate PO and transfer proof."}],
+  "title": "Inventory Risk to Reviewed Replenishment",
+  "description": "Turn a Shopify item and location stock risk into a supplier-aware reorder proposal, then distinguish purchase-order status from actual receipt.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 7,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Inventory Risk to Reviewed Replenishment as a chat-led proposal for one authorized Shopify variant, inventory item, destination location and supplier. Discover Catalog & Merchandising Analyst and Replenishment Planner Crews; propose reuse or reviewed creation. Inspect location-level available stock, confirmed incoming and open purchase orders, demand window, supplier lead time, minimum order, case pack, cost/currency, budget policy and procurement owner. Show the recomputable quantity/cost handoff, owner review, manual first run and separate purchase-order and transfer verification. Selecting this Playbook does not create a PO, order from a supplier, receive inventory, spend money or enable recurrence.",
+  "setup_inputs": [
+    {"id":"item_location","label":"Authorized store, market, product, variant, inventory item and destination location","required":true},
+    {"id":"demand_stock","label":"Demand window, current available, backorders, confirmed incoming and open PO/transfer evidence","required":true},
+    {"id":"supplier_terms","label":"Supplier ID/SKU, lead time, review interval, MOQ, case pack, unit cost and currency","required":true},
+    {"id":"owner_policy","label":"Procurement owner, safety stock and budget/approval policy","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed inventory-change trigger and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create a reviewed missing procurement Crew with a stable key","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated item/location risk artifact","capability":"durable_artifacts","optional":true},
+    {"id":"inventory-source","name":"Shopify InventoryLevel or scoped export","type":"mcp","purpose":"Read exact item/location quantity states","capability":"inventory_records","optional":true},
+    {"id":"demand-source","name":"Shopify orders or demand export","type":"mcp","purpose":"Count units for the agreed comparable demand window","capability":"demand_records","optional":true},
+    {"id":"supplier-source","name":"Supplier, purchase-order or ERP records","type":"mcp","purpose":"Verify terms, open orders, incoming transfers and later supplier confirmation","capability":"supplier_records","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Supplier replenishment review","focus_areas":["Whether item/location stock risks have a justified reorder quantity and owner","Whether ordered units and actual received units remain separate"],"review_when":["Demand, available, incoming or supplier terms change; a proposed PO lacks owner decision; ordered units miss expected receipt"]}],
+  "outputs": ["Reviewed Crew roster and inventory/supplier authority map", "Validated item/location stock signal", "Recomputable reorder or defer review with unknowns", "Separate approved PO and transfer receipt when later executed", "Manual route and activation choice"],
+  "agent_slots": [
+    {"id":"catalog","agent_playbook_id":"catalog-merchandising-analyst","required":true,"output":"inventory-availability-exception/v1"},
+    {"id":"procurement","agent_playbook_id":"replenishment-planner","required":true,"output":"replenishment-review/v1"}
+  ],
+  "handoffs": [{"id":"inventory-to-replenishment","from":"catalog","to":"procurement","artifact_type":"inventory-availability-exception/v1","required":true}],
+  "setup_checks": ["goal_owner", "item_location_scope", "inventory_demand_policy", "supplier_terms", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

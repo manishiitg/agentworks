@@ -3,6 +3,8 @@ import { FileText, Folder, Loader2 } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { sharedCrewFileClient, sharedCrewRelativePath } from './sharedCrewFiles'
 import { WorkspacePanelGuideButton } from '../../components/workflow/WorkspacePanelGuideButton'
+import { panelGuideAskFromNode } from '../../components/workflow/workspacePanelGuideAsk'
+import { WorkspaceViewIconButton } from '../../components/workflow/WorkspaceViewIconButton'
 
 /**
  * Read-only file browser for someone else's Crew (Crew Run mode). The
@@ -27,6 +29,8 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
   const [content, setContent] = useState('')
   const [contentLoading, setContentLoading] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const guideAsk = panelGuideAskFromNode(headerAction)
 
   useEffect(() => {
     let cancelled = false
@@ -49,7 +53,7 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [projectId, crewRoot])
+  }, [projectId, crewRoot, reloadNonce])
 
   const openEntry = async (entry: PlannerFile) => {
     setOpenPath(entry.filepath)
@@ -97,8 +101,9 @@ export function SharedCrewFilesPanel({ projectId, crewRoot, request, headerActio
             <p className="text-xs text-muted-foreground">Read-only — owned by another user.</p>
           )}
         </div>
-        {headerAction}
-        <WorkspacePanelGuideButton topic="Files" />
+        {guideAsk ? null : headerAction}
+        <WorkspacePanelGuideButton topic="Files" ask={guideAsk} />
+        <WorkspaceViewIconButton label="Refresh files" onClick={() => setReloadNonce(nonce => nonce + 1)} disabled={loading} spinning={loading} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {loading ? (

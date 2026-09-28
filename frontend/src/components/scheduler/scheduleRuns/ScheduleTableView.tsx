@@ -8,6 +8,7 @@ import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
 
 type ScheduleTableViewProps = {
+  entityType?: 'workflow' | 'product'
   panel: Pick<ScheduleRunsPanelState,
     | 'focusedScheduleId' | 'filteredJobs' | 'presetMap' | 'potentialOverlaps' | 'isSchedulerPaused' | 'isReadOnlyUser' | 'triggering'
     | 'handleStopRun' | 'handleTrigger' | 'handleToggle' | 'handleDelete'
@@ -17,7 +18,7 @@ type ScheduleTableViewProps = {
 }
 
 /** Global schedules show timing first; instructions and run diagnostics are opt-in. */
-export function ScheduleTableView({ panel }: ScheduleTableViewProps) {
+export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTableViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   useEffect(() => {
     if (panel.focusedScheduleId) {
@@ -31,7 +32,7 @@ export function ScheduleTableView({ panel }: ScheduleTableViewProps) {
       <table className="w-full min-w-[1080px] text-left text-sm">
         <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
           <tr>
-            <th className="px-4 py-2 font-medium">Schedule / automation</th>
+            <th className="px-4 py-2 font-medium">Schedule / {entityType === 'product' ? 'Crew' : 'automation'}</th>
             <th className="px-3 py-2 font-medium">Frequency</th>
             <th className="px-3 py-2 font-medium">State</th>
             <th className="px-3 py-2 font-medium">Next run (local)</th>
@@ -123,7 +124,9 @@ export function ScheduleTableView({ panel }: ScheduleTableViewProps) {
                     deletingRunIds={new Set()}
                     compact
                   />}
-                  <p className="text-xs text-muted-foreground">{isWebhook ? 'Ask the workflow builder chat to configure this webhook.' : 'Ask the workflow Builder chat to change timing, busy-run handling, or schedule dependencies.'}</p>
+                  <p className="text-xs text-muted-foreground">{entityType === 'product'
+                    ? 'Open this Crew’s Automation panel to change this schedule.'
+                    : isWebhook ? 'Ask the workflow builder chat to configure this webhook.' : 'Ask the workflow Builder chat to change timing, busy-run handling, or schedule dependencies.'}</p>
                 </div>
               </td></tr>}
             </React.Fragment>

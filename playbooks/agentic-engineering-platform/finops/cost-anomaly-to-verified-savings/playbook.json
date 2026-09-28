@@ -2,14 +2,27 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "cost-anomaly-to-verified-savings",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "changelog": [
-    {"version": "0.5.0", "summary": "Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."},
-    {"version": "0.4.0", "summary": "Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."},
-    {"version": "0.3.0", "summary": "Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."}
+    {
+      "version": "0.6.0",
+      "summary": "Adds a chat-led Cost, Delivery and Finance Crew route with exact cost/change/savings artifacts, pending setup and executable verification checks."
+    },
+    {
+      "version": "0.5.0",
+      "summary": "Scopes setup to small engineering teams and defaults to one workflow unless access or lifecycle boundaries require a split."
+    },
+    {
+      "version": "0.4.0",
+      "summary": "Defaults human approvals to durable asynchronous review: preparation ends pending review and a later action validates the recorded decision and current state."
+    },
+    {
+      "version": "0.3.0",
+      "summary": "Adds an explicit inspect-first discovery step, focused customer questions, recorded user direction, and a clear boundary that installation is not approval."
+    }
   ],
   "title": "Cost Anomaly to Verified Savings",
-  "description": "Detect cloud-cost anomalies, propose evidence-backed rightsizing, prepare approved IaC changes, and verify realized savings and service health.",
+  "description": "Connect a sourced cloud-cost change to a reviewed engineering action and a finance-verified savings outcome, keeping estimates separate from realized billed results.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -19,32 +32,103 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use Cost Anomaly to Verified Savings for my authorized cloud scope. Preserve my billing basis, ownership, reliability limits, IaC workflow, and approval policy; detect and explain anomalies, prepare a concrete rightsizing diff, apply only after approval, and verify actual savings and service health.",
+  "setup_prompt": "Treat Cost Anomaly to Verified Savings as a proposal. Inspect my existing Crews, billing account and basis, service ownership, utilization, IaC and finance sources. Propose reuse or creation of Cloud Cost Analyst, Engineering Delivery Coordinator and Finance Analyst, exact artifact validators, a bounded manual first run and owner reviews before any infrastructure action. Show the concrete plan in Builder chat before configuration. Selecting the Playbook creates no Crew, change, payment, schedule or verified savings claim.",
   "setup_inputs": [
-    {"id": "cloud_scope", "label": "Authorized cloud accounts, projects, subscriptions, and environments", "required": true},
-    {"id": "cost_policy", "label": "Billing basis, currency, attribution, budgets, and baseline policy", "required": true},
-    {"id": "telemetry", "label": "Utilization, demand, capacity, and service-health signals", "required": true},
-    {"id": "ownership", "label": "Service, team, and resource ownership mapping", "required": true},
-    {"id": "iac", "label": "IaC repositories, state ownership, validation, deployment, and rollback path", "required": true},
-    {"id": "change_policy", "label": "Allowed optimizations, risk limits, approvals, and maintenance windows", "required": true},
-    {"id": "verification", "label": "Post-change health and savings verification window", "required": true}
+    {
+      "id": "cloud_scope",
+      "label": "Authorized account, service, resource, environment and owner",
+      "required": true
+    },
+    {
+      "id": "cost_policy",
+      "label": "Currency, billing basis, allocation and comparable period rule",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Cost/usage, resource/health, IaC/deployment and finance sources or exports",
+      "required": true
+    },
+    {
+      "id": "change_policy",
+      "label": "Allowed optimization, approval, rollback and reliability limits",
+      "required": true
+    },
+    {
+      "id": "verification",
+      "label": "Post-change billing and health verification rule or pending-evidence decision",
+      "required": true
+    },
+    {
+      "id": "run_policy",
+      "label": "Manual-only or reviewed recurrence with timezone and budget",
+      "required": false
+    }
   ],
   "required_capabilities": [
-    "cloud_cost_ingestion",
-    "cloud_inventory_and_utilization",
-    "infrastructure_as_code_change",
-    "source_control_change",
-    "human_decision",
-    "scheduled_workflow_execution",
-    "durable_workflow_storage",
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
     "workflow_reporting"
   ],
   "recommended_tools": [
-    {"id": "cloud-billing", "name": "Cloud billing MCP", "type": "mcp", "purpose": "Read authorized cost, usage, pricing, commitment, credit, and attribution data", "capability": "cloud_cost_ingestion", "optional": true},
-    {"id": "cloud-observability", "name": "Cloud monitoring MCP", "type": "mcp", "purpose": "Read authorized utilization, demand, capacity, error, latency, and service-health signals", "capability": "cloud_inventory_and_utilization", "optional": true},
-    {"id": "terraform-opentofu", "name": "Terraform or OpenTofu CLI", "type": "cli", "purpose": "Prepare and validate reviewable infrastructure-as-code rightsizing changes", "capability": "infrastructure_as_code_change", "optional": true},
-    {"id": "source-control", "name": "Source-control MCP or CLI", "type": "cli_or_mcp", "purpose": "Create an authorized branch or pull request and retain review/change receipts", "capability": "source_control_change", "optional": true},
-    {"id": "agentworks-schedules", "name": "AgentWorks schedules", "type": "builtin", "purpose": "Run anomaly detection and post-change verification at approved intervals", "capability": "scheduled_workflow_execution", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create a reviewed missing specialist with an idempotency key and Workflow-bound step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass validated cost and change artifacts through checked Workflow aliases",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "cloud-billing",
+      "name": "Cloud billing MCP",
+      "type": "mcp",
+      "purpose": "Read authorized cost, usage, pricing, commitment, credit, and attribution data",
+      "capability": "cloud_cost_ingestion",
+      "optional": true
+    },
+    {
+      "id": "cloud-observability",
+      "name": "Cloud monitoring MCP",
+      "type": "mcp",
+      "purpose": "Read authorized utilization, demand, capacity, error, latency, and service-health signals",
+      "capability": "cloud_inventory_and_utilization",
+      "optional": true
+    },
+    {
+      "id": "terraform-opentofu",
+      "name": "Terraform or OpenTofu CLI",
+      "type": "cli",
+      "purpose": "Prepare and validate reviewable infrastructure-as-code rightsizing changes",
+      "capability": "infrastructure_as_code_change",
+      "optional": true
+    },
+    {
+      "id": "source-control",
+      "name": "Source-control MCP or CLI",
+      "type": "cli_or_mcp",
+      "purpose": "Create an authorized branch or pull request and retain review/change receipts",
+      "capability": "source_control_change",
+      "optional": true
+    },
+    {
+      "id": "agentworks-schedules",
+      "name": "AgentWorks schedules",
+      "type": "builtin",
+      "purpose": "Run anomaly detection and post-change verification at approved intervals",
+      "capability": "scheduled_workflow_execution",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -60,13 +144,58 @@
     }
   ],
   "outputs": [
-    "Versioned FinOps scope, baseline, and change policy",
-    "Service-specific cost-driver and utilization analysis",
-    "Evidence-backed cost anomaly and cause classification",
-    "Rightsizing candidate with cost, utilization, capacity, and risk evidence",
-    "Reviewable validated IaC diff",
-    "Approval, deployment, and rollback receipts",
-    "Projected and verified savings with post-change service-health evidence",
-    "Live FinOps report"
+    "Reviewed Cost, Delivery and Finance Crew roster and source map",
+    "Validated cloud-cost review and owner decision",
+    "Reviewed exact change proposal with separate approval and deployment evidence",
+    "Pending or verified finance savings readout with comparable billing and health evidence",
+    "Manual first run and paused recurrence decision"
+  ],
+  "agent_slots": [
+    {
+      "id": "cost",
+      "agent_playbook_id": "cloud-cost-analyst",
+      "required": true,
+      "output": "cloud-cost-review/v1"
+    },
+    {
+      "id": "delivery",
+      "agent_playbook_id": "engineering-delivery-coordinator",
+      "required": true,
+      "output": "cloud-change-review/v1"
+    },
+    {
+      "id": "finance",
+      "agent_playbook_id": "finance-analyst",
+      "required": true,
+      "output": "cloud-savings-readout/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "cost-to-delivery",
+      "from": "cost",
+      "to": "delivery",
+      "artifact_type": "cloud-cost-review/v1",
+      "required": true
+    },
+    {
+      "id": "delivery-to-finance",
+      "from": "delivery",
+      "to": "finance",
+      "artifact_type": "cloud-change-review/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "billing_scope",
+    "cost_metric_rule",
+    "change_health_policy",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
   ]
 }

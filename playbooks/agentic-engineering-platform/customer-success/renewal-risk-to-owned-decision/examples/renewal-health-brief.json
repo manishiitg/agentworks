@@ -1,0 +1,23 @@
+{
+  "artifact_type": "renewal-health-brief/v1",
+  "artifact_id": "health-acme-42",
+  "tenant_id": "tenant-demo",
+  "account_id": "account-acme",
+  "owner_id": "cs-2",
+  "window_start": "2026-08-27T00:00:00Z",
+  "window_end": "2026-09-26T10:00:00Z",
+  "observed_at": "2026-09-26T11:00:00Z",
+  "coverage": "complete",
+  "coverage_note": "Authorized first-value and support records cover the bounded window; relationship impact remains unconfirmed.",
+  "first_value_state": "reached",
+  "source_refs": [
+    {"id":"first-value", "uri":"product:account-acme:report-export-7", "observed_at":"2026-09-25T11:15:00Z"},
+    {"id":"training-case", "uri":"support:ticket-17", "observed_at":"2026-09-26T10:30:00Z"}
+  ],
+  "signals": [
+    {"id":"first-value-reached", "kind":"observed", "occurred_at":"2026-09-25T11:15:00Z", "summary":"Agreed production report export was observed.", "evidence_refs":["first-value"]},
+    {"id":"training-impact-unknown", "kind":"hypothesis", "occurred_at":"2026-09-26T09:30:00Z", "summary":"An open training question may affect broader use; owner must confirm impact.", "evidence_refs":["training-case"]}
+  ],
+  "intent_claim": "none",
+  "customer_action_state": "none"
+}

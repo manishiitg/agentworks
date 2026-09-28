@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "renewal-risk-to-owned-decision",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm renewal goal and authority","instructions":"Name Customer Success health owner and renewal decision owner, first read-only result, excluded customer contact and contract or billing actions."},
+    {"id":"account_scope","title":"Bind exact account and legal entity","instructions":"Record tenant, customer account, legal entity, contract, subscription, owner, observation cutoff and stable renewal case key."},
+    {"id":"contract_policy","title":"Verify executed renewal and notice terms","instructions":"Read exact agreement revision, auto-renewal rule, renewal date, calendar-day notice period/timezone and prior notice source. Other notice rules require a reviewed manual calculation and remain needs_terms in this route. Do not infer renewal from date passage."},
+    {"id":"health_policy","title":"Agree on bounded health evidence","instructions":"Set usage, first-value, support and relationship window, source coverage, signal definitions and observed-versus-hypothesis rules. No automatic churn score."},
+    {"id":"team_bindings","title":"Bind Health and Renewal capabilities","instructions":"Inspect existing Customer Health Coordinator and Renewal Coordinator skills, owners and access. Reuse one Crew when compatible or propose reviewed separate Crews."},
+    {"id":"source_access","title":"Probe current sources","instructions":"Read one exact account signal, executed agreement and current subscription/billing record or authorized exports. Record IDs, timestamps, access gaps and conflicting terms."},
+    {"id":"handoff_contract","title":"Validate health and renewal artifacts","instructions":"Insert blocking validator steps before handoff and dashboard. Show wrong-account, unknown-health, changed contract and false renewal/action cases stop or remain pending."},
+    {"id":"plan_review","title":"Review concrete Automation","instructions":"Show Crew IDs, source map, validator steps, notice calculation, owner decision, stable case key, manual route, optional event policy, cost and notifications."},
+    {"id":"test_run","title":"Run one real account manually","instructions":"Save current authorized source reads, artifacts, validation, owner correction or decision and unknown/missing-terms control. Fictional examples do not complete setup."},
+    {"id":"activation_choice","title":"Choose manual or reviewed repeat","instructions":"Manual-only is valid. A schedule or contract event needs authenticated identity, re-read, notice dedupe, changed-revision handling, cost, owner notification and explicit activation."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

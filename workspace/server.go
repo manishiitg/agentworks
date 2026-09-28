@@ -109,8 +109,45 @@ func runServer(cmd *cobra.Command, args []string) {
 		c.Status(http.StatusOK)
 	})
 
-	// API routes
-	api := r.Group("/api")
+	registerAPIRoutes(r)
+
+	// Start server
+	// Use net.Listen to support dynamic port allocation (port 0).
+	// Native mode binds 127.0.0.1 as defense in depth. Process-execution routes
+	// additionally require WORKSPACE_API_TOKEN when the managed AgentWorks
+	// launcher configures it. Docker keeps the all-interfaces default so the
+	// agent container can reach it over the compose network.
+	host := viper.GetString("host")
+	listener, err := net.Listen("tcp", host+":"+port)
+	if err != nil {
+		fmt.Printf("Failed to listen on %s:%s: %v\n", host, port, err)
+		os.Exit(1)
+	}
+
+	// Get the actual port (in case 0 was used)
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	fmt.Printf("Starting Planner API server on port %d\n", actualPort)
+
+	// Print a specific marker for Electron to parse
+	fmt.Printf("DynamicPort: %d\n", actualPort)
+
+	fmt.Printf("Docs directory: %s\n", docsDir)
+	fmt.Printf("Health check: http://localhost:%d/health\n", actualPort)
+	fmt.Printf("API docs: http://localhost:%d/api/documents\n", actualPort)
+
+	if err := r.RunListener(listener); err != nil {
+		fmt.Printf("Failed to start server: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// registerAPIRoutes mounts every /api route behind the workspace token.
+func registerAPIRoutes(r *gin.Engine) {
+	// API routes. With WORKSPACE_API_TOKEN configured every route requires it:
+	// the service trusts X-User-ID, so only the agent server (which verifies
+	// the caller and stamps that header) may reach it. Coding-CLI shells never
+	// receive the token. Empty-token mode stays for standalone use.
+	api := r.Group("/api", requireWorkspaceAPIToken())
 	{
 		// Search routes (separate paths to avoid conflicts)
 		api.GET("/search", handlers.SearchDocuments)
@@ -182,34 +219,5 @@ func runServer(cmd *cobra.Command, args []string) {
 			workspace.POST("/export", handlers.ExportWorkspace)
 			workspace.POST("/import", handlers.ImportWorkspace)
 		}
-	}
-
-	// Start server
-	// Use net.Listen to support dynamic port allocation (port 0).
-	// Native mode binds 127.0.0.1 as defense in depth. Process-execution routes
-	// additionally require WORKSPACE_API_TOKEN when the managed AgentWorks
-	// launcher configures it. Docker keeps the all-interfaces default so the
-	// agent container can reach it over the compose network.
-	host := viper.GetString("host")
-	listener, err := net.Listen("tcp", host+":"+port)
-	if err != nil {
-		fmt.Printf("Failed to listen on %s:%s: %v\n", host, port, err)
-		os.Exit(1)
-	}
-
-	// Get the actual port (in case 0 was used)
-	actualPort := listener.Addr().(*net.TCPAddr).Port
-	fmt.Printf("Starting Planner API server on port %d\n", actualPort)
-
-	// Print a specific marker for Electron to parse
-	fmt.Printf("DynamicPort: %d\n", actualPort)
-
-	fmt.Printf("Docs directory: %s\n", docsDir)
-	fmt.Printf("Health check: http://localhost:%d/health\n", actualPort)
-	fmt.Printf("API docs: http://localhost:%d/api/documents\n", actualPort)
-
-	if err := r.RunListener(listener); err != nil {
-		fmt.Printf("Failed to start server: %v\n", err)
-		os.Exit(1)
 	}
 }

@@ -78,6 +78,11 @@ func newCrewFunctionEnv(t *testing.T) crewFunctionEnv {
 	triggerTargetPollInterval = 10 * time.Millisecond
 	crewFunctionFastWait = 3 * time.Second
 	t.Cleanup(func() { triggerTargetPollInterval, crewFunctionFastWait = previousPoll, previousWait })
+	// Calls are process-wide; a call left in flight by an earlier test would
+	// otherwise be joined by an identical call here.
+	crewFunctionCalls.Lock()
+	crewFunctionCalls.m = map[string]*crewFunctionCall{}
+	crewFunctionCalls.Unlock()
 	env := crewFunctionEnv{triggerLinkEnv: newTriggerLinkEnv(t)}
 	env.alpha = env.functionTools(t, linkAlphaPath, "sess-caller", nil)
 	env.beta = env.functionTools(t, linkBetaPath, "sess-beta-chat", nil)
@@ -169,7 +174,7 @@ func TestCrewFunctionFastPathReturnsValidatedResult(t *testing.T) {
 			t.Errorf("valid result: %v", err)
 		}
 	}()
-	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "812", "env": "staging"}})
+	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "812", "env": "staging"}, "wait_seconds": 3})
 	if err != nil {
 		t.Fatalf("call: %v", err)
 	}
@@ -261,7 +266,7 @@ func TestCrewFunctionRunWithoutResultRetriesThenFails(t *testing.T) {
 	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
 	}
-	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}, "notify": false})
+	out, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}, "notify": false, "wait_seconds": 0.02})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +417,15 @@ func TestCrewFunctionDefaultAskUsesFinalReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ask: %v", err)
 	}
+	// Generated tools return at once; the answer is read from the call.
 	result := decodeToolJSON(t, out)
+	if call := lookupCrewFunctionCall(result["call_id"].(string)); call != nil {
+		select {
+		case <-call.done:
+		case <-time.After(3 * time.Second):
+		}
+		result = call.snapshot()
+	}
 	answer, _ := result["result"].(map[string]interface{})
 	if result["status"] != "completed" || answer["answer"] != "Three open bugs: A, B, C." {
 		t.Fatalf("ask result = %v", result)

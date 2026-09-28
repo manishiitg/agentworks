@@ -25,10 +25,11 @@ type Listener = {
 const MAX_FAST_RETRIES = 3
 const SLOW_RETRY_MS = 60_000
 
-// "Workflow/<folder>/anything" -> "Workflow/<folder>", matching the server.
+// "Workflow/<folder>/anything" -> "Workflow/<folder>" (and "Crew/<id>/…" ->
+// "Crew/<id>" for shared crews), matching the server.
 export function liveFeedWorkflowRoot(path: string | null | undefined): string | null {
   const parts = (path ?? '').trim().replace(/^\/+|\/+$/g, '').split('/')
-  if (parts.length < 2 || parts[0] !== 'Workflow' || !parts[1]) return null
+  if (parts.length < 2 || (parts[0] !== 'Workflow' && parts[0] !== 'Crew') || !parts[1]) return null
   return `${parts[0]}/${parts[1]}`
 }
 

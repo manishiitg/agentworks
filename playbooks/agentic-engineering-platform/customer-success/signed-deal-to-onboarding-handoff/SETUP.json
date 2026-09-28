@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "signed-deal-to-onboarding-handoff",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm handoff goal and owners","instructions":"Name Sales and receiving CS owners, the first reviewable accepted or blocked result, and excluded provisioning, CRM and customer-contact actions."},
+    {"id":"deal_scope","title":"Bind the exact customer and opportunity","instructions":"Record tenant, CRM account, opportunity, customer account, contract ID and revision; reject similarly named accounts and duplicate handoff keys."},
+    {"id":"agreement_policy","title":"Verify signed scope and provisioning rule","instructions":"Read the executed agreement and approved purchased scope. Reconcile CRM Closed Won, sales notes, entitlement and policy; keep unresolved promises blocked."},
+    {"id":"first_value_rule","title":"Agree on the first-value promise","instructions":"Record the approved goal, observable first-value rule, target date and source. A generic onboarding checklist or sign-in is insufficient."},
+    {"id":"team_bindings","title":"Bind Sales and CS Crews","instructions":"Inspect compatible Deal Follow-through Coordinator and Customer Onboarding Coordinator Crews and existing first-value route; reuse or propose reviewed creation with exact IDs and access."},
+    {"id":"source_access","title":"Probe CRM, agreement and entitlement","instructions":"Read one authorized exact-object record from each source or bounded export, record revisions and observation times, and show missing access or contradictory values."},
+    {"id":"handoff_contract","title":"Validate both artifacts","instructions":"Insert blocking script steps for sales-cs-handoff/v1 and onboarding-acceptance/v1, then prove wrong account, changed contract, duplicate key and false acceptance stop the route."},
+    {"id":"plan_review","title":"Review the concrete Builder plan","instructions":"Show Crew IDs, data boundary, source paths, validator, owner acceptance, first-value handoff, retries, manual route, optional event policy and cost before applying."},
+    {"id":"test_run","title":"Run one real manual handoff and blocked control","instructions":"Save authorized source reads, artifacts, validator result, receiving-owner decision and an unresolved case. Fictional fixtures do not complete this check."},
+    {"id":"activation_choice","title":"Choose manual or reviewed repeat","instructions":"Manual-only is valid. A CRM or contract event requires authenticated identity, current re-read, stable handoff key, duplicate handling, owner review and notification policy."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

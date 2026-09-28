@@ -27,7 +27,8 @@ function hoverCapable(): boolean {
  * what's already set up on this deployment or in this workflow — none of
  * them can tell the user that chat itself can search the web, install
  * something new, or explain what's possible beyond that fixed list. This is
- * the fix for that, meant to be dropped into any such panel's header.
+ * the fix for that, meant to be dropped into any such panel's header or
+ * walkthrough popup.
  *
  * Reuses sendWorkspacePaneMessageToChat, the single delivery path for every
  * right-pane action

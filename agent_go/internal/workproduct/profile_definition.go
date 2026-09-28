@@ -44,7 +44,7 @@ var productSkills = []agentprofiles.SkillFileBinding{
 	{Name: "work-workflow-files", Description: "Read and interpret attached folders and read-only AgentWorks workflow references in Crew.", Path: "skills/work-workflow-files/SKILL.md"},
 	{Name: "work-skills", Description: "Discover, install, import, create, select, and remove reusable skills in Crew.", Path: "skills/work-skills/SKILL.md"},
 	{Name: "work-schedules-and-bots", Description: "Manage Crew's message-only schedules, authenticated webhook triggers, and Slack or WhatsApp project-chat bots.", Path: "skills/work-schedules-and-bots/SKILL.md"},
-	{Name: "work-dashboard", Description: "Create and maintain a general-purpose visual dashboard for a Crew project.", Path: "skills/work-dashboard/SKILL.md"},
+	{Name: "work-dashboard", Description: "Create and maintain a general-purpose visual dashboard for a Crew project, including live data from code/reports scripts via window.report.run.", Path: "skills/work-dashboard/SKILL.md"},
 	{Name: "work-ui-control", Description: "Open and refresh Crew project panels through acknowledged UI control without using Workflow view semantics.", Path: "skills/work-ui-control/SKILL.md"},
 	{Name: "background-work", Description: "Run a bounded task asynchronously and rely on Crew's automatic completion notification instead of polling.", Path: "skills/background-work/SKILL.md"},
 }

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "storefront-opportunity-to-verified-change",
+  "playbook_version": "0.1.0",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm merchant goal and decision owners", "instructions": "Name the store owner, growth owner, catalog owner, buyer task, specific product scope, and approved publish decision path." },
+    { "id": "store_market_scope", "title": "Bind exact store and market", "instructions": "Record store ID, market, currency, language, URL, product and variant IDs, and the observation timezone. Do not join similar-looking products or markets by title alone." },
+    { "id": "metric_rule", "title": "Define evidence and success rule", "instructions": "Choose qualitative-only or a measured metric with segment, numerator, denominator, source, baseline window, comparison window, and minimum useful volume. Do not promise uplift from a public-page observation." },
+    { "id": "team_bindings", "title": "Bind ready Shopify Crews", "instructions": "Record existing or reviewed new Shopify Growth Analyst and Catalog & Merchandising Analyst Crew IDs, selected skills, and setup states. One Crew may serve both slots with compatible access and separate validated outputs." },
+    { "id": "source_access", "title": "Test actual source access", "instructions": "Inspect one public product/variant page, one matching authorized ProductVariant and inventory record, and an analytics report if a performance claim is planned. Record exact IDs, market, freshness, and access gaps." },
+    { "id": "handoff_contract", "title": "Validate opportunity and correction", "instructions": "Validate shopify-growth-opportunity/v1 before Catalog reads it, then catalog-change-review/v1 for the same store, market, product, variant, and opportunity. Reject wrong-variant, unsupported-published, and unsupported-lift fixtures." },
+    { "id": "plan_review", "title": "Review the Automation plan", "instructions": "Show actual Crew IDs, source field scope, artifact paths, validator, exact edit approval, publish permission, run cost, and manual route to the merchant owner." },
+    { "id": "test_run", "title": "Run one real opportunity manually", "instructions": "Use a real authorized product and observation. Record run IDs, artifacts, validator results, merchant decision, and observed result or unknown. Fictional fixtures do not complete setup." },
+    { "id": "change_ledger", "title": "Track approved changes and measurement", "instructions": "Keep stable opportunity/product/variant/action IDs, before value, approved after value, publisher, provider receipt, storefront retest, baseline and follow-up metric rules, and unresolved effects." },
+    { "id": "activation_choice", "title": "Choose recurrence", "instructions": "Record manual-only or a reviewed schedule with scope, concurrency, cost, notifications, and duplicate handling. Test any configured route before enabling it. Setup completion does not publish or claim growth." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

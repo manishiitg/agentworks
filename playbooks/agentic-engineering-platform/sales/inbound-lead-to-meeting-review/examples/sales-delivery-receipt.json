@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "artifact_type": "sales-delivery-receipt/v1",
+  "action_id": "action-example-001",
+  "source_brief_id": "brief-example-001",
+  "source_draft_id": "draft-example-001",
+  "lead_id": "lead-example-001",
+  "recipient_ref": "crm-export:contact-001",
+  "created_at": "2026-09-25T10:45:00Z",
+  "owner": "Sales owner",
+  "channel": "email",
+  "state": "sent",
+  "approval_request_id": "review-example-001",
+  "approved_by": "Sales owner",
+  "approved_at": "2026-09-25T10:35:00Z",
+  "draft_fingerprint": "7d7504504252235a5beab5fff1469950fc71594d41e341f03d45011fdf3ebc23",
+  "preflight_checked_at": "2026-09-25T10:40:00Z",
+  "preflight_duplicate_state": "none",
+  "preflight_contact_policy_status": "approved",
+  "preflight_reply_state": "none",
+  "preflight_meeting_state": "none",
+  "provider": "gmail",
+  "provider_message_id": "gmail-example-message-001",
+  "sent_at": "2026-09-25T10:42:00Z",
+  "booking_url": "https://calendar.example/harbor-demo",
+  "source_refs": [
+    {
+      "id": "approval",
+      "uri": "decisions/review-example-001",
+      "observed_at": "2026-09-25T10:35:00Z"
+    },
+    {
+      "id": "provider-send",
+      "uri": "gmail://gmail-example-message-001",
+      "observed_at": "2026-09-25T10:42:00Z"
+    },
+    {
+      "id": "preflight",
+      "uri": "exports/fictional-crm-open-leads.csv#query=lead-example-001",
+      "observed_at": "2026-09-25T10:40:00Z"
+    }
+  ]
+}

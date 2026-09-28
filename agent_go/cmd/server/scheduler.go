@@ -53,7 +53,7 @@ type ScheduleContext struct {
 	// PulseOnly suppresses the normal workflow message for the toolbar's one-off
 	// Pulse action. Version preflight still runs before Pulse, which reviews the
 	// latest retained workflow evidence and then executes the normal finalizer.
-	PulseOnly              bool
+	PulseOnly bool
 	// PulseFixRun marks a Pulse fix run (pulse_fix_run.go): no Gate agent,
 	// Technical Review+Fix only, and a light finish. PulseFixReason is why.
 	PulseFixRun            bool
@@ -134,7 +134,7 @@ func scheduleStateLockKeyFromRuntimeKey(runtimeKey string) string {
 	if len(parts) < 3 || parts[0] != "workflow" {
 		return runtimeKey
 	}
-	if parts[2] == manualWorkflowPulseScheduleID {
+	if parts[2] == manualWorkflowPulseScheduleID || parts[2] == pulseFixRunScheduleID {
 		return strings.Join([]string{"workflow-pulse", parts[1]}, scheduleScopeSeparator)
 	}
 	return strings.Join(parts[:2], scheduleScopeSeparator)
@@ -149,7 +149,11 @@ func scheduleStateScope(sctx *ScheduleContext) (scopeType, scopeID, lockKey stri
 			}
 			return "workflow", scopeID, strings.Join([]string{"workflow-hook", scopeID, sctx.Schedule.ID}, scheduleScopeSeparator)
 		}
-		if sctx.Schedule.ID == manualWorkflowPulseScheduleID {
+		// Pulse runs, scheduled and fix runs alike, hold their own lock: one
+		// Pulse at a time per workflow, in parallel with the workflow's own
+		// schedules, never blocking them. Fix runs used to take the workflow
+		// lock and refuse real schedules that came due while they ran.
+		if sctx.Schedule.ID == manualWorkflowPulseScheduleID || sctx.Schedule.ID == pulseFixRunScheduleID {
 			return "workflow", scopeID, strings.Join([]string{"workflow-pulse", scopeID}, scheduleScopeSeparator)
 		}
 		if scheduleAllowsParallel(sctx.Schedule) {
@@ -2787,7 +2791,14 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 				continue
 			}
 		}
-		result := runStep(st)
+		// A due reviewer is started by the runtime itself, from the Gate's
+		// worklist, instead of asking this conversation's agent to launch it
+		// (pulse_direct_dispatch.go). A session with no workshop yet (a fix
+		// run's first reviewer) still uses the dispatch turn, which creates it.
+		result, direct := s.runPulseReviewerDirect(ctx, sctx, sessionID, pulseRunID, st.label)
+		if !direct {
+			result = runStep(st)
+		}
 		contractupgrade.Revoke(sessionID)
 		if abortIfInterrupted(st, result) {
 			return
@@ -3099,19 +3110,30 @@ func pulseLifecyclePlanDriftReviewStep(pulseRunID string) pulseLifecycleStep {
 // Architecture proposes against the clean baseline, Technical repairs concrete
 // behavior, and Strategic evaluates outcomes.
 func pulseLifecycleModuleReviewStep(pulseRunID, module string) pulseLifecycleStep {
-	label, reference, contract := "technical-review", "technical-review", "First close every open workflow issue in get_pulse_state(view=\"backlog\"): fix it, close it as not a problem with the check that shows it, ask the user through a decision with the exact change, or hand a platform defect off. Nothing stays open waiting: an old next_check that waits for a future run or more evidence is not a reason to wait (check whether the fix is already in place and close it, or fix it now), and a due or failed Plan Drift is not a reason to leave issues open. Then investigate new correctness failures and apply safe workflow-owned repairs. Do not perform a general optimization audit."
+	label, reference, contract := pulseModuleReviewParts(module)
+	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW DISPATCH. pulse_run_id=%q. This step owns ONLY module=%q. Earlier lifecycle steps have finished; later modules must not be dispatched here.
+Read the durable Gate worklist. If this module is not due or already has a terminal result, stop. Otherwise launch exactly one run_in_background executor with review_module=%q, pulse_run_id=%q, and an instruction to read get_pulse_state(view="review_notes", module=%q) once for relevant prior reasoning. Load read_skill(skills=[{"name":"builder-reference","path":"references/%s.md"}]). %s
+%sAfter dispatch end this parent turn. The runtime waits for the child before proceeding to the next module. Do not render a dashboard, back up, publish or notify here.`, pulseRunID, module, module, pulseRunID, module, reference, contract, pulseReviewerRecordRules)}
+}
+
+// pulseModuleReviewParts is one module's review contract, shared by the
+// reviewer the runtime starts directly and the fallback dispatch turn.
+func pulseModuleReviewParts(module string) (label, reference, contract string) {
+	label, reference, contract = "technical-review", "technical-review", "First close every open workflow issue in get_pulse_state(view=\"backlog\"): fix it, close it as not a problem with the check that shows it, ask the user through a decision with the exact change, or hand a platform defect off. Nothing stays open waiting: an old next_check that waits for a future run or more evidence is not a reason to wait (check whether the fix is already in place and close it, or fix it now), and a due or failed Plan Drift is not a reason to leave issues open. Then investigate new correctness failures and apply safe workflow-owned repairs. Do not perform a general optimization audit."
 	switch module {
 	case pulseModuleArchitectureReview:
 		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements; do not mutate implementation in the review."
 	case pulseModuleStrategicReview:
 		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permission levels the runtime granted (prepare under pulse/work/; run existing steps only when Run is auto; never act outward or edit the workflow yourself; put those to the user as ready decisions). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. This module is not blocked by a due Plan Drift; when Drift is due, prepare and research but do not run steps."
 	}
-	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW DISPATCH. pulse_run_id=%q. This step owns ONLY module=%q. Earlier lifecycle steps have finished; later modules must not be dispatched here.
-Read the durable Gate worklist. If this module is not due or already has a terminal result, stop. Otherwise launch exactly one run_in_background executor with review_module=%q, pulse_run_id=%q, and an instruction to read get_pulse_state(view="review_notes", module=%q) once for relevant prior reasoning. Load read_skill(skills=[{"name":"builder-reference","path":"references/%s.md"}]). %s
-Use saved notes and typed records for interrupted work; read an old Markdown file only if a specific historical record points to it. Do not create or maintain mandatory Markdown checkpoints. Persist only canonical issues (and, for strategic_review, Goal Work items with record_pulse_goal_work), a human decision when genuinely required, and one terminal review result for this module. Put the expected benefit, baseline, guardrails and next outcome boundary in the issue or review summary rather than a separate proposal/impact lifecycle. Finish with one record_pulse_result using reason and optional review_note for new reasoning, limitations and next steps. No separate reporting turn or repeated history scan. Reuse existing records. Applied is not evidence of improved outcomes. The shared pass mode must not suppress another module's research.
-The user reads issue concerns and summaries, Goal Work titles and actions, decision questions and your result reason. Write those in plain language: lead with what changed or what the user needs to do, short sentences, everyday words, no issue IDs, state names or code terms. Keep IDs, evidence and technical detail in review_note, impact, evidence and the Goal Work detail; the tools refuse user-facing text that carries them.
-After dispatch end this parent turn. The runtime waits for the child before proceeding to the next module. Do not render a dashboard, back up, publish or notify here.`, pulseRunID, module, module, pulseRunID, module, reference, contract)}
+	return label, reference, contract
 }
+
+// pulseReviewerRecordRules tells a reviewer what to persist and how to
+// write for the user.
+const pulseReviewerRecordRules = `Use saved notes and typed records for interrupted work; read an old Markdown file only if a specific historical record points to it. Do not create or maintain mandatory Markdown checkpoints. Persist only canonical issues (and, for strategic_review, Goal Work items with record_pulse_goal_work), a human decision when genuinely required, and one terminal review result for this module. Put the expected benefit, baseline, guardrails and next outcome boundary in the issue or review summary rather than a separate proposal/impact lifecycle. Finish with one record_pulse_result using reason and optional review_note for new reasoning, limitations and next steps. No separate reporting turn or repeated history scan. Reuse existing records. Applied is not evidence of improved outcomes. The shared pass mode must not suppress another module's research.
+The user reads issue concerns and summaries, Goal Work titles and actions, decision questions and your result reason. Write those in plain language: lead with what changed or what the user needs to do, short sentences, everyday words, no issue IDs, state names or code terms. Keep IDs, evidence and technical detail in review_note, impact, evidence and the Goal Work detail; the tools refuse user-facing text that carries them.
+`
 
 func pulseLifecycleReviewFixContinuationStep(pulseRunID string, receiptErr error) pulseLifecycleStep {
 	return pulseLifecycleStep{
@@ -3881,6 +3903,12 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Surfaced %d unanswered operator decision(s) to the first schedule message", len(pending))
 	}
 
+	// This run owns the session until its work is done: it alone hands step
+	// results back to the agent (scheduled_turn_followups.go). Released when
+	// this function returns, before the Pulse finalizer starts.
+	releaseCompletions := s.api.claimSessionCompletions(sessionID)
+	defer releaseCompletions()
+
 	for i, turn := range turns {
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s): %q", i+1, len(turns), turn.label, turn.query)
 
@@ -3930,6 +3958,33 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		// the session for frontend tab labeling. Subsequent calls are
 		// no-ops (helper guards against overwriting an existing Title).
 		s.stampScheduleNameOnSession(sessionID, sctx)
+
+		// The turn ending is not the work ending. Wait for every step this turn
+		// started, hand the agent their results as its next turn, and repeat
+		// until a turn starts nothing new (e.g. all 12 groups).
+		turnMode := turn.workshopMode()
+		rounds, followErr := s.api.runScheduledFollowUps(ctx, sessionID, invocationStartedAt, schedulerWorkshopLiveChildCeiling, func(ctx context.Context, query string) error {
+			followReq := requestWithWorkshopMode(baseReqMap, turnMode)
+			followReq["query"] = query
+			followStartedAt := time.Now().UTC()
+			if err := s.api.startSessionInternal(ctx, followReq, sessionID, sctx.OwnerUserID, nil); err != nil {
+				return err
+			}
+			if failure := scheduledTurnFailure(s.api.eventStore, sessionID, followStartedAt); failure != "" {
+				return fmt.Errorf("step-result turn produced no response: %s", failure)
+			}
+			return nil
+		})
+		if rounds > 0 {
+			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s): handed step results back %d time(s)", i+1, len(turns), turn.label, rounds)
+		}
+		if followErr != nil {
+			if !turn.decisionDrain || turn.failureBlocksRun {
+				s.preserveRunEvidenceAfterFailedTurn(ctx, sctx, sessionID, invocationStartedAt)
+				return sessionID, runFolder, fmt.Errorf("workshop turn %d/%d (%s) step results: %w", i+1, len(turns), turn.label, followErr)
+			}
+			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Pre-run decision drain step results failed (continuing to the run): %v", followErr)
+		}
 
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] Workshop turn %d/%d (%s) completed", i+1, len(turns), turn.label)
 	}
@@ -4339,6 +4394,24 @@ func filterScheduleRunsNewestFirst(runs []ScheduleRunEntry, scheduleID string) [
 }
 
 // scheduleSessionTrigger preserves the webhook origin in active session metadata.
+// automationTriggerLabel names what started an automation run, for the
+// active-work list. Internal Crew/workflow links are named "Called by <caller>"
+// already; other triggers get their kind in front of their name.
+func automationTriggerLabel(triggeredBy, name string) string {
+	name = strings.TrimSpace(name)
+	if strings.HasPrefix(name, "Called by ") {
+		return name
+	}
+	kind := "Schedule"
+	if triggeredBy == "webhook" {
+		kind = "Webhook"
+	}
+	if name == "" {
+		return kind
+	}
+	return kind + ": " + name
+}
+
 func scheduleSessionTrigger(sctx *ScheduleContext) string {
 	if sctx != nil && (sctx.Schedule.ScheduleType == "webhook" || sctx.WebhookInput != nil) {
 		return "webhook"
@@ -4470,6 +4543,7 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		"preset_query_id":             sctx.WorkflowID,
 		"selected_folder":             sctx.WorkspacePath,
 		"triggered_by":                scheduleSessionTrigger(sctx),
+		"triggered_by_label":          automationTriggerLabel(scheduleSessionTrigger(sctx), sctx.Schedule.Name),
 		"session_title":               sctx.Schedule.Name,
 		"servers":                     sctx.Capabilities.SelectedServers,
 		"selected_tools":              sctx.Capabilities.SelectedTools,

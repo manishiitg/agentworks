@@ -2,15 +2,19 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "activation-retention-intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Adds a chat-led Lifecycle Analyst to Growth Experiment Planner route with maturity-aware cohort evidence, pending setup and executable handoff checks."
+    },
     {
       "version": "0.1.0",
       "summary": "Initial playbook release."
     }
   ],
   "title": "Activation and Retention Intelligence",
-  "description": "Find the behaviors that predict customer success, explain why cohorts retain or churn differently, and measure feature adoption impact on retention and revenue — your AI Growth Analyst's lifecycle readout.",
+  "description": "Compare mature SaaS signup cohorts under one activation and retention rule, then propose one owner-reviewed retention experiment without treating correlation as cause.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -20,21 +24,92 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use Activation and Retention Intelligence for my AI Growth Analyst. With my reconciled growth data, apply my activation definition and cohort rules, compare retaining and churning cohorts with evidence, measure feature adoption impact on retention and revenue, correlate supporting feedback, and produce evidence-backed findings without claiming unproven causes.",
+  "setup_prompt": "Treat Activation and Retention Intelligence as a proposal. Inspect my signup cohorts, activation and day-30 retention rules, identity and billing sources, owner and existing Crews. Propose reuse or creation of Lifecycle Analyst and Growth Experiment Planner, exact maturity-aware artifact checks and one bounded manual run in Builder chat. Selection creates no Crew, customer contact, variant, schedule or churn prediction.",
   "setup_inputs": [
-    {"id": "foundation", "label": "Reconciled Growth Data Foundation or equivalent model", "required": true},
-    {"id": "lifecycle", "label": "Activation definition, cohort keys, and retention windows", "required": true},
-    {"id": "features", "label": "Feature and flag inventory with launch dates", "required": true},
-    {"id": "revenue", "label": "Revenue linkage scope and plan mapping", "required": false, "default": "subscription_revenue_only"},
-    {"id": "feedback", "label": "Support, chat, review, and survey sources", "required": false, "default": "authorized_sources_only"},
-    {"id": "quality_gate", "label": "Minimum freshness, coverage, and confidence policy", "required": true},
-    {"id": "audience", "label": "Reporting audience and decision owners", "required": true}
+    {
+      "id": "lifecycle_scope",
+      "label": "Product, tenant, signup cohorts, activation and retention policy owner",
+      "required": true
+    },
+    {
+      "id": "maturity_rule",
+      "label": "Cohort windows, day-30 maturity cutoff, censoring and timezone",
+      "required": true
+    },
+    {
+      "id": "identity_sources",
+      "label": "Authorized signup, product usage and subscription sources with identity joins",
+      "required": true
+    },
+    {
+      "id": "quality_rule",
+      "label": "Eligible population, exclusions, minimum coverage and source freshness",
+      "required": true
+    },
+    {
+      "id": "experiment_policy",
+      "label": "Owner, eligible unit, primary metric, guardrail and approval route",
+      "required": true
+    },
+    {
+      "id": "feedback",
+      "label": "Optional consented support or survey context",
+      "required": false
+    },
+    {
+      "id": "cadence",
+      "label": "Manual only or reviewed repeat policy with timezone and budget",
+      "required": false
+    }
   ],
-  "required_capabilities": ["cohort_analysis", "behavior_correlation_analysis", "feedback_correlation", "durable_workflow_storage", "workflow_reporting"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "product-analytics", "name": "PostHog, Mixpanel, or Amplitude MCP", "type": "mcp", "purpose": "Read authorized cohorts, retention curves, and feature-adoption breakdowns behind a finding", "capability": "product_analytics_data", "optional": true},
-    {"id": "feedback-support", "name": "Intercom, Zendesk, or app-review MCP", "type": "mcp", "purpose": "Read authorized support conversations, reviews, and survey responses correlated with lifecycle analysis", "capability": "feedback_system_data", "optional": true},
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Persist lifecycle snapshots, cohorts, findings, and follow-up outcomes", "capability": "durable_workflow_storage", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create an approved missing Lifecycle or Experiment Crew with stable idempotency key and Workflow step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a validated mature-cohort observation through a checked Workflow alias",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "product-analytics",
+      "name": "Product analytics MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read authorized signup, activation and qualifying-use events with stable account identity",
+      "capability": "product_analytics_data",
+      "optional": true
+    },
+    {
+      "id": "subscription-billing",
+      "name": "Subscription billing MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Verify active paid state at the defined cohort maturity cutoff",
+      "capability": "subscription_state_data",
+      "optional": true
+    },
+    {
+      "id": "feedback-support",
+      "name": "Support or survey MCP",
+      "type": "mcp",
+      "purpose": "Add consented qualitative context without changing cohort denominators",
+      "capability": "feedback_system_data",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -49,8 +124,48 @@
       ]
     }
   ],
-  "outputs": ["Versioned lifecycle and adoption policy", "Reproducible activation and retention snapshots", "Cohort divergence findings with attributed differences", "Feature adoption and revenue-impact analysis", "Correlated feedback themes", "Live lifecycle intelligence report"],
-  "setup_playbook": "growth-data-foundation",
-  "accepts_equivalent_setup": true,
-  "next_playbooks": ["growth-experimentation-follow-through"]
+  "outputs": [
+    "Reviewed Lifecycle and Experiment Crew roster with source and policy map",
+    "Validated comparable, baseline-first or pending-maturity cohort observation",
+    "Exact mature observation to pending retention experiment handoff when eligible",
+    "Manual first run and paused repeat choice"
+  ],
+  "next_playbooks": [
+    "growth-experimentation-follow-through"
+  ],
+  "agent_slots": [
+    {
+      "id": "lifecycle",
+      "agent_playbook_id": "lifecycle-analyst",
+      "required": true,
+      "output": "cohort-retention-observation/v1"
+    },
+    {
+      "id": "experiment",
+      "agent_playbook_id": "growth-experiment-planner",
+      "required": true,
+      "output": "retention-experiment-plan/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "lifecycle-to-experiment",
+      "from": "lifecycle",
+      "to": "experiment",
+      "artifact_type": "cohort-retention-observation/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "cohort_policy",
+    "maturity_rule",
+    "identity_source",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
+  ]
 }

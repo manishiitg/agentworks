@@ -1,0 +1,64 @@
+{
+  "artifact_type": "experiment-outcome-readout/v1",
+  "artifact_id": "experiment-readout-false-win-7",
+  "source_execution_artifact_id": "experiment-execution-7",
+  "experiment_id": "exp-guided-setup-7",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "owner": "Growth lead",
+  "primary_metric": "day30-retained-per-eligible-v2",
+  "guardrail_metric": "support-blocker-per-eligible-v2",
+  "as_of": "2026-12-02T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "execution",
+      "uri": "artifact:experiment-execution-7",
+      "observed_at": "2026-10-01T11:00:00Z"
+    },
+    {
+      "id": "primary",
+      "uri": "analytics:retention-exp-7-rev1",
+      "observed_at": "2026-12-02T09:00:00Z"
+    },
+    {
+      "id": "guardrail",
+      "uri": "guardrail:support-exp-7-rev1",
+      "observed_at": "2026-12-02T09:30:00Z"
+    },
+    {
+      "id": "final-exposures",
+      "uri": "exposure:exp-7-final-rev1",
+      "observed_at": "2026-12-02T08:30:00Z"
+    }
+  ],
+  "state": "inconclusive",
+  "arms": [
+    {
+      "variant_id": "current-setup",
+      "eligible_accounts": 200,
+      "exposed_accounts": 200,
+      "primary_success_accounts": 100,
+      "guardrail_event_accounts": 6,
+      "primary_rate_bps": 5000,
+      "guardrail_rate_bps": 300
+    },
+    {
+      "variant_id": "guided-setup",
+      "eligible_accounts": 200,
+      "exposed_accounts": 200,
+      "primary_success_accounts": 114,
+      "guardrail_event_accounts": 8,
+      "primary_rate_bps": 5700,
+      "guardrail_rate_bps": 400
+    }
+  ],
+  "observed_change_bps": 700,
+  "verdict": "inconclusive",
+  "winner": "guided-setup",
+  "shipping_state": "shipped",
+  "limitations": [
+    "Only 200 eligible accounts per variant versus the frozen 250 target; observed difference is not a win.",
+    "Source truth and assignment integrity need owner review."
+  ],
+  "next_check": "Review sample shortfall and decide whether to extend, redesign or stop through a separate approved route."
+}

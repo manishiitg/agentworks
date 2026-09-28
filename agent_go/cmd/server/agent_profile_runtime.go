@@ -106,6 +106,12 @@ func cleanAgentProfileWorkspace(raw, userID string) (string, error) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", fmt.Errorf("selected_folder must stay inside the workspace")
 	}
+	// A shared crew root is reachable only as a verified crew binding
+	// (resolveCrewProjectBinding), never as a free-form selected folder:
+	// unlike _users/<id>/, its location says nothing about who may use it.
+	if clean == crewSharedRootName || strings.HasPrefix(clean, crewSharedRootName+"/") {
+		return "", fmt.Errorf("selected_folder must be a crew you can open")
+	}
 	if clean == "_users" || strings.HasPrefix(clean, "_users/") {
 		owner := strings.TrimPrefix(clean, "_users")
 		owner = strings.TrimPrefix(owner, "/")
@@ -690,6 +696,36 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 				functionReq.WorkflowContextPaths = req[0].WorkflowContextPaths
 			}
 			if err := api.registerCrewFunctionTools(registrar, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), gate.Declare); err != nil {
+				return err
+			}
+		}
+	}
+	// Someone using another user's Crew can leave its owner a suggestion:
+	// a reader in their own chat, or a guest whose call runs as the owner.
+	if readOnly && activeWorkProject && resolved.Definition.ID == "work" {
+		guest := ""
+		if len(req) > 0 {
+			guest = crewGuestCallerForTurn(req[0], userID)
+		}
+		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok {
+			actor := ""
+			switch {
+			case guest != "":
+				actor = guest
+			case ref.OwnerID != sanitizeUserIDForPath(userID):
+				actor = userID
+			}
+			if actor != "" {
+				gate.Declare(crewSuggestionToolName)
+				if err := api.registerCrewSuggestionTool(registrar, actor, sessionID, ref.Root); err != nil {
+					return err
+				}
+			}
+		}
+		// A guest turn still answers the call it was started for.
+		if guest != "" {
+			functionReq := QueryRequest{SelectedFolder: workspacePath}
+			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
 		}

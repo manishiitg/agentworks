@@ -1,0 +1,17 @@
+# Order Exception to Resolution handoffs
+
+Store Operations owns order and fulfillment facts. Returns & Refunds owns policy interpretation, money checks, and the customer draft. Both artifacts must share stable store, order, customer, and case IDs. One Crew may serve both slots only with compatible access and separate validated outputs.
+
+## `store-order-exception/v1`
+
+Required: `artifact_type`, `store_id`, `order_id`, `customer_ref`, `case_id`, `currency`, `observed_at`, `policy_version`, `owner_id`, `line_item_ids`, `order_state`, `payment_state`, `fulfillment_state`, `affected_line_fulfillment_state`, `customer_request_ref`, `shopify_return_ref`, `return_state`, `refund_state`, `source_refs`, and `proposed_action`. Preserve Shopify IDs exactly. `affected_line_fulfillment_state` is `unfulfilled`, `partially_fulfilled`, `fulfilled`, or `unknown`; split fulfillment needs an artifact for the affected line or group. `customer_request_ref` identifies the helpdesk or other request. `shopify_return_ref` is a separate, nullable Shopify Return ID. A request is not a Return object. External fulfillment IDs may be `null`; absence blocks claims that need them. A support ticket text alone does not establish payment or delivery state.
+
+## `return-resolution-review/v1`
+
+Required: `artifact_type`, matching `store_id`, `order_id`, `customer_ref`, `case_id`, `currency`, `owner_id`, `policy_version`, `decision`, `resolution_route`, `approval_state`, `resolution_state`, `message_state`, `captured_amount_minor`, `already_refunded_minor`, `proposed_refund_minor`, `refund_receipt_ref`, `return_receipt_ref`, `message_receipt_ref`, `verification_ref`, `source_refs`, `unsent_customer_draft`, and `next_evidence`. Money amounts use nonnegative integer minor units in one currency. `proposed_refund_minor` may be `null` when tax, shipping, partial capture, discount, or existing refund treatment is not resolved. A positive proposed refund cannot exceed the verified remaining captured amount. `decision` is `refund_review`, `return_review`, `decline_review`, or `needs_information`. `resolution_route` is `refund_or_order_edit_review`, `shopify_return_review`, or `decline_or_information`. A Shopify Return route requires a confirmed fulfilled affected line. Unknown or partial state blocks that route until the exact fulfillment item is identified.
+
+An approval is a durable owner decision, distinct from an executed refund. `approval_state` is `pending`, `approved`, or `rejected`; an approved state requires an `approval_ref`. `resolution_state` is `prepared`, `executed`, or `verified`. An executed or verified refund requires a matching refund receipt, an executed return needs a return or label provider receipt, and a sent customer message requires a delivery receipt. `verified` also requires a later source check in `verification_ref`. The first manual run normally ends at `prepared` and `pending`.
+
+## Rejection and closure
+
+Reject mismatched store/order/customer/case/currency, missing source IDs, an unsupported refund amount, an approved state without its owner reference, or an issued-refund claim without a provider receipt. Re-read the actual payment and refund state immediately before any money action to avoid double refunds. An owner reviews eligibility, amounts, message text, and any write. Close a case only after its chosen resolution is observed in the source systems and the owner records closure.

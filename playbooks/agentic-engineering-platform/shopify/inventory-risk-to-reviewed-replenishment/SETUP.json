@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "inventory-risk-to-reviewed-replenishment",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm replenishment outcome and owner","instructions":"Name the merchant, procurement decision owner, budget authority, supplier contact owner, destination location and first case."},
+    {"id":"item_location_scope","title":"Bind exact item and location","instructions":"Record store, market, product, variant, InventoryItem, Location, case ID and time zone. Confirm the inventory source authority."},
+    {"id":"inventory_demand_policy","title":"Agree demand and stock calculation","instructions":"Set the demand window, unit definition, available versus incoming treatment, backorders, review interval and safety stock. Do not subtract committed units twice."},
+    {"id":"supplier_terms","title":"Verify current supplier terms","instructions":"Confirm supplier ID/SKU, lead time, MOQ, case pack, unit cost/currency, open PO, delivery destination, and budget approval policy from current sources."},
+    {"id":"team_bindings","title":"Bind two ready Crews","instructions":"Record existing or reviewed new Catalog & Merchandising Analyst and Replenishment Planner IDs, skills, setup status and authorized access."},
+    {"id":"source_access","title":"Probe representative sources","instructions":"Read one InventoryLevel, a same-item/location demand extract, supplier terms and current incoming/open PO/transfer records. Record exact IDs, dates, coverage and gaps."},
+    {"id":"handoff_contract","title":"Recompute and validate handoff","instructions":"Run the bundled validator; reject wrong item/location, double-counted commitments, stale terms, incorrect ceiling/pack rounding, cost mismatch and premature ordered/received state."},
+    {"id":"plan_review","title":"Review proposed purchasing route","instructions":"Show Crew IDs, evidence paths, formula and currency, owner, budget, approval, optional PO action, transfer verification, cost and manual route before Builder applies it."},
+    {"id":"test_run","title":"Run one real case manually","instructions":"Recompute one authorized item/location proposal and one missing-data or open-PO duplicate case; retain validator results and procurement owner review. Fictional fixtures do not complete setup."},
+    {"id":"activation_choice","title":"Choose recurrence and action boundary","instructions":"Record manual-only or an authenticated deduplicated review trigger with owner, cost and notification policy. PO and transfer writes remain separately approved and tested."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

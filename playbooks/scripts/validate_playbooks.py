@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,6 +56,7 @@ REQUIRED_SKILL_RECOMMENDATION_FIELDS = {
 }
 KEBAB_CASE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+ARTIFACT_TYPE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*/v\d+$")
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
@@ -159,6 +161,98 @@ def validate_package(package: Path, errors: list[str]) -> dict[str, object] | No
             fail(errors, manifest_path, f"recommended_tools[{index}] has an incomplete shape")
         elif tool.get("optional") is not True:
             fail(errors, manifest_path, f"recommended_tools[{index}].optional must be true")
+    slots = manifest.get("agent_slots", [])
+    if not isinstance(slots, list):
+        fail(errors, manifest_path, "agent_slots must be a list")
+        slots = []
+    slot_outputs: dict[str, str] = {}
+    slot_required: dict[str, bool] = {}
+    for index, slot in enumerate(slots):
+        if not isinstance(slot, dict) or not {"id", "agent_playbook_id", "required", "output"}.issubset(slot):
+            fail(errors, manifest_path, f"agent_slots[{index}] is incomplete")
+            continue
+        slot_id = slot["id"]
+        if not isinstance(slot_id, str) or not slot_id or slot_id in slot_outputs:
+            fail(errors, manifest_path, f"agent_slots[{index}] has an invalid or duplicate id")
+            continue
+        if not isinstance(slot.get("agent_playbook_id"), str) or not KEBAB_CASE.fullmatch(slot["agent_playbook_id"]):
+            fail(errors, manifest_path, f"agent_slots[{index}] needs a canonical Crew template id")
+        if type(slot.get("required")) is not bool:
+            fail(errors, manifest_path, f"agent_slots[{index}].required must be a boolean")
+        if not isinstance(slot["output"], str) or not ARTIFACT_TYPE.fullmatch(slot["output"]):
+            fail(errors, manifest_path, f"agent_slots[{index}] needs a versioned output type")
+            continue
+        slot_outputs[slot_id] = slot["output"]
+        slot_required[slot_id] = slot["required"] is True
+    handoffs = manifest.get("handoffs", [])
+    if not isinstance(handoffs, list):
+        fail(errors, manifest_path, "handoffs must be a list")
+        handoffs = []
+    handoff_ids: set[str] = set()
+    edges: dict[str, list[str]] = {slot_id: [] for slot_id in slot_outputs}
+    for index, handoff in enumerate(handoffs):
+        if not isinstance(handoff, dict) or not {"id", "from", "to", "artifact_type", "required"}.issubset(handoff):
+            fail(errors, manifest_path, f"handoffs[{index}] is incomplete")
+            continue
+        if not isinstance(handoff["id"], str) or not handoff["id"] or handoff["id"] in handoff_ids:
+            fail(errors, manifest_path, f"handoffs[{index}] has an invalid or duplicate id")
+            continue
+        handoff_ids.add(handoff["id"])
+        if type(handoff.get("required")) is not bool:
+            fail(errors, manifest_path, f"handoffs[{index}].required must be a boolean")
+        source_slot = handoff["from"]
+        target_slot = handoff["to"]
+        if not isinstance(source_slot, str) or not isinstance(target_slot, str) or source_slot not in slot_outputs or target_slot not in slot_outputs:
+            fail(errors, manifest_path, f"handoffs[{index}] references a missing agent slot")
+        elif handoff["artifact_type"] != slot_outputs[source_slot]:
+            fail(errors, manifest_path, f"handoffs[{index}] artifact_type does not match its producer output")
+        if isinstance(source_slot, str) and isinstance(target_slot, str) and source_slot in slot_outputs and target_slot in slot_outputs:
+            edges[source_slot].append(target_slot)
+            if source_slot == target_slot:
+                fail(errors, manifest_path, f"handoffs[{index}] cannot point to the same slot")
+            if handoff.get("required") is True and not (slot_required[source_slot] and slot_required[target_slot]):
+                fail(errors, manifest_path, f"handoffs[{index}] cannot require an optional slot")
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def cycle_from(slot_id: str) -> bool:
+        if slot_id in visiting:
+            return True
+        if slot_id in visited:
+            return False
+        visiting.add(slot_id)
+        if any(cycle_from(target) for target in edges[slot_id]):
+            return True
+        visiting.remove(slot_id)
+        visited.add(slot_id)
+        return False
+
+    if any(cycle_from(slot_id) for slot_id in edges):
+        fail(errors, manifest_path, "agent handoff graph contains a cycle")
+    setup_checks = manifest.get("setup_checks", [])
+    if len(slots) > 1:
+        if not isinstance(setup_checks, list) or not 5 <= len(setup_checks) <= 10:
+            fail(errors, manifest_path, "multi-Crew Playbook needs five to ten tracked setup checks")
+        negative_examples = [
+            example for example in (package / "examples").glob("*.json")
+            if any(term in example.stem for term in ("invalid", "rejected", "false"))
+        ]
+        if not negative_examples:
+            fail(errors, manifest_path, "multi-Crew Playbook needs a rejected example artifact")
+        if not (package / "scripts" / "test_validate_handoff.py").is_file():
+            fail(errors, manifest_path, "multi-Crew Playbook needs an executable handoff contract suite")
+    if setup_checks:
+        setup_path = package / "SETUP.json"
+        try:
+            setup = json.loads(setup_path.read_text())
+            defined_checks = [check["id"] for check in setup["checks"]]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            fail(errors, manifest_path, f"setup_checks needs a valid SETUP.json: {exc}")
+        else:
+            if len(setup_checks) != len(set(setup_checks)) or defined_checks != setup_checks:
+                fail(errors, manifest_path, "setup_checks must match ordered SETUP.json check IDs")
+            if setup.get("playbook_id") != playbook_id or setup.get("playbook_version") != manifest.get("version"):
+                fail(errors, manifest_path, "SETUP.json id and version must match playbook.json")
     pulse_focus = manifest.get("pulse_focus", [])
     if not isinstance(pulse_focus, list):
         fail(errors, manifest_path, "pulse_focus must be a list")
@@ -228,8 +322,38 @@ def validate_package(package: Path, errors: list[str]) -> dict[str, object] | No
     return manifest
 
 
+def validate_crew_bindings(path: Path, manifest: dict[str, object], crew_ids: set[str], errors: list[str]) -> None:
+    slots = manifest.get("agent_slots", [])
+    for index, slot in enumerate(slots if isinstance(slots, list) else []):
+        agent_id = slot.get("agent_playbook_id") if isinstance(slot, dict) else None
+        if isinstance(agent_id, str) and agent_id not in crew_ids:
+            fail(errors, path, f"agent_slots[{index}] references an uninstalled Crew template {agent_id!r}")
+
+
 def main() -> int:
     errors: list[str] = []
+    crew_catalogs = sorted((ROOT / "crew-agents").glob("*/catalog.json"))
+    crew_templates: dict[str, Path] = {}
+    if not crew_catalogs:
+        errors.append("playbooks/crew-agents: no Crew catalogs found")
+    for catalog_path in crew_catalogs:
+        try:
+            catalog = json.loads(catalog_path.read_text())
+            agents = catalog["agents"]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            fail(errors, catalog_path, f"invalid Crew catalog: {exc}")
+            continue
+        if catalog.get("schema_version") != 1 or not isinstance(agents, list):
+            fail(errors, catalog_path, "Crew catalog needs schema_version 1 and an agents list")
+            continue
+        for index, agent in enumerate(agents):
+            agent_id = agent.get("id") if isinstance(agent, dict) else None
+            if not isinstance(agent_id, str) or not KEBAB_CASE.fullmatch(agent_id):
+                fail(errors, catalog_path, f"agents[{index}] needs a canonical id")
+            elif agent_id in crew_templates:
+                fail(errors, catalog_path, f"duplicate Crew id {agent_id} also used by {crew_templates[agent_id].relative_to(ROOT.parent)}")
+            else:
+                crew_templates[agent_id] = catalog_path
     packages = sorted(
         path.parent
         for path in ROOT.rglob("playbook.json")
@@ -263,6 +387,7 @@ def main() -> int:
 
     known_ids = set(by_id)
     for path, manifest in manifests:
+        validate_crew_bindings(path, manifest, set(crew_templates), errors)
         relations: list[object] = []
         if manifest.get("setup_playbook"):
             relations.append(manifest["setup_playbook"])
@@ -280,7 +405,24 @@ def main() -> int:
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    print(f"Validated {len(packages)} playbook packages against agentworks-playbook/v1")
+    contract_suites = sorted((ROOT / "scripts").glob("test_*_artifacts.py"))
+    contract_suites.extend(package / "scripts" / "test_validate_handoff.py" for package in packages if (package / "scripts" / "test_validate_handoff.py").is_file())
+    for suite in contract_suites:
+        try:
+            result = subprocess.run(
+                [sys.executable, str(suite)], capture_output=True, text=True, timeout=30, check=False
+            )
+        except subprocess.TimeoutExpired:
+            fail(errors, suite, "contract test timed out")
+            continue
+        if result.returncode != 0:
+            fail(errors, suite, f"contract test failed: {(result.stderr or result.stdout)[-1200:].strip()}")
+    if errors:
+        print("Playbook contract validation failed:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+    print(f"Validated {len(packages)} playbook packages and {len(contract_suites)} contract suites against agentworks-playbook/v1")
     return 0
 
 

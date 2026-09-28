@@ -33,8 +33,9 @@ sequence. Do not debug an individual failed run; hand concrete correctness
 failures to Technical. Read relevant learnings, knowledge and Builder references
 selectively. Choose one concrete improvement question:
 prompt clarity and duplication; simpler orchestration and handoffs; repeatable
-work suited to scripts; learning applicability and contradictions; KB freshness
-and retrieval; DB structure and data lineage; useful reports; cost and latency.
+work suited to scripts; Crew versus message sequence; learning applicability and
+contradictions; KB freshness and retrieval; DB structure and data lineage; useful
+reports; cost and latency.
 Historical technical reviews remain valid evidence; do not relabel or recreate them.
 When prompt design is the selected question, load
 `read_skill(skills=[{"name":"builder-reference","path":"references/step-description.md"}])`
@@ -45,6 +46,27 @@ Use authorized MCP queries, browser and external technical sources when they
 can answer the question. Preserve source URLs/paths, dates and evidence versus
 hypothesis in the brief review_note when not already in the linked evidence. Reuse fresh
 research instead of repeating it. External actions retain existing authorizations.
+
+### Crew versus message sequence
+
+The step-type rule is in
+`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`:
+a message sequence is the default; a Crew (a Crew step, or a function call from
+a step's agent) is for work that belongs to a persistent specialist with its own
+memory, skills and files. Judge a mismatch only from evidence, never from the
+step type alone:
+- A message sequence is a Crew candidate when its runs keep rebuilding the same
+  specialist context (re-reading the same sources, re-deriving the same
+  judgments), or when the same specialist work is duplicated across workflows
+  that a Crew could serve. `search_platform(operation="list_crews")` shows
+  whether a suitable Crew already exists.
+- A Crew call is a message-sequence candidate when the work is one-off and
+  stateless, gains nothing from the Crew's memory, and pays for a second agent.
+  `read_crew_calls(operation="list")` and `read_crew_calls(operation="read")`
+  show what the Crew actually did with this workflow's calls.
+Propose the change as a measured trial with baseline, expected benefit,
+guardrails, checkpoint and rollback through a decision; this review does not
+edit the plan. Creating or reshaping a Crew is the Crew owner's work.
 
 ### Schedule topology and throughput
 

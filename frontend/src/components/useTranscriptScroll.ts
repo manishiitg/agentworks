@@ -16,6 +16,22 @@ export function transcriptReadingState(key: string): TranscriptReadingState {
   return saved
 }
 
+const FOLLOW_LATEST_EVENT = 'transcript-follow-latest'
+
+// The user just sent a message in this conversation: show the bottom. The
+// composer is not inside the transcript's scroller, so scrolling the chat
+// container does nothing; the transcript itself must follow. Marking the saved
+// state too covers a transcript that remounts before the message renders.
+export function followTranscriptLatest(key: string | undefined) {
+  if (!key) return
+  const saved = positions.get(key)
+  if (saved) {
+    saved.following = true
+    saved.anchor = undefined
+  }
+  window.dispatchEvent(new CustomEvent<string>(FOLLOW_LATEST_EVENT, { detail: key }))
+}
+
 // One cancellable request per frame. User input wins even if output/measurement
 // scheduled an automatic movement just before the gesture.
 export class TranscriptScrollController {
@@ -98,6 +114,7 @@ export function useTranscriptScroll(
   keys: string[],
   saved: TranscriptReadingState,
   virtuoso: RefObject<VirtuosoHandle | null>,
+  readingKey?: string,
 ) {
   const [scroller, setScroller] = useState<HTMLElement | null>(null)
   const scrollerElement = useRef<HTMLElement | null>(null)
@@ -187,8 +204,13 @@ export function useTranscriptScroll(
     let lastTop = scroller.scrollTop
     let manual = false
     let touchY = 0
+    // A downward gesture at the end moves nothing. Counting it as manual left
+    // a stale flag that later read a layout shrink (e.g. a sent message being
+    // replaced) as the user scrolling up, and the transcript stopped following.
+    const atEnd = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 1
     const wheel = (event: WheelEvent) => {
       if (event.ctrlKey || nestedScroller(event.target, scroller, event.deltaY)) return
+      if (event.deltaY >= 0 && atEnd()) return
       manual = true
       if (event.deltaY < 0) pause()
     }
@@ -202,7 +224,7 @@ export function useTranscriptScroll(
       if (target?.closest('input,textarea,select,[contenteditable="true"]')) return
       if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) {
         manual = true; pause()
-      } else if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key)) manual = true
+      } else if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key) && !atEnd()) manual = true
     }
     const touchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY ?? 0 }
     const touchMove = (event: TouchEvent) => {
@@ -210,6 +232,7 @@ export function useTranscriptScroll(
       const delta = touchY - y
       touchY = y
       if (nestedScroller(event.target, scroller, delta)) return
+      if (delta >= 0 && atEnd()) return
       manual = true
       if (delta < 0) pause()
     }
@@ -247,5 +270,13 @@ export function useTranscriptScroll(
     }
   }, [scroller, controller, saved, pause, jumpToLatest, layoutChanged, remember, cancelRestore])
   useEffect(() => { if (mounted.current) layoutChanged() }, [keys, layoutChanged])
+  useEffect(() => {
+    if (!readingKey) return
+    const follow = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === readingKey) jumpToLatest()
+    }
+    window.addEventListener(FOLLOW_LATEST_EVENT, follow)
+    return () => window.removeEventListener(FOLLOW_LATEST_EVENT, follow)
+  }, [readingKey, jumpToLatest])
   return { following, scrollerRef, layoutChanged, jumpToLatest, pause, preserveDisclosure, preserveReadingPosition }
 }

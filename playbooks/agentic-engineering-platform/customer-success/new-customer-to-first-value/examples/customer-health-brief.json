@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "artifact_type": "customer-health-brief/v1",
+  "brief_id": "health-example-001",
+  "source_readout_id": "readout-example-001",
+  "account_id": "account-example-001",
+  "tenant_id": "tenant-example-001",
+  "created_at": "2026-09-25T11:30:00Z",
+  "owner": "Customer success owner",
+  "status": "watch",
+  "next_action": "Confirm the sponsor can use the exported report and review the remaining onboarding milestones.",
+  "signals": [
+    {
+      "id": "first-value-observed",
+      "kind": "observed",
+      "summary": "The agreed first report export was observed within the target window.",
+      "evidence_refs": [
+        "readout"
+      ]
+    },
+    {
+      "id": "open-training-question",
+      "kind": "hypothesis",
+      "summary": "An open training question may slow broader adoption; ask the owner to verify its impact.",
+      "evidence_refs": [
+        "support-ticket"
+      ]
+    }
+  ],
+  "source_refs": [
+    {
+      "id": "readout",
+      "uri": "artifacts/readout-example-001.json",
+      "observed_at": "2026-09-25T11:15:00Z"
+    },
+    {
+      "id": "support-ticket",
+      "uri": "exports/fictional-support.csv#ticket-17",
+      "observed_at": "2026-09-25T11:20:00Z"
+    }
+  ],
+  "limitations": [
+    "Fictional fixture; renewal timing and relationship sentiment are unavailable."
+  ]
+}

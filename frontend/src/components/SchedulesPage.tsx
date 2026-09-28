@@ -1,30 +1,79 @@
-import { lazy, Suspense } from 'react'
-import { CalendarClock } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
+import { CalendarClock, Webhook } from 'lucide-react'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useAppStore } from '../stores/useAppStore'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
+import { selectWorkflowPreset } from '../utils/workflowNavigation'
+import { openWorkflowPresetPage } from '../utils/workflowSessionRestore'
+import type { TriggerOwner } from './scheduler/GlobalTriggersView'
 
 const Schedules = lazy(() => import('./scheduler/WorkflowScheduleRunsPanel'))
+const Triggers = lazy(() => import('./scheduler/GlobalTriggersView'))
+type OverviewTab = 'workflow-schedules' | 'crew-schedules' | 'workflow-triggers' | 'crew-triggers'
 
-/** Standalone schedules page, opened from the top-bar icon next to Activity. */
+const tabs: { id: OverviewTab; label: string; icon: typeof CalendarClock }[] = [
+  { id: 'workflow-schedules', label: 'Workflow schedules', icon: CalendarClock },
+  { id: 'crew-schedules', label: 'Crew schedules', icon: CalendarClock },
+  { id: 'workflow-triggers', label: 'Workflow triggers', icon: Webhook },
+  { id: 'crew-triggers', label: 'Crew triggers', icon: Webhook },
+]
+
+/** Shared schedules and triggers overview, opened from the top-bar icon. */
 export default function SchedulesPage() {
   const showSchedules = useAppStore(state => state.showSchedulesOverview)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const setShowSchedulesOverview = useAppStore(state => state.setShowSchedulesOverview)
+  const productSurface = useProductSurfaceStore(state => state.productSurface)
+  const [activeTab, setActiveTab] = useState<OverviewTab>(() => productSurface === 'work' ? 'crew-schedules' : 'workflow-schedules')
+
+  const openTriggerOwner = (owner: TriggerOwner) => {
+    setShowSchedulesOverview(false)
+    if (owner.kind === 'crew') {
+      const surface = useProductSurfaceStore.getState()
+      surface.setSelectedWorkProjectId(owner.id)
+      surface.setPendingWorkView('triggers')
+      surface.setProductSurface('work')
+    } else {
+      useProductSurfaceStore.getState().setProductSurface('agentworks')
+      const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === owner.id)
+      if (preset) {
+        void openWorkflowPresetPage(preset).catch(() => {
+          selectWorkflowPreset(owner.id)
+        }).finally(() => {
+          if (useGlobalPresetStore.getState().activePresetIds.workflow === owner.id) {
+            useWorkflowStore.getState().openWorkspaceView('workshop', 'triggers')
+          }
+        })
+      } else {
+        selectWorkflowPreset(owner.id)
+        useWorkflowStore.getState().openWorkspaceView('workshop', 'triggers')
+      }
+    }
+  }
 
   return (
-    <section aria-label="Schedules" className="flex h-full min-h-0 flex-col bg-background">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-6 border-b border-border px-4 sm:px-6">
+    <section aria-label="Schedules and triggers" className="flex h-full min-h-0 flex-col bg-background">
+      <header className="shrink-0 border-b border-border px-4 sm:px-6">
         <div className="flex items-center gap-2 py-3">
           <CalendarClock className="h-4 w-4 text-primary" />
-          <div>
-            <h1 className="text-base font-semibold text-foreground">Schedules</h1>
-            <p className="sr-only">Automation schedules grouped by workflow.</p>
-          </div>
+          <h1 className="text-base font-semibold text-foreground">Schedules and triggers</h1>
+        </div>
+        <div role="tablist" aria-label="Schedules and triggers" className="flex flex-wrap gap-1 pb-2">
+          {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+            <tab.icon className="h-3.5 w-3.5" />{tab.label}
+          </button>)}
         </div>
       </header>
-      <div className="min-h-0 flex-1">
-        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading schedules…</div>}>
-          <Schedules embedded active={showSchedules && !showProviders} onClose={() => setShowSchedulesOverview(false)} />
+      <div role="tabpanel" className="min-h-0 flex-1">
+        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
+          {activeTab === 'workflow-schedules' && <Schedules embedded active={showSchedules && !showProviders} onClose={() => setShowSchedulesOverview(false)} />}
+          {activeTab === 'crew-schedules' && <Schedules embedded active={showSchedules && !showProviders} onClose={() => setShowSchedulesOverview(false)} entityType="product" productProfileId="work" />}
+          {activeTab === 'workflow-triggers' && <Triggers kind="workflow" onOpen={openTriggerOwner} />}
+          {activeTab === 'crew-triggers' && <Triggers kind="crew" onOpen={openTriggerOwner} />}
         </Suspense>
       </div>
     </section>

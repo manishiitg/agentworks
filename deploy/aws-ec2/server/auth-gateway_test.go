@@ -513,7 +513,6 @@ func TestDisabledGateRequiresUserTokenAndStampsUser(t *testing.T) {
 	defer upstream.Close()
 	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio", disablePasswordGate: true}
 	g.agent = proxyFor(upstream.URL)
-	g.workspace = proxyFor(upstream.URL)
 
 	for _, path := range []string{"/api/agent-profiles/video-studio/query", "/api/wp/api/documents/x"} {
 		rec := httptest.NewRecorder()
@@ -654,7 +653,6 @@ func TestAccessTokenReachesAppWithoutGatewaySession(t *testing.T) {
 		defer upstream.Close()
 		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
 		g.agent = proxyFor(upstream.URL)
-		g.workspace = proxyFor(upstream.URL)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools", nil)
 		req.Header.Set("Authorization", "Bearer aw_pat_test-token")
@@ -694,7 +692,6 @@ func TestMCPOAuthDiscoveryAndChallengeReachAgentWithoutGatewaySession(t *testing
 		}))
 		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
 		g.agent = proxyFor(upstream.URL)
-		g.workspace = proxyFor(upstream.URL)
 		for _, path := range []string{
 			"/.well-known/oauth-protected-resource/api/external/v1/mcp",
 			"/.well-known/oauth-authorization-server",
@@ -742,7 +739,6 @@ func TestAccessTokenStaysOutOfWorkspaceRoutes(t *testing.T) {
 	for _, disableGate := range []bool{false, true} {
 		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), disablePasswordGate: disableGate}
 		g.agent = proxyFor(upstream.URL)
-		g.workspace = proxyFor(upstream.URL)
 		req := httptest.NewRequest(http.MethodGet, "/api/wp/api/documents/x", nil)
 		req.Header.Set("Authorization", "Bearer aw_pat_test-token")
 		rec := httptest.NewRecorder()
@@ -814,5 +810,31 @@ func TestMissingHashedAssetIsNotFoundNotSPAFallback(t *testing.T) {
 	gw.serveFrontend(response, httptest.NewRequest(http.MethodGet, "/projects/123", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("client route status = %d, want %d (SPA fallback)", response.Code, http.StatusOK)
+	}
+}
+
+// /api/wp reaches the agent API with its prefix intact (its proxy enforces
+// per-user and per-workflow access and holds the workspace token); the
+// gateway never talks to the workspace service itself.
+func TestWorkspaceRoutesGoThroughAgent(t *testing.T) {
+	var seenPath, seenUser string
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath, seenUser = r.URL.Path, r.Header.Get("X-User-ID")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer agent.Close()
+	g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), userID: "video-studio", disablePasswordGate: true}
+	g.agent = proxyFor(agent.URL)
+	token, err := g.agentToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/wp/api/workspace/export", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-User-ID", "spoofed")
+	rec := httptest.NewRecorder()
+	g.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || seenPath != "/api/wp/api/workspace/export" || seenUser == "spoofed" {
+		t.Fatalf("status=%d path=%q user=%q", rec.Code, seenPath, seenUser)
 	}
 }

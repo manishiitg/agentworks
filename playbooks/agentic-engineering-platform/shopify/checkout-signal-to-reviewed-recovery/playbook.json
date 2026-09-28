@@ -1,0 +1,38 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "checkout-signal-to-reviewed-recovery",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a checkout-level recovery proposal with current-order, consent, suppression, duplicate-send, and provider-evidence gates."}],
+  "title": "Checkout Signal to Reviewed Recovery",
+  "description": "Turn a Shopify abandoned checkout signal into a contact-policy review and an unsent recovery draft, with separate proof for any later send or order.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 6,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Checkout Signal to Reviewed Recovery as a chat-led proposal for one authorized Shopify abandoned checkout and one channel. Discover an existing Shopify Growth Analyst and Checkout Recovery Coordinator, then propose reuse or reviewed creation. Check current checkout completion, linked later order, merchant contact policy, channel consent, opt-out, existing Shopify or provider automation, prior sends, and owner. Show a validated signal-to-review handoff, a suppressed or unknown test case, an unsent draft when eligible, a manual first run, and separate proof for any later approved message or order. Selection alone does not connect customer data, enable automation, send, discount, or claim recovered revenue.",
+  "setup_inputs": [
+    {"id":"checkout_scope","label":"Authorized store, market, exact checkout ID, campaign ID and channel","required":true},
+    {"id":"contact_policy","label":"Current merchant contact, consent, frequency, and suppression policy with owner","required":true},
+    {"id":"sources","label":"Checkout/order, consent, and prior-message records or scoped exports","required":true},
+    {"id":"measurement","label":"Definition of provider send and verified linked-order outcome","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed authenticated event and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing Shopify Crews with stable keys","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated minimal checkout signal without contact details","capability":"durable_artifacts","optional":true},
+    {"id":"shopify-checkouts","name":"Shopify Admin abandoned checkouts or bounded export","type":"mcp","purpose":"Re-read exact checkout and completion state","capability":"abandoned_checkout_records","optional":true},
+    {"id":"consent-source","name":"Customer consent and suppression source","type":"mcp","purpose":"Verify current channel permission, opt-out and exclusions","capability":"contact_policy_records","optional":true},
+    {"id":"messaging-history","name":"Shopify Messaging or approved provider","type":"mcp","purpose":"Check existing automation and prior sends; later retain delivery receipt if approved","capability":"message_history_records","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Checkout recovery review","focus_areas":["Eligible checkouts with owner-reviewed next action","Duplicate contacts, suppressed checkouts, and provider-confirmed outcomes"],"review_when":["Checkout or consent state changes, an existing automation schedules a send, or an approved message lacks a provider receipt"]}],
+  "outputs": ["Reviewed Crew roster, source and contact-policy map", "Validated checkout recovery signal", "Suppressed, unknown, or owner-reviewed unsent draft", "Separate provider send and linked-order evidence if later executed", "Manual route and activation choice"],
+  "agent_slots": [
+    {"id":"growth","agent_playbook_id":"shopify-growth-analyst","required":true,"output":"checkout-recovery-signal/v1"},
+    {"id":"recovery","agent_playbook_id":"checkout-recovery-coordinator","required":true,"output":"checkout-recovery-review/v1"}
+  ],
+  "handoffs": [{"id":"signal-to-recovery","from":"growth","to":"recovery","artifact_type":"checkout-recovery-signal/v1","required":true}],
+  "setup_checks": ["goal_owner", "checkout_scope", "contact_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "contact_ledger", "activation_choice"]
+}

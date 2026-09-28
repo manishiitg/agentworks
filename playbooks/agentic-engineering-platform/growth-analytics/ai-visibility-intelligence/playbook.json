@@ -2,15 +2,19 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "ai-visibility-intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Adds a chat-led AI Visibility Analyst to Search Opportunity Mapper handoff, sample-level citations, pending setup and executable checks."
+    },
     {
       "version": "0.1.0",
       "summary": "Initial playbook release."
     }
   ],
   "title": "AI Visibility Intelligence",
-  "description": "Track whether ChatGPT, Perplexity, Gemini, and Google AI Overviews cite your brand, compare competitors, and close citation gaps — your AI Growth Analyst's AI-search readout.",
+  "description": "Turn a bounded, repeatable AI-answer citation sample into a sourced buyer-question opportunity, with owner review before any page change.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -20,20 +24,95 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use AI Visibility Intelligence for my AI Growth Analyst. With my reconciled traffic data, run my versioned prompt set across selected assistants, track brand citations against competitors with disclosed sampling limits, diagnose citation gaps with evidence, and recommend content and authority changes without manipulation.",
+  "setup_prompt": "Treat AI Visibility Intelligence as a proposal. Inspect my brand, approved buyer questions, answer-engine access and existing Crews. Propose reuse or creation of AI Visibility Analyst and Search Opportunity Mapper, a sample-level citation handoff, an owner-reviewed content decision and one manual test in Builder chat. Selection creates no Crew, engine run, page change, schedule or visibility claim.",
   "setup_inputs": [
-    {"id": "foundation", "label": "Reconciled Growth Data Foundation or equivalent model", "required": true},
-    {"id": "prompts", "label": "Prompt set with personas and locales", "required": true},
-    {"id": "assistants", "label": "Assistant scope and sampling policy", "required": true},
-    {"id": "competitors", "label": "Competitor brand set and citation definitions", "required": true},
-    {"id": "quality_gate", "label": "Minimum freshness, coverage, and confidence policy", "required": true},
-    {"id": "audience", "label": "Reporting audience and decision owners", "required": true}
+    {
+      "id": "brand_scope",
+      "label": "Canonical brand, aliases, competitors and approved question set",
+      "required": true
+    },
+    {
+      "id": "sample_policy",
+      "label": "Answer engines, locale, surface, session mode, run count and capture limits",
+      "required": true
+    },
+    {
+      "id": "site_scope",
+      "label": "Canonical site and authorized existing-page inspection scope",
+      "required": true
+    },
+    {
+      "id": "citation_rule",
+      "label": "Brand mention, direct citation, unknown and failed-run classification",
+      "required": true
+    },
+    {
+      "id": "owner_policy",
+      "label": "Owner, content review and repeat-sample decision rule",
+      "required": true
+    },
+    {
+      "id": "cadence",
+      "label": "Manual only or proposed recurrence with timezone and budget",
+      "required": false
+    }
   ],
-  "required_capabilities": ["ai_citation_tracking", "citation_gap_analysis", "competitor_visibility_analysis", "durable_workflow_storage", "workflow_reporting"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "visibility-tracker", "name": "AI-visibility tracker CLI or MCP", "type": "cli_or_mcp", "purpose": "Run versioned prompts across assistants and extract brand citations with provenance", "capability": "ai_citation_tracking", "optional": true},
-    {"id": "search-console", "name": "Google Search Console MCP", "type": "mcp", "purpose": "Read authorized queries and pages that corroborate topics worth winning in AI answers", "capability": "search_console_data", "optional": true},
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Persist prompt sets, citation snapshots, comparisons, and follow-up outcomes", "capability": "durable_workflow_storage", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create an approved missing specialist with a stable idempotency key and Workflow-bound Crew step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass the validated citation snapshot through a checked Workflow alias",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "visibility-tracker",
+      "name": "AI visibility tracker CLI or MCP",
+      "type": "cli_or_mcp",
+      "purpose": "Run versioned questions on authorized answer-engine surfaces and retain response and citation provenance",
+      "capability": "ai_citation_tracking",
+      "optional": true
+    },
+    {
+      "id": "approved-answer-source",
+      "name": "Approved browser or answer source",
+      "type": "browser_or_mcp",
+      "purpose": "Capture bounded answer runs, cited URLs, errors, timestamps and surface limitations",
+      "capability": "answer_observation",
+      "optional": true
+    },
+    {
+      "id": "site-inspection",
+      "name": "Approved site browser or crawl",
+      "type": "browser_or_cli",
+      "purpose": "Inspect the exact page proposed for a useful answer improvement",
+      "capability": "page_inspection",
+      "optional": true
+    },
+    {
+      "id": "search-console",
+      "name": "Google Search Console MCP",
+      "type": "mcp",
+      "purpose": "Add authorized search context without equating it to AI-answer citation counts",
+      "capability": "search_console_data",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -48,8 +127,48 @@
       ]
     }
   ],
-  "outputs": ["Versioned visibility prompt set", "Reproducible citation snapshots and trends", "Competitor citation comparison", "Citation-gap findings with likely causes", "Content and authority recommendations", "Live AI visibility report"],
-  "setup_playbook": "growth-data-foundation",
-  "accepts_equivalent_setup": true,
-  "next_playbooks": ["growth-experimentation-follow-through"]
+  "outputs": [
+    "Reviewed two-Crew roster and sample policy",
+    "Validated answer-level citation snapshot with observed and failed runs separated",
+    "Exact-question opportunity with an inspected page and owner decision",
+    "Manual run proof and paused repeat-sampling choice"
+  ],
+  "next_playbooks": [
+    "growth-experimentation-follow-through"
+  ],
+  "agent_slots": [
+    {
+      "id": "visibility",
+      "agent_playbook_id": "ai-visibility-analyst",
+      "required": true,
+      "output": "ai-visibility-snapshot/v1"
+    },
+    {
+      "id": "opportunity",
+      "agent_playbook_id": "search-opportunity-mapper",
+      "required": true,
+      "output": "ai-citation-opportunity/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "visibility-to-opportunity",
+      "from": "visibility",
+      "to": "opportunity",
+      "artifact_type": "ai-visibility-snapshot/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "question_scope",
+    "sample_method",
+    "citation_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
+  ]
 }

@@ -1,0 +1,30 @@
+{
+  "illustrative": true,
+  "schema_version": 1,
+  "artifact_type": "receivable-outcome/v1",
+  "artifact_id": "ar-outcome-acme-inv-17-v2",
+  "source_review_artifact_id": "ar-review-acme-inv-17-v1",
+  "case_id": "ar-case-acme-inv-17",
+  "entity": "Example SaaS Ltd",
+  "provider_account_id": "acct_example_live",
+  "mode": "live",
+  "customer_id": "cus_17",
+  "invoice_id": "in_17",
+  "currency": "USD",
+  "observed_at": "2026-09-28T11:00:00Z",
+  "created_at": "2026-09-28T11:10:00Z",
+  "new_collected_minor": 12000,
+  "current_remaining_minor": 0,
+  "recovery_state": "collected_unsettled",
+  "current_invoice_source_ref": "finance-invoice-17",
+  "provider_payment_receipt": {"payment_id": "pi_18", "invoice_id": "in_17", "customer_id": "cus_17", "account_id": "acct_example_live", "mode": "live", "currency": "USD", "amount_minor": 12000, "status": "succeeded", "observed_at": "2026-09-28T10:00:00Z", "source_ref": "payment-18"},
+  "payout_allocation": null,
+  "bank_ledger_match": null,
+  "owner_id": "finance-owner",
+  "next_check_at": "2026-10-01T12:00:00Z",
+  "source_refs": [
+    {"id": "finance-invoice-17", "uri": "billing:acct_example_live/in_17@2026-09-28T11:00:00Z", "observed_at": "2026-09-28T11:00:00Z"},
+    {"id": "payment-18", "uri": "billing:acct_example_live/pi_18", "observed_at": "2026-09-28T11:00:00Z"}
+  ],
+  "limitations": ["No payout allocation or bank deposit observed yet."]
+}

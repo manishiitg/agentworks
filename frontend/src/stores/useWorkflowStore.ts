@@ -145,6 +145,15 @@ function loadWorkflowUIStateByPreset(): Record<string, PersistedWorkflowUIState>
   }
 }
 
+export function hasSavedWorkflowWorkspaceView(presetId: string): boolean {
+  const saved = loadWorkflowUIStateByPreset()[presetId]
+  return Boolean(
+    saved?.workflowWorkspaceView ||
+    saved?.lastCanvasView ||
+    loadLegacyWorkspaceViewByPreset()[presetId],
+  )
+}
+
 function persistWorkflowUIStateForPreset(
   presetId: string | null,
   patch: PersistedWorkflowUIState,

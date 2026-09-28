@@ -1,0 +1,28 @@
+{
+  "artifact_type":"ai-citation-opportunity/v1",
+  "artifact_id":"ai-opportunity-001",
+  "source_snapshot_artifact_id":"ai-snapshot-001",
+  "site":"https://arbordesk.example",
+  "question_id":"Q-CLINIC-1",
+  "question_version":"1",
+  "engine":"Example Answer Engine",
+  "surface":"public-web-answer",
+  "locale":"en-GB",
+  "observed_at":"2026-09-26T11:15:00Z",
+  "source_refs":[
+    {"id":"snapshot","uri":"artifact:ai-snapshot-001","observed_at":"2026-09-26T10:15:00Z"},
+    {"id":"page","uri":"https://arbordesk.example/clinics#capture-2026-09-26","observed_at":"2026-09-26T11:00:00Z"},
+    {"id":"product-guide","uri":"owner-docs/clinic-scheduling@v3","observed_at":"2026-09-26T11:05:00Z"}
+  ],
+  "observed_brand_citations":1,
+  "observed_valid_attempts":2,
+  "target_page":"https://arbordesk.example/clinics",
+  "page_observation_ref":"page",
+  "finding":"The page lists scheduling for clinics but does not answer the approved UK physiotherapy workflow question clearly; this is a content hypothesis, not a proven cause of citation variance.",
+  "approved_fact_ref":"product-guide",
+  "recommendation":"Ask the product owner to review a concise section describing the supported physiotherapy booking workflow and link it from the clinic page.",
+  "owner":"Website owner",
+  "decision_state":"pending_owner_review",
+  "publication_state":"not_published",
+  "next_check":"If an approved page revision is later published, retest the same question, engine, surface, locale and session mode; report answer samples separately from analytics referrals."
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "order-exception-to-reviewed-update",
+  "playbook_version": "0.1.1",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm exception outcome and owners", "instructions": "Name the Operations investigation owner, Support case and message owner, first review result, contact deadline and excluded actions."},
+    {"id": "order_scope", "title": "Bind one exact order exception", "instructions": "Record business, order, payment, fulfillment, shipment and customer IDs, promised time, time zone and stable case key. Never join by email, amount or display name alone."},
+    {"id": "case_scope", "title": "Bind exact support case and recipient", "instructions": "Record current helpdesk case ID and revision, linked order/customer IDs, recipient reference, channel, last customer message and prior contact. A case for another order cannot receive this artifact."},
+    {"id": "state_policy", "title": "Set state and contact rules", "instructions": "Record paid/captured, fulfillment and carrier meanings; missing acceptance scan is pickup unverified, not lost or delivered. Record exception threshold, refund and reship owner, customer-claim policy and message approval rule."},
+    {"id": "team_bindings", "title": "Bind ready Operations and Support Crews", "instructions": "Inspect compatible existing Crews. Bind ready Order Operations Coordinator and Support Reply Drafter IDs and skills; create only after reviewed owner/access scope."},
+    {"id": "source_access", "title": "Probe exact source joins", "instructions": "Read a real authorized order, payment, fulfillment, carrier event history, current case and prior contact for one exception. Match payment and fulfillment records to the order, carrier record to shipment, and case to order/customer by explicit source fields. Save IDs, revisions, observed times and gaps; a named SaaS product is not access."},
+    {"id": "handoff_contract", "title": "Block Support on invalid order evidence", "instructions": "Run the bundled validator on the exact order artifact before Support consumes it and on the resulting update. Reject wrong order/customer/case, label-only delivery, false loss, false refund and sent-message claims. Re-read changed source state."},
+    {"id": "plan_review", "title": "Review concrete route", "instructions": "Show Crew IDs, source and artifact paths, blocking validator steps, case join, owner action, contact approval boundary, deduplication rule, privacy, cost and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized exception manually", "instructions": "Use real or historical current source records. Save run and validator IDs, reviewed classification, actual case state, owner corrections and unsent update or no-message reason. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose manual or reviewed recurrence", "instructions": "Record order/case/action keys, approvals, provider receipts if a later send is authorized, and next check. Choose manual-only or a reviewed authenticated event/cadence with replay protection, retries, cost and notifications. Setup enables no send, refund or reship."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

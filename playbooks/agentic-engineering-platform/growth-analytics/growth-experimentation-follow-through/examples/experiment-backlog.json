@@ -1,32 +1,19 @@
 {
   "contract_version": "experiment-backlog/v1",
-  "revision": 1,
+  "revision": 2,
   "status": "example_only",
+  "experiment_id": "exp-guided-setup-7",
+  "source_plan_artifact_id": "retention-plan-001",
+  "frozen_plan_artifact_id": "frozen-retention-plan-7",
+  "execution_artifact_id": "experiment-execution-7",
+  "latest_readout_artifact_id": "experiment-readout-7",
   "prioritization_model": {
-    "id": "example-impact-confidence-cost",
-    "revision": 1,
-    "weights": "customer-defined"
+    "id": "growth-owner-reviewed-priority-v2",
+    "inputs": ["observed retention gap", "implementation cost", "sample feasibility", "guardrail risk"],
+    "owner_decision": "approved for a bounded test"
   },
-  "hypotheses": [
-    {
-      "id": "example-hypothesis-1",
-      "statement": "example-only hypothesis text",
-      "source_finding": "example-finding-ref with evidence links",
-      "confidence": "example-medium",
-      "target_kpi": "example-kpi with pre-registered target",
-      "readout_window": "customer-defined",
-      "guardrails": ["example-guardrail-metric"],
-      "status": "example-backlog",
-      "owner": "customer-defined"
-    }
-  ],
-  "readouts": [
-    {
-      "experiment_ref": "example-experiment-1",
-      "kpi_delta": "example-only",
-      "verdict": "example-ship-iterate-kill",
-      "guardrail_status": "example-pass",
-      "confidence": "example-medium"
-    }
-  ]
+  "state": "launched_with_inconclusive_readout",
+  "next_owner_decision": "Review the 200-per-arm sample against the frozen 250 target; decide whether to extend, redesign or stop through a separate approved route.",
+  "winner": null,
+  "shipping_state": "not_shipped"
 }

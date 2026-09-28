@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "artifact_type": "sales-meeting-outcome/v1",
+  "meeting_id": "meeting-example-001",
+  "source_action_id": "action-example-001",
+  "lead_id": "lead-example-001",
+  "created_at": "2026-09-25T11:00:00Z",
+  "state": "booked",
+  "owner": "Sales owner",
+  "provider": "google-calendar",
+  "provider_event_id": "calendar-example-event-001",
+  "starts_at": "2026-09-29T14:00:00Z",
+  "observed_at": "2026-09-25T10:59:00Z",
+  "source_refs": [
+    {
+      "id": "calendar-event",
+      "uri": "calendar://calendar-example-event-001",
+      "observed_at": "2026-09-25T10:59:00Z"
+    }
+  ],
+  "booking_mode": "booking_link"
+}

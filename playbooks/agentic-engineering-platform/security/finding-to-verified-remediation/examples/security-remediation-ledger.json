@@ -1,0 +1,20 @@
+{
+  "artifact_type": "security-remediation-ledger/v1",
+  "tenant_id": "tenant-demo",
+  "finding_id": "sec-81",
+  "asset_id": "checkout-api",
+  "environment": "staging",
+  "observed_build": "sha:c100a",
+  "scope_ref": "scope:checkout-staging-2026",
+  "policy_version": "appsec-v2",
+  "observed_at": "2026-09-25T11:00:00Z",
+  "issue_id": "issue-92",
+  "owner_id": "checkout-owner",
+  "change_sha": "sha:c101b",
+  "change_state": "merged",
+  "deployment_state": "not_deployed",
+  "retest_state": "not_run",
+  "disposition": "open",
+  "next_action": "Deploy approved fix to the affected staging environment, then run the independent retest.",
+  "source_refs": ["issue-92", "pr-92", "deployment:staging-c100a"]
+}

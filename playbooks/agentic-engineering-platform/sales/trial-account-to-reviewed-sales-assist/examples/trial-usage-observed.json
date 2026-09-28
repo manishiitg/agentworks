@@ -1,0 +1,33 @@
+{
+  "artifact_type": "trial-usage-observation/v1",
+  "artifact_id": "trial-usage-42",
+  "entity_id": "entity-example",
+  "product_id": "product-example",
+  "tenant_id": "tenant-42",
+  "product_account_id": "account-42",
+  "trial_id": "trial-42",
+  "subscription_id": "sub-42",
+  "trial_status": "trialing",
+  "trial_revision": "rev3",
+  "trial_source_id": "sub-42@rev3",
+  "trial_observed_at": "2026-09-26T10:00:00Z",
+  "trial_start_at": "2026-09-24T00:00:00Z",
+  "trial_end_at": "2026-10-02T00:00:00Z",
+  "event_rule_version": "project-created-v1",
+  "window_start_at": "2026-09-24T00:00:00Z",
+  "window_end_at": "2026-09-26T10:00:00Z",
+  "coverage": "complete",
+  "coverage_source_id": "coverage-42@v1",
+  "qualifying_events": [
+    {
+      "event_id": "EV-42",
+      "source_id": "event-export-42@row7",
+      "tenant_id": "tenant-42",
+      "product_account_id": "account-42",
+      "rule_version": "project-created-v1",
+      "occurred_at": "2026-09-25T09:00:00Z"
+    }
+  ],
+  "usage_state": "observed",
+  "observed_at": "2026-09-26T10:05:00Z"
+}

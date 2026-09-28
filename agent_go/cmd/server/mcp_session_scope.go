@@ -14,6 +14,9 @@ import (
 // CLI can outlive both the Agent instance and the catalog used to start its turn.
 // Global discovery is metadata, not this chat's authorization boundary.
 func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID, server, tool string) (*executor.ResolvedMCPServer, error) {
+	if resolved, isReportRun, err := api.resolveReportRunMCPServer(ctx, sessionID, server, tool); isReportRun {
+		return resolved, err
+	}
 	cached, ok := api.workshopChatSessions.Load(sessionID)
 	if !ok {
 		return nil, nil

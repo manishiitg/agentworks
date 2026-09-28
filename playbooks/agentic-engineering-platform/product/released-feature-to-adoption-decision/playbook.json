@@ -1,0 +1,39 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "released-feature-to-adoption-decision",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a release- and flag-bound adoption observation to reviewed Product decision route with denominator and coverage gates."}],
+  "title": "Released Feature to Adoption Decision",
+  "description": "Measure eligible, exposed and using accounts for a shipped feature, then prepare a bounded product owner decision.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Product"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Released Feature to Adoption Decision as a chat-led proposal. Inspect existing Product Adoption Analyst and Product Feedback Coordinator Crews, the actual release/build and flag revision, exact eligible segment, identity and exposure/use rules, comparable window, predeclared target, minimum sample, coverage and current issue source. Propose reuse or reviewed creation, blocking validators, an owner-reviewed decision and a real manual case including incomplete coverage. Selecting this Playbook does not query customer data, create an issue, change a flag, message customers, launch an experiment or enable recurrence.",
+  "setup_inputs": [
+    {"id":"release_scope","label":"Tenant, product, feature, release/build, flag revision and eligible segment","required":true},
+    {"id":"measurement_rule","label":"Versioned distinct-account, eligibility, exposure and use predicates and window","required":true},
+    {"id":"target_sample","label":"Predeclared use target, minimum exposed sample and coverage threshold","required":true},
+    {"id":"source_access","label":"Authorized release, flag, eligibility, exposure, use and issue records or exports","required":true},
+    {"id":"decision_owner","label":"Product owner, issue-match, action and privacy policy","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed release/analytics event and repeat route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing Adoption or Product Crew capabilities","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated bounded observation to Product","capability":"durable_artifacts","optional":true},
+    {"id":"release-source","name":"Release and feature flag source","type":"mcp","purpose":"Verify exact deployed build, flag revision and exposure period","capability":"release_read","optional":true},
+    {"id":"analytics-source","name":"Product analytics or warehouse export","type":"mcp","purpose":"Read eligible, exposure and feature-use distinct accounts with coverage","capability":"product_events_read","optional":true},
+    {"id":"issue-source","name":"Issue tracker or roadmap export","type":"mcp","purpose":"Re-read current issue matches and owner state before a decision","capability":"product_issue_read","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Released feature adoption","focus_areas":["Eligible versus exposed versus using account counts and source coverage", "Owner decisions on released features without unsupported causal claims"],"review_when":["A complete comparable window arrives, instrumentation or flag revision changes, or an owner decision remains pending"]}],
+  "outputs": ["Reviewed Crew roster and source/rule map", "Validated feature-adoption-observation/v1", "Validated feature-adoption-decision/v1 with current issue read", "Manual case, owner state and activation choice"],
+  "agent_slots": [
+    {"id":"adoption","agent_playbook_id":"product-adoption-analyst","required":true,"output":"feature-adoption-observation/v1"},
+    {"id":"product","agent_playbook_id":"product-feedback-coordinator","required":true,"output":"feature-adoption-decision/v1"}
+  ],
+  "handoffs": [{"id":"adoption-to-product","from":"adoption","to":"product","artifact_type":"feature-adoption-observation/v1","required":true}],
+  "setup_checks": ["goal_owner", "release_scope", "measurement_rule", "target_sample", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

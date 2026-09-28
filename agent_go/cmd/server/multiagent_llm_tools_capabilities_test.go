@@ -208,6 +208,34 @@ func TestProviderAuthConfiguredUsesActualCodexLoginStatus(t *testing.T) {
 	}
 }
 
+func TestProviderAuthConfiguredUsesActualAgyLoginStatus(t *testing.T) {
+	withFakeExecutable(t, "agy")
+	// agy exits 0 even when logged out: the sign-in marker in the text is
+	// the only signal.
+	withAgyModels(t, "Fetching available models...\nError: Please sign in to view available models. Launch the CLI without arguments to sign in.\n", nil)
+	configured, _ := providerAuthConfigured("agy-cli", &llm.ProviderAPIKeys{})
+	if configured {
+		t.Fatal("agy-cli auth configured = true for a logged-out installed CLI")
+	}
+
+	withAgyModels(t, "Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\n", nil)
+	configured, _ = providerAuthConfigured("agy-cli", &llm.ProviderAPIKeys{})
+	if !configured {
+		t.Fatal("agy-cli auth configured = false for a confirmed CLI login")
+	}
+}
+
+func withAgyModels(t *testing.T, output string, err error) {
+	t.Helper()
+	previous := agyCLIModelsCommand
+	resetCLIAuthProbeCache(&agyCLIAuthProbeCache)
+	agyCLIModelsCommand = func(context.Context) ([]byte, error) { return []byte(output), err }
+	t.Cleanup(func() {
+		agyCLIModelsCommand = previous
+		resetCLIAuthProbeCache(&agyCLIAuthProbeCache)
+	})
+}
+
 func TestCursorCLIAuthProbeKeepsLastConfirmedLoginOnTransientFailure(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	withFakeExecutable(t, "cursor-agent")

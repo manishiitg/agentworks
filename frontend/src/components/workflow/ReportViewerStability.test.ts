@@ -11,12 +11,12 @@ describe('open report stability', () => {
     expect(source).not.toContain('report_plan.json')
   })
 
-  it('keeps durable workflow decisions out of Reports and scoped to Pulse', () => {
+  it('keeps durable workflow decisions out of Reports and in the Human actions view', () => {
     const report = readFileSync('src/components/workflow/ReportViewer.tsx', 'utf8')
-    const pulse = readFileSync('src/components/workflow/PulseWorkspace.tsx', 'utf8')
+    const humanActions = readFileSync('src/components/workflow/HumanActionsView.tsx', 'utf8')
 
     expect(report).not.toContain('ReportHumanInputPanel')
-    expect(pulse).toContain('<ReportHumanInputPanel')
+    expect(humanActions).toContain('<ReportHumanInputPanel')
   })
 
   it('keeps report reload behind the explicit toolbar refresh action', () => {
@@ -33,6 +33,17 @@ describe('open report stability', () => {
 
     expect(viewer).toContain("api.post('/api/workflow/report-preview/media-url'")
     expect(viewer).not.toContain("api.post('/workflow/report-preview/media-url'")
+  })
+
+  it('keeps the report data API stable when a parent passes a new sendChatMessage', () => {
+    // Typing in the crew chat input re-rendered the pane with a new inline
+    // sendChatMessage; a new data API re-dispatched report:data on every
+    // keystroke and re-ran live report scripts (exhausting Notion quota).
+    const viewer = readFileSync('src/components/workflow/ReportViewer.tsx', 'utf8')
+
+    expect(viewer).toContain('sendChatMessageRef.current = sendChatMessage')
+    expect(viewer).toContain('}, [workspacePath])')
+    expect(viewer).not.toContain('}, [workspacePath, sendChatMessage])')
   })
 
   it('does not let outer polling remount the report iframe', () => {

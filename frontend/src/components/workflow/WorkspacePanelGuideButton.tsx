@@ -1,13 +1,15 @@
 import { lazy, Suspense, useContext, useEffect, useId, useRef, useState } from 'react'
 import { CircleHelp, X } from 'lucide-react'
+import { AskAIButton } from './AskAIButton'
 import { getWorkspacePanelGuide } from './workspacePanelGuides'
 import { WorkspacePanelGuideContext } from './WorkspacePanelGuideContext'
 import { integrationHowToTopic } from './integrationHowToTopics'
+import type { PanelGuideAsk } from './workspacePanelGuideAsk'
 
 const IntegrationHowToGuide = lazy(() => import('./IntegrationHowToGuide').then(module => ({ default: module.IntegrationHowToGuide })))
 
 /** A small, on-demand explanation attached to a workspace panel header. */
-export function WorkspacePanelGuideButton({ topic }: { topic: string }) {
+export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?: PanelGuideAsk }) {
   const surface = useContext(WorkspacePanelGuideContext)
   const guide = getWorkspacePanelGuide(topic, surface)
   const howToTopic = integrationHowToTopic(topic)
@@ -77,7 +79,14 @@ export function WorkspacePanelGuideButton({ topic }: { topic: string }) {
               {guide.steps.map(step => <li key={step} className="pl-0.5">{step}</li>)}
             </ol>
           )}
-          <button type="button" onClick={close} className="mt-4 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">Got it</button>
+          {ask ? (
+            <div className="mt-4 flex items-center gap-2">
+              <button type="button" onClick={close} className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">Got it</button>
+              <AskAIButton workspacePath={ask.workspacePath} message={ask.message} onAsk={ask.onAsk} label={ask.label ?? 'Ask AI'} />
+            </div>
+          ) : (
+            <button type="button" onClick={close} className="mt-4 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">Got it</button>
+          )}
         </div>
       )}
     </div>

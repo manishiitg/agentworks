@@ -67,6 +67,10 @@ export interface ReportDataApi {
     rowId: string | number,
     fields: Record<string, string | number | boolean | null>,
   ) => Promise<{ oldValues: Record<string, unknown>; newValues: Record<string, unknown> }>
+  // Runs one of the workflow's own scripts under code/ on the server (with the
+  // workflow's MCP servers, secrets and a read-only DB snapshot) and resolves
+  // the JSON it printed. Live data: every call runs the script again.
+  run: (path: string, args?: unknown) => Promise<unknown>
 }
 
 export interface ReportRuntime {

@@ -1,7 +1,8 @@
 import { Children, Fragment, cloneElement, isValidElement, type ComponentType, type ReactElement, type ReactNode } from 'react'
 import { WorkspaceViewTabs, type WorkspaceViewTabOption } from './WorkspaceViewTabs'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
-import { WorkspaceViewActions } from './WorkspaceViewActions'
+import { panelGuideAskFromNode, type PanelGuideAsk } from './workspacePanelGuideAsk'
+import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
 export interface WorkspaceViewHeaderTabs {
@@ -30,7 +31,7 @@ type WorkspaceViewHeaderProps = {
   context?: ReactNode
   /** Muted line under the title row. */
   subtitle?: ReactNode
-  /** Right side. The walkthrough is placed between Ask AI and Refresh. */
+  /** Right side. The walkthrough is placed before Refresh; an icon-only Ask AI child moves into the walkthrough popup. */
   actions?: ReactNode
   /** Full-width row under the title (stats strip, pills). For tabs use the tabs prop. */
   below?: ReactNode
@@ -64,7 +65,7 @@ type WorkspaceViewHeaderProps = {
  *   render as-is at the same h-9 footprint
  * - title: text-sm font-semibold, rendered here — never override the size
  * - subtitle: text-xs text-muted-foreground, rendered here
- * - actions: Ask AI, walkthrough, Refresh, with content chosen from the current view title
+ * - actions: walkthrough, Refresh; Ask AI lives inside the walkthrough popup
  */
 function isRefreshAction(node: ReactNode): boolean {
   if (!isValidElement<{ label?: string; icon?: unknown; 'aria-label'?: string; children?: ReactNode }>(node)) return false
@@ -74,17 +75,36 @@ function isRefreshAction(node: ReactNode): boolean {
   return Children.toArray(node.props.children).some(isRefreshAction)
 }
 
+function withAsk(walkthrough: ReactNode, ask: PanelGuideAsk | undefined): ReactNode {
+  if (!ask || !isValidElement<{ ask?: PanelGuideAsk }>(walkthrough)) return walkthrough
+  return cloneElement(walkthrough, { ask })
+}
+
 function insertWalkthrough(actions: ReactNode, walkthrough: ReactNode): ReactNode {
   if (!walkthrough) return actions
-  if (isValidElement<{ walkthrough?: ReactNode }>(actions) && actions.type === WorkspaceViewActions) {
-    return cloneElement(actions, { walkthrough })
+  if (isValidElement<WorkspaceViewActionsProps>(actions) && actions.type === WorkspaceViewActions) {
+    const { workspacePath, message, onAsk } = actions.props
+    return cloneElement(actions, { walkthrough: withAsk(walkthrough, { workspacePath, message, onAsk }) })
   }
+  // A lone Ask AI button is the whole row: it moves into the popup and the
+  // row keeps just the walkthrough.
+  const loneAsk = panelGuideAskFromNode(actions)
+  if (loneAsk) return withAsk(walkthrough, loneAsk)
   if (isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment) {
     const children: ReactNode[] = Children.toArray(actions.props.children)
-    const refreshIndex = children.findIndex(isRefreshAction)
-    if (refreshIndex >= 0) children.splice(refreshIndex, 0, walkthrough)
-    else children.push(walkthrough)
-    return <>{children}</>
+    let ask: PanelGuideAsk | undefined
+    const rest = children.filter(child => {
+      if (ask) return true
+      const found = panelGuideAskFromNode(child)
+      if (!found) return true
+      ask = found
+      return false
+    })
+    const guided = withAsk(walkthrough, ask)
+    const refreshIndex = rest.findIndex(isRefreshAction)
+    if (refreshIndex >= 0) rest.splice(refreshIndex, 0, guided)
+    else rest.push(guided)
+    return <>{rest}</>
   }
   return <>{actions}{walkthrough}</>
 }

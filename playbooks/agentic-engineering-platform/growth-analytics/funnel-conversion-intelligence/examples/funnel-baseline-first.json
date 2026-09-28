@@ -1,0 +1,77 @@
+{
+  "artifact_type": "funnel-observation/v1",
+  "artifact_id": "funnel-baseline-first-001",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "cohort_id": "uk-self-serve-new-accounts",
+  "timezone": "Europe/London",
+  "identity_rule": "event-account-id-to-billing-customer-id-v2",
+  "exclusion_rule": "exclude-internal-test-and-existing-accounts-v2",
+  "observed_at": "2026-10-04T09:00:00Z",
+  "comparison_state": "baseline_first",
+  "baseline_start": null,
+  "baseline_end": null,
+  "current_start": "2026-09-01",
+  "current_end": "2026-09-30",
+  "stages": [
+    {
+      "id": "eligible",
+      "definition": "unique approved UK self-serve new accounts",
+      "version": "cohort-v2"
+    },
+    {
+      "id": "signup",
+      "definition": "account created",
+      "version": "event-v2"
+    },
+    {
+      "id": "activated",
+      "definition": "first scheduling workflow completed",
+      "version": "event-v2"
+    },
+    {
+      "id": "paid",
+      "definition": "billing subscription active with first successful charge",
+      "version": "billing-v2"
+    }
+  ],
+  "source_refs": [
+    {
+      "id": "current-events",
+      "uri": "exports/fictional-events-sep.csv",
+      "observed_at": "2026-10-04T08:10:00Z"
+    },
+    {
+      "id": "current-billing",
+      "uri": "exports/fictional-billing-sep.csv",
+      "observed_at": "2026-10-04T08:30:00Z"
+    }
+  ],
+  "baseline": null,
+  "current": {
+    "counts": {
+      "eligible": 1200,
+      "signup": 360,
+      "activated": 180,
+      "paid": 48
+    },
+    "matched_identity_users": 1176,
+    "event_source_ref": "current-events",
+    "paid_source_ref": "current-billing",
+    "paid_state_cutoff": "2026-10-03T23:59:00Z"
+  },
+  "metric_id": "paid-per-eligible-v2",
+  "minimum_identity_coverage_bps": 9500,
+  "baseline_paid_rate_bps": null,
+  "current_paid_rate_bps": 400,
+  "change_bps": null,
+  "baseline_activation_per_signup_bps": null,
+  "current_activation_per_signup_bps": 5000,
+  "quality_state": "partial_coverage",
+  "limitations": [
+    "No prior comparable cohort exists; current paid/eligible rate is a starting baseline, not a trend.",
+    "Identity join covers 98% of eligible users; unmatched accounts may change the rate."
+  ],
+  "owner": "Growth lead",
+  "next_check": "Review current event and billing coverage; collect a second comparable cohort before reporting a trend."
+}

@@ -1,0 +1,199 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "inbound-lead-to-meeting-review",
+  "version": "0.2.0",
+  "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Adds a reviewed booking-link delivery route, provider-confirmed send and booked-meeting contracts, and explicit connector setup."
+    },
+    {
+      "version": "0.1.0",
+      "summary": "Adds a chat-led inbound sales proposal with two required Crews, optional account research, validated draft handoffs, and a manual first run."
+    }
+  ],
+  "title": "Inbound Lead-to-Meeting Review",
+  "description": "Qualify inbound enquiries, offer a reviewed booking path, and track provider-confirmed delivery and meetings.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Sales"
+  ],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use this Playbook as a chat-led proposal. Inspect the current Automation, existing Crews, website lead source, CRM, email and calendar connections, routing policy, suppression, and previous contact. Propose one bounded form-to-meeting route: offer direct booking only where a verified website booking integration exists; otherwise prepare a reviewed booking-link reply, send only through an explicitly authorized channel, and reconcile the provider-confirmed meeting. Show exact steps, connection scopes, approval and deduplication gates, and a manual test. After I review the concrete proposal, configure it through Builder chat tools and verify the actual route. Selecting the Playbook alone does not create Crews, send, write CRM, publish a widget, or activate recurrence.",
+  "setup_inputs": [
+    {
+      "id": "lead_source",
+      "label": "Authorized inbound lead source or export",
+      "required": true
+    },
+    {
+      "id": "offer_icp",
+      "label": "Offer, target buyer, fit and routing criteria",
+      "required": true
+    },
+    {
+      "id": "owner",
+      "label": "Lead owner and review decision maker",
+      "required": true
+    },
+    {
+      "id": "contact_policy",
+      "label": "Contact, suppression, approval, and duplicate rules",
+      "required": true
+    },
+    {
+      "id": "meeting_metric",
+      "label": "Useful meeting definition, source, and baseline decision",
+      "required": true
+    },
+    {
+      "id": "cadence",
+      "label": "Manual-only or reviewed cadence and timezone",
+      "required": false
+    },
+    {
+      "id": "booking_route",
+      "label": "Verified booking URL or website booking provider and calendar outcome source",
+      "required": true
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create a reviewed missing sales specialist with a stable idempotency key",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass only a validated bounded lead or research artifact to the next authorized Crew",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "lead-source",
+      "name": "CRM or form export",
+      "type": "mcp",
+      "purpose": "Read current inbound requests, owner and prior-contact state from an authorized source",
+      "capability": "lead_records",
+      "optional": true
+    },
+    {
+      "id": "contact-channel",
+      "name": "CRM, email, or calendar connection",
+      "type": "mcp",
+      "purpose": "Support separately approved delivery and actual meeting outcome tracking",
+      "capability": "sales_followup",
+      "optional": true
+    },
+    {
+      "id": "authenticated-webhook",
+      "name": "Builder workflow webhook",
+      "type": "builtin",
+      "purpose": "Accept authorized form events asynchronously with signature and event ID checks",
+      "capability": "inbound_events",
+      "optional": true
+    },
+    {
+      "id": "google-workspace-cli",
+      "name": "Google Workspace connection",
+      "type": "builtin",
+      "purpose": "Read Gmail and Calendar, and send a reviewed reply only when agent-write scope is explicitly granted",
+      "capability": "sales_delivery",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Qualified conversations",
+      "focus_areas": [
+        "Whether reviewed follow-ups address the buyer's actual request",
+        "Whether qualified leads become useful meetings without duplicate or blocked contact"
+      ],
+      "review_when": [
+        "Qualification policy changes, a lead replies, a meeting is booked, or source freshness fails"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed sales Crew roster and source map",
+    "Validated lead qualification brief",
+    "Optional sourced account research",
+    "Owner-reviewed follow-up draft and action ledger",
+    "Manual route evidence and meeting-measurement policy",
+    "Provider-confirmed delivery receipt when a message is actually sent",
+    "Calendar or CRM confirmed meeting outcome when booked"
+  ],
+  "agent_slots": [
+    {
+      "id": "qualification",
+      "agent_playbook_id": "lead-intake-qualifier",
+      "required": true,
+      "output": "lead-qualification-brief/v1"
+    },
+    {
+      "id": "research",
+      "agent_playbook_id": "account-researcher",
+      "required": false,
+      "output": "account-research-brief/v1"
+    },
+    {
+      "id": "followup",
+      "agent_playbook_id": "sales-followup-coordinator",
+      "required": true,
+      "output": "sales-followup-draft/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "qualification-to-followup",
+      "from": "qualification",
+      "to": "followup",
+      "artifact_type": "lead-qualification-brief/v1",
+      "required": true
+    },
+    {
+      "id": "qualification-to-research",
+      "from": "qualification",
+      "to": "research",
+      "artifact_type": "lead-qualification-brief/v1",
+      "required": false
+    },
+    {
+      "id": "research-to-followup",
+      "from": "research",
+      "to": "followup",
+      "artifact_type": "account-research-brief/v1",
+      "required": false
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "source_scope",
+    "policy_metric",
+    "team_bindings",
+    "access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "action_ledger",
+    "activation_choice"
+  ]
+}

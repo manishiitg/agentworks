@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "growth-experimentation-follow-through",
+  "playbook_version": "0.3.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm the experiment job and owners","instructions":"Name the exact experiment, decision owner, rollout and rollback owners, measurement owner, product/tenant, and the outcome question. A pending plan is not approval."},
+    {"id":"frozen_plan","title":"Freeze the preregistered plan","instructions":"Record plan artifact ID/revision, eligible unit, control/treatment IDs, allocation, primary and guardrail metric rules, minimum sample, readout window and stop rule before looking at results."},
+    {"id":"approval_rule","title":"Verify approval and action boundary","instructions":"Locate a dated owner decision tied to the exact plan revision and scope. Keep launch, work-tracker writes, customer contact and notifications in separately authorized routes."},
+    {"id":"provider_scope","title":"Inspect provider and rollback scope","instructions":"Probe the exact flag, campaign or experiment object and its current revision, allocation, exposure source, rollback owner and duplicate-launch key. A ticket or approved plan is not a launch receipt."},
+    {"id":"team_bindings","title":"Bind two distinct Crew jobs","instructions":"Inspect and reuse or create Experiment Run Coordinator and Growth Outcome Analyst Crew IDs with selected skills, separate output paths and least-privilege access."},
+    {"id":"source_access","title":"Test provider and outcome reads","instructions":"Have the run Crew read one representative provider state and decision record. Have the outcome Crew read exposure and primary/guardrail sources under the same experiment and tenant. Record source revisions, join coverage and missing access."},
+    {"id":"handoff_contract","title":"Validate the exact execution-to-readout handoff","instructions":"Save a normalized frozen-experiment-plan/v1 and experiment-execution-record/v1, then run the blocking validator against both. Pending approval or missing launch receipt stops outcome claims. For a launched case, pass the checked artifact ID and save/validate experiment-outcome-readout/v1 against the plan and execution, including an inconclusive example."},
+    {"id":"plan_review","title":"Review Builder proposal","instructions":"Show Crew reuse/creation, frozen plan, provider object, decision receipt, artifact paths, blocking checks, owner and readout gates. Selection creates no work item, variant, message, launch or schedule."},
+    {"id":"manual_test","title":"Run one bounded real case","instructions":"With authorized records, prove either an honest pending state or a provider-confirmed launch and outcome read. Recompute counts and guardrails; review source truth and limitations with the owner."},
+    {"id":"activation_choice","title":"Choose repeat policy","instructions":"Record manual-only or a reviewed paused check schedule with timezone, window/source lag, query cost, retries and notifications. Completing setup never activates recurrence or external actions."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "support-case-to-reviewed-resolution",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm case goal and owner", "instructions": "Name the support case owner, priority and escalation decision makers, customer contact owner, first review result, response deadlines, and excluded actions."},
+    {"id": "case_scope", "title": "Bind exact case and customer scope", "instructions": "Record tenant, case and account IDs, channel, current thread, time zone, authorized data and attachment handling, and stable deduplication keys. Never join customers by name alone."},
+    {"id": "priority_policy", "title": "Set urgency and escalation rules", "instructions": "Record priority policy revision, symptom versus verified incident rule, response SLAs, receiving-team acceptance criteria, impact evidence, and closure policy."},
+    {"id": "contact_knowledge", "title": "Set reply and source policy", "instructions": "Record current approved help content, product or billing source, claim restrictions, recipient and channel, message owner, prior-contact and reply checks, and exact approval rule."},
+    {"id": "team_bindings", "title": "Bind ready Support Crews", "instructions": "Inspect existing compatible Crews before proposing new ones. Record ready Support Triage Assistant and Support Reply Drafter IDs and selected skills. Add Escalation Coordinator only for a distinct receiving owner or access boundary."},
+    {"id": "source_access", "title": "Probe real source access", "instructions": "Read a representative authorized case and latest thread, one applicable current help source, prior reply and status, and incident or receiving-owner state if escalated. A named provider is not verified access."},
+    {"id": "handoff_contract", "title": "Validate all selected handoffs", "instructions": "Run the bundled validator before Reply or Escalation reads Triage; reject wrong case/account, stale case status, unsupported citations, unaccepted escalation claims, and sent drafts. For an approved send or closure, validate provider receipt and observed outcome separately."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, source and artifact paths, validator steps, triage and escalation branches, exact case/message approval boundaries, deadlines, privacy limits, duplicate policy, and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one authorized case manually", "instructions": "Use a real or historical case with current records. Save run IDs, validator results, owner decisions, actual provider state and observed case outcome or unknown. Fixtures and unsent drafts do not complete setup."},
+    {"id": "activation_choice", "title": "Choose recurrence and action ledger", "instructions": "Record stable case, escalation, draft and action IDs, approval, message fingerprint, provider receipt and next check. Choose manual-only or a reviewed authenticated event or schedule with retries, cost and notifications; setup completion alone enables no send."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

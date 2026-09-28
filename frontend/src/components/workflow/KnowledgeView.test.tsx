@@ -61,6 +61,17 @@ function tabByName(host: HTMLElement, name: string) {
   return tab as HTMLElement;
 }
 
+async function openWalkthrough(host: HTMLElement) {
+  const guide = host.querySelector('button[aria-label^="Walkthrough:"]') as HTMLElement;
+  await act(async () => {
+    guide.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+function popupAskMessage(host: HTMLElement) {
+  return host.querySelector('[role="dialog"] [data-testid="ask-ai"]')?.getAttribute("data-message");
+}
+
 it("renders one header with three tabs and learnings first", async () => {
   const host = await renderView();
   expect(host.querySelector("h2")?.textContent).toBe("Knowledge");
@@ -72,7 +83,9 @@ it("renders one header with three tabs and learnings first", async () => {
   expect(host.querySelector('[data-testid="knowledgebase"]')).toBeNull();
   expect(host.querySelector('[data-testid="database"]')).toBeNull();
   expect(host.querySelector('[aria-label="Refresh Learnings"]')).not.toBeNull();
-  expect(host.querySelector('[data-testid="ask-ai"]')?.getAttribute("data-message")).toContain("Knowledge · Learnings");
+  expect(host.querySelector('[data-testid="ask-ai"]')).toBeNull();
+  await openWalkthrough(host);
+  expect(popupAskMessage(host)).toContain("Knowledge · Learnings");
 });
 
 it("switches content, Ask AI, and refresh per tab", async () => {
@@ -84,7 +97,8 @@ it("switches content, Ask AI, and refresh per tab", async () => {
   expect(host.querySelector('[data-testid="database"]')).not.toBeNull();
   expect(host.querySelector('[data-testid="learnings"]')).toBeNull();
   expect(host.querySelector('[aria-label="Refresh Database"]')).not.toBeNull();
-  expect(host.querySelector('[data-testid="ask-ai"]')?.getAttribute("data-message")).toContain("Knowledge · Database");
+  await openWalkthrough(host);
+  expect(popupAskMessage(host)).toContain("Knowledge · Database");
   expect(openWorkspaceView).toHaveBeenCalledWith("knowledge", "database");
 });
 

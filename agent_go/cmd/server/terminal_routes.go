@@ -492,6 +492,7 @@ func (api *StreamingAPI) handleGetTerminal(w http.ResponseWriter, r *http.Reques
 	}
 
 	contentMode := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("content")))
+	snapshot = withTerminalCLIUsage(snapshot)
 	var response terminals.Snapshot
 	if isMetadataOnlyTerminalList(contentMode) {
 		response = compactTerminalSnapshotForList(
@@ -1539,6 +1540,7 @@ func (api *StreamingAPI) enrichTerminalSnapshot(ctx context.Context, planTypes *
 }
 
 func (api *StreamingAPI) terminalSnapshotForList(ctx context.Context, planTypes *terminalPlanTypeResolver, snapshot terminals.Snapshot, contentMode string) terminals.Snapshot {
+	snapshot = withTerminalCLIUsage(snapshot)
 	if isMetadataOnlyTerminalList(contentMode) {
 		return compactTerminalSnapshotForList(api.enrichTerminalSnapshotMetadata(ctx, planTypes, snapshot), contentMode)
 	}
@@ -1792,6 +1794,14 @@ func compactTerminalStatusMetaForList(meta map[string]interface{}) map[string]in
 	}
 	const maxEntries = 12
 	out := make(map[string]interface{}, min(len(meta), maxEntries))
+	// Plan-usage structures the composer renders (statusline chip + terminal
+	// icon hover) are lists, which the scalar-only compaction below would drop.
+	// Keep them — ahead of the entry cap — when they stay small.
+	for _, key := range terminalListStatusMetaStructuredKeys {
+		if value, ok := compactTerminalStatusMetaStructuredValueForList(meta[key]); ok {
+			out[key] = value
+		}
+	}
 	keys := make([]string, 0, len(meta))
 	for key := range meta {
 		keys = append(keys, key)
@@ -1800,6 +1810,9 @@ func compactTerminalStatusMetaForList(meta map[string]interface{}) map[string]in
 	for _, key := range keys {
 		if len(out) >= maxEntries {
 			break
+		}
+		if _, kept := out[key]; kept {
+			continue
 		}
 		value, ok := compactTerminalStatusMetaValueForList(meta[key])
 		if !ok {
@@ -1811,6 +1824,24 @@ func compactTerminalStatusMetaForList(meta map[string]interface{}) map[string]in
 		return nil
 	}
 	return out
+}
+
+// terminalListStatusMetaStructuredKeys are status_meta list values that
+// survive metadata-only terminal lists: llmtypes.StatusExtrasMetaKey
+// (display strings) and llmtypes.RateLimitWindowsMetaKey (structured windows).
+var terminalListStatusMetaStructuredKeys = []string{"status_extras", "rate_limit_windows"}
+
+const terminalListStatusMetaStructuredMaxBytes = 2048
+
+func compactTerminalStatusMetaStructuredValueForList(value interface{}) (interface{}, bool) {
+	if value == nil {
+		return nil, false
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil || len(encoded) > terminalListStatusMetaStructuredMaxBytes || len(encoded) == 0 || encoded[0] != '[' {
+		return nil, false
+	}
+	return json.RawMessage(encoded), true
 }
 
 func compactTerminalStatusMetaValueForList(value interface{}) (interface{}, bool) {

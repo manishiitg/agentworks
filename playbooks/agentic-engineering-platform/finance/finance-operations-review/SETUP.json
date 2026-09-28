@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "finance-operations-review",
+  "playbook_version": "0.1.0",
+  "checks": [
+    { "id": "goal_owner", "title": "Confirm finance goal and owner", "instructions": "Record the legal entity or business scope, named decision owner, reporting period, timezone, currency, excluded actions, and the first useful finance outcome." },
+    { "id": "source_scope", "title": "Verify authoritative records", "instructions": "Identify billing/payment and finance/ledger source of truth, exact account or export, live/test mode where relevant, date coverage, and freshness. Keep invoiced, collected, recognized, and pending payout measures distinct." },
+    { "id": "policy_metric", "title": "Agree on policy and metric", "instructions": "Record invoice terms, refund/contact rules, approval thresholds, exception priority, metric definition and baseline or baseline-first decision. Do not invent missing policies." },
+    { "id": "team_bindings", "title": "Bind two ready Crews", "instructions": "Record two distinct authorized Crew IDs with billing-operations-coordinator and finance-analyst selected skills and verified setup. Optional close/payables slots require their own access and check evidence." },
+    { "id": "access", "title": "Test source access", "instructions": "Read a representative authorized record or export in each required Crew. Verify that no credentials or connections are copied across Crews. Record the reduced behavior when only partial data exists." },
+    { "id": "handoff_contract", "title": "Validate the billing handoff", "instructions": "Validate a real billing-exception-queue/v1 and finance-impact-readout/v1 with the bundled deterministic validator. Save run IDs, artifact paths, and results; prove the invalid fixture blocks the consumer route." },
+    { "id": "plan_review", "title": "Review the Automation plan", "instructions": "Show actual Crew IDs, source access, bounded fields passed, validation steps, cost/budget, action approval points, and manual activation state to the owner." },
+    { "id": "test_run", "title": "Run the first route manually", "instructions": "Record one real bounded two-Crew manual run with source references, validator results, finance readout, exceptions and blockers. Do not mark complete from a fixture alone." },
+    { "id": "action_ledger", "title": "Track reviewed decisions", "instructions": "Record stable case/action IDs, source links, owner, proposed versus approved state, exact next action, and follow-up date. A draft message, refund proposal, or bill queue is not an executed action." },
+    { "id": "activation_choice", "title": "Choose run policy", "instructions": "Record manual-only or a reviewed paused schedule/event with timezone, concurrency, retries, budget, notifications, and source freshness. Completion does not itself enable recurrence." }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

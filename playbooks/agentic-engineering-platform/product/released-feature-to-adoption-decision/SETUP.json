@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "released-feature-to-adoption-decision",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm adoption decision and owner","instructions":"Name product owner, first read-only result, feature decision options and excluded issue, flag, customer and experiment actions."},
+    {"id":"release_scope","title":"Bind exact released feature","instructions":"Verify tenant, product, feature, release/build, deployed time, flag revision and eligible segment. A plan or draft flag is not a shipped feature."},
+    {"id":"measurement_rule","title":"Freeze eligible, exposure and use rules","instructions":"Record distinct-account identity join, internal/test exclusions, versioned predicates, window/timezone and equal-window policy before reading outcomes."},
+    {"id":"target_sample","title":"Predeclare target and sample minimum","instructions":"Record use among exposed target, minimum exposed count and source-coverage rule. Partial or small samples stay not_evaluable."},
+    {"id":"team_bindings","title":"Bind Adoption and Product capabilities","instructions":"Inspect existing Product Adoption Analyst and Product Feedback Coordinator Crews and access; reuse compatible identities or propose reviewed creation."},
+    {"id":"source_access","title":"Probe release, analytics and issues","instructions":"Read exact release/flag, eligible, exposure, use and current issue records or scoped exports; record IDs, timestamps, join coverage and missing sources."},
+    {"id":"handoff_contract","title":"Validate observation and decision","instructions":"Insert blocking validators before Product and reporting. Exercise wrong release, denominator, incomplete coverage, unsupported target, owner approval and product-change claims."},
+    {"id":"plan_review","title":"Review concrete Automation plan","instructions":"Show Crew IDs, source paths, rule versions, validator steps, owner review, stable case key, manual route, optional event policy, cost and notifications."},
+    {"id":"test_run","title":"Run one real released-feature case manually","instructions":"Save authorized source reads, both artifacts, validation, owner correction or decision and an incomplete-coverage control. Fictional fixtures do not complete setup."},
+    {"id":"activation_choice","title":"Choose manual or reviewed repeat","instructions":"Manual-only is valid. An analytics or release event needs authenticated scope, stable IDs, deduplication, complete windows, rule-change reset, cost, owner notification and explicit activation."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

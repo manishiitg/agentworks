@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrainCircuit, ChevronDown, Gauge, Loader2 } from 'lucide-react'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
-import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
+import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
@@ -41,6 +41,7 @@ export function WorkModelsPanel({
   const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
   const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
+  const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
   const usageSessionRef = useRef<ProviderSetupSession | null>(null)
@@ -73,6 +74,19 @@ export function WorkModelsPanel({
   useEffect(() => {
     if (!providerManifestLoaded) void loadProviderManifest()
   }, [loadProviderManifest, providerManifestLoaded])
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const [loaded] = await Promise.all([
+        loadAgentProfileProviderOptions(WORK_PROFILE_ID, WORK_PROFILE_VERSION),
+        loadProviderManifest(),
+      ])
+      setOptions(loaded)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadProviderManifest])
 
   const modelCatalog = useMemo(
     () => providerManifest.flatMap(provider => provider.models || []),
@@ -292,11 +306,13 @@ export function WorkModelsPanel({
         icon={BrainCircuit}
         title="Project agent configuration"
         subtitle="Choose the coding agent and model this project uses. You can change either at any time."
-        actions={<AskAIButton
+        actions={<WorkspaceViewActions
           workspacePath={workspacePath}
           message="Help me choose between the coding agents available for this project. Explain the practical differences before changing anything."
           onAsk={onAsk}
-          iconOnly
+          onRefresh={refresh}
+          refreshing={refreshing}
+          refreshLabel="Refresh models"
         />}
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">{body}</div>

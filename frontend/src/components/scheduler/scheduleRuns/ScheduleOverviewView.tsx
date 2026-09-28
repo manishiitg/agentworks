@@ -11,11 +11,23 @@ import {
   timeAgo,
 } from './helpers'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
+import { PauseCatchUpPanel } from './PauseCatchUpPanel'
+import type { SchedulerPauseEvent } from '../../../services/api-types'
+
+// "by alice from the browser" / "by alice via the API (an agent or script)".
+function pausedByText(event?: SchedulerPauseEvent): string {
+  if (!event || event.action !== 'paused') return ''
+  const who = event.username || event.user_id || 'someone'
+  const agent = (event.user_agent || '').toLowerCase()
+  const fromBrowser = agent.includes('mozilla') || event.via === 'frontend-user'
+  return fromBrowser ? `by ${who} from the browser` : `by ${who} via the API (an agent or script)`
+}
 
 type ScheduleOverviewViewProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'isSchedulerPaused' | 'schedulerConfig' | 'summary' | 'setActiveFilter' | 'setActiveView'
     | 'missedJobs' | 'presetMap' | 'showJobInWorkflowGroups' | 'upcomingJobs'
+    | 'pauseCatchUp' | 'isRunningCatchUp' | 'runPauseCatchUp' | 'dismissPauseCatchUp' | 'isReadOnlyUser'
   >
 }
 
@@ -30,7 +42,13 @@ export const ScheduleOverviewView: React.FC<ScheduleOverviewViewProps> = ({ pane
     presetMap,
     showJobInWorkflowGroups,
     upcomingJobs,
+    pauseCatchUp,
+    isRunningCatchUp,
+    runPauseCatchUp,
+    dismissPauseCatchUp,
+    isReadOnlyUser,
   } = panel
+  const pausedBy = pausedByText(schedulerConfig?.recent_pause_events?.[0])
 
   return (
     <div className="px-5 py-4 space-y-4">
@@ -45,13 +63,22 @@ export const ScheduleOverviewView: React.FC<ScheduleOverviewViewProps> = ({ pane
               </div>
             </div>
             {schedulerConfig?.paused_at && (
-              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                Paused {timeAgo(schedulerConfig.paused_at)}
+              <div className="text-right text-xs text-muted-foreground">
+                <div className="whitespace-nowrap">Paused {timeAgo(schedulerConfig.paused_at)}</div>
+                {pausedBy ? <div>{pausedBy}</div> : null}
               </div>
             )}
           </div>
         </div>
       )}
+
+      <PauseCatchUpPanel
+        items={pauseCatchUp}
+        running={isRunningCatchUp}
+        canRun={!isReadOnlyUser}
+        onRun={ids => { void runPauseCatchUp(ids) }}
+        onDismiss={dismissPauseCatchUp}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <button

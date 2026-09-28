@@ -1,4 +1,4 @@
-// Package costobserver turns agent LLM events into cost-ledger entries.
+// Package costobserver turns agent LLM and MCP activity events into ledger entries.
 //
 // It lives outside cmd/server because more than one launch path spends
 // tokens: the chat/query path and delegate() run inside package server, while
@@ -46,7 +46,7 @@ const (
 	PhaseReflection    = "reflection"
 )
 
-// Observer persists immutable per-LLM-call events. The cumulative token_usage
+// Observer persists immutable LLM calls and in-process MCP activity. The cumulative token_usage
 // event remains a compatibility fallback for older providers, but is ignored
 // once a per-call completion has been observed.
 type Observer struct {
@@ -102,6 +102,25 @@ func WithSourcePlatform(platform string) Option {
 	return func(o *Observer) {
 		o.sourcePlatform = strings.ToLower(strings.TrimSpace(platform))
 	}
+}
+
+type sourcePlatformContextKey struct{}
+
+// ContextWithSourcePlatform carries a bot channel into child agents and paid
+// tool calls without changing their cost scope or user attribution.
+func ContextWithSourcePlatform(ctx context.Context, platform string) context.Context {
+	if strings.TrimSpace(platform) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, sourcePlatformContextKey{}, strings.ToLower(strings.TrimSpace(platform)))
+}
+
+func SourcePlatformFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	platform, _ := ctx.Value(sourcePlatformContextKey{}).(string)
+	return platform
 }
 
 // WithLaunchPath names the code path that created this agent. It is only used
@@ -227,8 +246,47 @@ func (o *Observer) HandleEvent(_ context.Context, event *unifiedevents.AgentEven
 			return nil
 		}
 		o.recordLegacyTokenUsage(event, tu)
+	case unifiedevents.ToolCallEnd:
+		if tool, ok := event.Data.(*unifiedevents.ToolCallEndEvent); ok && tool != nil && !tool.SyntheticSettle {
+			o.recordMCPCall(event, tool.ServerName, tool.ToolName, tool.ToolCallID)
+		}
+	case unifiedevents.ToolCallError:
+		if tool, ok := event.Data.(*unifiedevents.ToolCallErrorEvent); ok && tool != nil {
+			o.recordMCPCall(event, tool.ServerName, tool.ToolName, tool.ToolCallID)
+		}
 	}
 	return nil
+}
+
+func (o *Observer) recordMCPCall(event *unifiedevents.AgentEvent, server, tool, callID string) {
+	server = strings.TrimSpace(server)
+	if server == "" || server == "custom" || server == "virtual-tools" || server == "direct_execution" ||
+		tool == "get_api_spec" || tool == "search_large_output" || isCodingCLIProvider(o.provider) {
+		return
+	}
+	entry := o.baseEntry(event)
+	entry.Component = "mcp:" + server
+	entry.ToolName = tool
+	entry.BillingBasis = "unpriced"
+	if callID != "" {
+		entry.EventID = o.sessionID + ":mcp:" + callID
+		entry.IdempotencyKey = entry.EventID
+	} else {
+		// An agent span can contain several tool calls. Let the ledger derive
+		// a key from the complete event instead of collapsing them by span.
+		entry.EventID = ""
+		entry.IdempotencyKey = ""
+	}
+	o.append(entry)
+}
+
+func isCodingCLIProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "claude-code", "claude_code", "codex-cli", "codex_cli", "cursor-cli", "cursor_cli", "pi-cli", "pi_cli", "muse-cli", "muse_cli":
+		return true
+	default:
+		return false
+	}
 }
 
 func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generation *unifiedevents.LLMGenerationEndEvent) {

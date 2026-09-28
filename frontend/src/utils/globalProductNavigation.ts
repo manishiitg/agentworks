@@ -1,7 +1,6 @@
 import type { ActiveSessionInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { openWorkAutomationRunChat } from '../products/work/workAutomationRunRestore'
 import { activateTab } from './activateTab'
 import { isScheduledSession } from './workflowSessionKinds'
 import { isScheduledWorkflowSession, openCanonicalActivitySession } from './workflowSessionRestore'
@@ -76,6 +75,7 @@ async function openGlobalActivitySessionInner(
   // tab — the crew's interactive chat never shows a trigger transcript, so
   // routing the pill there lands the user on their own chat instead.
   if (scheduled && !workflowLane && isWorkProductSession(session)) {
+    const { openWorkAutomationRunChat } = await import('../products/work/workAutomationRunRestore')
     await openWorkAutomationRunChat(session, { title: options.title })
     return
   }

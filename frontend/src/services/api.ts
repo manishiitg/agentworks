@@ -407,7 +407,9 @@ function getWorkspaceApiBaseUrl(): string {
     logResolvedUrlOnce('workspaceApiBaseUrl', { source: 'origin-proxy', resolved, runtime })
     return resolved
   }
-  const resolved = 'http://127.0.0.1:8081'
+  // Through the agent server's /api/wp proxy: the workspace service itself
+  // requires a token the browser never holds.
+  const resolved = `${getApiBaseUrl().replace(/\/+$/, '')}/api/wp`
   logResolvedUrlOnce('workspaceApiBaseUrl', { source: 'dev-fallback', resolved, runtime })
   return resolved
 }
@@ -2955,7 +2957,42 @@ export interface WorkflowUserPermissionsResponse {
 }
 
 // --- Workflow manifest API ---
+export interface WorkflowGoalSetupCheck {
+  id: 'playbook' | 'goal' | 'plan' | 'metrics' | 'dashboard'
+  label: string
+  done: boolean
+  command?: string
+  optional?: boolean
+}
+
+export interface WorkflowGoalSetupPlaybook {
+  id: string
+  title: string
+  skill_name: string
+  status?: string
+}
+
+export interface WorkflowGoalSetupStatus {
+  show: boolean
+  complete: boolean
+  dismissed: boolean
+  has_runs: boolean
+  checks: WorkflowGoalSetupCheck[]
+  next?: WorkflowGoalSetupCheck
+  playbooks?: WorkflowGoalSetupPlaybook[]
+}
+
 export const workflowManifestApi = {
+  // Initial goal setup (goal -> plan -> metrics), read from the workflow's
+  // real state; POST dismisses it for this automation (goals are optional).
+  getGoalSetup: async (workspacePath: string): Promise<WorkflowGoalSetupStatus> => {
+    const response = await api.get('/api/workflows/goal-setup', {params: {workspace_path: workspacePath}})
+    return response.data
+  },
+  dismissGoalSetup: async (workspacePath: string): Promise<WorkflowGoalSetupStatus> => {
+    const response = await api.post('/api/workflows/goal-setup', null, {params: {workspace_path: workspacePath}})
+    return response.data
+  },
   getKnowledgebaseSources: async (workspacePath: string): Promise<{success: boolean; sources: import('./api-types').KnowledgebaseSourceStatus[]}> => {
     const response = await api.get('/api/workflows/knowledgebase-sources', {params: {workspace_path: workspacePath}})
     return response.data

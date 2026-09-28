@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "access-exception-to-verified-fix",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "scope_owner", "title": "Confirm scope and owners", "instructions": "Record written target, environment, allowed actors, rate and data bounds, stop conditions, security/asset/closure owners, and a first read-only outcome."},
+    {"id": "policy_matrix", "title": "Freeze permission policy", "instructions": "Record policy revision and expected role, tenant, ownership, resource and action cells before testing. A current UI state is not an approved policy."},
+    {"id": "isolated_identity", "title": "Prepare isolated test identity", "instructions": "Bind exact deployed build, fixture and authorized actor/tenant/resource IDs. Exclude real customer data unless separately authorized."},
+    {"id": "direct_observation", "title": "Prove one selected cell", "instructions": "Capture UI and direct server result, attempt ID, observation time and redacted trace for the same actor/resource/action. A hidden button alone cannot prove denial."},
+    {"id": "team_bindings", "title": "Reuse or propose Security Crews", "instructions": "Inspect existing Access Review Analyst and Security Remediation Coordinator capabilities and access; preserve compatible Crew identities."},
+    {"id": "source_access", "title": "Probe policy and delivery sources", "instructions": "Read current policy, issue, approval, repository, deployment and independent retest sources or scoped exports; record exact IDs and missing access."},
+    {"id": "handoff_contract", "title": "Install blocking checks", "instructions": "Bind artifact paths and validator steps before Remediation and reporting. Reject mismatched policy/cell/build, UI-only denial, unapproved change, wrong deployed build and self-reviewed or wrong-cell closure."},
+    {"id": "plan_review", "title": "Review proposed Automation", "instructions": "Show Crew IDs, selected policy cell, source paths, validator commands, approval/notification boundaries, stable case key, manual route and cost."},
+    {"id": "test_run", "title": "Run an authorized case manually", "instructions": "Retain real source reads, matrix, pending ledger, validation, owner review and a negative control. Fictional examples do not complete setup."},
+    {"id": "activation_choice", "title": "Choose manual or reviewed repeat", "instructions": "Manual-only is valid. A policy or deployment event needs authentication, exact scope, deduplication, policy/build reset, cost, owner review and explicit activation."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

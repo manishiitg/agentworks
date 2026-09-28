@@ -1,0 +1,67 @@
+{
+  "artifact_type": "experiment-execution-record/v1",
+  "artifact_id": "experiment-execution-7",
+  "experiment_id": "exp-guided-setup-7",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "plan_artifact_id": "frozen-retention-plan-7",
+  "plan_revision": "rev3",
+  "owner": "Growth lead",
+  "rollback_owner": "Product lead",
+  "timezone": "Europe/London",
+  "stop_rule": "Stop for a reviewed guardrail breach; otherwise wait for the full day-30 window and power target.",
+  "as_of": "2026-10-01T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "plan",
+      "uri": "artifact:frozen-retention-plan-7",
+      "observed_at": "2026-09-30T12:00:00Z"
+    },
+    {
+      "id": "approval",
+      "uri": "approval:apr-7",
+      "observed_at": "2026-10-01T09:00:00Z"
+    },
+    {
+      "id": "launch",
+      "uri": "provider:launch-7",
+      "observed_at": "2026-10-01T10:00:00Z"
+    },
+    {
+      "id": "exposures",
+      "uri": "provider:exposure-7",
+      "observed_at": "2026-10-01T10:30:00Z"
+    }
+  ],
+  "frozen_policy": {
+    "assignment_unit": "account",
+    "control_variant_id": "current-setup",
+    "treatment_variant_id": "guided-setup",
+    "control_allocation_bps": 5000,
+    "treatment_allocation_bps": 5000,
+    "primary_metric": "day30-retained-per-eligible-v2",
+    "guardrail_metric": "support-blocker-per-eligible-v2",
+    "guardrail_max_bps": 500,
+    "minimum_sample_per_variant": 250,
+    "readout_start": "2026-10-01T10:00:00Z",
+    "readout_end": "2026-11-30T10:00:00Z",
+    "minimum_exposure_coverage_bps": 9500,
+    "allocation_tolerance_bps": 500,
+    "exposure_end": "2026-10-31T10:00:00Z"
+  },
+  "state": "launched",
+  "approval": {
+    "id": "apr-7",
+    "state": "approved",
+    "plan_revision": "rev3",
+    "approved_at": "2026-10-01T09:00:00Z"
+  },
+  "provider": {
+    "object_id": "ff-guided-setup-7",
+    "revision": "4",
+    "launch_receipt_id": "launch-7",
+    "exposure_source_id": "exposure-7",
+    "launched_at": "2026-10-01T10:00:00Z"
+  },
+  "next_check": "Wait for readout window and source lag; recheck exposure and rollback state."
+}

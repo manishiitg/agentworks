@@ -1,0 +1,23 @@
+{
+  "artifact_type": "launch-storefront-decision/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "launch_id": "launch-linen-shirt-us",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "publication_id": "publication-online-us",
+  "currency": "USD",
+  "observed_at": "2026-09-26T12:15:00Z",
+  "page_url": "https://example-shop.test/products/linen-shirt?variant=81-m",
+  "buyer_task": "Find Size M and reach checkout in the US market",
+  "journey_state": "pass",
+  "decision": "go_review",
+  "approval_state": "pending",
+  "approval_ref": null,
+  "publish_state": "not_published",
+  "publish_receipt_ref": null,
+  "retest_ref": null,
+  "owner_id": "growth-owner",
+  "source_refs": ["preview:linen-shirt:81-m:us@2026-09-26T12:15Z", "shopify:publication-online-us@2026-09-26T12:00Z"],
+  "next_evidence": "Merchant go/no-go decision and exact publication action before launch"
+}

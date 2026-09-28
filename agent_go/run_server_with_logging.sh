@@ -547,7 +547,7 @@ if [ "$ONLY_FRONTEND" = true ]; then
         fi
     fi
     if [ -z "${WORKSPACE_PORT:-}" ] && [ -f "$FRONTEND_RUNTIME_CONFIG_PATH" ]; then
-        detected_workspace_port="$(grep -oE 'workspaceApiBaseUrl:[[:space:]]*"http://[^"]+"' "$FRONTEND_RUNTIME_CONFIG_PATH" | grep -oE '[0-9]+"' | tr -d '"' | head -1)"
+        detected_workspace_port="$(grep -oE 'workspaceServiceUrl:[[:space:]]*"http://[^"]+"' "$FRONTEND_RUNTIME_CONFIG_PATH" | grep -oE '[0-9]+"' | tr -d '"' | head -1)"
         if [ -n "$detected_workspace_port" ]; then
             WORKSPACE_PORT="$detected_workspace_port"
             echo "🔎 Detected WORKSPACE_PORT=$WORKSPACE_PORT from existing runtime-config.js"
@@ -612,7 +612,8 @@ if [ "$ONLY_FRONTEND" = true ]; then
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "${MCP_AGENT_SERVER_URL}",
-  workspaceApiBaseUrl: "${WORKSPACE_API_URL}",
+  workspaceApiBaseUrl: "${MCP_AGENT_SERVER_URL}/api/wp",
+  workspaceServiceUrl: "${WORKSPACE_API_URL}",
   cdpEnabled: true,
   appName: "${RUNTIME_APP_NAME}",
   faviconUrl: "${RUNTIME_FAVICON_URL}"${ONLY_FRONTEND_GATEWAY_LINE}
@@ -1287,7 +1288,8 @@ write_frontend_runtime_config() {
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "${MCP_AGENT_SERVER_URL}",
-  workspaceApiBaseUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
+  workspaceApiBaseUrl: "${MCP_AGENT_SERVER_URL}/api/wp",
+  workspaceServiceUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
   cdpEnabled: true,
   appName: "${runtime_app_name}",
   faviconUrl: "${runtime_favicon_url}"${gateway_config_line}

@@ -205,6 +205,10 @@ func (m *Manager) Check(ctx context.Context) error {
 				r.Status = "current"
 			}
 			r.Version, r.Executable, r.LastSuccess, r.NextCheck = version, executable, finished, finished.Add(Interval)
+			// One installed release per CLI: drop the ones its updater left behind.
+			if removed, pruneErr := pruneOldVersions(ctx, p.Name, executable); m.Log != nil && (len(removed) > 0 || pruneErr != nil) {
+				m.Log("[CLI UPDATE] %s: removed old releases %v (err=%v)", p.Name, removed, pruneErr)
+			}
 		}
 		s.CLIs[p.Name] = r
 		if err := m.save(&s); err != nil {

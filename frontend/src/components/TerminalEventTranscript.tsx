@@ -775,7 +775,7 @@ interface TerminalEventTranscriptProps {
   assistantIcon?: React.ReactNode
 }
 
-const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState }> = ({
+const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
   events,
   terminal,
   siblingTerminals,
@@ -795,6 +795,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   assistantLabel = 'Agent',
   assistantIcon,
   readingState,
+  readingKey,
 }) => {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const keptKinds = productRows?.kinds.join('\u0000') ?? ''
@@ -854,7 +855,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     firstItemIndex = prependedIndex(pagination.keys, keys, pagination.first)
     setPagination({ keys, first: firstItemIndex })
   }
-  const scroll = useTranscriptScroll(keys, readingState, virtuosoRef)
+  const scroll = useTranscriptScroll(keys, readingState, virtuosoRef, readingKey)
   const latestUserMessageKey = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index--) {
       const item = items[index]
@@ -1065,6 +1066,6 @@ export const TerminalEventTranscript = memo(function TerminalEventTranscript(pro
   const key = props.scrollKey ?? props.terminal?.terminal_id ?? props.events?.find(event => event.session_id)?.session_id
   const readingState = useMemo(() => key ? transcriptReadingState(key) : { following: true, disclosures: new Map<string, boolean>() }, [key])
   return <DisclosureContext.Provider value={readingState.disclosures}>
-    <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} />
+    <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
   </DisclosureContext.Provider>
 })

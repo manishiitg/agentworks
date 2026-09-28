@@ -371,6 +371,8 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		removedIDs = append(removedIDs, record.SessionID)
 	}
 	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
+	// Other crews and workflows that attached this crew stop pointing at it.
+	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 

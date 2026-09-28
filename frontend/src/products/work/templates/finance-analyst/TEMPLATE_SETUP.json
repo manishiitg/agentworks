@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "template_id": "finance-analyst",
+  "template_version": 1,
+  "checks": [
+    {
+      "id": "identity",
+      "title": "Confirm role and purpose",
+      "instructions": "Read this Crew's saved identity and purpose. Confirm it is authorized to analyze finance records, even if its role also covers another installed template. Do not overwrite its identity merely to fit this pack."
+    },
+    {
+      "id": "skill",
+      "title": "Verify the finance skill",
+      "instructions": "Confirm skills/finance-analyst/SKILL.md exists and finance-analyst is selected for this Crew. Complete only after both checks pass."
+    },
+    {
+      "id": "data_source",
+      "title": "Choose a data source",
+      "instructions": "Ask the owner for an uploaded statement or an authorized finance connection. Verify one actual source row and its ID, period, entity, account, currency, opening/closing cutoff and coverage. An uploaded file is sufficient; do not require an MCP connection."
+    },
+    {
+      "id": "period_currency",
+      "title": "Set period and currency",
+      "instructions": "Agree on the reporting period and currency. Save stable preferences in MEMORY.md, and complete only after the owner confirms them."
+    },
+    {
+      "id": "metrics",
+      "title": "Define the numbers",
+      "instructions": "Agree on the measures used for invoiced, recognized and collected amounts, refunds, fees, bank deposits and expenses. Confirm accounting basis, sign, currency/FX source, period cutoff, matching IDs and reconciliation tolerance. Reproduce one source-linked calculation and save stable definitions in MEMORY.md."
+    },
+    {
+      "id": "first_brief",
+      "title": "Test the first brief",
+      "instructions": "Produce a finance brief from authorized data with source rows, calculations, opening/closing cutoff and explicit unreconciled items. Demonstrate one matching and one missing/ambiguous record or state that none was found. Ask the owner to review it; complete only after a brief was produced and the owner confirms it is useful."
+    },
+    {
+      "id": "delivery",
+      "title": "Decide where briefs go",
+      "optional": true,
+      "instructions": "Ask whether briefs stay in Crew chat or go to an approved Slack or email destination. Choosing chat-only or not needed is a valid completed decision. Do not send anything without explicit authorization."
+    },
+    {
+      "id": "recurrence",
+      "title": "Decide on recurring work",
+      "optional": true,
+      "instructions": "Ask whether the owner wants a schedule or new-statement trigger. Choosing not needed is valid. If requested, agree on timezone or event source, test the result, and enable only with authorization."
+    },
+    {
+      "id": "sharing",
+      "title": "Decide on reusable access",
+      "optional": true,
+      "instructions": "Ask whether other Crews need an analyze_finances function or whether a separate goal-based Automation is useful. Choosing neither is valid. Review permissions and the contract before exposing either."
+    }
+  ],
+  "completed_steps": []
+}

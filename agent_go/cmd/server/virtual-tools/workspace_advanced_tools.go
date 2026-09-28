@@ -306,7 +306,10 @@ func getMCPExtraEnv(sessionID ...string) map[string]string {
 			env["MCP_API_URL"] = baseURL
 		}
 	}
-	if token := os.Getenv("MCP_API_TOKEN"); token != "" {
+	// With session tokens on, a shell gets only its own session's token
+	// (PopulateMCPBridgeShortEnv below); a shell with no session gets none,
+	// never the server's global token.
+	if token := os.Getenv("MCP_API_TOKEN"); token != "" && !common.BridgeTokensEnabled() {
 		env["MCP_API_TOKEN"] = token
 	}
 	if sid != "" {

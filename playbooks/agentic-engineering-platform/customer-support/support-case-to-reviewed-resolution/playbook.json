@@ -1,0 +1,55 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "support-case-to-reviewed-resolution",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led support triage, grounded reply, optional escalation, delivery, and observed closure contract."}
+  ],
+  "title": "Support Case to Reviewed Resolution",
+  "description": "Route an authorized customer case through sourced triage, a grounded unsent reply or owned escalation, and provider-backed follow-through.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Customer Support"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Support Case to Reviewed Resolution as a chat-led proposal. Inspect existing Support Crews, helpdesk or inbox source, current case threads, approved knowledge, priority and escalation policy, customer contact rules, provider delivery route, and case outcome source. Propose reuse or reviewed creation, exact artifact validators, owner approvals, and one manual case. Show the plan before Builder applies it. Selection alone does not update a case, page a team, send a response, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "case_source", "label": "Authorized helpdesk, inbox, or case export", "required": true},
+    {"id": "priority_policy", "label": "Priority, response deadline, duplicate, and escalation rules", "required": true},
+    {"id": "knowledge", "label": "Current approved help content and product or incident sources", "required": true},
+    {"id": "contact_policy", "label": "Recipient, channel, claim, and message approval rules", "required": true},
+    {"id": "owner", "label": "Support and receiving team owners", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Support Crews with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded case artifact", "capability": "durable_artifacts", "optional": true},
+    {"id": "helpdesk", "name": "Helpdesk or inbox connection", "type": "mcp", "purpose": "Read current case, thread, prior reply, owner and status records", "capability": "support_case_records", "optional": true},
+    {"id": "knowledge", "name": "Approved help center or knowledge export", "type": "mcp", "purpose": "Ground customer-facing claims in current approved content", "capability": "support_knowledge", "optional": true},
+    {"id": "incident", "name": "Incident or issue source", "type": "mcp", "purpose": "Check escalation owner acceptance and affected service state", "capability": "incident_records", "optional": true},
+    {"id": "delivery", "name": "Helpdesk delivery channel", "type": "mcp", "purpose": "Send an exact approved reply and retain provider receipt through a separate authorized route", "capability": "support_delivery", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Support case resolution", "focus_areas": ["Whether urgent cases receive the correct owner and current evidence", "Whether reviewed replies and escalations lead to observed case outcomes without duplicate contact"], "review_when": ["An SLA approaches, a customer replies, an escalation changes owner, or a case outcome is observed"]}
+  ],
+  "outputs": [
+    "Reviewed Support Crew roster and case source map",
+    "Validated support triage and grounded unsent reply",
+    "Optional accepted escalation with owner and deadline",
+    "Provider-confirmed delivery and observed case outcome when authorized",
+    "Manual route evidence, action ledger, and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "triage", "agent_playbook_id": "support-triage-assistant", "required": true, "output": "support-case-triage/v1"},
+    {"id": "reply", "agent_playbook_id": "support-reply-drafter", "required": true, "output": "support-reply-draft/v1"},
+    {"id": "escalation", "agent_playbook_id": "escalation-coordinator", "required": false, "output": "support-escalation-brief/v1"}
+  ],
+  "handoffs": [
+    {"id": "triage-to-reply", "from": "triage", "to": "reply", "artifact_type": "support-case-triage/v1", "required": true},
+    {"id": "triage-to-escalation", "from": "triage", "to": "escalation", "artifact_type": "support-case-triage/v1", "required": false},
+    {"id": "escalation-to-reply", "from": "escalation", "to": "reply", "artifact_type": "support-escalation-brief/v1", "required": false}
+  ],
+  "setup_checks": ["goal_owner", "case_scope", "priority_policy", "contact_knowledge", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

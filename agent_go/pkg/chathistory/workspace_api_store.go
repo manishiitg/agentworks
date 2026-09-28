@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"log"
 	"net/http"
@@ -55,11 +56,11 @@ func NewWorkspaceAPIStore(workspaceAPIURL string) (*WorkspaceAPIStore, error) {
 		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
+			Transport: wsauth.Transport(&http.Transport{
 				MaxIdleConns:        20,
 				MaxIdleConnsPerHost: 20,
 				IdleConnTimeout:     90 * time.Second,
-			},
+			}),
 		},
 		botCfgs:          make(map[string]*BotConnectorConfig),
 		botCfgFile:       workspaceAPIBotConfigFile,

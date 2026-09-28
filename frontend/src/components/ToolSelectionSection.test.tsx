@@ -45,7 +45,7 @@ describe('ToolSelectionSection workflow checkbox', () => {
     ))
 
     expect(host.textContent).toContain('Configured')
-    expect(host.textContent).toContain('Disconnected')
+    expect(host.textContent).toContain('Needs connecting')
     const checkbox = host.querySelector('[role="checkbox"]') as HTMLElement
     await act(async () => checkbox.click())
     expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith([], [])

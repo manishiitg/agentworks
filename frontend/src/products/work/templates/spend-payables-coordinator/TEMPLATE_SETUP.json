@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "template_id": "spend-payables-coordinator",
+  "template_version": 2,
+  "checks": [
+    { "id": "identity", "title": "Confirm payables role", "instructions": "Confirm entity, owner, and whether this is the primary Crew role or a supporting pack. Preserve an existing identity and record payment authority separately." },
+    { "id": "skill", "title": "Verify the payables skill", "instructions": "Confirm skills/spend-payables-coordinator/SKILL.md exists and spend-payables-coordinator is selected for this Crew." },
+    { "id": "policy", "title": "Agree on spend and purchase policy", "instructions": "Confirm approval levels, budget owners, purchase criteria, security/privacy gates, required PO/receipt evidence, vendor verification, duplicate criteria, and payment boundaries. Record stable decisions in MEMORY.md." },
+    { "id": "sources", "title": "Verify source records", "instructions": "Identify authoritative vendor/AP and budget sources. Read a representative authorized bill/expense or purchase request and current vendor record for the agreed entity and currency. A file is sufficient; a connector is optional. Note missing purchase or payment status." },
+    { "id": "mapping", "title": "Map exact vendor and money fields", "instructions": "For a bill, verify vendor ID, invoice number, dates, amount, currency, PO/contract, approval and paid/scheduled state. For a proposed purchase, verify request, product, plan, quote revision, seats, term, all fees and total against the validated comparison. Keep a quote, PO, bill, card charge and payment distinct." },
+    { "id": "duplicate_check", "title": "Test duplicate and policy checks", "instructions": "For one actual bill, join original document hash/version to AP by entity, vendor and invoice ID; recheck near duplicates, credits, partial payments, approvals and paid/scheduled state. For one proposed purchase, bind the exact comparison and re-read current vendor register, overlapping subscriptions and POs, remaining budget, security/privacy dispositions and approver policy. Preserve source revisions, false-match caveats and changed bank-detail warnings. Obtain the owner's decision before claiming either route is ready, approved or paid." },
+    { "id": "first_queue", "title": "Review the first purchase or payables result", "instructions": "Produce a dated, source-linked purchase decision or payables queue with exact plan or bill, amount/currency, status, approver, policy reason, and evidence gaps. Complete after the owner reviews a representative result." },
+    { "id": "delivery", "title": "Decide where the queue goes", "optional": true, "instructions": "Choose Crew chat or an approved destination. Chat-only completes this decision. Verify recipient and privacy before any delivery." },
+    { "id": "recurrence", "title": "Decide on recurring review", "optional": true, "instructions": "Choose chat-only, a schedule, or authenticated bill event. Chat-only completes this decision. Test source freshness and duplicate handling before enabling recurrence." }
+  ],
+  "completed_steps": []
+}

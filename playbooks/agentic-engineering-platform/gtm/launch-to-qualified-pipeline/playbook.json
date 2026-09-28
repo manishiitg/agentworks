@@ -1,0 +1,58 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "launch-to-qualified-pipeline",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led GTM strategy, launch, and Sales composition with source-bound signals and reviewed pipeline outcomes."}
+  ],
+  "title": "Launch to Qualified Pipeline",
+  "description": "Take an approved B2B offer from a sourced launch brief through observed campaign and lead signals to reviewed qualification and pipeline outcomes.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "GTM"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Launch to Qualified Pipeline as a chat-led proposal. Inspect existing GTM, Website Growth, and Sales Crews, the offer and approved claims, site and channel assets, campaign and lead sources, contact policy, CRM stages, meeting source, and budget. Propose reuse or reviewed creation, exact artifact validators, owner approvals, a manual first route, and a baseline or baseline-first metric. Reuse Inbound Lead-to-Meeting Review for qualification, reviewed follow-up, provider-confirmed delivery, and observed meeting outcomes. Show the plan and wait for my review before Builder applies it. Selection alone does not publish, spend, contact a lead, create Crews, or activate recurrence.",
+  "setup_inputs": [
+    {"id": "offer_audience", "label": "Offer version, approved claims, target buyer and market", "required": true},
+    {"id": "site_channels", "label": "Website, launch assets, approved channels and budget bounds", "required": true},
+    {"id": "pipeline_policy", "label": "Qualified lead, contact, attribution and meeting rules", "required": true},
+    {"id": "sources", "label": "Authorized campaign, form, CRM and calendar sources or exports", "required": true},
+    {"id": "owner", "label": "GTM, launch, and Sales review owners", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated event and cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Crews with stable idempotency keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass validated bounded launch and lead artifacts", "capability": "durable_artifacts", "optional": true},
+    {"id": "site-analytics", "name": "Website analytics or export", "type": "mcp", "purpose": "Read visitor action and campaign evidence under the customer's metric rule", "capability": "traffic_measurement", "optional": true},
+    {"id": "campaign-source", "name": "Approved campaign or publishing provider", "type": "mcp", "purpose": "Read exact published or sent state and delivery receipts", "capability": "campaign_records", "optional": true},
+    {"id": "lead-source", "name": "Form or CRM source", "type": "mcp", "purpose": "Read event, lead, source, duplicate and stage records", "capability": "lead_records", "optional": true},
+    {"id": "meeting-source", "name": "CRM or calendar outcome source", "type": "mcp", "purpose": "Confirm useful meetings and pipeline states independently from drafts", "capability": "meeting_records", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Launch to qualified pipeline", "focus_areas": ["Whether approved launch work reaches the intended buyer and yields source-linked enquiries", "Whether observed enquiries become policy-qualified pipeline without duplicate or blocked contact"], "review_when": ["A launch asset ships, a lead source changes, a qualified lead appears, or the measured baseline becomes comparable"]}
+  ],
+  "outputs": [
+    "Reviewed GTM and Sales Crew roster and source map",
+    "Validated GTM launch brief and launch-signal register",
+    "Lead qualification through the existing Sales Playbook contract",
+    "Owner-reviewed follow-up and provider-confirmed outcomes when authorized",
+    "Manual run, action ledger, and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "strategy", "agent_playbook_id": "gtm-strategy-analyst", "required": true, "output": "gtm-launch-brief/v1"},
+    {"id": "launch", "agent_playbook_id": "launch-coordinator", "required": true, "output": "launch-signal-register/v1"},
+    {"id": "website", "agent_playbook_id": "website-growth-starter", "required": false, "output": "growth-priority-brief/v1"},
+    {"id": "qualification", "agent_playbook_id": "lead-intake-qualifier", "required": true, "output": "lead-qualification-brief/v1"},
+    {"id": "followup", "agent_playbook_id": "sales-followup-coordinator", "required": true, "output": "sales-followup-draft/v1"}
+  ],
+  "handoffs": [
+    {"id": "strategy-to-launch", "from": "strategy", "to": "launch", "artifact_type": "gtm-launch-brief/v1", "required": true},
+    {"id": "launch-to-qualification", "from": "launch", "to": "qualification", "artifact_type": "launch-signal-register/v1", "required": true},
+    {"id": "qualification-to-followup", "from": "qualification", "to": "followup", "artifact_type": "lead-qualification-brief/v1", "required": true}
+  ],
+  "next_playbooks": ["inbound-lead-to-meeting-review"],
+  "setup_checks": ["goal_owner", "offer_claims", "launch_scope", "metric_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

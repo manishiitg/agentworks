@@ -1,0 +1,20 @@
+{
+  "illustrative": true,
+  "artifact_type": "content-brief/v1",
+  "artifact_id": "content-arbordesk-q002-bad",
+  "source_search_artifact_id": "search-arbordesk-2026-09-25-v1",
+  "source_question_id": "Q-002",
+  "site_url": "https://arbordesk.example/",
+  "created_at": "2026-09-25T10:00:00Z",
+  "approved_opportunity": {"owner_id": "site-owner", "approved_at": null, "decision": "pending"},
+  "buyer_question": "Can patients reschedule themselves?",
+  "page_mode": "new_page",
+  "target_page_url": "https://arbordesk.example/rescheduling",
+  "angle": "Claim this feature exists despite missing product evidence.",
+  "visitor_action": "Request a demo",
+  "outline": ["Self-service rescheduling"],
+  "claims": [{"id": "C-001", "text": "Every patient can reschedule online.", "status": "verified", "source_ref": null}],
+  "internal_links": [],
+  "open_questions": [],
+  "success_signal": "Rank first for rescheduling software."
+}

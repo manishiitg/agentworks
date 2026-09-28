@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "verified-knowledge-to-case-reply",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Goal Owner",
+      "instructions": "Agree on the customer outcome and source, decision and action owners. Produce a verified live knowledge reference and an exact-case reply draft with source links and a contact decision."
+    },
+    {
+      "id": "subject_scope",
+      "title": "Subject Scope",
+      "instructions": "Bind exact tenant and subject IDs. One product, help article and exact open case, locale, recipient, support owner and contact policy."
+    },
+    {
+      "id": "source_policy",
+      "title": "Source Policy",
+      "instructions": "Agree on data access, version and source-of-truth policy. Read the live help revision and publication receipt, current case thread and account state, approved product facts and suppression history."
+    },
+    {
+      "id": "decision_rule",
+      "title": "Decision Rule",
+      "instructions": "Record the blocking decision rule and evidence gaps. An approved article draft is not live knowledge. Recheck the published revision, case applicability and permission before a separate reply approval."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Team Bindings",
+      "instructions": "Inspect the named Crew templates and existing compatible Crews. Record exact Crew IDs, skill versions and grants; propose creation only for a missing owner or access boundary."
+    },
+    {
+      "id": "source_access",
+      "title": "Source Access",
+      "instructions": "Read at least one real authorized first-stage record and the current downstream source. Record source IDs, observed times, permissions, missing fields and owner."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Handoff Contract",
+      "instructions": "Run scripts/validate_handoff.py on each stage artifact. Block wrong tenant, subject, source revision, producer, approval or route-specific claim. The typed sequence is support-knowledge-publication/v1 → support-reply-draft/v1."
+    },
+    {
+      "id": "plan_review",
+      "title": "Plan Review",
+      "instructions": "Show the concrete Crew bindings, artifact paths, validator steps, manual route, approvals, deduplication, cost and notifications. No article publication, case closure, customer send or deflection claim from selecting this Playbook or drafting a reply."
+    },
+    {
+      "id": "test_run",
+      "title": "Test Run",
+      "instructions": "Use one real live article and open case, verify exact revision and recipient policy, then have Support review the unsent response. Save real source references, artifacts, validation and owner corrections. Fictional examples cannot complete this check."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Activation Choice",
+      "instructions": "Manual-only is valid. Any event or schedule needs exact subject and deduplication keys, permissions, retry limits, cost and notification review. Keep all consequential actions behind separate approval and provider receipts."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

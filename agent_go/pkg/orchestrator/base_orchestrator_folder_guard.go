@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"os"
 	"strings"
 
@@ -274,6 +275,11 @@ func (bo *BaseOrchestrator) wrapWorkspaceToolsWithPaths(snapshotReadPaths, snaps
 					if pathStr, ok := paramValue.(string); ok {
 						// Empty string or "." means workspace root
 						if pathStr == "" || pathStr == "." {
+							// A "*** Begin Patch" names its own files; the workspace
+							// client resolves and guard-checks each of them.
+							if pathStr == "" && paramName == "filepath" && toolNameCopy == "diff_patch_workspace_file" && len(workspace.DiffPatchTargetPaths(args)) > 0 {
+								continue
+							}
 							// When folder guard is active with specific allowed paths,
 							// reject empty/root paths to prevent unrestricted workspace access
 							if useFolderGuardPaths && len(allowedPaths) > 0 {

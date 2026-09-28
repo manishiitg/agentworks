@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "artifact_type": "billing-exception-queue/v1",
+  "queue_id": "queue-invalid",
+  "entity": "Example SaaS Inc",
+  "period": "2026-09",
+  "currency": "USD",
+  "created_at": "2026-09-25T09:00:00Z",
+  "source_refs": [
+    { "id": "billing-export", "uri": "exports/fictional-billing-2026-09.csv#row=12", "observed_at": "2026-09-25T08:00:00Z" }
+  ],
+  "cases": [
+    {
+      "id": "case-refund-001",
+      "type": "refund",
+      "source_object_id": "ch_example_001",
+      "current_status": "paid",
+      "amount_minor": 9500,
+      "currency": "USD",
+      "evidence_refs": ["billing-export"],
+      "proposed_action": "Refund customer",
+      "approval_required": true,
+      "owner": "Finance owner",
+      "refund": { "original_minor": 10000, "previously_refunded_minor": 1000, "proposed_minor": 9500, "remaining_after_proposal_minor": 0 }
+    }
+  ],
+  "limitations": []
+}

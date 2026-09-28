@@ -1,0 +1,51 @@
+{
+  "artifact_type": "cohort-retention-observation/v1",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "policy_id": "lifecycle-v2",
+  "activation_rule": "first scheduling workflow within seven days of signup, event-v2",
+  "retention_rule": "active paid subscription and qualifying use in days 23-30, billing-and-use-v2",
+  "maturity_days": 30,
+  "timezone": "Europe/London",
+  "minimum_identity_coverage_bps": 9500,
+  "owner": "Customer Success lead",
+  "artifact_id": "cohort-retention-pending-001",
+  "comparison_state": "pending_maturity",
+  "as_of": "2026-09-10T09:00:00Z",
+  "source_refs": [
+    {
+      "id": "august-product",
+      "uri": "exports/fictional-product-august.csv",
+      "observed_at": "2026-09-10T08:00:00Z"
+    },
+    {
+      "id": "august-billing",
+      "uri": "exports/fictional-billing-august.csv",
+      "observed_at": "2026-09-10T08:10:00Z"
+    }
+  ],
+  "cohorts": [
+    {
+      "cohort_id": "uk-self-serve-august",
+      "signup_start": "2026-08-02",
+      "signup_end": "2026-08-31",
+      "maturity_date": "2026-09-30",
+      "state": "pending_maturity",
+      "eligible_accounts": 230,
+      "matched_identity_accounts": 225,
+      "activated_accounts": 150,
+      "retained_accounts": null,
+      "unmatured_accounts": 230,
+      "activation_rate_bps": 6522,
+      "retention_rate_bps": null,
+      "identity_coverage_bps": 9783,
+      "product_source_ref": "august-product",
+      "billing_source_ref": "august-billing"
+    }
+  ],
+  "retention_change_bps": null,
+  "limitations": [
+    "The August signup cohort has not reached its full day-30 outcome window; retained count and trend are unknown."
+  ],
+  "next_check": "Re-read product and billing records after 2026-09-30 before a retention decision."
+}

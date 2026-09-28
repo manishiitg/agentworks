@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "performance-regression-to-owned-change",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Goal Owner",
+      "instructions": "Agree on the customer outcome and source, decision and action owners. Produce a sourced regression diagnosis and an owned blocker ledger with reproduction, uncertainty and next verification."
+    },
+    {
+      "id": "subject_scope",
+      "title": "Subject Scope",
+      "instructions": "Bind exact tenant and subject IDs. One service or page, endpoint or journey, baseline and regressed builds, environment, traffic condition and Engineering owner."
+    },
+    {
+      "id": "source_policy",
+      "title": "Source Policy",
+      "instructions": "Agree on data access, version and source-of-truth policy. Use comparable trace or test runs, performance budget revision, deployment timeline, issue/PR/CI state and change policy."
+    },
+    {
+      "id": "decision_rule",
+      "title": "Decision Rule",
+      "instructions": "Record the blocking decision rule and evidence gaps. A metric change needs comparable conditions and coverage; correlation with a deploy is a hypothesis. An accepted change plan is not a deployed fix."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Team Bindings",
+      "instructions": "Inspect the named Crew templates and existing compatible Crews. Record exact Crew IDs, skill versions and grants; propose creation only for a missing owner or access boundary."
+    },
+    {
+      "id": "source_access",
+      "title": "Source Access",
+      "instructions": "Read at least one real authorized first-stage record and the current downstream source. Record source IDs, observed times, permissions, missing fields and owner."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Handoff Contract",
+      "instructions": "Run scripts/validate_handoff.py on each stage artifact. Block wrong tenant, subject, source revision, producer, approval or route-specific claim. The typed sequence is performance-regression-finding/v1 → engineering-performance-action/v1."
+    },
+    {
+      "id": "plan_review",
+      "title": "Plan Review",
+      "instructions": "Show the concrete Crew bindings, artifact paths, validator steps, manual route, approvals, deduplication, cost and notifications. No production change, rollback, issue write, customer claim or performance recovery claim from installation or a proposed fix."
+    },
+    {
+      "id": "test_run",
+      "title": "Test Run",
+      "instructions": "Run one actual regression with baseline and current traces, verify the exact build and ask the delivery owner to review the next change. Save real source references, artifacts, validation and owner corrections. Fictional examples cannot complete this check."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Activation Choice",
+      "instructions": "Manual-only is valid. Any event or schedule needs exact subject and deduplication keys, permissions, retry limits, cost and notification review. Keep all consequential actions behind separate approval and provider receipts."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

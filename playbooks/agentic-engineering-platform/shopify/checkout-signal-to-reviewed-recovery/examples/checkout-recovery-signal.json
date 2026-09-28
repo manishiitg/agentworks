@@ -1,0 +1,13 @@
+{
+  "artifact_type": "checkout-recovery-signal/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "checkout_id": "checkout-77",
+  "campaign_id": "campaign-autumn-1",
+  "channel": "email",
+  "observed_at": "2026-09-24T14:30:00Z",
+  "signal_kind": "abandoned_checkout",
+  "hypothesis": "Review a merchant-approved reminder for an incomplete checkout; no contact eligibility inferred",
+  "owner_id": "growth-owner",
+  "source_refs": ["shopify:checkout-77@2026-09-24T14:30Z"]
+}

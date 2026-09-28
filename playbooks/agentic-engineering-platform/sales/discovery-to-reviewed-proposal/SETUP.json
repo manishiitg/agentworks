@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "discovery-to-reviewed-proposal",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Confirm proposal journey and owners",
+      "instructions": "Name seller, commercial reviewer, exact first result, excluded actions and whether two Crew identities are required by access or accountability."
+    },
+    {
+      "id": "account_meeting",
+      "title": "Bind exact account, opportunity and meeting",
+      "instructions": "Record tenant, CRM account/opportunity, calendar meeting ID and time zone, offer and current owner. Resolve ambiguous company identities before handoff."
+    },
+    {
+      "id": "claim_policy",
+      "title": "Confirm approved product and discovery claims",
+      "instructions": "Record approved product source, notes approval process, source freshness, privacy rules and which claims need legal or product review."
+    },
+    {
+      "id": "pricing_policy",
+      "title": "Confirm currency and commercial authority",
+      "instructions": "Bind current price list version, quantities, tax/discount treatment, approval limits, proposal format and recipient review policy. No unsupported price or deadline."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Bind Call Briefing and Proposal Crews",
+      "instructions": "Inspect existing Crew skills and access. Reuse compatible Sales Call Briefing Assistant and Proposal Drafter, with optional Account Researcher; record exact Crew IDs and pack setup status."
+    },
+    {
+      "id": "source_access",
+      "title": "Probe one real CRM, meeting and price source",
+      "instructions": "Read authorized invite/CRM data, approved product material and pricing. Record IDs, revisions, observed times and gaps. A named connector is not proof."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Validate brief, approved notes and proposal",
+      "instructions": "Run the packaged validator on sales-call-brief/v1 and sales-proposal-draft/v1. Stop for wrong account/meeting, missing approved post-call note, unsupported scope, price mismatch or false sent state."
+    },
+    {
+      "id": "plan_review",
+      "title": "Review concrete Automation proposal",
+      "instructions": "Show Crew IDs, source and artifact paths, blocking validator steps, privacy and cost, human note approval, commercial review, action ledger and separate send route."
+    },
+    {
+      "id": "test_run",
+      "title": "Run one real case manually",
+      "instructions": "Use a real authorized meeting and reviewed post-call note. Save both Crew results, owner corrections and validator output; if notes are absent, stop truthfully after the brief. Fictional fixtures do not complete setup."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Choose manual or reviewed repeat route",
+      "instructions": "Manual-only is valid. Any calendar or CRM event trigger must authenticate source, bind IDs, deduplicate, set retry/cost policy and keep proposal delivery separately approved."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

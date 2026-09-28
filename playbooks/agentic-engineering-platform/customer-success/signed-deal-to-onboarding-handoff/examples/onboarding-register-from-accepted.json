@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "artifact_type": "onboarding-milestone-register/v1",
+  "register_id": "register-acme-1",
+  "account_id": "customer-acme",
+  "tenant_id": "tenant-demo",
+  "created_at": "2026-09-25T11:00:00Z",
+  "owner": "cs-2",
+  "handoff_ref": "accepted-handoff",
+  "purchased_scope": ["Business plan", "Production workspace for 25 seats"],
+  "first_value_goal": "Customer exports a production project report",
+  "first_value_rule": {
+    "id": "first-production-report-export/v1",
+    "description": "A customer user exports a production project report.",
+    "evidence_event": "project_report_exported",
+    "target_at": "2026-10-09T17:00:00Z"
+  },
+  "milestones": [
+    {"id":"workspace-ready", "title":"Production workspace available", "owner":"cs-2", "due_at":"2026-09-30T17:00:00Z", "state":"pending", "evidence_refs":[]},
+    {"id":"first-report", "title":"First production report export", "owner":"customer-sponsor", "due_at":"2026-10-09T17:00:00Z", "state":"pending", "evidence_refs":[]}
+  ],
+  "source_refs": [
+    {"id":"accepted-handoff", "uri":"artifacts/acceptance-artifact-acme-1", "observed_at":"2026-09-25T10:15:00Z"}
+  ],
+  "limitations": ["Fictional example; no account, entitlement or product events are connected."]
+}

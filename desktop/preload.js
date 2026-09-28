@@ -11,9 +11,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWorkspaceApiBaseUrl: () => {
     const runtime = window.__APP_RUNTIME_CONFIG__;
     if (runtime?.workspaceApiBaseUrl) return runtime.workspaceApiBaseUrl;
-    // Get the workspace port from main process (sync)
-    const port = ipcRenderer.sendSync('get-workspace-port');
-    return `http://127.0.0.1:${port}`;
+    // Workspace calls go through the agent server's /api/wp proxy, which
+    // checks access and holds the workspace service token; the workspace
+    // service itself refuses callers without that token.
+    const runtimeApi = runtime?.apiBaseUrl || window.location.origin;
+    return `${runtimeApi.replace(/\/+$/, '')}/api/wp`;
   },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   setDockBadge: (text) => ipcRenderer.send('set-dock-badge', text),

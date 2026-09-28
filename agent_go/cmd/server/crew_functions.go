@@ -35,9 +35,35 @@ const (
 	crewFunctionActivityEventsScan = 80
 )
 
-// crewFunctionFastWait is how long call_function waits for a result before
-// returning {status:"running"} and notifying later. A var for tests.
+// crewFunctionFastWait is the longest call_function will wait for a result
+// (wait_seconds) before returning {status:"running"} and notifying later.
+// The default is no wait: functions are agentic and usually take minutes,
+// and a caller whose request is cut short (a shell curl with its own
+// timeout) never saw the call_id and called again (RTS 2026-09-27). A var for
+// tests.
 var crewFunctionFastWait = 120 * time.Second
+
+// crewFunctionWait reads call_function's optional wait_seconds, capped at
+// crewFunctionFastWait; absent means return at once.
+func crewFunctionWait(raw interface{}) time.Duration {
+	var seconds float64
+	switch value := raw.(type) {
+	case float64:
+		seconds = value
+	case int:
+		seconds = float64(value)
+	case json.Number:
+		seconds, _ = value.Float64()
+	}
+	if seconds <= 0 {
+		return 0
+	}
+	wait := time.Duration(seconds * float64(time.Second))
+	if wait > crewFunctionFastWait {
+		return crewFunctionFastWait
+	}
+	return wait
+}
 
 var crewFunctionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
@@ -96,6 +122,53 @@ func writeCrewFunctions(ctx context.Context, target triggerTarget, functions []c
 		return err
 	}
 	return writeFileToWorkspace(ctx, crewFunctionsPath(ctx, target), string(encoded)+"\n")
+}
+
+// crewFunctionSpec is one function definition as its author sends it. The
+// define_function tool and the external Crew authoring tools share it, so
+// both apply the same checks.
+type crewFunctionSpec struct {
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	Instructions string                 `json:"instructions"`
+	InputSchema  map[string]interface{} `json:"input_schema,omitempty"`
+	ResultSchema map[string]interface{} `json:"result_schema,omitempty"`
+}
+
+func (spec crewFunctionSpec) normalized() crewFunctionSpec {
+	spec.Name = strings.TrimSpace(spec.Name)
+	spec.Description = strings.TrimSpace(spec.Description)
+	spec.Instructions = strings.TrimSpace(spec.Instructions)
+	return spec
+}
+
+func (spec crewFunctionSpec) validate() error {
+	if !crewFunctionNamePattern.MatchString(spec.Name) {
+		return fmt.Errorf("name must be snake_case: a lowercase letter, then lowercase letters, digits or _ (max 48)")
+	}
+	if spec.Description == "" || spec.Instructions == "" {
+		return fmt.Errorf("description and instructions are required")
+	}
+	if len(spec.InputSchema) > 0 && spec.InputSchema["type"] != "object" {
+		return fmt.Errorf("input_schema must have type object (named arguments)")
+	}
+	if err := checkCrewFunctionSchema(spec.InputSchema, "input_schema"); err != nil {
+		return err
+	}
+	return checkCrewFunctionSchema(spec.ResultSchema, "result_schema")
+}
+
+// upsertCrewFunction declares a validated spec, updating a same-named
+// function in place (keeping its creator and creation time).
+func upsertCrewFunction(functions []crewFunction, spec crewFunctionSpec, creator string, now time.Time) ([]crewFunction, bool) {
+	for i := range functions {
+		if functions[i].Name == spec.Name {
+			functions[i].Description, functions[i].Instructions = spec.Description, spec.Instructions
+			functions[i].InputSchema, functions[i].ResultSchema, functions[i].UpdatedAt = spec.InputSchema, spec.ResultSchema, now
+			return functions, true
+		}
+	}
+	return append(functions, crewFunction{Name: spec.Name, Description: spec.Description, Instructions: spec.Instructions, InputSchema: spec.InputSchema, ResultSchema: spec.ResultSchema, CreatedBy: creator, CreatedAt: now, UpdatedAt: now}), false
 }
 
 // crewFunctionAskName is the implicit function every Crew
@@ -274,11 +347,16 @@ type crewFunctionCall struct {
 	Late      bool      `json:"late,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Joined counts identical calls made while this one was in flight and
+	// answered with it instead of starting another run.
+	Joined int `json:"joined,omitempty"`
 
-	target triggerTarget
-	caller triggerLinkCaller
-	done   chan struct{}
-	closed bool
+	// argsKey identifies the exact arguments, for joining identical calls.
+	argsKey string
+	target  triggerTarget
+	caller  triggerLinkCaller
+	done    chan struct{}
+	closed  bool
 	// onLate tells the caller's chat about a late answer.
 	onLate func()
 	// poll is captured at start so a supervisor never reads the package
@@ -470,7 +548,38 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 	if c.Late {
 		out["late"] = true
 	}
+	if c.Joined > 0 {
+		out["joined"] = c.Joined
+		if _, ok := out["note"]; !ok {
+			out["note"] = "An identical call (same function and arguments) was already running, so this is that call, not a new run. Do not call again; wait for its result or use get_function_call."
+		}
+	}
 	return out
+}
+
+// joinInFlightCrewFunctionCallLocked returns an in-flight call from the same
+// caller for the same function and target with the same arguments. A caller
+// that retries a call it believes failed (a shell curl that timed out while
+// call_function was still waiting) joins the running call instead of starting
+// a duplicate run (RTS 2026-09-27: one PR reviewed three times at once).
+// Needs crewFunctionCalls locked.
+func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerID, targetKind, targetID, function, argsKey string) *crewFunctionCall {
+	for _, call := range crewFunctionCalls.m {
+		call.mu.Lock()
+		same := !call.terminalLocked() && call.UserID == userID &&
+			call.CallerKind == callerKind && call.CallerID == callerID &&
+			call.TargetKind == targetKind && call.TargetID == targetID &&
+			call.Function == function && call.argsKey == argsKey
+		if same {
+			call.Joined++
+			call.UpdatedAt = time.Now().UTC()
+		}
+		call.mu.Unlock()
+		if same {
+			return call
+		}
+	}
+	return nil
 }
 
 // crewFunctionFreeTextAnswer normalises an ask result to {"answer": text}:
@@ -633,6 +742,15 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 			return nil, fmt.Errorf("arguments do not match %s's input schema: %s", fn.Name, strings.Join(problems, "; "))
 		}
 	}
+	// encoding/json sorts map keys, so equal arguments give equal keys.
+	argsJSON, _ := json.Marshal(args)
+	argsKey := string(argsJSON)
+	crewFunctionCalls.Lock()
+	joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey)
+	crewFunctionCalls.Unlock()
+	if joined != nil {
+		return joined, nil
+	}
 	callerKey := crewFunctionKey(caller.Stamp.Type, caller.Stamp.ID)
 	targetKey := crewFunctionKey(target.Kind, target.stampID())
 	chain, root := crewFunctionChainFor(callerKey)
@@ -675,6 +793,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
 		FreeText: fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
 		target:   target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
+		argsKey: argsKey,
 	}
 	body := map[string]interface{}{
 		"task":    crewFunctionTaskText(call, fn, args),
@@ -682,6 +801,12 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
 	crewFunctionCalls.Lock()
+	// Re-check under the same lock as the insert: two identical calls racing
+	// past the early check must still start one run.
+	if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey); joined != nil {
+		crewFunctionCalls.Unlock()
+		return joined, nil
+	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
 	if isWorkflowAsk(target, fn) {
@@ -1069,7 +1194,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return resolveTriggerTarget(ctx, claims, name)
 	}
 	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow: its name, a #crew:<name> / #workflow:<name> tag, or its exact workspace_path."}
-	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout time.Duration) (string, error) {
+	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1085,17 +1210,27 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		timer := time.NewTimer(crewFunctionFastWait)
-		defer timer.Stop()
-		select {
-		case <-call.done:
-			return jsonOut(call.snapshot())
-		case <-timer.C:
-		case <-ctx.Done():
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-call.done:
+				return jsonOut(call.snapshot())
+			case <-timer.C:
+			case <-ctx.Done():
+			}
+		} else {
+			select {
+			case <-call.done: // already settled (e.g. a joined call that finished)
+				return jsonOut(call.snapshot())
+			default:
+			}
 		}
 		response := call.snapshot()
 		response["status"] = "running"
-		response["note"] = "Still running. Poll with get_function_call, or ask a Crew target for an update with ask_function_update."
+		if _, joined := response["joined"]; !joined {
+			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
+		}
 		if notify {
 			executionID, watchErr := api.startCrewFunctionWatch(parentReq, sessionID, userID, call, timeout)
 			if watchErr != nil {
@@ -1128,27 +1263,17 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		name, _ := args["name"].(string)
-		name = strings.TrimSpace(name)
-		if !crewFunctionNamePattern.MatchString(name) {
-			return "", fmt.Errorf("name must be snake_case: a lowercase letter, then lowercase letters, digits or _ (max 48)")
-		}
-		description, _ := args["description"].(string)
-		instructions, _ := args["instructions"].(string)
-		if strings.TrimSpace(description) == "" || strings.TrimSpace(instructions) == "" {
-			return "", fmt.Errorf("description and instructions are required")
-		}
 		inputSchema, _ := args["input_schema"].(map[string]interface{})
 		resultSchema, _ := args["result_schema"].(map[string]interface{})
-		if len(inputSchema) > 0 && inputSchema["type"] != "object" {
-			return "", fmt.Errorf("input_schema must have type object (named arguments)")
-		}
-		if err := checkCrewFunctionSchema(inputSchema, "input_schema"); err != nil {
+		spec := crewFunctionSpec{InputSchema: inputSchema, ResultSchema: resultSchema}
+		spec.Name, _ = args["name"].(string)
+		spec.Description, _ = args["description"].(string)
+		spec.Instructions, _ = args["instructions"].(string)
+		spec = spec.normalized()
+		if err := spec.validate(); err != nil {
 			return "", err
 		}
-		if err := checkCrewFunctionSchema(resultSchema, "result_schema"); err != nil {
-			return "", err
-		}
+		name := spec.Name
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
@@ -1156,19 +1281,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		now := time.Now().UTC()
 		creator := caller.Stamp.Type + ":" + caller.Stamp.ID + " (" + caller.Label + ")"
-		updated := false
-		for i := range functions {
-			if functions[i].Name == name {
-				functions[i].Description, functions[i].Instructions = strings.TrimSpace(description), strings.TrimSpace(instructions)
-				functions[i].InputSchema, functions[i].ResultSchema, functions[i].UpdatedAt = inputSchema, resultSchema, now
-				updated = true
-			}
-		}
-		if !updated {
-			functions = append(functions, crewFunction{Name: name, Description: strings.TrimSpace(description), Instructions: strings.TrimSpace(instructions), InputSchema: inputSchema, ResultSchema: resultSchema, CreatedBy: creator, CreatedAt: now, UpdatedAt: now})
-		}
+		functions, updated := upsertCrewFunction(functions, spec, creator, time.Now().UTC())
 		if err := writeCrewFunctions(ctx, target, functions); err != nil {
 			return "", err
 		}
@@ -1242,12 +1356,13 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. If it finishes within about 2 minutes the result is returned here directly; otherwise this returns status=running with a call_id and the result arrives later as an [AUTO-NOTIFICATION] (unless notify=false). Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. It returns at once with status=running and a call_id (functions are agentic and usually take minutes); the result arrives later as an [AUTO-NOTIFICATION] in this chat (unless notify=false). Pass wait_seconds (up to 120) only for a function you expect to finish quickly, to get its result inline. Never call again for the same work: an identical call while one is running returns that same call. Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
 			"args":            map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
-			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result if it takes longer than the fast window (default true)."},
+			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result when it arrives (default true)."},
+			"wait_seconds":    map[string]interface{}{"type": "integer", "minimum": 0, "maximum": int(crewFunctionFastWait / time.Second), "description": "Wait up to this long for the result before returning status=running (default 0: return at once)."},
 			"timeout_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": int(triggerTargetMaxTimeout / time.Minute), "description": "How long the call may take before it fails (default 60)."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -1274,7 +1389,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		return callFunction(ctx, caller, target, function, callArgs, notify, timeout)
+		return callFunction(ctx, caller, target, function, callArgs, notify, timeout, crewFunctionWait(args["wait_seconds"]))
 	}); err != nil {
 		return err
 	}
@@ -1497,7 +1612,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if len(params) == 0 {
 				params = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 			}
-			description := fmt.Sprintf("Function %q of %s %q: %s Returns a result validated against its result schema; long calls return status=running and notify this chat later.", fn.Name, target.Kind, target.Label, fn.Description)
+			description := fmt.Sprintf("Function %q of %s %q: %s Returns at once with status=running and a call_id; the result, validated against its result schema, arrives later as an [AUTO-NOTIFICATION] in this chat. Do not call again for the same work.", fn.Name, target.Kind, target.Label, fn.Description)
 			if declare != nil {
 				declare(toolName)
 			}
@@ -1508,7 +1623,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 				if err != nil {
 					return "", err
 				}
-				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout)
+				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout, 0)
 			}); err != nil {
 				return err
 			}

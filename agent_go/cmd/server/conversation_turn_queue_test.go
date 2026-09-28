@@ -27,7 +27,12 @@ func TestRetainedDeliveryPrecedesTurnQueueOnlyForHumanInput(t *testing.T) {
 		{"synthetic notification", QueryRequest{AgentMode: "multi-agent", IsAutoNotification: true}, context.Background(), false},
 		{"scheduled turn", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron"}, context.Background(), false},
 		{"pulse with manual trigger", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual", PulseLifecycleTurn: true}, context.Background(), false},
-		{"bot turn", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack", BotPlatform: "slack"}, context.Background(), false},
+		// A person's follow-up in a bot conversation steers the running CLI.
+		{"bot turn", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack", BotPlatform: "slack"}, context.Background(), true},
+		{"workflow bot turn", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "cron", BotPlatform: "slack"}, context.Background(), true},
+		{"whatsapp turn", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:whatsapp", BotPlatform: "whatsapp"}, context.Background(), true},
+		{"slack workflow trigger run", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "bot:slack", BotPlatform: "slack"}, context.WithValue(context.Background(), directWebhookExecutionKey{}, 1), false},
+		{"bot trigger without platform", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "bot:slack"}, context.Background(), false},
 		{"token caller without trigger", QueryRequest{AgentMode: "multi-agent"}, context.WithValue(context.Background(), UserContextKey, &UserClaims{AccessToken: &accesstokens.Token{ID: "token-1"}}), false},
 		{"explicit next turn", QueryRequest{AgentMode: "multi-agent", DisableLiveInputDelivery: true}, context.Background(), false},
 		{"claimed queue worker", QueryRequest{AgentMode: "workflow_phase", TriggeredBy: "manual"}, withConversationTurnQueueExecution(context.Background()), false},

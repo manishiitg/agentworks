@@ -1,0 +1,18 @@
+{
+  "illustrative": true,
+  "site_url": "https://arbordesk.example/",
+  "goal": { "visitor_action": "request a demo", "metric": "qualified organic demo requests", "baseline_mode": "baseline_first", "baseline_start_date": "2026-09-25" },
+  "team": [
+    { "slot": "strategist", "crew_id": "example-growth-crew", "run_id": "example-run-1", "artifact_ref": "examples/growth-priority-brief.json", "validation": "passed" },
+    { "slot": "search", "crew_id": "example-search-crew", "run_id": "example-run-2", "artifact_ref": "examples/search-opportunity-list.json", "validation": "passed" }
+  ],
+  "handoffs": [
+    { "id": "strategy-to-search", "artifact_type": "growth-priority-brief/v1", "artifact_ref": "examples/growth-priority-brief.json", "validator_result_ref": "runs/example/brief-validation.json", "validated": true }
+  ],
+  "result": { "status": "needs_owner_review", "action_ids": ["ACT-001", "ACT-002"], "traffic_change": null, "limitation": "No comparable analytics window exists yet." },
+  "action_ledger": [
+    { "id": "ACT-001", "source_finding_id": "F-001", "owner": "Site owner", "state": "proposed", "next_check_date": "2026-10-02" },
+    { "id": "ACT-002", "source_finding_id": "F-002", "owner": "Analytics owner", "state": "proposed", "next_check_date": "2026-10-02" }
+  ],
+  "run_policy": { "mode": "manual", "scheduled": false }
+}

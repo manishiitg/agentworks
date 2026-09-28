@@ -28,6 +28,7 @@ var (
 	claudeCLIAuthProbeCache cliAuthProbeCache
 	codexCLIAuthProbeCache  cliAuthProbeCache
 	cursorCLIAuthProbeCache cliAuthProbeCache
+	agyCLIAuthProbeCache    cliAuthProbeCache
 )
 
 var claudeCLIAuthStatusCommand = func(ctx context.Context) ([]byte, error) {
@@ -40,6 +41,13 @@ var codexCLIAuthStatusCommand = func(ctx context.Context) ([]byte, error) {
 
 var cursorCLIStatusJSON = func(ctx context.Context) ([]byte, error) {
 	return exec.CommandContext(ctx, "cursor-agent", "status", "--format", "json").Output()
+}
+
+// agyCLIModelsCommand lists models without starting a model turn, so it is
+// cheap enough to poll from the manifest. It is auth-gated but not
+// quota-gated: a quota-exhausted login still lists models.
+var agyCLIModelsCommand = func(ctx context.Context) ([]byte, error) {
+	return exec.CommandContext(ctx, "agy", "models").CombinedOutput()
 }
 
 func cursorCLILoginRequiredMessage() string {
@@ -302,6 +310,13 @@ func providerAuthConfigured(provider string, keys *llm.ProviderAPIKeys) (bool, s
 		}
 		configured, _ := museCLILocalAuthState()
 		return configured, "Muse CLI login or META_API_KEY/workspace provider auth"
+	case string(llm.ProviderAgyCLI):
+		// No managed-key shortcut: GEMINI_API_KEY alone does not
+		// authenticate agy (API-key mode also needs modelProvider in the
+		// CLI settings). The models probe reports true for a stored Google
+		// login and for a fully configured API-key mode alike.
+		configured, _ := agyCLILocalAuthState()
+		return configured, "Antigravity CLI login or API-key mode"
 	default:
 		return false, "unknown provider"
 	}
@@ -339,6 +354,31 @@ func codexCLILocalAuthState() (authenticated, conclusive bool) {
 	return cachedCLIAuthState("codex", &codexCLIAuthProbeCache, codexCLIAuthStatusCommand, codexCLIAuthStatus)
 }
 
+func agyCLILocalAuthState() (authenticated, conclusive bool) {
+	return cachedCLIAuthState("agy", &agyCLIAuthProbeCache, agyCLIModelsCommand, agyCLIAuthStatus)
+}
+
+// agyCLIAuthStatus parses `agy models` output. Exit code is useless here:
+// agy exits 0 even for "Please sign in", so the text decides. A header plus
+// at least one model row means authenticated (OAuth login or API-key mode);
+// the sign-in marker means conclusively logged out.
+func agyCLIAuthStatus(out []byte) (authenticated, conclusive bool) {
+	lower := strings.ToLower(string(out))
+	if strings.Contains(lower, "please sign in") {
+		return false, true
+	}
+	rows := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) != "" {
+			rows++
+		}
+	}
+	if rows >= 2 {
+		return true, true
+	}
+	return false, false
+}
+
 func invalidateProviderAuthProbe(provider string) {
 	var cache *cliAuthProbeCache
 	switch normalizeManagedProvider(provider) {
@@ -351,6 +391,8 @@ func invalidateProviderAuthProbe(provider string) {
 	case string(llm.ProviderPiCLI):
 		invalidatePiProviderCaches()
 		return
+	case string(llm.ProviderAgyCLI):
+		cache = &agyCLIAuthProbeCache
 	default:
 		return
 	}
@@ -519,6 +561,7 @@ func buildChatLLMCapabilities(keys *llm.ProviderAPIKeys, includeModels bool) []l
 		string(llm.ProviderCursorCLI),
 		string(llm.ProviderPiCLI),
 		string(llm.ProviderMuseCLI),
+		string(llm.ProviderAgyCLI),
 		string(llm.ProviderClaudeCode),
 	}
 	supportedSet := make(map[string]bool)

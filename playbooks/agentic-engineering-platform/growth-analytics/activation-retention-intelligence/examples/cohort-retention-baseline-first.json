@@ -1,0 +1,52 @@
+{
+  "artifact_type": "cohort-retention-observation/v1",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "policy_id": "lifecycle-v2",
+  "activation_rule": "first scheduling workflow within seven days of signup, event-v2",
+  "retention_rule": "active paid subscription and qualifying use in days 23-30, billing-and-use-v2",
+  "maturity_days": 30,
+  "timezone": "Europe/London",
+  "minimum_identity_coverage_bps": 9500,
+  "owner": "Customer Success lead",
+  "artifact_id": "cohort-retention-baseline-001",
+  "comparison_state": "baseline_first",
+  "as_of": "2026-08-02T09:00:00Z",
+  "source_refs": [
+    {
+      "id": "june-product",
+      "uri": "exports/fictional-product-june.csv",
+      "observed_at": "2026-08-02T08:00:00Z"
+    },
+    {
+      "id": "june-billing",
+      "uri": "exports/fictional-billing-june.csv",
+      "observed_at": "2026-08-02T08:10:00Z"
+    }
+  ],
+  "cohorts": [
+    {
+      "cohort_id": "uk-self-serve-june",
+      "signup_start": "2026-06-01",
+      "signup_end": "2026-06-30",
+      "maturity_date": "2026-07-30",
+      "state": "mature",
+      "eligible_accounts": 200,
+      "matched_identity_accounts": 196,
+      "activated_accounts": 140,
+      "retained_accounts": 120,
+      "unmatured_accounts": 0,
+      "activation_rate_bps": 7000,
+      "retention_rate_bps": 6000,
+      "identity_coverage_bps": 9800,
+      "product_source_ref": "june-product",
+      "billing_source_ref": "june-billing"
+    }
+  ],
+  "retention_change_bps": null,
+  "limitations": [
+    "One mature cohort is only a starting baseline, not a retention trend.",
+    "Identity join coverage is 98%; unmatched accounts may change the rate."
+  ],
+  "next_check": "Wait for a second fully mature cohort under the same rule before comparing retention."
+}

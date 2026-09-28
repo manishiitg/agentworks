@@ -90,6 +90,8 @@ Use this order when debugging latency:
 | db/README.md | Per-table schema contract (DDL, primary key, upsert rule, indexes, writers, consumers) |
 | db/assets/* | Durable output media/files referenced by db rows, reports, or later steps. Source belongs in the manifest-selected script directory, not here. Version 1 unlocked steps also have workflow code-tree write access; other writes remain subject to the current Folder Guard grants. |
 | db/reports/*.html | Workflow-owned live report documents; index.html is default, each owns its internal layout and reads db/db.sqlite through window.report |
+| code/reports/*.py | Report data scripts called by Dashboards through `window.report.run` (live outside data; read-only, one JSON value on stdout; see reporting-policy) |
+| .report-cache/ | Platform-managed, the only folder report scripts may write (`$REPORT_CACHE_DIR`); disposable, shared by all viewers |
 | db/reports/views.json | Optional toolbar metadata: stable view IDs, titles, order, and default document |
 | knowledgebase/context/context.md | User-supplied runtime business context that steps with KB read access must respect |
 | knowledgebase/notes/*.md | Per-topic narrative markdown — durable observations discovered by the workflow. Normally written by step agents in direct-write mode; post-step KB agent only when explicitly requested. |

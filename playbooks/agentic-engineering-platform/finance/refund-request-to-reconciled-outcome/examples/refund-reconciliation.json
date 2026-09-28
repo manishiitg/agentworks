@@ -1,0 +1,19 @@
+{
+  "artifact_type": "refund-reconciliation/v1",
+  "entity_id": "acme-us",
+  "provider_account_id": "acct_example",
+  "provider_mode": "test",
+  "customer_id": "cus_88",
+  "request_id": "req_88",
+  "payment_id": "ch_88",
+  "currency": "USD",
+  "decision_artifact_id": "RF-88-decision-v1",
+  "provider_observed_at": "2026-09-26T08:03:00Z",
+  "finance_source_id": "ledger-export-2026-09-26",
+  "finance_observed_at": "2026-09-26T08:05:00Z",
+  "state": "pending_action",
+  "provider_refund_id": null,
+  "ledger_match": null,
+  "owner_id": "close-lead",
+  "next_action": "Await separately approved provider action; then re-read refund status and reconcile under owner policy."
+}

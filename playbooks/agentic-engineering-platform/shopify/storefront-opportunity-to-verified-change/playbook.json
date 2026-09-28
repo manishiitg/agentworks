@@ -1,0 +1,40 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "storefront-opportunity-to-verified-change",
+  "version": "0.1.0",
+  "changelog": [{ "version": "0.1.0", "summary": "Adds a chat-led Shopify growth-to-catalog handoff with a reviewed edit and measured follow-through." }],
+  "title": "Storefront Opportunity to Verified Change",
+  "description": "Find a product-page or variant issue, prepare a merchant-reviewed catalog correction, then verify the shipped change and comparable shopper evidence.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Storefront Opportunity to Verified Change as a proposal for one Shopify store, market, buyer task, and product scope. Discover existing Crews and propose reuse or creation of Shopify Growth Analyst and Catalog & Merchandising Analyst. Inspect the public storefront and authorized product, variant, inventory, and analytics sources. Show the typed opportunity-to-catalog handoff, a merchant review of the exact proposed edit, a manual first run, and comparable post-change measurement. Selecting this Playbook does not create Crews, connect accounts, publish a product or theme, spend budget, or enable recurrence. Show the concrete proposal before Builder applies it.",
+  "setup_inputs": [
+    { "id": "store_market", "label": "Store, market, buyer task, and product or collection scope", "required": true },
+    { "id": "source_scope", "label": "Storefront and authorized product, variant, inventory, and analytics sources", "required": true },
+    { "id": "goal_metric", "label": "Merchant goal, metric definition or qualitative-only rule, and comparable window", "required": true },
+    { "id": "owner", "label": "Growth and catalog decision owners and publish policy", "required": true },
+    { "id": "run_policy", "label": "Manual-only or reviewed schedule and notification route", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create a reviewed missing Shopify Crew with a stable idempotency key", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded opportunity artifact to the catalog Crew", "capability": "durable_artifacts", "optional": true },
+    { "id": "shopify-catalog", "name": "Shopify Admin or bounded product export", "type": "mcp", "purpose": "Read exact product, variant, collection, and market facts", "capability": "store_catalog_records", "optional": true },
+    { "id": "storefront", "name": "Public storefront browser", "type": "browser", "purpose": "Inspect the exact buyer-facing product or collection journey", "capability": "public_storefront_read", "optional": true },
+    { "id": "analytics", "name": "Authorized analytics report or export", "type": "mcp", "purpose": "Measure a defined segment and event with a comparable denominator", "capability": "storefront_analytics", "optional": true }
+  ],
+  "pulse_focus": [
+    { "module": "strategic_review", "label": "Storefront opportunity follow-through", "focus_areas": ["Whether owner-approved product or variant changes were actually published and retested", "Whether comparable shopper evidence supports, contradicts, or cannot resolve the hypothesis"], "review_when": ["A catalog change receives an owner decision, a publish receipt arrives, or the agreed measurement window ends"] }
+  ],
+  "outputs": ["Reviewed Shopify Crew roster and source map", "Validated growth opportunity", "Catalog correction brief with pending merchant decision", "Verified publish evidence and comparable measurement or inconclusive result", "Manual route and activation decision"],
+  "agent_slots": [
+    { "id": "growth", "agent_playbook_id": "shopify-growth-analyst", "required": true, "output": "shopify-growth-opportunity/v1" },
+    { "id": "catalog", "agent_playbook_id": "catalog-merchandising-analyst", "required": true, "output": "catalog-change-review/v1" }
+  ],
+  "handoffs": [{ "id": "growth-to-catalog", "from": "growth", "to": "catalog", "artifact_type": "shopify-growth-opportunity/v1", "required": true }],
+  "setup_checks": ["goal_owner", "store_market_scope", "metric_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "change_ledger", "activation_choice"]
+}

@@ -21,6 +21,7 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).not.toContain("id: 'history'")
     expect(source).toContain("id: 'schedules', label: 'Automation'")
     expect(source).toContain("id: 'memory', label: 'Memory'")
+    expect(source).toContain("id: 'plan', label: 'Plan'")
     expect(source).toContain("id: 'identity', label: 'Identity'")
     expect(source).toContain("id: 'mcp', label: 'Integrations'")
     expect(source).toContain('title="Setup: identity and integrations"')
@@ -47,7 +48,7 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain('This is the persistent conversation for this Crew project.')
   })
 
-  it('opens Dashboard for a Crew project only when no saved view exists', () => {
+  it('keeps a saved Crew view ahead of the content-based landing view', () => {
     const source = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
 
     expect(source).toContain("const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'")
@@ -55,5 +56,7 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain('if (saved && saved in WORK_UI_PRESENTATION_VIEWS) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]')
     expect(source).toContain('writeWorkWorkspaceView(selected?.id, view)')
     expect(source).toContain('const savedView = readWorkWorkspaceView(selected?.id)')
+    expect(source).toContain('loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed })')
+    expect(source).toContain("savedView ?? 'identity'")
   })
 })

@@ -1,0 +1,181 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "discovery-to-reviewed-proposal",
+  "version": "0.1.0",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "summary": "Adds a chat-led exact-meeting to approved-discovery to reviewed-proposal route with price and unsent-state validation."
+    }
+  ],
+  "title": "Discovery to Reviewed Proposal",
+  "description": "Prepare a sourced call brief and an unsent SaaS proposal from approved post-call discovery and current pricing, with distinct seller and commercial review.",
+  "hierarchy": [
+    "AgentWorks",
+    "Agentic Engineering Platform",
+    "Sales"
+  ],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Discovery to Reviewed Proposal as a chat-led proposal. Inspect existing Sales Call Briefing Assistant, Proposal Drafter and optional Account Researcher Crews; bind exact account, opportunity and meeting; inspect current CRM, invitation, approved product claims, discovery-note approval, pricing and commercial owner. Propose reuse or reviewed creation, a validated brief-to-approved-notes-to-draft route, a manual first case and separate sending approval. Show the concrete plan before Builder configures it. Selection does not contact a prospect, send a proposal, change CRM or enable recurrence.",
+  "setup_inputs": [
+    {
+      "id": "meeting_scope",
+      "label": "Tenant, account, opportunity, meeting, seller and time zone",
+      "required": true
+    },
+    {
+      "id": "crm_source",
+      "label": "Authorized current invitation and CRM source or export",
+      "required": true
+    },
+    {
+      "id": "discovery_source",
+      "label": "Approved post-call discovery notes or a plan to capture/review them",
+      "required": true
+    },
+    {
+      "id": "offer_pricing",
+      "label": "Approved offer, price list/version, currency, discount and scope rules",
+      "required": true
+    },
+    {
+      "id": "commercial_owner",
+      "label": "Commercial reviewer, format, claim and recipient policy",
+      "required": true
+    },
+    {
+      "id": "run_policy",
+      "label": "Manual-only or reviewed calendar/CRM event and cadence",
+      "required": false
+    }
+  ],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "workflow_reporting",
+    "durable_artifacts"
+  ],
+  "recommended_tools": [
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create reviewed missing Sales Crews with stable idempotency keys",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass only a validated brief and approved discovery reference",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "crm-source",
+      "name": "CRM or export",
+      "type": "mcp",
+      "purpose": "Read current account, opportunity and discovery state",
+      "capability": "crm_read",
+      "optional": true
+    },
+    {
+      "id": "calendar-source",
+      "name": "Calendar or meeting export",
+      "type": "mcp",
+      "purpose": "Verify exact meeting and participants without changing the invite",
+      "capability": "calendar_read",
+      "optional": true
+    },
+    {
+      "id": "pricing-source",
+      "name": "Approved price and product document source",
+      "type": "mcp",
+      "purpose": "Ground scope, capabilities, price and version",
+      "capability": "offer_read",
+      "optional": true
+    },
+    {
+      "id": "delivery-route",
+      "name": "Approved proposal delivery provider",
+      "type": "mcp",
+      "purpose": "Send only an exact separately approved proposal and save the provider receipt",
+      "capability": "proposal_send",
+      "optional": true
+    }
+  ],
+  "pulse_focus": [
+    {
+      "module": "strategic_review",
+      "label": "Reviewed proposals grounded in discovery",
+      "focus_areas": [
+        "Whether proposal claims reflect approved buyer discovery and current offer/pricing",
+        "Whether drafts, approved versions and provider-sent proposals remain distinct"
+      ],
+      "review_when": [
+        "Discovery notes change, a price list changes, a proposal is reviewed or a customer responds"
+      ]
+    }
+  ],
+  "outputs": [
+    "Reviewed Crew roster and source map",
+    "Validated sales-call-brief/v1",
+    "Approved discovery note reference or a truthful pending state",
+    "Validated unsent sales-proposal-draft/v1 with exact pricing",
+    "Manual case, owner decision and activation choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "briefing",
+      "agent_playbook_id": "sales-call-briefing",
+      "required": true,
+      "output": "sales-call-brief/v1"
+    },
+    {
+      "id": "proposal",
+      "agent_playbook_id": "proposal-drafter",
+      "required": true,
+      "output": "sales-proposal-draft/v1"
+    },
+    {
+      "id": "research",
+      "agent_playbook_id": "account-researcher",
+      "required": false,
+      "output": "account-research-brief/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "briefing-to-proposal",
+      "from": "briefing",
+      "to": "proposal",
+      "artifact_type": "sales-call-brief/v1",
+      "required": true
+    },
+    {
+      "id": "research-to-briefing",
+      "from": "research",
+      "to": "briefing",
+      "artifact_type": "account-research-brief/v1",
+      "required": false
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "account_meeting",
+    "claim_policy",
+    "pricing_policy",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "test_run",
+    "activation_choice"
+  ]
+}

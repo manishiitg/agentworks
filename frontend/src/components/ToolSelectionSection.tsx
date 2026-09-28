@@ -403,7 +403,7 @@ export const ToolSelectionSection: React.FC<ToolSelectionSectionProps> = ({
                     <span className="shrink-0 text-xs text-blue-700 dark:text-blue-300">Configured</span>
                   )}
                   {isServerSelected && !isConnected && !isLoadingConnections && (
-                    <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">Disconnected</span>
+                    <span className="shrink-0 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" title="Selected but not connected: its tools won't work until it is connected.">Needs connecting</span>
                   )}
                   {!hideToolDetails && isServerSelected && isServerToolsArray && serverTools.length > 0 && (
                     <span className="ml-1 text-xs text-gray-500 dark:text-gray-400 shrink-0">

@@ -1,0 +1,63 @@
+{
+  "artifact_type": "experiment-outcome-readout/v1",
+  "artifact_id": "experiment-readout-measured-7",
+  "source_execution_artifact_id": "experiment-execution-7",
+  "experiment_id": "exp-guided-setup-7",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "owner": "Growth lead",
+  "primary_metric": "day30-retained-per-eligible-v2",
+  "guardrail_metric": "support-blocker-per-eligible-v2",
+  "as_of": "2026-12-02T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "execution",
+      "uri": "artifact:experiment-execution-7",
+      "observed_at": "2026-10-01T11:00:00Z"
+    },
+    {
+      "id": "primary",
+      "uri": "analytics:retention-exp-7-rev1",
+      "observed_at": "2026-12-02T09:00:00Z"
+    },
+    {
+      "id": "guardrail",
+      "uri": "guardrail:support-exp-7-rev1",
+      "observed_at": "2026-12-02T09:30:00Z"
+    },
+    {
+      "id": "final-exposures",
+      "uri": "exposure:exp-7-final-rev1",
+      "observed_at": "2026-12-02T08:30:00Z"
+    }
+  ],
+  "state": "measured",
+  "arms": [
+    {
+      "variant_id": "current-setup",
+      "eligible_accounts": 300,
+      "exposed_accounts": 300,
+      "primary_success_accounts": 150,
+      "guardrail_event_accounts": 9,
+      "primary_rate_bps": 5000,
+      "guardrail_rate_bps": 300
+    },
+    {
+      "variant_id": "guided-setup",
+      "eligible_accounts": 300,
+      "exposed_accounts": 300,
+      "primary_success_accounts": 177,
+      "guardrail_event_accounts": 12,
+      "primary_rate_bps": 5900,
+      "guardrail_rate_bps": 400
+    }
+  ],
+  "observed_change_bps": 900,
+  "verdict": "owner_review_required",
+  "winner": null,
+  "shipping_state": "not_shipped",
+  "limitations": [
+    "The window and minimum sample pass; statistical analysis and owner decision remain separate."
+  ],
+  "next_check": "Review sample shortfall and decide whether to extend, redesign or stop through a separate approved route."
+}

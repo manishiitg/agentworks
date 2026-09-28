@@ -53,6 +53,31 @@ or another project view intended to organize or manage information visually.
   prove completion.
 - `window.report.updateField` and `updateFields` may be used for explicit,
   user-initiated edits. Keep SQL parameterized and scope updates to stable keys.
+- For data that must be current from an outside system (Notion, a CRM, an
+  API behind the crew's MCP servers or secrets), write a small read-only
+  script at `code/reports/<name>.py` and call
+  `await window.report.run('code/reports/<name>.py', args)` inside
+  `window.report.ready`, with a loading state, a visible error, and a Refresh
+  button that passes `{ refresh: true }`. Prefer `query` when the data is
+  already in the project database. The script contract:
+  - Runs on the server as the crew, never as the viewer: the crew's selected
+    MCP servers and secrets (`$SECRET_*`). The owner and anyone viewing the
+    crew can trigger it; published copies cannot.
+  - Args arrive as JSON in `$REPORT_ARGS` (`{}` when none). Treat them as
+    untrusted and validate them.
+  - Print exactly one JSON value on stdout; logs go to stderr. Limits: 60 s
+    and 2 MB. A failure reaches the page as an error with the stderr tail.
+  - Call MCP tools with `POST $MCP_MCP/<server>/<tool>` and the `$MCP_AUTH`
+    header.
+  - `$DB_PATH` is a read-only snapshot. The only writable folder is
+    `$REPORT_CACHE_DIR`.
+  - There is no platform cache. Cache per query in `$REPORT_CACHE_DIR`:
+    include `fetched_at`, write atomically, let `{"refresh": true}` bypass it,
+    and return the cached copy with `stale: true` when the source fails.
+  - Never create, update, or send anything upstream from a Dashboard script,
+    and never print secrets.
+  - Test the script once from the shell with `REPORT_ARGS` set before wiring
+    it into the page.
 - Treat files outside `db/reports/` as project evidence. Do not move or rewrite
   unrelated project content solely to fit a Dashboard layout.
 

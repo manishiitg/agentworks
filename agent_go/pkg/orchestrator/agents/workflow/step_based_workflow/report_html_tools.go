@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -31,6 +32,7 @@ var (
 	// src="db/..." / href="db/..." attributes -- every workspace path a report
 	// resolves at runtime.
 	reportHTMLPathCallPattern = regexp.MustCompile(`window\.report\.(?:get|getText|getHtml|fileUrl|openFile)\(\s*['"]([^'"]+)['"]`)
+	reportHTMLRunCallPattern  = regexp.MustCompile(`window\.report\.run\(\s*['"]([^'"]+)['"]`)
 	reportHTMLPathAttrPattern = regexp.MustCompile(`(?i)\b(?:src|href)\s*=\s*['"]((?:db|knowledgebase|docs|planning|evaluation|costs|variables)/[^'"#?]+)['"]`)
 )
 
@@ -118,6 +120,37 @@ func reportHTMLReferencedPaths(content string) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// reportHTMLRunScripts returns every literal script path passed to
+// window.report.run, deduplicated and sorted.
+func reportHTMLRunScripts(content string) []string {
+	seen := make(map[string]struct{})
+	for _, match := range reportHTMLRunCallPattern.FindAllStringSubmatch(content, -1) {
+		if script := strings.TrimSpace(match[1]); script != "" && !strings.Contains(script, "${") {
+			seen[script] = struct{}{}
+		}
+	}
+	scripts := make([]string, 0, len(seen))
+	for script := range seen {
+		scripts = append(scripts, script)
+	}
+	sort.Strings(scripts)
+	return scripts
+}
+
+// reportRunScriptAllowed mirrors the server's window.report.run contract: a
+// .py/.js/.mjs script under the workflow's code/ folder.
+func reportRunScriptAllowed(scriptPath string) bool {
+	clean := path.Clean(scriptPath)
+	if clean != scriptPath || !strings.HasPrefix(clean, "code/") || strings.Contains(clean, "/.") {
+		return false
+	}
+	switch path.Ext(clean) {
+	case ".py", ".js", ".mjs":
+		return true
+	}
+	return false
 }
 
 // ReportHTMLValidationHooks are the runtime-backed checks validate_report_html
@@ -938,7 +971,7 @@ func reportMethodBody(stripped string, paren int) (reportJSSpan, bool) {
 // and theme are properties, not calls, so they are not listed.
 var reportKnownReportMethods = []string{
 	"query", "get", "getText", "getHtml", "renderMarkdown", "fileUrl", "mediaUrl", "openFile",
-	"updateField", "updateFields", "getGoalMetrics", "renderGoalProgress",
+	"updateField", "updateFields", "run", "getGoalMetrics", "renderGoalProgress",
 	"getCosts", "renderCosts", "renderTable", "renderActivity",
 	"sendChatMessage", "ready",
 }
@@ -1315,6 +1348,25 @@ func registerHTMLReportTools(
 					if !exists {
 						errors = append(errors, fmt.Sprintf("referenced file %q does not exist in the workflow folder; publish it under db/ or fix the path", path))
 					}
+				}
+			}
+			// Live-data scripts: the server only runs scripts under code/.
+			runScripts := reportHTMLRunScripts(content)
+			for _, script := range runScripts {
+				if !reportRunScriptAllowed(script) {
+					errors = append(errors, fmt.Sprintf("window.report.run(%q): only a .py or .js script under code/ can run (e.g. code/reports/pipeline.py)", script))
+					continue
+				}
+				if hooks.FileExists == nil {
+					continue
+				}
+				pathsChecked++
+				referenced = append(referenced, script)
+				exists, err := hooks.FileExists(ctx, script)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("could not check window.report.run script %q: %v", script, err))
+				} else if !exists {
+					errors = append(errors, fmt.Sprintf("window.report.run script %q does not exist; write it under code/ first and run it once with REPORT_ARGS set", script))
 				}
 			}
 

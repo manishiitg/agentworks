@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "post-incident-review-actions",
+  "playbook_version": "0.5.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm retrospective and owners","instructions":"Name the incident, review owner, action/verification owner, decision audience and first question. This route starts after verified stability, not during active mitigation."},
+    {"id":"incident_scope","title":"Freeze the incident snapshot","instructions":"Record exact incident, service, environment, source revisions, recovery status, window and privacy scope. Probe the canonical incident and stability record; do not equate alert silence with closure."},
+    {"id":"impact_rule","title":"Agree on impact and timeline evidence","instructions":"Freeze numerator, denominator, affected scope, timezone and milestone rules. Match each material event to a dated source; keep absent telemetry and disputed cause explicit."},
+    {"id":"review_policy","title":"Set blameless review and action policy","instructions":"Record reviewer, approval/revision path, sensitive-data and publication rules, action owner and due-date policy, accepted versus proposed state, and independent verification criteria."},
+    {"id":"team_bindings","title":"Bind two distinct Crew jobs","instructions":"Inspect and reuse or create Post-Incident Reviewer and Improvement Follow-Through Coordinator Crew IDs with selected skills, source scopes and separate output paths."},
+    {"id":"source_access","title":"Test incident, issue and verification reads","instructions":"Have the review Crew read an authorized incident, monitoring and recovery record; have follow-through read a current issue and independent verification source. Save exact IDs, timestamps, revisions and missing access."},
+    {"id":"handoff_contract","title":"Validate review-to-action artifacts","instructions":"Save post-incident-review/v1 and run its blocking validator. Pass the exact artifact ID to follow-through, save incident-improvement-register/v1 and validate both. Demonstrate that a draft creates no issue and a closed issue alone is unverified."},
+    {"id":"plan_review","title":"Review Builder proposal","instructions":"Show Crew reuse/creation, snapshot, source/privacy boundaries, review owner, artifact paths, validators, action authority and publication policy. Selection creates no issue, reminder or publication."},
+    {"id":"manual_test","title":"Run one bounded incident case","instructions":"Use authorized stable incident evidence to reproduce impact, timeline and one proposed action. Review owner decision and a pending or verified action with source truth. Keep the route manual if evidence or validator is missing."},
+    {"id":"activation_choice","title":"Choose follow-up policy","instructions":"Record manual-only or a reviewed paused action-check schedule with timezone, source freshness, cost, duplicate suppression and notifications. Completing setup never activates recurrence or external writes."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

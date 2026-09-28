@@ -1,0 +1,41 @@
+{
+  "artifact_type":"funnel-observation/v1",
+  "artifact_id":"funnel-observation-001",
+  "product_id":"arbordesk",
+  "tenant_id":"arbordesk-prod",
+  "cohort_id":"uk-self-serve-new-accounts",
+  "timezone":"Europe/London",
+  "identity_rule":"event-account-id-to-billing-customer-id-v2",
+  "exclusion_rule":"exclude-internal-test-and-existing-accounts-v2",
+  "observed_at":"2026-10-04T09:00:00Z",
+  "comparison_state":"comparable",
+  "baseline_start":"2026-08-02",
+  "baseline_end":"2026-08-31",
+  "current_start":"2026-09-01",
+  "current_end":"2026-09-30",
+  "stages":[
+    {"id":"eligible","definition":"unique approved UK self-serve new accounts","version":"cohort-v2"},
+    {"id":"signup","definition":"account created","version":"event-v2"},
+    {"id":"activated","definition":"first scheduling workflow completed","version":"event-v2"},
+    {"id":"paid","definition":"billing subscription active with first successful charge","version":"billing-v2"}
+  ],
+  "source_refs":[
+    {"id":"baseline-events","uri":"exports/fictional-events-aug.csv","observed_at":"2026-10-04T08:00:00Z"},
+    {"id":"current-events","uri":"exports/fictional-events-sep.csv","observed_at":"2026-10-04T08:10:00Z"},
+    {"id":"baseline-billing","uri":"exports/fictional-billing-aug.csv","observed_at":"2026-10-04T08:20:00Z"},
+    {"id":"current-billing","uri":"exports/fictional-billing-sep.csv","observed_at":"2026-10-04T08:30:00Z"}
+  ],
+  "baseline":{"counts":{"eligible":1000,"signup":300,"activated":180,"paid":60},"matched_identity_users":980,"event_source_ref":"baseline-events","paid_source_ref":"baseline-billing","paid_state_cutoff":"2026-10-03T23:59:00Z"},
+  "current":{"counts":{"eligible":1200,"signup":360,"activated":180,"paid":48},"matched_identity_users":1176,"event_source_ref":"current-events","paid_source_ref":"current-billing","paid_state_cutoff":"2026-10-03T23:59:00Z"},
+  "metric_id":"paid-per-eligible-v2",
+  "minimum_identity_coverage_bps":9500,
+  "baseline_paid_rate_bps":600,
+  "current_paid_rate_bps":400,
+  "change_bps":-200,
+  "baseline_activation_per_signup_bps":6000,
+  "current_activation_per_signup_bps":5000,
+  "quality_state":"partial_coverage",
+  "limitations":["Identity join covers 98% of eligible users in each period; unmatched accounts may change rates.","Observed drop does not establish whether page, product flow, audience or billing behavior caused it."],
+  "owner":"Growth lead",
+  "next_check":"Review activation event instrumentation and current onboarding flow before selecting one test."
+}

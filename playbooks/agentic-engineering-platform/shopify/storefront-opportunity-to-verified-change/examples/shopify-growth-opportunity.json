@@ -1,0 +1,17 @@
+{
+  "artifact_type": "shopify-growth-opportunity/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "opportunity_id": "growth-12",
+  "observed_at": "2026-09-24T10:05:00Z",
+  "page_url": "https://example-shop.test/products/linen-shirt?variant=81-m",
+  "buyer_task": "Choose an available shirt size on mobile",
+  "observation": "Size M appears selectable, but the authorized inventory record reports zero available units.",
+  "hypothesis": "The variant availability presentation may confuse shoppers; inspect the exact market and inventory source before an edit.",
+  "evidence_kind": "qualitative",
+  "metric": null,
+  "source_refs": ["storefront:linen-shirt:81-m@2026-09-24T10:05Z", "shopify:variant-81-m@2026-09-24T10:00Z"],
+  "owner_id": "growth-owner"
+}

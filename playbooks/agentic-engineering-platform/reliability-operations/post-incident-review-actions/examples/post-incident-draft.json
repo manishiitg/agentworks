@@ -1,0 +1,136 @@
+{
+  "artifact_type": "post-incident-review/v1",
+  "artifact_id": "pir-INC-1042-draft",
+  "review_id": "PIR-1042",
+  "review_revision": "draft1",
+  "incident_id": "INC-1042",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "owner": "reliability-lead",
+  "timezone": "UTC",
+  "incident_window_start": "2026-09-24T10:00:00Z",
+  "incident_window_end": "2026-09-24T10:30:00Z",
+  "as_of": "2026-10-02T12:00:00Z",
+  "source_refs": [
+    {
+      "id": "incident",
+      "uri": "incident:INC-1042@rev5",
+      "observed_at": "2026-09-24T10:31:00Z"
+    },
+    {
+      "id": "monitor",
+      "uri": "monitoring:INC-1042-counts@rev2",
+      "observed_at": "2026-09-24T10:40:00Z"
+    },
+    {
+      "id": "deploy",
+      "uri": "deploy:D-89@rev1",
+      "observed_at": "2026-09-24T10:01:00Z"
+    },
+    {
+      "id": "alert",
+      "uri": "monitoring:A-71@rev1",
+      "observed_at": "2026-09-24T10:04:00Z"
+    },
+    {
+      "id": "logs",
+      "uri": "logs:L-12@rev1",
+      "observed_at": "2026-09-24T10:08:00Z"
+    },
+    {
+      "id": "recovery",
+      "uri": "incident:REC-1042@rev1",
+      "observed_at": "2026-09-24T10:30:00Z"
+    }
+  ],
+  "recovery": {
+    "state": "stable_verified",
+    "source_ref": "recovery",
+    "observed_at": "2026-09-24T10:30:00Z"
+  },
+  "impact": {
+    "metric": "5xx-per-request",
+    "failed_requests": 160,
+    "total_requests": 2000,
+    "rate_bps": 800,
+    "source_ref": "monitor",
+    "scope": "checkout-api production 10:00\u201310:30 UTC",
+    "first_failure_at": "2026-09-24T10:00:00Z"
+  },
+  "timeline": [
+    {
+      "event_id": "deploy-89",
+      "occurred_at": "2026-09-24T10:01:00Z",
+      "source_ref": "deploy",
+      "fact": "checkout-api D-89 deployed; cause unknown"
+    },
+    {
+      "event_id": "alert-71",
+      "occurred_at": "2026-09-24T10:04:00Z",
+      "source_ref": "alert",
+      "fact": "5xx threshold alert fired"
+    },
+    {
+      "event_id": "log-12",
+      "occurred_at": "2026-09-24T10:08:00Z",
+      "source_ref": "logs",
+      "fact": "timeout samples observed"
+    },
+    {
+      "event_id": "recovery-1042",
+      "occurred_at": "2026-09-24T10:30:00Z",
+      "source_ref": "recovery",
+      "fact": "service indicators stable under recovery rule"
+    }
+  ],
+  "contributing_factors": [
+    {
+      "id": "factor-detection-lag",
+      "classification": "confirmed",
+      "statement": "The alert fired four minutes after failures began, under the monitoring clock.",
+      "evidence_refs": [
+        "monitor",
+        "alert"
+      ],
+      "limitation": "Clock skew and missing earlier telemetry could change the estimate."
+    },
+    {
+      "id": "factor-deploy",
+      "classification": "hypothesis",
+      "statement": "D-89 preceded error rise; its causal role is unproved.",
+      "evidence_refs": [
+        "deploy",
+        "monitor"
+      ],
+      "limitation": "Database saturation and query-plan traces are unavailable."
+    }
+  ],
+  "unknowns": [
+    "Whether D-89 changed the database query path; saturation trace missing."
+  ],
+  "what_worked": [
+    "The on-call owner verified service indicators before stability was recorded."
+  ],
+  "actions": [
+    {
+      "action_id": "ACT-1",
+      "gap": "Detection lag for checkout 5xx threshold",
+      "owner": "checkout-service-lead",
+      "due_date": "2026-10-14",
+      "verification_criterion": "A replayed checkout 5xx sample triggers the alert within five minutes."
+    },
+    {
+      "action_id": "ACT-2",
+      "gap": "No retained database saturation trace",
+      "owner": "observability-lead",
+      "due_date": "2026-10-20",
+      "verification_criterion": "A new timeout drill retains a query/DB saturation trace linked to the service."
+    }
+  ],
+  "review_state": "pending_owner_review",
+  "approval": null,
+  "publication_state": "not_published",
+  "next_check": "Reliability owner reviews impact, factor labels, privacy and proposed actions.",
+  "detection_delay_seconds": 240,
+  "detection_alert_ref": "alert"
+}

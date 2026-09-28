@@ -1,0 +1,20 @@
+{
+  "artifact_type": "flake-investigation/v1",
+  "release_id": "rc-28",
+  "sha": "987fed",
+  "build_id": "artifact:rc-28-987fed",
+  "environment": "preview-28",
+  "policy_version": "gate-v5",
+  "journey_revision": "signup-to-project@v3",
+  "test_id": "critical-signup",
+  "observed_at": "2026-09-25T10:10:00Z",
+  "attempts": [
+    {"attempt_id": "journey-28-00", "status": "fail", "source_ref": "ci:journey-28-00"},
+    {"attempt_id": "journey-28-01", "status": "pass", "source_ref": "ci:journey-28-01"}
+  ],
+  "classification": "unresolved",
+  "confidence": "low",
+  "owner_id": "qa-investigator",
+  "proposed_action": "Review original failure trace before any test change.",
+  "source_refs": ["ci:journey-28-00", "ci:journey-28-01"]
+}

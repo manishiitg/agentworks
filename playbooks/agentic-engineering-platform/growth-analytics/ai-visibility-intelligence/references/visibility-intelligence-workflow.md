@@ -1,5 +1,7 @@
 # Visibility intelligence workflow
 
+For v0.2, Builder proposes a two-Crew route and starts with one manually reviewed question/engine slice. The [team and handoff](team-and-handoffs.md) defines the blocking snapshot and page-opportunity contracts. The broader monitoring design below is a later choice, not an action performed by installation.
+
 ## Define the prompt set before tracking
 
 Version the prompt set (questions, personas, locales, devices), assistant scope (which assistants and surfaces), competitor brand set, citation and sentiment definitions, and targets. Reuse customer prompt sets when their scope and definitions are compatible; never silently swap prompts to improve a trend.
@@ -12,7 +14,7 @@ Use scripted steps for prompt runs, citation extraction, competitor comparison, 
 
 Use a message sequence to investigate a supported shift: separate prompt-set effects from real visibility changes, diagnose likely causes (content freshness, authority signals, competitor moves, assistant behavior change), test alternative explanations, prioritize gaps by value and winnability, and recommend content and authority changes. Recommendations propose legitimate publishing and authority work; they never manipulate answers.
 
-For recurring monitoring, prove an on-demand analysis first, then configure scheduled visibility runs or threshold alerts with explicit scope, cadence, timezone, and notification conditions.
+For recurring monitoring, prove an on-demand analysis first, then propose a paused scheduled run or threshold alert with explicit scope, cadence, timezone, cost and notification conditions for separate review.
 
 ## Validation and report
 

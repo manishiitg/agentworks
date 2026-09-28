@@ -168,6 +168,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) ResolveWorkflowObjective(ctx context.
 
 // stripSoulTodoPlaceholder treats scaffolded `<TODO: ...>` single-line placeholders
 // as empty. Multi-line content that happens to mention TODO is preserved.
+// SoulSectionWritten reports whether a soul.md section holds real content
+// rather than the scaffold's <TODO: ...> placeholder.
+func SoulSectionWritten(v string) bool {
+	return stripSoulTodoPlaceholder(v) != ""
+}
+
 func stripSoulTodoPlaceholder(v string) string {
 	t := strings.TrimSpace(v)
 	if !strings.Contains(t, "\n") && strings.HasPrefix(t, "<TODO:") && strings.HasSuffix(t, ">") {

@@ -423,3 +423,109 @@ func TestCodingWatchdogRateLimitEvidenceIgnoresAssistantNarration(t *testing.T) 
 		t.Fatal("a CLI status line must still be detected")
 	}
 }
+
+// RTS 2026-09-27: a resumed SDE crew pane redrew the user's own message
+// "...we got rate limited in mcp"; the watchdog read it as a limit wall and
+// killed every new turn. User messages, assistant replies and continuation
+// lines the window cannot attribute are not evidence; real notices are.
+func TestCodingWatchdogIgnoresUserAndReplyTextAboutLimits(t *testing.T) {
+	for name, pane := range map[string]string{
+		"user message":            "> can you save this key and for dashboard lets use api.. instead of mcp .. we got rate\n  limited in mcp\n\n● Saved.\n\n❯ check any new comments in notion\n  ⏵⏵ auto mode on",
+		"reply":                   "● No GitHub activity today. Now checking Notion (may still be\n  rate-limited from earlier).\n\n❯ ",
+		"window starts mid-block": "  rate-limited from earlier), which is a plan-level throttle.\n  Nothing else changed.\n\n❯ ",
+		"input box":               "❯ you have reached your usage limit is what notion said",
+	} {
+		if got := codingWatchdogRateLimitEvidence(pane); got != "" {
+			t.Errorf("%s: misread as a limit wall", name)
+		}
+	}
+	for name, pane := range map[string]string{
+		"claude status": "● Working on it\n\nYou've hit your session limit · resets 11pm (UTC)\n/usage-credits to finish what you're working on.",
+		"tool result":   "● Calling the API\n  ⎿  API Error: 429 Too Many Requests\n\n❯ ",
+		"codex":         "■ You've reached your usage limit. Upgrade to Pro.",
+	} {
+		if got := codingWatchdogRateLimitEvidence(pane); got == "" {
+			t.Errorf("%s: real limit notice missed", name)
+		}
+	}
+}
+
+// The CLI's own usage numbers outrank screen text: usage known and below every
+// limit means limit-looking text is not a wall, however often it is seen;
+// usage known and exhausted still confirms the wall.
+func TestCodingTmuxWatchdogTrustsCLIUsageOverScreenText(t *testing.T) {
+	oldOutput, oldCapture, oldUsage := runTerminalTmuxOutputCommand, captureTmuxPanePlainForWatchdog, codingWatchdogStructuredUsage
+	t.Cleanup(func() {
+		runTerminalTmuxOutputCommand, captureTmuxPanePlainForWatchdog, codingWatchdogStructuredUsage = oldOutput, oldCapture, oldUsage
+	})
+	runTerminalTmuxOutputCommand = func(context.Context, ...string) (string, error) { return "0", nil }
+	captureTmuxPanePlainForWatchdog = func(string) string { return "You've hit your usage limit" }
+
+	// One tick: below-limit usage must not even start a confirmation streak;
+	// exhausted usage starts it like before. Several ticks below the limit
+	// must never stop the session.
+	run := func(exhausted bool, ticks int) (map[string]codingWatchdogObservation, string) {
+		codingWatchdogStructuredUsage = func(string) (bool, bool) { return true, exhausted }
+		store := terminals.NewStore()
+		sessionID := "usage-overrule-session"
+		store.HandleEvent(sessionID, terminalRouteChunkEvent(sessionID, "workflow-step:one", "mlp-claude-code-usage-overrule", "limited", 1))
+		api := &StreamingAPI{
+			terminalStore:  store,
+			activeSessions: map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+		}
+		streak := map[string]codingWatchdogObservation{}
+		for i := 0; i < ticks; i++ {
+			api.reapRateLimitedCodingSessionsOnce(streak)
+		}
+		return streak, api.activeSessions[sessionID].Status
+	}
+	if streak, status := run(false, codingWatchdogConfirmChecks+2); len(streak) != 0 || status != "running" {
+		t.Fatalf("usage below limits: streak=%#v status=%q", streak, status)
+	}
+	if streak, _ := run(true, 1); streak["mlp-claude-code-usage-overrule"].count != 1 {
+		t.Fatalf("usage exhausted: wall evidence not counted: %#v", streak)
+	}
+}
+
+// A main pane that vanishes while a turn is in flight was replaced by that
+// turn (the provider's submit retry starts a fresh pane): the watchdog must not
+// cancel the session and kill the retry (RTS SDE crew, 2026-09-27). Without an
+// in-flight turn, a vanished main pane still fails the session.
+func TestCodingTmuxWatchdogLeavesReplacedMainPaneToRunningTurn(t *testing.T) {
+	oldOutput := runTerminalTmuxOutputCommand
+	t.Cleanup(func() { runTerminalTmuxOutputCommand = oldOutput })
+	runTerminalTmuxOutputCommand = func(context.Context, ...string) (string, error) {
+		return "", errors.New("can't find session: mlp-claude-code-replaced")
+	}
+	run := func(turnInFlight bool) string {
+		store := terminals.NewStore()
+		sessionID := "replaced-main-pane"
+		event := terminalRouteChunkEvent(sessionID, "main:"+sessionID, "mlp-claude-code-replaced", "resumed", 1)
+		event.ExecutionKind = "main_agent"
+		meta := event.Data.Data.(*agentevents.StreamingChunkEvent).Metadata
+		meta["execution_kind"], meta["scope"] = "main_agent", "main_agent"
+		delete(meta, "current_step_id")
+		delete(meta, "workflow_path")
+		store.HandleEvent(sessionID, event)
+		api := &StreamingAPI{
+			terminalStore:    store,
+			activeSessions:   map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+			agentCancelFuncs: map[string]context.CancelFunc{},
+			stoppedSessions:  map[string]bool{},
+		}
+		if turnInFlight {
+			api.agentCancelFuncs[sessionID] = func() {}
+		}
+		streak := map[string]codingWatchdogObservation{}
+		for i := 0; i < codingWatchdogMissingConfirmChecks+1; i++ {
+			api.reapRateLimitedCodingSessionsOnce(streak)
+		}
+		return api.activeSessions[sessionID].Status
+	}
+	if status := run(true); status != "running" {
+		t.Fatalf("turn in flight: session status = %q, want running (the retry must survive)", status)
+	}
+	if status := run(false); status == "running" {
+		t.Fatal("no turn in flight: a vanished main pane must still fail the session")
+	}
+}

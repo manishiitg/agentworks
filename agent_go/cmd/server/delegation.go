@@ -826,6 +826,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 				"",
 				delegationID,
 			),
+			withCostSourcePlatform(parentReq.BotPlatform),
 		)
 		if err := subAgent.AddObserver(subAgentCostObserver); err != nil {
 			return "", fmt.Errorf("attach delegation cost observer: %w", err)

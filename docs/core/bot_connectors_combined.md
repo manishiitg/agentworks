@@ -279,6 +279,19 @@ not proof of end-to-end delivery.
   chat their web UI (and WhatsApp) continues; for a workflow, the Builder chat
   their web UI restores — whichever DM thread it arrives in. The shared bot
   does not take DMs.
+- **Replies and follow-ups.** In a 1:1 DM the bot replies directly (not in a
+  thread): top-level DM messages share one conversation keyed by the DM
+  channel (`slackThreadOption` skips `thread_ts` when the thread is the
+  channel). A reply made inside a DM thread is answered in that thread, in the
+  same chat. Channel threads are unchanged. In every bot conversation (DM,
+  channel thread, WhatsApp) a message sent while a turn runs steers the running
+  CLI, like the web chat; schedules, webhooks and Slack trigger runs queue.
+- **The agent's `slack` tool** has two modes. In an owner's full-mode chat
+  (web, WhatsApp, 1:1 DM) it takes any Slack Web API method (e.g.
+  `views.publish` to set the bot's App Home tab; the Slack tab has an "Ask AI
+  to publish the Home tab" button). In Run mode (channels, read-only users) it
+  keeps the channel-scoped read-and-reply allowlist, since anyone who can post
+  in a channel can steer the agent. The token stays backend-owned either way.
 
 DMs need the `im:history` and `im:read` scopes, the `message.im` event, and
 App Home → Messages Tab with "Allow users to send Slash commands and messages

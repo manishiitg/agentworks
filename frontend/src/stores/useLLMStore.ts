@@ -23,7 +23,6 @@ const DEFAULT_CHAT_MODEL = 'codex-cli'
 // media providers) are dropped wherever they appear in saved or persisted
 // config; their models are reachable only through Pi's sub-provider routing.
 const FRONTEND_DEPRECATED_PROVIDER_IDS = new Set<string>([
-  'agy-cli',
   'openai',
   'anthropic',
   'vertex',
@@ -43,6 +42,7 @@ const SUPPORTED_PROVIDERS_FALLBACK: LLMProvider[] = [
   'cursor-cli',
   'pi-cli',
   'muse-cli',
+  'agy-cli',
 ]
 
 function isFrontendDeprecatedProvider(provider?: string): boolean {

@@ -1,0 +1,18 @@
+{
+  "artifact_type": "support-case-triage/v1",
+  "tenant_id": "tenant-demo",
+  "case_id": "case-204",
+  "account_id": "acct-52",
+  "thread_revision": "rev-7",
+  "channel": "helpdesk",
+  "observed_at": "2026-09-25T09:00:00Z",
+  "priority": "high",
+  "priority_policy_version": "support-priority-v3",
+  "duplicate_state": "new",
+  "response_deadline_at": "2026-09-25T11:00:00Z",
+  "owner_id": "support-owner-3",
+  "symptom": "Customer cannot complete invoice download.",
+  "incident_state": "unverified",
+  "recommended_action": "review_reply_and_escalation",
+  "source_refs": ["case-204:rev-7", "support-priority-v3"]
+}

@@ -18,6 +18,9 @@ export const CODING_PROVIDER_GUIDES: Record<string, CodingProviderGuide> = {
   'muse-cli': {
     authenticateNote: 'Complete the guided Muse sign-in. No SSH or direct server access is required. META_API_KEY is also supported for managed environments.',
   },
+  'agy-cli': {
+    authenticateNote: 'Launch the guided Antigravity window and complete Google sign-in. No SSH or direct server access is required.',
+  },
 }
 
 // DEFAULT_CODING_PROVIDER_GUIDE keeps the providers page renderable for a

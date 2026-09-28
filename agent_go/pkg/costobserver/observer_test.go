@@ -2,10 +2,65 @@ package costobserver
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
+
+func TestObserverRecordsOnlyRealInProcessMCPActivity(t *testing.T) {
+	ledger, err := costledger.NewSQLiteLedger(t.TempDir() + "/costs.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	obs := New(ledger, "session-1", "bot-slack-route", "chat",
+		WithModel("openai", "gpt"),
+		WithAttribution(ScopeChat, "Workflow/demo", "", "execution-1"),
+		WithSourcePlatform("slack"),
+	)
+	now := time.Now().UTC()
+	for _, event := range []*unifiedevents.AgentEvent{
+		{Type: unifiedevents.ToolCallEnd, Timestamp: now, Data: &unifiedevents.ToolCallEndEvent{ToolName: "query", ServerName: "github", ToolCallID: "one"}},
+		{Type: unifiedevents.ToolCallError, Timestamp: now, Data: &unifiedevents.ToolCallErrorEvent{ToolName: "query", ServerName: "github", ToolCallID: "two"}},
+		{Type: unifiedevents.ToolCallEnd, Timestamp: now, Data: &unifiedevents.ToolCallEndEvent{ToolName: "get_api_spec", ServerName: "github", ToolCallID: "virtual"}},
+		{Type: unifiedevents.ToolCallEnd, Timestamp: now, Data: &unifiedevents.ToolCallEndEvent{ToolName: "query", ServerName: "custom", ToolCallID: "custom"}},
+		{Type: unifiedevents.ToolCallEnd, Timestamp: now, Data: &unifiedevents.ToolCallEndEvent{ToolName: "query", ServerName: "github", ToolCallID: "settled", SyntheticSettle: true}},
+	} {
+		if err := obs.HandleEvent(context.Background(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cli := New(ledger, "session-2", "bot-slack-route", "chat",
+		WithModel("codex-cli", "gpt"), WithAttribution(ScopeChat, "Workflow/demo", "", "execution-2"))
+	if err := cli.HandleEvent(context.Background(), &unifiedevents.AgentEvent{
+		Type: unifiedevents.ToolCallEnd, Timestamp: now,
+		Data: &unifiedevents.ToolCallEndEvent{ToolName: "query", ServerName: "github", ToolCallID: "bridge-owned"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := summary.ByWorkflowMCP["Workflow/demo"]["github"].Calls; got != 2 {
+		t.Fatalf("MCP calls = %d, want 2", got)
+	}
+	if summary.Total.CallCount != 0 || summary.Total.TotalCostUSD != 0 {
+		t.Fatalf("MCP activity changed LLM calls/cost: %+v", summary.Total)
+	}
+	if got := summary.ByWorkflowBot["Workflow/demo"]["slack\x00bot-slack-route"].AccountingEventCount; got != 2 {
+		t.Fatalf("bot accounting events = %d, want 2", got)
+	}
+	ctx := ContextWithSourcePlatform(context.Background(), "WhatsApp")
+	if got := SourcePlatformFromContext(ctx); got != "whatsapp" {
+		t.Fatalf("source platform = %q, want whatsapp", got)
+	}
+}
 
 func TestNewWarnsWhenLaunchPathCannotNameItsScope(t *testing.T) {
 	var logged bytes.Buffer

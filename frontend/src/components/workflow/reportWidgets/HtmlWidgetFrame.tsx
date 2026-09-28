@@ -74,6 +74,12 @@ function currentAppTheme(): ReportHostTheme {
 //                                      // fields applied, or none). Same validation as
 //                                      // updateField, per column. Resolves
 //                                      // { oldValues, newValues } keyed by column name.
+//   await window.report.run('code/reports/x.py', {days: 7}) // LIVE data: runs a script in
+//                                      // the workflow's code/ on the server (workflow's MCP
+//                                      // servers + secrets, read-only DB snapshot, 60s cap)
+//                                      // and resolves the one JSON value it printed. Args
+//                                      // arrive as JSON in $REPORT_ARGS. Every call runs the
+//                                      // script; it caches for itself in $REPORT_CACHE_DIR.
 //   window.report.theme              // 'dark' | 'light' — the APP's current theme
 //   window.addEventListener('report:data', render)   // fires on load + on data refresh
 //   window.addEventListener('report:theme', restyle) // fires when the app theme toggles

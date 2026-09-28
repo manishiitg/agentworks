@@ -1,0 +1,55 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "release-candidate-to-reviewed-gate",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a chat-led QA Crew proposal from exact-build journey evidence to a reviewed release gate, with optional flake investigation."}
+  ],
+  "title": "Release Candidate to Reviewed Gate",
+  "description": "Join required journey attempts and optional flake investigation to an exact-build release quality decision with separate status publication evidence.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "QA"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Release Candidate to Reviewed Gate as a chat-led proposal. Inspect existing QA Crews, release and build identity, required suite policy, test runner and evidence policy, flake history, gate owner, and status destination. Propose reuse or reviewed creation, exact artifact validators, an optional bounded flake branch, and one manual release candidate. Show the plan before Builder applies it. Selection does not run tests, mark a gate passed, publish status, merge, deploy, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "release_identity", "label": "Release or PR ID, exact SHA, build artifact, environment and cutoff", "required": true},
+    {"id": "gate_policy", "label": "Required suites, expected journey revision, pass/fail/needs-review rules and exceptions", "required": true},
+    {"id": "evidence_source", "label": "Authorized CI, browser attempt records and evidence retention rules", "required": true},
+    {"id": "owner", "label": "QA investigator, gate reviewer and status authority", "required": true},
+    {"id": "flake_policy", "label": "Retry, isolation, quarantine and stability decision rules", "required": false},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated build event", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing QA Crews with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated exact-build artifact", "capability": "durable_artifacts", "optional": true},
+    {"id": "ci", "name": "CI or test-result source", "type": "mcp", "purpose": "Read required suite attempts and tested SHA, build and environment", "capability": "ci_results", "optional": true},
+    {"id": "browser", "name": "Browser runner or evidence export", "type": "mcp", "purpose": "Run approved journeys and retain attempt-level diagnostics", "capability": "browser_testing", "optional": true},
+    {"id": "source", "name": "Repository and release source", "type": "mcp", "purpose": "Read candidate SHA, build artifact and gate policy", "capability": "release_records", "optional": true},
+    {"id": "status", "name": "Release status destination", "type": "mcp", "purpose": "Publish an exact approved gate and retain provider receipt through a separate route", "capability": "release_status", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Release quality decision", "focus_areas": ["Whether required suites ran against the exact candidate", "Whether failures and flakes retain diagnostic evidence and owner decisions"], "review_when": ["A candidate build changes, a required attempt finishes, flake evidence changes, or the gate owner decides"]}
+  ],
+  "outputs": [
+    "Reviewed QA Crew roster and exact candidate scope",
+    "Validated attempt-level journey result",
+    "Optional bounded flake investigation with retained failures",
+    "Reviewed release quality brief with full required-suite matrix",
+    "Provider-confirmed status when separately authorized and manual route evidence"
+  ],
+  "agent_slots": [
+    {"id": "journey", "agent_playbook_id": "browser-journey-qa-analyst", "required": true, "output": "journey-result/v1"},
+    {"id": "flake", "agent_playbook_id": "flaky-test-investigator", "required": false, "output": "flake-investigation/v1"},
+    {"id": "gate", "agent_playbook_id": "release-quality-assistant", "required": true, "output": "release-quality-brief/v1"}
+  ],
+  "handoffs": [
+    {"id": "journey-to-gate", "from": "journey", "to": "gate", "artifact_type": "journey-result/v1", "required": true},
+    {"id": "journey-to-flake", "from": "journey", "to": "flake", "artifact_type": "journey-result/v1", "required": false},
+    {"id": "flake-to-gate", "from": "flake", "to": "gate", "artifact_type": "flake-investigation/v1", "required": false}
+  ],
+  "setup_checks": ["goal_owner", "candidate_scope", "suite_policy", "evidence_rules", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

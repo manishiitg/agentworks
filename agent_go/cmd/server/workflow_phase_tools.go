@@ -268,6 +268,13 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				log.Printf("[WORKFLOW_PHASE] Error: Failed to build workshop config for %s: %v — workshop execution tools unavailable", workflowPhaseID, cfgErr)
 			} else {
 				workshopCfg.PulseLifecycleTurn = syntheticReq.PulseLifecycleTurn
+				resultCheckWorkspace := phaseWorkspacePath
+				workshopCfg.PulseReviewResultCheck = func(ctx context.Context, module, pulseRunID string) error {
+					return validatePulseDueModuleResultsFor(ctx, resultCheckWorkspace, pulseRunID, module)
+				}
+				if isPulseScheduleSessionID(sessionID) {
+					workshopCfg.StepBusyForPulse = api.pulseStepBusyCheck(sessionID)
+				}
 				newSession, sessionErr := todo_creation_human.NewWorkshopChatSession(ctx, workshopCfg)
 				if sessionErr != nil {
 					log.Printf("[WORKFLOW_PHASE] Warning: Failed to create workshop session for %s: %v — workshop execution tools unavailable", workflowPhaseID, sessionErr)

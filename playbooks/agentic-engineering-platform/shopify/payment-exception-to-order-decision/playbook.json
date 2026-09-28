@@ -1,0 +1,38 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "payment-exception-to-order-decision",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a transaction-to-fulfillment decision handoff with capture proof, owner approval, and provider receipts."}],
+  "title": "Payment Exception to Order Decision",
+  "description": "Investigate an order payment exception, decide whether fulfillment must wait or can be reviewed for release, and verify any approved action.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 4,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Payment Exception to Order Decision as a chat-led proposal for one authorized Shopify order and transaction exception. Discover existing Payment Operations Investigator and Store Operations Coordinator Crews; propose reuse or reviewed creation. Inspect current OrderTransaction kind/status, parent, currency, gateway, order financial and FulfillmentOrder state, capture policy, and owner. Show the validated payment-to-fulfillment handoff, approval gate, manual first run, and verification plan before Builder applies it. Selection alone does not capture, void, refund, mark paid, release fulfillment, contact a buyer, or enable recurrence.",
+  "setup_inputs": [
+    {"id":"order_transaction","label":"Store, order, case, transaction and presentment currency","required":true},
+    {"id":"payment_policy","label":"Merchant capture and fulfillment-release policy with owner","required":true},
+    {"id":"sources","label":"Authorized transaction, order, fulfillment, and gateway records or exports","required":true},
+    {"id":"first_case","label":"One bounded authorization, pending, or failed-payment case","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed event and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing Crews with stable keys","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass a validated bounded transaction artifact","capability":"durable_artifacts","optional":true},
+    {"id":"shopify-payment","name":"Shopify Admin or bounded transaction export","type":"mcp","purpose":"Read exact OrderTransaction kind, status, amount, and parent","capability":"order_transaction_records","optional":true},
+    {"id":"gateway","name":"Payment provider or gateway","type":"mcp","purpose":"Verify external capture or failure where Shopify evidence is incomplete","capability":"gateway_transaction_records","optional":true},
+    {"id":"fulfillment","name":"Shopify FulfillmentOrder or provider","type":"mcp","purpose":"Read affected fulfillment state and later release receipt","capability":"fulfillment_records","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Payment exception follow-through","focus_areas":["Whether payment exceptions reach the correct owner before fulfillment","Whether release or customer action is based on successful transaction and provider evidence"],"review_when":["An authorization nears expiry, a transaction changes state, or an approved release lacks a receipt"]}],
+  "outputs": ["Reviewed Crew roster and transaction source map", "Validated payment exception", "Owner-safe hold or release review", "Provider-confirmed action and later order/fulfillment check when executed", "Manual route and activation choice"],
+  "agent_slots": [
+    {"id":"payments","agent_playbook_id":"payment-operations-investigator","required":true,"output":"payment-exception/v1"},
+    {"id":"operations","agent_playbook_id":"store-operations-coordinator","required":true,"output":"payment-order-decision/v1"}
+  ],
+  "handoffs": [{"id":"payment-to-operations","from":"payments","to":"operations","artifact_type":"payment-exception/v1","required":true}],
+  "setup_checks": ["goal_owner", "order_transaction_scope", "payment_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

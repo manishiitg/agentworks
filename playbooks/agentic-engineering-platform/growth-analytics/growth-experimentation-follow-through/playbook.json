@@ -2,19 +2,23 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "growth-experimentation-follow-through",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "changelog": [
     {
-      "version": "0.1.0",
-      "summary": "Initial playbook release."
+      "version": "0.3.0",
+      "summary": "Adds a chat-led Experiment Run Coordinator to Growth Outcome Analyst route with frozen policy, launch receipts, inconclusive readouts and executable checks."
     },
     {
       "version": "0.2.0",
       "summary": "Accepts findings from SEO and AI Visibility Intelligence in addition to funnel and lifecycle sources."
+    },
+    {
+      "version": "0.1.0",
+      "summary": "Initial playbook release."
     }
   ],
   "title": "Growth Experimentation and Follow-Through",
-  "description": "Generate prioritized experiment hypotheses from growth findings, create tracked Linear, Slack, and CRM actions, and verify whether shipped changes actually improved their KPI — your AI Growth Analyst's action loop.",
+  "description": "Track one owner-approved growth experiment from exact provider launch evidence to a guarded, reproducible outcome readout; leave underpowered results inconclusive.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -24,21 +28,93 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use Growth Experimentation and Follow-Through for my AI Growth Analyst. Turn my supported findings into prioritized hypotheses, create tracked actions only in my authorized tools, require my approval for launches and customer-facing changes, and verify each shipped change against its pre-registered KPI target.",
+  "setup_prompt": "Treat Growth Experimentation and Follow-Through as a proposal. Inspect my frozen experiment plan, owner decision, provider and analytics sources, run owner, guardrail, readout window and existing Crews. Propose reuse or creation of Experiment Run Coordinator and Growth Outcome Analyst, exact evidence validators and one bounded manual case in Builder chat. Selection creates no Crew, task, launch, message or schedule.",
   "setup_inputs": [
-    {"id": "findings", "label": "Finding sources with evidence and confidence", "required": true},
-    {"id": "process", "label": "Hypothesis format and prioritization model", "required": true},
-    {"id": "design", "label": "Experiment design standards and guardrails", "required": true},
-    {"id": "actions", "label": "Authorized action destinations and permissions", "required": true},
-    {"id": "rollout", "label": "Rollout, rollback, and launch approval ownership", "required": true},
-    {"id": "readout", "label": "KPI targets, readout windows, and notification policy", "required": true}
+    {
+      "id": "approved_plan",
+      "label": "Frozen plan artifact, revision, metric, sample and stop policy",
+      "required": true
+    },
+    {
+      "id": "decision",
+      "label": "Exact owner approval record and change authority",
+      "required": true
+    },
+    {
+      "id": "run_scope",
+      "label": "Experiment, provider object, variants, eligible population and assignment",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Provider launch/exposure and authorized primary/guardrail data",
+      "required": true
+    },
+    {
+      "id": "quality",
+      "label": "Identity, contamination, minimum sample and source-lag rules",
+      "required": true
+    },
+    {
+      "id": "owner",
+      "label": "Rollout, rollback, measurement and review owners",
+      "required": true
+    },
+    {
+      "id": "cadence",
+      "label": "Manual-only or separately reviewed repeat/check policy",
+      "required": false
+    }
   ],
-  "required_capabilities": ["experiment_design", "growth_outcome_verification", "work_item_tracking", "notifications", "human_decision", "durable_workflow_storage", "workflow_reporting"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "human_decision",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "issue-tracker", "name": "Linear or Jira MCP", "type": "mcp", "purpose": "Create and track approved experiment and follow-up tasks with evidence links", "capability": "work_item_tracking", "optional": true},
-    {"id": "notification-destination", "name": "Notification MCP", "type": "mcp", "purpose": "Publish approved alerts, readout summaries, and review requests to customer channels and retain delivery receipts", "capability": "notifications", "optional": true},
-    {"id": "crm-lifecycle", "name": "HubSpot or Customer.io MCP", "type": "mcp", "purpose": "Create approved CRM segments and campaign audiences from verified experiment cohorts", "capability": "lifecycle_messaging", "optional": true},
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Persist hypotheses, experiments, actions, KPI snapshots, and readout verdicts", "capability": "durable_workflow_storage", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create approved missing run or outcome Crew with stable idempotency key and Workflow step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a validated exact execution record to the outcome Crew",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "experiment-platform",
+      "name": "Experiment or feature-flag MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read exact variant, assignment, exposure and launch provider receipts",
+      "capability": "experiment_platform_data",
+      "optional": true
+    },
+    {
+      "id": "analytics",
+      "name": "Product analytics or warehouse MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read authorized frozen primary and guardrail outcomes with identity and timestamps",
+      "capability": "growth_outcome_data",
+      "optional": true
+    },
+    {
+      "id": "work-tracker",
+      "name": "Linear or Jira MCP",
+      "type": "mcp",
+      "purpose": "Link approved work and rollback owner without treating a ticket as a launch receipt",
+      "capability": "work_item_tracking",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -53,7 +129,45 @@
       ]
     }
   ],
-  "outputs": ["Prioritized experiment backlog with evidence links", "Experiment designs with pre-registered targets", "Tracked actions with delivery receipts", "KPI readouts with verdicts", "Guardrail status", "Learning history and live experimentation report"],
-  "setup_playbooks": ["funnel-conversion-intelligence", "activation-retention-intelligence", "seo-intelligence", "ai-visibility-intelligence"],
-  "accepts_equivalent_setup": true
+  "outputs": [
+    "Reviewed Run Coordinator and Outcome Analyst Crew roster with access and owner map",
+    "Validated pending or launched experiment execution record",
+    "Validated pending-window, measured or inconclusive readout when launched",
+    "Manual first run and paused repeat choice"
+  ],
+  "agent_slots": [
+    {
+      "id": "run",
+      "agent_playbook_id": "experiment-run-coordinator",
+      "required": true,
+      "output": "experiment-execution-record/v1"
+    },
+    {
+      "id": "outcome",
+      "agent_playbook_id": "growth-outcome-analyst",
+      "required": true,
+      "output": "experiment-outcome-readout/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "run-to-outcome",
+      "from": "run",
+      "to": "outcome",
+      "artifact_type": "experiment-execution-record/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "frozen_plan",
+    "approval_rule",
+    "provider_scope",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
+  ]
 }

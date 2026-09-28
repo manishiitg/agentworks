@@ -1,0 +1,40 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "access-exception-to-verified-fix",
+  "version": "0.1.0",
+  "changelog": [{"version": "0.1.0", "summary": "Adds an exact-policy access exception to reviewed remediation and same-cell independent retest."}],
+  "title": "Access Exception to Verified Fix",
+  "description": "Connect an authorized permission mismatch to an owned fix, deployed build, independent same-cell retest, and closure decision.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Security"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Access Exception to Verified Fix as a chat-led proposal. Inspect existing Access Review Analyst and Security Remediation Coordinator Crews, written test scope, approved permission policy, isolated actors and fixtures, exact build, issue and deployment sources, independent retest owner, and closure authority. Propose reuse or reviewed creation, blocking artifact validators, and one manual denied-cell case. Show the plan before Builder applies it. Selection does not probe a system, grant access, create a ticket, merge, deploy, close an exception, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "scope_policy", "label": "Written target scope and approved role, tenant, resource and action policy", "required": true},
+    {"id": "test_identity", "label": "Exact build, environment, isolated actor, tenant, resource and fixture", "required": true},
+    {"id": "evidence_source", "label": "Authorized UI, direct API, audit and policy evidence or bounded exports", "required": true},
+    {"id": "change_source", "label": "Issue, approval, repository, deployment and retest records", "required": true},
+    {"id": "owners", "label": "Security, asset, change, independent retest and closure owners", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed policy/change event and repeat route", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Security Crew capabilities", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded access matrix to Remediation", "capability": "durable_artifacts", "optional": true},
+    {"id": "policy", "name": "Approved permission policy source", "type": "mcp", "purpose": "Read versioned expected allow and deny cells", "capability": "access_policy_read", "optional": true},
+    {"id": "test", "name": "Authorized browser and API test route", "type": "mcp", "purpose": "Observe the same actor, resource and action through UI and direct server request", "capability": "access_test", "optional": true},
+    {"id": "change", "name": "Issue, source and deployment records", "type": "mcp", "purpose": "Verify approved change and deployed artifact identity", "capability": "change_records", "optional": true},
+    {"id": "retest", "name": "Independent access retest route", "type": "mcp", "purpose": "Repeat the exact policy cell against the deployed fix", "capability": "access_retest", "optional": true}
+  ],
+  "pulse_focus": [{"module": "strategic_review", "label": "Access exception follow-through", "focus_areas": ["Whether a claimed permission mismatch is supported by approved policy and direct server evidence", "Whether a reviewed fix reached the affected build and an independent same-cell retest supports closure"], "review_when": ["Policy or build changes, an exception remains unowned, a deployment lands, or a retest completes"]}],
+  "outputs": ["Reviewed Security Crew roster and written test scope", "Validated access-review-matrix/v1 with exact policy cell and direct server observation", "Validated access-remediation-ledger/v1 with change, deployment and independent same-cell retest state", "Manual case, owner disposition and activation choice"],
+  "agent_slots": [
+    {"id": "access", "agent_playbook_id": "access-review-analyst", "required": true, "output": "access-review-matrix/v1"},
+    {"id": "remediation", "agent_playbook_id": "security-remediation-coordinator", "required": true, "output": "access-remediation-ledger/v1"}
+  ],
+  "handoffs": [{"id": "access-to-remediation", "from": "access", "to": "remediation", "artifact_type": "access-review-matrix/v1", "required": true}],
+  "setup_checks": ["scope_owner", "policy_matrix", "isolated_identity", "direct_observation", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

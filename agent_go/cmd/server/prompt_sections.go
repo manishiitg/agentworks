@@ -54,8 +54,8 @@ type promptContext struct {
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
 	// NativeCodingTools is true for agent_tools.mode=hybrid: the coding CLI
-	// keeps its own Bash/Read/Write. Sections that describe a bridge-only
-	// world must not apply when this is set.
+	// keeps its provider-specific native subset. Sections that describe a
+	// bridge-only world must not apply when this is set.
 	NativeCodingTools bool
 
 	ShellRoot           string

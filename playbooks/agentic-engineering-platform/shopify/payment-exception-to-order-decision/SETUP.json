@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "payment-exception-to-order-decision",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm payment job and owner","instructions":"Name the merchant, payment owner, fulfillment owner, customer contact owner if needed, service deadline, and escalation path."},
+    {"id":"order_transaction_scope","title":"Bind exact order and transaction","instructions":"Record store, order, case, transaction and parent transaction IDs, presentment currency, amount, gateway, observation time, and affected FulfillmentOrder IDs. Do not join by buyer name or amount alone."},
+    {"id":"payment_policy","title":"Set capture and release rules","instructions":"Record merchant policy for authorization, capture, expiry, partial/multiple capture, manual payment, disputes, and when fulfillment can be reviewed for release. Keep unsupported routes outside this Playbook."},
+    {"id":"team_bindings","title":"Bind two ready Crews","instructions":"Record existing or reviewed new Payment Operations Investigator and Store Operations Coordinator IDs, selected skills, and setup state."},
+    {"id":"source_access","title":"Probe real source access","instructions":"Read a scoped OrderTransaction, parent if present, current order financial state, and affected fulfillment state. Check gateway evidence for claims Shopify cannot establish."},
+    {"id":"handoff_contract","title":"Validate payment-to-order handoff","instructions":"Run the bundled validator. Reject wrong transaction, wrong currency, authorization-only release, unapproved execution, and missing provider receipt."},
+    {"id":"plan_review","title":"Review the concrete plan","instructions":"Show Crew IDs, source field scope, policy rule, artifact paths, exact proposed action, approval owner, cost, and manual route before Builder applies it."},
+    {"id":"test_run","title":"Run one real case manually","instructions":"Use an authorized real or historical case with current records; save run IDs, validator results, owner decision, and observed result or unknown. Fixtures do not complete setup."},
+    {"id":"action_ledger","title":"Record decisions and receipts","instructions":"Keep stable case and action IDs, transaction and fulfillment IDs, approval, current capture proof, provider action receipt, later source check, and duplicate prevention state."},
+    {"id":"activation_choice","title":"Choose recurrence","instructions":"Record manual-only or a reviewed authenticated event with deduplication, retries, concurrency, cost, and notification policy. Re-read current transaction state before acting; setup never moves money."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

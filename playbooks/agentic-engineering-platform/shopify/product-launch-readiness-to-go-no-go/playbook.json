@@ -1,0 +1,38 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "product-launch-readiness-to-go-no-go",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a product publication and buyer-journey preflight with a reviewed launch decision and post-publish retest."}],
+  "title": "Product Launch Readiness to Go/No-Go",
+  "description": "Check a Shopify product and market publication, test the buyer journey, prepare a merchant go/no-go decision, and verify any approved launch.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 5,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Product Launch Readiness to Go/No-Go as a chat-led proposal for one Shopify product, variant, publication, and market. Discover existing Catalog & Merchandising Analyst and Shopify Growth Analyst Crews; propose reuse or reviewed creation. Inspect catalog fields, variant price and availability, channel/market publication, approved preview or public page, and buyer task. Show a validated catalog-to-journey handoff, named blockers, merchant go/no-go approval, manual first run, and post-publish verification plan. Selection alone does not publish, modify inventory or price, spend campaign budget, contact customers, or enable recurrence.",
+  "setup_inputs": [
+    {"id":"launch_scope","label":"Store, market, launch, product, variant, and publication IDs","required":true},
+    {"id":"catalog_policy","label":"Merchant launch standards, inventory/price authority, and owner","required":true},
+    {"id":"journey_source","label":"Authorized preview or public storefront journey and buyer task","required":true},
+    {"id":"launch_owner","label":"Go/no-go and publish approval owner with target time","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed launch reminder and notification route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create reviewed missing Crews with stable keys","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass validated bounded launch readiness to Growth","capability":"durable_artifacts","optional":true},
+    {"id":"shopify-catalog","name":"Shopify Admin or bounded product export","type":"mcp","purpose":"Read exact ProductVariant, Publication, price, and availability","capability":"catalog_publication_records","optional":true},
+    {"id":"storefront","name":"Authorized preview or public browser","type":"browser","purpose":"Test buyer journey before and after launch","capability":"storefront_journey_read","optional":true},
+    {"id":"approval","name":"Merchant approval and publication route","type":"mcp","purpose":"Record an exact reviewed publish decision and provider result","capability":"launch_approval_record","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Product launch readiness","focus_areas":["Whether blockers are resolved before launch approval","Whether a published product is buyer-visible and purchase-ready in the intended market"],"review_when":["The launch deadline approaches, a blocker changes, or a publish receipt lacks storefront verification"]}],
+  "outputs": ["Reviewed Crew roster and launch source map", "Validated catalog readiness and blocker list", "Buyer-journey go/no-go review", "Provider-confirmed publication and later storefront retest when approved", "Manual route and activation choice"],
+  "agent_slots": [
+    {"id":"catalog","agent_playbook_id":"catalog-merchandising-analyst","required":true,"output":"launch-catalog-readiness/v1"},
+    {"id":"growth","agent_playbook_id":"shopify-growth-analyst","required":true,"output":"launch-storefront-decision/v1"}
+  ],
+  "handoffs": [{"id":"catalog-to-growth","from":"catalog","to":"growth","artifact_type":"launch-catalog-readiness/v1","required":true}],
+  "setup_checks": ["goal_owner", "launch_scope", "catalog_standards", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "launch_ledger", "activation_choice"]
+}

@@ -1,0 +1,52 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "dispute-to-reconciled-outcome",
+  "version": "0.1.0",
+  "changelog": [
+    {"version": "0.1.0", "summary": "Adds a processor-dispute review, exact finance handoff, provider outcome and ledger verification route."}
+  ],
+  "title": "Dispute to Reconciled Outcome",
+  "description": "Prepare one SaaS payment dispute for owner review, then track its actual provider and finance outcome without submitting evidence implicitly.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Finance"],
+  "order": 5,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Dispute to Reconciled Outcome as a chat-led proposal. Inspect the existing Billing Operations Coordinator with Dispute Review and Revenue & Close Analyst, the exact processor dispute and charge, current deadline, reason, submission history, authorized evidence, owner policy, provider outcome and ledger. Propose reuse or reviewed creation, exact artifact validation, one manual case, and separate submission approval. Show the concrete plan before Builder applies it. Selection does not submit evidence, contact a customer, change a ledger, or enable recurrence.",
+  "setup_inputs": [
+    {"id": "dispute_scope", "label": "Exact entity, processor account and mode, dispute, payment and customer IDs", "required": true},
+    {"id": "provider_case", "label": "Current reason, status, amount, currency, deadline and prior submission records", "required": true},
+    {"id": "evidence_policy", "label": "Authorized agreement, usage, delivery and contact evidence with privacy and approval policy", "required": true},
+    {"id": "finance_source", "label": "Authorized settlement and ledger records for this dispute", "required": true},
+    {"id": "owners", "label": "Dispute, submission and finance review owners", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed authenticated event and follow-up cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create only reviewed missing Crew identities with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass the bounded validated dispute artifact to Finance", "capability": "durable_artifacts", "optional": true},
+    {"id": "processor-read", "name": "Payment processor dispute read access or export", "type": "mcp", "purpose": "Read exact dispute, payment, deadline, status, submission and outcome receipts", "capability": "dispute_read", "optional": true},
+    {"id": "evidence-read", "name": "Agreement, product usage and support record access", "type": "mcp", "purpose": "Read authorized reason-relevant evidence with stable source IDs", "capability": "dispute_evidence_read", "optional": true},
+    {"id": "ledger-read", "name": "Settlement and accounting ledger access or export", "type": "mcp", "purpose": "Verify principal and any fee treatment after provider outcome", "capability": "finance_read", "optional": true},
+    {"id": "evidence-submit", "name": "Separately approved processor submission route", "type": "mcp", "purpose": "Submit the exact approved evidence and retain a provider receipt", "capability": "dispute_write", "optional": true}
+  ],
+  "pulse_focus": [
+    {"module": "strategic_review", "label": "Dispute response and finance outcome", "focus_areas": ["Whether the current case and deadline are owned with reason-relevant evidence gaps visible", "Whether submission, provider decision and finance reconciliation are each backed by their own receipts"], "review_when": ["A dispute status or deadline changes, an owner decides, a provider outcome arrives, or a ledger difference remains open"]}
+  ],
+  "outputs": [
+    "Reviewed dispute case, source inventory, missing evidence and deadline",
+    "Validated dispute-to-finance artifact for the exact payment and provider case",
+    "Provider-submission and outcome state with receipts when separately authorized or observed",
+    "Principal and fee finance state or an explicit unresolved difference",
+    "Manual case evidence, owner decisions, action ledger and activation choice"
+  ],
+  "agent_slots": [
+    {"id": "dispute", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "dispute-case/v1"},
+    {"id": "finance", "agent_playbook_id": "revenue-close-analyst", "required": true, "output": "dispute-finance-review/v1"}
+  ],
+  "handoffs": [
+    {"id": "dispute-to-finance", "from": "dispute", "to": "finance", "artifact_type": "dispute-case/v1", "required": true}
+  ],
+  "setup_checks": ["goal_owner", "case_scope", "deadline_policy", "evidence_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

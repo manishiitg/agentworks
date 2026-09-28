@@ -2,15 +2,19 @@
   "metadata_version": 1,
   "content_schema": "agentworks-playbook/v1",
   "id": "funnel-conversion-intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "summary": "Adds a chat-led Funnel Analyst to Growth Experiment Planner handoff, reconciled cohort and stage-count artifacts, pending setup and executable checks."
+    },
     {
       "version": "0.1.0",
       "summary": "Initial playbook release."
     }
   ],
   "title": "Funnel and Conversion Intelligence",
-  "description": "Analyze signup-to-purchase funnels, detect conversion changes, and attribute them to the responsible segment, page, device, or source with session evidence — your AI Growth Analyst's conversion readout.",
+  "description": "Turn an authorized signup-to-paid funnel change into a reconciled cohort observation and a bounded, owner-reviewed experiment proposal.",
   "hierarchy": [
     "AgentWorks",
     "Agentic Engineering Platform",
@@ -20,21 +24,92 @@
   "entrypoint": "SKILL.md",
   "audience": "workflow_builder",
   "team_scope": "small_team",
-  "setup_prompt": "Use Funnel and Conversion Intelligence for my AI Growth Analyst. With my reconciled growth data, apply my funnel definitions and segments, monitor conversion for supported changes, attribute drops to segment or surface with session evidence, and produce evidence-backed findings without guessing at causes.",
+  "setup_prompt": "Treat Funnel and Conversion Intelligence as a proposal. Inspect my product, funnel event and paid-state sources, existing Crews, metric definitions and owner. Propose reuse or creation of Funnel Analyst and Growth Experiment Planner, exact stage-count and experiment-plan validators, and one manual first run in Builder chat. Selecting the Playbook creates no Crew, event query, experiment, price change or schedule.",
   "setup_inputs": [
-    {"id": "foundation", "label": "Reconciled Growth Data Foundation or equivalent model", "required": true},
-    {"id": "funnels", "label": "Funnel and step definitions with targets", "required": true},
-    {"id": "windows", "label": "Analysis and comparison windows", "required": true},
-    {"id": "segments", "label": "Segments, dimensions, and traffic scope", "required": true},
-    {"id": "sessions", "label": "Session-replay consent, access, and sampling policy", "required": false, "default": "consented_sample_only"},
-    {"id": "quality_gate", "label": "Minimum freshness, coverage, and confidence policy", "required": true},
-    {"id": "audience", "label": "Reporting audience and decision owners", "required": true}
+    {
+      "id": "funnel_scope",
+      "label": "Product, tenant, eligible cohort, ordered stages and owner",
+      "required": true
+    },
+    {
+      "id": "event_policy",
+      "label": "Event definitions/version, identity join, deduplication, consent and timezone",
+      "required": true
+    },
+    {
+      "id": "sources",
+      "label": "Authorized event and paid-state sources or exports with freshness and coverage",
+      "required": true
+    },
+    {
+      "id": "comparison",
+      "label": "Comparable baseline/current windows or baseline-first choice, denominator and minimum quality rule",
+      "required": true
+    },
+    {
+      "id": "experiment_policy",
+      "label": "Change authority, primary metric, guardrail, sample and stop rule",
+      "required": true
+    },
+    {
+      "id": "sessions",
+      "label": "Optional consented session evidence and sampling policy",
+      "required": false
+    },
+    {
+      "id": "cadence",
+      "label": "Manual only or reviewed monitoring cadence, timezone and budget",
+      "required": false
+    }
   ],
-  "required_capabilities": ["funnel_analysis", "conversion_change_detection", "session_evidence_review", "durable_workflow_storage", "workflow_reporting"],
+  "required_capabilities": [
+    "crew_discovery",
+    "crew_steps",
+    "internal_crew_triggers",
+    "durable_artifacts",
+    "workflow_reporting"
+  ],
   "recommended_tools": [
-    {"id": "product-analytics", "name": "PostHog, Mixpanel, or Amplitude MCP", "type": "mcp", "purpose": "Read authorized funnels, trends, and segment breakdowns behind a finding", "capability": "product_analytics_data", "optional": true},
-    {"id": "session-replay", "name": "PostHog, FullStory, or Contentsquare MCP", "type": "mcp", "purpose": "Pull consented session replays linked to a conversion change for qualitative evidence", "capability": "session_evidence_review", "optional": true},
-    {"id": "workflow-database", "name": "AgentWorks workflow database", "type": "builtin", "purpose": "Persist funnel snapshots, investigations, findings, and follow-up outcomes", "capability": "durable_workflow_storage", "optional": true}
+    {
+      "id": "create-crew",
+      "name": "Builder create_crew",
+      "type": "builtin",
+      "purpose": "Create an approved missing Funnel or Experiment Crew with stable idempotency key and Workflow step",
+      "capability": "crew_steps",
+      "optional": true
+    },
+    {
+      "id": "crew-attachment",
+      "name": "Builder manage_crew_attachment",
+      "type": "builtin",
+      "purpose": "Pass a validated funnel observation through a checked Workflow alias",
+      "capability": "durable_artifacts",
+      "optional": true
+    },
+    {
+      "id": "product-analytics",
+      "name": "Product analytics MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Read authorized event definitions, unique-user stage counts, filters and freshness",
+      "capability": "product_analytics_data",
+      "optional": true
+    },
+    {
+      "id": "subscription-billing",
+      "name": "Subscription billing MCP or export",
+      "type": "mcp_or_export",
+      "purpose": "Verify paid status for the same eligible cohort and settlement cutoff",
+      "capability": "paid_state_data",
+      "optional": true
+    },
+    {
+      "id": "session-replay",
+      "name": "Consented session replay",
+      "type": "mcp",
+      "purpose": "Inspect sampled friction only when explicit consent and scoped access exist",
+      "capability": "session_evidence_review",
+      "optional": true
+    }
   ],
   "pulse_focus": [
     {
@@ -49,8 +124,48 @@
       ]
     }
   ],
-  "outputs": ["Versioned funnel and conversion policy", "Reproducible funnel snapshots and trends", "Conversion-change investigations with attributed cause", "Linked session evidence", "Recommendations with owners and confidence", "Live conversion intelligence report"],
-  "setup_playbook": "growth-data-foundation",
-  "accepts_equivalent_setup": true,
-  "next_playbooks": ["growth-experimentation-follow-through"]
+  "outputs": [
+    "Reviewed Funnel and Experiment Crew roster and source/metric policy",
+    "Validated baseline/current unique-user stage counts with coverage and billing lag",
+    "Exact observation to pending experiment-plan handoff",
+    "Manual first run and paused repeat choice"
+  ],
+  "next_playbooks": [
+    "growth-experimentation-follow-through"
+  ],
+  "agent_slots": [
+    {
+      "id": "funnel",
+      "agent_playbook_id": "funnel-analyst",
+      "required": true,
+      "output": "funnel-observation/v1"
+    },
+    {
+      "id": "experiment",
+      "agent_playbook_id": "growth-experiment-planner",
+      "required": true,
+      "output": "funnel-experiment-plan/v1"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "funnel-to-experiment",
+      "from": "funnel",
+      "to": "experiment",
+      "artifact_type": "funnel-observation/v1",
+      "required": true
+    }
+  ],
+  "setup_checks": [
+    "goal_owner",
+    "funnel_definition",
+    "identity_source",
+    "comparison_rule",
+    "team_bindings",
+    "source_access",
+    "handoff_contract",
+    "plan_review",
+    "manual_test",
+    "activation_choice"
+  ]
 }

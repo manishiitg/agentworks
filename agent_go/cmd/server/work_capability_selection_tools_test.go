@@ -54,6 +54,26 @@ func TestWorkSkillSelectionToolPersistsInstalledSkill(t *testing.T) {
 	}
 }
 
+func TestWorkSkillSelectionToolAcceptsProjectLocalSkill(t *testing.T) {
+	const workspacePath = "_users/user-1/Chats/Work/projects/finance"
+	workspace := &mockWorkspaceAPI{files: map[string]string{
+		workspacePath + "/workflow.json":                 `{"schema_version":1,"id":"finance","capabilities":{"selected_skills":[]}}`,
+		workspacePath + "/skills/finance-analyst/SKILL.md": "---\nname: finance-analyst\ndescription: Analyze finance records\n---\n\n# Finance analyst\n",
+	}}
+	host := httptest.NewServer(workspace)
+	defer host.Close()
+	t.Setenv("WORKSPACE_API_URL", host.URL)
+
+	registrar := &recordingRegistrar{}
+	if err := (&StreamingAPI{}).registerWorkSkillSelectionTool(registrar, "user-1", workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	out, err := registrar.tools[updateProjectSkillSelectionTool].exec(context.Background(), map[string]interface{}{"action": "select", "skill": "finance-analyst"})
+	if err != nil || !strings.Contains(out, `"selected_skills":["finance-analyst"]`) {
+		t.Fatalf("select output=%s err=%v", out, err)
+	}
+}
+
 func TestWorkSkillSelectionToolRejectsMissingSkill(t *testing.T) {
 	const workspacePath = "_users/user-1/Chats/Work/projects/release"
 	const manifestPath = workspacePath + "/workflow.json"

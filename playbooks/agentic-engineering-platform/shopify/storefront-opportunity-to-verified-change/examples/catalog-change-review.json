@@ -1,0 +1,22 @@
+{
+  "artifact_type": "catalog-change-review/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-m",
+  "opportunity_id": "growth-12",
+  "owner_id": "merch-owner",
+  "observed_at": "2026-09-24T10:15:00Z",
+  "current_value": "Size M selectable on US storefront; inventory authority reports zero available",
+  "proposed_value": "After inventory authority is reconciled, display the verified availability for Size M",
+  "change_reason": "Avoid presenting an unavailable variant as immediately purchasable; merchant must confirm whether inventory sync or storefront display is wrong.",
+  "approval_state": "pending",
+  "approval_ref": null,
+  "publish_state": "not_published",
+  "publish_receipt_ref": null,
+  "retest_ref": null,
+  "measurement_state": "not_started",
+  "followup_report_ref": null,
+  "source_refs": ["shopify:variant-81-m@2026-09-24T10:12Z", "inventory:sku-81-m@2026-09-24T10:13Z", "storefront:linen-shirt:81-m@2026-09-24T10:05Z"],
+  "next_evidence": "Confirm the inventory authority and merchant-approved exact edit, then retest the same variant and market."
+}

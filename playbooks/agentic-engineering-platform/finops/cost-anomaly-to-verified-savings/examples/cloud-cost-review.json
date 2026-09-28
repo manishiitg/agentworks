@@ -1,0 +1,48 @@
+{
+  "artifact_type": "cloud-cost-review/v1",
+  "review_id": "cost-review-example-001",
+  "provider": "example-cloud",
+  "account_id": "A-9",
+  "service_id": "compute-worker",
+  "resource_id": "worker-nonprod-7",
+  "environment": "staging",
+  "currency": "USD",
+  "billing_basis": "net-billed-excluding-tax",
+  "allocation_rule": "service-resource-v1",
+  "baseline_start": "2026-08-02",
+  "baseline_end": "2026-08-31",
+  "current_start": "2026-09-01",
+  "current_end": "2026-09-30",
+  "observed_at": "2026-10-02T10:00:00Z",
+  "source_refs": [
+    { "id": "baseline-export", "uri": "exports/fictional-cloud-2026-08.csv#service=compute-worker", "observed_at": "2026-10-02T09:00:00Z" },
+    { "id": "current-export", "uri": "exports/fictional-cloud-2026-09.csv#service=compute-worker", "observed_at": "2026-10-02T09:05:00Z" },
+    { "id": "resource-map", "uri": "exports/fictional-resource-map.csv#worker-nonprod-7", "observed_at": "2026-10-02T09:10:00Z" }
+  ],
+  "service_cost": {
+    "baseline_usage_units": 10000,
+    "current_usage_units": 12000,
+    "baseline_unit_price_minor": 120,
+    "current_unit_price_minor": 120,
+    "baseline_cost_minor": 1200000,
+    "current_usage_cost_minor": 1440000,
+    "one_time_charge_minor": 30000,
+    "current_billed_minor": 1470000,
+    "usage_effect_minor": 240000,
+    "price_effect_minor": 0,
+    "total_change_minor": 270000,
+    "evidence_refs": ["baseline-export", "current-export"]
+  },
+  "candidate": {
+    "candidate_id": "C-1",
+    "resource_baseline_cost_minor": 60000,
+    "projected_min_savings_minor": 25000,
+    "projected_max_savings_minor": 60000,
+    "risk_state": "needs_peak_and_dependency_review",
+    "owner": "Platform lead",
+    "action_state": "proposal",
+    "next_check": "Check peak load and worker dependencies before proposing any schedule or size change.",
+    "evidence_refs": ["current-export", "resource-map"]
+  },
+  "limitations": ["Fictional export; projected candidate savings are not a deployed or billed result."]
+}

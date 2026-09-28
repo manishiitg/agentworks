@@ -1,0 +1,30 @@
+{
+  "artifact_type": "support-reply-draft/v1",
+  "artifact_id": "verified-knowledge-to-case-reply-reply-1",
+  "producer_id": "support-reply-drafter",
+  "tenant_id": "tenant-1",
+  "subject_id": "case-701",
+  "product_id": "product-7",
+  "article_id": "kb-18",
+  "case_id": "case-701",
+  "source_revision": "reply-rev-1",
+  "observed_at": "2026-09-27T11:00:00Z",
+  "source_refs": [
+    "reply-source-1",
+    "reply-source-2",
+    "kb-18-v4"
+  ],
+  "state": "pending_review",
+  "action_state": "none",
+  "article_revision": "kb-18-v4",
+  "case_state": "open",
+  "recipient_id": "customer-72",
+  "contact_policy_ref": "support-contact-v3",
+  "suppression_state": "clear",
+  "send_state": "unsent",
+  "reply_source_refs": [
+    "kb-18-v4"
+  ],
+  "input_artifact_id": "verified-knowledge-to-case-reply-knowledge-1",
+  "input_revision": "knowledge-rev-1"
+}

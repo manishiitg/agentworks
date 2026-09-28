@@ -1,0 +1,39 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "pipeline-health-to-owned-action",
+  "version": "0.1.0",
+  "changelog": [{"version": "0.1.0", "summary": "Adds a bounded CRM pipeline exception to seller-owned next-step route with current-state and contact safeguards."}],
+  "title": "Pipeline Health to Owned Action",
+  "description": "Explain a source-backed stale opportunity and prepare a seller-owned next step after rechecking current CRM and contact state.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Sales"],
+  "order": 3,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Pipeline Health to Owned Action as a chat-led proposal. Inspect Pipeline Analyst and Deal Follow-through Coordinator Crews, exact CRM account and pipeline, comparable prior/current snapshots, stage/currency/stale rules, current opportunity and activity access, seller owner and contact policy. Propose reuse or reviewed creation, a validated exception-to-action handoff, one real manual case and separate approval for any CRM or contact action. Show the concrete plan before Builder applies it. Selection creates no task, stage change, message or recurrence.",
+  "setup_inputs": [
+    {"id": "pipeline_scope", "label": "Tenant, CRM account, pipeline, reporting window and opportunity", "required": true},
+    {"id": "snapshots", "label": "Comparable prior/current CRM snapshots with source revisions", "required": true},
+    {"id": "pipeline_policy", "label": "Stage, amount, currency, stale and activity definitions", "required": true},
+    {"id": "seller_owner", "label": "Seller, contact policy and next-step reviewer", "required": true},
+    {"id": "current_state", "label": "Authorized current opportunity, activity and prior-contact source", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed CRM event/cadence", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing Sales Crews with stable keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass the validated exact-opportunity exception to the coordinator", "capability": "durable_artifacts", "optional": true},
+    {"id": "crm-read", "name": "CRM or export", "type": "mcp", "purpose": "Read comparable snapshots and current opportunity state", "capability": "crm_read", "optional": true},
+    {"id": "activity-read", "name": "Activity and prior-contact source", "type": "mcp", "purpose": "Check next activity, replies, opt-outs and recent contact", "capability": "sales_activity_read", "optional": true},
+    {"id": "approved-action", "name": "Reviewed CRM or contact route", "type": "mcp", "purpose": "Apply only an exact separately approved action with provider receipt", "capability": "sales_action_write", "optional": true}
+  ],
+  "pulse_focus": [{"module": "strategic_review", "label": "Pipeline exceptions to seller decisions", "focus_areas": ["Whether stale and movement claims use comparable CRM snapshots and current records", "Whether owner decisions and action outcomes remain separate and traceable"], "review_when": ["A new comparable snapshot arrives, opportunity activity changes, or an owner review is due"]}],
+  "outputs": ["Reviewed Sales Crew roster and CRM source map", "Validated pipeline-exception-brief/v1", "Validated deal-action-register/v1 with current-state read", "Manual case, seller decision, action ledger and activation choice"],
+  "agent_slots": [
+    {"id": "pipeline", "agent_playbook_id": "pipeline-analyst", "required": true, "output": "pipeline-exception-brief/v1"},
+    {"id": "deal", "agent_playbook_id": "deal-follow-through-coordinator", "required": true, "output": "deal-action-register/v1"}
+  ],
+  "handoffs": [{"id": "pipeline-to-deal", "from": "pipeline", "to": "deal", "artifact_type": "pipeline-exception-brief/v1", "required": true}],
+  "setup_checks": ["goal_owner", "pipeline_scope", "pipeline_policy", "team_bindings", "snapshot_access", "current_state_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}

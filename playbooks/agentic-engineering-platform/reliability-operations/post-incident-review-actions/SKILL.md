@@ -1,51 +1,51 @@
 ---
 name: post-incident-review-actions
-description: Build an AgentWorks workflow for evidence-backed post-incident review and verified follow-up actions. Use after incident stabilization to learn, assign improvements, and track completion.
+description: Propose a sourced post-incident review and independently verified improvement follow-through through two Crews.
 ---
 
 # Post-Incident Review and Actions
 
 ## Outcome
 
-Create a blameless, evidence-backed review that reconstructs impact and response, separates contributing conditions from unsupported claims, creates governed follow-up work, and verifies actions through completion.
+Post-Incident Reviewer reconstructs a stabilized incident and proposes improvements. Improvement Follow-Through Coordinator tracks decisions, issue receipts and independent control evidence. A draft is not published; a closed issue is not verified improvement.
 
 ## When to use
 
-Use after the incident meets its recovery/stability contract or for an approved retrospective of a near miss. Keep unresolved operational work in the active incident workflow.
+Use after verified stability or an approved near miss. Keep live mitigation in Incident to Verified Recovery. Both jobs use the same incident, service and environment. One Crew may carry both skills when access fits; validate each output.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, configuration, capabilities, stores, reports, and triggers before proposing changes. Summarize reusable design and gaps, then ask focused questions for unresolved customer choices such as scope, success, approvals, thresholds, ownership, and budgets. Record the answers as customer direction. Installation alone does not approve workflow changes or execution. Default to one small-team workflow; split only for incompatible access or lifecycle boundaries.
+Builder inspects incident/recovery records, Crews, impact rules, sources, privacy, owners and issue/verification access. It proposes both jobs in chat. Selection creates no Crew, ticket, publication, reminder or schedule.
 
 ## Required inputs
 
-Resolve incident/evidence records, review policy and audience, impact and metric definitions, timeline, participating roles, remediation outcomes, sensitive-data rules, review/approval process, action taxonomy, owners/dates, issue destination, verification requirements, and publication destination.
+Record incident/service/environment, verified stability source, frozen evidence window, impact numerator and denominator, timeline, review owner and audience, sensitive-data rule, action owners/dates, verification criteria, issue and approval policy. Publication and recurrence are optional separate decisions.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps to freeze the incident snapshot, calculate response milestones, check completeness, create approved work items, and synchronize action status. Use a message sequence for causal/contributing-factor analysis and draft review. Branch for reviewer edit/approve/defer. Use the Slack bot for review discussion and action queries.
+1. Bind two Crew IDs and Workflow steps. Reviewer saves `post-incident-review/v1` with exact sources, impact arithmetic, factor labels, unknowns and proposed actions. Run `python3 scripts/validate_handoff.py review <review.json>` as a blocking step. Owner approval is a dated decision, separate from drafting.
+2. Pass the validated review by checked alias. Coordinator saves `incident-improvement-register/v1`, preserving exact action IDs. Run `python3 scripts/validate_handoff.py register <review.json> <register.json>` before reporting. Pending review creates no issue. Accepted work needs decision and issue receipt; verified work needs later independent passing evidence.
+3. Review source truth, privacy and next actions with owners. Issue creation, publication, notifications and changes require separately authorized routes and receipts.
 
 ## Knowledge and persistence
 
-Store immutable review snapshots, timeline, impact, contributing factors, detection/response analysis, decisions, learnings, actions, owners, external issue IDs, verification, and publication receipts. Promote reusable learning into scoped KB notes with source links and review status.
+Store incident/review revisions, immutable source refs, timeline, impact calculation, factor classifications, unknowns, owner decisions, action IDs, issue receipts, verification results and corrections. Never silently rewrite a published review or erase an earlier action state.
 
 ## Validation and reporting
 
-Require incident and evidence revision, recovery outcome, sourced timeline, impact basis, explicit unknowns, reviewed contributing factors, and owner/verification contract for every accepted action. The dashboard shows review state, milestones, factors, action owner/due/status, overdue risk, verification evidence, recurrence links, and historical themes.
+Check canonical stability, dated timeline, matching impact rate, distinct action IDs, exact review handoff, acceptance chronology and independent verification. The dashboard shows review state, impact, unknowns, action owners/dates, pending and verified states, source links and overdue risk. Structural checks do not prove cause; owner review remains required.
 
 ## Guardrails
 
-Do not blame or rank individuals, fabricate certainty, rewrite the incident record, expose restricted evidence, create issues or publish externally without configured authorization, accept vague actions without an owner/outcome, or mark work complete from issue status alone.
+Do not blame individuals, publish restricted evidence, assert a cause from timing alone, create work from a draft, or mark an issue verified from closure status. Installation grants no external action or recurrence.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, and current-versus-separate workflow decisions.
-- [Review workflow](references/post-incident-workflow.md): snapshot, analysis, publication, and action verification.
-- [Reliability event contract](../references/reliability-event-contract.md): shared evidence, state, action, and metric definitions.
-- [Triggers, webhooks, and Slack](../references/triggers-webhooks-and-slack.md): follow-up events and collaboration rules.
-- [Example review](examples/post-incident-review.json): fictional review record.
-- [Catalog metadata](playbook.json): setup and optional recommendations.
+- [Team and handoff](references/team-and-handoffs.md)
+- [Shared workflow design](../../references/workflow-design-and-outcomes.md), [review workflow](references/post-incident-workflow.md), and [reliability event contract](../references/reliability-event-contract.md)
+- [Approved review](examples/post-incident-review.json), [draft review](examples/post-incident-draft.json), [verified and pending register](examples/incident-improvement-register.json), [draft-pending register](examples/incident-improvement-pending.json), and [false completion](examples/invalid-improvement-register.json)
+- [Setup checklist](SETUP.json) and [catalog metadata](playbook.json)
 
 ## Completion contract
 
-Return installed playbook/policy revisions, incident and snapshot identity, approved review and publication receipt, sourced findings/unknowns, created actions and external receipts, verification status, KB updates, dashboard location, capability resolution, and limitations.
+Return Crew plan, source/policy map, validated artifact paths, reviewed impact and unknowns, exact action states, owner decisions, manual-run proof and paused repeat choice.

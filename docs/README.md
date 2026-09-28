@@ -50,6 +50,7 @@ this is the complete map.
 - [Pulse review visibility](pulse-review-visibility.md)
 - [Workflow improvement through Pulse](pulse-workflow-improvement-system.md)
 - [Reusable report data and widgets](report-metric-widgets.md)
+- [Live report data from scripts (`window.report.run`)](report-live-data.md)
 - [Secrets](secrets.md)
 - [Setup Consolidation](setup-consolidation.md)
 - [Workspace UI Design Guidelines](ui-design-guidelines.md)

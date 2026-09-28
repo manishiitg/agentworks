@@ -230,7 +230,7 @@ func TestWorkflowAskUsesCallersAssistantThread(t *testing.T) {
 		t.Fatalf("workflow functions = %s err=%v, want the assistant ask", out, err)
 	}
 	for i := 0; i < 2; i++ {
-		out, err = env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "ask", "args": map[string]interface{}{"message": "what can you do?"}})
+		out, err = env.alpha["call_function"].exec(context.Background(), map[string]interface{}{"target": "#workflow:Reports", "function": "ask", "args": map[string]interface{}{"message": "what can you do?"}, "wait_seconds": 3})
 		if err != nil || !strings.Contains(out, "It reviews pull requests") || !strings.Contains(out, `"completed"`) {
 			t.Fatalf("ask = %s err=%v", out, err)
 		}

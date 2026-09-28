@@ -1,0 +1,43 @@
+{
+  "artifact_type": "cloud-savings-readout/v1",
+  "readout_id": "savings-verified-C-1",
+  "source_review_id": "cost-review-example-001",
+  "source_change_id": "change-C-1",
+  "candidate_id": "C-1",
+  "provider": "example-cloud",
+  "account_id": "A-9",
+  "service_id": "compute-worker",
+  "resource_id": "worker-nonprod-7",
+  "environment": "staging",
+  "currency": "USD",
+  "billing_basis": "net-billed-excluding-tax",
+  "allocation_rule": "service-resource-v1",
+  "observed_at": "2026-11-03T10:00:00Z",
+  "source_refs": [
+    { "id": "cost-review", "uri": "artifact:cost-review-example-001", "observed_at": "2026-10-02T10:00:00Z" },
+    { "id": "change-review", "uri": "artifact:change-C-1", "observed_at": "2026-10-02T15:00:00Z" },
+    { "id": "baseline-resource-bill", "uri": "exports/fictional-cloud-2026-09.csv#resource=worker-nonprod-7", "observed_at": "2026-11-03T09:00:00Z" },
+    { "id": "post-resource-bill", "uri": "exports/fictional-cloud-2026-10.csv#resource=worker-nonprod-7", "observed_at": "2026-11-03T09:05:00Z" },
+    { "id": "workload-coverage", "uri": "telemetry/fictional-worker-jobs-comparison", "observed_at": "2026-11-03T09:10:00Z" }
+  ],
+  "outcome_state": "verified",
+  "verified_savings_minor": 35000,
+  "verification": {
+    "baseline_start": "2026-09-01",
+    "baseline_end": "2026-09-30",
+    "post_start": "2026-10-03",
+    "post_end": "2026-11-01",
+    "baseline_resource_cost_minor": 60000,
+    "post_resource_cost_minor": 25000,
+    "baseline_work_units": 500,
+    "post_work_units": 500,
+    "work_unit": "jobs",
+    "credit_effect_minor": 0,
+    "price_or_commitment_change_minor": 0,
+    "billing_source_refs": ["baseline-resource-bill", "post-resource-bill"],
+    "workload_source_ref": "workload-coverage",
+    "health_state": "pass"
+  },
+  "owner": "Finance owner",
+  "next_action": "Finance owner reviews the resource-level saving and continues health monitoring; do not roll it into a service total twice."
+}

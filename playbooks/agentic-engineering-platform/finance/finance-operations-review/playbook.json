@@ -1,0 +1,44 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "finance-operations-review",
+  "version": "0.1.0",
+  "changelog": [
+    { "version": "0.1.0", "summary": "Adds a chat-led SaaS finance review with two required Crew roles, validated billing-to-finance handoff, and manual-first activation." }
+  ],
+  "title": "Finance Operations Review",
+  "description": "Coordinate billing exceptions and a sourced finance impact review, with optional accounting close and payables specialists.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Finance"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Finance Operations Review as a proposal. Inspect this Automation and existing Crews first. Ask only for missing business scope, finance owner, reporting period, currency, authoritative billing and accounting sources, policies, and the review metric. Propose which Crews to reuse or create, their access, a validated billing-to-finance handoff, and a bounded manual first run. After I review the concrete proposal, configure it through Builder tools and verify the result. Selecting this Playbook alone does not connect accounts, create Crews, send messages, issue refunds, pay bills, or enable recurrence.",
+  "setup_inputs": [
+    { "id": "entity_period", "label": "Entity, reporting period, timezone, and currency", "required": true },
+    { "id": "billing_source", "label": "Authorized billing/payment source or export", "required": true },
+    { "id": "finance_source", "label": "Authorized finance/ledger source or export", "required": true },
+    { "id": "owner_policy", "label": "Named owner, refund/contact policy, and review boundaries", "required": true },
+    { "id": "metric", "label": "Exception or finance metric, definition, and baseline decision", "required": true },
+    { "id": "cadence", "label": "Manual-only or reviewed cadence and timezone", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing specialists with stable idempotency keys", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a bounded validated artifact between authorized Crews", "capability": "durable_artifacts", "optional": true },
+    { "id": "billing-source", "name": "Stripe or Paddle account, or export", "type": "mcp", "purpose": "Provide current authorized subscription, invoice, payment, refund, and dispute records", "capability": "billing_records", "optional": true },
+    { "id": "ledger-source", "name": "Accounting ledger or export", "type": "mcp", "purpose": "Ground cash and accounting impact in the customer's source of truth", "capability": "finance_records", "optional": true }
+  ],
+  "pulse_focus": [{ "module": "strategic_review", "label": "Finance exception progress", "focus_areas": ["Whether open exceptions are resolved without duplicate or unauthorized actions", "Whether billed, collected, and recognized amounts stay distinct and source-linked"], "review_when": ["A billing policy changes, exceptions age past the owner's threshold, or a close period completes"] }],
+  "outputs": ["Reviewed Crew roster and source map", "Validated billing exception queue", "Source-linked finance impact readout", "Manual two-Crew test run and review decisions", "Paused or manual recurrence policy"],
+  "agent_slots": [
+    { "id": "billing", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "billing-exception-queue/v1" },
+    { "id": "finance", "agent_playbook_id": "finance-analyst", "required": true, "output": "finance-impact-readout/v1" },
+    { "id": "close", "agent_playbook_id": "revenue-close-analyst", "required": false, "output": "revenue-close-exceptions/v1" },
+    { "id": "payables", "agent_playbook_id": "spend-payables-coordinator", "required": false, "output": "payables-exception-queue/v1" }
+  ],
+  "handoffs": [
+    { "id": "billing-to-finance", "from": "billing", "to": "finance", "artifact_type": "billing-exception-queue/v1", "required": true }
+  ],
+  "setup_checks": ["goal_owner", "source_scope", "policy_metric", "team_bindings", "access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

@@ -10,6 +10,7 @@ export type ProductProject<P extends string = string> = {
   title: string
   description: string
   identity?: ProductIdentity
+  templates: Array<{ id: string; version: number }>
   sessionId: string
   workspacePath: string
   createdAt: string
@@ -54,6 +55,8 @@ type ProductManifest = {
   title?: unknown
   description?: unknown
   identity?: unknown
+  template?: unknown
+  templates?: unknown
   session_id?: unknown
   created_at?: unknown
   updated_at?: unknown
@@ -72,6 +75,21 @@ function parseProductIdentity(value: unknown): ProductIdentity | undefined {
     role: asString(raw.role),
   }
   return Object.values(identity).some(Boolean) ? identity : undefined
+}
+
+function parseProductTemplate(value: unknown): { id: string; version: number } | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const raw = value as Record<string, unknown>
+  const id = asString(raw.id)
+  return id && Number.isInteger(raw.version) && (raw.version as number) > 0
+    ? { id, version: raw.version as number }
+    : undefined
+}
+
+function parseProductTemplates(raw: ProductManifest): Array<{ id: string; version: number }> {
+  const values = Array.isArray(raw.templates) ? raw.templates : raw.template ? [raw.template] : []
+  const parsed = values.map(parseProductTemplate).filter((item): item is { id: string; version: number } => Boolean(item))
+  return parsed.filter((item, index) => parsed.findIndex(other => other.id === item.id) === index)
 }
 
 function parseProductLLMConfig(value: unknown): PresetLLMConfig | undefined {
@@ -139,6 +157,7 @@ export function parseProductProjectManifest<P extends string>(
     title,
     description: asString(raw.description),
     identity: parseProductIdentity(raw.identity),
+    templates: parseProductTemplates(raw),
     sessionId,
     workspacePath,
     createdAt,
@@ -233,6 +252,9 @@ export async function createProductProject<P extends string>(options: {
   commitLabel: string
   llmConfig?: PresetLLMConfig
   identity?: ProductIdentity
+  templates?: readonly { id: string; version: number }[]
+  selectedSkills?: readonly string[]
+  initialFiles?: Readonly<Record<string, string>>
   runtimeManifestName?: string
 }): Promise<ProductProject<P>> {
   const id = globalThis.crypto.randomUUID()
@@ -244,7 +266,7 @@ export async function createProductProject<P extends string>(options: {
   const capabilities: Record<string, unknown> = {
     selected_servers: [],
     selected_tools: [],
-    selected_skills: [],
+    selected_skills: [...new Set(options.selectedSkills || [])],
     selected_secrets: [],
     selected_global_secret_names: [],
     browser_mode: 'auto',
@@ -262,6 +284,7 @@ export async function createProductProject<P extends string>(options: {
     created_at: now,
     updated_at: now,
     ...(options.identity ? { identity: options.identity } : {}),
+    ...(options.templates?.length ? { templates: options.templates } : {}),
   }
   if (!options.runtimeManifestName) manifest.capabilities = capabilities
   if (options.runtimeManifestName) {
@@ -282,6 +305,16 @@ export async function createProductProject<P extends string>(options: {
       `${options.commitLabel} runtime ${title}`,
     )
   }
+  for (const [relativePath, content] of Object.entries(options.initialFiles || {})) {
+    if (!relativePath || relativePath.startsWith('/') || relativePath.split('/').some(part => !part || part === '.' || part === '..')) {
+      throw new Error(`Invalid initial project file path: ${relativePath}`)
+    }
+    await agentApi.updatePlannerFile(
+      `${workspacePath}/${relativePath}`,
+      content,
+      `${options.commitLabel} file ${relativePath}`,
+    )
+  }
   await agentApi.updatePlannerFile(
     `${workspacePath}/product.json`,
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -294,13 +327,14 @@ export async function createProductProject<P extends string>(options: {
     title,
     description,
     identity: options.identity,
+    templates: [...(options.templates || [])],
     sessionId,
     workspacePath,
     createdAt: now,
     updatedAt: now,
     llmConfig: options.llmConfig,
     selectedServers: [],
-    selectedSkills: [],
+    selectedSkills: [...new Set(options.selectedSkills || [])],
     selectedSecrets: [],
     selectedGlobalSecrets: [],
     workflowContextPaths: [],
@@ -408,6 +442,32 @@ export async function updateProductProjectIdentity<P extends string>(
   manifest.updated_at = updatedAt
   await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
   return { ...project, description: asString(manifest.description), identity: parseProductIdentity(manifest.identity), updatedAt }
+}
+
+export async function addProductProjectTemplate<P extends string>(
+  project: ProductProject<P>,
+  template: { id: string; version: number },
+  commitLabel: string,
+): Promise<ProductProject<P>> {
+  const path = `${project.workspacePath}/product.json`
+  const response = await agentApi.getPlannerFileContent(path)
+  const document = responseContent(response)
+  if (!document) throw new Error('Project configuration was not found.')
+  let manifest: ProductManifest & Record<string, unknown>
+  try {
+    manifest = JSON.parse(document.content) as ProductManifest & Record<string, unknown>
+  } catch {
+    throw new Error('Project configuration is invalid JSON.')
+  }
+  const templates = parseProductTemplates(manifest)
+  if (templates.some(item => item.id === template.id)) return { ...project, templates }
+  templates.push(template)
+  manifest.templates = templates
+  delete manifest.template
+  const updatedAt = new Date().toISOString()
+  manifest.updated_at = updatedAt
+  await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
+  return { ...project, templates, updatedAt }
 }
 
 export async function updateProductProjectLLMConfig<P extends string>(

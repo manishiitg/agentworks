@@ -1,0 +1,20 @@
+{
+  "illustrative": true,
+  "artifact_type": "reviewable-page-draft/v1",
+  "artifact_id": "page-arbordesk-q001-v1",
+  "source_content_artifact_id": "content-arbordesk-q001-v1",
+  "source_question_id": "Q-001",
+  "site_url": "https://arbordesk.example/",
+  "target_page_url": "https://arbordesk.example/clinics",
+  "created_at": "2026-09-25T11:00:00Z",
+  "draft_ref": "cms-draft:clinics@v4",
+  "draft_state": "reviewable",
+  "review_state": "pending",
+  "publication_state": "not_published",
+  "sections": [{"heading": "How patient reminders work", "copy": "Clinic staff can configure appointment reminder timing. Ask for a demo to see the available settings.", "claim_ids": ["C-001"]}],
+  "internal_links": ["https://arbordesk.example/"],
+  "unverified_claim_ids": ["C-002"],
+  "open_questions": ["Do not mention plan availability until the product owner verifies it."],
+  "next_action": "Site owner reviews the draft and checks a rendered preview before a separate publication decision.",
+  "publication_receipt": null
+}

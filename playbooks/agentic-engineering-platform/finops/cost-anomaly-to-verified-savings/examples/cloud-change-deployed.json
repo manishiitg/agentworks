@@ -1,0 +1,31 @@
+{
+  "artifact_type": "cloud-change-review/v1",
+  "change_id": "change-C-1",
+  "source_review_id": "cost-review-example-001",
+  "candidate_id": "C-1",
+  "provider": "example-cloud",
+  "account_id": "A-9",
+  "service_id": "compute-worker",
+  "resource_id": "worker-nonprod-7",
+  "environment": "staging",
+  "currency": "USD",
+  "observed_at": "2026-10-02T15:00:00Z",
+  "source_refs": [
+    { "id": "cost-review", "uri": "artifact:cost-review-example-001", "observed_at": "2026-10-02T10:00:00Z" },
+    { "id": "risk-review", "uri": "telemetry/fictional-peak-and-dependency-review", "observed_at": "2026-10-02T11:30:00Z" },
+    { "id": "approval", "uri": "approvals/fictional-change-C-1", "observed_at": "2026-10-02T12:00:00Z" },
+    { "id": "iac-plan", "uri": "iac/fictional-change-C-1-plan", "observed_at": "2026-10-02T12:30:00Z" },
+    { "id": "deployment", "uri": "deployments/fictional-change-C-1", "observed_at": "2026-10-02T14:00:00Z" },
+    { "id": "health", "uri": "telemetry/fictional-worker-health-2026-10-02", "observed_at": "2026-10-02T14:50:00Z" }
+  ],
+  "change_state": "deployed",
+  "approval_state": "approved",
+  "approval_ref": "approval",
+  "risk_review_ref": "risk-review",
+  "plan_ref": "iac-plan",
+  "deployment_receipt_ref": "deployment",
+  "health_state": "pass",
+  "health_evidence_ref": "health",
+  "owner": "Platform lead",
+  "next_action": "Wait for the complete post-change billing window; continue service-health checks."
+}

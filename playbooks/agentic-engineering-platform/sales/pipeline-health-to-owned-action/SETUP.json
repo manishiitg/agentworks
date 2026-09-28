@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "pipeline-health-to-owned-action",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm pipeline decision goal and owners", "instructions": "Name pipeline reporting owner, seller, exact first action register and excluded CRM/contact actions."},
+    {"id": "pipeline_scope", "title": "Bind account, pipeline and opportunity", "instructions": "Record tenant, CRM account, pipeline, prior/current snapshot IDs, reporting window, exact opportunity and owner."},
+    {"id": "pipeline_policy", "title": "Agree on stage, amount and stale rules", "instructions": "Record stage definitions, currency policy, stale-day threshold, activity source and coverage. A stage advance is not new pipeline value."},
+    {"id": "team_bindings", "title": "Bind Sales Crews", "instructions": "Inspect existing Pipeline Analyst and Deal Follow-through Coordinator Crews. Reuse compatible identities or propose reviewed creation with exact Crew IDs and access."},
+    {"id": "snapshot_access", "title": "Probe comparable CRM snapshots", "instructions": "Read authorized prior/current snapshots, verify stable opportunity ID, stage, amount/currency, owner and observation times; record missing and changed definitions."},
+    {"id": "current_state_access", "title": "Probe current opportunity and activity", "instructions": "Re-read one current opportunity, next activity, reply, opt-out and prior-contact source; record source revision, observation time and coverage gaps."},
+    {"id": "handoff_contract", "title": "Validate exception and action register", "instructions": "Run the packaged validator before and after the handoff. Stop on wrong opportunity, invalid stale calculation, missing current read, changed stage, suppressed contact or false provider action."},
+    {"id": "plan_review", "title": "Review concrete Automation", "instructions": "Show Crew IDs, source paths, validator steps, seller review, stable action key, duplicate policy, manual route, optional action approval, cost and notifications."},
+    {"id": "test_run", "title": "Run one real exception manually", "instructions": "Use authorized CRM snapshots and current state. Save both artifacts, validation, seller correction or decision, and action receipt or none. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose manual or reviewed repeat", "instructions": "Manual-only is valid. A cadence or CRM event needs comparable windows, stable opportunity/action keys, retry, contact policy, cost and seller notification review."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

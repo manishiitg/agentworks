@@ -1,0 +1,21 @@
+{
+  "artifact_type": "payment-order-decision/v1",
+  "store_id": "store-example-1",
+  "order_id": "order-4102",
+  "case_id": "payment-case-19",
+  "transaction_id": "transaction-602",
+  "currency": "USD",
+  "observed_at": "2026-09-26T11:10:00Z",
+  "fulfillment_order_ids": ["fulfillment-order-12"],
+  "order_payment_state": "authorized; capture not observed",
+  "fulfillment_state": "not_released",
+  "decision": "hold",
+  "approval_state": "pending",
+  "approval_ref": null,
+  "action_state": "prepared",
+  "action_receipt_ref": null,
+  "verification_ref": null,
+  "owner_id": "store-ops-owner",
+  "source_refs": ["shopify:order-4102@2026-09-26T11:10Z", "shopify:fulfillment-order-12@2026-09-26T11:10Z"],
+  "next_evidence": "Read a successful capture or merchant-specific approved alternative before considering release"
+}

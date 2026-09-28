@@ -119,7 +119,6 @@ type gateway struct {
 	username      string
 	sessionCookie string
 	agent         *httputil.ReverseProxy
-	workspace     *httputil.ReverseProxy
 	// disablePasswordGate skips the shared-password session entirely,
 	// relying solely on the inner app's own per-user auth. Zero value
 	// (false) preserves the shared-password gate every existing deployment
@@ -274,7 +273,6 @@ func newGateway() *gateway {
 		username:            gatewayEnv("GATEWAY_USERNAME", "video-studio"),
 		sessionCookie:       sessionCookieName(userID),
 		agent:               proxyFor(gatewayEnv("AGENT_API_URL", "http://127.0.0.1:8000")),
-		workspace:           proxyFor(gatewayEnv("WORKSPACE_API_URL", "http://127.0.0.1:8080")),
 		disablePasswordGate: gatewayBoolEnv("GATEWAY_DISABLE_PASSWORD_GATE"),
 		ssoOnly:             ssoOnly,
 		ssoURL:              ssoURL,
@@ -902,17 +900,15 @@ func (g *gateway) route(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/wp"):
-		// The workspace API has no auth of its own beyond X-User-ID. Behind
-		// the password gate the cookie covered it; without that gate the
-		// user's JWT must, and its user id is what the header carries.
+		// Workspace calls go through the agent API's /api/wp proxy, never to
+		// the workspace service directly: the agent verifies the caller,
+		// enforces per-user and per-workflow access, and holds the workspace
+		// service token. Without the password gate the user's JWT is still
+		// required here (never a CLI access token).
 		if g.disablePasswordGate && !g.requireUserToken(w, r) {
 			return
 		}
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api/wp")
-		if r.URL.Path == "" {
-			r.URL.Path = "/"
-		}
-		g.workspace.ServeHTTP(w, r)
+		g.serveAgent(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api"), strings.HasPrefix(r.URL.Path, "/ws"):
 		g.serveAgent(w, r)
 	default:

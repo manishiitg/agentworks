@@ -34,6 +34,15 @@ widgets over hand-rolled markup (a fully custom section remains valid):
 - `window.report.renderTable('#leads', { query: 'SELECT …', searchable: true, sortable: true })`
 - `window.report.renderActivity('#activity')`
 
+For data that must be current from an outside system (Notion, a CRM, an API
+behind the workflow's MCP servers or secrets), and is not already stored by a
+run in `db/`, write a small read-only script at `code/reports/<name>.py` and
+call `await window.report.run('code/reports/<name>.py', args)` with a loading
+state, a visible error, and a Refresh button passing `{ refresh: true }`. The
+script prints one JSON value and caches for itself in `$REPORT_CACHE_DIR`;
+follow "Live data from a script" in `reporting-policy.md` (contract, caching,
+untrusted args). Prefer `query` over `run` whenever the data is in `db/`.
+
 When displaying outcome goals, preserve the Primary goals and Secondary goals
 grouping in soul/soul.md. These priorities are independent of primary/supporting
 metric roles; do not label supporting measurements as secondary goals or invent
@@ -119,7 +128,8 @@ the tablet view sparse.
    values or make a workflow run regenerate a Dashboard.
 3. Write the complete experience as `db/reports/index.html`. Include a
    meaningful `<title>` and accessible internal navigation when needed. Use
-   `window.report` data helpers or `query` for live data, inline CSS/JS, responsive layout, clear
+   `window.report` data helpers or `query` for live data (`run` for outside
+   systems, see above), inline CSS/JS, responsive layout, clear
    empty/error states, version-pinned HTTPS CDN dependencies only when useful,
    no fixed body height, and no nested
    scrolling. Theme off the app, not the OS: style dark mode under

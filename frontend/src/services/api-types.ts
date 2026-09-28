@@ -1250,6 +1250,8 @@ export interface ActiveSessionInfo {
   phase_name?: string
   bot_platform?: string
   triggered_by?: string
+  /** Who or what started the run, e.g. "Called by RTS Flow Tester". */
+  triggered_by_label?: string
   has_running_background_agents?: boolean
   running_background_agent_count?: number
   has_retained_tmux_session?: boolean
@@ -1766,6 +1768,8 @@ export interface CostAggregate {
   cache_write_tokens: number
   total_cost_usd: number
   call_count: number
+  // LLM calls without a known price are excluded from total_cost_usd.
+  unpriced_call_count?: number
   // Sum of time spent waiting for LLM generations. This deliberately excludes
   // tool execution and queue time, so it is not a workflow wall-clock duration.
   llm_generation_duration_ms?: number
@@ -1812,17 +1816,57 @@ export interface CostOverviewAggregate extends CostAggregate {
   provider_actual_cost_usd?: number
   subscription_shadow_cost_usd?: number
   token_estimate_cost_usd?: number
-  unpriced_call_count?: number
 }
 
 export interface CostOverviewItem extends CostOverviewAggregate {
-  // Workflow/<name>, a Crew root, or "other" (chats and unattributed spend).
+  // Workflow/<name>, a Crew/product project root, or "other".
   id: string
-  kind: 'workflow' | 'crew' | 'other'
+  kind: 'workflow' | 'crew' | 'product' | 'other'
   name: string
   owner_id?: string
   by_scope?: Record<string, CostAggregate>
   by_model?: Record<string, CostAggregate>
+  by_user?: CostOverviewActor[]
+  by_bot?: CostOverviewBot[]
+  by_mcp?: CostOverviewMCP[]
+}
+
+export interface CostOverviewUser extends CostOverviewAggregate {
+  id: string
+  name: string
+  by_scope?: Record<string, CostAggregate>
+  by_model?: Record<string, CostAggregate>
+  by_work?: CostOverviewWork[]
+}
+
+export interface CostOverviewActor extends CostOverviewAggregate {
+  id: string
+  name: string
+  by_scope?: Record<string, CostAggregate>
+  by_model?: Record<string, CostAggregate>
+}
+
+export interface CostOverviewWork extends CostOverviewAggregate {
+  id: string
+  kind: CostOverviewItem['kind']
+  name: string
+  by_scope?: Record<string, CostAggregate>
+  by_model?: Record<string, CostAggregate>
+}
+
+export interface CostOverviewBot extends CostOverviewAggregate {
+  id: string
+  name: string
+  workflow: string
+  platform: string
+  user_id: string
+}
+
+export interface CostOverviewMCP {
+  server: string
+  calls: number
+  unpriced_calls: number
+  recorded_cost_usd: number
 }
 
 export interface CostOverview {
@@ -1832,6 +1876,9 @@ export interface CostOverview {
   by_provider: Record<string, CostAggregate>
   by_model: Record<string, CostAggregate>
   items: CostOverviewItem[]
+  by_user?: CostOverviewUser[]
+  by_bot?: CostOverviewBot[]
+  by_mcp?: CostOverviewMCP[]
   includes_other: boolean
 }
 
@@ -3297,11 +3344,34 @@ export interface ListScheduledJobRunsResponse {
   offset: number
 }
 
+export interface SchedulerPauseEvent {
+  at: string
+  action: 'paused' | 'resumed'
+  user_id?: string
+  username?: string
+  via?: string
+  user_agent?: string
+  paused_since?: string
+}
+
+export interface SkippedWhilePaused {
+  workspace_path: string
+  workflow_label?: string
+  schedule_id: string
+  schedule_name?: string
+  count: number
+  latest_scheduled_for: string
+}
+
 export interface SchedulerConfig {
   globally_paused: boolean
   paused_at?: string
   paused_by?: string
   updated_at?: string
+  // Newest first: who paused or resumed all schedules, and through what client.
+  recent_pause_events?: SchedulerPauseEvent[]
+  // On a resume: the runs the pause skipped, per schedule.
+  skipped_while_paused?: SkippedWhilePaused[]
 }
 
 // --- Workflow Manifest Types (file-backed workflow definitions) ---

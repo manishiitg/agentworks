@@ -1,0 +1,52 @@
+{
+  "artifact_type": "dispute-case/v1",
+  "artifact_id": "case-dsp-42-rev5",
+  "entity_id": "entity-example",
+  "provider_account_id": "acct-example",
+  "provider_mode": "test",
+  "dispute_id": "du_42",
+  "payment_id": "ch_42",
+  "customer_id": "cus_42",
+  "currency": "USD",
+  "amount_minor": 20000,
+  "provider_case_revision": "rev5",
+  "case_source_id": "du_42@rev5",
+  "payment_source_id": "ch_42@rev2",
+  "case_stage": "closed_lost",
+  "provider_status": "lost",
+  "reason": "product_not_received",
+  "response_deadline_at": "2026-10-01T23:59:00Z",
+  "provider_observed_at": "2026-10-05T10:00:00Z",
+  "evidence_source_ids": [
+    "agreement-42@v2",
+    "access-log-42@v1"
+  ],
+  "missing_evidence": [],
+  "evidence_packet_hash": "sha256:example-packet-42",
+  "owner_id": "billing-owner-1",
+  "owner_decision": "approved",
+  "owner_decision_at": "2026-09-28T12:00:00Z",
+  "submission_state": "submitted",
+  "submission_key": "du_42:rev3:packet-42",
+  "provider_submission_receipt": {
+    "status": "submitted",
+    "submission_id": "sub_42",
+    "submitted_at": "2026-09-28T12:05:00Z",
+    "dispute_id": "du_42",
+    "payment_id": "ch_42",
+    "account_id": "acct-example",
+    "mode": "test",
+    "packet_hash": "sha256:example-packet-42"
+  },
+  "provider_outcome_receipt": {
+    "status": "lost",
+    "source_id": "du_42@rev5",
+    "observed_at": "2026-10-05T10:00:00Z",
+    "dispute_id": "du_42",
+    "payment_id": "ch_42",
+    "account_id": "acct-example",
+    "mode": "test",
+    "amount_minor": 20000,
+    "currency": "USD"
+  }
+}

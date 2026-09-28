@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "product-launch-readiness-to-go-no-go",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm launch goal and owner","instructions":"Name the merchant, product launch goal, buyer task, launch decision owner, publish operator, target time and timezone, and escalation rule."},
+    {"id":"launch_scope","title":"Bind exact product and publication","instructions":"Record store, market, product, variant, publication, and stable launch IDs. Use one item per artifact; aggregate a multi-product wave only after each item passes."},
+    {"id":"catalog_standards","title":"Set merchant readiness criteria","instructions":"Record approved product facts, price/currency authority, inventory or preorder policy, media, channel/market publication, shipping promise, and blockers."},
+    {"id":"team_bindings","title":"Bind two ready Crews","instructions":"Record existing or reviewed new Catalog & Merchandising Analyst and Shopify Growth Analyst IDs, skills, and setup status."},
+    {"id":"source_access","title":"Probe real source access","instructions":"Read one authorized ProductVariant and Publication for the chosen market, then inspect an approved preview or public buyer path. Record exact IDs, time, and unavailable checks."},
+    {"id":"handoff_contract","title":"Validate readiness and journey","instructions":"Run the bundled validator; reject wrong publication, unreviewed blockers, go-review on a failed journey, and published or verified claims without provider/retest references."},
+    {"id":"plan_review","title":"Review concrete launch plan","instructions":"Show Crew IDs, source field scope, artifact paths, explicit blockers, exact publish action, approval owner, cost, and manual route before Builder applies it."},
+    {"id":"test_run","title":"Run one product manually","instructions":"Use a real authorized product and preview or public path; preserve run IDs, validator results, owner decision, and blocked or ready result. Fixtures do not complete setup."},
+    {"id":"launch_ledger","title":"Track publish and retest","instructions":"Keep stable launch/action IDs, product/variant/publication, approved target, provider publish receipt, market storefront retest, and unresolved buyer issues."},
+    {"id":"activation_choice","title":"Choose recurrence","instructions":"Record manual-only or a reviewed launch reminder with deduplication, cost, and notification policy. Test any route before enabling it. Setup never publishes a product."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

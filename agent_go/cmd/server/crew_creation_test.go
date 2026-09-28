@@ -203,6 +203,570 @@ func TestCreateCrewProjectIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCreateCrewProjectAppliesWebsiteGrowthTemplateOnBuilderAction(t *testing.T) {
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	req := CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Search Researcher",
+		Role: "Buyer-question and search opportunity researcher", Purpose: "Map site content gaps",
+		TemplateID: "search-opportunity-mapper", StepInstruction: "Return a sourced opportunity list.",
+		IdempotencyKey: "website-growth-specialist-1",
+	}
+	created, err := svc.CreateCrewProject(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mock.files[created.WorkspacePath+"/skills/search-opportunity-mapper/SKILL.md"]; !ok {
+		t.Fatal("Builder-created Crew lacks its local specialist skill")
+	}
+	if _, ok := mock.files[created.WorkspacePath+"/templates/search-opportunity-mapper/TEMPLATE_SETUP.json"]; !ok {
+		t.Fatal("Builder-created Crew lacks its setup checklist")
+	}
+	var product struct {
+		Templates []struct {
+			ID      string `json:"id"`
+			Version int    `json:"version"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[created.WorkspacePath+"/product.json"]), &product); err != nil {
+		t.Fatal(err)
+	}
+	if len(product.Templates) != 1 || product.Templates[0].ID != req.TemplateID || product.Templates[0].Version != 1 {
+		t.Fatalf("Crew template receipt = %+v", product.Templates)
+	}
+	var runtime struct {
+		Capabilities struct {
+			SelectedSkills []string `json:"selected_skills"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[created.WorkspacePath+"/workflow.json"]), &runtime); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.Capabilities.SelectedSkills) != 1 || runtime.Capabilities.SelectedSkills[0] != req.TemplateID {
+		t.Fatalf("selected skills = %+v", runtime.Capabilities.SelectedSkills)
+	}
+	retry, err := svc.CreateCrewProject(ctx, req)
+	if err != nil || !retry.Duplicate || retry.CrewID != created.CrewID {
+		t.Fatalf("retry = %+v, %v", retry, err)
+	}
+}
+
+func TestCreateCrewProjectAppliesFinanceTemplateOnBuilderAction(t *testing.T) {
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	req := CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Billing Reviewer",
+		Role: "Billing operations coordinator", Purpose: "Review payment exceptions",
+		TemplateID: "billing-operations-coordinator", StepInstruction: "Return a source-linked billing queue.",
+		IdempotencyKey: "finance-billing-specialist-1",
+	}
+	created, err := svc.CreateCrewProject(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := created.WorkspacePath
+	for _, relative := range []string{
+		"skills/billing-operations-coordinator/SKILL.md",
+		"templates/billing-operations-coordinator/SETUP.md",
+		"templates/billing-operations-coordinator/TEMPLATE_SETUP.json",
+	} {
+		if mock.files[base+"/"+relative] == "" {
+			t.Fatalf("Builder-created Finance Crew lacks %s", relative)
+		}
+	}
+	var product struct {
+		Templates []struct {
+			ID string `json:"id"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/product.json"]), &product); err != nil {
+		t.Fatal(err)
+	}
+	if len(product.Templates) != 1 || product.Templates[0].ID != req.TemplateID {
+		t.Fatalf("Finance template receipt = %+v", product.Templates)
+	}
+	var runtime struct {
+		Capabilities struct {
+			SelectedSkills  []string `json:"selected_skills"`
+			SelectedServers []string `json:"selected_servers"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/workflow.json"]), &runtime); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.Capabilities.SelectedSkills) != 1 || runtime.Capabilities.SelectedSkills[0] != req.TemplateID || len(runtime.Capabilities.SelectedServers) != 0 {
+		t.Fatalf("unexpected Finance Crew capabilities = %+v", runtime.Capabilities)
+	}
+}
+
+func TestCreateCrewProjectAppliesSalesTemplateOnBuilderAction(t *testing.T) {
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	req := CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Lead Intake",
+		Role: "Inbound lead qualifier", Purpose: "Review inbound enquiries",
+		TemplateID: "lead-intake-qualifier", StepInstruction: "Return a sourced qualification brief.",
+		IdempotencyKey: "sales-intake-specialist-1",
+	}
+	created, err := svc.CreateCrewProject(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := created.WorkspacePath
+	for _, relative := range []string{
+		"skills/lead-intake-qualifier/SKILL.md",
+		"templates/lead-intake-qualifier/SETUP.md",
+		"templates/lead-intake-qualifier/TEMPLATE_SETUP.json",
+	} {
+		if mock.files[base+"/"+relative] == "" {
+			t.Fatalf("Builder-created Sales Crew lacks %s", relative)
+		}
+	}
+	var product struct {
+		Templates []struct {
+			ID string `json:"id"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/product.json"]), &product); err != nil {
+		t.Fatal(err)
+	}
+	if len(product.Templates) != 1 || product.Templates[0].ID != req.TemplateID {
+		t.Fatalf("Sales template receipt = %+v", product.Templates)
+	}
+	var runtime struct {
+		Capabilities struct {
+			SelectedSkills  []string `json:"selected_skills"`
+			SelectedServers []string `json:"selected_servers"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/workflow.json"]), &runtime); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.Capabilities.SelectedSkills) != 1 || runtime.Capabilities.SelectedSkills[0] != req.TemplateID || len(runtime.Capabilities.SelectedServers) != 0 {
+		t.Fatalf("unexpected Sales Crew capabilities = %+v", runtime.Capabilities)
+	}
+}
+
+func TestCreateCrewProjectAppliesExpandedSalesTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"sales-call-briefing", "proposal-drafter", "pipeline-analyst", "deal-follow-through-coordinator"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Sales Operator",
+				Role: "Sales operations", Purpose: "Review a sourced sales result",
+				TemplateID: templateID, StepInstruction: "Return a sourced result for owner review.",
+				IdempotencyKey: "sales-expansion-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Sales Crew lacks %s", relative)
+				}
+			}
+			var setup struct {
+				CompletedSteps []string `json:"completed_steps"`
+			}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			if len(setup.CompletedSteps) != 0 {
+				t.Fatalf("Sales setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesProductFeedbackTemplateOnBuilderAction(t *testing.T) {
+	templateID := "product-feedback-coordinator"
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Product Feedback",
+		Role: "Product feedback coordinator", Purpose: "Review a sourced feedback theme",
+		TemplateID: templateID, StepInstruction: "Return a product owner decision brief.",
+		IdempotencyKey: "product-feedback-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := created.WorkspacePath
+	for _, relative := range []string{
+		"skills/" + templateID + "/SKILL.md",
+		"templates/" + templateID + "/SETUP.md",
+		"templates/" + templateID + "/TEMPLATE_SETUP.json",
+	} {
+		if mock.files[base+"/"+relative] == "" {
+			t.Fatalf("Product Crew lacks %s", relative)
+		}
+	}
+	var setup struct {
+		CompletedSteps []string `json:"completed_steps"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+		t.Fatal(err)
+	}
+	if len(setup.CompletedSteps) != 0 {
+		t.Fatalf("Product setup unexpectedly completed: %+v", setup)
+	}
+}
+
+func TestCreateCrewProjectAppliesCustomerSuccessTemplateOnBuilderAction(t *testing.T) {
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	req := CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Onboarding Coordinator",
+		Role: "Customer onboarding coordinator", Purpose: "Track first-value milestones",
+		TemplateID: "customer-onboarding-coordinator", StepInstruction: "Return an owned milestone register.",
+		IdempotencyKey: "customer-success-onboarding-1",
+	}
+	created, err := svc.CreateCrewProject(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := created.WorkspacePath
+	for _, relative := range []string{
+		"skills/customer-onboarding-coordinator/SKILL.md",
+		"templates/customer-onboarding-coordinator/SETUP.md",
+		"templates/customer-onboarding-coordinator/TEMPLATE_SETUP.json",
+	} {
+		if mock.files[base+"/"+relative] == "" {
+			t.Fatalf("Builder-created Customer Success Crew lacks %s", relative)
+		}
+	}
+	var product struct {
+		Templates []struct {
+			ID      string `json:"id"`
+			Version int    `json:"version"`
+		} `json:"templates"`
+	}
+	if err := json.Unmarshal([]byte(mock.files[base+"/product.json"]), &product); err != nil {
+		t.Fatal(err)
+	}
+	if len(product.Templates) != 1 || product.Templates[0].ID != req.TemplateID || product.Templates[0].Version != 1 {
+		t.Fatalf("Customer Success template receipt = %+v", product.Templates)
+	}
+}
+
+func TestCreateCrewProjectAppliesEngineeringTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"incident-investigator", "engineering-delivery-coordinator", "performance-investigator", "cloud-cost-analyst"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Engineering Operator",
+				Role: "Engineering operator", Purpose: "Investigate a sourced engineering exception",
+				TemplateID: templateID, StepInstruction: "Return a source-linked result for review.",
+				IdempotencyKey: "engineering-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Engineering Crew lacks %s", relative)
+				}
+			}
+			var setup struct {
+				CompletedSteps []string `json:"completed_steps"`
+			}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			if len(setup.CompletedSteps) != 0 {
+				t.Fatalf("Engineering setup unexpectedly completed: %+v", setup.CompletedSteps)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesQATemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"browser-journey-qa-analyst", "flaky-test-investigator", "release-quality-assistant"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "QA Operator",
+				Role: "QA operator", Purpose: "Review exact test evidence",
+				TemplateID: templateID, StepInstruction: "Return a source-linked QA decision for review.",
+				IdempotencyKey: "qa-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("QA Crew lacks %s", relative)
+				}
+			}
+			var setup struct {
+				CompletedSteps []string `json:"completed_steps"`
+			}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			if len(setup.CompletedSteps) != 0 {
+				t.Fatalf("QA setup unexpectedly completed: %+v", setup.CompletedSteps)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesSecurityTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"security-findings-analyst", "access-review-analyst", "security-remediation-coordinator"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Security Operator",
+				Role: "Security operator", Purpose: "Review authorized security evidence",
+				TemplateID: templateID, StepInstruction: "Return a source-linked finding or decision for review.",
+				IdempotencyKey: "security-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Security Crew lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("Security setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesGTMTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"gtm-strategy-analyst", "launch-coordinator"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "GTM Operator",
+				Role: "GTM operator", Purpose: "Review a sourced launch plan",
+				TemplateID: templateID, StepInstruction: "Return a reviewable launch decision.",
+				IdempotencyKey: "gtm-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("GTM Crew lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("GTM setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesCustomerSupportTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"support-triage-assistant", "support-reply-drafter", "escalation-coordinator", "feedback-review-analyst"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Support Operator",
+				Role: "Support operator", Purpose: "Review a sourced customer case",
+				TemplateID: templateID, StepInstruction: "Return a source-linked case decision for review.",
+				IdempotencyKey: "support-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Customer Support Crew lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("Customer Support setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesOperationsTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"chief-of-staff", "meeting-actions-coordinator", "project-status-reporter", "order-operations-coordinator", "vendor-researcher", "document-intake-assistant"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Operations Operator",
+				Role: "Operations operator", Purpose: "Review a sourced operations result",
+				TemplateID: templateID, StepInstruction: "Return a source-linked decision for review.",
+				IdempotencyKey: "operations-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Operations Crew lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("Operations setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesBillingCapabilityPackOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"invoice-chasing", "failed-payment-recovery", "refund-review", "dispute-review"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Billing Operator",
+				Role: "Billing operations", Purpose: "Review a sourced billing case",
+				TemplateID: templateID, StepInstruction: "Return a source-linked decision for review.",
+				IdempotencyKey: "billing-pack-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Billing pack lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("Billing pack setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesMarketingTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"competitor-intelligence-analyst", "campaign-performance-analyst", "growth-experiment-planner"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Marketing Operator",
+				Role: "Marketing operator", Purpose: "Review a sourced marketing result",
+				TemplateID: templateID, StepInstruction: "Return source-linked evidence and a decision for owner review.",
+				IdempotencyKey: "marketing-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Marketing Crew lacks %s", relative)
+				}
+			}
+			var setup map[string]interface{}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			completed, ok := setup["completed_steps"].([]interface{})
+			if !ok || len(completed) != 0 {
+				t.Fatalf("Marketing setup unexpectedly completed: %+v", setup)
+			}
+		})
+	}
+}
+
+func TestCreateCrewProjectAppliesShopifyTemplateOnBuilderAction(t *testing.T) {
+	for _, templateID := range []string{"store-operations-coordinator", "returns-refunds-coordinator", "catalog-merchandising-analyst", "shopify-growth-analyst", "payment-operations-investigator", "checkout-recovery-coordinator", "replenishment-planner"} {
+		t.Run(templateID, func(t *testing.T) {
+			svc, mock, ctx := newCrewCreationTestEnv(t)
+			created, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+				UserID: "owner", WorkflowPath: "Workflow/build", Title: "Store Operator",
+				Role: "Shopify store operator", Purpose: "Review a sourced store exception",
+				TemplateID: templateID, StepInstruction: "Return a source-linked result for merchant review.",
+				IdempotencyKey: "shopify-" + templateID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := created.WorkspacePath
+			for _, relative := range []string{
+				"skills/" + templateID + "/SKILL.md",
+				"templates/" + templateID + "/SETUP.md",
+				"templates/" + templateID + "/TEMPLATE_SETUP.json",
+			} {
+				if mock.files[base+"/"+relative] == "" {
+					t.Fatalf("Shopify Crew lacks %s", relative)
+				}
+			}
+			var setup struct {
+				CompletedSteps []string `json:"completed_steps"`
+			}
+			if err := json.Unmarshal([]byte(mock.files[base+"/templates/"+templateID+"/TEMPLATE_SETUP.json"]), &setup); err != nil {
+				t.Fatal(err)
+			}
+			if len(setup.CompletedSteps) != 0 {
+				t.Fatalf("Shopify setup unexpectedly completed: %+v", setup.CompletedSteps)
+			}
+		})
+	}
+}
+
 func TestCreateCrewProjectValidatesInput(t *testing.T) {
 	svc, _, ctx := newCrewCreationTestEnv(t)
 	valid := CreateCrewRequest{
@@ -221,6 +785,7 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 		"empty key":                func(r *CreateCrewRequest) { r.IdempotencyKey = "" },
 		"bad workflow":             func(r *CreateCrewRequest) { r.WorkflowPath = "Chats/other" },
 		"other profile":            func(r *CreateCrewRequest) { r.ProfileID = "crewx" },
+		"unknown template":         func(r *CreateCrewRequest) { r.TemplateID = "unknown-specialist" },
 		"missing step instruction": func(r *CreateCrewRequest) { r.StepInstruction = " " },
 		"missing trigger text": func(r *CreateCrewRequest) {
 			r.Purpose, r.Instructions, r.TriggerMessage = "", "", ""
@@ -237,6 +802,23 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 		IdempotencyKey: "proposal-1",
 	}); err == nil {
 		t.Fatal("missing workflow: expected rejection")
+	}
+}
+
+func TestCreateCrewRejectsProductDeniedBeforeWriting(t *testing.T) {
+	svc, mock, ctx := newCrewCreationTestEnv(t)
+	t.Setenv("AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES", "work")
+	before := len(mock.files)
+	_, err := svc.CreateCrewProject(ctx, CreateCrewRequest{
+		UserID: "owner", WorkflowPath: "Workflow/build", Title: "Search Researcher",
+		Role: "Researcher", Purpose: "Research site opportunities", TemplateID: "search-opportunity-mapper",
+		StepInstruction: "Return opportunities", IdempotencyKey: "denied-product-proposal",
+	})
+	if err == nil {
+		t.Error("non-admin created a Crew in an admin-only product")
+	}
+	if len(mock.files) != before {
+		t.Errorf("denied creation wrote %d files", len(mock.files)-before)
 	}
 }
 

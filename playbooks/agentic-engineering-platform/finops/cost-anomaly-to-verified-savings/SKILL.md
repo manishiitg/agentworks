@@ -1,50 +1,49 @@
 ---
 name: cost-anomaly-to-verified-savings
-description: Build an AgentWorks FinOps workflow that detects cost anomalies, proposes evidence-backed rightsizing, prepares reviewable IaC fixes, obtains approval, and verifies realized savings. Use for governed cloud-cost optimization.
+description: Coordinate cloud cost analysis, reviewed engineering delivery and finance verification for one exact savings candidate.
 ---
 
 # Cost Anomaly to Verified Savings
 
 ## Outcome
 
-Create an auditable FinOps workflow that detects and explains cost anomalies, proposes safe rightsizing, prepares exact infrastructure-as-code changes, obtains configured approval, and verifies realized savings and service health after rollout.
+Explain a cloud-cost change, prepare an optimization decision, and verify resource savings from comparable billing and health evidence.
 
 ## When to use
 
-Use for authorized cloud accounts and services with trustworthy billing, inventory, utilization, ownership, and IaC sources. Use investigation-only mode when changes or sufficient telemetry are unavailable.
+Use for an authorized cloud account and resource with billing and utilization evidence. Start read-only when change or post-change evidence is absent. Use distinct Cost, Delivery and Finance Crews.
 
 ## Discovery and user direction
 
-Inspect the current workflow, goals, metrics, configuration, capabilities, stores, reports, and triggers before proposing changes. Summarize reusable design and gaps, then ask focused questions for unresolved customer choices such as scope, success, approvals, thresholds, ownership, and budgets. Record the answers as customer direction. Installation alone does not approve workflow changes or execution. Default to one small-team workflow; split only for incompatible access or lifecycle boundaries.
+Inspect existing Crews, cost basis, resource and finance sources, and IaC ownership. Propose Cost Analyst, Delivery Coordinator and Finance Analyst bindings. Show handoffs, validators, approvals and manual first case. Record customer direction before configuration. Installation approves no change.
 
 ## Required inputs
 
-Resolve accounts/projects/subscriptions, environments, billing basis/currency, attribution and owner mapping, budgets/baselines, utilization and service-health signals, IaC repositories/state, allowed resource/change types, risk/SLO limits, approval/deployment/rollback policy, and verification window.
+Confirm provider, account, service, resource, environment, currency, cost basis, equal periods, owners, reliability policy, IaC route and Finance verification rule. An export supports read-only review. Record missing access.
 
 ## Plan and AgentWorks tools
 
-Use scripted steps for cost ingestion, normalization, anomaly scoring, candidate calculations, IaC validation, approved application, and savings measurement. Use message sequences for evidence-based cause and risk analysis. Persist the concrete candidate and diff as pending review; a later action route validates the durable approval and current IaC/resource state before application.
+Cost Analyst saves `cloud-cost-review/v1`; run its blocking validator. Delivery Coordinator reads that exact artifact and saves `cloud-change-review/v1`; validate it before Finance reads. Finance Analyst saves `cloud-savings-readout/v1` with `pending_change`, `pending_verification` or `verified`; validate before reporting. Builder supplies paths and repairs any missing validator step. Run one bounded manual case first, then propose a paused recurrence. A separately approved action may prepare or apply an IaC change after fresh state checks.
 
 ## Knowledge and persistence
 
-Store cost/usage observations, baselines, anomalies, candidates, decisions, changes, health checks, and savings measurements in durable tables. Store plans, diffs, validation output, and receipts in durable assets. Keep customer policy in KB context and verified service/IaC facts in scoped notes without secrets.
+Keep stable review, candidate, change and readout IDs, source revisions, Crew runs, artifact paths, validator results, owner decisions and next checks. Re-read billing and resource state on repeat runs. Keep projected, implemented and verified amounts separate, and prevent overlapping candidates from being counted twice.
 
 ## Validation and reporting
 
-Require source freshness, attribution, comparable baselines, utilization coverage, exact IaC and deployment identity, approval receipts, post-change health, and a completed verification window. The dashboard shows current, projected, implemented, and verified cost/savings; filters by provider, account, service, environment, and owner; and drills into anomaly evidence, candidates, IaC, approval, rollout, and health. Incomplete evidence cannot become realized savings.
+Run `scripts/validate_handoff.py cost <cost.json>`, then `change <cost.json> <change.json>`, then `savings <cost.json> <change.json> <savings.json>` as blocking Workflow steps. Recompute usage, price and one-time effects; join exact provider/account/service/resource/environment and candidate IDs. Deployment needs distinct risk, approval, plan, provider and health receipts. Verified savings need complete equal billing windows, the same basis, comparable workload and observed health. The dashboard shows cost drivers, candidate range, change state, pending evidence and verified resource savings; it never treats an estimate as realized.
 
 ## Guardrails
 
-Do not change infrastructure from anomaly output alone, apply unapproved production changes, bypass IaC/state ownership, violate capacity or reliability limits, expose billing secrets, double-count savings, or claim credits, demand changes, or workload drops as rightsizing savings.
+Do not stop or resize resources, change IaC, buy commitments, send messages or book savings from template installation. Recheck current diff, state and durable approval before any separately authorized action. Do not attribute credits, price shifts or demand drops to rightsizing, or claim a green plan is deployed.
 
 ## Read details when needed
 
-- [Workflow design and outcomes](../../references/workflow-design-and-outcomes.md): goals, metrics, and current-versus-separate workflow decisions.
-- [FinOps workflow](references/finops-workflow.md): data contract, anomaly analysis, rightsizing, IaC, approval, and verification.
-- [Service cost analysis](references/service-cost-analysis.md): choose and load detailed cost checks for the affected service family.
-- [Example candidate](examples/optimization-candidate.json): fictional optimization record.
-- [Catalog metadata](playbook.json): presentation and optional recommendations.
+- [Shared workflow design](../../references/workflow-design-and-outcomes.md).
+- [Crew route and worked cases](references/team-and-handoffs.md).
+- [Cost and change method](references/finops-workflow.md) and [service checks](references/service-cost-analysis.md).
+- [Pending setup](SETUP.json), [cost example](examples/cloud-cost-review.json), [verified example](examples/cloud-savings-verified.json) and [catalog metadata](playbook.json).
 
 ## Completion contract
 
-Return installed playbook and policy/baseline revisions, affected provider/service/resource IDs, service-cost model and source revisions, anomaly evidence, candidate and risk, IaC diff/validation, approval/deployment/rollback receipts, health result, projected and verified savings, report locations, capability resolution, and limitations.
+Return the Playbook version, three Crew bindings, exact cost scope and basis, artifact paths, validator results, owner-reviewed action, current change and Finance outcome states, source limitations, manual run IDs, next check and manual or paused activation decision. Report verified savings only from a complete comparable bill and health result.

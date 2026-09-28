@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "artifact_type": "onboarding-milestone-register/v1",
+  "register_id": "register-example-001",
+  "account_id": "account-example-001",
+  "tenant_id": "tenant-example-001",
+  "created_at": "2026-09-25T10:00:00Z",
+  "owner": "Customer success owner",
+  "handoff_ref": "signed-handoff",
+  "first_value_rule": {
+    "id": "first-report-v1",
+    "description": "An authorized customer user exports the first project report from the production workspace.",
+    "evidence_event": "project_report_exported",
+    "target_at": "2026-09-30T17:00:00Z"
+  },
+  "milestones": [
+    {
+      "id": "workspace-ready",
+      "title": "Production workspace is provisioned",
+      "owner": "Onboarding owner",
+      "due_at": "2026-09-25T17:00:00Z",
+      "state": "complete",
+      "evidence_refs": [
+        "workspace-record"
+      ]
+    },
+    {
+      "id": "first-report",
+      "title": "Customer exports a first project report",
+      "owner": "Customer sponsor",
+      "due_at": "2026-09-30T17:00:00Z",
+      "state": "pending",
+      "evidence_refs": []
+    }
+  ],
+  "source_refs": [
+    {
+      "id": "signed-handoff",
+      "uri": "exports/fictional-signed-handoff.json#account-example-001",
+      "observed_at": "2026-09-25T09:00:00Z"
+    },
+    {
+      "id": "workspace-record",
+      "uri": "exports/fictional-workspaces.csv#tenant-example-001",
+      "observed_at": "2026-09-25T09:45:00Z"
+    }
+  ],
+  "limitations": [
+    "Fictional fixture; no customer account is connected."
+  ]
+}

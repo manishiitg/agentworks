@@ -126,20 +126,21 @@ func diffPatchToolDef() llmtypes.Tool {
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "diff_patch_workspace_file",
-			Description: "Apply a unified diff patch to a workspace file and return the result. The filepath may be workspace-relative, an absolute path under the workspace docs root, or linked://<alias>/<relative-path> for an owner-approved read-write attached folder.",
+			Description: "Apply a patch to workspace files and return the result: a unified diff for one file, or a Codex/Cursor \"*** Begin Patch\" patch for one or several files (all files are checked first and written together, or none). The filepath may be workspace-relative, an absolute path under the workspace docs root, or linked://<alias>/<relative-path> for an owner-approved read-write attached folder (attached-folder files one per call).",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"filepath": map[string]interface{}{
 						"type":        "string",
-						"description": "Path to the file to patch. Accepts workspace-relative paths, absolute paths under the workspace docs root, and linked://<alias>/<relative-path> for an attached folder with read-write permission. Other absolute paths are rejected.",
+						"description": "Path to the file to patch (optional for a \"*** Begin Patch\" that names its own files). Accepts workspace-relative paths, absolute paths under the workspace docs root, and linked://<alias>/<relative-path> for an attached folder with read-write permission. Other absolute paths are rejected.",
 					},
 					"diff": map[string]interface{}{
 						"type":        "string",
-						"description": "Unified diff patch string to apply.\n\nFormat:\n- Headers: --- a/file and +++ b/file\n- Hunk headers: @@ -startLine,lineCount +startLine,lineCount @@\n- Context lines: ' ' prefix (space + content)\n- Removals: '-' prefix\n- Additions: '+' prefix\n- End with a trailing newline\n\nExample:\n--- a/file\n+++ b/file\n@@ -5,1 +5,1 @@\n-- [ ] task-1\n+- [x] task-1\n\nContext and removal lines must be byte-exact copies of the current file content, not retyped from memory. If the target text contains em dashes (—), curly quotes (“ ”), or arrows (→), do not hand-copy it — retyping commonly substitutes plain ASCII equivalents (-, \", ->) without you noticing, which this tool will correctly reject as a context mismatch. Read the file first and copy the exact bytes, or generate the diff programmatically from the file you just read.",
+						"description": "Unified diff patch string to apply. The Codex/Cursor \"*** Begin Patch\" format is also accepted: \"*** Update File: <path>\" / \"*** Add File: <path>\" sections, hunks located by their context and optional @@ anchor line (no line numbers needed). A Begin Patch may change several files in one call: every file is checked first and all are written or none (filepath may then be omitted). Delete File and Move to are not supported.\n\nUnified diff format:\n- Headers: --- a/file and +++ b/file\n- Hunk headers: @@ -startLine,lineCount +startLine,lineCount @@\n- Context lines: ' ' prefix (space + content)\n- Removals: '-' prefix\n- Additions: '+' prefix\n- End with a trailing newline\n\nExample:\n--- a/file\n+++ b/file\n@@ -5,1 +5,1 @@\n-- [ ] task-1\n+- [x] task-1\n\nContext and removal lines must be byte-exact copies of the current file content, not retyped from memory. If the target text contains em dashes (—), curly quotes (“ ”), or arrows (→), do not hand-copy it — retyping commonly substitutes plain ASCII equivalents (-, \", ->) without you noticing, which this tool will correctly reject as a context mismatch. Read the file first and copy the exact bytes, or generate the diff programmatically from the file you just read.",
 					},
 				},
-				"required": []string{"filepath", "diff"},
+				// filepath may be omitted for a "*** Begin Patch" that names its files.
+				"required": []string{"diff"},
 			}),
 		},
 	}

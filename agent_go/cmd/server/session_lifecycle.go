@@ -193,6 +193,7 @@ func closeAllCodingCLIInteractiveSessionsForOwner(owner, reason string) {
 	llmproviders.CloseClaudeCodeInteractiveSessionForOwner(owner, reason)
 	llmproviders.ClosePiCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseMuseCLIInteractiveSessionForOwner(owner, reason)
+	llmproviders.CloseAgyCLIInteractiveSessionForOwner(owner, reason)
 }
 
 // gracefulCloseCodingCLITmuxByName runs the provider-specific graceful shutdown
@@ -221,6 +222,8 @@ func gracefulCloseCodingCLITmuxByName(tmuxName, reason string) bool {
 		llmproviders.ClosePiCLIInteractiveSessionByTmux(name, reason)
 	case strings.HasPrefix(name, "mlp-muse-"):
 		llmproviders.CloseMuseCLIInteractiveSessionByTmux(name, reason)
+	case strings.HasPrefix(name, "agy-int-"):
+		llmproviders.CloseAgyCLIInteractiveSessionByTmux(name, reason)
 	default:
 		return false
 	}
@@ -518,6 +521,39 @@ func (api *StreamingAPI) handleGetBrowserSessions(w http.ResponseWriter, r *http
 	tracker := browser.GetSessionTracker()
 	sessions := tracker.ActiveSessions()
 	cdpOwners := browser.ActiveCDPOwnersSnapshot()
+	// Admins see every browser; everyone else sees only browsers of sessions
+	// they may access, so the list does not hand out other users' session IDs
+	// (PLAT-362 D5).
+	if !userAccessForClaims(GetUserFromContext(r.Context())).Admin {
+		visible := func(ids ...string) bool {
+			for _, id := range ids {
+				if strings.TrimSpace(id) != "" && api.canAccessTerminalSession(r, id) {
+					return true
+				}
+			}
+			return false
+		}
+		ownSessions := sessions[:0:0]
+		ownBrowsers := map[string]bool{}
+		for _, s := range sessions {
+			if visible(s["workflow_session"], s["agent_session"]) {
+				ownSessions = append(ownSessions, s)
+				if name := strings.TrimSpace(s["browser_session"]); name != "" {
+					ownBrowsers[name] = true
+				}
+			}
+		}
+		sessions = ownSessions
+		// A CDP owner is a session ID or, for per-Crew and per-workflow
+		// browsers, a browser name; it is the caller's when either is.
+		ownOwners := cdpOwners[:0:0]
+		for _, o := range cdpOwners {
+			if ownBrowsers[strings.TrimSpace(o["owner"])] || visible(o["owner"]) {
+				ownOwners = append(ownOwners, o)
+			}
+		}
+		cdpOwners = ownOwners
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"sessions":   sessions,

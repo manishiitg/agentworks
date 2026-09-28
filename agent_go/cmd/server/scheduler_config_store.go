@@ -100,7 +100,7 @@ func getSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cfg)
+		_ = json.NewEncoder(w).Encode(SchedulerConfigResponse{SchedulerConfig: cfg, RecentPauseEvents: recentSchedulerPauseEvents(r.Context(), 5)})
 	}
 }
 
@@ -117,6 +117,7 @@ func updateSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
+		previous, _ := LoadSchedulerConfig(r.Context())
 		if err := SaveSchedulerConfig(r.Context(), &req); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -128,7 +129,27 @@ func updateSchedulerConfigHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
+		resp := SchedulerConfigResponse{SchedulerConfig: cfg}
+		wasPaused := previous != nil && previous.GloballyPaused
+		if wasPaused != cfg.GloballyPaused {
+			claims := GetUserFromContext(r.Context())
+			ev := SchedulerPauseEvent{At: time.Now().UTC(), Action: "paused", Via: strings.TrimSpace(req.PausedBy), UserAgent: truncateString(r.UserAgent(), 160)}
+			if claims != nil {
+				ev.UserID, ev.Username = claims.UserID, claims.Username
+			}
+			if !cfg.GloballyPaused {
+				ev.Action = "resumed"
+				if previous != nil && previous.PausedAt != nil {
+					since := previous.PausedAt.UTC()
+					ev.PausedSince = &since
+					resp.SkippedWhilePaused = svc.skippedWhilePaused(r.Context(), claims, since, ev.At)
+				}
+			}
+			appendSchedulerPauseEvent(r.Context(), ev)
+		}
+		resp.RecentPauseEvents = recentSchedulerPauseEvents(r.Context(), 5)
+
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cfg)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }

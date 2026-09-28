@@ -2,26 +2,18 @@
 
 ## Freeze and reconstruct
 
-After recovery, freeze a versioned snapshot of the canonical incident, signals, timeline, hypotheses, decisions, status updates, remediation/rollback, health verification, and communication receipts. Retain links to restricted evidence. Calculate milestones only from sourced timestamps and the customer's definitions; label gaps and clock disagreement.
+Begin only after canonical incident evidence supports stability or an authorized near-miss review. Freeze incident, service, environment, evidence revisions, response window, recovery source, reviewer and sensitive-data scope. Recompute impact from numerator and denominator and cite each timeline event by source and event time. Keep ingestion lag, clock disagreement and missing telemetry visible.
 
-Describe customer/user impact, duration, affected services, SLO/error-budget effect, detection path, and recovery. Separate confirmed facts, reasonable reviewed inferences, and unknowns.
+## Analyze without inventing cause
 
-## Analyze
+Separate observed facts, reviewed contributing conditions, hypotheses and unknowns. A deploy shortly before errors is a lead to investigate, not automatic cause. A confirmed factor needs multiple independent source references and a human reviewer who can assess whether they support the statement. Avoid individual blame. Note what worked and the detection, diagnosis, mitigation and verification gaps.
 
-Examine detection, escalation, diagnosis, mitigation, recovery, coordination, tooling, safeguards, change process, and organizational/system conditions. For every contributing factor, link evidence and explain how it influenced impact or response. Avoid a single-root-cause requirement when several conditions interacted.
+## Review and action handoff
 
-Capture what worked as well as what failed. Compare related incidents only through stable service, signature, control, or contributing-factor links. Similar language is insufficient to declare recurrence.
+Post-Incident Reviewer saves `post-incident-review/v1` as pending or approved. A draft can feed a pending action register for planning but cannot create issues. Improvement Follow-Through Coordinator consumes the exact validated review and saves `incident-improvement-register/v1`. An accepted action keeps the gap, owner, due date, intended outcome and verification criterion from the reviewed proposal; its decision and issue creation have dated receipts. Re-read current issue state by exact ID and suppress duplicate writes. Issue closure alone does not verify the control.
 
-## Create and verify actions
+## Verify and report
 
-Each accepted action defines the observed gap, intended outcome, type, service/scope, owner, due/review date, priority basis, exact external work-item identity, dependencies, verification method, and closure evidence. Defer/reject decisions retain rationale. Create external issues only after the configured review, then save delivery receipts and synchronize without duplicating items.
+For verification, use a later independent source: alert replay, deployed change plus health check, runbook exercise or another approved test. Keep failed or missing tests open. The dashboard shows review decision, impact and unknowns, each action's owner/due/state, issue receipt, verification source and aging. Publication, notifications and knowledge promotion are separate approved routes with redaction and delivery evidence. Recurrence checks require later incident data and cannot be claimed from one closed ticket.
 
-Completion requires the intended control or outcome to be verified: test/runbook evidence, deployed change and health, alert exercise, game day, documentation review, or another policy-approved check. Issue closure alone is not verification. Link later incidents to assess recurrence and effectiveness.
-
-## Publish and learn
-
-Produce audience-specific views from the approved snapshot, redact by policy, and record publication receipts. Promote verified reusable knowledge with scope and source revision. The dashboard tracks draft/reviewed/published state and action aging without ranking people.
-
-## Acceptance cases
-
-Exercise missing timeline data, disputed fact, multiple contributing factors, sensitive evidence, unresolved incident, reviewer edits, rejected publication, duplicate issue delivery, owner change, overdue action, issue closed without evidence, verified completion, recurring incident, and metric-definition change. Confirm no unsupported causal statement or unapproved external write.
+The [team guide](team-and-handoffs.md) provides exact sample artifacts, blocking validator commands and rejected claims.

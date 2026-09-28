@@ -1,0 +1,14 @@
+{
+  "illustrative": true,
+  "artifact_type": "distribution-plan/v1",
+  "artifact_id": "distribution-arbordesk-q001-v1",
+  "source_change_artifact_id": "ship-arbordesk-q001-v1",
+  "site_url": "https://arbordesk.example/",
+  "published_page_url": "https://arbordesk.example/clinics",
+  "created_at": "2026-09-27T09:00:00Z",
+  "owner_id": "growth-owner",
+  "channels": [
+    {"id": "company-linkedin", "audience_fit": "UK clinic managers follow the company page", "rules_ref": "owner:channel-policy-linkedin-v2", "draft_text": "See how clinic teams can configure patient reminders. Read the updated guide.", "tracking_key": "dist-17-li", "owner_id": "growth-owner", "approval_state": "pending", "approval_ref": null, "delivery_state": "unsent", "provider_receipt_ref": null}
+  ],
+  "next_evidence": "Owner reviews channel fit, draft, destination and tracking before any post."
+}

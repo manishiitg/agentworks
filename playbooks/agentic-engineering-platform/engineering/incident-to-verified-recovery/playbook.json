@@ -1,0 +1,44 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "incident-to-verified-recovery",
+  "version": "0.1.0",
+  "changelog": [
+    { "version": "0.1.0", "summary": "Adds a chat-led, two-Crew incident investigation and verified recovery proposal." }
+  ],
+  "title": "Incident to Verified Recovery",
+  "description": "Coordinate an incident investigation, an owned fix or rollback decision, and evidence that the affected service recovered.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Engineering"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Incident to Verified Recovery as a proposal. Inspect existing Crews and the customer's incident, telemetry, issue, CI, deploy, and status sources. Propose reuse or creation of Incident Investigator and Engineering Delivery Coordinator, a bounded incident-to-change handoff, owner review before any remediation, a manual first run, and a recovery evidence rule. Show the concrete plan before configuring it with Builder tools. Selecting this Playbook does not create Crews, change production, send messages, close an incident, or enable recurrence.",
+  "setup_inputs": [
+    { "id": "incident_scope", "label": "Affected service, incident ID, time window, and timezone", "required": true },
+    { "id": "sources", "label": "Authorized incident, telemetry, issue, CI, and deployment records or exports", "required": true },
+    { "id": "owners", "label": "On-call and release owners, escalation and change policies", "required": true },
+    { "id": "recovery_rule", "label": "Service recovery indicators and observation window", "required": true },
+    { "id": "run_policy", "label": "Manual-only or reviewed trigger and notification route", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create a reviewed missing Engineering Crew with a stable idempotency key", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded incident artifact between authorized Crews", "capability": "durable_artifacts", "optional": true },
+    { "id": "incident-source", "name": "Incident manager or bounded export", "type": "mcp", "purpose": "Read incident ID, ownership, timeline, and current state", "capability": "incident_records", "optional": true },
+    { "id": "telemetry-source", "name": "Monitoring, logs, or bounded export", "type": "mcp", "purpose": "Check impact and service recovery evidence", "capability": "service_telemetry", "optional": true },
+    { "id": "delivery-source", "name": "Issue, CI, and deployment records or exports", "type": "mcp", "purpose": "Trace the reviewed remediation to its actual environment", "capability": "delivery_records", "optional": true }
+  ],
+  "pulse_focus": [
+    { "module": "strategic_review", "label": "Incident recovery follow-through", "focus_areas": ["Whether incident actions have owners and verified completion", "Whether the affected service met the agreed recovery rule"], "review_when": ["A new incident appears, owner action stalls, deployment state changes, or recovery evidence changes"] }
+  ],
+  "outputs": ["Reviewed Engineering Crew roster and source map", "Validated incident investigation", "Owner-reviewed delivery blocker ledger", "Service recovery evidence and closure decision", "Manual route and activation decision"],
+  "agent_slots": [
+    { "id": "investigation", "agent_playbook_id": "incident-investigator", "required": true, "output": "incident-investigation/v1" },
+    { "id": "delivery", "agent_playbook_id": "engineering-delivery-coordinator", "required": true, "output": "engineering-blocker-ledger/v1" }
+  ],
+  "handoffs": [
+    { "id": "investigation-to-delivery", "from": "investigation", "to": "delivery", "artifact_type": "incident-investigation/v1", "required": true }
+  ],
+  "setup_checks": ["goal_owner", "incident_scope", "source_access", "recovery_rule", "team_bindings", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

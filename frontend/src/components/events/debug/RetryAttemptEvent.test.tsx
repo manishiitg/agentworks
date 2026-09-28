@@ -20,18 +20,18 @@ describe('RetryAttemptEventDisplay', () => {
       />
     )
 
-    expect(markup).toContain('Retrying Model')
-    expect(markup).toContain('Attempt 2 of 5')
-    expect(markup).toContain('Waiting 10s')
-    expect(markup).toContain('Reason:')
+    expect(markup).toContain('Retrying muse-spark-1.3-contributor')
+    expect(markup).toContain('attempt 2 of 5')
+    expect(markup).toContain('in 10s')
+    expect(markup).toContain('connection error')
     expect(markup).not.toContain('Failed Fallback Attempt')
     expect(markup).not.toContain('retrying original model')
   })
 
   it('shows a retry with unknown attempt limits', () => {
     const markup = renderToStaticMarkup(<RetryAttemptEventDisplay event={{ model_id: 'selected-model', error: 'connection_error' }} />)
-    expect(markup).toContain('selected-model')
-    expect(markup).toContain('Attempt 1')
-    expect(markup).toContain('Reason:')
+    expect(markup).toContain('Retrying selected-model')
+    expect(markup).toContain('attempt 1')
+    expect(markup).toContain('Reason: connection_error')
   })
 })

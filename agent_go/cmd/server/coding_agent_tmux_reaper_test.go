@@ -651,6 +651,7 @@ func TestIsCodingAgentTmuxSessionNameRecognizesEveryRegisteredProvider(t *testin
 		{"cursor-cli", "mlp-cursor-cli-abc123"},
 		{"pi-cli", "mlp-pi-cli-abc123"},
 		{"muse-cli", "mlp-muse-abc123"},
+		{"agy-cli", "agy-int-abc123"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.provider, func(t *testing.T) {

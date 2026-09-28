@@ -243,12 +243,38 @@ describe('Panel walkthroughs', () => {
         </TooltipProvider>
       </WorkspacePanelGuideContext.Provider>,
     )
-    const ask = html.indexOf('aria-label="Ask AI"')
+    expect(html).not.toContain('aria-label="Ask AI"')
     const walkthrough = html.indexOf('aria-label="Walkthrough: Browser"')
     const refresh = html.indexOf('aria-label="Refresh view"')
-    expect(ask).toBeGreaterThanOrEqual(0)
-    expect(ask).toBeLessThan(walkthrough)
+    expect(walkthrough).toBeGreaterThanOrEqual(0)
     expect(walkthrough).toBeLessThan(refresh)
     expect(html.match(/aria-label="Walkthrough: Browser"/g)).toHaveLength(1)
+  })
+
+  it('carries Ask AI inside the popup instead of the header row', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(
+        <TooltipProvider>
+          <WorkspaceViewHeader title="Memory" actions={<WorkspaceViewActions workspacePath="Crew/example" message="Explain memory" onRefresh={() => {}} />} />
+        </TooltipProvider>,
+      ))
+      expect(host.querySelector('[aria-label="Ask AI"]')).toBeNull()
+      const guideButton = host.querySelector('[aria-label="Walkthrough: Memory"]') as HTMLButtonElement
+      expect(guideButton).not.toBeNull()
+
+      await act(async () => guideButton.click())
+      const dialog = host.querySelector('[role="dialog"]')!
+      const ask = Array.from(dialog.querySelectorAll('button')).find(button => button.textContent === 'Ask AI') as HTMLButtonElement
+      expect(ask).not.toBeUndefined()
+
+      await act(async () => ask.click())
+      expect(ask.textContent).toContain('Sure?')
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
   })
 })

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "meeting-decision-to-owned-follow-through",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm action goal and owner", "instructions": "Name the meeting follow-through owner, project status owner, optional review owner, first review result, destination authority, and excluded actions."},
+    {"id": "meeting_scope", "title": "Bind exact meeting and project", "instructions": "Record tenant, meeting ID and notes revision, project and milestone IDs, time zone, authorized transcript handling, source spans and stable action keys. A title alone is not identity."},
+    {"id": "owner_policy", "title": "Define decisions and owner acceptance", "instructions": "Record which participant can confirm a decision, when an owner assignment is accepted, how ambiguous dates are handled, and when an item remains a proposal."},
+    {"id": "status_rule", "title": "Define task and completion evidence", "instructions": "Set duplicate keys, existing task source, open/blocked/done/unknown rules, due-date policy, owner review, and which provider record proves any task write."},
+    {"id": "team_bindings", "title": "Bind ready Operations Crews", "instructions": "Inspect compatible existing Crews. Bind ready Meeting Actions Coordinator and Project Status Reporter IDs and skills. Add Chief of Staff only when a distinct leadership review or access boundary is useful."},
+    {"id": "source_access", "title": "Probe real notes and tracker", "instructions": "Read a representative authorized meeting revision, at least one action span, participant or owner map, and current project/task state. A named provider is not verified access."},
+    {"id": "handoff_contract", "title": "Validate selected artifacts", "instructions": "Run the bundled validator before Status consumes Meeting and before optional Review consumes Status. Reject wrong meeting/project, missing source spans, unaccepted assignment described as owned, duplicate task creation, and completion without tracker evidence."},
+    {"id": "plan_review", "title": "Review the concrete Automation", "instructions": "Show Crew IDs, source and artifact paths, validator steps, duplicate and retry rule, owner confirmation, exact task/report approval boundary, privacy, cost, and manual route before Builder applies it."},
+    {"id": "test_run", "title": "Run one meeting manually", "instructions": "Use real authorized notes and current tracker state. Save run and validator IDs, owner corrections and decisions, actual task state and provider receipts or none. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose event and action ledger", "instructions": "Record meeting revision, action and task IDs, approvals and next check. Choose manual-only or reviewed authenticated note event/cadence with replay protection, retries, cost and notifications; setup completion enables no task write."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

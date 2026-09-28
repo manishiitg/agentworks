@@ -1,10 +1,11 @@
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
+import { addProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectSelections, type ProductIdentityPatch, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
-import { slugifyTitle } from '../../utils/plannerFiles'
+import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from './workData'
+import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<typeof WORK_PROFILE_ID>
 
@@ -67,7 +68,8 @@ export async function loadWorkSessions(): Promise<WorkSession[]> {
   }))
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId): Promise<WorkSession> {
+  const template = templateId ? getCrewTemplate(templateId) : undefined
   const options = await loadAgentProfileProviderOptions(WORK_PROFILE_ID)
   const selected = options.find(option => option.default) || options[0]
   const reasoningEffort = typeof selected?.options?.reasoning_effort === 'string'
@@ -87,7 +89,13 @@ export async function createWorkSession(title: string, description: string, icon
     identity: {
       name: title.trim(),
       icon: icon?.trim() || Array.from(title.trim())[0]?.toLocaleUpperCase() || 'C',
+      ...(template ? { role: template.role } : {}),
     },
+    ...(template ? {
+      templates: [{ id: template.id, version: template.version }],
+      selectedSkills: template.selectedSkills,
+      initialFiles: template.files,
+    } : {}),
     llmConfig,
     runtimeManifestName: 'workflow.json',
   })
@@ -96,6 +104,29 @@ export async function createWorkSession(title: string, description: string, icon
     `Initialize Work project code folder ${project.title}`,
   )
   return project
+}
+
+export async function installWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
+  if (session.shared) throw new Error('Only the Crew owner can install templates.')
+  const template = getCrewTemplate(templateId)
+  if (session.templates.some(item => item.id === template.id)) throw new Error(`${template.name} is already installed in this Crew.`)
+  for (const [relativePath, content] of Object.entries(template.files)) {
+    const path = `${session.workspacePath}/${relativePath}`
+    try {
+      const existing = responseContent(await agentApi.getPlannerFileContent(path))
+      if (existing) {
+        if (existing.content !== content) throw new Error(`Cannot install ${template.name}: ${relativePath} already exists with different content.`)
+        continue
+      }
+    } catch (cause) {
+      const status = (cause as { response?: { status?: number } })?.response?.status
+      if (status !== 404) throw cause
+    }
+    await agentApi.updatePlannerFile(path, content, `Install ${template.name} file ${relativePath}`)
+  }
+  const selectedSkills = [...new Set([...session.selectedSkills, ...template.selectedSkills])]
+  const withSkill = await updateProductProjectSelections(session, { selectedSkills }, `Select ${template.name} skill`, 'workflow.json')
+  return addProductProjectTemplate(withSkill, { id: template.id, version: template.version }, `Install ${template.name} in Crew ${session.title}`)
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
@@ -121,6 +152,7 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary): WorkSessi
     id: row.id,
     title: row.title || 'Untitled Crew',
     description: row.description || '',
+    templates: [],
     identity: row.icon || row.name ? { icon: row.icon || undefined, name: row.name || undefined } : undefined,
     // No session binding: opening a shared Crew resolves the reader's own
     // conversation server-side, never the owner's live session.

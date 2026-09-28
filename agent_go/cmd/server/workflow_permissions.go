@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -274,12 +276,48 @@ func currentUserCanManageWorkflowAccess(r *http.Request) bool {
 
 func requireWorkflowWriteAccess(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" || currentUserCanWriteWorkflows(r) {
+		if r.Method == "OPTIONS" {
 			next(w, r)
 			return
 		}
-		writeWorkflowPermissionDenied(w, "write")
+		if !currentUserCanWriteWorkflows(r) {
+			writeWorkflowPermissionDenied(w, "write")
+			return
+		}
+		// The account tier is not enough: the named workflow's own access
+		// record must grant write (owners and editors). A path with no
+		// workflow yet is creation, which the account tier covers.
+		if workspacePath := requestWorkflowWorkspacePath(r); workspacePath != "" {
+			level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath)
+			if manifest != nil && level != WorkflowAccessOwner && level != WorkflowAccessWrite {
+				writeWorkflowPermissionDenied(w, "write")
+				return
+			}
+		}
+		next(w, r)
 	}
+}
+
+// requestWorkflowWorkspacePath is the workspace_path a workflow route names,
+// from the query string or a JSON body (which is restored for the handler).
+func requestWorkflowWorkspacePath(r *http.Request) string {
+	if value := strings.TrimSpace(r.URL.Query().Get("workspace_path")); value != "" {
+		return value
+	}
+	if r.Body == nil || !strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "json") {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	if err != nil {
+		return ""
+	}
+	var body struct {
+		WorkspacePath string `json:"workspace_path"`
+	}
+	_ = json.Unmarshal(raw, &body)
+	return strings.TrimSpace(body.WorkspacePath)
 }
 
 func requireWorkflowOwnerAccess(next http.HandlerFunc) http.HandlerFunc {

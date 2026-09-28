@@ -168,6 +168,10 @@ const CREW_GUIDES: Record<string, GuideCopy> = {
     purpose: 'Crew is a project-based AI teammate in AgentWorks. Memory keeps context it carries across chats and automatic work.',
     howTo: 'Read what Crew remembers and which project skills it can use. Owners can ask Crew to update memory; shared viewers can inspect it.',
   },
+  Plan: {
+    purpose: 'See the saved steps this Crew member can use for its project.',
+    howTo: 'Review each step, ask Crew to explain or revise the plan, and refresh after it saves changes.',
+  },
   'Project agent configuration': {
     purpose: 'Choose the coding agent and model this Crew member uses.',
     howTo: 'Review the available options, then change the selection when this project needs different capabilities or cost.',
@@ -338,7 +342,7 @@ const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly
     Setup: ['Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },
   crew: {
-    'Main toolbar': ['Automation', 'Browser', 'Dashboard', 'Memory', 'Schedules', 'Webhooks'],
+    'Main toolbar': ['Automation', 'Browser', 'Dashboard', 'Plan', 'Memory', 'Schedules', 'Webhooks'],
     Ops: ['Cost Analysis', 'Database', 'File', 'Files', 'Workspace'],
     Setup: ['Identity', 'Integrations', 'Project agent configuration'],
   },

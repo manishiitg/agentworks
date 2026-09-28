@@ -8,11 +8,11 @@ interface ProductSurfaceState {
   productSurface: ProductSurface
   lastVideoProjectId: string | null
   selectedWorkProjectId: string | null
-  pendingWorkView: 'schedules' | 'bots' | null
+  pendingWorkView: 'schedules' | 'bots' | 'triggers' | null
   setProductSurface: (surface: ProductSurface) => void
   setLastVideoProjectId: (projectId: string | null) => void
   setSelectedWorkProjectId: (projectId: string | null) => void
-  setPendingWorkView: (view: 'schedules' | 'bots' | null) => void
+  setPendingWorkView: (view: 'schedules' | 'bots' | 'triggers' | null) => void
 }
 
 export const useProductSurfaceStore = create<ProductSurfaceState>()(

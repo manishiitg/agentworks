@@ -22,13 +22,22 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 	if api.productSchedules == nil {
 		return nil
 	}
-	authorize := func(ctx context.Context) (context.Context, error) {
+	authorize := func(ctx context.Context, readOnly bool) (context.Context, error) {
 		ctx = context.WithValue(ctx, UserContextKey, &UserClaims{UserID: userID})
 		if userAccessForClaims(&UserClaims{UserID: userID}).Disabled {
 			return nil, fmt.Errorf("Access denied: disabled account")
 		}
 		if _, err := authorizeWorkflowContextPaths(ctx, []string{workspace}); err != nil {
 			return nil, fmt.Errorf("Workflow is unavailable or access denied")
+		}
+		if !readOnly {
+			manifest, exists, err := ReadWorkflowManifest(ctx, workspace)
+			if err != nil || !exists || manifest == nil {
+				return nil, fmt.Errorf("Workflow is unavailable or access denied")
+			}
+			if access := workflowAccessForManifest(GetUserFromContext(ctx), manifest); access != WorkflowAccessWrite && access != WorkflowAccessOwner {
+				return nil, fmt.Errorf("Crew setup changes require current workflow write access")
+			}
 		}
 		return ctx, nil
 	}
@@ -43,7 +52,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
 			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx, err := authorize(ctx)
+		ctx, err := authorize(ctx, args["action"] == "list")
 		if err != nil {
 			return "", err
 		}
@@ -165,7 +174,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
 			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx, err := authorize(ctx)
+		ctx, err := authorize(ctx, args["action"] == "list")
 		if err != nil {
 			return "", err
 		}
@@ -218,7 +227,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 	}, "workflow_webhooks"); err != nil {
 		return err
 	}
-	return reg.RegisterCustomTool("create_crew", "Create a new Crew for the workflow being built, with trigger, read-only attachment, and step configuration in one call. Propose a Crew only when the responsibility is ongoing and stateful enough to deserve maturing: prefer a message sequence for fixed flows and an orchestrator step for one-shot agentic work. Before calling, list skills, servers, and secrets and propose only available ones; tell the user which integrations need connecting in the Crew UI. Unknown skills, servers, secrets, or globals fail the call; configured-but-disconnected servers are selected and reported as pending. Call only after the user explicitly approves the proposal in chat. Pass a fresh UUID idempotency_key per proposal and reuse it verbatim on retry: the same key with an unchanged proposal returns the existing crew instead of minting a duplicate, while a changed proposal under a claimed key is rejected and needs a new key. Secrets pass as names only; never send values. After success, immediately call add_step(type=crew) with the returned step configuration plus placement and reason; if that step id already exists, verify it matches and continue.", map[string]interface{}{
+	return reg.RegisterCustomTool("create_crew", "Create a new Crew for the workflow being built, with trigger, read-only attachment, and step configuration in one call. Propose a Crew only when the responsibility is ongoing and stateful enough to deserve maturing: prefer a message sequence for fixed flows and an orchestrator step for one-shot agentic work. template_id may select a first-party Website Growth, Finance, or Sales Crew template with a local skill and checklist; this does not grant external access or complete setup. Before calling, list skills, servers, and secrets and propose only available ones; tell the user which integrations need connecting in the Crew UI. Unknown skills, servers, secrets, or globals fail the call; configured-but-disconnected servers are selected and reported as pending. Call only after the user explicitly approves the proposal in chat. Pass a fresh UUID idempotency_key per proposal and reuse it verbatim on retry: the same key with an unchanged proposal returns the existing crew instead of minting a duplicate, while a changed proposal under a claimed key is rejected and needs a new key. Secrets pass as names only; never send values. After success, immediately call add_step(type=crew) with the returned step configuration plus placement and reason; if that step id already exists, verify it matches and continue.", map[string]interface{}{
 		"type": "object", "additionalProperties": false,
 		"required": []string{"title", "purpose", "role", "step_instruction", "idempotency_key"},
 		"properties": map[string]interface{}{
@@ -227,6 +236,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"role":                 map[string]interface{}{"type": "string", "description": "Short Crew role shown in Identity, at most 120 characters (e.g. Reviewer)."},
 			"icon":                 map[string]interface{}{"type": "string", "description": "Crew icon, at most 8 characters. Defaults to the title initial."},
 			"instructions":         map[string]interface{}{"type": "string", "description": "Starter instructions seeded into the Crew brief."},
+			"template_id":          map[string]interface{}{"type": "string", "description": "Optional first-party Website Growth, Finance, or Sales Crew template ID. Copies its local skill and setup checklist without enabling external connections."},
 			"skills":               map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Installed skill names to select. Unknown skills fail the call."},
 			"servers":              map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "MCP server names to select. Unknown servers fail the call; disconnected ones are selected and reported as pending."},
 			"secrets":              map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Secret names to reference. Names only, never values. Must resolve to globals; workflow-scoped secrets do not carry over (add crew secrets in the Crew UI after creation)."},
@@ -242,7 +252,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			"crew_profile_id":      map[string]interface{}{"type": "string", "description": "Crew profile. Only 'work' is supported."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx, err := authorize(ctx)
+		ctx, err := authorize(ctx, false)
 		if err != nil {
 			return "", err
 		}
@@ -267,7 +277,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		req := CreateCrewRequest{
 			UserID: userID, WorkflowPath: workspace, ProfileID: str("crew_profile_id"),
 			Title: str("title"), Icon: str("icon"), Role: str("role"),
-			Purpose: str("purpose"), Instructions: str("instructions"),
+			Purpose: str("purpose"), Instructions: str("instructions"), TemplateID: str("template_id"),
 			Alias: str("alias"), TriggerName: str("trigger_name"), TriggerMessage: str("trigger_message"),
 			StepID: str("step_id"), StepTitle: str("step_title"), StepInstruction: str("step_instruction"),
 			IdempotencyKey: str("idempotency_key"),

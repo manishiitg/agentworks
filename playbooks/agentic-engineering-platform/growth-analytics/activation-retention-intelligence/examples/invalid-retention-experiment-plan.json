@@ -1,0 +1,42 @@
+{
+  "artifact_type": "retention-experiment-plan/v1",
+  "artifact_id": "retention-plan-invalid",
+  "source_observation_artifact_id": "cohort-retention-example-001",
+  "source_comparison_state": "comparable",
+  "product_id": "arbordesk",
+  "tenant_id": "arbordesk-prod",
+  "policy_id": "lifecycle-v2",
+  "timezone": "Europe/London",
+  "cohort_ids": [
+    "uk-self-serve-june",
+    "uk-self-serve-july"
+  ],
+  "as_of": "2026-09-02T11:00:00Z",
+  "source_refs": [
+    {
+      "id": "observation",
+      "uri": "artifact:cohort-retention-example-001",
+      "observed_at": "2026-09-02T09:00:00Z"
+    },
+    {
+      "id": "owner-policy",
+      "uri": "owner-docs/retention-experiment-policy@v2",
+      "observed_at": "2026-09-02T10:30:00Z"
+    }
+  ],
+  "hypothesis": "The new onboarding caused churn and this test won.",
+  "proposed_change": "Review one guided first-schedule setup variant for new eligible accounts; keep price and renewal policy unchanged.",
+  "assignment_unit": "account",
+  "eligible_population": "new UK self-serve accounts under lifecycle-v2",
+  "primary_metric": "day30-retained-per-eligible-v2",
+  "baseline_rate_bps": 6000,
+  "observed_change_bps": -2000,
+  "guardrail_metric": "none",
+  "sample_plan_state": "approved",
+  "minimum_sample_per_variant": 20,
+  "stop_rule": "Approve power calculation and 30-day outcome window before launch; stop early for a reviewed support-blocker guardrail breach.",
+  "owner": "Customer Success lead",
+  "decision_state": "approved",
+  "launch_state": "launched",
+  "next_check": "Review cohort mix, event/billing definitions, assignment and power calculation before any variant route."
+}

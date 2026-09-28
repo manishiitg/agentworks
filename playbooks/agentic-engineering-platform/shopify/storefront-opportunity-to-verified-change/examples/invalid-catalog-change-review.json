@@ -1,0 +1,22 @@
+{
+  "artifact_type": "catalog-change-review/v1",
+  "store_id": "store-example-1",
+  "market": "US",
+  "product_id": "product-81",
+  "variant_id": "variant-81-l",
+  "opportunity_id": "growth-12",
+  "owner_id": "merch-owner",
+  "observed_at": "2026-09-24T10:15:00Z",
+  "current_value": "Unknown",
+  "proposed_value": "Hide variant",
+  "change_reason": "Assumed conversion loss",
+  "approval_state": "pending",
+  "approval_ref": null,
+  "publish_state": "published",
+  "publish_receipt_ref": null,
+  "retest_ref": null,
+  "measurement_state": "comparable_result",
+  "followup_report_ref": null,
+  "source_refs": ["storefront:linen-shirt"],
+  "next_evidence": "None"
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "new-customer-to-first-value",
+  "playbook_version": "0.2.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Confirm customer outcome and owner",
+      "instructions": "Record the new-customer account, purchased scope, named onboarding owner, customer contact policy, desired first result, and target date from an authorized handoff."
+    },
+    {
+      "id": "account_scope",
+      "title": "Verify the account and handoff",
+      "instructions": "Identify the signed deal or approved handoff, exact account and tenant IDs, timezone, product entitlement, source freshness, and known onboarding state. Do not infer contractual promises from a sales note."
+    },
+    {
+      "id": "first_value_rule",
+      "title": "Define first value and its evidence",
+      "instructions": "Record one customer-specific observable event rule, exclusions, target date, event owner, product source, coverage window, and what unknown or incomplete instrumentation means. Do not turn a sign-in into value by default."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Bind ready Customer Success Crews",
+      "instructions": "Record authorized Crew binding for customer-onboarding-coordinator and product-adoption-analyst with selected skills and verified setup. One Crew may fill both slots only when it has both capabilities and compatible access; retain separate validated step outputs. Add customer-health-coordinator only if account review has a real owner and source."
+    },
+    {
+      "id": "source_access",
+      "title": "Test handoff and product access",
+      "instructions": "Read one actual authorized account handoff, onboarding state, and relevant product event or bounded export. Verify account ID mapping, tenant isolation, excluded test events, support scope if used, and exact gaps."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Validate the milestone and adoption handoffs",
+      "instructions": "Run the deterministic validator on a real onboarding-milestone-register/v1 before Adoption reads it, then validate first-value-readout/v1 against the same account, register, rule and source coverage. If Health is selected, validate customer-health-brief/v1. Prove wrong-account and unsupported reached-state fixtures stop consumers."
+    },
+    {
+      "id": "plan_review",
+      "title": "Review the Automation plan",
+      "instructions": "Show actual Crew IDs, bounded source fields, milestone owner and dates, evidence rule, validator steps, dashboard measures, customer contact boundary, cost, and manual activation state to the owner."
+    },
+    {
+      "id": "test_run",
+      "title": "Run one customer route manually",
+      "instructions": "Use a real authorized new-customer account. Record Crew run IDs, artifact paths, validator results, first-value observed/unknown/not-observed state and source truth review. Fictional fixtures alone do not complete this check."
+    },
+    {
+      "id": "action_ledger",
+      "title": "Track owner decisions and changes",
+      "instructions": "Record stable account, milestone and action IDs, owner, source links, current blocker, proposed versus approved contact, next-check time, and observed completion. Compare repeat runs and avoid duplicate reminders or tasks."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Choose the run policy",
+      "instructions": "Record manual-only or a reviewed authenticated event/schedule with timezone, concurrency, retries, budget, notifications, and duplicate handling. Test a real route before activation; setup completion does not enable recurrence or customer contact."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

@@ -4,12 +4,13 @@ import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import SchedulesPage from '../../components/SchedulesPage'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import { agentApi } from '../../services/api'
 import { useAppStore } from '../../stores/useAppStore'
-import { useChatStore, waitForChatStoreHydration } from '../../stores/useChatStore'
+import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
@@ -19,8 +20,9 @@ import { WORK_PROFILE_ID, WORK_PROFILE_VERSION, loadWorkProductCommands } from '
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, loadWorkSessionsIncludingShared, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
+import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
@@ -31,6 +33,8 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type ProductEngineSelectionDetail, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
+import { crewTemplates, type CrewTemplateId } from './crewTemplates'
+import { WorkTemplateSetup } from './WorkTemplateSetup'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
 import { usePresentationEvents } from '../../platform/presentations/usePresentationEvents'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -50,15 +54,15 @@ import {
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  report: 'dashboard', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
-  identity: 'identity', mcp: 'mcp',
+  report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   skills: 'mcp', secrets: 'identity', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  report: 'Dashboard', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
-  identity: 'Identity', mcp: 'Integrations',
+  report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
+  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations',
   skills: 'Skills', secrets: 'Secrets', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
 }
 
@@ -76,15 +80,15 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
 
-function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView {
-  if (typeof window === 'undefined' || !projectId) return 'dashboard'
+function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
+  if (typeof window === 'undefined' || !projectId) return null
   try {
     const saved = window.localStorage.getItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`)
     if (saved === 'history') return 'schedules'
     if (saved && saved in WORK_UI_PRESENTATION_VIEWS) return WORK_UI_PRESENTATION_VIEWS[saved as WorkUIPresentationView]
-    return saved && WORKSPACE_VIEW_IDS.has(saved as WorkWorkspaceView) ? saved as WorkWorkspaceView : 'dashboard'
+    return saved && WORKSPACE_VIEW_IDS.has(saved as WorkWorkspaceView) ? saved as WorkWorkspaceView : null
   } catch {
-    return 'dashboard'
+    return null
   }
 }
 
@@ -199,12 +203,26 @@ function useWorkSessions() {
     return () => { cancelled = true }
   }, [setSelectedId, updateSessions])
 
-  const create = useCallback(async (title: string, description: string, icon?: string) => {
-    const session = await createWorkSession(title, description, icon)
+  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
+    const session = await createWorkSession(title, description, icon, templateId)
     updateSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
   }, [setSelectedId, updateSessions])
+
+  const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
+    const session = sessions.find(item => item.id === projectId)
+    if (!session) throw new Error('This Crew project is no longer available.')
+    const updated = await installWorkSessionTemplate(session, templateId)
+    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    for (const tab of Object.values(useChatStore.getState().chatTabs)) {
+      if (!belongsToWorkProject(tab, projectId)) continue
+      useChatStore.getState().setTabConfig(tab.tabId, { selectedSkills: updated.selectedSkills })
+      useChatStore.getState().setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
+    }
+    markWorkProjectRuntimeDirty(projectId)
+    return updated
+  }, [sessions, updateSessions])
 
   const remove = useCallback(async (projectId: string) => {
     const project = sessions.find(item => item.id === projectId)
@@ -282,6 +300,7 @@ function useWorkSessions() {
     selected: sessions.find((session) => session.id === selectedId) ?? null,
     select: setSelectedId,
     create,
+    installTemplate,
     remove,
     updateLLMConfig,
     updateNativeAgentTools,
@@ -293,12 +312,36 @@ function useWorkSessions() {
   }
 }
 
+// selectWorkChatTabIds picks only the ids useWorkChatTab needs from the chat
+// store. It returns primitives, so with useShallow a change elsewhere in a
+// tab (the chat input's saved draft) does not re-render the Work surface.
+export function selectWorkChatTabIds(
+  state: { chatTabs: Record<string, ChatTab>; activeTabId: string | null },
+  sessionId: string | undefined,
+): { canonicalTabId: string | undefined; activeProjectTabId: string | undefined } {
+  if (!sessionId) return { canonicalTabId: undefined, activeProjectTabId: undefined }
+  const canonical = Object.values(state.chatTabs).find(tab =>
+    belongsToWorkProject(tab, sessionId) &&
+    tab.metadata?.agentProfileBuilder !== true &&
+    tab.metadata?.agentProfileConversationKey === sessionId)
+  const active = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
+  return {
+    canonicalTabId: canonical?.tabId,
+    activeProjectTabId: active && belongsToWorkProject(active, sessionId) ? active.tabId : undefined,
+  }
+}
+
 function useWorkChatTab(
   session: WorkSession | null,
   onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
-  const { chatTabs, activeTabId } = useChatStore(useShallow(state => ({ chatTabs: state.chatTabs, activeTabId: state.activeTabId })))
+  // Subscribe to the two tab ids this hook needs, never to chatTabs itself:
+  // the chat input saves its draft into its tab's config, and a whole-map
+  // subscription re-rendered the Work surface (and the workspace pane beside
+  // the chat) on every keystroke.
+  const sessionId = session?.id
+  const { canonicalTabId, activeProjectTabId } = useChatStore(useShallow(state => selectWorkChatTabIds(state, sessionId)))
   const sessionRef = useRef(session)
   const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
   sessionRef.current = session
@@ -430,25 +473,14 @@ function useWorkChatTab(
     }
   }, [session])
 
-  const canonical = session
-    ? Object.values(chatTabs).find(tab =>
-      belongsToWorkProject(tab, session.id) &&
-      tab.metadata?.agentProfileBuilder !== true &&
-      tab.metadata?.agentProfileConversationKey === session.id)
-    : undefined
-  const activeProjectTab = session && activeTabId
-    ? chatTabs[activeTabId] && belongsToWorkProject(chatTabs[activeTabId], session.id)
-      ? chatTabs[activeTabId]
-      : undefined
-    : undefined
   useLayoutEffect(() => {
-    if (canonical?.tabId && !activeProjectTab) activateTab(canonical.tabId)
-  }, [activeProjectTab, canonical?.tabId])
+    if (canonicalTabId && !activeProjectTabId) activateTab(canonicalTabId)
+  }, [activeProjectTabId, canonicalTabId])
   return {
     // A previously prepared Crew tab is safe to display immediately while its
     // durable binding is revalidated in the background.
-    tabId: activeProjectTab?.tabId ?? canonical?.tabId ?? null,
-    canonicalTabId: canonical?.tabId ?? null,
+    tabId: activeProjectTabId ?? canonicalTabId ?? null,
+    canonicalTabId: canonicalTabId ?? null,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
 }
@@ -652,7 +684,8 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent() {
-  const { sessions, selected, select, create, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions()
+  const { sessions, selected, select, create, installTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions()
+  const selectedTemplates = crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
     if (!selected || selected.shared) return
@@ -710,7 +743,7 @@ function WorkSurfaceContent() {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id))
+  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id) ?? 'identity')
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -725,6 +758,7 @@ function WorkSurfaceContent() {
   const { start: startSplitDrag, stop: stopSplitDrag } = usePointerDrag()
   const [createError, setCreateError] = useState<string | null>(null)
   const showProviders = useLLMStore((state) => state.showLLMModal)
+  const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
@@ -750,9 +784,14 @@ function WorkSurfaceContent() {
   }, [selected?.shared, selectWorkspaceView, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
-    openWorkPresentationView(pendingWorkView)
+    if (pendingWorkView === 'triggers') {
+      if (selected?.id !== useProductSurfaceStore.getState().selectedWorkProjectId) return
+      openWorkPresentationView('schedules', 'triggers')
+    } else {
+      openWorkPresentationView(pendingWorkView)
+    }
     setPendingWorkView(null)
-  }, [openWorkPresentationView, pendingWorkView, setPendingWorkView])
+  }, [openWorkPresentationView, pendingWorkView, selected?.id, setPendingWorkView])
   const workUIAdapter = useMemo<WorkspaceUIControlAdapter>(() => ({
     getView: () => workPresentationView(workspaceView),
     openView: openWorkPresentationView,
@@ -805,6 +844,13 @@ function WorkSurfaceContent() {
   // Keep the workspace's inputs stable while chat state changes. The pane is
   // memoized, and each callback only changes when its project or action changes.
   const workspaceProjectId = selected?.id
+  const selectedProjectId = selected?.id
+  // Stable, so the memoized workspace pane never re-renders because of it.
+  const installSelectedTemplate = useCallback(async (templateId: CrewTemplateId) => {
+    if (!selectedProjectId) return
+    await installTemplate(selectedProjectId, templateId)
+    setChatOpen(true)
+  }, [installTemplate, selectedProjectId])
   const sharedWorkspaceOwner = useMemo(() => selected?.shared
     ? { ownerId: selected.shared.ownerId, ownerUsername: selected.shared.ownerUsername }
     : undefined, [selected?.shared])
@@ -845,12 +891,26 @@ function WorkSurfaceContent() {
 
   useLayoutEffect(() => {
     const savedView = readWorkWorkspaceView(selected?.id)
-    setWorkspaceView(selected?.shared && !SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? 'files' : savedView)
+    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? 'identity')
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
   }, [selected?.id, selected?.shared, selected?.workspacePath])
+
+  const landingProjectId = selected?.id
+  const landingWorkspacePath = selected?.workspacePath
+  const landingIsShared = Boolean(selected?.shared)
+  const dashboardAllowed = isWorkWorkspaceViewEnabled('dashboard', enabledWorkspacePanels)
+  useEffect(() => {
+    if (!landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId)) return
+    let cancelled = false
+    void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
+      if (cancelled || useProductSurfaceStore.getState().selectedWorkProjectId !== landingProjectId || readWorkWorkspaceView(landingProjectId)) return
+      setWorkspaceView(view)
+    })
+    return () => { cancelled = true }
+  }, [landingProjectId, landingWorkspacePath, landingIsShared, dashboardAllowed])
 
   useEffect(() => {
     const sync = () => setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
@@ -870,12 +930,12 @@ function WorkSurfaceContent() {
       return
     }
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
-      // Identity is always enabled, so this always terminates.
-      const fallback = (['dashboard', 'files', 'identity'] as const)
-        .find(view => isWorkWorkspaceViewEnabled(view, enabledWorkspacePanels)) ?? 'identity'
-      selectWorkspaceView(fallback)
+      // A disabled saved view cannot be shown. For an unsaved project, keep
+      // Identity temporary while the content-based landing check runs.
+      if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView('identity')
+      else setWorkspaceView('identity')
     }
-  }, [enabledWorkspacePanels, selectWorkspaceView, selected?.shared, workspaceView])
+  }, [enabledWorkspacePanels, selectWorkspaceView, selected?.id, selected?.shared, workspaceView])
 
   useEffect(() => {
     if (!selected) return
@@ -916,12 +976,17 @@ function WorkSurfaceContent() {
     })
   }, [reportPreviewPreference, selected?.id, setSplitRatio, startSplitDrag])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
     if (creating) return
     setCreating(true)
     setCreateError(null)
     try {
-      await create(title, description, icon)
+      const created = await create(title, description, icon, templateId)
+      if (templateId) {
+        setPanelOpen(true)
+        setWorkspaceView('files')
+        writeWorkWorkspaceView(created.id, 'files')
+      }
       setCreateOpen(false)
     } catch (cause) {
       setCreateError(cause instanceof Error ? cause.message : 'Could not create Crew member.')
@@ -1003,7 +1068,8 @@ function WorkSurfaceContent() {
         className="relative min-h-0 flex-1 overflow-hidden"
       >
         <LlmModalHost />
-        <div className={showProviders ? 'hidden' : 'h-full'}>
+        {showSchedulesOverview && !showProviders && <SchedulesPage />}
+        <div className={showProviders || showSchedulesOverview ? 'hidden' : 'h-full'}>
           {error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : !selected ? (
@@ -1108,6 +1174,18 @@ function WorkSurfaceContent() {
                       </button>
                     </div>
                   ) : null}
+                  {!selected.shared && selectedTemplates.map(template => (
+                    <WorkTemplateSetup
+                      key={`${selected.id}:${template.id}`}
+                      template={template}
+                      workspacePath={selected.workspacePath}
+                      chatReady={Boolean(tabId)}
+                      onStartSetup={async () => {
+                        setChatOpen(true)
+                        await sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: selected.id, message: `Help me set up the ${template.name} template in this Crew. Read ${template.setupPath} and ${template.setupGuidePath} in this project's files. Work through the pending checks, ask me for missing decisions or access, and add a check ID to completed_steps only after you verify it. Preserve the checklist and earlier progress. Keep this Crew's identity and other templates intact. Tell me what remains and when setup is complete.` })
+                      }}
+                    />
+                  ))}
                   {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
@@ -1153,6 +1231,8 @@ function WorkSurfaceContent() {
                         projectTitle={selected.title}
                         projectDescription={selected.description}
                         projectIdentity={selected.identity}
+                        projectTemplates={selected.templates}
+                        onInstallTemplate={installSelectedTemplate}
                         tabId={tabId}
                         view={workspaceView}
                         onViewChange={selectWorkspaceView}

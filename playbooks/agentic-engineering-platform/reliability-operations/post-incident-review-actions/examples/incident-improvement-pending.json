@@ -1,0 +1,44 @@
+{
+  "artifact_type": "incident-improvement-register/v1",
+  "artifact_id": "improvement-register-INC-1042-pending",
+  "source_review_artifact_id": "pir-INC-1042-draft",
+  "review_id": "PIR-1042",
+  "review_revision": "draft1",
+  "incident_id": "INC-1042",
+  "service_id": "checkout-api",
+  "environment": "production",
+  "owner": "reliability-lead",
+  "as_of": "2026-10-02T13:00:00Z",
+  "source_refs": [
+    {
+      "id": "review",
+      "uri": "artifact:pir-INC-1042-draft",
+      "observed_at": "2026-10-02T12:00:00Z"
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "ACT-1",
+      "owner": "checkout-service-lead",
+      "due_date": "2026-10-14",
+      "verification_criterion": "A replayed checkout 5xx sample triggers the alert within five minutes.",
+      "state": "pending_review",
+      "decision": null,
+      "issue": null,
+      "verification": null
+    },
+    {
+      "action_id": "ACT-2",
+      "owner": "observability-lead",
+      "due_date": "2026-10-20",
+      "verification_criterion": "A new timeout drill retains a query/DB saturation trace linked to the service.",
+      "state": "pending_review",
+      "decision": null,
+      "issue": null,
+      "verification": null
+    }
+  ],
+  "publication_state": "not_published",
+  "next_check": "Wait for review owner decision; no issue or publication action.",
+  "source_review_ref": "review"
+}

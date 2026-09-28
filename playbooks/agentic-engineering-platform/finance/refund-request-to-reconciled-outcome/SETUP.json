@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "playbook_id": "refund-request-to-reconciled-outcome",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {
+      "id": "goal_owner",
+      "title": "Confirm refund goal and owners",
+      "instructions": "Name billing reviewer, finance owner, approval authority, customer entity and first reviewable result. Decide whether existing Crews meet access and independence boundaries."
+    },
+    {
+      "id": "request_scope",
+      "title": "Bind exact customer request",
+      "instructions": "Record customer/request ID, payment or charge ID, provider account and mode, currency, requested amount, reason, timestamp, privacy scope and source revision."
+    },
+    {
+      "id": "policy_amount",
+      "title": "Verify refund policy and arithmetic",
+      "instructions": "Read original payment and all succeeded or pending refunds. Reproduce remaining-balance arithmetic in minor units; record policy version, exceptions, owner and exact approval limit."
+    },
+    {
+      "id": "team_bindings",
+      "title": "Bind both Crew roles",
+      "instructions": "Inspect existing Crew IDs and permissions. Reuse Billing Operations with its Refund Review pack and Revenue & Close where compatible; propose reviewed creation only if needed."
+    },
+    {
+      "id": "source_access",
+      "title": "Probe provider and finance records",
+      "instructions": "Read one real authorized payment/refund set and current ledger or export. Record source IDs, observation times and unavailable coverage. A named connector alone is not proof."
+    },
+    {
+      "id": "handoff_contract",
+      "title": "Validate decision and reconciliation",
+      "instructions": "Run the packaged validator on refund-decision/v1 before Finance consumes it and on refund-reconciliation/v1 after Finance re-reads sources. Reject identity or currency mismatch, over-refund, unsupported processed state or missing receipt."
+    },
+    {
+      "id": "plan_review",
+      "title": "Review concrete Automation and actions",
+      "instructions": "Show Crew IDs, artifact paths, validator steps, approval owner, exact action boundary, idempotency, receipt store, contact policy, retry, cost, and manual first route."
+    },
+    {
+      "id": "test_run",
+      "title": "Run one real request manually",
+      "instructions": "Produce and owner-review one decision and finance readout from authorized current records. Save validations, corrections, receipts or none, and a truthful state. Fictional examples do not complete setup."
+    },
+    {
+      "id": "action_ledger",
+      "title": "Record provider and ledger outcomes",
+      "instructions": "Distinguish pending decision, denied, approved but unprocessed, processed but unreconciled and reconciled. Bind exact provider and ledger receipts or name the missing proof."
+    },
+    {
+      "id": "activation_choice",
+      "title": "Choose manual or reviewed repeat rule",
+      "instructions": "Keep manual-only or separately review a bounded authenticated event/schedule, exact request key, deduplication, retries, cost and notifications. Setup does not enable a refund."
+    }
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

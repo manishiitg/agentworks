@@ -1,0 +1,45 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "order-exception-to-resolution",
+  "version": "0.1.1",
+  "changelog": [
+    { "version": "0.1.1", "summary": "Separates a helpdesk return request from a Shopify Return and validates the affected line's fulfillment route." },
+    { "version": "0.1.0", "summary": "Adds a chat-led Shopify order and return exception proposal with two Crews and a validated merchant review." }
+  ],
+  "title": "Order Exception to Resolution",
+  "description": "Connect an order or fulfillment problem to a return or refund request, then prepare an approved action and verify the resulting store and customer state.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Shopify"],
+  "order": 1,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Order Exception to Resolution as a proposal for an authorized Shopify store and a return or refund request tied to an order exception. Inspect the merchant's existing Crews, Shopify orders and transactions, fulfillment, returns, helpdesk, policy, owner, and approved action routes. Propose reuse or creation of Store Operations Coordinator and Returns & Refunds Coordinator, a validated order-to-policy handoff, an unsent customer draft, an owner review, a manual first run, and proof needed after any approved refund or message. Show the concrete plan before Builder applies it. Selecting this Playbook alone does not create Crews, connect a store, refund a payment, create a label, message a customer, or enable recurrence.",
+  "setup_inputs": [
+    { "id": "store_order", "label": "Authorized store, order ID, affected line items, and exception window", "required": true },
+    { "id": "request_policy", "label": "Customer return or refund request and applicable policy version", "required": true },
+    { "id": "sources", "label": "Order, payment, fulfillment, return, and prior-contact records or exports", "required": true },
+    { "id": "owners", "label": "Operations and refund approval owners with contact policy", "required": true },
+    { "id": "run_policy", "label": "Manual-only or reviewed authenticated event and notification route", "required": false }
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    { "id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create a reviewed missing Shopify Crew with a stable idempotency key", "capability": "crew_steps", "optional": true },
+    { "id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass a validated bounded order artifact to the authorized policy Crew", "capability": "durable_artifacts", "optional": true },
+    { "id": "shopify-source", "name": "Shopify Admin or bounded export", "type": "mcp", "purpose": "Read exact store, order, line-item, payment, and refund states", "capability": "store_order_records", "optional": true },
+    { "id": "fulfillment-source", "name": "Fulfillment or shipping provider", "type": "mcp", "purpose": "Verify shipment, delivery, and split-fulfillment status", "capability": "fulfillment_records", "optional": true },
+    { "id": "support-source", "name": "Helpdesk or bounded case export", "type": "mcp", "purpose": "Read request, prior contact, owner, and provider-confirmed reply state", "capability": "support_records", "optional": true }
+  ],
+  "pulse_focus": [
+    { "module": "strategic_review", "label": "Order exception resolution", "focus_areas": ["Whether eligible order and return cases reach an owner decision within policy time", "Whether refunds and customer replies are verified from provider records"], "review_when": ["A case approaches its deadline, policy or payment state changes, or an approved action lacks a receipt"] }
+  ],
+  "outputs": ["Reviewed Shopify Crew roster and source map", "Validated order exception record", "Return or refund decision brief and unsent customer draft", "Owner-approved action and provider receipt when executed", "Manual route and activation decision"],
+  "agent_slots": [
+    { "id": "store_operations", "agent_playbook_id": "store-operations-coordinator", "required": true, "output": "store-order-exception/v1" },
+    { "id": "returns_refunds", "agent_playbook_id": "returns-refunds-coordinator", "required": true, "output": "return-resolution-review/v1" }
+  ],
+  "handoffs": [
+    { "id": "order-to-returns", "from": "store_operations", "to": "returns_refunds", "artifact_type": "store-order-exception/v1", "required": true }
+  ],
+  "setup_checks": ["goal_owner", "store_order_scope", "policy_money_rules", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

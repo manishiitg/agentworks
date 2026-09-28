@@ -1,0 +1,22 @@
+{
+  "artifact_type": "product-requirements-brief/v1",
+  "artifact_id": "approved-requirement-to-release-readiness-requirements-1",
+  "producer_id": "product-requirements-coordinator",
+  "tenant_id": "tenant-1",
+  "subject_id": "req-31",
+  "product_id": "product-7",
+  "requirement_id": "req-31",
+  "source_revision": "requirements-rev-1",
+  "observed_at": "2026-09-27T10:00:00Z",
+  "source_refs": [
+    "requirements-source-1",
+    "requirements-source-2"
+  ],
+  "state": "approved",
+  "action_state": "none",
+  "approval_ref": "product-owner-req-31",
+  "acceptance_criteria": [
+    "Guest role appears before submit"
+  ],
+  "scope_revision": "scope-v3"
+}

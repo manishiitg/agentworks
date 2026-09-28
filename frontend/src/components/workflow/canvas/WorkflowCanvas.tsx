@@ -149,7 +149,7 @@ export interface WorkflowCanvasProps {
   readOnly?: boolean
   /** Embed only the reusable read-only Plan canvas, without global workflow view switching. */
   embeddedPlanOnly?: boolean
-  openPulseOnMount?: boolean
+  openHumanActionsOnMount?: boolean
   assistantControl?: React.ReactNode
 }
 

@@ -1,0 +1,23 @@
+{
+  "illustrative": true,
+  "artifact_type": "content-brief/v1",
+  "artifact_id": "content-arbordesk-q001-v1",
+  "source_search_artifact_id": "search-arbordesk-2026-09-25-v1",
+  "source_question_id": "Q-001",
+  "site_url": "https://arbordesk.example/",
+  "created_at": "2026-09-25T10:00:00Z",
+  "approved_opportunity": {"owner_id": "site-owner", "approved_at": "2026-09-25T09:45:00Z", "decision": "approved"},
+  "buyer_question": "How do patient reminders work?",
+  "page_mode": "update_existing",
+  "target_page_url": "https://arbordesk.example/clinics",
+  "angle": "Explain reminder setup and limits in plain language on the existing clinic page.",
+  "visitor_action": "Request a demo",
+  "outline": ["How reminders are configured", "What the clinic can customize", "Questions to ask in a demo"],
+  "claims": [
+    {"id": "C-001", "text": "Clinic staff can configure appointment reminder timing.", "status": "verified", "source_ref": "approved-product-guide-reminders-v3"},
+    {"id": "C-002", "text": "Reminders are included in every plan.", "status": "needs_verification", "source_ref": null}
+  ],
+  "internal_links": ["https://arbordesk.example/"],
+  "open_questions": ["Confirm plan availability before using C-002 in public copy."],
+  "success_signal": "A reviewed answer is live on the clinic page; demo requests are measured from the agreed baseline date."
+}

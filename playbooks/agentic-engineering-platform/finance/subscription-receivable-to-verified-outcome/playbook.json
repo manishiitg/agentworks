@@ -1,0 +1,39 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "subscription-receivable-to-verified-outcome",
+  "version": "0.1.0",
+  "changelog": [{"version": "0.1.0", "summary": "Adds an exact-invoice recovery review, approved contact evidence and provider-backed collection and deposit states for subscription receivables."}],
+  "title": "Subscription Receivable to Verified Outcome",
+  "description": "Investigate one overdue or failed-payment subscription invoice, prepare policy-safe follow-up, and verify collection without confusing a payment with a bank deposit.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Finance"],
+  "order": 4,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Subscription Receivable to Verified Outcome as a proposal. Inspect my existing Billing Operations and Finance Analyst Crews and their Invoice Chasing or Failed Payment Recovery packs. Bind one exact invoice, current provider account and mode, retry and contact policy, and finance sources. Propose a reviewed case-to-outcome route with blocking validators and a manual first run. Show the concrete plan before Builder applies it. Selection does not retry a charge, send a reminder, write off an invoice, post a ledger entry, or start recurrence.",
+  "setup_inputs": [
+    {"id": "invoice", "label": "Exact subscription invoice, customer and provider account or export", "required": true},
+    {"id": "scope", "label": "Entity, live/test mode, currency, cutoff and invoice due date", "required": true},
+    {"id": "policy", "label": "Retry, customer contact, suppression and approval policies", "required": true},
+    {"id": "finance", "label": "Authorized payment, payout and ledger or bank source", "required": true},
+    {"id": "owners", "label": "Billing case owner, finance reviewer and contact authority", "required": true},
+    {"id": "run_policy", "label": "Manual-only or reviewed event and recurrence policy", "required": false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id": "create-crew", "name": "Builder create_crew", "type": "builtin", "purpose": "Create reviewed missing specialists using stable idempotency keys", "capability": "crew_steps", "optional": true},
+    {"id": "crew-attachment", "name": "Builder manage_crew_attachment", "type": "builtin", "purpose": "Pass only the validated invoice review to the finance Crew", "capability": "durable_artifacts", "optional": true},
+    {"id": "billing-source", "name": "Stripe or another billing provider, or authorized export", "type": "mcp", "purpose": "Read exact invoice, payment attempts, retry plan, contact and collection status", "capability": "billing_read", "optional": true},
+    {"id": "finance-source", "name": "Accounting, payout and bank connection or export", "type": "mcp", "purpose": "Verify deposited and reconciled state separately from provider collection", "capability": "finance_read", "optional": true},
+    {"id": "delivery-source", "name": "Authorized email or billing notification provider", "type": "mcp", "purpose": "Provide a receipt for a separately approved customer reminder", "capability": "message_delivery", "optional": true}
+  ],
+  "pulse_focus": [{"module": "strategic_review", "label": "Subscription receivable recovery", "focus_areas": ["Open balance and retry or contact state for the exact invoice", "Collected amount versus deposited and reconciled amount"], "review_when": ["An attempt fails, a due date passes, a payment is observed, or a payout settles"]}],
+  "outputs": ["Reviewed Crew and source map", "Validated exact-invoice recovery review", "Validated finance outcome with collection and settlement limits", "Manual case run and owner decision", "Paused or manual recurrence policy"],
+  "agent_slots": [
+    {"id": "billing", "agent_playbook_id": "billing-operations-coordinator", "required": true, "output": "receivable-review/v1"},
+    {"id": "finance", "agent_playbook_id": "finance-analyst", "required": true, "output": "receivable-outcome/v1"}
+  ],
+  "handoffs": [{"id": "billing-to-finance", "from": "billing", "to": "finance", "artifact_type": "receivable-review/v1", "required": true}],
+  "setup_checks": ["goal_owner", "invoice_scope", "balance_policy", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "action_ledger", "activation_choice"]
+}

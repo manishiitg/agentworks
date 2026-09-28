@@ -1,0 +1,27 @@
+{
+  "artifact_type": "cloud-change-review/v1",
+  "change_id": "change-C-1",
+  "source_review_id": "cost-review-example-001",
+  "candidate_id": "C-1",
+  "provider": "example-cloud",
+  "account_id": "A-9",
+  "service_id": "compute-worker",
+  "resource_id": "worker-nonprod-7",
+  "environment": "staging",
+  "currency": "USD",
+  "observed_at": "2026-10-02T10:30:00Z",
+  "source_refs": [
+    { "id": "cost-review", "uri": "artifact:cost-review-example-001", "observed_at": "2026-10-02T10:00:00Z" },
+    { "id": "iac-owner", "uri": "docs/fictional-iac-ownership.md#worker-nonprod-7", "observed_at": "2026-10-02T10:15:00Z" }
+  ],
+  "change_state": "proposal",
+  "approval_state": "pending_owner_review",
+  "approval_ref": null,
+  "risk_review_ref": null,
+  "plan_ref": null,
+  "deployment_receipt_ref": null,
+  "health_state": "not_tested",
+  "health_evidence_ref": null,
+  "owner": "Platform lead",
+  "next_action": "Inspect peak load and IaC state, then prepare a bounded diff for separate owner review."
+}

@@ -19,11 +19,18 @@ type DiffPatchWorkspaceFileParams struct {
 
 // DiffPatchWorkspaceFile applies a unified diff patch to a file
 func (c *Client) DiffPatchWorkspaceFile(ctx context.Context, params DiffPatchWorkspaceFileParams) (DiffPatchResult, error) {
-	if params.Filepath == "" {
-		return DiffPatchResult{}, fmt.Errorf("filepath is required")
-	}
 	if params.Diff == "" {
 		return DiffPatchResult{}, fmt.Errorf("diff is required")
+	}
+	// A "*** Begin Patch" naming several files (or naming its file with no
+	// filepath argument) is checked in full, then written all or none.
+	if sections, multi, err := isMultiFileApplyPatch(params); err != nil {
+		return DiffPatchResult{}, err
+	} else if multi {
+		return c.diffPatchMultiFile(ctx, sections)
+	}
+	if params.Filepath == "" {
+		return DiffPatchResult{}, fmt.Errorf("filepath is required")
 	}
 
 	params.Filepath = c.resolveLinkedFolderPath(ctx, params.Filepath)

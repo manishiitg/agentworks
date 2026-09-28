@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "invoice-intake-to-reviewed-payable",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id": "goal_owner", "title": "Confirm payable review goal and owners", "instructions": "Name legal entity, intake owner, AP reviewer, payment authority, first useful result, and excluded actions. Decide whether one Crew can hold both capabilities or access requires two."},
+    {"id": "document_scope", "title": "Bind authorized invoice source", "instructions": "Record document ID, immutable hash, version, allowed type, storage location, retention/privacy policy, source page convention and review owner. Do not move a sensitive document to an unapproved service."},
+    {"id": "invoice_schema", "title": "Define required fields and arithmetic", "instructions": "Confirm vendor ID, invoice number, dates, currency, net, tax, total, PO/contract reference rule, source spans and tolerance. A missing or conflicting required field stays in review."},
+    {"id": "duplicate_policy", "title": "Define duplicate, credit and payment rules", "instructions": "Set exact and near-duplicate keys, current bill/credit/payment sources, already scheduled and paid states, approval matrix, changed bank-detail escalation and due-date policy."},
+    {"id": "team_bindings", "title": "Bind ready intake and payables Crews", "instructions": "Inspect existing Crew skills, owners and access. Reuse compatible Document Intake Assistant and Spend & Payables Coordinator capabilities or propose reviewed creation. Record exact Crew IDs."},
+    {"id": "source_access", "title": "Probe one real invoice and payable source", "instructions": "Read an authorized document version and current vendor/bill records. Record stable source IDs, observed timestamps and missing coverage. A named connection alone is not access proof."},
+    {"id": "handoff_contract", "title": "Validate the extraction and payable join", "instructions": "Run the bundled validator on document-intake-record/v1 before Payables consumes it, then on payable-review/v1. Reject wrong entity, hash or invoice key; unsupported fields; arithmetic mismatch; duplicate or paid bill represented as new; and a payment claim without provider evidence."},
+    {"id": "plan_review", "title": "Review concrete Automation and permissions", "instructions": "Show Crew IDs, source and artifact paths, validator steps, owner decision, retry key, privacy and cost, manual route, and separate approval plus provider receipt required for any write or payment."},
+    {"id": "test_run", "title": "Run one invoice manually", "instructions": "Use a real authorized invoice and current AP records. Save run, validation, duplicate result, owner corrections, review state and provider receipts or none. Fictional fixtures do not complete setup."},
+    {"id": "activation_choice", "title": "Choose a safe repeat rule", "instructions": "Record document hash, vendor and invoice key, existing bill ID, approvals and next review. Choose manual-only or a reviewed authenticated document event/cadence with replay protection, retries, cost and notifications. Setup completion does not enable a payment."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

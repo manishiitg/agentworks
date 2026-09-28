@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "playbook_id": "checkout-signal-to-reviewed-recovery",
+  "playbook_version": "0.1.0",
+  "checks": [
+    {"id":"goal_owner","title":"Confirm recovery goal and owner","instructions":"Name the merchant outcome, contact approval owner, provider owner, reporting owner, and whether read-only review is the requested result."},
+    {"id":"checkout_scope","title":"Bind exact checkout scope","instructions":"Record store, market, checkout, campaign, channel, time window, and stable case key. Never use email or cart amount as the checkout/order join."},
+    {"id":"contact_policy","title":"Verify merchant contact policy","instructions":"Record channel-specific consent rule, opt-out handling, exclusions, frequency cap, current policy version, and existing Shopify/provider automations for the market."},
+    {"id":"team_bindings","title":"Bind two ready Crews","instructions":"Record existing or reviewed new Shopify Growth Analyst and Checkout Recovery Coordinator IDs, skills, setup status, and customer-data access scope."},
+    {"id":"source_access","title":"Probe real source access","instructions":"Read one authorized checkout including completion state, current linked-order check, consent/opt-out state, and prior Shopify/provider send history. Record exact IDs, permissions, freshness and gaps."},
+    {"id":"handoff_contract","title":"Validate checkout handoff","instructions":"Run the bundled validator. Reject mismatched checkout, draft without current eligibility, duplicate scheduled send, unapproved send, and order claim without trusted link."},
+    {"id":"plan_review","title":"Review proposed route","instructions":"Show Crew IDs, minimal signal fields, contact-policy gate, validator step, data retention, manual test, cost, approval owner, and any separate send action before Builder applies it."},
+    {"id":"test_run","title":"Run one case manually","instructions":"Use one real authorized checkout and one suppressed or unknown control. Preserve run IDs, validator result, source evidence and owner decision. Fictional fixtures do not complete setup."},
+    {"id":"contact_ledger","title":"Verify contact and outcome ledger","instructions":"Keep stable case/action key, prior automation and send check, owner approval, provider receipt if sent, linked-order ID and trusted link if observed. Never call an email click recovered revenue."},
+    {"id":"activation_choice","title":"Choose recurrence and send route","instructions":"Record manual-only or an authenticated, deduplicated, cost-bounded review trigger. Test before activation. Contact remains a separately approved route; setup does not enable a message."}
+  ],
+  "completed_steps": [],
+  "evidence": {}
+}

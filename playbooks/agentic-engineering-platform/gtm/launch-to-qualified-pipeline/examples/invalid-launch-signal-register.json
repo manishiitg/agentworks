@@ -1,0 +1,25 @@
+{
+  "artifact_type": "launch-signal-register/v1",
+  "launch_id": "launch-24",
+  "offer_version": "another-offer",
+  "market": "US B2B SaaS",
+  "campaign_id": "cmp-17",
+  "asset_id": "landing-v3",
+  "asset_state": "published",
+  "publication_receipt_ref": null,
+  "owner_id": "launch-owner",
+  "observed_at": "2026-09-26T10:00:00Z",
+  "events": [
+    {
+      "event_id": "form-event-91",
+      "lead_id": "lead-55",
+      "lead_source_ref": "crm:lead-55",
+      "campaign_id": "other-campaign",
+      "dedup_state": "none",
+      "contact_policy_state": "review_required",
+      "attribution_state": "source_linked",
+      "source_ref": "form:event-91"
+    }
+  ],
+  "source_refs": ["form:event-91", "crm:lead-55"]
+}

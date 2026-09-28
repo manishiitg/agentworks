@@ -1,0 +1,40 @@
+{
+  "metadata_version": 1,
+  "content_schema": "agentworks-playbook/v1",
+  "id": "signed-deal-to-onboarding-handoff",
+  "version": "0.1.0",
+  "changelog": [{"version":"0.1.0","summary":"Adds a verified signed-deal to CS acceptance proposal with exact contract, entitlement, owner and duplicate gates."}],
+  "title": "Signed Deal to Onboarding Handoff",
+  "description": "Verify one signed SaaS deal and have Customer Success accept its exact scope and first-value promise before onboarding starts.",
+  "hierarchy": ["AgentWorks", "Agentic Engineering Platform", "Customer Success"],
+  "order": 2,
+  "entrypoint": "SKILL.md",
+  "audience": "workflow_builder",
+  "team_scope": "small_team",
+  "setup_prompt": "Use Signed Deal to Onboarding Handoff as a chat-led proposal. Inspect existing Deal Follow-through Coordinator and Customer Onboarding Coordinator Crews, the exact CRM opportunity, executed agreement and revision, entitlement source, first-value promise, Sales and CS owners, privacy and existing onboarding workflow. Propose reuse or reviewed creation, a validated Sales-to-CS artifact and an explicit receiving-owner acceptance. Run one real manual case, including an unsigned or unresolved control. Only an accepted handoff can feed New Customer to First Value. Selection alone does not create a Crew, provision access, message a customer, change CRM or activate recurrence.",
+  "setup_inputs": [
+    {"id":"deal_scope","label":"Tenant, CRM account, opportunity and customer account IDs","required":true},
+    {"id":"agreement","label":"Executed agreement or order form, revision and purchased scope","required":true},
+    {"id":"first_value","label":"Contract-backed first-value goal, rule and target date","required":true},
+    {"id":"owners","label":"Sales owner, receiving CS owner and acceptance policy","required":true},
+    {"id":"entitlement","label":"Current entitlement and provisioning authority source","required":true},
+    {"id":"run_policy","label":"Manual-only or reviewed event and retry route","required":false}
+  ],
+  "required_capabilities": ["crew_discovery", "crew_steps", "internal_crew_triggers", "workflow_reporting", "durable_artifacts"],
+  "recommended_tools": [
+    {"id":"create-crew","name":"Builder create_crew","type":"builtin","purpose":"Create a reviewed missing Sales or CS Crew with a stable key","capability":"crew_steps","optional":true},
+    {"id":"crew-attachment","name":"Builder manage_crew_attachment","type":"builtin","purpose":"Pass only a validated bounded handoff to the authorized CS Crew","capability":"durable_artifacts","optional":true},
+    {"id":"crm-source","name":"CRM opportunity read or bounded export","type":"mcp","purpose":"Verify exact opportunity, account, stage, owner and revision","capability":"crm_read","optional":true},
+    {"id":"agreement-source","name":"Signed agreement or order-form source","type":"mcp","purpose":"Verify execution, revision and contract-backed purchased scope","capability":"agreement_read","optional":true},
+    {"id":"entitlement-source","name":"Subscription or entitlement source","type":"mcp","purpose":"Confirm current customer entitlement and provisioning authority","capability":"entitlement_read","optional":true}
+  ],
+  "pulse_focus": [{"module":"strategic_review","label":"Signed deal handoff","focus_areas":["Signed accounts waiting for exact CS acceptance","Scope, entitlement or first-value conflicts before onboarding"],"review_when":["A contract revision, entitlement or owner changes, or an accepted account has no onboarding route"]}],
+  "outputs": ["Reviewed Sales and CS Crew roster with source map", "Validated sales-cs-handoff/v1", "Validated onboarding-acceptance/v1 with receiving-owner decision", "Manual case, blockers and activation choice"],
+  "agent_slots": [
+    {"id":"sales","agent_playbook_id":"deal-follow-through-coordinator","required":true,"output":"sales-cs-handoff/v1"},
+    {"id":"onboarding","agent_playbook_id":"customer-onboarding-coordinator","required":true,"output":"onboarding-acceptance/v1"}
+  ],
+  "handoffs": [{"id":"sales-to-onboarding","from":"sales","to":"onboarding","artifact_type":"sales-cs-handoff/v1","required":true}],
+  "next_playbooks": ["new-customer-to-first-value"],
+  "setup_checks": ["goal_owner", "deal_scope", "agreement_policy", "first_value_rule", "team_bindings", "source_access", "handoff_contract", "plan_review", "test_run", "activation_choice"]
+}
