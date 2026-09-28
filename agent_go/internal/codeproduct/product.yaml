@@ -29,9 +29,12 @@ profile:
       options: {direction: outbound}
     - terminal
     - models
-    # bots: later. When added: Slack DMs and WhatsApp only, 1:1, each sender
-    # in their own chat -- {id: bots, options: {channels: "slack,whatsapp",
-    # dm_only: "true"}} (the dm_only narrowing is built and tested).
+    - id: bots
+      # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
+      # editor access or more, each in their own chat); never the shared bot
+      # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
+      # No Gmail or Google Workspace.
+      options: {channels: "slack,whatsapp", dm_only: "true"}
     - dashboard
     - memory
     - costs

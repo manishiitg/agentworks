@@ -222,4 +222,15 @@ func TestCodeBotTurnsAreDirectMessageOnly(t *testing.T) {
 	if err := turn("other", services.BotIncomingMessage{Platform: "whatsapp"}); err == nil {
 		t.Fatal("a viewer's WhatsApp message ran the Code")
 	}
+	// WhatsApp is private per person: even an editor of a shared Code cannot
+	// reach it there, only its owner.
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
+	if err := turn("other", services.BotIncomingMessage{Platform: "whatsapp"}); err == nil || !strings.Contains(err.Error(), "owner only") {
+		t.Fatalf("an editor reached the Code on WhatsApp: %v", err)
+	}
+	// An editor's Slack DM to the Code's own bot gets past the access gate
+	// (it may still fail later in this fixture, never with a refusal).
+	if err := turn("other", services.BotIncomingMessage{Platform: "slack", DirectMessage: true}); err != nil && (strings.Contains(err.Error(), "only 1:1") || strings.Contains(err.Error(), "owner only") || strings.Contains(err.Error(), "view-only") || strings.Contains(err.Error(), "chat-app")) {
+		t.Fatalf("an editor's Slack DM was refused: %v", err)
+	}
 }

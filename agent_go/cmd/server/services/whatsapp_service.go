@@ -1626,9 +1626,9 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 	// routes so selecting one enters its canonical persistent project chat
 	// (for a Code: the sender's own chat, 1:1 only).
 	seenCrewIDs := map[string]bool{}
-	// Code joins this list when it takes chat-app messages (a later step):
-	// {"Chats/Code/projects", "code"}.
-	for _, projects := range []struct{ root, product string }{{"Chats/Work/projects", "work"}} {
+	// Only the pairing user's own tree is scanned, so a Code is offered to its
+	// owner only (WhatsApp stays private per person).
+	for _, projects := range []struct{ root, product string }{{"Chats/Work/projects", "work"}, {"Chats/Code/projects", "code"}} {
 		crewList, crewErr := wsClient.ListWorkspaceFiles(ctx, workspace.ListWorkspaceFilesParams{Folder: projects.root, MaxDepth: &maxDepth})
 		if crewErr != nil {
 			log.Printf("[WHATSAPP] Failed to list Crew projects for user %s: %v", owner.UserID, crewErr)

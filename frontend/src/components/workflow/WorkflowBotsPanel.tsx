@@ -20,6 +20,8 @@ type WorkflowBotsPanelProps = {
    * project pane) omit it and get the Slack/WhatsApp tabs.
    */
   fixedChannel?: BotChannel
+  /** Slack: only this target's own app, 1:1 direct messages (a Code). */
+  ownBotOnly?: boolean
 }
 
 type BotChannel = 'slack' | 'whatsapp'
@@ -32,7 +34,7 @@ const CHANNEL_TABS: Array<{ value: BotChannel; label: string }> = [
 // Composition over useWorkflowBots: status card, route chips, add-channel
 // rows, and the Slack/WhatsApp drill-ins. Never owns a scroll container:
 // every host (the Integrations Bots tab, the Work project pane) scrolls.
-export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', onAsk, fixedChannel }: WorkflowBotsPanelProps) {
+export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', onAsk, fixedChannel, ownBotOnly = false }: WorkflowBotsPanelProps) {
   const bots = useWorkflowBots(workspacePath, target, 'bots')
   const { setup, setSetup, workflowId, workflowRoutes, routeError, waRoutingError } = bots
   const [internalChannel, setInternalChannel] = usePersistentTab<BotChannel>('agentworks.tab.bots-channel', 'slack', ['slack', 'whatsapp'])
@@ -42,8 +44,10 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     <AskAIButton
       workspacePath={workspacePath}
       onAsk={onAsk}
-      label={scopeNoun === 'project' ? 'Ask Crew to set up Slack' : 'Ask Builder to set up Slack'}
-      message={`Read builder-reference/references/slack-bot-routing.md, inspect get_slack_bot_settings, and help me set up Slack for this ${scopeNoun}. First ask whether it should have its own bot (a Slack app that answers only for this ${scopeNoun}, in any channel it is invited to, with no routes) or use the shared bot in specific channels. For its own bot, guide me through app creation and credentials in the settings UI without requesting tokens in chat. For the shared bot, use the existing scoped tools to create the route once the channel ID is clear; use run mode without asking for a grant. Everyone in the channel is allowed by default; ask about blocked emails only if I need exclusions.`}
+      label={ownBotOnly ? 'Ask AI to set up Slack' : scopeNoun === 'project' ? 'Ask Crew to set up Slack' : 'Ask Builder to set up Slack'}
+      message={ownBotOnly
+        ? `Help me set up this ${scopeNoun}'s own Slack bot. It answers 1:1 direct messages only, never in channels, and never through the shared bot. Guide me through creating the Slack app (with the im:history, im:read and users:read.email scopes and the App Home Messages tab) and entering its credentials in the settings UI, without requesting tokens in chat.`
+        : `Read builder-reference/references/slack-bot-routing.md, inspect get_slack_bot_settings, and help me set up Slack for this ${scopeNoun}. First ask whether it should have its own bot (a Slack app that answers only for this ${scopeNoun}, in any channel it is invited to, with no routes) or use the shared bot in specific channels. For its own bot, guide me through app creation and credentials in the settings UI without requesting tokens in chat. For the shared bot, use the existing scoped tools to create the route once the channel ID is clear; use run mode without asking for a grant. Everyone in the channel is allowed by default; ask about blocked emails only if I need exclusions.`}
     />
   )
 
@@ -94,7 +98,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     return (
       <div className="space-y-4">
         {tabs}
-        <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} />
+        <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} />
       </div>
     )
   }

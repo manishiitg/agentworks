@@ -36,9 +36,9 @@ var codeUIControlContract = func() uiContract {
 	contract.Views = nil
 	for _, view := range workUIControlContract.Views {
 		switch view.ID {
-		// Code has no identity, schedules or automation; chat-app bots and
-		// MCP servers are a later step.
-		case "identity", "schedules", "workshop", "bots", "mcp":
+		// Code has no identity, schedules or automation; MCP servers are a
+		// later step.
+		case "identity", "schedules", "workshop", "mcp":
 			continue
 		}
 		contract.Views = append(contract.Views, view)

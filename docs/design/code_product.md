@@ -238,13 +238,16 @@ Code ships a basic setup first; integrations come later. In Code's
   the Code), `attached-folders`, `browser`, `dashboard` with its `database`,
   outbound `workflow-references` (calling Crews and workflows) and
   `background-work`. Sharing and admin inspection are on.
-- **Later:** `bots` (Slack DMs, WhatsApp, Gmail) and `mcp` (MCP servers).
-  When chat apps come (user, 2026-09-28): a Code gets its **own dedicated
-  Slack bot** only (the Code's own Slack app), never the shared server bot, and
-  **1:1 DMs only**, no channels. WhatsApp follows the same DM-only rule.
-  The server refuses chat-app messages to a Code without `bots`, and the
-  DM-only narrowing (`bots` with `dm_only`) is already built and tested for
-  when it is switched on.
+- **Chat apps, 1:1 only** (user, 2026-09-28): `bots` with `dm_only`.
+  - Slack: only the Code's **own dedicated Slack app**, never the shared
+    server bot or a channel; it answers **1:1 DMs** from people with editor
+    access or more, each in their own chat of the Code. The Setup tab offers
+    only "this Code's own bot".
+  - WhatsApp: private per person, as everywhere in AgentWorks. A Code is
+    offered on WhatsApp to its **owner only**; people it is shared with use
+    its Slack bot or the web.
+  - No Gmail or Google Workspace.
+- **Later:** `mcp` (MCP servers) and Gmail.
 
 ## Decisions (2026-09-28)
 

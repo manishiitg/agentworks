@@ -39,11 +39,10 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
   }
 }
 
-// Code's basic setup has skills only: chat apps (Slack, WhatsApp, Gmail) and
-// MCP connections come later (docs/design/code_product.md). The server feature
-// list already leaves out bots and mcp; this also hides the always-on MCP
-// "Connect" tab.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'slack', 'whatsapp', 'cli'])
+// Code: Slack (its own bot, 1:1 DMs) and WhatsApp (1:1) only. Gmail and MCP
+// connections come later (docs/design/code_product.md); this also hides the
+// always-on MCP "Connect" tab.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string
@@ -329,6 +328,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           workspacePath={workspacePath}
           fixedChannel="slack"
           scopeNoun="project"
+          ownBotOnly={product.profileId === 'code'}
           onAsk={onAsk}
           target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}

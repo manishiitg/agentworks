@@ -201,6 +201,14 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 		if !((msg.Platform == "slack" && msg.DirectMessage) || msg.Platform == "whatsapp") {
 			return nil, "", false, fmt.Errorf("%s answers only 1:1 Slack DMs and WhatsApp, not channels or group chats", profile.Name)
 		}
+		// WhatsApp is one person's own phone, private everywhere: a Code
+		// answers there for its owner only, never for people it is shared
+		// with (they use its Slack bot or the web).
+		if msg.Platform == "whatsapp" {
+			if _, owned, err := resolveConversationBindingForUser(ctx, userID, profile, conversationKey); err != nil || !owned {
+				return nil, "", false, fmt.Errorf("%s answers on WhatsApp for its owner only", profile.Name)
+			}
+		}
 		return api.senderProfileTurn(ctx, userID, profile, conversationKey, msg, threadID)
 	}
 	// A crew reached by a 1:1 Slack DM or by WhatsApp runs in the sender's
