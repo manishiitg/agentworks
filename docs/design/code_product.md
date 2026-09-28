@@ -233,12 +233,5 @@ users has to hold:
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
 - **Terminal:** both, the vendor CLI's own terminal (as in Crew today) and a
   plain shell, in the same sandbox as the shell tool.
-
-## Open questions
-
-1. App preview. When someone builds a web app in a Code, the agent runs it on
-   the server (for example `npm run dev` listening on port 3000). Should the
-   person be able to open that running app from their browser through
-   AgentWorks, via a private preview link that only people with access to the
-   Code can open? Without it they can see the code but not the running app.
-   Proposed: not in the first version.
+- **App preview** (opening an app running in the Code from the browser):
+  deferred, not in the first version.
