@@ -39,6 +39,7 @@ import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
+import { useProjectProduct } from './projectProduct'
 
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
@@ -49,8 +50,8 @@ const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane'
 
 export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
 
-function sendWorkProjectPaneMessage(projectId: string, message: string) {
-  return sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: projectId, message })
+function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
+  return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
 }
 
 const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
@@ -156,6 +157,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
 })
 
 function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; projectId: string; workspacePath: string }) {
+  const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
   const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode)
@@ -231,7 +233,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
         <WorkspaceViewActions
           workspacePath={workspacePath}
           message="Help me configure browser access for this project. Ask what site or task it is for before changing anything."
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message, product.profileId) }}
           onRefresh={() => setRefreshNonce(nonce => nonce + 1)}
           refreshLabel="Refresh Browser"
         />
@@ -242,6 +244,9 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
 
 export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared }: { workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
+  const product = useProjectProduct()
+  const noun = product.noun
+  const ask = useCallback((message: string) => sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId])
   const sharedFiles = useMemo(
     () => (readOnly ? sharedCrewFileClient(projectId, workspacePath) : null),
     [readOnly, projectId, workspacePath],
@@ -253,10 +258,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
     status: 'queued' as const,
-    ...await sendWorkProjectPaneMessage(projectId, `From this project's dashboard:\n\n${message}`),
-  }), [projectId])
+    ...await ask(`From this project's dashboard:\n\n${message}`),
+  }), [ask])
   const canonicalSessionId = useChatStore(state => Object.values(state.chatTabs).find(tab =>
-    tab.metadata?.agentProfileId === 'work' &&
+    tab.metadata?.agentProfileId === product.profileId &&
     tab.metadata?.agentProfileProjectId === projectId &&
     tab.metadata?.agentProfileConversationKey === projectId &&
     tab.metadata?.isViewOnly !== true,
@@ -308,7 +313,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // render an owner-only panel (identity editors, transcripts, usage)
   // for someone else's Crew.
   if (readOnly && view !== 'memory' && view !== 'files') {
-    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the Crew owner.</div>
+    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
   }
 
   return (
@@ -321,14 +326,14 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           request={sharedFileRequest}
           headerAction={<AskAIButton
             workspacePath={workspacePath}
-            message="Help me with this Crew project's files. Explain what they do in plain words; this Crew is read-only for me, so do not offer to change anything."
-            onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+            message={`Help me with this ${noun} project's files. Explain what they do in plain words; this ${noun} is read-only for me, so do not offer to change anything.`}
+            onAsk={async message => { await ask(message) }}
             iconOnly
           />}
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" headerAction={<AskAIButton
           workspacePath={workspacePath}
-          message="Help me with this Crew project's files. Ask what I want to find, understand, or change."
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+          message={`Help me with this ${noun} project's files. Ask what I want to find, understand, or change.`}
+          onAsk={async message => { await ask(message) }}
           iconOnly
         />} /></Suspense>)}
         {view === 'identity' && <WorkIdentityPanel
@@ -344,7 +349,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           workflowContextPaths={workflowContextPaths}
           projectLLMConfig={projectLLMConfig}
           enabledPanels={enabledPanels}
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+          onAsk={async message => { await ask(message) }}
           onRuntimeChange={onRuntimeChange}
           nativeAgentTools={nativeAgentTools}
           onNativeAgentToolsChange={shared ? undefined : onNativeAgentToolsChange}
@@ -354,7 +359,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {view === 'plan' && <WorkPlanPanel workspacePath={workspacePath} onAsk={message => sendWorkProjectPaneMessage(projectId, message)} />}
+        {view === 'plan' && <WorkPlanPanel workspacePath={workspacePath} onAsk={message => ask(message)} />}
         {view === 'mcp' && <WorkIntegrationsPanel
           workspacePath={workspacePath}
           projectId={projectId}
@@ -362,13 +367,13 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectTemplates={projectTemplates}
           tabId={tabId}
           enabledPanels={enabledPanels}
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+          onAsk={async message => { await ask(message) }}
           onSelectedServersChange={onSelectedServersChange}
           onSelectedSkillsChange={onSelectedSkillsChange}
         />}
         {view === 'memory' && <WorkMemoryPanel
           workspacePath={workspacePath}
-          onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+          onAsk={async message => { await ask(message) }}
           onOpenFile={filePath => { void openProjectFile(filePath) }}
           fileClient={sharedFiles ?? undefined}
           readOnly={readOnly}
@@ -377,28 +382,28 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
-            emptyDescription="Ask Crew to create a visual dashboard for this project. It can organize tasks, notes, plans, status, research, or anything else you want to manage visually."
+            emptyDescription={`Ask ${noun} to create a visual dashboard for this project. It can organize tasks, notes, plans, status, research, or anything else you want to manage visually.`}
             sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}
-              message="Help me with this Crew project's results page. Explain what it shows in plain words and ask what I want to change."
-              onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+              message={`Help me with this ${noun} project's results page. Explain what it shows in plain words and ask what I want to change.`}
+              onAsk={async message => { await ask(message) }}
               iconOnly
             />}
           />}
           {view === 'database' && <DatabaseView workspacePath={workspacePath} headerAction={<AskAIButton
             workspacePath={workspacePath}
-            message="Help me with this Crew project's stored records. Explain what's kept and ask what I want to look at or change."
-            onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+            message={`Help me with this ${noun} project's stored records. Explain what's kept and ask what I want to look at or change.`}
+            onAsk={async message => { await ask(message) }}
             iconOnly
           />} />}
           {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Changes other people using this Crew asked for. Accepting records your decision; make the change in chat.</p>
+              <p className="text-xs text-muted-foreground">Changes other people using this {noun} asked for. Accepting records your decision; make the change in chat.</p>
               <AskAIButton
                 workspacePath={workspacePath}
-                message="Look at the accepted suggestions in this Crew's Suggestions view and help me make those changes to the Crew."
-                onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+                message={`Look at the accepted suggestions in this ${noun}'s Suggestions view and help me make those changes to the ${noun}.`}
+                onAsk={async message => { await ask(message) }}
                 iconOnly
               />
             </div>
@@ -407,8 +412,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
             workspacePath={workspacePath}
-            message="Help me understand what this Crew project costs to run. Explain in plain words where the money goes, then ask what I want to change."
-            onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+            message={`Help me understand what this ${noun} project costs to run. Explain in plain words where the money goes, then ask what I want to change.`}
+            onAsk={async message => { await ask(message) }}
             iconOnly
           />} />}
           {view === 'schedules' && <AutomationHubPanel
@@ -416,18 +421,18 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             workspacePath={workspacePath}
             canManage
             scopeNoun="project"
-            productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: 'work', projectId }}
+            productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
             chatContent={<PreviousChatHistoryPanel
               workspacePath={workspacePath}
               activeSessionId={canonicalSessionId || activeSessionId}
               title=""
-              emptyText="No earlier chats for this Crew member."
+              emptyText={`No earlier chats for this ${product.itemNoun}.`}
               recentOnly
               includeAutomationChats
               allowOpen
               openOnRowClick
               runEntityType="product"
-              productTriggerScope={{ profileId: 'work', projectId }}
+              productTriggerScope={{ profileId: product.profileId, projectId }}
               fill
               showAll
               actionLabel="Open"
@@ -435,10 +440,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             />}
             workflowScope={{ workflowId: projectId, workspacePath, label: projectTitle }}
             askAIMessages={{
-              chats: "Help me with this Crew project's automation: past chats, schedules, and triggers. Explain what's here and ask what I want to review or change.",
-              schedules: "Help me manage this project's schedules or authenticated webhook triggers. Each sends exactly one saved instruction to this Crew project; do not create workflow routes or workflow executions.",
-              triggers: "Help me manage this project's authenticated triggers. Each trigger sends one saved instruction to this Crew project.",
-              functions: "Help me with this Crew's functions: typed actions other Crews and workflows can call. List them, explain what each does, and ask what I want to add or change.",
+              chats: `Help me with this ${noun} project's automation: past chats, schedules, and triggers. Explain what's here and ask what I want to review or change.`,
+              schedules: `Help me manage this project's schedules or authenticated webhook triggers. Each sends exactly one saved instruction to this ${noun} project; do not create workflow routes or workflow executions.`,
+              triggers: `Help me manage this project's authenticated triggers. Each trigger sends one saved instruction to this ${noun} project.`,
+              functions: `Help me with this ${noun}'s functions: typed actions other Crews and workflows can call. List them, explain what each does, and ask what I want to add or change.`,
             }}
             onAskAI={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
           />}

@@ -16,7 +16,9 @@ import { useLLMStore } from '../../stores/useLLMStore'
 import { hydrateTabEvents } from '../../utils/sessionRestore'
 import { activateTab } from '../../utils/activateTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import { WORK_PROFILE_ID, WORK_PROFILE_VERSION, loadWorkProductCommands } from './workData'
+import { loadWorkProductCommands } from './workData'
+import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
+import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { isWorkIdentityComplete } from './workIdentity'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -146,28 +148,34 @@ async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, wor
   }
 }
 
-function useWorkSessions() {
+// Crew and Code remember their selected project separately.
+function selectedProjectIdFor(product: ProjectProductConfig): string | null {
+  const state = useProductSurfaceStore.getState()
+  return product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId
+}
+
+function useWorkSessions(product: ProjectProductConfig) {
   const [sessions, setSessions] = useState<WorkSession[]>([])
-  const selectedId = useProductSurfaceStore(state => state.selectedWorkProjectId)
-  const setSelectedId = useProductSurfaceStore(state => state.setSelectedWorkProjectId)
+  const selectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId)
+  const setSelectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.setSelectedCodeProjectId : state.setSelectedWorkProjectId)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    const listed = await loadWorkSessionsIncludingShared()
+    const listed = await loadWorkSessionsIncludingShared(product)
     setSessions(listed)
-    const current = useProductSurfaceStore.getState().selectedWorkProjectId
+    const current = selectedProjectIdFor(product)
     setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
     return listed
-  }, [setSelectedId])
+  }, [product, setSelectedId])
 
   useEffect(() => {
     let cancelled = false
-    void loadWorkSessionsIncludingShared()
+    void loadWorkSessionsIncludingShared(product)
       .then((listed) => {
         if (cancelled) return
         setSessions(listed)
-        const current = useProductSurfaceStore.getState().selectedWorkProjectId
+        const current = selectedProjectIdFor(product)
         setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
       })
       .catch((cause) => {
@@ -177,18 +185,18 @@ function useWorkSessions() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [setSelectedId])
+  }, [product, setSelectedId])
 
   const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
-    const session = await createWorkSession(title, description, icon, templateId)
+    const session = await createWorkSession(title, description, icon, templateId, product)
     setSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
-  }, [setSelectedId])
+  }, [product, setSelectedId])
 
   const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
     const session = sessions.find(item => item.id === projectId)
-    if (!session) throw new Error('This Crew project is no longer available.')
+    if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await installWorkSessionTemplate(session, templateId)
     setSessions(current => current.map(item => item.id === projectId ? updated : item))
     for (const tab of Object.values(useChatStore.getState().chatTabs)) {
@@ -198,11 +206,11 @@ function useWorkSessions() {
     }
     markWorkProjectRuntimeDirty(projectId)
     return updated
-  }, [sessions])
+  }, [product, sessions])
 
   const remove = useCallback(async (projectId: string) => {
     const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error('This Crew project is no longer available.')
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     // Shared rows fail in deleteWorkSession below; skip the session stop for
     // the reader-side stub, which has no session of its own to stop.
     if (!project.shared) {
@@ -226,50 +234,50 @@ function useWorkSessions() {
 
     const remaining = sessions.filter(item => item.id !== projectId)
     setSessions(remaining)
-    if (useProductSurfaceStore.getState().selectedWorkProjectId === projectId) {
+    if (selectedProjectIdFor(product) === projectId) {
       setSelectedId(remaining[0]?.id ?? null)
     }
-  }, [sessions, setSelectedId])
+  }, [product, sessions, setSelectedId])
 
   const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
     const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error('This Crew project is no longer available.')
-    if (project.shared) throw new Error('Only the Crew owner can change this.')
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
     const llmConfig = workLLMConfigFromSelection({
       provider: selection.provider || selection.engine,
       modelId: selection.modelId,
       reasoningEffort: selection.reasoningEffort,
     })
-    const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update Crew project model ${project.title}`, 'workflow.json')
+    const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update ${product.noun} project model ${project.title}`, 'workflow.json')
     setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [product, sessions])
 
   const updateNativeAgentTools = useCallback(async (projectId: string, enabled: boolean) => {
     const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error('This Crew project is no longer available.')
-    if (project.shared) throw new Error('Only the Crew owner can change this.')
-    const updated = await updateProductProjectNativeAgentTools(project, enabled, `${enabled ? 'Enable' : 'Disable'} native agent tools for Crew project ${project.title}`, 'workflow.json')
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
+    const updated = await updateProductProjectNativeAgentTools(project, enabled, `${enabled ? 'Enable' : 'Disable'} native agent tools for ${product.noun} project ${project.title}`, 'workflow.json')
     setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [product, sessions])
 
   const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
     const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error('This Crew project is no longer available.')
-    if (project.shared) throw new Error('Only the Crew owner can change this.')
-    const updated = await updateProductProjectSelections(project, patch, `Update Crew project integrations ${project.title}`, 'workflow.json')
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
+    if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
+    const updated = await updateProductProjectSelections(project, patch, `Update ${product.noun} project integrations ${project.title}`, 'workflow.json')
     setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [product, sessions])
 
   const updateIdentity = useCallback(async (projectId: string, patch: ProductIdentityPatch) => {
     const project = sessions.find(item => item.id === projectId)
-    if (!project) throw new Error('This Crew project is no longer available.')
+    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await updateWorkSessionIdentity(project, patch)
     setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [sessions])
+  }, [product, sessions])
 
   return {
     sessions,
@@ -308,6 +316,7 @@ export function selectWorkChatTabIds(
 }
 
 function useWorkChatTab(
+  product: ProjectProductConfig,
   session: WorkSession | null,
   onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
 ) {
@@ -339,15 +348,15 @@ function useWorkChatTab(
         const savedRuntime = workLLMSelectionFromConfig(target.llmConfig)
         const savedServers = target.selectedServers.length > 0 ? target.selectedServers : ['NO_SERVERS']
         const savedSkills = target.selectedSkills
-        const conversation = await agentApi.resolveAgentProfileConversation(WORK_PROFILE_ID, {
+        const conversation = await agentApi.resolveAgentProfileConversation(product.profileId, {
           conversation_key: target.id,
         })
         if (cancelled) return
 
         const projectMetadata = {
           mode: 'multi-agent',
-          agentProfileId: WORK_PROFILE_ID,
-          agentProfileVersion: WORK_PROFILE_VERSION,
+          agentProfileId: product.profileId,
+          agentProfileVersion: product.profileVersion,
           agentProfileWorkspace: target.workspacePath,
           agentProfileProjectId: target.id,
           agentProfileProjectTitle: target.title,
@@ -407,12 +416,12 @@ function useWorkChatTab(
         if (cancelled) return
         setFailure(current => current?.projectId === target.id ? null : current)
       } catch (cause) {
-        if (!cancelled) setFailure({ projectId: target.id, message: cause instanceof Error ? cause.message : 'Could not open Crew.' })
+        if (!cancelled) setFailure({ projectId: target.id, message: cause instanceof Error ? cause.message : `Could not open ${product.noun}.` })
       }
     }
     void prepare()
     return () => { cancelled = true }
-  }, [projectId])
+  }, [product, projectId])
 
   // Manifest changes (identity, model, MCPs, or skills) update the existing
   // local tab in place. They must not restart the expensive conversation
@@ -496,20 +505,40 @@ function WorkChatTabs({ projectId, canonicalTabId }: { projectId: string; canoni
   )
 }
 
-function WorkNewChatGuide({ sharedBy }: { sharedBy?: string }) {
+function WorkNewChatGuide({ sharedBy, product }: { sharedBy?: string; product: ProjectProductConfig }) {
+  if (!product.hasIdentity) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
+        <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Start coding
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            This is the chat for this {product.itemNoun}. Ask it to:
+          </p>
+          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <li>• Clone a repository into code/ and explain how it works</li>
+            <li>• Build, run, test and debug in the workspace terminal</li>
+            <li>• Call your Crews and workflows when it needs them</li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
   if (sharedBy) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
         <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Sparkles className="h-4 w-4 text-primary" />
-            Explore {sharedBy}’s Crew
+            Explore {sharedBy}’s {product.noun}
           </div>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            This Crew is read-only for you. Ask it to:
+            This {product.noun} is read-only for you. Ask it to:
           </p>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <li>• Explain how the Crew works and what it can do</li>
+            <li>• Explain how the {product.noun} works and what it can do</li>
             <li>• Walk through its files, memory, and configuration</li>
             <li>• Run its attached workflows when you ask</li>
           </ul>
@@ -525,10 +554,10 @@ function WorkNewChatGuide({ sharedBy }: { sharedBy?: string }) {
       <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Sparkles className="h-4 w-4 text-primary" />
-          Start your Crew chat
+          Start your {product.noun} chat
         </div>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          This is the persistent conversation for this Crew project. Ask Crew to:
+          This is the persistent conversation for this {product.noun} project. Ask {product.noun} to:
         </p>
         <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
           <li>• Research, write, analyze, or plan ongoing work</li>
@@ -541,6 +570,7 @@ function WorkNewChatGuide({ sharedBy }: { sharedBy?: string }) {
 }
 
 function WorkTopBarControl({
+  product,
   sessions,
   selected,
   onSelect,
@@ -549,6 +579,7 @@ function WorkTopBarControl({
   creating,
   deletingProjectId,
 }: {
+  product: ProjectProductConfig
   sessions: WorkSession[]
   selected: WorkSession | null
   onSelect: (id: string) => void
@@ -565,13 +596,13 @@ function WorkTopBarControl({
       label={selected?.identity?.name || selected?.title}
       leading={selected ? <EntityIdentityIcon icon={selected.identity?.icon} label={selected.identity?.name || selected.title} /> : undefined}
       compactOnNarrow
-      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (read-only)` : ''}` : 'New Crew'}
-      placeholder="New Crew member"
+      title={selected ? `${selected.identity?.name || selected.title}${selected.identity?.name && selected.identity.name !== selected.title ? ` · ${selected.title}` : ''}${selected.shared ? ` · shared by ${selected.shared.ownerUsername || selected.shared.ownerId} (read-only)` : ''}` : `New ${product.noun}`}
+      placeholder={`New ${product.itemNoun}`}
       open={open}
       onToggle={() => setOpen(current => !current)}
       onClose={() => setOpen(false)}
       onAdd={onNewProject}
-      addLabel="New Crew member"
+      addLabel={`New ${product.itemNoun}`}
       addDisabled={creating}
     >
       <div role="menu" aria-label="Projects" className="max-h-96 space-y-1 overflow-y-auto p-2">
@@ -583,7 +614,7 @@ function WorkTopBarControl({
         >
           <span className="flex items-center gap-2 font-medium">
             <span className="h-2 w-2 rounded-full bg-blue-500" />
-            {creating ? 'Creating Crew member…' : '+ New Crew member'}
+            {creating ? `Creating ${product.itemNoun}…` : `+ New ${product.itemNoun}`}
           </span>
         </button>
         {sessions.length === 0 ? (
@@ -613,8 +644,8 @@ function WorkTopBarControl({
               </button>
               <button
                 type="button"
-                aria-label={`Delete Crew ${session.identity?.name || session.title}`}
-                title="Delete Crew"
+                aria-label={`Delete ${product.noun} ${session.identity?.name || session.title}`}
+                title={`Delete ${product.noun}`}
                 disabled={deletingProjectId !== null}
                 onClick={() => { setOpen(false); onDelete(session) }}
                 className="mr-1 rounded p-2 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-400"
@@ -659,15 +690,15 @@ function WorkTopBarControl({
   )
 }
 
-export function WorkSurface() {
-  const { sessions, selected, select, create, installTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions()
-  const selectedTemplates = crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
+export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProductConfig } = {}) {
+  const { sessions, selected, select, create, installTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
     if (!selected || selected.shared) return
     await updateLLMConfig(selected.id, selection)
   }, [selected, updateLLMConfig])
-  const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(selected, persistLegacyRuntime)
+  const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
 
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile
@@ -678,28 +709,28 @@ export function WorkSurface() {
   const [projectRefreshInteractionKinds, setProjectRefreshInteractionKinds] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     let cancelled = false
-    void loadAgentProfileInteractionKinds(WORK_PROFILE_ID, 'product.refresh', WORK_PROFILE_VERSION).then(kinds => {
+    void loadAgentProfileInteractionKinds(product.profileId, 'product.refresh', product.profileVersion).then(kinds => {
       if (cancelled) return
       setProjectRefreshInteractionKinds(kinds)
     })
     return () => { cancelled = true }
-  }, [])
+  }, [product])
   // Product slash commands come from the same profile the provider options do,
   // and are cleared on unmount so leaving Crew does not leave its commands
   // offered in another product's chat.
   useEffect(() => {
     let cancelled = false
-    void loadWorkProductCommands()
+    void loadWorkProductCommands(product.profileId, product.profileVersion, product.noun)
       .then((commands) => { if (!cancelled) setProductCommands(toProductCommandDefinitions(commands)) })
       .catch(() => { if (!cancelled) setProductCommands([]) })
     return () => { cancelled = true; setProductCommands([]) }
-  }, [])
+  }, [product])
   const projectConfigRefreshToken = useChatStore(state => {
     const sessionId = tabId ? state.chatTabs[tabId]?.sessionId : undefined
     return (sessionId ? state.tabEvents[sessionId] || [] : [])
     .filter(event => {
       const interaction = parseProductInteraction(event)
-      return (interaction?.product === 'work' && projectRefreshInteractionKinds.has(interaction.kind)) ||
+      return (interaction?.product === product.profileId && projectRefreshInteractionKinds.has(interaction.kind)) ||
         // Backward compatibility for events persisted before typed product interactions.
         event.type === 'work_workflow_references_updated'
     })
@@ -719,7 +750,7 @@ export function WorkSurface() {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id) ?? 'identity')
+  const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => readWorkWorkspaceView(selected?.id) ?? product.defaultView)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
   const [workspaceViewRefresh, setWorkspaceViewRefresh] = useState(0)
@@ -761,22 +792,22 @@ export function WorkSurface() {
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
-      if (selected?.id !== useProductSurfaceStore.getState().selectedWorkProjectId) return
+      if (selected?.id !== selectedProjectIdFor(product)) return
       openWorkPresentationView('schedules', 'triggers')
     } else {
       openWorkPresentationView(pendingWorkView)
     }
     setPendingWorkView(null)
-  }, [openWorkPresentationView, pendingWorkView, selected?.id, setPendingWorkView])
+  }, [openWorkPresentationView, pendingWorkView, product, selected?.id, setPendingWorkView])
   const workUIAdapter = useMemo<WorkspaceUIControlAdapter>(() => ({
     getView: () => workPresentationView(workspaceView),
     openView: openWorkPresentationView,
     refreshView: () => setWorkspaceViewRefresh(value => value + 1),
     isViewSupported: (view) => view in WORK_UI_PRESENTATION_VIEWS,
     labelForView: (view) => WORK_UI_LABELS[view as WorkUIPresentationView] ?? view,
-    actorLabel: 'Crew',
+    actorLabel: product.noun,
     getTarget: (view) => view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
-  }), [openWorkPresentationView, workspaceView])
+  }), [openWorkPresentationView, product.noun, workspaceView])
   useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)
 
   useEffect(() => {
@@ -855,7 +886,7 @@ export function WorkSurface() {
 
   useEffect(() => {
     let cancelled = false
-    void loadAgentProfileUIPanels(WORK_PROFILE_ID, WORK_PROFILE_VERSION).then(panels => {
+    void loadAgentProfileUIPanels(product.profileId, product.profileVersion).then(panels => {
       // An unavailable/mismatched profile must not turn the entire project
       // workspace into an empty capability set. Crew has a complete local
       // panel implementation, so retain that safe UI fallback until the
@@ -863,30 +894,31 @@ export function WorkSurface() {
       if (!cancelled) setEnabledWorkspacePanels(panels.size > 0 ? panels : undefined)
     })
     return () => { cancelled = true }
-  }, [])
+  }, [product])
 
   useLayoutEffect(() => {
     const savedView = readWorkWorkspaceView(selected?.id)
-    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? 'identity')
+    setWorkspaceView(selected?.shared ? (savedView && SHARED_CREW_WORKSPACE_PANELS.has(savedView) ? savedView : 'files') : savedView ?? product.defaultView)
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
-  }, [selected?.id, selected?.shared, selected?.workspacePath])
+  }, [product.defaultView, selected?.id, selected?.shared, selected?.workspacePath])
 
   const landingProjectId = selected?.id
   const landingWorkspacePath = selected?.workspacePath
   const landingIsShared = Boolean(selected?.shared)
   const dashboardAllowed = isWorkWorkspaceViewEnabled('dashboard', enabledWorkspacePanels)
   useEffect(() => {
-    if (!landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId)) return
+    // Code is files-first: it never lands on the dashboard on its own.
+    if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || readWorkWorkspaceView(landingProjectId)) return
     let cancelled = false
     void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
-      if (cancelled || useProductSurfaceStore.getState().selectedWorkProjectId !== landingProjectId || readWorkWorkspaceView(landingProjectId)) return
+      if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId)) return
       setWorkspaceView(view)
     })
     return () => { cancelled = true }
-  }, [landingProjectId, landingWorkspacePath, landingIsShared, dashboardAllowed])
+  }, [landingProjectId, landingWorkspacePath, landingIsShared, dashboardAllowed, product])
 
   useEffect(() => {
     const sync = () => setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
@@ -908,10 +940,10 @@ export function WorkSurface() {
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
       // A disabled saved view cannot be shown. For an unsaved project, keep
       // Identity temporary while the content-based landing check runs.
-      if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView('identity')
-      else setWorkspaceView('identity')
+      if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView(product.defaultView)
+      else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, selectWorkspaceView, selected?.id, selected?.shared, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, workspaceView])
 
   useEffect(() => {
     if (!selected) return
@@ -919,7 +951,7 @@ export function WorkSurface() {
       const detail = (event as CustomEvent<ProductEngineSelectionDetail>).detail
       const sourceTabId = detail?.tabId || tabId
       const sourceTab = sourceTabId ? useChatStore.getState().chatTabs[sourceTabId] : undefined
-      if (detail?.profileId !== WORK_PROFILE_ID || !detail.engine || !detail.modelId || !sourceTab || !belongsToWorkProject(sourceTab, selected.id)) return
+      if (detail?.profileId !== product.profileId || !detail.engine || !detail.modelId || !sourceTab || !belongsToWorkProject(sourceTab, selected.id)) return
       void changeWorkRuntime({
         engine: detail.engine!,
         provider: detail.provider,
@@ -929,7 +961,7 @@ export function WorkSurface() {
     }
     window.addEventListener('agentworks:product-engine-selected', handleEngineSelection)
     return () => window.removeEventListener('agentworks:product-engine-selected', handleEngineSelection)
-  }, [changeWorkRuntime, selected, tabId])
+  }, [changeWorkRuntime, product.profileId, selected, tabId])
 
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
@@ -965,11 +997,11 @@ export function WorkSurface() {
       }
       setCreateOpen(false)
     } catch (cause) {
-      setCreateError(cause instanceof Error ? cause.message : 'Could not create Crew member.')
+      setCreateError(cause instanceof Error ? cause.message : `Could not create ${product.itemNoun}.`)
     } finally {
       setCreating(false)
     }
-  }, [create, creating])
+  }, [create, creating, product.itemNoun])
 
   const openCreateProject = useCallback(() => {
     setCreateError(null)
@@ -982,17 +1014,18 @@ export function WorkSurface() {
     try {
       await remove(deleteCandidate.id)
       setDeleteCandidate(null)
-      useChatStore.getState().addToast(`Deleted Crew “${deleteCandidate.identity?.name || deleteCandidate.title}”.`, 'success')
+      useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”.`, 'success')
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Could not delete Crew.'
-      useChatStore.getState().addToast(`Failed to delete Crew: ${message}`, 'error')
+      const message = cause instanceof Error ? cause.message : `Could not delete ${product.noun}.`
+      useChatStore.getState().addToast(`Failed to delete ${product.noun}: ${message}`, 'error')
     } finally {
       setDeletingProjectId(null)
     }
-  }, [deleteCandidate, deletingProjectId, remove])
+  }, [deleteCandidate, deletingProjectId, product.noun, remove])
 
   const topBarControl = useMemo(() => (
     <WorkTopBarControl
+      product={product}
       sessions={sessions}
       selected={selected}
       onSelect={select}
@@ -1001,11 +1034,12 @@ export function WorkSurface() {
       creating={creating}
       deletingProjectId={deletingProjectId}
     />
-  ), [creating, deletingProjectId, openCreateProject, select, selected, sessions])
+  ), [creating, deletingProjectId, openCreateProject, product, select, selected, sessions])
 
   const error = sessionsError || chatError
 
   return (
+    <ProjectProductProvider value={product}>
     <div className="flex h-screen min-h-0 flex-col bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
@@ -1016,7 +1050,14 @@ export function WorkSurface() {
         walkthroughReady={!sessionsLoading && !creating && !error}
         walkthroughPaused={createOpen || deleteCandidate !== null}
       />
-      {createOpen ? (
+      {createOpen && !product.hasIdentity ? (
+        <CreateCodeWorkspaceDialog
+          onClose={() => { if (!creating) setCreateOpen(false) }}
+          onCreate={title => createProject(title, '')}
+          submitting={creating}
+          error={createError}
+        />
+      ) : createOpen ? (
         <CreateWorkProjectDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
           onCreate={createProject}
@@ -1028,12 +1069,12 @@ export function WorkSurface() {
         isOpen={deleteCandidate !== null}
         onClose={() => { if (!deletingProjectId) setDeleteCandidate(null) }}
         onConfirm={() => { void deleteProject() }}
-        title="Delete Crew"
+        title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete Crew “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, schedules, triggers, bots, dashboard, and database? This cannot be undone.`
+          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, ' : ''}bots, dashboard, and database? This cannot be undone.`
           : ''}
-        confirmText="Delete Crew"
-        loadingText="Deleting Crew…"
+        confirmText={`Delete ${product.noun}`}
+        loadingText={`Deleting ${product.noun}…`}
         type="danger"
         isLoading={deletingProjectId !== null}
         requireText={deleteCandidate ? deleteCandidate.identity?.name || deleteCandidate.title : undefined}
@@ -1051,14 +1092,33 @@ export function WorkSurface() {
           ) : !selected ? (
             <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
               {sessionsLoading || creating ? (
-                <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening Crew…</span>
+                <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
+              ) : !product.hasIdentity ? (
+                <div className="flex max-w-xl flex-col items-center px-6 text-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                    <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;/&gt;</span>
+                  </div>
+                  <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">A private workspace to code in</h2>
+                  <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
+                    Files, an editor and a terminal on the team server, with a coding agent beside them. Only you can see your workspaces until you share them.
+                  </p>
+                  <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-muted-foreground">Admins on this server can view your {product.noun} workspaces.</p>
+                  <button
+                    type="button"
+                    onClick={openCreateProject}
+                    className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Create your first {product.itemNoun}
+                  </button>
+                </div>
               ) : (
                 <div data-tour="crew-empty-state" className="flex max-w-xl flex-col items-center px-6 text-center">
                   <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
                     <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;&gt;</span>
                   </div>
                   <div className="mt-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Crew</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
                     <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Your AI workspace for any project</h2>
                     <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
                       Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.
@@ -1083,7 +1143,7 @@ export function WorkSurface() {
                       onClick={openCreateProject}
                       className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
-                      <Plus className="h-3.5 w-3.5" /> Create your first Crew member
+                      <Plus className="h-3.5 w-3.5" /> Create your first {product.itemNoun}
                     </button>
                   </div>
                 </div>
@@ -1128,19 +1188,19 @@ export function WorkSurface() {
                   {selected.shared ? (
                     <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
                       <span className="min-w-0 flex-1 text-muted-foreground">
-                        {selected.shared.ownerUsername || selected.shared.ownerId}’s Crew · read-only. Your chats stay private to you.
+                        {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · read-only. Your chats stay private to you.
                       </span>
                     </div>
                   ) : null}
-                  {!selected.shared && !isWorkIdentityComplete(selected.identity, selected.description) ? (
+                  {product.hasIdentity && !selected.shared && !isWorkIdentityComplete(selected.identity, selected.description) ? (
                     <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
-                      <span className="min-w-0 flex-1 text-muted-foreground">This Crew needs a role and purpose before it can help at its best.</span>
+                      <span className="min-w-0 flex-1 text-muted-foreground">This {product.noun} needs a role and purpose before it can help at its best.</span>
                       <button
                         type="button"
                         onClick={() => {
                           setPanelOpen(true)
                           selectWorkspaceView('identity')
-                          sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: selected.id, message: 'Help me set up this Crew: ask me what it is for and what role you should take, then save both.' }).catch(cause => {
+                          sendWorkspacePaneMessageToChat({ profileId: product.profileId, conversationKey: selected.id, message: `Help me set up this ${product.noun}: ask me what it is for and what role you should take, then save both.` }).catch(cause => {
                             useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not start the setup chat.', 'error')
                           })
                         }}
@@ -1158,7 +1218,7 @@ export function WorkSurface() {
                       chatReady={Boolean(tabId)}
                       onStartSetup={async () => {
                         setChatOpen(true)
-                        await sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: selected.id, message: `Help me set up the ${template.name} template in this Crew. Read ${template.setupPath} and ${template.setupGuidePath} in this project's files. Work through the pending checks, ask me for missing decisions or access, and add a check ID to completed_steps only after you verify it. Preserve the checklist and earlier progress. Keep this Crew's identity and other templates intact. Tell me what remains and when setup is complete.` })
+                        await sendWorkspacePaneMessageToChat({ profileId: product.profileId, conversationKey: selected.id, message: `Help me set up the ${template.name} template in this ${product.noun}. Read ${template.setupPath} and ${template.setupGuidePath} in this project's files. Work through the pending checks, ask me for missing decisions or access, and add a check ID to completed_steps only after you verify it. Preserve the checklist and earlier progress. Keep this ${product.noun}'s identity and other templates intact. Tell me what remains and when setup is complete.` })
                       }}
                     />
                   ))}
@@ -1167,7 +1227,7 @@ export function WorkSurface() {
                         <ChatArea
                           tabId={tabId}
                           compact
-                          landingContent={<WorkNewChatGuide sharedBy={selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
+                          landingContent={<WorkNewChatGuide product={product} sharedBy={selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
                           composerPlaceholder="Describe what you want to build… (@ files, # references)"
                           showCompactRuntimeLoading
                           showProductSteerAction
@@ -1240,5 +1300,6 @@ export function WorkSurface() {
         </div>
       </div>
     </div>
+    </ProjectProductProvider>
   )
 }

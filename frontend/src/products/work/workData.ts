@@ -38,11 +38,11 @@ export function parseProductCommands(profile: AgentProfileResponse): WorkProduct
   })
 }
 
-export async function loadWorkProductCommands(): Promise<WorkProductCommand[]> {
+export async function loadWorkProductCommands(profileId: string = WORK_PROFILE_ID, profileVersion: number = WORK_PROFILE_VERSION, noun = 'Crew'): Promise<WorkProductCommand[]> {
   const token = getAuthToken()
-  const response = await fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(WORK_PROFILE_ID)}?version=${WORK_PROFILE_VERSION}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(profileId)}?version=${profileVersion}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
-  if (!response.ok) throw new Error(`Unable to load Crew commands (${response.status})`)
+  if (!response.ok) throw new Error(`Unable to load ${noun} commands (${response.status})`)
   return parseProductCommands(await response.json() as AgentProfileResponse)
 }

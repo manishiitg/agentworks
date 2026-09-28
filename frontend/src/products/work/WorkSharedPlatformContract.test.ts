@@ -94,8 +94,8 @@ describe('Crew shared AgentWorks platform contract', () => {
   it('offers permanent Crew deletion with the shared confirmation dialog', () => {
     const surface = read('src/products/work/WorkSurface.tsx')
 
-    expect(surface).toContain('title="Delete Crew"')
-    expect(surface).toContain('confirmText="Delete Crew"')
+    expect(surface).toContain('title={`Delete ${product.noun}`}')
+    expect(surface).toContain('confirmText={`Delete ${product.noun}`}')
     expect(surface).toContain('onDelete={setDeleteCandidate}')
     expect(surface).toContain('await remove(deleteCandidate.id)')
   })

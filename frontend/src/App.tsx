@@ -1,5 +1,7 @@
 import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+// Code is a second product definition over the same project surface.
+import { CODE_PRODUCT } from './products/work/projectProduct'
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
@@ -537,7 +539,7 @@ function App() {
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
   const [quickSwitcherInitialQuery, setQuickSwitcherInitialQuery] = useState('')
   useEffect(() => {
-    if (productSurface !== 'agentworks' && productSurface !== 'work') setShowQuickSwitcher(false)
+    if (productSurface !== 'agentworks' && productSurface !== 'work' && productSurface !== 'code') setShowQuickSwitcher(false)
   }, [productSurface])
 
   
@@ -551,7 +553,7 @@ function App() {
   useEffect(() => {
     const handleOpenQuickSwitcher = (event: Event) => {
       const surface = useProductSurfaceStore.getState().productSurface
-      if (surface !== 'agentworks' && surface !== 'work') return
+      if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code') return
       const detail = (event as CustomEvent<{ query?: string }>).detail
       setQuickSwitcherInitialQuery(detail?.query || '')
       setShowQuickSwitcher(true)
@@ -846,7 +848,7 @@ function App() {
       // Ctrl/Cmd + K opens the shared AgentWorks/Crew switcher.
       if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         const surface = useProductSurfaceStore.getState().productSurface
-        if (surface !== 'agentworks' && surface !== 'work') return
+        if (surface !== 'agentworks' && surface !== 'work' && surface !== 'code') return
         event.preventDefault()
         setQuickSwitcherInitialQuery('')
         setShowQuickSwitcher(prev => !prev)
@@ -925,7 +927,9 @@ function App() {
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<FileSurfaceFallback />}><SparkQuillSurface /></Suspense>
         ) : productSurface === 'work' ? (
-          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface /></Suspense>
+          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="work" /></Suspense>
+        ) : productSurface === 'code' ? (
+          <Suspense fallback={<FileSurfaceFallback />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />
