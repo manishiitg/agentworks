@@ -56,6 +56,10 @@ use the bridge. AgentWorks installs a temporary `.agents/hooks.json` entry in
 the AGY workspace for this gate and restores the prior hook file after the
 session closes. This mode needs `python3` on the backend `PATH`.
 
+AGY is marked **Alpha** in the UI. Its tmux terminal shows progress during a
+turn, while the assistant reply and tool receipts appear after the turn from
+AGY's structured conversation records.
+
 ## 4. API-key mode (unattended / CI)
 
 Interactive Google sign-in cannot run headless. For CI and servers, point
