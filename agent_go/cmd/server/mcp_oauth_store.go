@@ -232,7 +232,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 		return req, "", sql.ErrNoRows
 	}
 	if approve {
-		scopes, _ := json.Marshal(req.Scopes)
+		scopes, _ := json.Marshal(mcpOAuthScopesFor(user, req.Scopes))
 		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.UserID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix())
 		if err != nil {
 			return req, "", err

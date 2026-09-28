@@ -21,7 +21,9 @@ const mcpOAuthRegisterPath = "/api/oauth/mcp/register"
 const mcpOAuthConsentPath = "/api/oauth/mcp/consent"
 const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 
-var mcpOAuthScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write"}
+// code:review is inert for anyone but an admin or Code reviewer: the tools
+// re-check the account on every call.
+var mcpOAuthScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -128,6 +130,16 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 	_ = json.NewEncoder(w).Encode(map[string]any{"client_id": client.ID, "client_name": client.Name, "redirect_uris": client.RedirectURIs, "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}, "token_endpoint_auth_method": "none"})
 }
 
+// mcpOAuthScopesFor is what this user may actually consent to: code:review
+// only for an admin or Code reviewer. Everyone else neither sees nor grants it
+// (the tools re-check the account on every call regardless).
+func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
+	if claimsCanReviewCode(user) {
+		return scopes
+	}
+	return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool { return scope == "code:review" })
+}
+
 func validMCPOAuthScopes(raw string) ([]string, bool) {
 	scopes := strings.Fields(raw)
 	if len(scopes) == 0 {
@@ -220,7 +232,7 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": request.Scopes})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes)})
 		return
 	}
 	if r.Method != http.MethodPost {

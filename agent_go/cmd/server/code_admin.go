@@ -43,7 +43,10 @@ type codeAdminAuditEntry struct {
 	AdminID       string `json:"admin_id"`
 	AdminUsername string `json:"admin_username,omitempty"`
 	// Role is "admin" or "reviewer": what let this account in.
-	Role      string `json:"role,omitempty"`
+	Role string `json:"role,omitempty"`
+	// Via names the access token when the view came over the external API or
+	// MCP ("token:<id>"); empty for the web app.
+	Via       string `json:"via,omitempty"`
 	Action    string `json:"action"`
 	OwnerID   string `json:"owner_id,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
@@ -87,6 +90,9 @@ func recordCodeAdminView(ctx context.Context, claims *UserClaims, action, ownerI
 		entry.Role = "reviewer"
 		if acc := userAccessForClaims(claims); !acc.Known || acc.Admin {
 			entry.Role = "admin"
+		}
+		if claims.AccessToken != nil {
+			entry.Via = "token:" + claims.AccessToken.ID
 		}
 	}
 	raw, err := json.Marshal(entry)

@@ -157,7 +157,18 @@ everyone does in Code.**
   - the audit log itself (admins and reviewers both read it).
   A disabled account loses it. Ticking it also enables the Code product for an
   account whose products are a restricted list, since the inspector lives in
-  Code.
+  Code. Only an admin sets it (`/api/admin/users` is admin-only).
+- **Review over MCP / the external API** (built). Token scope `code:review`
+  plus seven read-only tools: `list_code_workspaces`, `get_code_costs`,
+  `list_code_files`, `read_code_file`, `list_code_chats`, `read_code_chat`,
+  `get_code_audit`. They run the same inspection handlers, so every call
+  (lists and cost reads included) is audited, with `via: "token:<id>"`. The
+  account is re-checked on every call: a token whose user stops being an admin
+  or reviewer gets 403 at once, and a token holding the scope without such an
+  account gets 403 and does not even list the tools. Only admins and reviewers
+  can mint `code:review` or see and grant it on the OAuth consent screen. This
+  is review of Codes, not calling one: a Code itself is still not callable
+  over MCP.
 - **Scoped to Code.** Today chat history is owner-only even for admins
   (`chatHistoryVisibleTo`, `agent_go/cmd/server/chat_history_routes.go:167`),
   and that deliberate rule stays for Crews and personal chats. Admin
