@@ -288,6 +288,15 @@ Code ships a basic setup first; integrations come later. In Code's
 
 ## To think about
 
+- [ ] **Share a provider connection with chosen people** (user, 2026-09-28;
+  later). Today a personal provider connection (a Cursor key, a Claude login)
+  is its owner's alone (`provider_connections.go`: owner-only listing and use),
+  and the only shared option is the admin's server account. Wanted: person X
+  shares their connection with specific users A, B, C, who can then pick it
+  in their own chats. Platform-wide, not Code-only. Open points: who pays and
+  sees the cost (the owner), revoking a share, and whether a shared login's
+  CLI home is safe to use from several people's sessions at once.
+
 - [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built).
   Today a Gmail/Google account connected through gog sits in one
   server-wide registry: any workflow or Crew can use it by ID, or fall back to
