@@ -1,0 +1,164 @@
+schema_version: 2
+
+# Code is a private coding workspace. It is a second definition over the same
+# shared features as Crew (internal/workproduct), not a copy: a subset of
+# features with narrower options, a plain coding prompt, and no identity.
+# See docs/design/code_product.md.
+dependencies: {}
+
+prompt:
+  file: prompts/system-prompt.md
+  variables: {}
+
+profile:
+  id: code
+  name: Code
+  version: 1
+  features:
+    - live-chat
+    - coding
+    - files
+    - browser
+    - secrets
+    - mcp
+    - skills
+    - attached-folders
+    - id: workflow-references
+      # A Code calls Crews and workflows the person can access, and is
+      # never callable itself: no define/answer function tools.
+      options: {direction: outbound}
+    - terminal
+    - models
+    - id: bots
+      # 1:1 only: Slack DMs and WhatsApp, each sender in their own chat. No
+      # channel routes, group chats, Gmail or Google Workspace.
+      options: {channels: "slack,whatsapp", dm_only: "true"}
+    - dashboard
+    - memory
+    - costs
+    - background-work
+    - workspace-ui
+  # project scope for the same reason as Crew: provider_options stay
+  # authoritative and this profile's own prompt.file reaches the model.
+  scope: project
+  tools:
+    - id: code.create-project
+      interaction:
+        kind: project_created
+        render: product.refresh
+    - id: code.custom-commands
+  tool_policy:
+    mode: allowlist
+    enabled:
+      - get_file_link
+      - get_report_link
+  commands:
+    - name: update-memory
+      description: Update project memory and skills from this conversation
+      icon: brain
+      file: commands/update-memory.md
+  runtime:
+    transport: auto
+    provider_options:
+      - id: claude-code
+        label: Claude Code
+        provider: claude-code
+        model_id: claude-sonnet-5
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: high
+        default: true
+      - id: codex-cli
+        label: Codex
+        provider: codex-cli
+        model_id: gpt-6-astra
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: medium
+      - id: cursor-cli
+        label: Cursor CLI
+        provider: cursor-cli
+        model_id: auto
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: high
+      - id: pi-cli
+        label: Pi CLI
+        provider: pi-cli
+        model_id: google/gemini-3.8-flash
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: high
+      - id: muse-cli
+        label: Muse
+        provider: muse-cli
+        model_id: muse-spark-1.3-contributor
+        reasoning_efforts: [medium, high, xhigh, max]
+        options:
+          reasoning_effort: max
+      - id: agy-cli
+        label: Antigravity CLI (Alpha)
+        provider: agy-cli
+        model_id: gemini-3.8-flash-high
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: high
+    provider: claude-code
+    model_id: claude-sonnet-5
+    # MCP-only until hybrid-mode native reads are sandboxed (PLAT-364): the
+    # CLIs' own read tools are not confined to the owner's tree.
+    agent_tools:
+      mode: mcp_only
+    approvals:
+      mode: provider_auto
+    sandbox:
+      mode: strict
+      network: allowed
+      read_only: []
+      chat_history: none
+    workspace:
+      # Private: under the owner's own tree, never the shared Crew/<id> root.
+      mode: project
+      projects_root: Chats/Code/projects
+      placement:
+        execute_shell_command:
+          - Put newly created application and source-code files under code/ by default.
+          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
+        diff_patch_workspace_file:
+          - Put newly created application and source-code files under code/ by default.
+          - Keep project metadata, documentation, and platform-managed folders at the project root when appropriate.
+          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
+    conversation:
+      mode: keyed
+      key_type: project
+    capabilities:
+      workflow_execution: disabled
+  built_in: true
+
+branding:
+  icon: code
+  favicon: ""
+
+ui:
+  surface: code
+  files_panel: true
+  workflow_panel: false
+  secrets: true
+  streaming: auto
+
+workflows:
+  enabled: []
+  selected_skills: []
+  browser_mode: ""
+
+instruction_sections:
+  - workspace-map
+  - project-memory
+  - product-features
+  - llm-capability
+  - workflow-context
+  - work-folders
+  - channel-formatting
+  - browser-pointer
+  - grants
+  - cli-tool-environment

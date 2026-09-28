@@ -117,7 +117,7 @@ var promptSections = []promptSection{
 			switch {
 			case c.IsWorkflowPhase:
 				return getWorkflowPhaseWorkspaceMapForMode(c.ShellRoot, c.WorkflowPhaseFolder, c.WorkflowMode)
-			case c.ProfileID == "work":
+			case isProjectProfileID(c.ProfileID):
 				chatHistory := newWorkspacePaths(c.ShellRoot, c.PerUserChatsFolder).ChatHistory
 				return GetWorkWorkspaceMap(c.ProfileWorkspace, chatHistory)
 			case c.HasProfile:
@@ -165,7 +165,7 @@ var promptSections = []promptSection{
 		// Owner-attached external folders for Work sessions (aliases +
 		// WORK_FOLDER_<ALIAS> env). Empty for every other surface.
 		Name:    "work-folders",
-		Applies: func(c promptContext) bool { return c.ProfileID == "work" },
+		Applies: func(c promptContext) bool { return isProjectProfileID(c.ProfileID) },
 		Build:   func(c promptContext) string { return c.WorkFolders },
 	},
 	{

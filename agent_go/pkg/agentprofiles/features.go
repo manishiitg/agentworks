@@ -262,9 +262,13 @@ func ResolveFeatures(profile *Profile) error {
 		delete(visiting, id)
 		visited[id] = true
 		binding := requested[id]
+		tools, err := featureTools(id, definition.Tools, binding.Options)
+		if err != nil {
+			return err
+		}
 		resolved = append(resolved, ResolvedFeature{
-			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: cloneStrings(definition.Tools),
-			Skills: cloneStrings(definition.Skills), PromptExtension: definition.PromptExtension,
+			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: tools,
+			Skills: cloneStrings(definition.Skills), PromptExtension: featurePromptExtension(id, definition.PromptExtension, binding.Options),
 			UIPanels: cloneStrings(definition.UIPanels), Capabilities: cloneCapabilities(definition.Capabilities),
 			Options: cloneStringMap(binding.Options),
 		})
@@ -288,6 +292,77 @@ func ResolveFeatures(profile *Profile) error {
 		}
 	}
 	return nil
+}
+
+// Callee-side tools of workflow-references: a product with
+// direction=outbound may call Crews and workflows but is never itself
+// callable, so it cannot define or answer functions.
+var workflowReferenceCalleeTools = map[string]bool{
+	"define_function": true, "delete_function": true,
+	"report_function_progress": true, "return_function_result": true,
+}
+
+// Bots tools that reach beyond a 1:1 Slack DM or WhatsApp chat: Gmail and
+// Google Workspace, and Slack channel routes and channel API reads.
+var botsNonDirectMessageTools = map[string]bool{
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"slack": true, "send_slack_message": true,
+	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
+}
+
+// featureTools applies a binding's tool-narrowing options. Options only ever
+// remove tools from the shared bundle; they never add one.
+func featureTools(id string, tools []string, options map[string]string) ([]string, error) {
+	var drop map[string]bool
+	switch id {
+	case "workflow-references":
+		switch direction := strings.TrimSpace(options["direction"]); direction {
+		case "", "both":
+		case "outbound":
+			drop = workflowReferenceCalleeTools
+		default:
+			return nil, fmt.Errorf("feature %q: invalid direction %q (want both or outbound)", id, direction)
+		}
+	case "bots":
+		switch dmOnly := strings.TrimSpace(options["dm_only"]); dmOnly {
+		case "", "false":
+		case "true":
+			drop = botsNonDirectMessageTools
+		default:
+			return nil, fmt.Errorf("feature %q: invalid dm_only %q (want true or false)", id, dmOnly)
+		}
+	}
+	out := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if !drop[tool] {
+			out = append(out, tool)
+		}
+	}
+	return out, nil
+}
+
+// featurePromptExtension swaps in the narrowed wording when an option removed
+// the tools the default extension describes.
+func featurePromptExtension(id, extension string, options map[string]string) string {
+	switch {
+	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
+		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
+	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true":
+		return "Direct-message chat is enabled: people with access can message this workspace 1:1 from a Slack DM or WhatsApp, and each person continues their own chat. Slack channels, group chats, Gmail and Google Workspace are not available here, and you cannot send Slack messages yourself."
+	}
+	return extension
+}
+
+// FeatureOption returns a resolved feature's option value, or "" when the
+// feature is absent or does not set it.
+func FeatureOption(profile Profile, featureID, option string) string {
+	featureID = strings.TrimSpace(featureID)
+	for _, feature := range profile.ResolvedFeatures {
+		if feature.ID == featureID {
+			return strings.TrimSpace(feature.Options[option])
+		}
+	}
+	return ""
 }
 
 // FeaturePromptExtensions returns the ordered prompt additions for a resolved

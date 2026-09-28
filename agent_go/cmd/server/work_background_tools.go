@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -22,7 +21,7 @@ func (api *StreamingAPI) registerWorkBackgroundTools(
 	sessionID string,
 	userID string,
 ) error {
-	if profile == nil || strings.TrimSpace(profile.Definition.ID) != "work" || !agentprofiles.HasFeature(profile.Definition, "background-work") {
+	if profile == nil || !isProjectProfileID(profile.Definition.ID) || !agentprofiles.HasFeature(profile.Definition, "background-work") {
 		return nil
 	}
 	if !isActiveWorkProjectWorkspace(userID, parentReq.SelectedFolder) {

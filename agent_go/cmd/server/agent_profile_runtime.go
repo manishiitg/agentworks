@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
 	"path/filepath"
 	"reflect"
@@ -183,8 +184,8 @@ func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
 	return agentProfileRuntimeWorkspace(userID, normalizeConversationWorkspace(clean))
 }
 
-// isActiveWorkProjectWorkspace distinguishes an actual Work project from the
-// Work landing/root workspace. Project-scoped tools must be absent on the
+// isActiveWorkProjectWorkspace distinguishes an actual Crew or Code project
+// from the product's landing/root workspace. Project-scoped tools must be absent on the
 // landing chat: registering them there either fails immediately (share links,
 // schedules) or gives the model tools that cannot operate without a project manifest.
 func isActiveWorkProjectWorkspace(userID, workspacePath string) bool {
@@ -193,12 +194,7 @@ func isActiveWorkProjectWorkspace(userID, workspacePath string) bool {
 	// Strip any owner's physical prefix before the shape check, so a
 	// reader turn in someone else's crew still counts as project-scoped
 	// (tool registration, guards) rather than landing-chat-scoped.
-	canonical = normalizeConversationWorkspace(canonical)
-	const prefix = "Chats/Work/projects/"
-	if !strings.HasPrefix(canonical, prefix) {
-		return false
-	}
-	return strings.Trim(strings.TrimPrefix(canonical, prefix), "/") != ""
+	return isProjectWorkspacePath(canonical)
 }
 
 // providerOptionRuntimeOptions returns a copy of the runtime options the
@@ -333,7 +329,20 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewOwned := true
 	crewRoot := ""
 	folderForClean := selectedFolder
-	if strings.EqualFold(strings.TrimSpace(profile.ID), "work") {
+	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
+		// A Code is private: it resolves in the caller's own tree only, so
+		// no other owner's Code can be addressed here. It never switches to
+		// native agent tools (their reads are not sandboxed yet, PLAT-364).
+		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
+		if conversationKey == "" {
+			return nil, fmt.Errorf("agent_profile_conversation_key is required for Code")
+		}
+		binding, bindErr := resolveProductConversationBinding(ctx, userID, profile, conversationKey)
+		if bindErr != nil {
+			return nil, fmt.Errorf("resolve Code workspace: %w", bindErr)
+		}
+		crewRoot = binding.WorkspacePath
+	} else if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
 			return nil, fmt.Errorf("agent_profile_conversation_key is required for Work")
@@ -371,9 +380,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		workspacePath = strings.Trim(filepath.ToSlash(strings.TrimSpace(folderForClean)), "/")
 	}
 	req.SelectedFolder = workspacePath
-	if strings.EqualFold(strings.TrimSpace(profile.ID), "work") && crewOwned {
+	if isProjectProfileID(profile.ID) && crewOwned {
 		if !workspacePathsMatchForUser(userID, crewRoot, workspacePath) {
-			return nil, fmt.Errorf("Work conversation does not match the selected session")
+			return nil, fmt.Errorf("%s conversation does not match the selected session", profile.Name)
 		}
 	}
 
@@ -672,8 +681,8 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return fmt.Errorf("register profile tool %q: %w", tool.Name, err)
 		}
 	}
-	activeWorkProject := resolved.Definition.ID == "work" && isActiveWorkProjectWorkspace(userID, workspacePath)
-	if resolved.Definition.ID == "work" && agentprofiles.HasFeature(resolved.Definition, "attached-folders") {
+	activeWorkProject := isProjectProfileID(resolved.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspacePath)
+	if isProjectProfileID(resolved.Definition.ID) && agentprofiles.HasFeature(resolved.Definition, "attached-folders") {
 		if err := api.registerWorkFolderTools(registrar, userID, sessionID); err != nil {
 			return err
 		}
@@ -702,7 +711,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 	}
 	// Someone using another user's Crew can leave its owner a suggestion:
 	// a reader in their own chat, or a guest whose call runs as the owner.
-	if readOnly && activeWorkProject && resolved.Definition.ID == "work" {
+	if readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {
 		guest := ""
 		if len(req) > 0 {
 			guest = crewGuestCallerForTurn(req[0], userID)
@@ -730,7 +739,8 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
-	if !readOnly && activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "files") {
+	// Public share links stay Crew-only: a Code is private.
+	if !readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID && agentprofiles.HasFeature(resolved.Definition, "files") {
 		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath); err != nil {
 			return err
 		}
@@ -766,10 +776,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		// a crew answering in Slack reads its own thread (a bot turn's tool
 		// is held to the channel and destination it arrived on). Changing
 		// the bot's setup needs write access in the app.
-		if err := api.registerSlackBotTools(registrar, sessionID, workspacePath, "work", !readOnly && policy.Origin == "interactive" && registerWorkUIAllowed(input), !readOnly); err != nil {
+		if err := api.registerSlackBotTools(registrar, sessionID, workspacePath, resolved.Definition.ID, !readOnly && policy.Origin == "interactive" && registerWorkUIAllowed(input), !readOnly); err != nil {
 			return err
 		}
-		if !readOnly {
+		if !readOnly && agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" {
 			if err := api.registerGmailConnectionManagementTools(registrar, sessionID, workspacePath); err != nil {
 				return err
 			}

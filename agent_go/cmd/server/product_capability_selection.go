@@ -12,7 +12,7 @@ import (
 
 func projectRuntimeManifestPath(profileID, workspacePath string) string {
 	name := "product.json"
-	if strings.EqualFold(strings.TrimSpace(profileID), "work") {
+	if isProjectProfileID(profileID) {
 		name = "workflow.json"
 	}
 	return filepath.ToSlash(filepath.Join(workspacePath, name))
@@ -20,7 +20,7 @@ func projectRuntimeManifestPath(profileID, workspacePath string) string {
 
 func readProjectRuntimeManifest(ctx context.Context, profileID, workspacePath string) (string, bool, error) {
 	raw, found, err := readFileFromWorkspace(ctx, projectRuntimeManifestPath(profileID, workspacePath))
-	if err != nil || found || !strings.EqualFold(strings.TrimSpace(profileID), "work") {
+	if err != nil || found || !isProjectProfileID(profileID) {
 		return raw, found, err
 	}
 	return readFileFromWorkspace(ctx, filepath.ToSlash(filepath.Join(workspacePath, "product.json")))
@@ -91,7 +91,7 @@ func ensureProjectRuntimeManifest(ctx context.Context, profileID, workspacePath 
 	// but never attached to the conversation, so it never reached the agent's
 	// environment (confirmed live: SparkQuill's agent_browser tool could not
 	// see a parent-saved portal password).
-	if !strings.EqualFold(strings.TrimSpace(profileID), "work") {
+	if !isProjectProfileID(profileID) {
 		manifest := map[string]interface{}{
 			"schema_version": 1,
 			"id":             profileID,

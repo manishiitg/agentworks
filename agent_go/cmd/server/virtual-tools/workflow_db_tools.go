@@ -691,8 +691,8 @@ func workflowDBWorkspacePathFromCandidate(candidate string) string {
 	}
 	parts := strings.Split(strings.Trim(clean, "/"), "/")
 	for i := 0; i+3 < len(parts); i++ {
-		if parts[i] == "Chats" && parts[i+1] == "Work" && parts[i+2] == "projects" && strings.TrimSpace(parts[i+3]) != "" {
-			return filepath.ToSlash(filepath.Join("Chats", "Work", "projects", parts[i+3]))
+		if parts[i] == "Chats" && (parts[i+1] == "Work" || parts[i+1] == "Code") && parts[i+2] == "projects" && strings.TrimSpace(parts[i+3]) != "" {
+			return filepath.ToSlash(filepath.Join("Chats", parts[i+1], "projects", parts[i+3]))
 		}
 	}
 	for i := 0; i+1 < len(parts); i++ {

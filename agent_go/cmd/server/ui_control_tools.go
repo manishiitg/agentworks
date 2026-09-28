@@ -30,7 +30,7 @@ func (api *StreamingAPI) registerUIControlToolsForContract(registrar definitionT
 	b := api.uiBroker()
 	b.setScope(session, workspace)
 	targetDescription := "For flow/open: exact plan step ID. For report/open: exact top-level report tab label. For files/open: workspace-relative file path (for example code/shared/helpers.py). For notify/expand: run_summary or pulse_review. Omit for other view openings."
-	if contract.Product == "work" {
+	if isProjectProfileID(contract.Product) {
 		targetDescription = "Work currently supports opening complete panels only; omit target."
 	}
 	props := map[string]interface{}{

@@ -95,11 +95,17 @@ func customCommandMarkdown(name, description, icon, prompt string, modes []strin
 }
 
 func workCustomCommandsFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
+	return CustomCommandsFactory(workspaceAPIURL, "Crew project")
+}
+
+// CustomCommandsFactory is the project slash-command tool shared by the
+// project products; projectNoun names the project in its description.
+func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.ToolFactory {
 	return func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this Crew project when the user asks. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{

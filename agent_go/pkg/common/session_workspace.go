@@ -57,6 +57,10 @@ func CanonicalSessionWorkspace(userID, workspacePath string) string {
 	return strings.TrimPrefix(cleaned, path.Join("_users", sanitizeSessionUserIDForPath(userID))+"/")
 }
 
+// projectWorkspacePrefixes are the project products' roots: Crew and Code
+// (cmd/server projectProducts). Both classify as a project workspace.
+var projectWorkspacePrefixes = []string{"Chats/Work/projects/", "Chats/Code/projects/"}
+
 // ClassifySessionWorkspace returns the owning kind and owning root of a
 // session workspace: `Workflow/<name>` for workflows, or the Crew project
 // root `Chats/Work/projects/<id>` for Crew sessions. Deeper working
@@ -77,9 +81,11 @@ func ClassifySessionWorkspace(userID, workspacePath string) (SessionWorkspaceKin
 		}
 		return SessionWorkspaceUnknown, ""
 	}
-	const crewPrefix = "Chats/Work/projects/"
 	crewCanonical := stripAnySessionUserPrefix(canonical)
-	if strings.HasPrefix(crewCanonical, crewPrefix) {
+	for _, crewPrefix := range projectWorkspacePrefixes {
+		if !strings.HasPrefix(crewCanonical, crewPrefix) {
+			continue
+		}
 		rest := strings.Trim(strings.TrimPrefix(crewCanonical, crewPrefix), "/")
 		if rest == "" {
 			return SessionWorkspaceUnknown, ""
