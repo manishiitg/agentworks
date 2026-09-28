@@ -16,11 +16,13 @@ func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
 		}
 		switch {
 		case r.URL.Path == "/api/documents" && r.URL.Query().Get("folder") == "Workflow":
-			fmt.Fprint(w, `{"success":true,"data":[{"filepath":"Workflow/invoices/workflow.json","type":"file"}]}`)
+			fmt.Fprint(w, `{"success":true,"data":[{"filepath":"Workflow/invoices/workflow.json","type":"file"},{"filepath":"Workflow/review-relay/workflow.json","type":"file"}]}`)
 		case r.URL.Path == "/api/documents" && r.URL.Query().Get("folder") == "Chats/Work/projects":
 			fmt.Fprint(w, `{"success":true,"data":[{"filepath":"Chats/Work/projects/company-ca/product.json","type":"file"}]}`)
 		case r.URL.Path == "/api/documents/Workflow/invoices/workflow.json":
 			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Workflow/invoices/workflow.json","content":"{\"id\":\"wf-invoices\",\"label\":\"Invoice Processing\"}"}}`)
+		case r.URL.Path == "/api/documents/Workflow/review-relay/workflow.json":
+			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Workflow/review-relay/workflow.json","content":"{\"id\":\"relay-review\",\"kind\":\"relay\",\"label\":\"Review Relay\"}"}}`)
 		case r.URL.Path == "/api/documents/Chats/Work/projects/company-ca/product.json":
 			fmt.Fprint(w, `{"success":true,"data":{"filepath":"Chats/Work/projects/company-ca/product.json","content":"{\"product\":\"work\",\"id\":\"company-ca\",\"title\":\"Company CA\",\"identity\":{\"name\":\"CA Crew\"}}"}}`)
 		default:
@@ -35,7 +37,7 @@ func TestDiscoverWhatsAppDestinationsIncludesOwnedCrewProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(candidates) != 2 {
-		t.Fatalf("destinations = %+v, want one Crew and one workflow", candidates)
+		t.Fatalf("destinations = %+v, want one Crew and one workflow, with Relay excluded", candidates)
 	}
 	crew := candidates[0]
 	if crew.Kind != "crew" || crew.Label != "Company CA" || crew.ProfileID != "work" || crew.ConversationKey != "company-ca" || crew.WorkspacePath != "Chats/Work/projects/company-ca" {

@@ -120,7 +120,7 @@ function FilesBody() {
   return <FileWorkspacePane hideManagedEntriesByDefault />
 }
 
-function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string | null; presetQueryId: string | null }) {
+function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspacePath: string | null; presetQueryId: string | null; relayMode: boolean }) {
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const refreshToken = useWorkflowStore(state => state.workspaceViewRefreshToken)
   const historyLogsTarget = useWorkflowStore(state => state.workspaceViewTarget?.view === 'execution-logs' && state.workspaceViewTarget.target.startsWith('history:') ? state.workspaceViewTarget : null)
@@ -231,7 +231,7 @@ function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string
       case 'playbooks':
       case 'mcp':
       case 'browser':
-        return <WorkflowCapabilitiesPanel section={view} workspacePath={workspacePath} />
+        return <WorkflowCapabilitiesPanel section={view} workspacePath={workspacePath} relayMode={relayMode} />
       default:
         return assertNeverView(view)
     }
@@ -751,7 +751,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       </Suspense>
     )
   } else {
-    body = <InspectorBody workspacePath={workspacePath} presetQueryId={presetQueryId} />
+    body = <InspectorBody workspacePath={workspacePath} presetQueryId={presetQueryId} relayMode={relayMode} />
   }
 
   return (

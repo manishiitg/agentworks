@@ -165,7 +165,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => PRIMARY_TOOLBAR_VIEW_IDS.has(view.id) && view.id !== 'report' && (!relayMode || ['flow', 'workshop'].includes(view.id)))
   const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['costs', 'execution-logs', 'files'].includes(view.id)))
   const capabilityViewDefinitions = useMemo(
-    () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp')),
+    () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp' || view.id === 'identity')),
     [relayMode],
   )
 
@@ -480,7 +480,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             label="Setup"
             data-tour="workflow-setup"
             open
-            title={relayMode ? 'Relay setup: integrations and access' : 'Setup: identity, integrations, playbooks and access'}
+            title={relayMode ? 'Relay setup: identity, models, and integrations' : 'Setup: identity, integrations, playbooks and access'}
           >
             <div className="inline-flex items-center gap-0.5">
               {capabilityViewDefinitions.map(({ id, icon: Icon, label }) => {

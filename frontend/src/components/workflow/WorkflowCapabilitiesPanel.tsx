@@ -51,6 +51,7 @@ const MCP_TABS: Array<{ value: McpTab; label: string }> = [
   { value: 'gmail', label: 'Gmail' },
   { value: 'cli', label: 'Connect' },
 ]
+const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'gmail')
 
 type IdentityTab = IdentityTabId
 
@@ -61,10 +62,12 @@ const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'llm', label: 'Models' },
   { value: 'upgrades', label: 'Upgrades' },
 ]
+const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')
 
 interface WorkflowCapabilitiesPanelProps {
   section: WorkflowCapabilitySection
   workspacePath: string | null
+  relayMode?: boolean
 }
 
 const EMPTY_CAPABILITIES: WorkflowCapabilities = {
@@ -105,7 +108,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
   },
 }
 
-export default function WorkflowCapabilitiesPanel({ section, workspacePath }: WorkflowCapabilitiesPanelProps) {
+export default function WorkflowCapabilitiesPanel({ section, workspacePath, relayMode = false }: WorkflowCapabilitiesPanelProps) {
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const [capabilities, setCapabilities] = useState<WorkflowCapabilities>(EMPTY_CAPABILITIES)
   // What the manifest last held, so the footer can tell "edited" from "saved".
@@ -122,12 +125,12 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [tab, setTab] = usePersistentTab<McpTab>('agentworks.tab.workflow-mcp', 'apps', MCP_TABS.map(option => option.value))
-  // The Connect tab points at this installation's API origin, on servers and
-  // local installs alike.
-  const mcpTabs = useMemo(() => MCP_TABS, [])
+  const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS
+  const [tab, setTab] = usePersistentTab<McpTab>(relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp', 'apps', mcpTabs.map(option => option.value))
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
-  const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>('agentworks.tab.workflow-identity', 'general', IDENTITY_TABS.map(option => option.value))
+  const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
+  const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
+  const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   // "Available to select for this workflow" means connected -- you can't
   // meaningfully pick tools from a server nobody has authenticated yet. A
   // not-yet-connected server only belongs in the "Connect a new MCP server"
@@ -211,7 +214,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
   const handleIdentityRefresh = useCallback(() => {
     setIdentityTabNonce(nonce => nonce + 1)
   }, [])
-  const identityRefreshLabel = `Refresh ${IDENTITY_TABS.find(option => option.value === identityTab)?.label ?? 'view'}`
+  const identityRefreshLabel = `Refresh ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'view'}`
 
   // Agent tools (and shell edits) can change this configuration while the panel
   // stays open. Refresh both sources, only for the visible MCP panel.
@@ -313,13 +316,23 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
           helpTopic={section === 'mcp'
             ? `Integrations · ${mcpTabs.find(option => option.value === activeMcpTab)?.label ?? 'MCPs'}`
             : section === 'identity'
-              ? `Identity · ${IDENTITY_TABS.find(option => option.value === identityTab)?.label ?? 'General'}`
+              ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
-          subtitle={copy.description}
+          subtitle={relayMode && section === 'mcp' ? 'Choose the MCP tools, skills, and Gmail account this Relay may use.' : relayMode && section === 'identity' ? 'Name, delete, and choose the Builder model for this Relay.' : copy.description}
           actions={(
             <WorkspaceViewActions
               workspacePath={workspacePath}
-              message={section === 'mcp' ? getIntegrationTabAskAIMessage(activeMcpTab) : section === 'identity' ? getIdentityTabAskAIMessage(identityTab) : getWorkspaceAskAIMessage(section)}
+              message={section === 'mcp'
+                ? relayMode && activeMcpTab === 'apps'
+                  ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
+                  : getIntegrationTabAskAIMessage(activeMcpTab)
+                : section === 'identity'
+                  ? relayMode
+                    ? activeIdentityTab === 'llm'
+                      ? 'Help me choose the Builder model for this Relay. Agent execution models are configured per step through execution_llm, so explain the current Builder choice and ask what I want to change.'
+                      : 'Help me rename this Relay or explain how to delete it. Show its current name and ask what I want to change.'
+                    : getIdentityTabAskAIMessage(activeIdentityTab)
+                  : getWorkspaceAskAIMessage(section)}
               onRefresh={section === 'mcp'
                 ? handleMcpRefresh
                 : section === 'identity'
@@ -332,7 +345,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
           tabs={section === 'mcp'
             ? { value: activeMcpTab, onChange: (value: string) => setTab(value as McpTab), options: mcpTabs, ariaLabel: 'Integrations' }
             : section === 'identity'
-              ? { value: identityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: IDENTITY_TABS, ariaLabel: 'Identity' }
+              ? { value: activeIdentityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: identityTabs, ariaLabel: 'Identity' }
               : undefined}
         />
       )}
@@ -350,7 +363,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
             )}
             {section === 'mcp' && (
               <div>
-                {(activeMcpTab === 'apps' || activeMcpTab === 'skills') && (
+                {!relayMode && (activeMcpTab === 'apps' || activeMcpTab === 'skills') && (
                   <>
                 <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
                   <div className="min-w-0 flex-1 basis-48">
@@ -382,10 +395,13 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                         <PlaceMcpSection workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow} />
                       </div>
                     )}
+                    {relayMode && availableServers.length === 0 && (
+                      <p className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">No MCP servers are connected yet. Connected servers will appear here for this Relay to use.</p>
+                    )}
                     {selectedAvailableServers.length > 0 && (
                       <div className="mt-3 border-t border-border pt-3">
                         <div className="mb-3 text-sm font-medium text-muted-foreground">
-                          This workflow
+                          {relayMode ? 'This Relay' : 'This workflow'}
                         </div>
                         <ToolSelectionSection
                           stepId="workflow-selected"
@@ -420,7 +436,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                           Platform connected
                         </div>
                         <p className="mb-3 text-xs leading-5 text-muted-foreground">
-                          Shared with everyone. Tick one to let this workflow use it.
+                          Shared with everyone. Tick one to let this {relayMode ? 'Relay' : 'workflow'} use it.
                         </p>
                         <ToolSelectionSection
                           stepId="workflow-available"
@@ -449,7 +465,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                         />
                       </div>
                     )}
-                    <div className="relative mt-3 shrink-0">
+                    {!relayMode && <div className="relative mt-3 shrink-0">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
@@ -459,8 +475,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                         aria-label="Search apps"
                         className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                       />
-                    </div>
-                    <div className="mt-3 border-t border-border pt-3">
+                    </div>}
+                    {!relayMode && <div className="mt-3 border-t border-border pt-3">
                       <div className="mb-3 text-sm font-medium text-muted-foreground">
                         Connect a new app
                       </div>
@@ -473,7 +489,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                         hideConnectedSection
                         hideBanner
                       />
-                    </div>
+                    </div>}
                   </>
                 )}
                 {activeMcpTab === 'skills' && (
@@ -488,7 +504,9 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                           workspacePath={canWriteWorkflow ? workspacePath ?? null : null}
                           iconOnly
                           label="Install a skill"
-                          message="Help me install a specific skill for this workflow. Ask which skill I want, then find it: search the local skills library first, then the web. Import it into the library, add it to this workflow, verify it works, and confirm briefly."
+                          message={relayMode
+                            ? 'Help me add a skill to this Relay. Ask which skill I want, find it in the shared library, then attach it to this Relay and verify the selection.'
+                            : 'Help me install a specific skill for this workflow. Ask which skill I want, then find it: search the local skills library first, then the web. Import it into the library, add it to this workflow, verify it works, and confirm briefly.'}
                         />
                       )}
                       workspacePath={workspacePath}
@@ -513,22 +531,22 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                     />
                   </div>
                 )}
-                {activeMcpTab === 'slack' && (
+                {!relayMode && activeMcpTab === 'slack' && (
                   <div className="mt-3">
                     <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="slack" />
                   </div>
                 )}
-                {activeMcpTab === 'whatsapp' && (
+                {!relayMode && activeMcpTab === 'whatsapp' && (
                   <div className="mt-3 border-t border-border pt-3">
                     <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />
                   </div>
                 )}
                 {activeMcpTab === 'gmail' && (
                   <div className="mt-3">
-                    <WorkflowEmailPanel workspacePath={workspacePath} />
+                    <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun={relayMode ? 'relay' : 'workflow'} />
                   </div>
                 )}
-                {activeMcpTab === 'cli' && (
+                {!relayMode && activeMcpTab === 'cli' && (
                   <div className="mt-3">
                     <CliMcpSetupPanel />
                   </div>
@@ -537,11 +555,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
               </div>
             )}
             {section === 'identity' && (
-              <div key={`${identityTab}:${identityTabNonce}`}>
-                {identityTab === 'general' && (
-                  <WorkflowIdentityPanel workspacePath={workspacePath} />
+              <div key={`${activeIdentityTab}:${identityTabNonce}`}>
+                {activeIdentityTab === 'general' && (
+                  <WorkflowIdentityPanel workspacePath={workspacePath} relayMode={relayMode} />
                 )}
-                {identityTab === 'secrets' && (
+                {!relayMode && activeIdentityTab === 'secrets' && (
                   // Only the workflow's own checklist lives here: the workflow
                   // box plus globals. Values are managed through the rows below
                   // or the builder; the pane scrolls as a whole and the list
@@ -578,13 +596,15 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                     />
                   </div>
                 )}
-                {identityTab === 'folders' && (
+                {!relayMode && activeIdentityTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />
                 )}
-                {identityTab === 'llm' && (
+                {activeIdentityTab === 'llm' && (
                   <WorkflowLLMConfigurationPanel
                     workspacePath={workspacePath}
                     llmConfig={capabilities.llm_config}
+                    scopeNoun={relayMode ? 'Relay Builder' : 'workflow'}
+                    builderOnly={relayMode}
                     onChange={(llm_config) => {
                       const next = { ...capabilities, llm_config }
                       setCapabilities(next)
@@ -592,7 +612,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                     }}
                   />
                 )}
-                {identityTab === 'llm' && (
+                {!relayMode && activeIdentityTab === 'llm' && (
                   <div className="mt-4">
                     <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
                       <ToggleRow
@@ -610,7 +630,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                     </SettingsCard>
                   </div>
                 )}
-                {identityTab === 'upgrades' && (
+                {!relayMode && activeIdentityTab === 'upgrades' && (
                   <WorkflowUpdatesView workspacePath={workspacePath} />
                 )}
               </div>

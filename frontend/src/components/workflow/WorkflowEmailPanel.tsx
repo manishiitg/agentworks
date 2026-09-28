@@ -4,7 +4,7 @@ import { useWorkflowBots } from './bots/useWorkflowBots'
 
 export default function WorkflowEmailPanel({ workspacePath, scopeNoun = 'workflow', onAsk, platformConnect }: {
   workspacePath: string | null
-  scopeNoun?: 'workflow' | 'project'
+  scopeNoun?: 'workflow' | 'project' | 'relay'
   onAsk?: (message: string) => void | Promise<void>
   platformConnect?: ReactNode
 }) {

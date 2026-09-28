@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
@@ -110,9 +111,26 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	if manifest.PulseEnabled() || manifest.EffectivePulseMode(WorkflowSchedule{}) != schedulePulseModeOff {
 		t.Fatal("Relay enabled Pulse")
 	}
-	manifest.Schedules = []WorkflowSchedule{{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"default"}}}
+	manifest.Capabilities.SlackConnectionID = "slack-app"
 	if err := ValidateManifest(manifest); err == nil {
-		t.Fatal("Relay accepted a cron schedule")
+		t.Fatal("Relay accepted a Slack connection")
+	}
+	manifest.Capabilities.SlackConnectionID = ""
+	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"slack"}}
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("Relay accepted Slack notifications")
+	}
+	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"gmail"}}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("Relay rejected Gmail notifications: %v", err)
+	}
+	manifest.Schedules = []WorkflowSchedule{{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}, PulseMode: "off"}}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("Relay rejected a cron schedule: %v", err)
+	}
+	manifest.Schedules[0].TriggerPayload = json.RawMessage(`[]`)
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("Relay accepted a non-object schedule input")
 	}
 	manifest.Schedules = nil
 	function := reviewPRTrigger()
@@ -129,6 +147,45 @@ func TestRelayManifestKindValidation(t *testing.T) {
 	manifest.Kind = "other"
 	if err := ValidateManifest(manifest); err == nil {
 		t.Fatal("unknown workflow kind accepted")
+	}
+}
+
+func TestRelayScheduledInputUsesDirectGraphContract(t *testing.T) {
+	manifest := NewWorkflowManifest("Relay")
+	manifest.Kind = "relay"
+	sctx := buildScheduleContext("Workflow/relay", manifest, WorkflowSchedule{GroupNames: []string{"prod"}, TriggerPayload: json.RawMessage(`{"question":"status"}`)})
+	if sctx.WorkflowKind != "relay" || sctx.Capabilities.Notifications == nil ||
+		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "slack") ||
+		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "whatsapp") {
+		t.Fatalf("Relay schedule context = %+v", sctx)
+	}
+	input, err := relayScheduledInput(sctx, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.RunID != "run-1" || input.Group != "prod" || input.Variables["INPUT"] != `{"question":"status"}` || input.Event != "relay.schedule" {
+		t.Fatalf("scheduled input = %+v", input)
+	}
+	sctx.Schedule.TriggerPayload = json.RawMessage(`[]`)
+	if _, err := relayScheduledInput(sctx, "run-2"); err == nil {
+		t.Fatal("Relay schedule accepted a non-object payload")
+	}
+}
+
+func TestRelayRejectsBotChannelRoute(t *testing.T) {
+	manifest := NewWorkflowManifest("Relay")
+	manifest.Kind = "relay"
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/relay/workflow.json": string(raw)}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	api := &StreamingAPI{}
+	userID, allowed, err := api.checkBotWorkflowAccess(context.Background(), "owner", "", services.ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: "Workflow/relay"})
+	if err != nil || allowed || userID != "owner" {
+		t.Fatalf("Relay bot route access = (%q, %v, %v)", userID, allowed, err)
 	}
 }
 
