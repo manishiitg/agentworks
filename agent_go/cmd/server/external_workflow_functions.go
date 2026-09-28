@@ -26,14 +26,14 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		callID, _ := args["call_id"].(string)
 		call := lookupCrewFunctionCall(strings.TrimSpace(callID))
 		if call == nil {
-			externalError(w, 404, "not_found", "Function call not found (calls are tracked until the server restarts).")
+			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
 		call.mu.Lock()
 		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser && call.TargetKind == triggerCallerWorkflow && call.TargetID == manifest.ID
 		call.mu.Unlock()
 		if !owned {
-			externalError(w, 404, "not_found", "Function call not found (calls are tracked until the server restarts).")
+			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
 		externalJSON(w, externalWorkflowCallResponse(ctx, call, 0))

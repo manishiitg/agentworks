@@ -160,15 +160,24 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	if name == "get_crew_function_call" {
 		call := lookupCrewFunctionCall(str("call_id"))
 		if call == nil {
-			externalError(w, 404, "not_found", "Function call not found (calls are tracked until the server restarts).")
+			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
 		call.mu.Lock()
-		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
+		// Only this user's own calls to a Crew: a workflow call is read with
+		// get_workflow_function_call, under workflow access. Without the kind
+		// check a Crew-only token read the user's workflow results (PLAT-366).
+		owned := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser && call.TargetKind == triggerCallerCrew
 		targetID := call.TargetID
 		call.mu.Unlock()
 		if !owned || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(targetID)) {
-			externalError(w, 404, "not_found", "Function call not found (calls are tracked until the server restarts).")
+			externalError(w, 404, "not_found", "Function call not found.")
+			return
+		}
+		// The caller must still be able to use that Crew now, not only when
+		// the call was made.
+		if _, _, _, ok := api.externalCrewResolve(ctx, claims, targetID); !ok {
+			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
 		externalJSON(w, externalCrewCallResponse(ctx, call, 0))
