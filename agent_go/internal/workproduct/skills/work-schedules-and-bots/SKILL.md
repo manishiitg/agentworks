@@ -1,13 +1,13 @@
 ---
 name: work-schedules-and-bots
-description: Manage Crew's message-only project schedules, authenticated webhook triggers, Slack or WhatsApp project-chat bots, and connected Gmail accounts. Use when the user asks for recurring work, event-driven work, a scheduled message, an API trigger, bot routing, email notifications, or reading Gmail in a Crew project.
+description: Manage {{product}}'s message-only project schedules, authenticated webhook triggers, Slack or WhatsApp project-chat bots, and connected Gmail accounts. Use when the user asks for recurring work, event-driven work, a scheduled message, an API trigger, bot routing, email notifications, or reading Gmail in a {{product}} project.
 ---
 
-# Crew schedules and bots
+# {{product}} schedules and bots
 
 ## Project schedules
 
-- A Crew schedule contains exactly one message sent to this project's Builder
+- A {{product}} schedule contains exactly one message sent to this project's Builder
   conversation. It is not an AgentWorks workflow, route, phase, or execution.
 - Use `list_project_schedules` before updating, deleting, or triggering. Use the
   exact returned schedule ID.
@@ -19,7 +19,7 @@ description: Manage Crew's message-only project schedules, authenticated webhook
 
 ## Project webhook triggers
 
-- A Crew webhook trigger contains one saved instruction. Each authenticated
+- A {{product}} webhook trigger contains one saved instruction. Each authenticated
   JSON delivery sends that instruction into this project's durable Builder
   conversation together with the workspace-relative payload file path.
 - Use `list_project_triggers` before updating or deleting a trigger. Use the
@@ -30,14 +30,14 @@ description: Manage Crew's message-only project schedules, authenticated webhook
 - Rotating a secret invalidates the old credential. Never write a trigger
   secret or raw delivery payload into `workflow.json`, chat instructions, logs,
   or source files.
-- Crew triggers do not select or execute AgentWorks routes, steps, phases,
+- {{product}} triggers do not select or execute AgentWorks routes, steps, phases,
   Pulse, or workflow runs. Use an AgentWorks workflow webhook when those
   orchestration semantics are required.
 
 ## Project-chat bots
 
 Slack and WhatsApp bot connections use the shared AgentWorks connector
-infrastructure, but their route target is this Crew project chat. Configuration
+infrastructure, but their route target is this {{product}} project chat. Configuration
 is in **Setup > Bots**. If no bot-management tool is available in the current
 turn, explain the exact UI location rather than pretending a route was created.
 Bot messages inherit this project's workspace boundary, selected skills, MCP
@@ -51,7 +51,7 @@ servers, and available secrets.
 - Before calling `google_workspace_cli`, use `list_skills` to check whether the
   upstream `gog` skills are installed. If they are missing, call
   `install_skill(source="https://github.com/openclaw/gogcli")`. Do this only
-  when Google Workspace work needs the CLI guidance; opening a Crew project
+  when Google Workspace work needs the CLI guidance; opening a {{product}} project
   must not install external software or skills automatically.
 - Use `read_skill` to load `gog` and the relevant installed `gog-gmail`,
   `gog-drive`, `gog-sheets`, `gog-docs`, `gog-slides`, or `gog-calendar`
@@ -77,7 +77,7 @@ servers, and available secrets.
 
 ## Slack bot routes and threaded messages
 
-Call `get_slack_bot_settings` before changing a route and again afterward to confirm the saved state. Use exact Slack channel IDs (for example `C1234567890`), never display names. The tools are bound to the current workflow or Work project; they cannot manage another target.
+Call `get_slack_bot_settings` before changing a route and again afterward to confirm the saved state. Use exact Slack channel IDs (for example `C1234567890`), never display names. The tools are bound to the current workflow or {{product}} project; they cannot manage another target.
 
 `create_slack_bot_route(channel_id)` creates a route; `update_slack_bot_route_permission(channel_id, blocked_emails?)` updates its run route settings; `remove_slack_bot_route(channel_id)` revokes it. `test_slack_bot_connection` returns per-check `passed`, `missing`, `failed`, or `manual` results for bot/app tokens and the installed bot scopes. Missing `app_mentions:read` or `chat:write` requires adding the scope and reinstalling the app. Explain each failed or missing check by name and its corrective action. Do not guess token rotation, transient failures, or credential problems when the result identifies a missing scope. If the bridge only returns a generic failure without checks, say the diagnostic detail is unavailable instead of inventing a cause. Event subscriptions and mention delivery require manual verification with the current tokens; do not claim a successful token check proves the bot receives messages. The global enable switch (which covers only channels without a route) and the platform default app require an operator. A saved channel route enables the bot for that channel without operator involvement. A product owner manages their project's own app with `configure_slack_bot(enabled, bot_token?, app_token?, app_name?)`; omitted tokens and name are preserved, and the project selects its app automatically. `get_slack_bot_credentials` returns masked credentials only. These tools reuse the shared settings backend and preserve existing routes. Use `perform_ui_action(action="open", view="bots")` when the user needs that visual surface.
 
@@ -86,7 +86,7 @@ Call `get_slack_bot_settings` before changing a route and again afterward to con
 When asked to connect Slack or configure a route, inspect `get_slack_bot_settings` first. Distinguish enabled/configured settings from a successful connection test; never say connected merely because `enabled` and `bot_mode` are true. A channel is live when it has a saved route and the connection test passes.
 
 1. Open `perform_ui_action(action="open", view="bots")`. The main Bots screen contains separate Slack and WhatsApp cards. Routes for the current workflow/project, Add controls and blocked-email Options live inside each card. Open on the Slack card shows shared connection settings only.
-2. Guide the operator to create a Slack app, install it in the workspace, and obtain its Bot User OAuth Token (`xoxb-`). In the same Slack app, open Socket Mode and turn on Enable Socket Mode before configuring Event Subscriptions. Refresh Event Subscriptions, leave Request URL empty (Socket Mode needs no public URL), enable events, add the bot events, and click Save Changes. If Save Changes is disabled and a Request URL is shown, verify Socket Mode is enabled in this same app. Obtain an App-Level Token (`xapp-`) with `connections:write`. Required for full delivery: subscribe to all three bot events: `app_mention`, `message.channels`, and `message.groups`. Invite the bot and verify both an @mention and a plain thread reply reach the service. Token checks passing alone do not establish complete setup; never describe these delivery requirements as optional. Grant `app_mentions:read`, `channels:history`, `groups:history`, `channels:read`, `groups:read`, `chat:write`, `chat:write.public`, `reactions:write`, `users:read`, and `users:read.email`; add `files:read` only if incoming attachments are needed.. For 1:1 direct messages with a workflow's or crew's own bot, also add `im:history`, `im:read`, the `message.im` event, and App Home → Messages Tab (tick "Allow users to send Slash commands and messages from the messages tab"); a DM runs as the sender's own AgentWorks account (matched by Slack email, owner → full, reader → Run mode), while channels always run in Run mode. The shared bot does not take DMs. Reinstall the app after changing scopes.
+2. Guide the operator to create a Slack app, install it in the workspace, and obtain its Bot User OAuth Token (`xoxb-`). In the same Slack app, open Socket Mode and turn on Enable Socket Mode before configuring Event Subscriptions. Refresh Event Subscriptions, leave Request URL empty (Socket Mode needs no public URL), enable events, add the bot events, and click Save Changes. If Save Changes is disabled and a Request URL is shown, verify Socket Mode is enabled in this same app. Obtain an App-Level Token (`xapp-`) with `connections:write`. Required for full delivery: subscribe to all three bot events: `app_mention`, `message.channels`, and `message.groups`. Invite the bot and verify both an @mention and a plain thread reply reach the service. Token checks passing alone do not establish complete setup; never describe these delivery requirements as optional. Grant `app_mentions:read`, `channels:history`, `groups:history`, `channels:read`, `groups:read`, `chat:write`, `chat:write.public`, `reactions:write`, `users:read`, and `users:read.email`; add `files:read` only if incoming attachments are needed.. For 1:1 direct messages with a workflow's or {{product}} project's own bot, also add `im:history`, `im:read`, the `message.im` event, and App Home → Messages Tab (tick "Allow users to send Slash commands and messages from the messages tab"); a DM runs as the sender's own AgentWorks account (matched by Slack email, owner → full, reader → Run mode), while channels always run in Run mode. The shared bot does not take DMs. Reinstall the app after changing scopes.
 3. The operator enters both tokens directly in Slack settings. The Enable Slack bot switch covers only channels without a route and is operator-managed; skip it when every channel will have a saved route, since routes enable their own channels. There is one switch, not a separate Bot Mode choice. Test Connection saves changed settings before testing bot authentication and the app token's Socket Mode access. It does not require a default channel or post a test message. A failed test is not a connection. Prefer direct entry in the settings UI. If the operator explicitly supplies new tokens for configuration, use `configure_slack_bot`, never echo the values or write them through workspace files. Test with `test_slack_bot_connection` after saving.
 4. Invite the bot to the desired channel. Obtain the exact channel ID from Slack's channel details, then create a route for the current workflow/project with `create_slack_bot_route`. Channel IDs belong only to routes; there is no global/default channel. Use `run` for bot routes. Do not ask users to choose a grant or offer bot authoring mode. Confirm with `get_slack_bot_settings` after the change.
 5. Everyone in a routed channel is allowed by default. To exclude users, set that route's `blocked_emails`; use `[]` to clear the list. Do not create a global Allowed Users list. The same app may serve different channels, each with its own workflow/project destination.
@@ -95,7 +95,7 @@ Notify controls outbound workflow notifications and human feedback. Bots control
 
 Bot routes use `run`, which gives runtime/read-only authority. Do not offer `owner` or workflow authoring through the bot. The Slack sender is audit metadata and never supplies execution permissions. Only an authenticated interactive owner may create, update, or remove a route. A Slack-origin session cannot manage routes. Legacy owner/Build routes are restricted to Run when decoded and revalidated. Read-only sessions receive inspection tools, not mutation tools. Permission changes invalidate running bot work and are rechecked on every turn.
 
-Workflow destinations contain `workflow_id` and `workspace_path`. Product destinations contain `profile_id`, `conversation_key`, and `workspace_path`. A Work project route must preserve `profile_id=work` and `conversation_key=<projectId>` and must not acquire a workflow ID. The backend binds the product owner; never edit `workspace_user_id`.
+Workflow destinations contain `workflow_id` and `workspace_path`. Product destinations contain `profile_id`, `conversation_key`, and `workspace_path`. A {{product}} project route must preserve `profile_id={{profile_id}}` and `conversation_key=<projectId>` and must not acquire a workflow ID. The backend binds the product owner; never edit `workspace_user_id`.
 
 ## Scripted and agentic threaded sends
 

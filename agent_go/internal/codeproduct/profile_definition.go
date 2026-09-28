@@ -37,11 +37,14 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 	return []agentprofiles.Profile{BuiltinAgentProfile()}
 }
 
-// RegisterProductSkills registers the shared project-feature skills Code's
-// features attach (work-mcp, work-skills, ...). They are Crew's embedded
-// skills; registering them is idempotent.
+// RegisterProductSkills registers Code's own rendering of the shared
+// project-feature skills (code-mcp, code-skills, ...): the same templates as
+// Crew's, named for this product with the name from product.yaml.
 func RegisterProductSkills() error {
-	return workproduct.RegisterProductSkills()
+	if err := workproduct.RegisterProductSkills(); err != nil {
+		return err
+	}
+	return workproduct.RegisterFeatureSkills(ProfileID, mustCodeManifest().Profile.Name)
 }
 
 var projectSlugPattern = regexp.MustCompile(`[^a-z0-9]+`)

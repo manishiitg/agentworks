@@ -1,24 +1,24 @@
 ---
 name: work-mcp
-description: Connect and manage MCP servers for Crew projects. Use when the user asks to connect a service through MCP, inspect connection or authorization state, select MCP access for a project, refresh tool discovery, or diagnose an MCP server.
+description: Connect and manage MCP servers for {{product}} projects. Use when the user asks to connect a service through MCP, inspect connection or authorization state, select MCP access for a project, refresh tool discovery, or diagnose an MCP server.
 ---
 
-# Crew MCP
+# {{product}} MCP
 
 Inspect the current MCP state before changing it, and distinguish platform-level
 connection setup from selection for this project.
 
 - Use `list_mcp_servers` to inspect installed connection and authorization
   state. Use `search_mcp_catalog` only to discover a new server.
-- Use `install_mcp_server` for a catalog result or service URL so Crew can probe
+- Use `install_mcp_server` for a catalog result or service URL so {{product}} can probe
   its authentication requirements. Use `add_mcp_server` only for a custom
   server whose protocol and complete configuration are already known.
-- An installed server is a platform connection shared by AgentWorks, Crew,
+- An installed server is a platform connection shared by AgentWorks, Crew, Code,
   workflows, chats, schedules, and every user. Only a platform administrator
   may add, authenticate, reconnect, edit, or remove one. Explain this before
   starting credential or OAuth setup. A connection is not automatically
   selected for this project.
-- When the user asks to use an already-connected server in the active Crew
+- When the user asks to use an already-connected server in the active {{product}}
   project, call `update_project_mcp_server_selection` with `action: select`.
   The selection is written to this project's `workflow.json`; its tools become
   available on the next user message because the current turn retains its

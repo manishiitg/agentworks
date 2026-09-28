@@ -1,9 +1,9 @@
 ---
 name: work-integrations
-description: Manage Crew secrets, browser access, models, and administrator-authorized server folders. Use when the user asks to configure credentials or browser access, choose a coding provider, or attach an external folder.
+description: Manage {{product}} secrets, browser access, models, and administrator-authorized server folders. Use when the user asks to configure credentials or browser access, choose a coding provider, or attach an external folder.
 ---
 
-# Crew integrations
+# {{product}} integrations
 
 Inspect current state before changing it, and distinguish account-level setup
 from selection for this project. MCP setup has its own `work-mcp` skill.
@@ -12,14 +12,14 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
 
 - Call `list_secrets` before creating, replacing, or deleting a secret.
 - `set_workflow_secret` and `delete_workflow_secret` manage project-scoped
-  secrets in Crew (legacy tool names for the shared project store). There is
+  secrets in {{product}} (legacy tool names for the shared project store). There is
   no account-level secret: a credential shared across projects must be a
   global, promoted by an administrator (see below).
 - After `set_workflow_secret` succeeds, `$SECRET_<NAME>` is available to shell
   tools immediately in the current chat and remains available in later turns.
   Continue the requested work in the same chat; do not ask the user to start a
   new chat or session. Verify availability without printing the secret value.
-- Work stores attached secret names in `workflow.json` under
+- {{product}} stores attached secret names in `workflow.json` under
   `capabilities.selected_secrets`, using the AgentWorks workflow contract.
   Secret values remain encrypted outside the manifest. Respect the user's
   selections in **Setup > Secrets**; do not attach an unrelated credential.
@@ -27,9 +27,9 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   credential across projects, an administrator must explicitly promote the
   source project/workflow secret with `manage_global_secret(action="promote")`
   or **Make global** in Setup > Secrets. Then explicitly select that global
-  name in each destination Crew with
+  name in each destination {{product}} project with
   `update_project_global_secret_selection(action="select", name="NAME")`.
-  Call `list_secrets` first and use an exact name from `global.names`. Crew persists this allowlist in
+  Call `list_secrets` first and use an exact name from `global.names`. {{product}} persists this allowlist in
   `capabilities.selected_global_secret_names`; it never inherits newly created
   globals automatically.
 - Never print, echo, store in project files, or otherwise reveal a secret

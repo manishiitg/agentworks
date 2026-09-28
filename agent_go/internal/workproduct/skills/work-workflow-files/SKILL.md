@@ -1,11 +1,11 @@
 ---
 name: work-workflow-files
-description: Read and interpret attached folders or read-only AgentWorks workflow references in Crew, invoke an attached workflow through its Crew-scoped internal trigger, and securely link files from the active Crew project. Use when the user asks what an attached workflow contains, wants it run, requests data or Dashboards from it, compares files across workflows, or asks for a share link to a Crew project file or folder.
+description: Read and interpret attached folders or read-only AgentWorks workflow references in {{product}}, invoke an attached workflow through its {{product}}-scoped internal trigger, and securely link files from the active {{product}} project. Use when the user asks what an attached workflow contains, wants it run, requests data or Dashboards from it, compares files across workflows, or asks for a share link to a {{product}} project file or folder.
 ---
 
 # Use attached workflows
 
-## Share an active Crew project file or folder
+## Share an active {{product}} project file or folder
 
 For the project's live Dashboard, call `get_report_link` with no arguments and
 use its returned `url`. Do not pass `db/reports/index.html` to `get_file_link`:
@@ -16,7 +16,7 @@ do not add a separate publish password or login to this internal URL. Publicly
 hosted static Dashboards remain a separate publish flow with their own visibility
 controls.
 
-Call `get_file_link` with the path relative to the active Crew project. The
+Call `get_file_link` with the path relative to the active {{product}} project. The
 server verifies that the target exists, rejects private or escaping paths,
 detects file versus folder, and returns the correct authenticated
 `preview_url`. Never construct `/file` or `/folder` URLs manually.
@@ -27,8 +27,8 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 `127.0.0.1`, or `::1` cannot be opened by another user or device. The deployment
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
-Crew projects are personal. The URL contains no credentials and grants no
-access; it can currently be opened only by the same signed-in Crew account.
+{{product}} projects are personal. The URL contains no credentials and grants no
+access; it can currently be opened only by the same signed-in {{product}} account.
 Do not describe it as public publishing or as a way to grant another user
 access. Use a publishing workflow when the user explicitly needs public or
 cross-user distribution.
@@ -54,7 +54,7 @@ workflow or another Crew, use
 `list_accessible_workflows`, disambiguate by its exact returned path, and call
 `attach_workflow_reference` only when the user asks to keep it attached. Use
 the exact saved path for `detach_workflow_reference`. Durable references live
-in the Crew project's `workflow.json` and are re-authorized on every turn.
+in the {{product}} project's `workflow.json` and are re-authorized on every turn.
 
 ## Invoke an attached workflow
 
@@ -64,12 +64,12 @@ attaching or inspecting it alone is not permission to start a job.
 1. Call `list_attached_workflows` and use its exact `workspace_path`. A `#`
    selection is temporary context and is not an invokable durable attachment.
 2. Call `list_workflow_triggers` when trigger discovery or selection matters.
-   Public triggers may be visible for context, but this Crew path never exposes
+   Public triggers may be visible for context, but this {{product}} path never exposes
    their secrets and cannot invoke them.
 3. Call `run_workflow_trigger` with the exact path and the smallest required
    JSON payload. Normally omit `trigger_id`: the server reuses or creates the
-   secretless internal trigger bound to this exact Crew. Pass an ID only when
-   it is an enabled internal trigger clearly bound to this Crew.
+   secretless internal trigger bound to this exact {{product}} project. Pass an ID only when
+   it is an enabled internal trigger clearly bound to this {{product}} project.
 4. Preserve the returned `delivery_id` and reuse it for retries of the same
    request so a retry cannot duplicate work. Poll `get_workflow_trigger_run`
    with the returned workflow path, trigger ID, and run ID until terminal;
@@ -137,7 +137,7 @@ schemas, and instructions, stored in its `functions.json`.
   into a running Crew call (Crew targets only); it answers with a progress
   report.
 - **Offer** — `define_function(name, description, instructions, input_schema,
-  result_schema)` declares a function on this Crew (omit `target`) or on
+  result_schema)` declares a function on this {{product}} project (omit `target`) or on
   another Crew; `delete_function` removes it. Workflow functions are made in
   that workflow's Builder chat instead. If the same ask keeps arriving,
   suggest turning it into a typed function.
@@ -179,8 +179,8 @@ and `tool_output_folder/` are platform/runtime state. Inspect them only when the
 user's question specifically requires diagnostics, history, or architecture.
 
 For an attached workflow database, use a read-only shell query such as
-`sqlite3 -readonly "$root/db/db.sqlite" ...`. The Crew project's
-`query_workflow_db` tool targets the current Crew project, not an attached
+`sqlite3 -readonly "$root/db/db.sqlite" ...`. The {{product}} project's
+`query_workflow_db` tool targets the current {{product}} project, not an attached
 workflow. Treat files as evidence that may change while the source workflow is
 running, and state when a conclusion depends on a particular run or snapshot.
 

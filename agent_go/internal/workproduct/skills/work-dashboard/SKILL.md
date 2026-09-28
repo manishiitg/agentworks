@@ -1,9 +1,9 @@
 ---
 name: work-dashboard
-description: Create or update a Crew project's visual Dashboard for tasks, notes, plans, status, research, project information, or any other content the user wants to manage visually.
+description: Create or update a {{product}} project's visual Dashboard for tasks, notes, plans, status, research, project information, or any other content the user wants to manage visually.
 ---
 
-# Crew Dashboard
+# {{product}} Dashboard
 
 Use this skill when the user asks for a dashboard, board, tracker, visual home,
 or another project view intended to organize or manage information visually.
@@ -54,15 +54,15 @@ or another project view intended to organize or manage information visually.
 - `window.report.updateField` and `updateFields` may be used for explicit,
   user-initiated edits. Keep SQL parameterized and scope updates to stable keys.
 - For data that must be current from an outside system (Notion, a CRM, an
-  API behind the crew's MCP servers or secrets), write a small read-only
+  API behind the project's MCP servers or secrets), write a small read-only
   script at `code/reports/<name>.py` and call
   `await window.report.run('code/reports/<name>.py', args)` inside
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Runs on the server as the crew, never as the viewer: the crew's selected
+  - Runs on the server as the project, never as the viewer: the project's selected
     MCP servers and secrets (`$SECRET_*`). The owner and anyone viewing the
-    crew can trigger it; published copies cannot.
+    project can trigger it; published copies cannot.
   - Args arrive as JSON in `$REPORT_ARGS` (`{}` when none). Treat them as
     untrusted and validate them.
   - Print exactly one JSON value on stdout; logs go to stderr. Limits: 60 s
@@ -132,11 +132,11 @@ window.report.ready(async function () {
   with that document path (or omit it for the default) and present its returned
   `url` verbatim. It opens the full live
   Dashboard runtime, not the restricted generic HTML file preview. The link is
-  private to the same signed-in Crew account; it contains no credential and
+  private to the same signed-in {{product}} account; it contains no credential and
   does not grant access or publish the project publicly. Inspect `shareable`,
   `scope`, and `warning`; when `shareable` is false (including localhost and
   loopback deployments), describe it only as a same-machine preview and relay
   the warning instead of presenting it as shareable. It uses AgentWorks SSO and
   must not receive a second publish password/login gate; only a separately
   hosted public/static Dashboard uses publish visibility controls.
-- Tell the user the Dashboard is available from the Crew **Dashboard** button.
+- Tell the user the Dashboard is available from the {{product}} **Dashboard** button.

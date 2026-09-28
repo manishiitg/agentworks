@@ -37,16 +37,18 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 
 var registerProductSkillsOnce sync.Once
 var registerProductSkillsErr error
+var registerFeatureSkillsMu sync.Mutex
+var registeredFeatureSkills = map[string]bool{}
 
 var productSkills = []agentprofiles.SkillFileBinding{
-	{Name: "work-mcp", Description: "Connect and manage MCP servers for Crew projects.", Path: "skills/work-mcp/SKILL.md"},
-	{Name: "work-integrations", Description: "Manage Crew secrets, browser access, models, and administrator-authorized server folders.", Path: "skills/work-integrations/SKILL.md"},
-	{Name: "work-workflow-files", Description: "Read and interpret attached folders and read-only AgentWorks workflow references in Crew.", Path: "skills/work-workflow-files/SKILL.md"},
-	{Name: "work-skills", Description: "Discover, install, import, create, select, and remove reusable skills in Crew.", Path: "skills/work-skills/SKILL.md"},
-	{Name: "work-schedules-and-bots", Description: "Manage Crew's message-only schedules, authenticated webhook triggers, and Slack or WhatsApp project-chat bots.", Path: "skills/work-schedules-and-bots/SKILL.md"},
-	{Name: "work-dashboard", Description: "Create and maintain a general-purpose visual dashboard for a Crew project, including live data from code/reports scripts via window.report.run.", Path: "skills/work-dashboard/SKILL.md"},
-	{Name: "work-ui-control", Description: "Open and refresh Crew project panels through acknowledged UI control without using Workflow view semantics.", Path: "skills/work-ui-control/SKILL.md"},
-	{Name: "background-work", Description: "Run a bounded task asynchronously and rely on Crew's automatic completion notification instead of polling.", Path: "skills/background-work/SKILL.md"},
+	{Name: "work-mcp", Description: "Connect and manage MCP servers for {{product}} projects.", Path: "skills/work-mcp/SKILL.md"},
+	{Name: "work-integrations", Description: "Manage {{product}} secrets, browser access, models, and administrator-authorized server folders.", Path: "skills/work-integrations/SKILL.md"},
+	{Name: "work-workflow-files", Description: "Read and interpret attached folders and read-only AgentWorks workflow references in {{product}}.", Path: "skills/work-workflow-files/SKILL.md"},
+	{Name: "work-skills", Description: "Discover, install, import, create, select, and remove reusable skills in {{product}}.", Path: "skills/work-skills/SKILL.md"},
+	{Name: "work-schedules-and-bots", Description: "Manage {{product}}'s message-only schedules, authenticated webhook triggers, and Slack or WhatsApp project-chat bots.", Path: "skills/work-schedules-and-bots/SKILL.md"},
+	{Name: "work-dashboard", Description: "Create and maintain a general-purpose visual dashboard for a {{product}} project, including live data from code/reports scripts via window.report.run.", Path: "skills/work-dashboard/SKILL.md"},
+	{Name: "work-ui-control", Description: "Open and refresh {{product}} project panels through acknowledged UI control without using Workflow view semantics.", Path: "skills/work-ui-control/SKILL.md"},
+	{Name: "background-work", Description: "Run a bounded task asynchronously and rely on {{product}}'s automatic completion notification instead of polling.", Path: "skills/background-work/SKILL.md"},
 }
 
 var customCommandSlugPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
@@ -176,9 +178,35 @@ func RegisterProductSkills() error {
 			registerProductSkillsErr = err
 			return
 		}
-		registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(productConfigFiles, productSkills)
+		registerProductSkillsErr = RegisterFeatureSkills("work", "Crew")
 	})
 	return registerProductSkillsErr
+}
+
+// RegisterFeatureSkills registers the shared project-feature skills for one
+// product, rendered from the same templates: {{product}} becomes
+// productName (its product.yaml profile.name) and skill names follow
+// agentprofiles.FeatureSkillName (work-mcp for Crew, code-mcp for Code).
+func RegisterFeatureSkills(profileID, productName string) error {
+	registerFeatureSkillsMu.Lock()
+	defer registerFeatureSkillsMu.Unlock()
+	if registeredFeatureSkills[profileID] {
+		return nil
+	}
+	render := func(text string) string {
+		return agentprofiles.RenderFeatureText(profileID, productName, text)
+	}
+	bindings := make([]agentprofiles.SkillFileBinding, 0, len(productSkills))
+	for _, binding := range productSkills {
+		binding.Name = agentprofiles.FeatureSkillName(profileID, binding.Name)
+		binding.Description = render(binding.Description)
+		bindings = append(bindings, binding)
+	}
+	if err := agentprofiles.RegisterEmbeddedSkillsRendered(productConfigFiles, bindings, render); err != nil {
+		return err
+	}
+	registeredFeatureSkills[profileID] = true
+	return nil
 }
 
 type workIdentity struct {
