@@ -1,0 +1,109 @@
+//go:build linux
+
+package handlers
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
+)
+
+// A Code's plain shell runs in the same sandbox as agent commands: its own
+// project writable, other projects, the host /tmp and the shared tmux server
+// out of reach. Opt-in: needs the Landlock launcher (and, for the private
+// /tmp on Ubuntu, a test binary the host's userns exception covers).
+func TestInteractiveShellIsSandboxedE2E(t *testing.T) {
+	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
+		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
+	}
+	gin.SetMode(gin.TestMode)
+	docs := t.TempDir()
+	viper.Set("docs-dir", docs)
+	own := "_users/alice/Chats/Code/projects/a"
+	other := "_users/bob/Chats/Code/projects/b"
+	for _, d := range []string{own, other} {
+		if err := os.MkdirAll(filepath.Join(docs, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(docs, other, "secret.txt"), []byte("bob-secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.POST("/start", StartInteractiveShell)
+	router.POST("/stop", StopInteractiveShell)
+	call := func(path string, body any) (int, map[string]any) {
+		raw, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw)))
+		out := map[string]any{}
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	id := "e2e-" + strings.ReplaceAll(filepath.Base(docs), "_", "-")
+	id = strings.ToLower(id)
+	if len(id) > 40 {
+		id = id[:40]
+	}
+	defer call("/stop", map[string]any{"shell_id": id})
+
+	guard := map[string]any{"enabled": true, "read_paths": []string{own}, "write_paths": []string{own}}
+	if code, out := call("/start", map[string]any{"shell_id": id, "working_directory": own, "folder_guard": guard}); code != 200 {
+		t.Fatalf("start = %d %v", code, out)
+	}
+	code, out := call("/start", map[string]any{"shell_id": id, "working_directory": own, "folder_guard": guard})
+	data, _ := out["data"].(map[string]any)
+	socket, _ := data["socket"].(string)
+	if code != 200 || socket == "" {
+		t.Fatalf("second start must return the running shell: %d %v", code, out)
+	}
+	if code, _ := call("/start", map[string]any{"shell_id": "noguard-" + id, "working_directory": own}); code != 400 {
+		t.Fatalf("a shell without a folder guard must be refused, got %d", code)
+	}
+
+	run := func(line string) {
+		if err := exec.Command("tmux", "-S", socket, "send-keys", "-t", "shell", line, "Enter").Run(); err != nil {
+			t.Fatalf("send-keys: %v", err)
+		}
+	}
+	run(`echo owned > ./mine.txt && echo OWN_WRITE_OK`)
+	run(`cat ../../../../bob/Chats/Code/projects/b/secret.txt 2>/dev/null && echo READ_OTHER`)
+	run(`echo x > ../../../../bob/Chats/Code/projects/b/planted 2>/dev/null && echo WROTE_OTHER`)
+	run(`tmux -S /tmp/tmux-$(id -u)/default ls >/dev/null 2>&1 && echo HOST_TMUX`)
+	run(`echo DONE-$((40+2))`)
+	var screen string
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		captured, _ := exec.Command("tmux", "-S", socket, "capture-pane", "-p", "-t", "shell", "-S", "-200").Output()
+		screen = string(captured)
+		if strings.Contains(screen, "DONE-42") {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Logf("shell screen:\n%s", screen)
+	if !strings.Contains(screen, "DONE-42") || !strings.Contains(screen, "OWN_WRITE_OK") {
+		t.Fatal("the shell did not run commands in its own project")
+	}
+	for _, bad := range []string{"bob-secret", "WROTE_OTHER", "HOST_TMUX"} {
+		if strings.Contains(strings.ReplaceAll(screen, "&& echo "+bad, ""), bad) {
+			t.Errorf("shell escaped its sandbox: %s", bad)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(docs, other, "planted")); err == nil {
+		t.Error("shell wrote into another project")
+	}
+	if code, _ := call("/stop", map[string]any{"shell_id": id}); code != 200 || interactiveShellRunning(socket) {
+		t.Fatal("stop did not end the shell")
+	}
+}

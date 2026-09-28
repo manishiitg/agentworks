@@ -258,7 +258,14 @@ var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": t
 
 // workspaceProxyRefusedRoutes are workspace routes only the agent server may
 // call; a browser never reaches them, not even an admin's.
-var workspaceProxyRefusedRoutes = map[string]bool{"api/audit/code-admin/append": true}
+var workspaceProxyRefusedRoutes = map[string]bool{
+	"api/audit/code-admin/append": true,
+	// Sandboxed interactive shells: the agent server authorizes the user and
+	// supplies the project's Folder Guard; a browser must never start one.
+	"api/shell/interactive/start":  true,
+	"api/shell/interactive/stop":   true,
+	"api/shell/interactive/resize": true,
+}
 
 func workspaceProxyJSONHasServerOnlyField(node any) bool {
 	switch value := node.(type) {

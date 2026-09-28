@@ -15,6 +15,8 @@ type LandlockPolicy struct {
 	// BrowserScoped: the command's own browser socket folder and profile are
 	// in WritePaths, so the shared browser folders are not granted.
 	BrowserScoped bool `json:"browser_scoped,omitempty"`
+	// AllowPTY: an interactive shell may open terminal devices.
+	AllowPTY bool `json:"allow_pty,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must
