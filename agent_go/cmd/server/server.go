@@ -776,6 +776,12 @@ type QueryRequest struct {
 	// it: authoring stays impossible. Set server-side by the external run
 	// tools, which are execution-only by contract.
 	PinRunMode bool `json:"pin_run_mode,omitempty"`
+	// CrewGuestCaller is the user a Crew turn works for when that user is not
+	// the Crew's owner: a function call or ask from someone else's workflow,
+	// Crew or external connection runs in the owner's namespace but only
+	// as a guest (read-only, may answer and suggest). Honoured only on the
+	// owner's own Crew turn, where it can only narrow access.
+	CrewGuestCaller string `json:"crew_guest_caller,omitempty"`
 	// Execution options from frontend (for workflow execution phase)
 	ExecutionOptions *ExecutionOptions `json:"execution_options,omitempty"`
 	// Workspace access configuration (legacy field, ignored — workspace is always enabled)
@@ -3765,6 +3771,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	crewGuest := crewGuestCallerForTurn(req, currentUserID)
+	if crewGuest != "" {
+		currentUserIsReadOnly = true
+	}
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -6358,6 +6368,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// coherent instead of confused retries.
 				if isCrewReaderTurn(req, currentUserID) {
 					_ = llmAgent.AddInstructions(crewReaderSystemPrompt(req.SelectedFolder))
+				} else if crewGuest != "" {
+					_ = llmAgent.AddInstructions(crewGuestSystemPrompt(crewGuest))
 				}
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))

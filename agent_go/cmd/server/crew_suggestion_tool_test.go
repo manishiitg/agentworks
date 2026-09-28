@@ -25,7 +25,11 @@ func TestCrewSuggestionFromAnotherUserReachesOnlyTheOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool := reg.tools[crewSuggestionToolName]
-	if _, err := tool.exec(ctxFor("owner"), map[string]interface{}{"suggestion": "x"}); err == nil {
+	ownerReg := &recordingRegistrar{}
+	if err := api.registerCrewSuggestionTool(ownerReg, "owner", "owner-chat", crewRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownerReg.tools[crewSuggestionToolName].exec(ctxFor("owner"), map[string]interface{}{"suggestion": "x"}); err == nil {
 		t.Fatal("the owner should change the Crew directly, not suggest")
 	}
 	if _, err := tool.exec(ctxFor("user"), map[string]interface{}{"suggestion": " "}); err == nil {

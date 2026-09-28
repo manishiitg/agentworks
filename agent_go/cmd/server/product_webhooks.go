@@ -470,11 +470,14 @@ func (s *ProductScheduleService) deleteProductWebhookConfig(ctx context.Context,
 }
 
 type productWebhookMatch struct {
-	UserID   string
-	Profile  agentprofiles.Profile
-	Binding  productConversationBinding
-	Manifest productProjectManifest
-	Trigger  productWebhookTrigger
+	UserID string
+	// GuestCallerID is set when the user behind an internal call is not the
+	// Crew's owner: the turn then runs as that user's guest.
+	GuestCallerID string
+	Profile       agentprofiles.Profile
+	Binding       productConversationBinding
+	Manifest      productProjectManifest
+	Trigger       productWebhookTrigger
 }
 
 func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id string) (*productWebhookMatch, error) {
@@ -628,7 +631,7 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
 	}
 	message := triggerTurnMessage(match.Trigger.Message, sourceNote, relativePayloadPath)
-	job := productScheduleJob{UserID: match.UserID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
+	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
 	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, Detach: true, AllowQueue: true})
 	switch {
 	case dispatchErr == nil:
@@ -688,6 +691,9 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 		matchUserID = ownerID
 	}
 	match := &productWebhookMatch{UserID: matchUserID, Profile: profile, Binding: binding, Manifest: manifest, Trigger: *trigger}
+	// Someone other than the owner is calling: the turn runs in the owner's
+	// namespace but as their guest, so it cannot change the Crew for them.
+	match.GuestCallerID = crewGuestCaller(call.UserID, matchUserID)
 	if strings.EqualFold(strings.TrimSpace(call.Caller.Type), triggerCallerUser) {
 		label := firstNonEmptyTrimmed(call.CallerLabel, "an external connection")
 		sourceNote := "This turn was started by " + label + " through an external connection (MCP or the agentworks CLI); your result is returned to that connection."

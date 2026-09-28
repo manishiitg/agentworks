@@ -700,11 +700,32 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
-	// Someone using another user's Crew can leave its owner a suggestion.
+	// Someone using another user's Crew can leave its owner a suggestion:
+	// a reader in their own chat, or a guest whose call runs as the owner.
 	if readOnly && activeWorkProject && resolved.Definition.ID == "work" {
-		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok && ref.OwnerID != sanitizeUserIDForPath(userID) {
-			gate.Declare(crewSuggestionToolName)
-			if err := api.registerCrewSuggestionTool(registrar, userID, sessionID, ref.Root); err != nil {
+		guest := ""
+		if len(req) > 0 {
+			guest = crewGuestCallerForTurn(req[0], userID)
+		}
+		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok {
+			actor := ""
+			switch {
+			case guest != "":
+				actor = guest
+			case ref.OwnerID != sanitizeUserIDForPath(userID):
+				actor = userID
+			}
+			if actor != "" {
+				gate.Declare(crewSuggestionToolName)
+				if err := api.registerCrewSuggestionTool(registrar, actor, sessionID, ref.Root); err != nil {
+					return err
+				}
+			}
+		}
+		// A guest turn still answers the call it was started for.
+		if guest != "" {
+			functionReq := QueryRequest{SelectedFolder: workspacePath}
+			if err := api.registerCrewFunctionTools(crewFunctionResultOnlyRegistrar{registrar}, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), nil); err != nil {
 				return err
 			}
 		}

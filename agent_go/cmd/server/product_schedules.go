@@ -84,6 +84,7 @@ type productScheduleUserState struct {
 // productScheduleJob is one (profile, schedule, user) triple.
 type productScheduleJob struct {
 	UserID         string
+	GuestCallerID  string // a non-owner's call: the turn runs as their guest
 	Profile        agentprofiles.Profile
 	Schedule       productschedule.Schedule
 	State          productScheduleUserState
@@ -1202,6 +1203,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			break
 		}
 		reqMap["triggered_by"] = firstNonEmptyTrimmed(triggerSource, "cron")
+		applyCrewGuestCaller(reqMap, job.GuestCallerID)
 		reqMap["triggered_by_label"] = automationTriggerLabel(firstNonEmptyTrimmed(triggerSource, "cron"), job.Schedule.Name)
 		reqMap["session_title"] = firstNonEmptyTrimmed(conversation.Title, job.Profile.Name)
 		scheduleLogf("[PRODUCT-SCHEDULE] %s turn %d/%d for %s", job.ID(), i+1, len(job.Schedule.Messages), job.UserID)
