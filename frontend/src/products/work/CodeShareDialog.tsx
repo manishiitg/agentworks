@@ -145,7 +145,7 @@ export function CodeShareDialog({ projectId, projectTitle, onClose }: {
             </button>
           </form>
         ) : state ? <p className="mt-4 text-xs text-muted-foreground">Only the owner or a co-owner can change who has access.</p> : null}
-        <p className="mt-4 text-xs text-muted-foreground">Admins on this server can view every Code workspace, read-only.</p>
+        <p className="mt-4 text-xs text-muted-foreground">Admins and Code reviewers on this server can read every Code workspace's chats, files and costs, read-only. Every view is logged.</p>
       </div>
     </div>
   )

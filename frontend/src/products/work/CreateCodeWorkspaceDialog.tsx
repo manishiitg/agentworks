@@ -21,7 +21,7 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="code-create-title" className="text-lg font-semibold text-foreground">New Code workspace</h2>
-            <p className="mt-1 text-sm text-muted-foreground">A private workspace with its own files, terminal and chat. Only you can see it until you share it; server admins can view it.</p>
+            <p className="mt-1 text-sm text-muted-foreground">A private workspace with its own files, terminal and chat. Only you can see it until you share it. Server admins and Code reviewers can read its chats, files and costs (read-only, and every view is logged).</p>
           </div>
           <button type="button" onClick={onClose} disabled={submitting} aria-label="Close" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
             <X className="h-4 w-4" />

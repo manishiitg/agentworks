@@ -1153,7 +1153,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       Add a teammate as viewer, editor or co-owner. Editors get their own shell.
                     </div>
                   </div>
-                  <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can view your {product.noun} workspaces; every view is logged.</p>
+                  <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
                   <button
                     type="button"
                     onClick={openCreateProject}
