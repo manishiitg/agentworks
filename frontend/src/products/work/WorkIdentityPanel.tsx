@@ -388,9 +388,8 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
 
 /**
  * Crew "Native agent tools" switch (workflow.json capabilities.native_agent_tools).
- * On: the coding agent (Claude Code, Codex, Cursor, Muse) may use its own file reading,
- * search, skills, todo list and subagents. Shell commands and file changes
- * always go through AgentWorks. Other coding CLIs keep AgentWorks tools only.
+ * On: supported coding agents may use native read and search tools. The
+ * exact native set varies by CLI; file changes stay on AgentWorks tools.
  */
 function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onChange?: (enabled: boolean) => Promise<unknown> }) {
   const [saving, setSaving] = useState(false)
@@ -399,7 +398,7 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
     <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
       <ToggleRow
         label="Native agent tools"
-        description="On by default. Let the coding agent use its own file reading, search, skills, todo list and subagents. Shell commands and file changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor and Muse."
+        description="On by default. Let the coding agent use its native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
         checked={enabled}
         disabled={!onChange || saving}
         disabledTitle={onChange ? 'Saving…' : 'Only the Crew owner can change this.'}

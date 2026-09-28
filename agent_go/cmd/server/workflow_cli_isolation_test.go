@@ -91,6 +91,45 @@ func TestWorkflowCLIIsolationSelectionAndResume(t *testing.T) {
 	}
 }
 
+func TestWorkflowCLIWorkingDirTrustsPrivateAgyRuntime(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	settingsPath := filepath.Join(home, ".gemini", "antigravity-cli", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	workspace := filepath.Join(root, "workspace-docs")
+	if err := os.MkdirAll(filepath.Join(workspace, "Workflow", "testing"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("WORKSPACE_DOCS_PATH", workspace)
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(root, "state"))
+	t.Setenv("AGENTWORKS_ISOLATE_WORKFLOW_CLI", "true")
+	for i := 0; i < 2; i++ {
+		dir, err := workflowCLIWorkingDir("Workflow/testing", "owner", "chat-a", "agy-cli", "workshop")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(settingsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var settings struct {
+			TrustedWorkspaces []string `json:"trustedWorkspaces"`
+		}
+		if err := json.Unmarshal(raw, &settings); err != nil {
+			t.Fatal(err)
+		}
+		if len(settings.TrustedWorkspaces) != 1 || settings.TrustedWorkspaces[0] != dir {
+			t.Fatalf("AGY trusted workspaces = %v, want only %s", settings.TrustedWorkspaces, dir)
+		}
+	}
+}
+
 func TestWorkflowCLIIsolationDefaultsOnWithExplicitRollback(t *testing.T) {
 	t.Setenv("AGENTWORKS_ISOLATE_WORKFLOW_CLI", "")
 	if !workflowCLIIsolationEnabled() {

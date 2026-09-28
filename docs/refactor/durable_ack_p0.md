@@ -29,8 +29,9 @@ exact message against a new type-14 user step in AGY's conversation SQLite.
 The watcher snapshots the pre-send step index, and repeated identical sends
 require separate user rows. The real CLI test
 `TestAgyCLIRealDurableAckContract` passed for two identical retained turns.
-The full application P0 runner and server-to-chat live check remain pending;
-this result does not revise the historical five-provider certification above.
+The isolated full application P0 runner and retained Chat live check passed
+with AGY 1.2.12 in Gemini API-key mode. This extends the live receipt proof
+to six providers; it does not revise the earlier historical five-provider run.
 
 ### RTS rapid-input follow-up (2026-09-21)
 

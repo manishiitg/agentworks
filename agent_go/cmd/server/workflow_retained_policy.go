@@ -131,6 +131,8 @@ func closeWorkflowPolicyCLI(session, provider, reason string) {
 		llmproviders.ClosePiCLIInteractiveSessionForOwner(session, reason)
 	case "muse-cli":
 		llmproviders.CloseMuseCLIInteractiveSessionForOwner(session, reason)
+	case "agy-cli":
+		llmproviders.CloseAgyCLIInteractiveSessionForOwner(session, reason)
 	}
 }
 

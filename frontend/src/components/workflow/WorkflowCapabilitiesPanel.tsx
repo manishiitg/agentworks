@@ -605,7 +605,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                     <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
                       <ToggleRow
                         label="Native agent tools"
-                        description="On by default. In this workflow's Builder and Run-mode chats, let the coding agent use its own file reading, search, skills, todo list and subagents. Shell commands and file changes still go through AgentWorks. Step agents, schedules, webhooks and read-only users always keep AgentWorks tools only. Changing it starts a fresh CLI session on the next message. Applies to Claude Code, Codex, Cursor and Muse."
+                        description="On by default. In Builder and Run-mode chats, let the coding agent use native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Step agents, schedules, webhooks and read-only users keep AgentWorks tools only. Changing it starts a fresh CLI session on the next message. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
                         checked={nativeAgentToolsEnabled(capabilities.native_agent_tools)}
                         disabled={!canWriteWorkflow || saving}
                         disabledTitle={canWriteWorkflow ? 'Saving…' : 'Only owners and editors can change this.'}

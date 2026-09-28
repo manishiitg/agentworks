@@ -344,6 +344,8 @@ func defaultCodingAgentE2EModel(provider string) string {
 		return "google/gemini-3.8-flash"
 	case "muse-cli":
 		return "muse-spark-1.3-contributor"
+	case "agy-cli":
+		return "gemini-3.8-flash-high"
 	default:
 		return ""
 	}
@@ -501,7 +503,14 @@ func (c *codingAgentChatE2EClient) runRetainedWindowP0(ctx context.Context, sess
 	if deliveryLatency > retainedWindowP0DeliveryLimit {
 		return fmt.Errorf("retained delivery took %s, exceeding the %s PLAT-102 P0 envelope", deliveryLatency.Round(time.Millisecond), retainedWindowP0DeliveryLimit)
 	}
-	if err := c.assertRetainedToolStartsBeforeCompletion(ctx, sessionID, since, "execute_shell_command"); err != nil {
+	toolStartTimeout := 30 * time.Second
+	if provider == "agy-cli" {
+		// AGY reports tool rows from its SQLite record after the TUI turn
+		// finishes, so the host receives the receipt later than live MCP
+		// streaming providers do.
+		toolStartTimeout = 2 * time.Minute
+	}
+	if err := c.assertRetainedToolStartsBeforeCompletion(ctx, sessionID, since, "execute_shell_command", toolStartTimeout); err != nil {
 		return err
 	}
 
@@ -603,8 +612,8 @@ func assertCanonicalRetainedTurnIdentity(events []map[string]interface{}, toolNa
 // commentary is not returned by the polling API, so the P0 observes the
 // externally meaningful invariant instead: commentary cannot complete the
 // session before its requested tool has even started.
-func (c *codingAgentChatE2EClient) assertRetainedToolStartsBeforeCompletion(ctx context.Context, sessionID string, since int, toolName string) error {
-	deadline := e2eDeadline(ctx, 30*time.Second)
+func (c *codingAgentChatE2EClient) assertRetainedToolStartsBeforeCompletion(ctx context.Context, sessionID string, since int, toolName string, timeout time.Duration) error {
+	deadline := e2eDeadline(ctx, timeout)
 	cursor := since
 	for time.Now().Before(deadline) {
 		resp, raw, err := c.getEventsSince(ctx, sessionID, cursor)

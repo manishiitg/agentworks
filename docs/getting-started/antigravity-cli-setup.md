@@ -19,7 +19,7 @@ agy models
 ```
 
 `agy models` lists models only when authenticated, so it doubles as the
-login check below. Certified CLI: 1.2.7.
+login check below. Certified CLI: 1.2.12.
 
 ## 2. Sign in (interactive)
 
@@ -37,9 +37,10 @@ direct server access is required.
 
 First launch also shows a one-time theme picker, and each new workspace
 folder asks "Do you trust the contents of this project?". Trust is
-exact-path: trusting a folder does not trust its subdirectories, so confirm
-each workspace when prompted. AgentWorks turns fail loudly on a trust gate
-instead of auto-answering it.
+exact-path: trusting a folder does not trust its subdirectories. AgentWorks
+trusts the exact Chat or private workflow directory it creates before AGY
+boots. For a separately selected directory, confirm its prompt yourself;
+AgentWorks turns fail loudly if that trust gate remains open.
 
 ## 3. Verify in AgentWorks
 
@@ -47,6 +48,13 @@ The providers panel entry flips to **Connected** when the runtime is on
 `PATH` and authenticated. Models come from `agy models`; the default is
 `gemini-3.8-flash-high`, and reasoning effort is baked into the model slugs
 (`-high`/`-medium`/`-low` suffixes).
+
+The existing **Native agent tools** switch also applies to Antigravity. With
+it off, AGY uses the MCP bridge for tools. With it on, AGY can use native file
+read/search and web read/search tools; commands, writes and subagents still
+use the bridge. AgentWorks installs a temporary `.agents/hooks.json` entry in
+the AGY workspace for this gate and restores the prior hook file after the
+session closes. This mode needs `python3` on the backend `PATH`.
 
 ## 4. API-key mode (unattended / CI)
 
@@ -63,7 +71,7 @@ no effect):
 export GEMINI_API_KEY="<key from https://aistudio.google.com/apikey>"
 ```
 
-Notes, all verified against agy 1.2.7:
+Notes, verified against agy 1.2.12:
 
 - agy never reads `.env` files; export the variable in the process
   environment (or the CI secret store).

@@ -26,16 +26,17 @@ AGY onboarding follows this delivery contract at the provider boundary:
 the matching user step in AGY's own conversation SQLite proves that a tmux
 submission was taken in; a pane echo cannot acknowledge the turn. The
 assistant answer, retained progress and tool trail are read from that same
-turn's SQLite rows.
+turn's SQLite rows. The final answer is the last settled assistant row;
+earlier assistant rows remain progress and are not folded into the answer.
 The provider records `agy_intake_source=sqlite_user_step` and
 `agy_completion_source=sqlite_assistant_settled` for diagnostics. Live-input
 sends also gain the two-stage receipt: tmux sends quickly and a separate
 watcher confirms the exact message against a new SQLite user step, including
-repeated identical sends. The provider-side live test passed. See
-[PLAT-354](../coding-agent-bridge/plat-354.html) for the completion guard and
-its current AGY limitation, and
+repeated identical sends. The provider live test and isolated full application
+P0 runner passed against AGY 1.2.12 in Gemini API-key mode. See
+[PLAT-354](../coding-agent-bridge/plat-354.html) for the completion guard, and
 [durable acknowledgement](../../refactor/durable_ack_p0.md) for the receipt
-contract. The full application P0 runner remains pending.
+contract.
 
 ## Turn delivery: no silent drops into dead retained runtimes (2026-09-25, implemented, push/deploy/verify pending)
 

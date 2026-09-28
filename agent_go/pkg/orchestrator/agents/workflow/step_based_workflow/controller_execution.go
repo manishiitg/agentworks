@@ -592,6 +592,9 @@ func createFolderViaAPI(ctx context.Context, folderPath string, workspacePath ..
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := strings.TrimSpace(os.Getenv("WORKSPACE_API_TOKEN")); token != "" {
+		req.Header.Set("X-Workspace-Token", token)
+	}
 
 	// Set timeout
 	client := &http.Client{
@@ -639,6 +642,9 @@ func deleteFolderViaAPI(ctx context.Context, folderPath string) error {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", apiURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
+	}
+	if token := strings.TrimSpace(os.Getenv("WORKSPACE_API_TOKEN")); token != "" {
+		req.Header.Set("X-Workspace-Token", token)
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}

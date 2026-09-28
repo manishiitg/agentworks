@@ -5409,6 +5409,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if !isWorkflowPhase {
+			if err := trustAgyWorkingDir(finalProvider, chatWorkingDir); err != nil {
+				sendError(fmt.Sprintf("Failed to trust AGY CLI working directory: %v", err), true)
+				return
+			}
+		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
 		if chatWorkingDir != sharedChatWorkingDir {
@@ -8330,6 +8336,8 @@ func retainedCodingAgentProvider(snapshot terminals.Snapshot) string {
 		return string(llm.ProviderMuseCLI)
 	case strings.HasPrefix(tmuxSession, "mlp-pi-cli"):
 		return string(llm.ProviderPiCLI)
+	case strings.HasPrefix(tmuxSession, "agy-int-"):
+		return string(llm.ProviderAgyCLI)
 	}
 
 	label := strings.ToLower(strings.TrimSpace(snapshot.Status.ProviderLabel))
@@ -8344,6 +8352,8 @@ func retainedCodingAgentProvider(snapshot terminals.Snapshot) string {
 		return string(llm.ProviderMuseCLI)
 	case strings.Contains(label, "pi-cli") || strings.HasPrefix(label, "pi "):
 		return string(llm.ProviderPiCLI)
+	case strings.Contains(label, "agy-cli"):
+		return string(llm.ProviderAgyCLI)
 	default:
 		return ""
 	}

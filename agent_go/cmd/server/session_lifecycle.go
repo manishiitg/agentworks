@@ -193,6 +193,7 @@ func closeAllCodingCLIInteractiveSessionsForOwner(owner, reason string) {
 	llmproviders.CloseClaudeCodeInteractiveSessionForOwner(owner, reason)
 	llmproviders.ClosePiCLIInteractiveSessionForOwner(owner, reason)
 	llmproviders.CloseMuseCLIInteractiveSessionForOwner(owner, reason)
+	llmproviders.CloseAgyCLIInteractiveSessionForOwner(owner, reason)
 }
 
 // gracefulCloseCodingCLITmuxByName runs the provider-specific graceful shutdown
@@ -221,6 +222,8 @@ func gracefulCloseCodingCLITmuxByName(tmuxName, reason string) bool {
 		llmproviders.ClosePiCLIInteractiveSessionByTmux(name, reason)
 	case strings.HasPrefix(name, "mlp-muse-"):
 		llmproviders.CloseMuseCLIInteractiveSessionByTmux(name, reason)
+	case strings.HasPrefix(name, "agy-int-"):
+		llmproviders.CloseAgyCLIInteractiveSessionByTmux(name, reason)
 	default:
 		return false
 	}
