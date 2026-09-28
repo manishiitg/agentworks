@@ -224,6 +224,7 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
 
   // Track workspace path to detect workflow switches
   const currentWorkspaceRef = useRef<string | null>(null)
+  const requestVersionRef = useRef(0)
 
 
   // Construct the plan file path
@@ -283,7 +284,8 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
     }
 
     currentWorkspaceRef.current = workspacePath
-    const isCurrent = () => currentWorkspaceRef.current === workspacePath
+    const requestVersion = ++requestVersionRef.current
+    const isCurrent = () => currentWorkspaceRef.current === workspacePath && requestVersionRef.current === requestVersion
     const cacheEntry = getPlanCacheEntry(workspacePath)
     setError(null)
     if (cacheEntry.data !== null) {
@@ -295,10 +297,12 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
     setPlan(null)
     if (!cacheEntry.promise) {
       const promise = fetchPlanData().then(data => {
-        cacheEntry.data = data
-        cacheEntry.timestamp = Date.now()
+        if (cacheEntry.promise === promise) {
+          cacheEntry.data = data
+          cacheEntry.timestamp = Date.now()
+        }
         return data
-      }).finally(() => { cacheEntry.promise = null })
+      }).finally(() => { if (cacheEntry.promise === promise) cacheEntry.promise = null })
       cacheEntry.promise = promise
     }
     try {
@@ -671,12 +675,45 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
 
   // Save global step override
 
-  // Refresh plan (returns detected changes)
-  // Refresh function that invalidates cache and reloads
+  // Refresh from a live notice without clearing the currently rendered graph.
+  // A failed read keeps the old graph visible; a genuinely missing plan shows
+  // the empty state. Older in-flight loads cannot overwrite this result.
   const refresh = useCallback(async (): Promise<boolean> => {
+    if (!workspacePath) return false
+    const requestVersion = ++requestVersionRef.current
+    const isCurrent = () => currentWorkspaceRef.current === workspacePath && requestVersionRef.current === requestVersion
     invalidatePlanCache()
-    return loadPlan()
-  }, [loadPlan, invalidatePlanCache])
+    const cacheEntry = getPlanCacheEntry(workspacePath)
+    const promise = fetchPlanData().then(data => {
+      if (cacheEntry.promise === promise) {
+        cacheEntry.data = data
+        cacheEntry.timestamp = Date.now()
+      }
+      return data
+    }).finally(() => { if (cacheEntry.promise === promise) cacheEntry.promise = null })
+    cacheEntry.promise = promise
+    try {
+      const data = await promise
+      if (isCurrent()) {
+        setPlan(data)
+        setError(null)
+        setLoading(false)
+      }
+      return data !== null
+    } catch (err) {
+      if (!isCurrent()) return false
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const message = err instanceof Error ? err.message : String(err)
+      if (status === 404 || /not found|does not exist|no such file/i.test(message)) {
+        setPlan(null)
+        setError(null)
+      } else {
+        setError(message || 'Failed to load plan')
+      }
+      setLoading(false)
+      return false
+    }
+  }, [workspacePath, invalidatePlanCache, fetchPlanData])
 
   // Clear changes state (call after highlighting animation completes)
   const clearChanges = useCallback(() => {
@@ -694,6 +731,7 @@ export function usePlanData(workspacePath: string | null): UsePlanDataReturn {
       setPlan(null)
       setLoading(false)
       currentWorkspaceRef.current = null
+      requestVersionRef.current += 1
       setError(null)
       setChanges(null)
     }

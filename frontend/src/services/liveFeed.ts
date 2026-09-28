@@ -5,7 +5,7 @@
 import { getApiBaseUrl, getAuthToken } from './api'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
-export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report'
+export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan'
 
 export interface LiveFeedNotice {
   kind: LiveFeedKind

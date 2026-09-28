@@ -6,22 +6,20 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 )
 
-// Dashboards and their data change only through these tools (file writes
-// under db/reports/ and the workflow-database tools), never by hand. Every
-// successful write here tells open Report views to refresh via the live feed
-// (GET /api/live), so a dashboard updates within ~1s of its HTML or data
-// changing. See docs/design/live_update_feed.md.
+// Successful workspace tool writes notify the corresponding right-pane views.
+// The feed carries only a change notice; each view reads the saved file again.
 
 func isReportFilePath(p string) bool {
 	return strings.Contains("/"+strings.Trim(strings.TrimSpace(p), "/"), "/db/reports/")
 }
 
-// noteReportFileWrite publishes a report notice when p is a dashboard file.
-func noteReportFileWrite(paths ...string) {
+// noteWorkspaceFileWrite publishes notices for graph and dashboard inputs.
+func noteWorkspaceFileWrite(paths ...string) {
 	for _, p := range paths {
 		if isReportFilePath(p) {
 			livefeed.PublishWorkflow(livefeed.Report, p)
 		}
+		livefeed.PublishPlanPath(p)
 	}
 }
 

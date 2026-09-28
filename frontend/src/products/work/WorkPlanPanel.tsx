@@ -3,9 +3,16 @@ import { PlanEmptyState } from '../../components/workflow/PlanEmptyState'
 import { usePlanData } from '../../components/workflow/hooks/usePlanData'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
 export function WorkPlanPanel({ workspacePath, onAsk, onCreatePlan }: { workspacePath: string; onAsk: (message: string) => Promise<unknown>; onCreatePlan: () => void }) {
   const { plan, loading, error, refresh } = usePlanData(workspacePath)
+  useLiveRefetch(() => { void refresh() }, {
+    kinds: ['plan'],
+    workflow: workspacePath,
+    fallbackMs: 30_000,
+    minIntervalMs: 500,
+  })
   const steps = plan?.steps ?? []
 
   return <div className="flex h-full min-h-0 flex-col">

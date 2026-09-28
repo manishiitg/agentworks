@@ -28,6 +28,7 @@ import { getExecutionModeVisuals } from '../nodes/executionModeVisuals'
 import { edgeTypes } from '../edges'
 import { routeTraceFromEdge, traceRouteGraph, type RouteTrace } from './routeTrace'
 import { usePlanTriggers } from './usePlanTriggers'
+import { useLiveRefetch } from '../../../hooks/useLiveRefetch'
 import { appendTriggerCards, traceTriggerGraph } from './triggerLayout'
 import { WorkflowTriggerNode, WorkflowTriggerHeading } from '../nodes/WorkflowTriggerNodes'
 import { VariablesSidebar } from './VariablesSidebar'
@@ -1297,6 +1298,20 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const loadPlanRefresh = planData.refresh
   const clearChanges = planData.clearChanges
   const setChanges = planData.setChanges
+
+  // One shared /api/live connection carries Plan changes for AgentWorks,
+  // Crew and Relays. Keep the visible graph current during Builder edits;
+  // the slow timer only covers direct filesystem writes or an offline feed.
+  useLiveRefetch(() => {
+    void loadPlanRefresh()
+    refreshTriggers()
+  }, {
+    kinds: ['plan'],
+    workflow: workspacePath,
+    enabled: !!workspacePath && !toolbarOnly,
+    fallbackMs: 30_000,
+    minIntervalMs: 500,
+  })
 
   const {
     state: workspaceState,

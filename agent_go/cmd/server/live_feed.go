@@ -147,6 +147,7 @@ func publishWorkflowSettled(workspacePath string) {
 		return
 	}
 	livefeed.Publish(livefeed.Report, workspacePath)
+	livefeed.Publish(livefeed.Plan, workspacePath)
 	livefeed.Publish(livefeed.HumanInputs, workspacePath)
 	livefeed.Publish(livefeed.Notifications, workspacePath)
 }
@@ -175,6 +176,10 @@ func publishReportChanged(workspacePath string) {
 	if wf := normalizeLiveFeedWorkflow(workspacePath); wf != "" {
 		livefeed.Publish(livefeed.Report, wf)
 	}
+}
+
+func publishPlanChanged(filePath string) {
+	livefeed.PublishPlanPath(filePath)
 }
 
 // liveFeedReportPath reports whether a workspace file feeds a workflow's

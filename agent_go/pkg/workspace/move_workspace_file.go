@@ -69,7 +69,7 @@ func (c *Client) MoveWorkspaceFile(ctx context.Context, params MoveWorkspaceFile
 	if !apiResp.Success {
 		return MoveFileResult{}, fmt.Errorf("workspace API error: %s", apiResp.Error)
 	}
-	noteReportFileWrite(params.SourceFilepath, params.DestinationFilepath)
+	noteWorkspaceFileWrite(params.SourceFilepath, params.DestinationFilepath)
 
 	return MoveFileResult{
 		SourceFilepath:      params.SourceFilepath,
