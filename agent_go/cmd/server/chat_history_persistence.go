@@ -17,6 +17,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -2288,6 +2289,11 @@ func resolveLocalChatHistoryDir(workspaceRoot string) (string, bool) {
 func resolveLocalWorkflowDir(workflowPath string) (string, bool) {
 	workflowPath = normalizeChatHistoryWorkspacePath(workflowPath)
 	if workflowPath == "" {
+		return "", false
+	}
+	// A workflow on a remote workspace server has no local folder; any local
+	// directory at its path is a stray and must not be read as its history.
+	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), workflowPath) {
 		return "", false
 	}
 	candidates := []string{

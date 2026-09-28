@@ -19,6 +19,12 @@ const workspaceAPITokenEnv = "WORKSPACE_API_TOKEN"
 // Empty-token mode is retained for standalone workspace-server compatibility.
 func requireWorkspaceAPIToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// A per-user token already verified in server mode is stronger than
+		// the shared process token; it also authorizes execution routes.
+		if c.GetBool(serverUserAuthenticatedFlag) {
+			c.Next()
+			return
+		}
 		expected := strings.TrimSpace(os.Getenv(workspaceAPITokenEnv))
 		if expected == "" {
 			c.Next()

@@ -32,6 +32,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -8485,6 +8486,9 @@ func (iwm *InteractiveWorkshopManager) activateApprovedAdvisorSpecialization(ctx
 	normalized, err := normalizeGoalAdvisorWorkspacePath(iwm.controller.GetWorkspacePath())
 	if err != nil {
 		return nil, false, err
+	}
+	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), normalized) {
+		return nil, false, fmt.Errorf("advisor specialization is not available yet for workflows on a remote workspace server")
 	}
 	dbPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(normalized), "db", "db.sqlite")
 	db, err := sql.Open("sqlite", dbPath)

@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server-Hosted Workflows, Local Agents · Runloop</title>
+<style>
+  :root{
+    --bg:#f7f7f5;--surface:#fff;--surface-2:#fbfbfa;--code:#f3f2ee;
+    --ink:#191917;--ink-2:#57564f;--ink-3:#8a897f;
+    --line:#eceae4;--line-2:#e0ded7;
+    --accent:#3a6ea5;--accent-bg:#eaf1f8;
+    --ok:#3f7a4a;--ok-bg:#eaf3ea;--warn:#9a6a05;--warn-bg:#fbf2dd;--bad:#b0322b;--bad-bg:#fbe9e6;
+    --shadow:0 1px 2px rgba(20,20,18,.04),0 4px 16px -8px rgba(20,20,18,.12);
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--r:12px;}
+  html[data-theme="dark"]{
+    --bg:#0a0a0c;--surface:#15151a;--surface-2:#101014;--code:#16161c;
+    --ink:#f1f0f4;--ink-2:#9b9ba6;--ink-3:#64646e;
+    --line:#212128;--line-2:#2e2e37;
+    --accent:#7fb0e8;--accent-bg:#13202e;
+    --ok:#5fd08a;--ok-bg:#0f2419;--warn:#e6b450;--warn-bg:#241d0c;--bad:#f47e76;--bad-bg:#2a1412;
+    --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 1px 2px rgba(0,0,0,.45),0 10px 30px -14px rgba(0,0,0,.75);}
+  html{color-scheme:light}html[data-theme="dark"]{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  html[data-theme="dark"] body{background:radial-gradient(1100px 600px at 80% -10%, #16161e 0%, var(--bg) 55%) fixed}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  .wrap{max-width:880px;margin:0 auto;padding:40px clamp(20px,5vw,40px) 120px}
+  .eyebrow{font:650 10.5px/1 var(--mono);letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase}
+  h1{font-size:clamp(26px,4vw,36px);line-height:1.05;letter-spacing:-.03em;margin:11px 0 0;font-weight:680}
+  .sub{color:var(--ink-2);font-size:15.5px;margin-top:12px}
+  h2{font-size:22px;letter-spacing:-.02em;margin:48px 0 4px;font-weight:660;scroll-margin-top:16px}
+  h2 .n{font:650 12px/1 var(--mono);color:var(--accent);margin-right:9px}
+  h3{font-size:16px;margin:24px 0 6px;font-weight:640}
+  p{margin:10px 0}.lead{color:var(--ink-2)}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:13px;margin:16px 0}
+  .tile{background:var(--surface);border:1px solid var(--line-2);border-radius:11px;padding:15px 17px;box-shadow:var(--shadow)}
+  .tile h4{margin:0 0 6px;font-size:14px;font-weight:650;display:flex;align-items:center;gap:8px}
+  .tile p{font-size:13px;color:var(--ink-2);margin:5px 0 0}
+  .tag{font:700 9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:5px;white-space:nowrap}
+  .tag.acc{background:var(--accent-bg);color:var(--accent)}.tag.bad{background:var(--bad-bg);color:var(--bad)}.tag.ok{background:var(--ok-bg);color:var(--ok)}
+  .note{border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 10px 10px 0;padding:13px 17px;margin:16px 0;font-size:14px}
+  .note.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .note.bad{border-left-color:var(--bad);background:var(--bad-bg)}
+  .note.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+  .note b{font-weight:660}
+  .pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin:18px 0}
+  .stage{flex:1;min-width:140px;background:var(--surface);border:1px solid var(--line-2);border-radius:11px;padding:13px 14px;box-shadow:var(--shadow)}
+  .stage .s-n{font:700 9px/1 var(--mono);color:var(--ink-3);letter-spacing:.08em}
+  .stage .s-t{font-weight:640;font-size:13px;margin-top:6px}
+  .stage .s-f{font:540 10px/1.3 var(--mono);color:var(--accent);margin-top:6px;word-break:break-word}
+  .arrow{align-self:center;color:var(--ink-3);font:600 11px/1 var(--mono);padding:0 7px;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:650 10px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  td code{font-size:12px}tbody tr:hover{background:var(--surface-2)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink);margin:14px 0}
+  pre .c{color:var(--ink-3)}pre .k{color:var(--accent)}pre .b{color:var(--bad)}pre .g{color:var(--ok)}
+  .seq{counter-reset:step;margin:14px 0;padding:0;list-style:none}
+  .seq li{position:relative;padding:9px 0 9px 42px;border-left:2px solid var(--line);margin-left:14px}
+  .seq li::before{counter-increment:step;content:counter(step);position:absolute;left:-15px;top:8px;width:28px;height:28px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font:700 12px/28px var(--mono);text-align:center;border:1px solid var(--line-2)}
+  .seq li b{color:var(--ink)}
+  .theme{position:fixed;top:16px;right:18px;z-index:20;background:var(--surface);border:1px solid var(--line-2);border-radius:999px;padding:8px 14px;font:600 12px/1 var(--sans);color:var(--ink-2);cursor:pointer;box-shadow:var(--shadow)}
+  footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);font:540 12px/1.6 var(--mono);color:var(--ink-3)}
+  .toc{display:flex;flex-wrap:wrap;gap:6px 14px;margin:22px 0 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line-2);border-radius:11px;font:560 12px/1.5 var(--mono)}
+  ul{padding-left:22px}li{margin:5px 0}
+  .wrap table{display:block;overflow-x:auto}
+  @media (max-width:600px){.pipe{flex-direction:column}.arrow{transform:rotate(90deg);padding:6px 0}}
+</style>
+</head>
+<body>
+<button class="theme" onclick="var h=document.documentElement,t=h.getAttribute('data-theme')==='dark'?'light':'dark';h.setAttribute('data-theme',t)">◐ Theme</button>
+<div class="wrap">
+  <div class="eyebrow">Design · First slice built and tested locally · 2026-09-23</div>
+  <h1>Server-Hosted Workflows, Local Agents</h1>
+  <p class="sub">A workflow lives either on your laptop or on a shared server — never both. Agents always run on the laptop, so they use your own LLM login and your own browser. Several users can drive the same server workflow, each from their own laptop.</p>
+
+  <nav class="toc">
+    <a href="#summary">01 Summary</a>
+    <a href="#status">00 Implementation status</a>
+    <a href="#decisions">02 Decisions</a>
+    <a href="#flow">03 How a tool call flows</a>
+    <a href="#routing">04 Placement &amp; routing</a>
+    <a href="#browser">05 Browser</a>
+    <a href="#auth">06 Auth &amp; identity</a>
+    <a href="#sessions">07 Sessions</a>
+    <a href="#sharing">08 Sharing &amp; concurrency</a>
+    <a href="#secrets">09 Secrets &amp; integrations</a>
+    <a href="#data">10 Direct-disk access</a>
+    <a href="#cli">11 CLI launch folder</a>
+    <a href="#writes">12 Server write safety</a>
+    <a href="#move">13 Moving a workflow</a>
+    <a href="#phases">14 Phases</a>
+    <a href="#risks">15 Risks</a>
+    <a href="#checklist">16 Validation checklist</a>
+    <a href="#open">17 Open questions</a>
+    <a href="#rejected">18 Alternatives considered</a>
+    <a href="#files">19 Key files</a>
+  </nav>
+
+
+  <!-- 00 -->
+  <h2 id="status"><span class="n">00</span>Implementation status (2026-09-23)</h2>
+  <p class="lead">First slice built in the worktree trio <code>ai-work/remote-ws/</code> and tested locally on isolated ports: laptop <code>agent_go</code> :19743, laptop <code>workspace-api</code> (router) :19744, "server" <code>workspace-api</code> :19745, separate docs folders. Not committed yet.</p>
+  <h3>Verified live with real Claude (claude-code, claude-sonnet-5)</h3>
+  <table>
+    <thead><tr><th>Check</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Workflow list shows local + server workflows together</td><td><span class="tag ok">Pass</span> <code>/api/workflows/manifests</code> returns both</td></tr>
+      <tr><td>Builder chat on a server workflow</td><td><span class="tag ok">Pass</span> shell ran on the server; agent sees laptop-style paths</td></tr>
+      <tr><td>Full workflow run (<code>run_full_workflow</code>) on a server workflow</td><td><span class="tag ok">Pass</span> run folders, logs, step output, costs JSON, builder history all written on the server</td></tr>
+      <tr><td>Nothing written under the laptop's <code>Workflow/&lt;server workflow&gt;</code></td><td><span class="tag ok">Pass</span> after the fixes below; laptop-only scratch goes to <code>_system/remote-scratch/</code></td></tr>
+      <tr><td>Files / shell / SQLite query + mutate routed to the server</td><td><span class="tag ok">Pass</span></td></tr>
+      <tr><td><code>agent-browser</code> and tool-API <code>curl</code> commands stay on the laptop</td><td><span class="tag ok">Pass</span> (browser proven with <code>agent-browser --version</code>; no real browser session launched)</td></tr>
+      <tr><td>Move local → server → local → server</td><td><span class="tag ok">Pass</span> file counts verified, old copy archived, paths rewritten</td></tr>
+      <tr><td>Server-mode per-user tokens</td><td><span class="tag ok">Pass</span> no/bad/shared token → 401; spoofed <code>X-User-ID</code> ignored (write landed in the token user's folder); full run still passes</td></tr>
+      <tr><td>Local workflows unchanged</td><td><span class="tag ok">Pass</span> control workflow ran locally before and after</td></tr>
+      <tr><td>Test suites</td><td><span class="tag ok">Pass</span> all <code>workspace</code> packages; touched <code>agent_go</code> packages + related <code>cmd/server</code> tests; new router, auth, placement, CLI-runtime and atomic-write tests</td></tr>
+    </tbody>
+  </table>
+  <h3>What was built</h3>
+  <ul>
+    <li><b>Router</b> (<code>workspace/remote_router.go</code>): placement file <code>_system/remote-workflows.json</code>; forwards any request inside a server workflow (documents, list/glob/search, folders, versions, upload, query/mutate/db, execute); merges listings; rewrites the docs root both ways; keeps browser and tool-API commands local and remaps their paths to <code>_system/remote-scratch/</code>; rejects cross-placement copy and commands spanning two servers.</li>
+    <li><b>Move</b> (<code>workspace/remote_router_move.go</code>): <code>POST /api/remote/move-to-server</code>, <code>/api/remote/move-to-local</code>, <code>GET /api/remote/placements</code>. Refuses to overwrite a non-empty server folder; verifies file counts before flipping placement.</li>
+    <li><b>Server-mode auth</b> (<code>workspace/server_user_auth.go</code>): <code>WORKSPACE_SERVER_USER_TOKENS_FILE</code> = SHA-256 token hashes per user; every <code>/api</code> call needs one; the server sets <code>X-User-ID</code> from the token.</li>
+    <li><b>agent_go guards</b> (<code>pkg/remoteplacement</code>): CLI isolation without a local workflow folder (<code>cliruntime.PrepareForRemoteWorkflow</code>); remote-aware CLI instructions; step Folder Guard paths created on the server through the API; step working dir → local scratch; per-workflow SQLite stores and local cost ledger skipped; local chat-history lookup skipped.</li>
+    <li><b>Fixes that help everyone</b>: atomic document writes (temp + rename); workspace import failed on macOS (<code>SaveUploadedFile</code> chmods the system temp dir); guard test <code>TestNoNewDirectDocsRootAccess</code> freezes the 28 files that read <code>WorkspaceDocsRoot()</code>.</li>
+  </ul>
+  <h3>Found while testing (not predicted)</h3>
+  <ul>
+    <li><b>Code-execution tool calls are shell commands.</b> Agents call tools with <code>curl "$MCP_CUSTOM/&lt;tool&gt;"</code> inside <code>execute_shell_command</code>. Routed to a real server, that would call the server's own localhost. Fixed: commands using <code>$MCP_*</code> or the tool-API URL always run on the laptop.</li>
+    <li><b>Folder Guard materialization</b> (<code>workspace_path_policy.go</code>) created every granted directory on local disk before each step. Fixed: created on the server via <code>/api/folders</code>.</li>
+    <li><b>CLI isolation already existed</b> — the CLI runs in a private runtime dir, not the workflow folder; only its path resolution needed the folder to exist locally.</li>
+    <li>Builder conversation history and phase cost JSON already went through the API — they landed on the server with no change.</li>
+  </ul>
+  <h3>Not built yet</h3>
+  <table>
+    <thead><tr><th>Gap</th><th>Effect today</th></tr></thead>
+    <tbody>
+      <tr><td>Server-side stores for per-workflow SQLite (Pulse state, background-agent log, report human inputs, run concerns, advisor specialization) and the per-workflow cost ledger</td><td>Disabled for server workflows (no local split-brain copy is created); costs still land in the laptop's global ledger</td></tr>
+      <tr><td>Browser artifact copy laptop → server</td><td>Screenshots/downloads from a server workflow stay in local scratch</td></tr>
+      <tr><td>Workflow lock, pinned schedules, claim leases, folder versions</td><td>Two users can edit/run the same server workflow at once; the laptop's workflow list can be stale for up to its cache window</td></tr>
+      <tr><td>Session registration on the server; process list/cleanup scoped per user</td><td>Server trusts the client's folder guard (identity is pinned, paths are not)</td></tr>
+      <tr><td>Server-side secret decrypt + inject</td><td>Secrets of a server workflow can't be decrypted from the laptop</td></tr>
+      <tr><td>Device-token connect flow; token in keychain; UI for placement/move</td><td>Server URL + token are written into the placement file by hand; moves are API calls</td></tr>
+      <tr><td>Deploy to Confida (Caddy route, TLS, server-mode env)</td><td>Only proven locally</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 01 -->
+  <h2 id="summary"><span class="n">01</span>Summary</h2>
+  <p class="lead">Example: a user has 10 workflows. 8 are local, 2 live on a team server. A teammate also works on those 2 server workflows from their own laptop.</p>
+  <div class="grid2">
+    <div class="tile"><h4><span class="tag acc">Why</span>Local agents</h4><p>Agents use <b>your own</b> Claude / Codex / Cursor / Pi login and <b>your own Chrome</b> with its sign-ins. Neither can live on a shared server.</p></div>
+    <div class="tile"><h4><span class="tag acc">Why</span>Server workflows</h4><p>One shared copy of a workflow that several people can open, run and improve — with no sync and no second copy.</p></div>
+    <div class="tile"><h4><span class="tag ok">Already there</span>Tool plane</h4><p>Every agent tool call already goes bridge → local <code>agent_go</code> → <code>workspace-api</code>. Claude's native Bash/Read are hard-disabled, so nothing bypasses it.</p></div>
+    <div class="tile"><h4><span class="tag bad">Missing</span>The rest</h4><p>Per-workflow routing, ~43 direct-disk reads in <code>agent_go</code>, server-side auth and sessions, browser split, secrets, locks.</p></div>
+  </div>
+  <div class="note ok"><b>Verdict:</b> possible. Nothing found blocks it. The server only needs <code>workspace-api</code> plus auth, sessions, locks and folder versions — no coding CLIs, no LLM logins, no <code>agent_go</code>. This is from reading the code; the end-to-end spike in phase 0 is the first real proof.</div>
+
+  <!-- 02 -->
+  <h2 id="decisions"><span class="n">02</span>Decisions</h2>
+  <p class="lead"><span class="tag ok">Confirmed</span> = stated by the user. <span class="tag acc">Proposed</span> = design choice in this doc, open to change.</p>
+  <table>
+    <thead><tr><th>Topic</th><th>Decision</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Placement</td><td>Each workflow lives in exactly one place: <b>local</b> or <b>server</b>. Never both, no sync.</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Where agents run</td><td>Always on the user's laptop, for every workflow.</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Purpose</td><td>Use the user's own LLM login and own browser.</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Sharing</td><td>Several users drive the same server workflow from their own laptops.</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Browser vs shell</td><td>For a server workflow: browser runs on the laptop, shell / files / DB run on the server.</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Server role</td><td>Thin: <code>workspace-api</code> + auth + sessions + locks + folder versions + backups. No agents.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Where the split happens</td><td>In the <b>laptop's <code>workspace-api</code></b>, as a routing middleware in front of its handlers — every consumer (agent_go clients, raw HTTP helpers, frontend, browser tool) already goes through it. <code>agent_go</code> only needs small guards where it touches local disk. <code>mcpbridge</code> is unchanged.</td><td><span class="tag ok">Built</span></td></tr>
+      <tr><td>Access model</td><td>Reuse the existing accounts (<code>users.json</code>) and per-workflow owners/readers + Share popup. Replaces the old <code>_team/</code> folder idea.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Identity</td><td>The server derives the user and the allowed folders itself. It never trusts <code>X-User-ID</code> or a client-sent folder guard.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Schedules on shared workflows</td><td>Each schedule is pinned to one person's laptop; a server claim lease is the backstop.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Secrets</td><td>The server decrypts server-workflow secrets and injects them into server shell commands. Laptops never see values.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>First users &amp; server</td><td>The owner plus one Confida user; server = Confida (<code>https://confida.agentworkshq.com</code>, <code>deploy/rootless-linux/products/confida/product.env</code>).</td><td><span class="tag ok">Confirmed</span></td></tr>
+      <tr><td>Chat history on shared workflows</td><td>Builder and run history shared with readers; personal chat sessions private.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Lock scope</td><td>One workflow lock covers both edits and runs; split later if needed.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Readers</td><td>View only in v1; they can't run a shared workflow.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Laptop sign-in</td><td>Existing <code>users.json</code> accounts + "Connect desktop" device tokens; no external SSO in v1.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Server shell limits</td><td>Per-workflow sandbox, no per-user CPU/disk quotas in v1.</td><td><span class="tag acc">Proposed</span></td></tr>
+      <tr><td>Rollout</td><td>Built on main behind a flag that stays off until phase 1 passes.</td><td><span class="tag acc">Proposed</span></td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><b>Confida is a live product server.</b> It already runs a full AgentWorks (own <code>agent_go</code> on :22000, <code>workspace-api</code> on :22001 behind the gateway, all CLIs, CDP disabled). Two consequences: exposing a device-token route to <code>workspace-api</code> through Caddy is a production change, and Confida's own web app can also run workflows — if it may run the shared ones, the workflow lock must cover it too. Both are open questions below.</div>
+
+  <!-- 03 -->
+  <h2 id="flow"><span class="n">03</span>How a tool call flows today</h2>
+  <p>Traced in code for <code>execute_shell_command</code> and <code>diff_patch_workspace_file</code>:</p>
+  <div class="pipe">
+    <div class="stage"><div class="s-n">01 · LAPTOP</div><div class="s-t">Claude CLI</div><div class="s-f">MCP tool call over stdio</div></div>
+    <div class="arrow">→</div>
+    <div class="stage"><div class="s-n">02 · LAPTOP</div><div class="s-t">mcpbridge</div><div class="s-f">POST MCP_API_URL/tools/custom/&lt;tool&gt; + X-Session-ID</div></div>
+    <div class="arrow">→</div>
+    <div class="stage"><div class="s-n">03 · LAPTOP</div><div class="s-t">agent_go</div><div class="s-f">session → workflow, user, folder guard</div></div>
+    <div class="arrow">→</div>
+    <div class="stage"><div class="s-n">04 · LAPTOP today</div><div class="s-t">workspace-api</div><div class="s-f">/api/execute · /api/documents/&lt;path&gt;/diff</div></div>
+  </div>
+  <ol class="seq">
+    <li><b>mcpbridge only forwards</b> (<code>mcpagent/cmd/mcpbridge/main.go:363-392</code>). Headers: <code>Authorization: Bearer MCP_API_TOKEN</code>, <code>X-Session-ID</code>, <code>X-Virtual-Scope-ID</code>. It knows nothing about workflows.</li>
+    <li><b>agent_go resolves the session</b> to a workflow, user and folder guard. The folder guard is "set internally — never from LLM args" (<code>agent_go/pkg/workspace/execute_shell_command.go:66-72</code>).</li>
+    <li><b>agent_go calls workspace-api</b> with <code>X-User-ID</code> and the shared <code>X-Workspace-Token</code> (<code>pkg/workspace/client.go:621</code>).</li>
+    <li><b>workspace-api executes</b> inside the Landlock sandbox, limited to the folder guard.</li>
+  </ol>
+  <div class="note"><b>Consequence:</b> the only component that must learn "this workflow is on the server" is <code>agent_go</code>, at the point where it picks a workspace client for a session. The bridge and the CLIs don't change.</div>
+
+  <!-- 04 -->
+  <h2 id="routing"><span class="n">04</span>Placement &amp; routing</h2>
+  <p>The July draft assumed the <em>whole</em> workspace moves, with one global <code>WORKSPACE_API_URL</code>. Mixed placement means the target is chosen <b>per workflow</b>.</p>
+  <pre><span class="c">LAPTOP                                                               SERVER</span>
+Claude → mcpbridge → agent_go ─┬─ local workflow:  files/shell/db → local workspace-api
+                               ├─ server workflow: files/shell/db ─────────────────────→ <span class="k">server workspace-api</span>
+                               └─ any workflow:    browser        → local workspace-api → agent-browser → your Chrome</pre>
+  <h3>Design</h3>
+  <ul>
+    <li><b>Workflow location registry.</b> The laptop keeps a list of connected servers (URL, server id, device token in the OS keychain). Server workflows appear under a path prefix such as <code>_remote/&lt;server-id&gt;/Workflow/&lt;name&gt;</code> in the laptop's path space.</li>
+    <li><b>One router.</b> A single <code>WorkspaceStore</code> / client factory picks local or server by that prefix. Every workspace call goes through it — tools, plan tools, Crew, history, scheduler.</li>
+    <li><b>Per-session client.</b> When a session starts, <code>agent_go</code> resolves its workflow once and binds the matching client. Tool handlers use the session's client, never a global URL.</li>
+    <li><b>Prompt paths per workflow.</b> Prompts embed absolute paths (<code>AbsWorkspacePath</code>). A server workflow's prompts must use the server root (<code>/app/workspace-docs</code>), a local one the local root.</li>
+    <li><b>No cross-placement references in v1.</b> A local workflow or Crew may not reference a server workflow's KB, context or sub-workflow, and vice versa. Block with a clear error.</li>
+    <li><b>Local workflows unchanged.</b> The 8 local workflows keep working exactly as today. Only server workflows take the new path, which keeps rollout safe.</li>
+  </ul>
+
+  <!-- 05 -->
+  <h2 id="browser"><span class="n">05</span>Browser</h2>
+  <p>The browser tool does not drive Chrome from <code>agent_go</code>. It runs the <code>agent-browser</code> CLI <b>as a shell command through workspace-api</b> (<code>agent_go/pkg/browser/client.go:75-87</code>), which connects over CDP to <code>localhost:9222</code>. So whichever <code>workspace-api</code> runs the command is where the browser runs. Sent to the server, it would look for Chrome on the server — and the server cannot reach a laptop behind NAT.</p>
+  <h3>Design</h3>
+  <ul>
+    <li><b>Browser always runs on the laptop</b> — built as a router rule: any <code>/api/execute</code> whose command runs <code>agent-browser</code> (or calls the tool API through <code>$MCP_*</code>) executes on the laptop's own <code>workspace-api</code>, even for a server workflow, with that workflow's paths remapped to <code>_system/remote-scratch/</code>. This also covers agents that call <code>agent-browser</code> through the shell tool, so no blocking is needed.</li>
+    <li><b>Copy files across machines.</b> <code>ArtifactTransfer</code> / <code>UploadTransfer</code> (<code>pkg/browser/types.go:25-37</code>) assume browser and files share one <code>workspace-api</code>. For server workflows add: server file → laptop staging before a page upload; laptop → server (<code>/upload</code>) after a screenshot or download.</li>
+    <li><b>Live view and recordings</b> stay laptop-side; recordings saved into the workflow are uploaded like any other artifact.</li>
+  </ul>
+  <div class="note warn"><b>Why the split lives in agent_go, not mcpbridge:</b> the bridge could run <code>agent-browser</code> itself, but it would bypass the CDP port config, folder guards, session tracking, live view and artifact transfer that <code>agent_go</code> already owns. Same result, much more rebuilding.</div>
+
+  <!-- 06 -->
+  <h2 id="auth"><span class="n">06</span>Auth &amp; identity</h2>
+  <p><b>Today:</b> <code>workspace-api</code> has one shared <code>WORKSPACE_API_TOKEN</code>, applied to process-execution routes (<code>workspace/workspace_auth.go</code>). User identity is whatever <code>X-User-ID</code> the client sends (<code>workspace/handlers/documents.go:27</code>, <code>shell.go:50</code>), and the folder guard arrives in the request body. Fine on one machine; unsafe on a shared server, where a modified laptop app could claim another user or send a wider folder guard.</p>
+  <h3>Design</h3>
+  <ul>
+    <li><b>Connect a laptop:</b> sign in on the server (existing <code>users.json</code> accounts), approve "Connect desktop", laptop exchanges a one-time grant for a <b>device token</b> scoped to that user + device. Revocable, listed per user, stored in the OS keychain.</li>
+    <li><b>Server derives identity</b> from the device token on every request. <code>X-User-ID</code> is ignored for authority.</li>
+    <li><b>Server computes the folder guard</b> from the session's workflow and the user's role on it (owner / reader via the existing Share model). Client-sent folder guards are ignored for server workflows.</li>
+    <li><b>Per-workflow sandbox on the server.</b> A prompt-injected agent on user A's laptop can run shell on the server. Landlock must confine it to that one workflow's folders, so it cannot reach user B's data.</li>
+    <li>TLS only, request size and rate limits, audit log of who ran what.</li>
+  </ul>
+
+  <!-- 07 -->
+  <h2 id="sessions"><span class="n">07</span>Sessions</h2>
+  <p>Session IDs are the glue between the bridge, <code>agent_go</code>, and the server. Today the server never learns who owns a session.</p>
+  <table>
+    <thead><tr><th>Today</th><th>Where</th><th>Problem on a shared server</th></tr></thead>
+    <tbody>
+      <tr><td>Each laptop's <code>agent_go</code> mints IDs: <code>uuid.NewString()</code>, or <code>schedule-&lt;trigger&gt;--&lt;id&gt;_&lt;nanos&gt;</code> for schedules</td><td><code>external_run.go:87</code>, <code>external_builder.go:74</code>, <code>scheduler.go:170</code></td><td>Collisions are practically impossible, but nothing ties an ID to a user or device.</td></tr>
+      <tr><td>Session → workflow, user, folder guard lives only in <code>agent_go</code> memory</td><td><code>common.SetSessionFolderGuard</code></td><td>Server can't verify; lost when the laptop app restarts.</td></tr>
+      <tr><td>Server process ownership comes from <code>RUNLOOP_SESSION_ID</code> in the client-sent <code>extra_env</code></td><td><code>workspace/handlers/process_manager.go:195-202</code></td><td>Spoofable. <code>/processes</code> and <code>/processes/cleanup</code> aren't scoped per user, so one laptop can list or kill another user's background processes.</td></tr>
+      <tr><td>Live run events stream from the <code>agent_go</code> running the session</td><td>SSE in <code>agent_go</code></td><td>User B can't watch user A's live run; only the durable history.</td></tr>
+    </tbody>
+  </table>
+  <h3>Design</h3>
+  <ul>
+    <li><b>Register sessions on the server.</b> Before a server-workflow session runs, the laptop calls e.g. <code>POST /api/sessions {workflow, kind, laptop_session_id}</code> with its device token. The server checks access, stores <code>session → user, device, workflow, folder guard, started_at</code>, and returns a server session id.</li>
+    <li><b>Every later call carries that id.</b> The server checks the token's user owns the session and applies the <em>stored</em> folder guard.</li>
+    <li><b>Scope processes, browser artifacts and streams by session owner.</b> List/cleanup only sees your own sessions; admins see all.</li>
+    <li><b>Heartbeat.</b> The laptop renews the session while it's alive. On expiry the server kills that session's processes and releases its locks. Replaces time-threshold sweeps for server workflows.</li>
+    <li><b>Session is the lock holder</b> — the workflow edit/run lock (<a href="#sharing">§08</a>) is held by a session, so a crashed laptop frees it automatically.</li>
+    <li><b>Put the device id in session metadata</b> so audit, costs and history show which laptop ran what.</li>
+    <li><b>History:</b> sessions of a shared workflow are stored on the server. Others see them read-only (existing read-only rehydration). Continuing someone else's session means starting a new session from that history — the live CLI is in their tmux.</li>
+    <li><b>Unchanged:</b> <code>MCP_API_TOKEN</code> (bridge → local <code>agent_go</code>), tmux namespaces and tool-session ownership are all laptop-local.</li>
+  </ul>
+
+  <!-- 08 -->
+  <h2 id="sharing"><span class="n">08</span>Sharing &amp; concurrency</h2>
+  <table>
+    <thead><tr><th>Issue</th><th>Design</th></tr></thead>
+    <tbody>
+      <tr><td><b>Who can access</b></td><td>Existing per-workflow owners/readers + Share popup, enforced by the server.</td></tr>
+      <tr><td><b>Two people editing or running at once</b></td><td>Workflow lock held by a session with a heartbeat. UI shows "Alice is running this". Others can view history but not write. Readers never write.</td></tr>
+      <tr><td><b>Whose laptop runs a schedule</b></td><td>Each schedule is pinned to one user's runner. If that laptop is off, show "waiting for Alice's runner" — never skip silently, never run on the server. A server claim lease is the backstop against double runs.</td></tr>
+      <tr><td><b>Clock skew</b></td><td>Leases, due times and heartbeats use server time.</td></tr>
+      <tr><td><b>Retries sending twice</b></td><td>Record "sent" per run + step on the server before notify / publish, and check it on retry.</td></tr>
+      <tr><td><b>Stale workflow list</b></td><td><code>noteWorkspaceMutation</code> (<code>cmd/server/manifest_index.go:35</code>) invalidates the cached <code>workflow.json</code> index only on this process's own writes. Add a per-folder version on the server; laptops check it when listing.</td></tr>
+      <tr><td><b>Different app versions</b></td><td>A newer app can upgrade <code>plan.json</code> to a format an older app can't read. Store a schema version; an older app opens it read-only and says "update AgentWorks".</td></tr>
+      <tr><td><b>Costs</b></td><td>Each run's usage is written to the workflow's cost ledger on the server with user + device, so shared costs are attributable.</td></tr>
+      <tr><td><b>Pulse / auto-improve</b></td><td>Runs on the laptop that owns the schedule; its reviews and findings are written to the server workflow like any other output.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 09 -->
+  <h2 id="secrets"><span class="n">09</span>Secrets &amp; integrations</h2>
+  <ul>
+    <li><b>Secrets break as-is.</b> The encryption key is derived from each <code>agent_go</code>'s own auth secret (<code>deriveSecretsKey()</code> → <code>GetAuthSecret()</code>, <code>cmd/server/secrets_routes.go:107</code>). A laptop cannot decrypt a server workflow's secrets. <b>Design:</b> the server decrypts and injects them into server shell commands; values never leave the server. Matches the existing "readers use, don't reveal" rule for shared secrets.</li>
+    <li><b>LLM / CLI logins stay on the laptop</b> and are never copied to the server.</li>
+    <li><b>MCP servers and connections are per laptop.</b> Gmail / Slack / WhatsApp connections (<code>config/gmail-connections</code>, <code>config/whatsapp-sessions</code>) and configured MCP servers live on each laptop, so a shared step may work for Alice and not for Bob. <b>Design:</b> a server workflow declares what it needs; the runner checks before starting and fails clearly if something is missing. Server-side notification connections can come later.</li>
+  </ul>
+
+  <!-- 10 -->
+  <h2 id="data"><span class="n">10</span>Direct-disk access in agent_go</h2>
+  <p>Tool calls use the API, but <code>agent_go</code> itself still reads and writes <code>workspace-docs</code> from local disk via <code>fsutil.WorkspaceDocsRoot()</code> (<code>pkg/fsutil/atomic.go:34</code> = <code>WORKSPACE_DOCS_PATH</code>). About 43 non-test call sites at <code>origin/main</code> <code>a6cfdc400</code>. For a server workflow each one reads an empty local path or writes a split-brain copy.</p>
+  <div class="note"><b>Rule:</b> workflow data goes through the workspace API even when the server is local — one code path, and local vs server is only which client. Laptop-wide state (which laptop is running what) stays local on purpose.</div>
+  <table>
+    <thead><tr><th>Area</th><th>Call sites</th><th>Class</th></tr></thead>
+    <tbody>
+      <tr><td>Plan drift / backlog</td><td><code>step_based_workflow/plan_drift_candidates.go</code> (5), <code>plan_drift_checks.go:30</code>, <code>plan_change_backlog.go:87</code></td><td>Workflow data — read-only, migrate first</td></tr>
+      <tr><td>Chat history</td><td><code>chat_history_persistence.go</code> (5), <code>workflow_builder_chat_guard.go:29</code></td><td>Workflow data — batch writes, not one call per event</td></tr>
+      <tr><td>Run folders, concerns, review data</td><td><code>scheduler.go:4172</code>, <code>pulse_step_concerns.go:126</code>, <code>run_concerns.go:153</code>, <code>workflow_review_data.go:228</code></td><td>Workflow data</td></tr>
+      <tr><td>Per-workflow cost ledger</td><td><code>pkg/costledger/workspace_ledger.go:41</code></td><td>Workflow data</td></tr>
+      <tr><td>Workshop DB</td><td><code>interactive_workshop_manager.go:8649</code></td><td>Workflow data (SQLite)</td></tr>
+      <tr><td>Schedule state</td><td><code>scheduler.go:271</code> (<code>_system/schedule-state.sqlite</code>)</td><td>Laptop-local, plus server claim leases</td></tr>
+      <tr><td>Global cost ledger, Pulse platform DBs</td><td><code>server.go:1709/1889/1897</code>, <code>virtual-tools/tool_costs.go:123</code>, <code>pulse_finding_details.go:502</code>, <code>pkg/pulseintake/runtime.go:261</code>, <code>pkg/loopclosure/loopclosure.go:325</code></td><td>Laptop-local (<code>_system</code>) — decide per item</td></tr>
+      <tr><td>CLI launch folder</td><td><code>coding_agent_modes.go:115</code>, <code>workflow_cli_isolation.go:75</code>, <code>virtual-tools/workspace_advanced_tools.go:706/853</code>, <code>base_orchestrator_agent_factory.go:161</code></td><td>See §11</td></tr>
+      <tr><td>Other</td><td><code>workflow.go:70</code>, <code>access_tokens.go:28</code>, <code>services/org_dashboard_connector.go:190</code>, <code>services/gmail_connections.go:135</code>, <code>server.go:2654</code>, <code>virtual-tools/workspace_document_paths.go:59/98</code>, <code>durable_chat_migration_command.go</code></td><td>Decide per item</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li><b>SQLite over the API.</b> <code>/mutate</code> (<code>workspace/handlers/query.go:895</code>) already runs a statement list in one transaction, but it is DML-only on existing workflow DBs and can't express read-then-write logic. Stores that need that get store-level endpoints, not raw SQL over HTTP.</li>
+    <li><b>Guard test.</b> Fail the build when new non-test <code>agent_go</code> code calls <code>fsutil.WorkspaceDocsRoot()</code> outside an allowlist. The count grew since July despite the plan; this is the only thing that stops it.</li>
+    <li><b>Crew needs nothing extra.</b> Crew's own code is already API-backed (<code>crew_directory.go:176</code>, <code>crew_creation.go:714/742</code>, <code>agent_profile_workflow.go:227</code>, <code>agent_profile_conversations.go:356</code>); built-in profiles, prompts and skills are <code>//go:embed</code>'d. Crew inherits only the shared gaps above: chat history, cost ledger, scheduler, CLI launch folder.</li>
+  </ul>
+
+  <!-- 11 -->
+  <h2 id="cli"><span class="n">11</span>CLI launch folder</h2>
+  <p>Today the CLI starts inside the workflow folder (<code>codingAgentWorkspaceWorkingDir</code>, <code>coding_agent_modes.go:110-116</code>). For a server workflow that folder doesn't exist locally.</p>
+  <ul>
+    <li>Launch the CLI in a per-session local scratch folder; write only CLI config there (<code>.mcp.json</code>, <code>.cursor/</code>, hooks, policy files).</li>
+    <li>Inject what the CLI used to pick up from disk: <code>CLAUDE.md</code>, <code>@file</code> references, <code>.pi/APPEND_SYSTEM.md</code>.</li>
+    <li>Bridge guidance: prompt paths are server paths; reach them through tools, never local disk.</li>
+  </ul>
+  <div class="note bad"><b>Highest-risk item.</b> A missed file loses context silently — no error. Needs a live end-to-end check per CLI (Claude, Codex, Cursor, Pi), not unit tests.</div>
+
+  <!-- 12 -->
+  <h2 id="writes"><span class="n">12</span>Server write safety</h2>
+  <ul>
+    <li><b>Half-written files are a real bug today.</b> <code>workspace/handlers/documents.go:145</code> and <code>:1070</code> use plain <code>os.WriteFile</code>. A dropped connection or crash can leave half-written JSON. Fix: write to a temp file and rename. Helps local setups too.</li>
+    <li><b>Lost updates.</b> Writes carry the version they were based on (If-Match); the server rejects a write based on a stale version so one user can't silently overwrite the other's newer edit.</li>
+    <li>Path traversal, symlinks and absolute host paths must be rejected on every route: read, write, move, delete, shell, db, upload/import/export, restore/versions.</li>
+  </ul>
+
+  <!-- 13 -->
+  <h2 id="move"><span class="n">13</span>Moving a workflow</h2>
+  <ul>
+    <li><b>Local → server:</b> back up, upload, rewrite embedded absolute paths to the server root, verify, then delete the local copy. The "exactly one place" rule is enforced, not advised.</li>
+    <li><b>Server → local:</b> the reverse, and the server copy is removed or archived.</li>
+    <li>Backups of server workflows run on the server. The laptop's Backup page must not try to back them up from local disk.</li>
+  </ul>
+
+  <!-- 14 -->
+  <h2 id="phases"><span class="n">14</span>Phases</h2>
+  <p class="lead">Ordered so local workflows never break, and nothing is exposed before the server is secure.</p>
+  <table>
+    <thead><tr><th>#</th><th>Phase</th><th>Scope</th><th>Exit criteria</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Spike + groundwork</td><td>End-to-end spike: second <code>workspace-api</code> as "server", one workflow pointed at it, one run with local Claude — record every failure. <code>WorkspaceStore</code> interface, guard test, atomic writes, If-Match.</td><td>Real breakage list; no behavior change for local workflows.</td></tr>
+      <tr><td>1</td><td>Server auth + sessions</td><td>Device tokens, server-derived identity, session registration + heartbeat, server-computed folder guard, per-workflow sandbox, process scoping.</td><td>No request without a valid token can read, write or run anything; a spoofed user id or folder guard is rejected; revoking a device stops it immediately.</td></tr>
+      <tr><td>2</td><td>Placement + routing</td><td>Server registry, <code>_remote/</code> prefix, per-session client, per-workflow prompt root, cross-placement block.</td><td>UI lists local and server workflows together and browses server ones read-only.</td></tr>
+      <tr><td>3</td><td>Direct-disk migration</td><td>The §10 call sites, area by area: plan drift → chat history → runs/concerns → costs → workshop DB.</td><td>A server workflow runs a builder chat and one regular run end to end.</td></tr>
+      <tr><td>4</td><td>Browser split</td><td>Browser → local workspace-api, cross-machine artifact copy, block shell <code>agent-browser</code>.</td><td>Browser step on a server workflow uses local Chrome; screenshots land in the server workflow.</td></tr>
+      <tr><td>5</td><td>Secrets + integrations</td><td>Server-side decrypt + inject; required-integration preflight.</td><td>A server workflow's secret works from two laptops without either seeing the value.</td></tr>
+      <tr><td>6</td><td>CLI launch folder</td><td>Scratch folder + context injection for all CLIs.</td><td>Live e2e per CLI shows no context loss.</td></tr>
+      <tr><td>7</td><td>Sharing</td><td>Share enforcement, workflow lock, pinned schedules + claim lease, folder versions, schema-version guard, cost attribution.</td><td>Two laptops on one workflow: one lock holder, one schedule run, both lists up to date.</td></tr>
+      <tr><td>8</td><td>Move</td><td>Local ↔ server move with path rewrite and removal of the old copy.</td><td>A real workflow moved and run with no leftover local copy.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 15 -->
+  <h2 id="risks"><span class="n">15</span>Risks</h2>
+  <table>
+    <thead><tr><th>Risk</th><th>Notes / mitigation</th></tr></thead>
+    <tbody>
+      <tr><td><b>Latency</b></td><td>Every file read in a server workflow is an internet round trip; a turn does dozens. Server workflows will feel slower. Batch writes, cache reads within a session.</td></tr>
+      <tr><td><b>Offline</b></td><td>No network → server workflows unavailable; a run in flight fails clearly and its lock expires.</td></tr>
+      <tr><td><b>Split machines</b></td><td>Shell runs on the server: laptop tools (Python packages, ffmpeg, Playwright) aren't there, and scripts can't drive local Chrome. The most likely user surprise; document it in the UI.</td></tr>
+      <tr><td><b>Remote code execution</b></td><td><code>execute_shell_command</code> is RCE by design. Server auth, per-workflow sandbox and audit are product requirements, not hardening.</td></tr>
+      <tr><td><b>Silent CLI context loss</b></td><td>§11 — live e2e per CLI.</td></tr>
+      <tr><td><b>Version skew</b></td><td>§08 schema-version guard.</td></tr>
+      <tr><td><b>Ongoing tax</b></td><td>Every new feature must work for both placements. Guard test + a server-workflow case in the e2e suite.</td></tr>
+      <tr><td><b>Laptop-off schedules</b></td><td>Accepted consequence of local agents. Visible "waiting for runner" state.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 16 -->
+  <h2 id="checklist"><span class="n">16</span>Validation checklist</h2>
+  <h3>Auth, identity &amp; sessions</h3>
+  <ul>
+    <li>Connect a laptop, then revoke its token: it stops working without an app restart.</li>
+    <li>Change <code>X-User-ID</code>, a folder guard, or <code>RUNLOOP_SESSION_ID</code> in a request: the server ignores or rejects it.</li>
+    <li>User A lists or cleans up processes: user B's processes are invisible and untouched.</li>
+    <li>Kill a laptop mid-run: its session expires, its processes stop, its lock is released.</li>
+  </ul>
+  <h3>Routing</h3>
+  <ul>
+    <li>With 8 local + 2 server workflows, every request for a server workflow hits the server, and every local one stays local.</li>
+    <li><code>execute_shell_command pwd</code> on a server workflow runs on the server.</li>
+    <li>A local workflow referencing a server workflow's KB is blocked with a clear error.</li>
+  </ul>
+  <h3>Browser</h3>
+  <ul>
+    <li>Browser step on a server workflow uses local Chrome with its logins; the screenshot appears in the server workflow.</li>
+    <li>A page upload of a server file works.</li>
+    <li><code>agent-browser</code> via shell on a server workflow is rejected.</li>
+  </ul>
+  <h3>Sharing</h3>
+  <ul>
+    <li>Two laptops open one workflow: one holds the lock, the other sees who and can't write.</li>
+    <li>Due schedule with both laptops online: runs once, on the pinned laptop.</li>
+    <li>Pinned laptop off: schedule shows waiting, doesn't run elsewhere.</li>
+    <li>A's edit shows up in B's workflow list.</li>
+    <li>Older app opens a workflow upgraded by a newer app: read-only with an update prompt.</li>
+  </ul>
+  <h3>Data &amp; writes</h3>
+  <ul>
+    <li>Network cut mid plan edit: file is fully written or clearly failed, never half-written.</li>
+    <li>Two writes from the same base version: the second is rejected.</li>
+    <li>Path traversal, symlink escape and absolute host paths are rejected on every route.</li>
+  </ul>
+  <h3>Secrets</h3>
+  <ul>
+    <li>A server-workflow secret works from both laptops; neither can read its value; logs redact tokens and secrets.</li>
+  </ul>
+
+  <!-- 17 -->
+  <h2 id="open"><span class="n">17</span>Open questions</h2>
+  <p class="lead">Only the first two block work (phases 1 and 7). The rest have proposed defaults in §02.</p>
+  <ul>
+    <li><b>Blocks phase 1:</b> OK to expose a device-token-only <code>workspace-api</code> route on the live Confida server?</li>
+    <li><b>Blocks phase 7:</b> may Confida's own web app also run the shared workflows, or only laptops?</li>
+    <li>Is the server auth a hardened mode of <code>workspace-api</code>, or a small auth/proxy in front of a private <code>workspace-api</code>?</li>
+    <li>Server session id: server-minted, or the laptop's id bound on registration?</li>
+    <li>Which <code>_system</code> stores (global costs, Pulse platform DBs) should also exist per server for shared visibility?</li>
+    <li>Device token lifetime and refresh for long runs.</li>
+    <li>Do server-side notification connections (Gmail/Slack) belong in v1?</li>
+  </ul>
+
+  <!-- 18 -->
+  <h2 id="rejected"><span class="n">18</span>Alternatives considered</h2>
+  <table>
+    <thead><tr><th>Alternative</th><th>Why not</th></tr></thead>
+    <tbody>
+      <tr><td>Move the whole workspace to the server (July draft)</td><td>Doesn't fit mixed placement; every workflow pays the latency cost.</td></tr>
+      <tr><td>Run all of AgentWorks on the server, use per-user Claude tokens (like Video Studio's setup-token gate) and tunnel back to the laptop's Chrome</td><td>Avoids routing work, but needs a tunnel exposing Chrome's debug port, each CLI's per-user login handled on the server, and laptop tools still aren't available. Not verified in code as deeply as this design.</td></tr>
+      <tr><td>Split browser vs shell inside <code>mcpbridge</code></td><td>Rebuilds browser handling that <code>agent_go</code> already has (§05).</td></tr>
+      <tr><td>Mount the server folder locally (sshfs etc.)</td><td>Slow, unsafe for SQLite, and becomes a second copy in practice.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 19 -->
+  <h2 id="files"><span class="n">19</span>Key files</h2>
+  <table>
+    <thead><tr><th>Concern</th><th>File · symbol</th></tr></thead>
+    <tbody>
+      <tr><td>Bridge proxy (stdio → HTTP)</td><td><code>mcpagent/cmd/mcpbridge/main.go</code></td></tr>
+      <tr><td>Shell tool → workspace-api</td><td><code>agent_go/pkg/workspace/execute_shell_command.go</code> · <code>ExecuteShellCommand</code></td></tr>
+      <tr><td>Workspace client headers</td><td><code>agent_go/pkg/workspace/client.go</code></td></tr>
+      <tr><td>Browser tool → agent-browser via shell</td><td><code>agent_go/pkg/browser/client.go</code> · <code>ExecuteCommand</code></td></tr>
+      <tr><td>Local docs root</td><td><code>agent_go/pkg/fsutil/atomic.go</code> · <code>WorkspaceDocsRoot</code></td></tr>
+      <tr><td>CLI launch folder</td><td><code>agent_go/cmd/server/coding_agent_modes.go</code> · <code>codingAgentWorkspaceWorkingDir</code></td></tr>
+      <tr><td>Manifest cache invalidation</td><td><code>agent_go/cmd/server/manifest_index.go</code> · <code>noteWorkspaceMutation</code></td></tr>
+      <tr><td>Secrets key</td><td><code>agent_go/cmd/server/secrets_routes.go</code> · <code>deriveSecretsKey</code></td></tr>
+      <tr><td>workspace-api auth</td><td><code>workspace/workspace_auth.go</code></td></tr>
+      <tr><td>Server process registry</td><td><code>workspace/handlers/process_manager.go</code></td></tr>
+      <tr><td>Document writes</td><td><code>workspace/handlers/documents.go</code></td></tr>
+      <tr><td>SQLite mutate (transactional)</td><td><code>workspace/handlers/query.go</code> · <code>MutateWorkflowDB</code></td></tr>
+    </tbody>
+  </table>
+  <p>Related: <a href="mcp_bridge_layer.md">mcp_bridge_layer.md</a>, <a href="multi_user_authentication.md">multi_user_authentication.md</a>, <a href="folder_guard_system.md">folder_guard_system.md</a>, <a href="../orchestration.html">orchestration.html</a>.</p>
+
+  <footer>Runloop · Server-hosted workflows, local agents · file: docs/core/remote_workspace_server_plan.html · supersedes the 2026-07-06 draft · toggle theme top-right</footer>
+</div>
+</body>
+</html>

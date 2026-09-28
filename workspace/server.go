@@ -105,6 +105,14 @@ func runServer(cmd *cobra.Command, args []string) {
 		c.Next()
 	})
 
+	// Server mode: per-user tokens on every /api request (no-op unless
+	// WORKSPACE_SERVER_USER_TOKENS_FILE is set).
+	r.Use(requireServerUserToken())
+
+	// Workflows placed on a remote workspace server are served from there.
+	// No-op without <docs>/_system/remote-workflows.json.
+	r.Use(newRemoteRouter(docsDir).middleware())
+
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

@@ -98,7 +98,7 @@ this is the complete map.
 - [Native Workspace Mode](core/native_workspace_mode.md)
 - [OAuth Integration Guide](core/oauth.md)
 - [Designing a product.yaml](core/product_yaml_design_guide.md)
-- [Remote Workspace Gateway + Local Runner Plan](core/remote_workspace_server_plan.md)
+- [Server-Hosted Workflows, Local Agents](core/remote_workspace_server_plan.html)
 - [Session And Tool Binding](core/session_and_tool_binding.md)
 - [Skills System](core/skills.md)
 - [Slack Connections (Per-Workflow Slack Apps)](core/slack_connections.md)

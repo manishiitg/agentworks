@@ -145,7 +145,7 @@ func CreateDocument(c *gin.Context) {
 	}
 
 	// Write file
-	if err := os.WriteFile(fullPath, []byte(req.Content), 0644); err != nil {
+	if err := writeFileAtomic(fullPath, []byte(req.Content), 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to create document",
@@ -1110,7 +1110,7 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 	} else {
-		writeErr = os.WriteFile(filePath, []byte(req.Content), 0644)
+		writeErr = writeFileAtomic(filePath, []byte(req.Content), 0644)
 	}
 	if err := writeErr; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
