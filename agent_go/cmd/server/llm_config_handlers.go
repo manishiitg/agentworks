@@ -46,7 +46,7 @@ func isPublishedLLMProviderAllowed(provider string) bool {
 }
 
 func agyAlphaEnabled() bool {
-	return strings.TrimSpace(os.Getenv("AGY_ALPHA")) == "1" && !IsMultiUserMode()
+	return llmguard.AgyAlphaEnabled()
 }
 
 func defaultPublishedLLMProviderAndModel() (string, string) {

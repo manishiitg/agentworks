@@ -59,6 +59,22 @@ func TestValidateStepLLMConfigAcceptsRealPairings(t *testing.T) {
 	}
 }
 
+func TestValidateStepLLMConfigEnforcesAgyAlphaGate(t *testing.T) {
+	t.Setenv("AGY_ALPHA", "")
+	t.Setenv("MULTI_USER_MODE", "")
+	if got := validateStepLLMConfig("execution_llm", "", "agy-cli", "gemini-3.8-flash-high"); got == "" {
+		t.Fatal("AGY accepted without alpha flag")
+	}
+	t.Setenv("AGY_ALPHA", "1")
+	if got := validateStepLLMConfig("execution_llm", "", "agy-cli", "gemini-3.8-flash-high"); got != "" {
+		t.Fatalf("AGY rejected in local alpha mode: %s", got)
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if got := validateStepLLMConfig("execution_llm", "", "agy-cli", "gemini-3.8-flash-high"); got == "" {
+		t.Fatal("AGY accepted in multi-user mode")
+	}
+}
+
 func TestCollectStepLLMConfigsUsesSelectedModel(t *testing.T) {
 	cfg := &AgentLLMConfig{Provider: "anthropic", ModelID: "claude-sonnet-5"}
 	got := collectStepLLMConfigsForValidation(cfg)
