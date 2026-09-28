@@ -189,7 +189,9 @@ type GoogleCLIAccess struct {
 	Account string
 	Client  string
 	GogPath string
-	Token   string // legacy connections only; gog accounts supply Account/Client
+	// Home is the gog store the account lives in (a private connection's own).
+	Home  string
+	Token string // legacy connections only; gog accounts supply Account/Client
 	// Grants maps service -> write-allowed. A service absent from this map is
 	// not authorized at all for this connection.
 	Grants map[string]bool
@@ -275,7 +277,7 @@ func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, conne
 	if len(grants) == 0 {
 		return GoogleCLIAccess{}, fmt.Errorf("connection %q (%s) has no Google read/service grant available to agents — enable Gmail read access or another service in Bots settings and reconnect", conn.ID, conn.DisplayName)
 	}
-	return GoogleCLIAccess{GogPath: gogPath, Token: token, Account: conn.Email, Client: conn.ClientName, Grants: grants}, nil
+	return GoogleCLIAccess{GogPath: gogPath, Home: gogHomeForConnection(conn), Token: token, Account: conn.Email, Client: conn.ClientName, Grants: grants}, nil
 }
 
 // sortedGoogleServiceNames lists catalog keys for an error message enumerating
@@ -358,7 +360,11 @@ func RunGoogleCLIIn(ctx context.Context, connectionID string, args []string, sco
 		return "", fmt.Errorf("this connection is not authorized for %q — enable it in workflow bots settings and reconnect", service)
 	}
 
-	finalArgs := append([]string{"--home", gogHomeDir()}, trimmed...)
+	home := access.Home
+	if home == "" {
+		home = gogHomeDir()
+	}
+	finalArgs := append([]string{"--home", home}, trimmed...)
 	if access.Token != "" {
 		finalArgs = append(finalArgs, "--access-token", access.Token)
 	} else {

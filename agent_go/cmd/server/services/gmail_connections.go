@@ -614,10 +614,11 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 
 	// Several registry entries may reference one gog account/client pair.
 	// Remove its token only when the last reference is removed.
-	if conn.AuthBackend == "gog" && conn.Email != "" {
+	home := gogHomeForConnection(conn)
+	if conn.AuthBackend == "gog" && conn.Email != "" && !conn.IsPrivate() {
 		shared := false
 		for _, other := range kept {
-			if strings.EqualFold(other.Email, conn.Email) && other.ClientName == conn.ClientName {
+			if strings.EqualFold(other.Email, conn.Email) && other.ClientName == conn.ClientName && gogHomeForConnection(other) == home {
 				shared = true
 				break
 			}
@@ -629,7 +630,7 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 			if binary == "" {
 				binary = "gog"
 			}
-			args := append(gogBaseArgs(nil), "--client", conn.ClientName, "auth", "tokens", "delete", conn.Email, "--no-input")
+			args := append(gogBaseArgs(home, nil), "--client", conn.ClientName, "auth", "tokens", "delete", conn.Email, "--no-input")
 			if err := exec.CommandContext(cmdCtx, binary, args...).Run(); err != nil {
 				return fmt.Errorf("remove gog account credential: %w", err)
 			}
@@ -645,6 +646,13 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 	if ownsGmailConnectionDir(conn.ConfigHome) {
 		if err := os.RemoveAll(conn.ConfigHome); err != nil {
 			return fmt.Errorf("gmail connection: remove config dir: %w", err)
+		}
+	}
+	// A private connection's store is its alone: removing it removes the
+	// account, its token and its copy of the OAuth client together.
+	if conn.IsPrivate() {
+		if err := os.RemoveAll(home); err != nil {
+			return fmt.Errorf("gmail connection: remove private store: %w", err)
 		}
 	}
 	// Always drop the stored OAuth credential, whoever owned the directory:
@@ -693,6 +701,7 @@ func gmailConnectionConfig(conn GmailConnection) *GmailConfig {
 		CredentialsFile: conn.CredentialsFile,
 		gogAccountEmail: conn.Email,
 		gogClientName:   conn.ClientName,
+		gogHome:         gogHomeForConnection(conn),
 		storedScopes:    append([]string(nil), conn.Scopes...),
 	}
 	if conn.AuthBackend == "gog" {

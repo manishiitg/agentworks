@@ -2,6 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -75,5 +81,90 @@ func TestPrivateGmailConnectionsStayInTheirCode(t *testing.T) {
 	// The Google CLI refuses it outside its Code too.
 	if _, err := g.GoogleCLIAccessForConnection(context.Background(), "mine"); err == nil {
 		t.Fatal("the unscoped Google CLI reached a private account")
+	}
+}
+
+// A Code's Google account lives in its own gog store beside the shared one,
+// never inside it: the shared store is what terminals, workflows and Crews
+// are handed. Every gog call for the connection names that store, and
+// deleting the connection removes it.
+func TestPrivateGmailConnectionsHaveTheirOwnStore(t *testing.T) {
+	binDir := t.TempDir()
+	argvFile := filepath.Join(t.TempDir(), "argv.log")
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"---\" >> " + shellQuote(argvFile) + "\n" +
+		"for a in \"$@\"; do printf '%s\\n' \"$a\" >> " + shellQuote(argvFile) + "; done\n"
+	if err := os.WriteFile(filepath.Join(binDir, "gog"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GOG_HOME", filepath.Join(t.TempDir(), "agentworks", "gog"))
+	clientsDir := t.TempDir()
+	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", clientsDir)
+	if err := os.MkdirAll(filepath.Join(clientsDir, "primary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(clientsDir, "primary", "client_secret.json"), []byte(`{"installed":{"client_id":"id","client_secret":"secret"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	shared := GmailConnection{ID: "shared", Email: "team@example.com", ClientName: "primary", AuthBackend: "gog"}
+	mine := GmailConnection{ID: "mine", Email: "alice@example.com", ClientName: "primary", AuthBackend: "gog", ScopeWorkspace: "_users/alice/Chats/Code/projects/app-1", OwnerID: "alice"}
+	other := mine
+	other.ID, other.ScopeWorkspace = "theirs", "_users/alice/Chats/Code/projects/other-2"
+	home := gogHomeForConnection(mine)
+	if gogHomeForConnection(shared) != gogHomeDir() {
+		t.Fatal("a shared connection left the shared store")
+	}
+	if rel, err := filepath.Rel(gogHomeDir(), home); err != nil || !strings.HasPrefix(rel, "..") {
+		t.Fatalf("private store %s is inside the shared store %s", home, gogHomeDir())
+	}
+	if home == gogHomeForConnection(other) {
+		t.Fatal("two Codes share a private store")
+	}
+
+	if err := ImportRefreshTokenIntoGog(context.Background(), home, mine.Email, mine.ClientName, "refresh-token"); err != nil {
+		t.Fatal(err)
+	}
+	if got := gmailConnectionConfig(mine).home(); got != home {
+		t.Fatalf("status/send run against %s, want %s", got, home)
+	}
+	for _, call := range strings.Split(strings.Join(readArgvLines(t, argvFile), "\n"), "---") {
+		if strings.TrimSpace(call) != "" && !strings.Contains(call, "--home\n"+home+"\n") {
+			t.Fatalf("gog call not pointed at the private store:\n%s", call)
+		}
+	}
+
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var saved string
+	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			body, _ := io.ReadAll(r.Body)
+			var put struct {
+				Content string `json:"content"`
+			}
+			_ = json.Unmarshal(body, &put)
+			saved = put.Content
+			_, _ = w.Write([]byte(`{"success":true}`))
+			return
+		}
+		out, _ := json.Marshal(map[string]any{"success": true, "data": map[string]string{"content": saved}})
+		_, _ = w.Write(out)
+	}))
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	g := &GmailService{config: &GmailConfig{Connections: []GmailConnection{shared, mine}}}
+	if err := g.DeleteConnection(context.Background(), "mine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(home); !os.IsNotExist(err) {
+		t.Fatalf("private store survived its connection: %v", err)
+	}
+	if strings.Contains(saved, "alice@example.com") {
+		t.Fatal("the deleted connection is still in the saved registry")
 	}
 }

@@ -366,7 +366,17 @@ func CompleteGmailOAuth(ctx context.Context, state, code string) (string, string
 	if err != nil || email == "" {
 		return "", "", nil, fmt.Errorf("could not verify the Google account identity; retry sign-in")
 	}
-	if err := ImportRefreshTokenIntoGog(ctx, email, pending.ClientName, token.RefreshToken); err != nil {
+	// The connection decides the store: a private (Code) connection's account
+	// never lands in the shared one.
+	home := gogHomeDir()
+	if svc := GetGmailService(); svc != nil {
+		conn, ok := svc.GetConnection(pending.ConnectionID)
+		if !ok {
+			return "", "", nil, fmt.Errorf("this Google connection no longer exists — start again from the Gmail settings")
+		}
+		home = gogHomeForConnection(conn)
+	}
+	if err := ImportRefreshTokenIntoGog(ctx, home, email, pending.ClientName, token.RefreshToken); err != nil {
 		return "", "", nil, err
 	}
 	return pending.ConnectionID, email, scopes, nil

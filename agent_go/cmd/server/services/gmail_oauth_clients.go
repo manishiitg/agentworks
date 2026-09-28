@@ -157,7 +157,7 @@ func CreateOAuthClient(ctx context.Context, name string, secretJSON []byte, repl
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return GmailOAuthClient{}, fmt.Errorf("gmail oauth client: create directory: %w", err)
 	}
-	if err := storeGogClient(ctx, name, secretJSON); err != nil {
+	if err := storeGogClient(ctx, gogHomeDir(), name, secretJSON); err != nil {
 		return GmailOAuthClient{}, err
 	}
 

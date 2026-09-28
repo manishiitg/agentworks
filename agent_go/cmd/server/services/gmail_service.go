@@ -102,6 +102,9 @@ type GmailConfig struct {
 	// token rather than a server-managed access token).
 	gogAccountEmail string
 	gogClientName   string
+	// gogHome is the gog store this connection's account lives in: the
+	// shared one, or a private connection's own (gogHomeForConnection).
+	gogHome string
 	// storedScopes carries the connection's consent-time scopes into the
 	// status check, in-memory only like the selectors above. gog reports no
 	// scope metadata for imported accounts, so the checked-account branch

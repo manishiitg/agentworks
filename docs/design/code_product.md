@@ -281,6 +281,14 @@ Code ships a basic setup first; integrations come later. In Code's
     `OwnerID`, `services.GmailUseScope` enforced by the Google CLI tool, the
     grant tools, the settings API (`workspace_path`), workflow notification
     senders and the default connection.
+  - Decided (user, 2026-09-28): stored **separately**. Each private
+    connection has its own gog store (`<gog home>/../gog-private/<hash>`, 0700),
+    never the shared GOG_HOME that trusted terminals, workflows and Crews are
+    handed. Sign-in imports there; status, send and the Google CLI tool run
+    with `--home` pointing there; deleting the connection deletes the store.
+  - Decided (user, 2026-09-28): a Code **may call** Crews and workflows (ask /
+    call_function) that use Gmail. They run in their own context with
+    whatever Gmail they are set up with, never the Code's.
 
 - [ ] **App preview.** When someone builds a web app in a Code, the agent runs
   it on the server (for example `npm run dev` on port 3000). A private
