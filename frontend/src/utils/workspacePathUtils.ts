@@ -187,6 +187,13 @@ export function getOriginalPath(adjustedPath: string, workflowFolderPath: string
   }
 }
 
+/** Resolve the upload dialog's displayed root to the active project or workflow. */
+export function resolveWorkspaceUploadPath(folderPath: string, scope?: string | null): string {
+  if (!folderPath || folderPath === '/') return scope || '/'
+  if (!scope || isPathWithinFolder(folderPath, scope)) return folderPath
+  return `${scope.replace(/\/+$/, '')}/${folderPath.replace(/^\/+/, '')}`
+}
+
 /**
  * Check if a file should be included in workflow filter
  */
