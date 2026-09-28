@@ -17,10 +17,18 @@ func ProtectCodingAgentProjectionWrites(sessionID, workspaceRoot string) {
 	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(workspaceRoot) == "" {
 		return
 	}
-	blocked := make([]string, 0, len(managedCodingAgentProjectionWritePaths)*2)
-	if current := GetSessionShellConfig(sessionID); current != nil {
-		blocked = append(blocked, current.BlockedWritePaths...)
+	// Only add to a guard the session already has. Setting blocked-write
+	// paths marks the session guarded, and a guarded session with no read or
+	// write paths fails closed: a delegated or background sub-agent whose
+	// guard comes from its request context (delegation sets the session guard
+	// on the parent) would lose all workspace access ("no workspace read
+	// paths were granted"). Such a session keeps its context guard, as before.
+	current := GetSessionShellConfig(sessionID)
+	if current == nil || (!current.FolderGuardSet && len(current.ReadPaths) == 0 && len(current.WritePaths) == 0) {
+		return
 	}
+	blocked := make([]string, 0, len(managedCodingAgentProjectionWritePaths)*2+len(current.BlockedWritePaths))
+	blocked = append(blocked, current.BlockedWritePaths...)
 	for _, relative := range managedCodingAgentProjectionWritePaths {
 		blocked = append(blocked, filepath.Join(workspaceRoot, relative), relative)
 	}
