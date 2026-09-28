@@ -72,6 +72,27 @@ AGENTWORKS_PROVIDER_POLICY='{
 behaviour. The UI shows the policy in words ("Available to: Code, and
 alice@x.com").
 
+**Product defaults** (owner decision 2026-09-28). The same setting names the
+provider, model and account a product starts with, so a new workflow, Crew
+or Code needs no model setup:
+
+```
+AGENTWORKS_PRODUCT_DEFAULTS='{
+  "code":       {"provider": "muse-cli",    "model": "<model id>"},
+  "work":       {"provider": "claude-code", "model": "<model id>"},
+  "agentworks": {"provider": "claude-code", "model": "<model id>"}
+}'
+```
+
+- The account is the provider's installed account unless `account` names an
+  admin-configured one.
+- A default must be admitted by that provider's `available_to` for the
+  product; the server refuses to start otherwise.
+- New items copy the default into their own settings when created, so a
+  later default change does not silently switch existing workflows.
+- The Providers page shows each product's default; admins change it there
+  (an admin-configured default) unless the installation pins it.
+
 ### 2. User accounts (added by a person)
 
 Added by any user (unless the installation turns personal accounts off, as
@@ -187,9 +208,7 @@ The workflow / Crew / Code model picker groups accounts the same way.
 
 ## Open questions for the owner
 
-1. Installation policy: are `all / admins / products / users` the right
-   conditions, or do you also want per-product defaults ("Code uses Muse by
-   default")?
+1. *(Decided: yes to product defaults, see "Product defaults".)*
 2. Shared (a)/(b): may everyone with access to the workflow or Crew use the
    account, or only its editors?
 3. The hybrid-mode rule: accept "shared accounts run MCP-only for others"
