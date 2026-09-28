@@ -33,7 +33,7 @@ type GmailOAuthStartResponse struct {
 // GmailOAuthRoutes wires the sign-in endpoints.
 func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
 	router.HandleFunc("/api/human-feedback/gmail/connections/{id}/auth/start",
-		startGmailOAuthHandler(api)).Methods("POST", "OPTIONS")
+		requireGmailConnectionManager(startGmailOAuthHandler(api))).Methods("POST", "OPTIONS")
 	router.HandleFunc(gmailOAuthCallbackPath,
 		gmailOAuthCallbackHandler(api)).Methods("GET")
 }

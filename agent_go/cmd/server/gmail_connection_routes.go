@@ -122,10 +122,46 @@ func GmailConnectionRoutes(router *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("", listGmailConnectionsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}", getGmailConnectionHandler(api)).Methods("GET")
-	r.HandleFunc("/{id}", updateGmailConnectionHandler(api)).Methods("PATCH", "POST", "OPTIONS")
-	r.HandleFunc("/{id}", deleteGmailConnectionHandler(api)).Methods("DELETE", "OPTIONS")
-	r.HandleFunc("/{id}/default", setDefaultGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
-	r.HandleFunc("/{id}/test", testGmailConnectionSendHandler(api)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/{id}", requireGmailConnectionManager(updateGmailConnectionHandler(api))).Methods("PATCH", "POST", "OPTIONS")
+	r.HandleFunc("/{id}", requireGmailConnectionManager(deleteGmailConnectionHandler(api))).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/{id}/default", requireGmailConnectionManager(setDefaultGmailConnectionHandler(api))).Methods("POST", "OPTIONS")
+	r.HandleFunc("/{id}/test", requireGmailConnectionManager(testGmailConnectionSendHandler(api))).Methods("POST", "OPTIONS")
+}
+
+// requireGmailConnectionManager gates changing, testing, authorizing or
+// deleting one connection. A shared account is the organisation's: only an
+// admin manages it (anyone could otherwise re-authorize it to their own
+// Google account, repoint its credentials, or send from it). A Code's private
+// account is its owner's alone; gmailConnectionService enforces that.
+func requireGmailConnectionManager(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next(w, r)
+			return
+		}
+		if svc := services.GetGmailService(); svc != nil {
+			if conn, found := svc.GetConnection(strings.TrimSpace(mux.Vars(r)["id"])); found && conn.IsPrivate() {
+				next(w, r)
+				return
+			}
+		}
+		if !currentUserIsAdmin(r) {
+			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
+		next(w, r)
+	}
+}
+
+// requireAdminWrite gates a Gmail settings write to admins.
+func requireAdminWrite(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodOptions && !currentUserIsAdmin(r) {
+			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
+		next(w, r)
+	}
 }
 
 // projectGmailConnection is the single place a connection becomes JSON.
@@ -299,6 +335,11 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 		scope, scopeErr := gmailRequestScope(r, req.WorkspacePath)
 		if scopeErr != nil {
 			http.Error(w, scopeErr.Error(), http.StatusForbidden)
+			return
+		}
+		// A shared account is created by an admin; a Code's own by its owner.
+		if scope.CodeWorkspace == "" && !currentUserIsAdmin(r) {
+			writeWorkflowPermissionDenied(w, "admin")
 			return
 		}
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{

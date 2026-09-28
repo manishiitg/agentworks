@@ -50,9 +50,9 @@ type GmailTestResponse struct {
 func GmailFeedbackRoutes(router *mux.Router, api *StreamingAPI) {
 	r := router.PathPrefix("/api/human-feedback/gmail").Subrouter()
 	r.HandleFunc("/config", getGmailConfigHandler(api)).Methods("GET")
-	r.HandleFunc("/config", updateGmailConfigHandler(api)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/config", requireAdminWrite(updateGmailConfigHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/status", getGmailStatusHandler(api)).Methods("GET")
-	r.HandleFunc("/test", testGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/test", requireAdminWrite(testGmailConnectionHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/service-catalog", getGoogleServiceCatalogHandler(api)).Methods("GET")
 }
 

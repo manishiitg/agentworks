@@ -40,3 +40,31 @@ func TestCodeGmailScopeIsOwnerOnly(t *testing.T) {
 		t.Fatalf("a workflow classified as a Code: %q", root)
 	}
 }
+
+// Shared Google accounts are the organisation's: a non-admin cannot change,
+// test, re-authorize, delete or default them, or replace OAuth clients.
+func TestSharedGmailWritesNeedAnAdmin(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"boss","username":"boss","admin":true},{"id":"member","username":"member","can_create":true}]}`)
+	reached := false
+	next := func(w http.ResponseWriter, r *http.Request) { reached = true }
+	call := func(gate func(http.HandlerFunc) http.HandlerFunc, userID string) int {
+		reached = false
+		req := httptest.NewRequest(http.MethodPost, "/x", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: userID, Username: userID}))
+		rec := httptest.NewRecorder()
+		gate(next)(rec, req)
+		return rec.Code
+	}
+	for name, gate := range map[string]func(http.HandlerFunc) http.HandlerFunc{
+		"connection manager": requireGmailConnectionManager,
+		"settings write":     requireAdminWrite,
+	} {
+		if code := call(gate, "member"); code != http.StatusForbidden || reached {
+			t.Fatalf("%s: a member got through (%d)", name, code)
+		}
+		if call(gate, "boss"); !reached {
+			t.Fatalf("%s: an admin was refused", name)
+		}
+	}
+}
