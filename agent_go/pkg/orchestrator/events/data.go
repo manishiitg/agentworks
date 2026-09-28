@@ -263,7 +263,7 @@ func (e *RequestHumanFeedbackEvent) GetEventType() events.EventType {
 type HumanFeedbackResolvedEvent struct {
 	events.BaseEventData
 	RequestID string `json:"request_id"`
-	Outcome   string `json:"outcome"` // "answered" or "expired"
+	Outcome   string `json:"outcome"` // "answered", "expired" or "cancelled"
 	SessionID string `json:"session_id,omitempty"`
 }
 

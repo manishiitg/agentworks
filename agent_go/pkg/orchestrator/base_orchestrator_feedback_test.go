@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -186,4 +187,42 @@ func TestOrchestratorQuestionsAreAnswerableThroughTheirSession(t *testing.T) {
 			t.Fatalf("choice = %q, want option1", choice)
 		}
 	})
+}
+
+// PLAT-368: a question from a run that is stopped is withdrawn and marked
+// cancelled, instead of waiting out its ten minutes.
+func TestOrchestratorQuestionIsWithdrawnWhenTheRunStops(t *testing.T) {
+	listener := &recordingListener{}
+	bo := &BaseOrchestrator{contextAwareBridge: listener}
+	id := "plat368-helper-" + time.Now().Format("150405.000000000")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := bo.RequestHumanFeedback(ctx, id, "Which city?", "", "plat368-session", "wf")
+		done <- err
+	}()
+	store := virtualtools.GetHumanFeedbackStore()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(store.PendingForSession("plat368-session", time.Now())) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("question never registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a stopped run's question returned no error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the helper kept waiting after the run stopped")
+	}
+	if len(store.PendingForSession("plat368-session", time.Now())) != 0 {
+		t.Fatal("the question is still pending")
+	}
+	raw, _ := json.Marshal(listener.events[len(listener.events)-1].Data)
+	if !strings.Contains(string(raw), `"outcome":"cancelled"`) {
+		t.Fatalf("resolution marker = %s, want outcome cancelled", raw)
+	}
 }

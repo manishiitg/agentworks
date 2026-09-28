@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -81,7 +82,7 @@ func (bo *BaseOrchestrator) RequestHumanFeedback(
 	// Removed verbose logging
 
 	// BLOCKING CALL - waits here until response or timeout
-	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
+	response, err := feedbackStore.WaitForResponseCtx(ctx, requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return false, "", fmt.Errorf("timeout waiting for human feedback: %w", err)
@@ -151,7 +152,7 @@ func (bo *BaseOrchestrator) RequestYesNoFeedback(
 
 	// Removed verbose logging
 
-	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
+	response, err := feedbackStore.WaitForResponseCtx(ctx, requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return false, fmt.Errorf("timeout waiting for feedback: %w", err)
@@ -216,7 +217,7 @@ func (bo *BaseOrchestrator) RequestMultipleChoiceFeedback(
 
 	// Removed verbose logging
 
-	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
+	response, err := feedbackStore.WaitForResponseCtx(ctx, requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return "", fmt.Errorf("timeout waiting for feedback: %w", err)
@@ -267,7 +268,9 @@ func (bo *BaseOrchestrator) emitHumanFeedbackResolved(ctx context.Context, reque
 		return
 	}
 	outcome := "answered"
-	if waitErr != nil {
+	if errors.Is(waitErr, virtualtools.ErrFeedbackCancelled) {
+		outcome = "cancelled"
+	} else if waitErr != nil {
 		outcome = "expired"
 	}
 	now := time.Now()
