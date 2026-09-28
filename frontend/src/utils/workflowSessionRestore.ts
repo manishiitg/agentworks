@@ -212,6 +212,17 @@ function isBotWorkflowSession(session: ActiveSessionInfo, runningWorkflow?: Runn
   return !!workflowSessionBotPlatform(session, runningWorkflow)
 }
 
+// A plain switch to a workflow follows a live session only when it is the
+// user's own conversation with it. Schedule, webhook, bot and external runs
+// are separate read-only lanes: following them took the user to a schedule's
+// chat instead of their main chat (RTS 2026-09-28). They stay reachable from
+// their run tabs, Active work and Ctrl+K, which open them explicitly.
+export function followsOnWorkflowSwitch(session: ActiveSessionInfo, runningWorkflow?: RunningWorkflowInfo): boolean {
+  if (isScheduledWorkflowSession(session, runningWorkflow) || isBotWorkflowSession(session, runningWorkflow)) return false
+  const trigger = (session.triggered_by || runningWorkflow?.triggered_by || '').toLowerCase()
+  return trigger !== 'external'
+}
+
 function findWorkflowPresetForSession(
   session: ActiveSessionInfo,
   runningWorkflow?: RunningWorkflowInfo,
@@ -402,7 +413,7 @@ export async function openWorkflowPresetPage(
 
   if (!isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
 
-  if (activeSession) {
+  if (activeSession && followsOnWorkflowSwitch(activeSession)) {
     await openActiveSession(activeSession, {
       preset,
       runningWorkflow: options.runningWorkflow,
@@ -415,7 +426,7 @@ export async function openWorkflowPresetPage(
 
   const runningWorkflow = await runningWorkflowPromise
   if (!isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-  if (runningWorkflow?.session_id) {
+  if (runningWorkflow?.session_id && followsOnWorkflowSwitch(sessionFromRunningWorkflow(runningWorkflow), runningWorkflow)) {
     await openActiveSession(sessionFromRunningWorkflow(runningWorkflow), {
       preset,
       runningWorkflow,
