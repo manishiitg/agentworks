@@ -71,7 +71,14 @@ func TestM0LiveContext7(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skipf("%s not exposed, skipping live call proof", granted)
+		t.Fatalf("%s not exposed by live Context7 upstream", granted)
+	}
+	snap, ok := st.GetTool(granted)
+	if !ok {
+		t.Fatalf("%s missing after discovery", granted)
+	}
+	if _, approved := st.ApproveTool("w1", granted, snap.Fingerprint, snap.Version); !approved {
+		t.Fatalf("could not approve %s", granted)
 	}
 	st.AddGrant(store.Grant{UserID: "u1", PublicName: granted})
 

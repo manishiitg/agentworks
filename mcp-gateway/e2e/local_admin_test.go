@@ -482,7 +482,7 @@ func TestRenameGroup(t *testing.T) {
 }
 
 // TestNonLoopbackStillRequiresToken: off-loopback peers must present the
-// token; the local bypass never applies to them.
+// token; forwarding headers cannot impersonate a local caller.
 func TestNonLoopbackStillRequiresToken(t *testing.T) {
 	mux := localAdminMux()
 
