@@ -161,6 +161,12 @@ submission status belongs in neither.
 - Put new application and source-code files in `code/` by default. Preserve an
   existing repository layout and keep project-level metadata, documentation,
   and platform-managed folders at the project root when appropriate.
+- Clone repositories and create git worktrees inside this Crew's `code/`
+  folder (for example `code/<repo>` or `code/worktrees/<branch>`), never in
+  `/tmp` or elsewhere outside the Crew. Work outside the Crew is invisible to
+  your later turns, to `ask()` callers and to the Crew's file tools, and is lost
+  when the server restarts. When you commit a file on a branch that is not the
+  checked-out one, say the repo, branch and path in your reply.
 - Preserve user changes, existing conventions, and the smallest useful scope.
   Reuse project and platform components instead of creating parallel versions.
 - Implement complete working behavior, not placeholders, unless the user asks

@@ -154,7 +154,18 @@ func externalTools() ([]externalTool, error) {
 		}
 		add("list_crews", "List the Crews this connection may use: ID, name, identity, owner. Requires crews:read.", false, false, map[string]any{"query": externalString("Filter by Crew name, identity, or ID.")})
 		add("get_crew", "Describe one Crew: identity, description, model, and its functions (typed entry points other Crews and connections can call). Requires crews:read.", false, false, crewID(nil), "crew_id")
-		add("list_crew_files", "List a Crew's project files (crew-relative paths). Private areas — chat transcripts under builder/, db/, and the Crew's manifests — are never listed. Requires crews:read.", false, false, crewID(nil), "crew_id")
+		crewFiles := func(search bool) map[string]any {
+			p := page()
+			p["path"] = externalString("Crew-relative directory to start from; defaults to the Crew root.")
+			p["depth"] = externalInteger(1, 8)
+			p["glob"] = externalString("Optional path glob relative to path; use it to find files by name, e.g. **/*ForgotPassword*. ** matches directories recursively.")
+			if search {
+				p["query"] = externalString("Case-insensitive literal text to find inside files.")
+			}
+			return crewID(p)
+		}
+		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
+		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
 		add("read_crew_file", "Read one text file from a Crew's project (crew-relative path, up to 256 KiB). Private areas are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
 		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, including the built-in ask. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
@@ -457,8 +468,11 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 }
 func externalArg(args map[string]any, name string) string { s, _ := args[name].(string); return s }
 func externalInt(args map[string]any, name string, fallback int) int {
-	if n, ok := args[name].(float64); ok {
+	switch n := args[name].(type) {
+	case float64:
 		return int(n)
+	case int:
+		return n
 	}
 	return fallback
 }
