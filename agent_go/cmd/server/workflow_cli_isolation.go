@@ -8,6 +8,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
@@ -73,7 +74,13 @@ func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
 	}
-	dir, err := cliruntime.Prepare(stateRoot, fsutil.WorkspaceDocsRoot(), user, shared, session, provider, mode)
+	prepare := cliruntime.Prepare
+	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), folder) {
+		// The workflow lives on a remote workspace server; there is no local
+		// folder to resolve. The CLI still gets its private runtime directory.
+		prepare = cliruntime.PrepareForRemoteWorkflow
+	}
+	dir, err := prepare(stateRoot, fsutil.WorkspaceDocsRoot(), user, shared, session, provider, mode)
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
 	}
@@ -94,6 +101,9 @@ func trustAgyWorkingDir(provider, dir string) error {
 }
 
 func workflowCLIWorkspaceInstructions(folder string) string {
+	if remoteplacement.IsRemote(fsutil.WorkspaceDocsRoot(), folder) {
+		return fmt.Sprintf("\nCLI runtime location: the current directory contains this chat's private instructions and skills. The workflow root %q lives on a remote workspace server: its files are NOT on this machine. Never use native file or shell tools for workflow files; use the workspace bridge tools (file, shell, database), which run on that server and resolve to this workflow. Keep generated CLI instructions and skills in the private runtime directory.\n", codingAgentWorkspaceWorkingDir(folder))
+	}
 	return fmt.Sprintf("\nCLI runtime location: the current directory contains this chat's private instructions and skills. The authoritative workflow root is %q. Use absolute paths rooted there for native file tools, and explicitly cd there for native shell commands that use workflow-relative paths. Workspace bridge tools already resolve to that workflow. Keep generated CLI instructions and skills in the private runtime directory.\n", codingAgentWorkspaceWorkingDir(folder))
 }
 

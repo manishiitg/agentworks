@@ -1,10 +1,12 @@
 package step_based_workflow
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/remoteplacement"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
 )
 
@@ -50,6 +52,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) materializeWorkflowGuardPaths(readPat
 			addManagedDirectory(path)
 			break
 		}
+	}
+
+	// A workflow on a remote workspace server runs its shell commands there,
+	// so its grants must exist on that server, not as a local stray copy.
+	if remoteplacement.IsRemote(docsRoot, hcpo.GetWorkspacePath()) {
+		for _, grant := range grants {
+			if err := createFolderViaAPI(context.Background(), filepath.ToSlash(grant.Path)); err != nil {
+				return fmt.Errorf("materialize workflow Folder Guard paths on the workspace server: %w", err)
+			}
+		}
+		return nil
 	}
 
 	if _, err := workspacepathpolicy.Materialize(docsRoot, grants); err != nil {

@@ -273,7 +273,19 @@ func ImportWorkspace(c *gin.Context) {
 	}
 
 	// Save uploaded file to temporary location
-	tempZipPath := filepath.Join(os.TempDir(), fmt.Sprintf("workspace-import-%d.zip", time.Now().Unix()))
+	// Save into a private temp dir: gin's SaveUploadedFile chmods the
+	// destination's parent, which fails on the shared system temp dir (macOS).
+	tempDir, err := os.MkdirTemp("", "workspace-import-*")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
+			Success: false,
+			Message: "Failed to create temp directory",
+			Error:   err.Error(),
+		})
+		return
+	}
+	defer os.RemoveAll(tempDir)
+	tempZipPath := filepath.Join(tempDir, fmt.Sprintf("workspace-import-%d.zip", time.Now().Unix()))
 	fmt.Printf("💾 Saving to temp file: %s\n", tempZipPath)
 	if err := c.SaveUploadedFile(file, tempZipPath); err != nil {
 		fmt.Printf("❌ Failed to save file: %v\n", err)

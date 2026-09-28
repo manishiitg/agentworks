@@ -17,6 +17,18 @@ import (
 // their directory across restarts; provider cleanup only touches that directory.
 // This is instruction isolation, not an OS sandbox or workflow write lock.
 func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode string) (string, error) {
+	return prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode, false)
+}
+
+// PrepareForRemoteWorkflow is Prepare for a workflow placed on a remote
+// workspace server: its folder does not exist on this machine, so containment
+// is checked lexically instead of on the resolved folder. The runtime digest
+// input is the same path spelling Prepare would use if the folder existed.
+func PrepareForRemoteWorkflow(stateRoot, workspaceRoot, user, workflow, session, provider, mode string) (string, error) {
+	return prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode, true)
+}
+
+func prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode string, remoteWorkflow bool) (string, error) {
 	if !filepath.IsAbs(stateRoot) || !filepath.IsAbs(workspaceRoot) || !filepath.IsAbs(workflow) {
 		return "", fmt.Errorf("CLI isolation requires absolute state, workspace and workflow paths")
 	}
@@ -33,11 +45,8 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 	if err != nil {
 		return "", err
 	}
+	lexicalWorkspace := filepath.Clean(workspaceRoot)
 	workspaceRoot, err = filepath.EvalSymlinks(workspaceRoot)
-	if err != nil {
-		return "", err
-	}
-	workflow, err = filepath.EvalSymlinks(workflow)
 	if err != nil {
 		return "", err
 	}
@@ -47,9 +56,23 @@ func Prepare(stateRoot, workspaceRoot, user, workflow, session, provider, mode s
 	if err != nil {
 		return "", err
 	}
-	physicalWorkflow, err := pathidentity.Resolve(workflow)
-	if err != nil {
-		return "", err
+	var physicalWorkflow string
+	if remoteWorkflow {
+		rel, relErr := filepath.Rel(lexicalWorkspace, filepath.Clean(workflow))
+		if relErr != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("workflow is outside the workspace root")
+		}
+		workflow = filepath.Join(workspaceRoot, rel)
+		physicalWorkflow = filepath.Join(physicalWorkspace, rel)
+	} else {
+		workflow, err = filepath.EvalSymlinks(workflow)
+		if err != nil {
+			return "", err
+		}
+		physicalWorkflow, err = pathidentity.Resolve(workflow)
+		if err != nil {
+			return "", err
+		}
 	}
 	physicalState, err := pathidentity.Resolve(stateRoot)
 	if err != nil {

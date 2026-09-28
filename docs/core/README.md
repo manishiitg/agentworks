@@ -31,7 +31,7 @@ These docs describe platform subsystems that cut across workflow and multi-agent
 - `multi_user_authentication.md`
 - `native_workspace_mode.md`
 - `oauth.md`
-- `remote_workspace_server_plan.md`
+- `remote_workspace_server_plan.html`
 - `session_and_tool_binding.md`
 - `secrets.md`
 - `skills.md`
