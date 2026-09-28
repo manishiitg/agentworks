@@ -183,11 +183,17 @@ Already installed? The app updates itself from this release.
 INSTALL
   if [[ -n "$previous_tag" ]]; then
     echo "Changes since $previous_tag:"
-    if ! git log --no-merges --pretty=format:'- %s (%h)' "$previous_tag"..HEAD; then
+    # GitHub caps a release body at 125,000 characters; list the newest
+    # commits and link the full comparison.
+    commit_count="$(git rev-list --no-merges --count "$previous_tag"..HEAD 2>/dev/null || echo 0)"
+    if ! git log --no-merges --pretty=format:'- %s (%h)' -n 100 "$previous_tag"..HEAD; then
       echo "- Unable to compute changelog from $previous_tag."
     fi
-    if [[ -z "$(git log --no-merges --pretty=format:%s "$previous_tag"..HEAD)" ]]; then
+    if [[ "$commit_count" == "0" ]]; then
       echo "- No non-merge commits."
+    elif (( commit_count > 100 )); then
+      echo
+      echo "…and $((commit_count - 100)) more. Full list: https://github.com/$REPO/compare/$previous_tag...$tag"
     fi
   else
     echo "Changes:"
