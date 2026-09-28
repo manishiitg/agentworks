@@ -628,6 +628,7 @@ var interactiveOwnerClosers = map[llm.Provider]func(id, reason string){
 	llm.ProviderCursorCLI:  llmproviders.CloseCursorCLIInteractiveSessionForOwner,
 	llm.ProviderPiCLI:      llmproviders.ClosePiCLIInteractiveSessionForOwner,
 	llm.ProviderMuseCLI:    llmproviders.CloseMuseCLIInteractiveSessionForOwner,
+	llm.ProviderAgyCLI:     llmproviders.CloseAgyCLIInteractiveSessionForOwner,
 }
 
 // closeInteractiveOwner dispatches to the provider-specific owner-scoped close.
