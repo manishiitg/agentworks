@@ -12,6 +12,21 @@ import (
 	baseevents "github.com/manishiitg/mcpagent/events"
 )
 
+// humanFeedbackWait is how long a workflow waits for an answer. The stored
+// request expires at the same moment, so no answer is refused as expired
+// while the workflow still waits.
+const humanFeedbackWait = 10 * time.Minute
+
+// registerHumanFeedback records the question in the authoritative store with
+// the session it belongs to, its real choices and its free-text policy (not
+// the metadata-less CreateRequestWithoutNotification). The session binding is
+// what lets the owner see it in run_status.pending_inputs and answer it with
+// run_reply_input over MCP or the CLI; without it those APIs never saw the
+// question and refused the answer (PLAT-365).
+func registerHumanFeedback(store *virtualtools.HumanFeedbackStore, requestID, question, contextMsg, sessionID string, options []string, allowFeedback bool) error {
+	return store.CreatePendingRequest(requestID, question, contextMsg, sessionID, options, allowFeedback, humanFeedbackWait)
+}
+
 // RequestHumanFeedback is a common function for requesting human feedback with blocking behavior
 // Returns: (approved bool, feedback string, error)
 func (bo *BaseOrchestrator) RequestHumanFeedback(
@@ -27,8 +42,7 @@ func (bo *BaseOrchestrator) RequestHumanFeedback(
 	// Use HumanFeedbackStore to wait for response
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
 
-	// Create feedback request without notifications (only registers in store for WaitForResponse)
-	if err := feedbackStore.CreateRequestWithoutNotification(requestID, question); err != nil {
+	if err := registerHumanFeedback(feedbackStore, requestID, question, context, sessionID, []string{"Approve & Continue", "Reject"}, true); err != nil {
 		return false, "", fmt.Errorf("failed to create feedback request: %w", err)
 	}
 
@@ -67,7 +81,7 @@ func (bo *BaseOrchestrator) RequestHumanFeedback(
 	// Removed verbose logging
 
 	// BLOCKING CALL - waits here until response or timeout
-	response, err := feedbackStore.WaitForResponse(requestID, 10*time.Minute)
+	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return false, "", fmt.Errorf("timeout waiting for human feedback: %w", err)
@@ -110,8 +124,7 @@ func (bo *BaseOrchestrator) RequestYesNoFeedback(
 
 	// Wait for response
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
-	// Create feedback request without notifications (only registers in store for WaitForResponse)
-	if err := feedbackStore.CreateRequestWithoutNotification(requestID, question); err != nil {
+	if err := registerHumanFeedback(feedbackStore, requestID, question, context, sessionID, []string{yesLabel, noLabel}, false); err != nil {
 		return false, fmt.Errorf("failed to create feedback request: %w", err)
 	}
 
@@ -138,7 +151,7 @@ func (bo *BaseOrchestrator) RequestYesNoFeedback(
 
 	// Removed verbose logging
 
-	response, err := feedbackStore.WaitForResponse(requestID, 10*time.Minute)
+	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return false, fmt.Errorf("timeout waiting for feedback: %w", err)
@@ -178,8 +191,7 @@ func (bo *BaseOrchestrator) RequestMultipleChoiceFeedback(
 
 	// Wait for response
 	feedbackStore := virtualtools.GetHumanFeedbackStore()
-	// Create feedback request without notifications (only registers in store for WaitForResponse)
-	if err := feedbackStore.CreateRequestWithoutNotification(requestID, question); err != nil {
+	if err := registerHumanFeedback(feedbackStore, requestID, question, context, sessionID, options, false); err != nil {
 		return "", fmt.Errorf("failed to create feedback request: %w", err)
 	}
 
@@ -204,7 +216,7 @@ func (bo *BaseOrchestrator) RequestMultipleChoiceFeedback(
 
 	// Removed verbose logging
 
-	response, err := feedbackStore.WaitForResponse(requestID, 10*time.Minute)
+	response, err := feedbackStore.WaitForResponse(requestID, humanFeedbackWait)
 	bo.emitHumanFeedbackResolved(ctx, requestID, sessionID, err)
 	if err != nil {
 		return "", fmt.Errorf("timeout waiting for feedback: %w", err)
