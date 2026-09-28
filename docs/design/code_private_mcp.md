@@ -1,6 +1,6 @@
 # MCP servers in Code: global and personal
 
-Status: design, reviewed twice by ai-work-7e (2026-09-28). Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
+Status: built (2026-09-28), implementation reviewed by ai-work-7e; design reviewed twice. Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
 [code_product.md](code_product.md).
 
 Owner decisions (2026-09-28):
@@ -215,6 +215,11 @@ bridge between turns.
 - Slack/WhatsApp DM turns run as the **matched sender**, never the bot owner
   (`bot_owner`): an editor's DM to a Code's bot resolves the editor's servers,
   not the owner's.
+
+Known residual: a Code session created before pins existed, and not marked in
+memory, still resolves through the old chain until its first new turn pins it;
+the deploy that introduces pins ends retained CLIs, so this only covers
+sessions from before that deploy.
 
 ### `workflow.json` is protected in Code
 
