@@ -48,6 +48,9 @@ import type {
   SharedProjectSummary,
   CodeShareRole,
   CodeSharesResponse,
+  CodeAdminWorkspace,
+  CodeAdminChat,
+  CodeAdminAuditEntry,
   GetEventsResponse,
   PollingEvent,
   TerminalEventsResponse,
@@ -1211,6 +1214,37 @@ export const agentApi = {
 
   putCodeShares: async (projectId: string, grants: Array<{ user: string; role: CodeShareRole }>): Promise<CodeSharesResponse> => {
     const response = await api.put(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shares`, { grants })
+    return response.data
+  },
+
+  // Admin inspection of Code (read-only; every call is audited server-side).
+  adminListCodeWorkspaces: async (): Promise<{ workspaces: CodeAdminWorkspace[] }> => {
+    const response = await api.get('/api/admin/code/workspaces')
+    return response.data
+  },
+
+  adminListCodeFiles: async (ownerId: string, projectId: string): Promise<{ files: SharedProjectFileEntry[]; truncated?: boolean }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
+    return response.data
+  },
+
+  adminGetCodeFile: async (ownerId: string, projectId: string, path: string): Promise<{ path: string; content: string; binary?: boolean; truncated?: boolean }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
+    return response.data
+  },
+
+  adminListCodeChats: async (ownerId: string, projectId: string): Promise<{ chats: CodeAdminChat[] }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
+    return response.data
+  },
+
+  adminGetCodeChat: async (ownerId: string, projectId: string, sessionId: string, userId: string): Promise<{ conversation_history?: Array<{ Role?: string; role?: string; Parts?: Array<Record<string, unknown>>; parts?: Array<Record<string, unknown>> }> }> => {
+    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
+    return response.data
+  },
+
+  adminCodeAudit: async (month?: string): Promise<{ month: string; entries: CodeAdminAuditEntry[] }> => {
+    const response = await api.get('/api/admin/code/audit', { params: month ? { month } : undefined })
     return response.data
   },
 

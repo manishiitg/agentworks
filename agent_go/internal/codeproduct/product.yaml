@@ -134,6 +134,9 @@ profile:
     capabilities:
       workflow_execution: disabled
   built_in: true
+  # Admins can open every user's Code read-only, and every view is audited
+  # (docs/design/code_product.md, "Admin inspection").
+  admin_inspection: true
 
 branding:
   icon: code

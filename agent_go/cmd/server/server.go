@@ -2367,6 +2367,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
+	// Admin inspection of Code (read-only, audited; admin checked in-handler).
+	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/files", api.handleAdminCodeFiles).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/file", api.handleAdminCodeFile).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")

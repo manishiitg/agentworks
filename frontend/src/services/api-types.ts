@@ -309,6 +309,35 @@ export interface CodeShareGrant {
   role: CodeShareRole
 }
 
+export interface CodeAdminWorkspace {
+  owner_id: string
+  owner_username?: string
+  id: string
+  title: string
+  workspace_path: string
+  updated_at?: string
+  shares: CodeShareGrant[]
+}
+
+export interface CodeAdminChat {
+  user_id: string
+  username?: string
+  session_id: string
+  title?: string
+  updated_at?: string
+  message_count: number
+}
+
+export interface CodeAdminAuditEntry {
+  at: string
+  admin_id: string
+  admin_username?: string
+  action: string
+  owner_id?: string
+  project_id?: string
+  target?: string
+}
+
 export interface CodeSharesResponse {
   owner_id: string
   owner_username?: string

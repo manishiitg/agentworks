@@ -318,9 +318,9 @@ type PresentationActivityBinding struct {
 // keep the text in their own files and fill this in at load time, so a long
 // prompt does not have to live inline in the product manifest.
 type CommandBinding struct {
-	Name        string   `json:"name" yaml:"name"`
-	Description string   `json:"description" yaml:"description"`
-	Icon        string   `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description" yaml:"description"`
+	Icon        string `json:"icon,omitempty" yaml:"icon,omitempty"`
 	// Aliases resolve to this command without adding menu entries.
 	Aliases []string `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 	// MenuHidden keeps a retained shortcut executable without a menu row.
@@ -384,7 +384,11 @@ type Profile struct {
 	ToolPolicy   ToolPolicy           `json:"tool_policy,omitempty" yaml:"tool_policy,omitempty"`
 	Runtime      RuntimePolicy        `json:"runtime" yaml:"runtime"`
 	BuiltIn      bool                 `json:"built_in" yaml:"built_in"`
-	OwnerID      string               `json:"owner_id,omitempty" yaml:"owner_id,omitempty"`
+	// AdminInspection lets server admins open this product's projects of
+	// every user read-only (chats, files, sharing), with every view audited.
+	// Off by default: Crew and personal chats stay owner-only even for admins.
+	AdminInspection bool   `json:"admin_inspection,omitempty" yaml:"admin_inspection,omitempty"`
+	OwnerID         string `json:"owner_id,omitempty" yaml:"owner_id,omitempty"`
 	// Product names which product surface this builtin profile belongs to
 	// (e.g. "dominion", "video-studio", "sparkquill") -- set by each product's
 	// registration call in server.go, never by the product package itself.
