@@ -997,6 +997,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 				append([]string{subPerUserChatsWrite, "Downloads/", subPerUserChatHistory}, extraFolders...),
 			)
 			if hostDownloads := common.GrantSessionCDPHostDownloadsReadOnly(sessionID, browserReq.BrowserMode); hostDownloads != "" {
+				common.GrantSessionCDPHostDownloadsReadOnly(subAgentSessionID, browserReq.BrowserMode)
 				log.Printf("[DELEGATION FOLDER GUARD] Added read-only CDP host Downloads for sub-agent: %s", hostDownloads)
 			}
 		}
