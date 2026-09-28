@@ -80,15 +80,7 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 // crewRootListingVisible hides the crew's private areas from a reader's
 // listing of the crew root. name is relative to the crew root.
 func crewRootListingVisible(name string) bool {
-	name = strings.Trim(name, "/")
-	if sharedProjectExcludedRootFiles[name] {
-		return false
-	}
-	top := name
-	if index := strings.IndexByte(name, '/'); index >= 0 {
-		top = name[:index]
-	}
-	return !sharedProjectExcludedTopSegments[top]
+	return !sharedProjectHiddenPath(name)
 }
 
 // codeLinkReadAllowed reports whether claims may read the Code rooted at

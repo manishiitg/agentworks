@@ -100,6 +100,30 @@ var sharedProjectExcludedTopSegments = map[string]bool{"builder": true, "db": tr
 // summary, so raw access adds nothing but the secrets.
 var sharedProjectExcludedRootFiles = map[string]bool{"product.json": true, "workflow.json": true}
 
+// sharedProjectHiddenPath reports a crew-relative path readers may never
+// list or open: the private subtrees, the raw manifests, and anything under
+// a dot-segment at any depth. Dot-folders hold credentials and tool state:
+// .sandbox-cache/home is the project's HOME (git credentials, ssh keys, CLI
+// logins), plus .git (remote URLs with tokens), .env files, .ssh, .claude.
+// Before this, any reader could open .sandbox-cache/home/.git-credentials
+// of a Crew (RTS 2026-09-28).
+func sharedProjectHiddenPath(rel string) bool {
+	rel = strings.Trim(rel, "/")
+	if sharedProjectExcludedRootFiles[rel] {
+		return true
+	}
+	parts := strings.Split(rel, "/")
+	if sharedProjectExcludedTopSegments[parts[0]] {
+		return true
+	}
+	for _, part := range parts {
+		if strings.HasPrefix(part, ".") && part != "." {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	sharedProjectFileTreeDepth  = 4
 	sharedProjectFileTreeCap    = 1000
@@ -430,14 +454,7 @@ func confineSharedProjectPath(root, rel string) (string, bool) {
 	if rel == "" || rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
 		return "", false
 	}
-	if sharedProjectExcludedRootFiles[rel] {
-		return "", false
-	}
-	top := rel
-	if idx := strings.IndexByte(rel, '/'); idx >= 0 {
-		top = rel[:idx]
-	}
-	if sharedProjectExcludedTopSegments[top] {
+	if sharedProjectHiddenPath(rel) {
 		return "", false
 	}
 	return workflowtypes.CanonicalCrewAttachmentRoot(root) + "/" + rel, true
@@ -454,11 +471,7 @@ func flattenSharedProjectFiles(root string, listing virtualtools.WorkspaceFolder
 			// crew-relative form; still descend so children are visited.
 			clean := workflowtypes.CanonicalCrewAttachmentRoot(item.FilePath)
 			if rel := strings.TrimPrefix(clean, prefix); rel != clean && rel != "" {
-				top := rel
-				if idx := strings.IndexByte(rel, '/'); idx >= 0 {
-					top = rel[:idx]
-				}
-				if !sharedProjectExcludedTopSegments[top] && !sharedProjectExcludedRootFiles[rel] {
+				if !sharedProjectHiddenPath(rel) {
 					kind := "file"
 					if strings.EqualFold(strings.TrimSpace(item.Type), "folder") {
 						kind = "folder"
