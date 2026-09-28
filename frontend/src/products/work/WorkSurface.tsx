@@ -44,7 +44,6 @@ import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../pla
 import { usePresentationEvents } from '../../platform/presentations/usePresentationEvents'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { AgentWorksChatTabItem } from '../../components/chat/AgentWorksChatTabItem'
@@ -159,72 +158,51 @@ function selectedProjectIdFor(product: ProjectProductConfig): string | null {
   return product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId
 }
 
-// Reuse the last list when switching products; each user, workspace, and
-// product has its own cache and still refreshes from the server on entry.
-const workSessionLists = new Map<string, WorkSession[]>()
-
 function useWorkSessions(product: ProjectProductConfig) {
-  const userId = useAuthStore(state => state.user?.id ?? 'local')
-  const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const cacheKey = `${product.profileId}:${activeWorkspaceId}:${userId}`
-  const cached = useRef(workSessionLists.get(cacheKey) ?? null)
-  const [sessions, setSessions] = useState<WorkSession[]>(() => cached.current ?? [])
+  const [sessions, setSessions] = useState<WorkSession[]>([])
   const selectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId)
   const setSelectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.setSelectedCodeProjectId : state.setSelectedWorkProjectId)
-  const [loading, setLoading] = useState(cached.current === null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const mutationRevision = useRef(0)
-
-  const updateSessions = useCallback((update: WorkSession[] | ((current: WorkSession[]) => WorkSession[]), fromLoad = false) => {
-    if (!fromLoad) mutationRevision.current += 1
-    setSessions(current => {
-      const next = typeof update === 'function' ? update(current) : update
-      workSessionLists.set(cacheKey, next)
-      return next
-    })
-  }, [cacheKey])
 
   const refresh = useCallback(async () => {
     const listed = await loadWorkSessionsIncludingShared(product)
-    updateSessions(listed, true)
+    setSessions(listed)
     const current = selectedProjectIdFor(product)
     setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
     return listed
-  }, [product, setSelectedId, updateSessions])
+  }, [product, setSelectedId])
 
   useEffect(() => {
     let cancelled = false
-    const revisionAtStart = mutationRevision.current
     void loadWorkSessionsIncludingShared(product)
       .then((listed) => {
-        if (cancelled || mutationRevision.current !== revisionAtStart) return
-        updateSessions(listed, true)
+        if (cancelled) return
+        setSessions(listed)
         const current = selectedProjectIdFor(product)
         setSelectedId(current && listed.some(item => item.id === current) ? current : listed[0]?.id ?? null)
       })
       .catch((cause) => {
-        if (!cancelled && mutationRevision.current === revisionAtStart) {
-          setError(cause instanceof Error ? cause.message : 'Could not load projects.')
-        }
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load projects.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [product, setSelectedId, updateSessions])
+  }, [product, setSelectedId])
 
   const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
     const session = await createWorkSession(title, description, icon, templateId, product)
-    updateSessions((current) => [session, ...current])
+    setSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
-  }, [product, setSelectedId, updateSessions])
+  }, [product, setSelectedId])
 
   const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
     const session = sessions.find(item => item.id === projectId)
     if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await installWorkSessionTemplate(session, templateId)
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    setSessions(current => current.map(item => item.id === projectId ? updated : item))
     for (const tab of Object.values(useChatStore.getState().chatTabs)) {
       if (!belongsToWorkProject(tab, projectId)) continue
       useChatStore.getState().setTabConfig(tab.tabId, { selectedSkills: updated.selectedSkills })
@@ -232,7 +210,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     }
     markWorkProjectRuntimeDirty(projectId)
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions])
 
   const remove = useCallback(async (projectId: string) => {
     const project = sessions.find(item => item.id === projectId)
@@ -259,11 +237,11 @@ function useWorkSessions(product: ProjectProductConfig) {
     } catch { /* UI preferences only. */ }
 
     const remaining = sessions.filter(item => item.id !== projectId)
-    updateSessions(remaining)
+    setSessions(remaining)
     if (selectedProjectIdFor(product) === projectId) {
       setSelectedId(remaining[0]?.id ?? null)
     }
-  }, [product, sessions, setSelectedId, updateSessions])
+  }, [product, sessions, setSelectedId])
 
   const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
     const project = sessions.find(item => item.id === projectId)
@@ -275,35 +253,35 @@ function useWorkSessions(product: ProjectProductConfig) {
       reasoningEffort: selection.reasoningEffort,
     })
     const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update ${product.noun} project model ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions])
 
   const updateNativeAgentTools = useCallback(async (projectId: string, enabled: boolean) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
     const updated = await updateProductProjectNativeAgentTools(project, enabled, `${enabled ? 'Enable' : 'Disable'} native agent tools for ${product.noun} project ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions])
 
   const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
     const updated = await updateProductProjectSelections(project, patch, `Update ${product.noun} project integrations ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions])
 
   const updateIdentity = useCallback(async (projectId: string, patch: ProductIdentityPatch) => {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await updateWorkSessionIdentity(project, patch)
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    setSessions(current => current.map(item => item.id === projectId ? updated : item))
     return updated
-  }, [product, sessions, updateSessions])
+  }, [product, sessions])
 
   return {
     sessions,
@@ -731,7 +709,7 @@ function WorkTopBarControl({
   )
 }
 
-function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
+export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProductConfig } = {}) {
   const { sessions, selected, select, create, installTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
@@ -1393,10 +1371,4 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     </div>
     </ProjectProductProvider>
   )
-}
-
-export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProductConfig } = {}) {
-  const userId = useAuthStore(state => state.user?.id ?? 'local')
-  const activeWorkspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  return <WorkSurfaceContent key={`${product.profileId}:${activeWorkspaceId}:${userId}`} product={product} />
 }

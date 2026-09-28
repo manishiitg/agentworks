@@ -34,3 +34,29 @@ func TestHostedAdminCookieIsSecureBehindTLSProxy(t *testing.T) {
 		t.Fatal("master token was accepted as a cookie")
 	}
 }
+
+func TestAdminLogoutRevokesCookieSession(t *testing.T) {
+	a := &Admin{HumanToken: "local-test-secret", PublicURL: "http://127.0.0.1:18746"}
+	login := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader("token=local-test-secret"))
+	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginResponse := httptest.NewRecorder()
+	a.uiLogin(loginResponse, login)
+	cookies := loginResponse.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("login cookies: %+v", cookies)
+	}
+	logout := httptest.NewRequest(http.MethodPost, "/admin/logout", nil)
+	logout.AddCookie(cookies[0])
+	logoutResponse := httptest.NewRecorder()
+	a.requireUI(a.uiLogout)(logoutResponse, logout)
+	if logoutResponse.Code != http.StatusSeeOther {
+		t.Fatalf("logout status = %d", logoutResponse.Code)
+	}
+	if a.authed(logout) {
+		t.Fatal("logged-out cookie was still accepted")
+	}
+	cleared := logoutResponse.Result().Cookies()
+	if len(cleared) != 1 || cleared[0].MaxAge >= 0 {
+		t.Fatalf("logout did not expire browser cookie: %+v", cleared)
+	}
+}

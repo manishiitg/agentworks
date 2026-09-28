@@ -32,3 +32,19 @@ func TestPIIReviewQueueIsBounded(t *testing.T) {
 		t.Fatal("review queue accepted work beyond its bound")
 	}
 }
+
+func TestOneCallerCannotFillSharedPIIReviewQueue(t *testing.T) {
+	s := NewMemoryStore()
+	now := time.Now()
+	for i := 0; i < 100; i++ {
+		if !s.AddPIIReview(PIIReview{ID: strconv.Itoa(i), WorkspaceID: "w", UserID: "key:one", Status: "pending", CreatedAt: now}) {
+			t.Fatalf("review %d was refused before per-caller capacity", i)
+		}
+	}
+	if s.AddPIIReview(PIIReview{ID: "over", WorkspaceID: "w", UserID: "key:one", Status: "pending", CreatedAt: now}) {
+		t.Fatal("one caller exceeded its review capacity")
+	}
+	if !s.AddPIIReview(PIIReview{ID: "other", WorkspaceID: "w", UserID: "key:two", Status: "pending", CreatedAt: now}) {
+		t.Fatal("another caller was blocked by the first caller's quota")
+	}
+}

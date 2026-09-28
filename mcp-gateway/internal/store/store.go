@@ -177,6 +177,7 @@ type MemoryStore struct {
 	groupServers    map[string]map[string]bool // group ID -> connector IDs
 	apiKeys         map[string]APIKey          // by SHA-256 of token
 	audit           []AuditEvent
+	auditStart      int // oldest event in the bounded ring after it fills
 	piiRules        map[string]pii.Rule
 	piiReviews      map[string]PIIReview
 	lastReviewPrune time.Time
@@ -732,23 +733,43 @@ func (s *MemoryStore) AppendAudit(e AuditEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
+	e.PIIDataTypes = append([]string(nil), e.PIIDataTypes...)
 	// Keep the local alpha's in-memory history bounded under repeated calls.
 	// Durable, full-history audit storage remains a separate requirement.
 	const maxAuditEvents = 50_000
 	if len(s.audit) >= maxAuditEvents {
-		copy(s.audit, s.audit[1:])
-		s.audit[len(s.audit)-1] = e
+		s.audit[s.auditStart] = e
+		s.auditStart = (s.auditStart + 1) % maxAuditEvents
 		return
 	}
 	s.audit = append(s.audit, e)
+}
+
+// auditAt returns the ith oldest event. The caller must hold s.mu.
+func (s *MemoryStore) auditAt(i int) AuditEvent {
+	return s.audit[(s.auditStart+i)%len(s.audit)]
+}
+
+func cloneAuditEvent(e AuditEvent) AuditEvent {
+	e.GroupIDs = append([]string(nil), e.GroupIDs...)
+	e.PIIDataTypes = append([]string(nil), e.PIIDataTypes...)
+	return e
 }
 
 func (s *MemoryStore) ListAudit() []AuditEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]AuditEvent, len(s.audit))
-	copy(out, s.audit)
+	for i := range out {
+		out[i] = cloneAuditEvent(s.auditAt(i))
+	}
 	return out
+}
+
+func (s *MemoryStore) AuditCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.audit)
 }
 
 // QueryAudit filters immutable event metadata inside one workspace. Results
@@ -758,7 +779,7 @@ func (s *MemoryStore) QueryAudit(f AuditFilter) []AuditEvent {
 	defer s.mu.RUnlock()
 	out := []AuditEvent{}
 	for i := len(s.audit) - 1; i >= 0; i-- {
-		e := s.audit[i]
+		e := s.auditAt(i)
 		if e.WorkspaceID != f.WorkspaceID ||
 			(f.UserID != "" && e.UserID != f.UserID) ||
 			(f.GroupID != "" && !contains(e.GroupIDs, f.GroupID)) ||
@@ -771,7 +792,7 @@ func (s *MemoryStore) QueryAudit(f AuditFilter) []AuditEvent {
 			(!f.Before.IsZero() && e.Timestamp.After(f.Before)) {
 			continue
 		}
-		out = append(out, e)
+		out = append(out, cloneAuditEvent(e))
 		if f.Limit > 0 && len(out) >= f.Limit {
 			break
 		}
@@ -893,6 +914,26 @@ func (s *MemoryStore) AddPIIReview(review PIIReview) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	const maxPIIReviews = 10_000
+	const maxActiveReviewsPerUser = 100
+	if review.UserID != "" {
+		now := time.Now()
+		active := 0
+		for id, existing := range s.piiReviews {
+			if existing.WorkspaceID != review.WorkspaceID || existing.UserID != review.UserID {
+				continue
+			}
+			if reviewExpired(existing, now) || existing.Status == "consumed" {
+				delete(s.piiReviews, id)
+				continue
+			}
+			if existing.Status == "pending" || existing.Status == "approved" {
+				active++
+			}
+		}
+		if active >= maxActiveReviewsPerUser {
+			return false
+		}
+	}
 	if len(s.piiReviews) >= maxPIIReviews {
 		now := time.Now()
 		if now.Sub(s.lastReviewPrune) >= time.Minute {
@@ -906,6 +947,9 @@ func (s *MemoryStore) AddPIIReview(review PIIReview) bool {
 		if len(s.piiReviews) >= maxPIIReviews {
 			return false
 		}
+	}
+	if _, exists := s.piiReviews[review.ID]; exists {
+		return false
 	}
 	review.DataTypes = append([]string(nil), review.DataTypes...)
 	s.piiReviews[review.ID] = review

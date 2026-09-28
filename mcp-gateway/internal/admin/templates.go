@@ -26,7 +26,7 @@ input,select,button{font:inherit;padding:.25rem .5rem;margin:.1rem .25rem .1rem 
 .stat b{font-size:1.5rem;display:block}
 .tag{font-size:.75rem;border:1px solid #888;padding:0 .35rem;margin-left:.4rem;white-space:nowrap}`
 
-const pageNav = `<nav><strong>CapLayer</strong> · MCP Gateway &nbsp; <a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/pii">PII policy</a><a href="/admin/audit">audit</a></nav>`
+const pageNav = `<nav><strong>CapLayer</strong> · MCP Gateway &nbsp; <a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/pii">PII policy</a><a href="/admin/audit">audit</a><form class="inline" method="post" action="/admin/logout"><button type="submit">Sign out</button></form></nav>`
 
 var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": func(values ...string) []string { return values }}).Parse(`
 {{define "dashboard"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Dashboard</title><style>` + pageCSS + `</style></head><body>` + pageNav + `

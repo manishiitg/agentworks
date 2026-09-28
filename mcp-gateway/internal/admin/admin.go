@@ -109,6 +109,12 @@ func (a *Admin) validSession(token string) bool {
 	return ok
 }
 
+func (a *Admin) revokeSession(token string) {
+	a.sessionsMu.Lock()
+	delete(a.sessions, token)
+	a.sessionsMu.Unlock()
+}
+
 // isLoopbackOrigin reports whether an Origin header value names loopback
 // http(s), e.g. the local AgentWorks dev server or desktop shell.
 func isLoopbackOrigin(origin string) bool {

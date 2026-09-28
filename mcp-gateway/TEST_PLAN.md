@@ -49,7 +49,7 @@ Record an upstream outage as blocked, not passed. Repair product failures and re
 | C4 | Pass | Running gateway API deletion removed DeepWiki tool grants, group-server attachment and a scoped PII rule. Re-adding the same provider did not restore the grant. Store cascade tests passed. |
 | C5 | Pass | Running gateway PII sample endpoint masked `alice@example.com` and blocked a valid test SSN. `TestPIIGuardsCallAndReviewRetry` covered input review, one-use approval, output blocking, and audit redaction. |
 | C6 | Pass | Admin without token returned 401. Custom URLs with query credentials or loopback HTTP returned 400; OAuth-only Notion returned 400. Public bind and public URL startup probes exited with explicit errors. Consent page returned `frame-ancestors 'none'` and `X-Frame-Options: DENY`. |
-| C7 | Pass | `TestConcurrentResyncAndDeleteCannotRestoreConnector` ran ten races under `-race`; all deleted connectors stayed gone. Bounded audit/review store tests passed. |
+| C7 | Pass | `TestConcurrentResyncAndDeleteCannotRestoreConnector` ran ten races under `-race`; all deleted connectors stayed gone. A slow resync no longer blocked deletion of another connector. Ring-buffer audit and per-caller review-capacity tests passed. |
 | C8 | Pass | `TestPaginatedUpstreamKeepsAllApprovedToolsOnResync` used a real in-process MCP server with page size one and three tools. Gateway discovery found all three, and resync kept all three approved. |
 | D1 | Observed limit | Before restart: 3 connectors, 8 tools, 1 group, 3 audit events. After restart: all four counts were 0 and the old group key returned 401. Reconnected Context7, DeepWiki and Microsoft Learn for local inspection; eight tools are present and the Context7 resolver is approved. |
 

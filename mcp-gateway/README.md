@@ -14,7 +14,7 @@ Upstream URLs with query parameters are rejected so credentials cannot be stored
 
 - MCP client OAuth consent still maps to one local human. The API supports groups and users, but this is not individual team sign-in.
 - Users, grants, connector approvals, API keys, PII rules, and audit history are held in memory and disappear on restart. The OAuth token database is separate and persists. Public/team deployment requires durable governance storage and per-user identity.
-- The in-memory audit retains the latest 50,000 events, and the PII review queue holds at most 10,000 entries. Full history needs durable storage.
+- The in-memory audit retains the latest 50,000 events in a ring. The PII review queue holds at most 10,000 entries and limits each caller to 100 active reviews. Full history needs durable storage.
 - The bundled MCP SDK's `ListTools` method follows upstream `NextCursor` pages automatically.
 
 ## Review fixes in this branch

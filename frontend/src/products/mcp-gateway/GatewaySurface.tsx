@@ -8,7 +8,7 @@ import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
 import { GatewayConnectPanel } from './GatewayConnectPanel'
 import { GatewayPIIPanel } from './GatewayPIIPanel'
-import { GATEWAY_AUTH_REQUIRED_EVENT, listUsers, setGatewayAdminToken } from './gatewayAdminApi'
+import { GATEWAY_AUTH_REQUIRED_EVENT, gatewayAdminToken, listUsers, setGatewayAdminToken } from './gatewayAdminApi'
 
 const SECTIONS = [
   { id: 'servers', label: 'MCP Gateway', icon: Server },
@@ -62,6 +62,14 @@ export function GatewaySurface() {
     }
   }
 
+  function signOut() {
+    if (!base) return
+    setGatewayAdminToken(base, '')
+    setToken('')
+    setAuthError('')
+    setAuthRequired(true)
+  }
+
   if (!base) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center text-sm text-slate-500">
@@ -74,6 +82,7 @@ export function GatewaySurface() {
     <div className="flex h-full flex-col bg-muted" data-testid="gateway-surface">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-2.5">
         <ProductSurfaceSwitcher />
+        {!authRequired && gatewayAdminToken(base) && <button type="button" onClick={signOut} className="ml-auto text-sm text-muted-foreground hover:text-foreground">Sign out</button>}
       </header>
 
       {authRequired ? (

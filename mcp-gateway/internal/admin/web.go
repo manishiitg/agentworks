@@ -17,6 +17,7 @@ import (
 // UIRoutes mounts the server-rendered admin UI.
 func (a *Admin) UIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/login", a.uiLogin)
+	mux.HandleFunc("/admin/logout", a.requireUI(a.uiLogout))
 	mux.HandleFunc("/admin/", a.requireUI(a.uiDashboard))
 	mux.HandleFunc("/admin/users", a.requireUI(a.uiUsers))
 	mux.HandleFunc("/admin/users/add", a.requireUI(a.uiUsersAdd))
@@ -67,6 +68,19 @@ func (a *Admin) uiLogin(w http.ResponseWriter, r *http.Request) {
 	render(w, "login", map[string]any{"Err": r.URL.Query().Get("err") != ""})
 }
 
+func (a *Admin) uiLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if cookie, err := r.Cookie("gw_admin"); err == nil {
+		a.revokeSession(cookie.Value)
+	}
+	public, _ := url.Parse(a.PublicURL)
+	http.SetCookie(w, &http.Cookie{Name: "gw_admin", Path: "/", HttpOnly: true, Secure: r.TLS != nil || public != nil && public.Scheme == "https", SameSite: http.SameSiteStrictMode, MaxAge: -1})
+	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+}
+
 func back(w http.ResponseWriter, r *http.Request, path string, err error) {
 	if err != nil {
 		http.Redirect(w, r, path+"?err="+template.URLQueryEscaper(err.Error()), http.StatusSeeOther)
@@ -88,7 +102,7 @@ func (a *Admin) uiDashboard(w http.ResponseWriter, r *http.Request) {
 		"Connectors": len(a.Store.ListConnectors(a.WorkspaceID)),
 		"Tools":      len(tools),
 		"Grants":     grantCount,
-		"Audit":      len(a.Store.ListAudit()),
+		"Audit":      a.Store.AuditCount(),
 		"MCPURL":     a.PublicURL + "/mcp",
 	})
 }

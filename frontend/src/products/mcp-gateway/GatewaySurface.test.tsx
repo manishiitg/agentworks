@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewaySurface } from './GatewaySurface'
+import { gatewayAdminToken, setGatewayAdminToken } from './gatewayAdminApi'
 
 vi.mock('../../services/api', () => ({ agentApi: { getToolDetail: vi.fn() } }))
 
@@ -145,6 +146,19 @@ describe('GatewaySurface', () => {
     expect(container!.querySelector('[data-testid="gateway-admin-login"]')).toBeNull()
     expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
     expect(fetchMock.mock.calls.some(([, init]) => (init?.headers as Record<string, string>)?.Authorization === 'Bearer test-admin-secret')).toBe(true)
+  })
+
+  it('clears the browser token and shows sign-in when the admin signs out', async () => {
+    stubGatewayUrl(BASE)
+    setGatewayAdminToken(BASE, 'local-test-secret')
+    vi.stubGlobal('fetch', vi.fn(healthyFetch()))
+    await renderSurface()
+
+    const signOut = [...container!.querySelectorAll('button')].find(button => button.textContent === 'Sign out')
+    expect(signOut).toBeDefined()
+    await act(async () => { signOut!.click() })
+    expect(gatewayAdminToken(BASE)).toBe('')
+    expect(container!.querySelector('[data-testid="gateway-admin-login"]')).not.toBeNull()
   })
 
   it('explains itself when no gateway is configured', async () => {

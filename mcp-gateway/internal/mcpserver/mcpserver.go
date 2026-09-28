@@ -44,13 +44,46 @@ func PublicName(provider, slug, upstreamName string) string {
 type Gateway struct {
 	store           *store.MemoryStore
 	auth            auth.Authenticator
-	operations      sync.Mutex // serialize add, resync, and remove for each gateway
+	operationsMu    sync.Mutex // guards per-connector operation locks and their reference counts
+	operations      map[string]*connectorOperation
 	mu              sync.RWMutex
 	upstreams       map[string]*upstream.Client // connector ID -> session
 	oauth           *mcpoauth.Server
 	mcp             *server.MCPServer
 	upstreamOptions upstream.DialOptions
 	schemas         sync.Map // approved fingerprint -> compiled input schema
+}
+
+type connectorOperation struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lockConnector serializes changes to one connector without letting a slow
+// upstream block unrelated connector operations. Reference counting keeps
+// the lock map bounded after connectors are removed.
+func (g *Gateway) lockConnector(id string) func() {
+	g.operationsMu.Lock()
+	if g.operations == nil {
+		g.operations = make(map[string]*connectorOperation)
+	}
+	op := g.operations[id]
+	if op == nil {
+		op = &connectorOperation{}
+		g.operations[id] = op
+	}
+	op.refs++
+	g.operationsMu.Unlock()
+	op.mu.Lock()
+	return func() {
+		op.mu.Unlock()
+		g.operationsMu.Lock()
+		op.refs--
+		if op.refs == 0 {
+			delete(g.operations, id)
+		}
+		g.operationsMu.Unlock()
+	}
 }
 
 type denyRemoteSchemaLoader struct{}
@@ -190,8 +223,7 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 // AddConnector dials a new upstream instance and syncs its tools while
 // serving. The connector row must already exist in the store.
 func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
-	g.operations.Lock()
-	defer g.operations.Unlock()
+	defer g.lockConnector(c.ID)()
 	if _, ok := g.upstreamFor(c.ID); ok {
 		return fmt.Errorf("connector %s already connected", c.ID)
 	}
@@ -214,8 +246,7 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 
 // Resync rediscovers one connector's tools, dialing first if needed.
 func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
-	g.operations.Lock()
-	defer g.operations.Unlock()
+	defer g.lockConnector(c.ID)()
 	current, ok := g.store.GetConnector(c.ID)
 	if !ok || current.Status != store.StatusActive || current.WorkspaceID != c.WorkspaceID {
 		return fmt.Errorf("connector %s is no longer active", c.ID)
@@ -237,8 +268,7 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 // server keeps the stale handler registrations, but they deny (unknown tool)
 // and hide (list filter), so removal is effective immediately.
 func (g *Gateway) RemoveConnector(id string) {
-	g.operations.Lock()
-	defer g.operations.Unlock()
+	defer g.lockConnector(id)()
 	g.mu.Lock()
 	up, ok := g.upstreams[id]
 	delete(g.upstreams, id)
@@ -349,7 +379,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		})
 		if action == pii.Review {
 			if !inputReviewQueued {
-				return nil, fmt.Errorf("input blocked: admin review queue is full (call %s)", callID)
+				return nil, fmt.Errorf("input blocked: admin review capacity reached (call %s)", callID)
 			}
 			return nil, fmt.Errorf("input requires admin review; retry after approval (call %s)", callID)
 		}
