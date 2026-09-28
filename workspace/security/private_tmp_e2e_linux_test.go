@@ -79,7 +79,12 @@ true`)
 	if !strings.Contains(out, "BROWSER_SOCKET_DIR_OK") {
 		t.Errorf("crew A lost the browser socket folder")
 	}
-	for _, bad := range []string{"TMP_WRITE_ALLOWED", "TMP_LIST_ALLOWED", "HOST_SOCKET_REACHABLE", "HOST_TMUX_REACHABLE"} {
+	// /tmp is the command's own tmpfs: writing and listing it is fine, but a
+	// write must never reach the host /tmp.
+	if _, err := os.Stat(leak); err == nil {
+		t.Errorf("crew A's /tmp write reached the host /tmp")
+	}
+	for _, bad := range []string{"HOST_SOCKET_REACHABLE", "HOST_TMUX_REACHABLE"} {
 		if strings.Contains(out, bad) {
 			t.Errorf("crew A: %s", bad)
 		}
