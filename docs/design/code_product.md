@@ -233,5 +233,12 @@ users has to hold:
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
 - **Terminal:** both, the vendor CLI's own terminal (as in Crew today) and a
   plain shell, in the same sandbox as the shell tool.
-- **App preview** (opening an app running in the Code from the browser):
-  deferred, not in the first version.
+
+## To think about
+
+- [ ] **App preview.** When someone builds a web app in a Code, the agent runs
+  it on the server (for example `npm run dev` on port 3000). A private
+  preview link, which only people with access to the Code can open, would let
+  them see the running app. It is useful for UI work but exposes server ports,
+  so it needs per-user lockdown. Not decided; not in the first version unless
+  decided.
