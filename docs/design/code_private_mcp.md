@@ -1,6 +1,6 @@
 # MCP servers in Code: global and personal
 
-Status: design, reviewed once (ai-work-7e, 2026-09-28: fail-closed from durable facts, report-run resolver, unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys; all folded in). Not built. Parent design:
+Status: design, reviewed twice by ai-work-7e (2026-09-28). Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
 [code_product.md](code_product.md).
 
 Owner decisions (2026-09-28):
@@ -49,7 +49,11 @@ shared login, as today) and **personal** (the chatting person's own).
 
 Secrets in the same shape: **global secrets** (selected for the Code as in a
 Crew) and **personal secrets** (the chatting person's own). A Code chat never
-resolves another person's personal secret.
+resolves another person's personal secret. **A personal server's credential
+headers may reference only that person's personal secrets**, never a global or
+project secret: otherwise anyone could add a personal server at their own URL
+with a header naming a global secret the Code selected, and the platform would
+send them its value, turning "usable, never seen" into readable.
 
 ## Decisions (recommended)
 
@@ -160,11 +164,13 @@ Setup; values are write-only in the UI. Used by:
 bridge resolver, before the report-run branch and the workshop branch, and it
 also serves Code-root report runs (`window.report.run` from a Code dashboard,
 today resolved by `resolveReportRunMCPServer` in `report_run.go` straight
-from the platform catalog). It applies whenever the session is a Code session
-by durable facts (decision 4):
+from the platform catalog). **A report run gets the Code's global selection
+only, never anyone's personal servers**: a dashboard is shared by everyone with
+access to the Code, and its viewer is not the person who wrote it. It applies
+whenever the session is a Code session by durable facts (decision 4):
 
-1. Person = the session owner (already tracked for every chat; inherited by
-   sub-agents and background work).
+1. Person = the session's **pinned person** (see "Who a session belongs to"
+   below), never the mutable session owner.
 2. If `server` is one of the person's personal servers **and** enabled for
    this Code for this person: resolve from the personal store, token file in
    the personal `tokens/`, connection session `mcp-user-<hash(user)>`
@@ -187,6 +193,40 @@ keyed by server name, so a personal "linear" could be served the platform
 internal name unique per person, `u_<hash8>__<name>`, used for every cache,
 connection and generated package; the model and the UI see `<name>`. A
 collision test covers it.
+
+### Who a session belongs to (pinned person)
+
+Today the session owner is last-writer-wins: `EventStore.SetSessionOwner`
+overwrites it on every `trackActiveSession` / `claimAgentWorksChatSession`. If
+any path let a second principal submit a turn into an existing session, the
+owner would flip and the resolver would use that person's personal credentials
+mid-session, including for background agents and retained CLIs that call the
+bridge between turns.
+
+- A Code session's person is **pinned durably when the session is created**
+  (stored with the session record) and never changes.
+- A turn into that session from any other authenticated principal is
+  **refused**: live input, steering, a co-owner or admin posting into someone
+  else's chat, synthetic relay turns.
+- Personal servers and secrets resolve only when the pinned person equals the
+  turn's authenticated principal (and, between turns, only for the pinned
+  person's own sub-agents and background work, which take the pinned parent
+  person).
+- Slack/WhatsApp DM turns run as the **matched sender**, never the bot owner
+  (`bot_owner`): an editor's DM to a Code's bot resolves the editor's servers,
+  not the owner's.
+
+### `workflow.json` is protected in Code
+
+Code's Folder Guard makes the whole root writable, so an editor, or a
+prompt-injected instruction in any chat, could rewrite `workflow.json`,
+including the global selection (which is meant to be owner/co-owner only).
+
+- Add `workflow.json` (and `product.json`) to the Code guard's blocked writes.
+- The global selection changes only through the role-checked API and the
+  `update_project_mcp_server_selection` tool, which checks the chatting
+  person's role on the Code.
+- Personal enablement never lives there (see the personal store).
 
 ### Agent tools and skill
 
@@ -252,7 +292,8 @@ MCP calls are already recorded per session with the workspace path
    secrets.
 9. **Restart fail-closed:** restart the server; a bridge call from an old
    Code session id is refused, never served from the platform catalog.
-10. **Report run:** a Code dashboard's `window.report.run` cannot reach a
+10. **Report run:** a Code dashboard's `window.report.run` reaches the Code's
+    global selection only, never a personal server, and cannot reach a
     platform server outside the Code's global selection or anyone's personal
     server.
 11. **Name collision:** a personal "linear" and the platform "linear" in the
@@ -262,6 +303,14 @@ MCP calls are already recorded per session with the workspace path
     metadata IP (both for the MCP URL and the OAuth endpoints): refused.
 13. **At rest:** token files on disk are ciphertext; a hybrid-mode CLI reading
     them gets nothing usable.
+14. **Pinned person:** an editor posting into the owner's session is refused;
+    a DM from an editor resolves the editor's servers, not the owner's; the
+    owner field changing cannot change whose credentials a session uses.
+15. **Secret theft:** a personal server header naming a global or project
+    secret is refused at add time and at connect time.
+16. **workflow.json:** the agent (in an editor's chat or via an injected file)
+    cannot write `workflow.json`; the global selection changes only through the
+    role-checked API or tool.
 
 ## Open questions for the owner
 
