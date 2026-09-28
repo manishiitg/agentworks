@@ -111,4 +111,4 @@ if ! grep -q "^$DOMAIN {" "$CADDYFILE"; then
   echo "Caddy site $DOMAIN added (backup: $backup)."
 fi
 
-echo "Host setup for $PRODUCT is in place. Next, from the repo: ./deploy.sh agents"
+echo "Host setup for $PRODUCT is in place. Next, from the repo: ./deploy.sh excellence"

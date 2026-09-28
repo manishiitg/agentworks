@@ -15,7 +15,7 @@ Servers:
   rts, video-studio     video.realtrainingsys.com
   confida               Confida rootless Linux deployment
   sparkquill            SparkQuill rootless Linux deployment
-  agents                agents.excellencetechnologies.in (Code only, rootless Linux)
+  excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
 
 dominion optionally takes --activate (stage-only otherwise):
@@ -304,9 +304,15 @@ case "$SERVER" in
     deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
     ;;
-  confida|sparkquill|agents)
+  confida|sparkquill)
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
+    ;;
+  excellence)
+    # agents.excellencetechnologies.in; its account, units and product
+    # folder are named "agents" on the host.
+    reject_extra_arguments "$@"
+    deploy_rootless_product agents
     ;;
   dominion)
     ACTIVATE_FLAG=""
@@ -348,7 +354,7 @@ case "$SERVER" in
     usage
     ;;
   --list)
-    printf '%s\n' rts confida sparkquill agents dominion
+    printf '%s\n' rts confida sparkquill excellence dominion
     ;;
   "")
     usage >&2
