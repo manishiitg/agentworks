@@ -3014,15 +3014,20 @@ func (m *BotConversationManager) findActiveBySessionID(sessionID string) *active
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	// One chat can be reached from several threads (a person's Slack DM and
+	// WhatsApp both continue their own chat): prefer the one used last.
+	var best *activeBotSession
+	var bestAt time.Time
 	for _, active := range m.sessions {
 		active.mu.Lock()
 		match := active.SessionID == sessionID
+		at := active.LastActivity
 		active.mu.Unlock()
-		if match {
-			return active
+		if match && (best == nil || at.After(bestAt)) {
+			best, bestAt = active, at
 		}
 	}
-	return nil
+	return best
 }
 
 // OnChildSpawned implements virtualtools.SpawnListener. Called whenever a

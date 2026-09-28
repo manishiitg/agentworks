@@ -3149,7 +3149,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 			}
 		}
 
-		if api.botManager != nil && strings.HasPrefix(sessionID, "bot-") {
+		if api.botManager != nil && api.syntheticTurnRepliesToBot(sessionID) {
 			finalText := latestAssistantTextFromHistory(finalHistory)
 			api.botManager.SendSyntheticTurnFinalIfNeeded(sessionID, finalText)
 		}
@@ -3167,4 +3167,19 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		}
 	}()
 	return true
+}
+
+// syntheticTurnRepliesToBot reports whether a background follow-up turn's
+// reply belongs in a bot thread: a bot-owned session, or a person's own chat
+// (a Crew's main chat) whose latest turn came from their 1:1 Slack DM or
+// WhatsApp. One person, one chat means a DM continues that chat, so its ID has
+// no "bot-" prefix; checking only the prefix dropped the result of work a DM
+// started (the PR review SDE ran from Slack, RTS 2026-09-28). A later web turn
+// clears the bot marks, so work started in the app never lands in Slack.
+func (api *StreamingAPI) syntheticTurnRepliesToBot(sessionID string) bool {
+	if strings.HasPrefix(sessionID, "bot-") {
+		return true
+	}
+	active, ok := api.getActiveSession(sessionID)
+	return ok && active != nil && (strings.TrimSpace(active.BotPlatform) != "" || strings.HasPrefix(active.TriggeredBy, "bot:"))
 }
