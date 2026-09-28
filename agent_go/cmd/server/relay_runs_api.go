@@ -16,6 +16,7 @@ import (
 // function-call conversation handle.
 type relayRunRequest struct {
 	Function       string                 `json:"function"`
+	Version        string                 `json:"version,omitempty"`
 	Input          map[string]interface{} `json:"input"`
 	IdempotencyKey string                 `json:"idempotency_key"`
 }
@@ -76,6 +77,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	request.Function = strings.TrimSpace(request.Function)
+	request.Version = strings.TrimSpace(request.Version)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.Function == "" || request.Input == nil || len(request.IdempotencyKey) == 0 || len(request.IdempotencyKey) > 128 || strings.ContainsAny(request.IdempotencyKey, "\x00\r\n") {
 		http.Error(w, "function, input object and idempotency_key (1-128 characters) are required", http.StatusBadRequest)
@@ -84,29 +86,61 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 	caller := triggerCaller{Type: triggerCallerUser, ID: claims.UserID}
 	args := map[string]interface{}{"INPUT": request.Input}
 	deliveryID := claims.UserID + "\x00" + request.IdempotencyKey
-	for i := range manifest.Schedules {
-		savedTrigger := &manifest.Schedules[i]
-		if !savedTrigger.IsFunctionTrigger() {
-			continue
+	// Search old and published bindings before choosing today's active version.
+	// An idempotency key must still find its original run after a republish.
+	candidates := []struct {
+		workspace string
+		manifest  *WorkflowManifest
+		version   string
+	}{{workspace, manifest, ""}}
+	if releases, listErr := listRelayReleases(r.Context(), workspace); listErr == nil {
+		for _, release := range releases {
+			releaseWorkspace := relayReleaseWorkspace(workspace, release.Version)
+			published, found, readErr := ReadWorkflowManifest(r.Context(), releaseWorkspace)
+			if readErr == nil && found {
+				candidates = append(candidates, struct {
+					workspace string
+					manifest  *WorkflowManifest
+					version   string
+				}{releaseWorkspace, published, release.Version})
+			}
 		}
-		runID := webhookDeliveryRunID(manifest.ID, savedTrigger.ID, deliveryID)
-		run, err := api.scheduler.existingWebhookRun(r.Context(), runID)
-		if err != nil {
-			continue
-		}
-		content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(workspace, runID))
-		if readErr != nil || !exists {
-			http.Error(w, "existing Relay request is temporarily unavailable", http.StatusServiceUnavailable)
+	}
+	for _, candidate := range candidates {
+		for i := range candidate.manifest.Schedules {
+			savedTrigger := &candidate.manifest.Schedules[i]
+			if !savedTrigger.IsFunctionTrigger() {
+				continue
+			}
+			runID := webhookDeliveryRunID(manifest.ID, savedTrigger.ID, deliveryID)
+			run, err := api.scheduler.existingWebhookRun(r.Context(), runID)
+			if err != nil || run.ScopeID != candidate.workspace {
+				continue
+			}
+			content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(candidate.workspace, runID))
+			if readErr != nil || !exists {
+				http.Error(w, "existing Relay request is temporarily unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !relayCallPayloadMatches(content, request.Function, request.Input, claims.UserID) {
+				http.Error(w, "idempotency_key was already used with different input", http.StatusConflict)
+				return
+			}
+			externalJSON(w, map[string]interface{}{"run_id": runID, "status": string(run.State), "version": candidate.version, "duplicate": true, "poll_url": "/api/relays/" + manifest.ID + "/runs/" + runID})
 			return
 		}
-		if !relayCallPayloadMatches(content, request.Function, request.Input, claims.UserID) {
-			http.Error(w, "idempotency_key was already used with different input", http.StatusConflict)
-			return
-		}
-		externalJSON(w, map[string]interface{}{"run_id": runID, "status": string(run.State), "duplicate": true, "poll_url": "/api/relays/" + manifest.ID + "/runs/" + runID})
+	}
+	release, releaseWorkspace, err := resolveRelayRelease(r.Context(), workspace, request.Version)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	sched, err := findWorkflowFunctionTrigger(manifest, request.Function)
+	published, found, err := ReadWorkflowManifest(r.Context(), releaseWorkspace)
+	if err != nil || !found {
+		http.Error(w, "published Relay is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	sched, err := findWorkflowFunctionTrigger(published, request.Function)
 	if err != nil || !workflowFunctionCallerAllowed(sched.Function, caller) {
 		http.Error(w, "Relay function not found", http.StatusNotFound)
 		return
@@ -115,7 +149,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, delivery, err := api.scheduler.dispatchWorkflowFunction(r.Context(), workflowFunctionCall{WorkflowID: manifest.ID, Function: request.Function, Caller: caller, DeliveryID: deliveryID, Args: args, Payload: map[string]interface{}{"relay_caller": claims.UserID}})
+	_, delivery, err := api.scheduler.dispatchWorkflowFunction(r.Context(), workflowFunctionCall{WorkflowID: manifest.ID, Function: request.Function, RelayVersion: release.Version, Caller: caller, DeliveryID: deliveryID, Args: args, Payload: map[string]interface{}{"relay_caller": claims.UserID}})
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, ErrWebhookConcurrencyLimit) || errors.Is(err, ErrWebhookRunStoreMissing) {
@@ -125,7 +159,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if delivery.Duplicate {
-		content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(workspace, delivery.RunID))
+		content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(releaseWorkspace, delivery.RunID))
 		if readErr != nil || !exists || !relayCallPayloadMatches(content, request.Function, request.Input, claims.UserID) {
 			http.Error(w, "idempotency_key was already used with different input", http.StatusConflict)
 			return
@@ -133,7 +167,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"run_id": delivery.RunID, "status": delivery.Status, "duplicate": delivery.Duplicate, "poll_url": "/api/relays/" + manifest.ID + "/runs/" + delivery.RunID})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"run_id": delivery.RunID, "status": delivery.Status, "version": release.Version, "duplicate": delivery.Duplicate, "poll_url": "/api/relays/" + manifest.ID + "/runs/" + delivery.RunID})
 }
 
 func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Request) {
@@ -148,29 +182,48 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 		http.NotFound(w, r)
 		return
 	}
-	if run.ScopeType != "workflow" || run.ScopeID != workspace || run.TriggerSource != "webhook" {
+	if run.ScopeType != "workflow" || run.TriggerSource != "webhook" {
 		http.NotFound(w, r)
 		return
 	}
-	content, exists, err := readFileFromWorkspace(r.Context(), webhookInputPath(workspace, runID))
+	content, exists, err := readFileFromWorkspace(r.Context(), webhookInputPath(run.ScopeID, runID))
 	if err != nil || !exists {
 		http.NotFound(w, r)
 		return
 	}
 	var delivery WorkflowWebhookDelivery
 	var payload struct {
-		Caller string `json:"relay_caller"`
+		Caller  string `json:"relay_caller"`
+		Version string `json:"relay_version"`
 	}
 	if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil || payload.Caller != claims.UserID {
 		http.NotFound(w, r)
 		return
 	}
-	result, err := readWebhookRunResult(workspace, run)
+	if payload.Version == "" {
+		if run.ScopeID != workspace {
+			http.NotFound(w, r)
+			return
+		}
+	} else {
+		_, releaseWorkspace, releaseErr := readRelayRelease(r.Context(), workspace, payload.Version)
+		if releaseErr != nil || run.ScopeID != releaseWorkspace {
+			http.NotFound(w, r)
+			return
+		}
+		manifest, _, err = ReadWorkflowManifest(r.Context(), releaseWorkspace)
+		if err != nil || manifest == nil {
+			http.Error(w, "published Relay is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	result, err := readWebhookRunResult(run.ScopeID, run)
 	if err != nil {
 		http.Error(w, "run result temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	applyRelayResult(manifest, &result, workspace, run)
+	applyRelayResult(manifest, &result, run.ScopeID, run)
+	result.Version = payload.Version
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		http.Error(w, "run artifacts temporarily unavailable", http.StatusServiceUnavailable)
 		return

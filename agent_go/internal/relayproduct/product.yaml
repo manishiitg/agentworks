@@ -39,6 +39,8 @@ chat:
       - stop_all_executions
       - run_full_workflow
       - list_executions
+      - get_relay_releases
+      - publish_relay
       - get_step_prompts
       - get_llm_config
       - list_schedules

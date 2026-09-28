@@ -64,6 +64,7 @@ const NO_DISABLED_PULSE_REVIEWERS: PulseReviewerModule[] = []
 // "Loading…" line the views use for their own data loading.
 const CostsPopup = lazy(() => import('../CostsPopup'))
 const ExecutionLogsPopup = lazy(() => import('../ExecutionLogsPopup'))
+const RelayExecutionLogsView = lazy(() => import('../RelayExecutionLogsView'))
 const KnowledgeView = lazy(() => import('../KnowledgeView'))
 const WorkflowScheduleRunsPanel = lazy(() => import('../../scheduler/WorkflowScheduleRunsPanel'))
 const WorkflowAPITriggersView = lazy(() => import('../WorkflowAPITriggersView'))
@@ -125,6 +126,7 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
   const refreshToken = useWorkflowStore(state => state.workspaceViewRefreshToken)
   const historyLogsTarget = useWorkflowStore(state => state.workspaceViewTarget?.view === 'execution-logs' && state.workspaceViewTarget.target.startsWith('history:') ? state.workspaceViewTarget : null)
   const { planData, selectedRunFolder, runFolderNames, workspace, pulse } = useWorkspaceViewData()
+  const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const plan = planData.plan
   const refreshWorkspaceState = workspace.refresh
 
@@ -150,6 +152,16 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
           />
         )
       case 'execution-logs':
+        if (relayMode && workspacePath && relayID) {
+          return <RelayExecutionLogsView
+            relayID={relayID}
+            draftWorkspacePath={workspacePath}
+            draftSelectedRunFolder={selectedRunFolder}
+            draftRunFolders={runFolderNames}
+            draftRunFolderInfos={workspace.state?.run_folders || []}
+            onRefreshDraftRuns={refreshWorkspaceState}
+          />
+        }
         return (
           <ExecutionLogsPopup
             workspacePath={workspacePath}

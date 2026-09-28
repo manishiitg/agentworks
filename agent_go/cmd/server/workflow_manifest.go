@@ -1471,7 +1471,7 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	// file through WorkflowManifest drops Crew-only fields such as identity and
 	// authenticated triggers (and can narrow its schedule records). Keep this
 	// path read-only; Crew's product services own all of its migrations/writes.
-	mayPersistManifestMigrations := !isCrewRuntimeManifestWorkspace(workspacePath)
+	mayPersistManifestMigrations := !isCrewRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",

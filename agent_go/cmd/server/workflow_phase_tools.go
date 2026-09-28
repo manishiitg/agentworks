@@ -121,6 +121,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	switch workflowPhaseID {
 	case workflowtypes.WorkflowStatusWorkflowBuilder:
+		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
+			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
+				return fmt.Errorf("register Relay release tools: %w", err)
+			}
+		}
 		if policy.allows("plan_authoring") {
 			if err := api.registerPlaybookSearchTool(definitionAgent, phaseWorkspacePath); err != nil {
 				return fmt.Errorf("register search_playbooks: %w", err)

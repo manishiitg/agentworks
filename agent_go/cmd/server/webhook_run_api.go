@@ -143,6 +143,7 @@ type webhookStepOutput struct {
 	Artifacts []webhookArtifact      `json:"artifacts"`
 }
 type webhookRunResult struct {
+	Version          string                 `json:"version,omitempty"`
 	ArtifactsExpired bool                   `json:"artifacts_expired,omitempty"`
 	Progress         []webhookProgressEntry `json:"progress"`
 	RunID            string                 `json:"run_id"`
