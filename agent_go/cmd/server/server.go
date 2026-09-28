@@ -5875,6 +5875,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
+					if strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+						// Google accounts and other Code-private resources key off
+						// this mark, which survives shell-config clears.
+						common.MarkCodeSession(sessionID, profileRoot)
+					}
 					workspace.SetSessionFolderGuard(sessionID,
 						append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...),
 						append(append(append(guardWrite, chatHistoryGrants...), workGrantWrite...), crewRefWrite...),

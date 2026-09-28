@@ -93,7 +93,10 @@ func handleGoogleWorkspaceCLI(ctx context.Context, args map[string]interface{}) 
 
 	// A Code session uses only its own private accounts, as their owner;
 	// every other session only shared ones.
-	codeWorkspace, userID := common.GmailScopeFromContext(ctx)
+	codeWorkspace, userID, scopeErr := common.GmailScopeFromContext(ctx)
+	if scopeErr != nil {
+		return "", scopeErr
+	}
 	output, err := services.RunGoogleCLIIn(ctx, strings.TrimSpace(connectionID), cliArgs, services.GmailUseScope{CodeWorkspace: codeWorkspace, UserID: userID})
 	if err != nil {
 		if strings.TrimSpace(output) != "" {

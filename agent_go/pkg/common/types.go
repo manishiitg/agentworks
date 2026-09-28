@@ -731,6 +731,7 @@ func CopySessionFolderGuard(fromSessionID, toSessionID string) bool {
 		return false
 	}
 	SetSessionFolderGuard(toSessionID, src.ReadPaths, src.WritePaths)
+	InheritCodeSession(fromSessionID, toSessionID)
 	if src.WorkflowPath != "" {
 		SetSessionWorkflowPath(toSessionID, src.WorkflowPath)
 	}

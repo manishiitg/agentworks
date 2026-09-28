@@ -2,9 +2,11 @@ package common
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Session workspace classification: the single place that knows the
@@ -141,20 +143,74 @@ func CodeProjectRoot(userID, path string) string {
 	return ""
 }
 
+// codeSessionRoots marks the sessions that run in a Code workspace (session
+// -> the Code's physical root). It is separate from the shell config, which
+// delegation and restarts clear, so a Code session is never mistaken for an
+// ordinary one; children inherit the mark from their parent.
+var codeSessionRoots sync.Map
+
+// MarkCodeSession records that sessionID works in the Code at root.
+func MarkCodeSession(sessionID, root string) {
+	sessionID, root = strings.TrimSpace(sessionID), strings.Trim(strings.TrimSpace(root), "/")
+	if sessionID != "" && root != "" {
+		codeSessionRoots.Store(sessionID, root)
+	}
+}
+
+// InheritCodeSession marks child with parent's Code, if parent has one.
+func InheritCodeSession(parentSessionID, childSessionID string) {
+	if root := CodeSessionRoot(parentSessionID); root != "" {
+		MarkCodeSession(childSessionID, root)
+	}
+}
+
+// CodeSessionRoot is the Code a session was marked with, or "".
+func CodeSessionRoot(sessionID string) string {
+	if value, ok := codeSessionRoots.Load(strings.TrimSpace(sessionID)); ok {
+		return value.(string)
+	}
+	return ""
+}
+
 // GmailScopeFromContext is the Code workspace (if any) and user of the
-// session a tool runs in, for Google account scoping.
-func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string) {
+// session a tool runs in, for Google account scoping. It fails closed: a
+// call with no session, or a session the server holds no configuration for,
+// gets an error rather than the shared accounts.
+func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string, err error) {
 	userID = SessionUserIDFromContext(ctx)
 	if userID != "" {
 		userID = sanitizeSessionUserIDForPath(userID)
 	}
 	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
+	if strings.TrimSpace(sessionID) == "" {
+		return "", userID, fmt.Errorf("this tool call carries no session, so its Google account scope is unknown")
+	}
+	if root := CodeSessionRoot(sessionID); root != "" {
+		return root, userID, nil
+	}
+	var known []string
 	if cfg := GetSessionShellConfig(sessionID); cfg != nil {
-		for _, candidate := range []string{cfg.WorkingDir, cfg.WorkflowPath} {
-			if root := CodeProjectRoot(userID, candidate); root != "" {
-				return root, userID
-			}
+		known = append(known, cfg.WorkingDir, cfg.WorkflowPath)
+		known = append(known, cfg.WritePaths...)
+	}
+	// Workflow agents may carry their guard in the request context instead.
+	for _, key := range []ContextKey{FolderGuardAllowedWriteFolderKey, FolderGuardWritePathsKey} {
+		if paths, ok := ctx.Value(key).([]string); ok {
+			known = append(known, paths...)
 		}
 	}
-	return "", userID
+	anyKnown := false
+	for _, candidate := range known {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		anyKnown = true
+		if root := CodeProjectRoot(userID, candidate); root != "" {
+			return root, userID, nil
+		}
+	}
+	if !anyKnown {
+		return "", userID, fmt.Errorf("session %s has no workspace configuration, so its Google account scope is unknown", sessionID)
+	}
+	return "", userID, nil
 }

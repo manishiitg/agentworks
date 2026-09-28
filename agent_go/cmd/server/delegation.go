@@ -960,6 +960,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, subAgentWorkspace, readPaths, writePaths...)
 			workspace.SetSessionWorkingDir(subAgentSessionID, subAgentWorkspace)
 			workspace.SetSessionFolderGuard(subAgentSessionID, readPaths, writePaths)
+			common.InheritCodeSession(sessionID, subAgentSessionID)
 			if parentGuard != nil {
 				workspace.SetSessionFolderGuardBlockedPaths(subAgentSessionID, parentGuard.BlockedPaths)
 				workspace.SetSessionFolderGuardBlockedWritePaths(subAgentSessionID, parentGuard.BlockedWritePaths)
