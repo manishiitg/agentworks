@@ -373,7 +373,7 @@ export function KnowledgebaseSources({
               : "Viewing this workflow’s local knowledge."}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Manage shared knowledge bases in Setup → File access.
+            Manage shared knowledge bases in Setup → Connected work.
           </p>
           {sources.find((s) => s.alias === selected)?.available === false && (
             <p role="status" className="text-amber-700 dark:text-amber-300">

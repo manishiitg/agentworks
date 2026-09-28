@@ -71,7 +71,7 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
   },
   Identity: {
     purpose: 'Define this AgentWorks workflow’s name, purpose, model, and allowed resources.',
-    howTo: 'Use the tabs to review its general settings, secrets, file access, models, and upgrades. Changes here shape future chats and runs.',
+    howTo: 'Use the tabs to review its general settings, secrets, connected work, models, and upgrades. Changes here shape future chats and runs.',
   },
   Integrations: {
     purpose: 'Choose the apps, skills, and bots this AgentWorks workflow may use.',
@@ -158,7 +158,7 @@ const CREW_GUIDES: Record<string, GuideCopy> = {
   },
   Identity: {
     purpose: 'Define who this Crew member is and what job it should do.',
-    howTo: 'Review its name, purpose, model, secrets, and file access in the tabs. These settings shape future Crew conversations and automatic work.',
+    howTo: 'Review its name, purpose, model, secrets, and connected work in the tabs. These settings shape future Crew conversations and automatic work.',
   },
   Integrations: {
     purpose: 'Choose the connected apps, skills, and bots this Crew member may use.',
@@ -253,8 +253,8 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: `Choose saved credentials this ${surface === 'crew' ? 'Crew project' : 'workflow'} may use.`,
     howTo: 'Select only the secrets needed for its work. Secret values remain hidden; do not paste them into chat.',
   }),
-  'Identity · File access': surface => ({
-    purpose: `Control which outside folders and references this ${surface === 'crew' ? 'Crew member' : 'workflow'} can read or change.`,
+  'Identity · Connected work': surface => ({
+    purpose: `Folders, knowledge bases, workflows and Crews this ${surface === 'crew' ? 'Crew member' : 'workflow'} can use, and whether it can change them.`,
     howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files.',
   }),
   'Identity · Models': surface => ({

@@ -56,7 +56,7 @@ type IdentityTab = IdentityTabId
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'secrets', label: 'Secrets' },
-  { value: 'folders', label: 'File access' },
+  { value: 'folders', label: 'Connected work' },
   { value: 'llm', label: 'Models' },
   { value: 'upgrades', label: 'Upgrades' },
 ]
@@ -94,7 +94,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
   },
   identity: {
     title: 'Identity',
-    description: 'Name, icon, purpose, secrets, file access, LLMs, and platform upgrades for this workflow.',
+    description: 'Name, icon, purpose, secrets, connected work, LLMs, and platform upgrades for this workflow.',
     savesViaManifest: false,
   },
   browser: {

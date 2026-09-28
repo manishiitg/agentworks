@@ -32,7 +32,7 @@ export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'secrets', label: 'Secrets' },
-  { value: 'folders', label: 'File access' },
+  { value: 'folders', label: 'Connected work' },
   { value: 'models', label: 'Models' },
 ]
 
@@ -364,7 +364,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
         icon={Fingerprint}
         title={product.hasIdentity ? 'Identity' : 'Setup'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
-        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, file access, and models for this project.' : 'Name, secrets, file access, and models for this workspace.'}
+        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, connected work, and models for this project.' : 'Name, secrets, connected work, and models for this workspace.'}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}

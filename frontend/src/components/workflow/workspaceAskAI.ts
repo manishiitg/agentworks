@@ -113,7 +113,7 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summar
     summary: "Help me configure a secret for this workflow. Ask which credential is needed and where it should come from without asking me to reveal it in chat.",
   },
   folders: {
-    label: 'Identity · File access',
+    label: 'Identity · Connected work',
     summary: "Help me attach things to this workflow: folders, shared knowledge bases, or other workflows as read-only context. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
   },
   llm: {
