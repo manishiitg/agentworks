@@ -739,8 +739,8 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
-	// Public share links stay Crew-only: a Code is private.
-	if !readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID && agentprofiles.HasFeature(resolved.Definition, "files") {
+	// Signed-in preview links. A Code's links open for its owner only.
+	if !readOnly && activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "files") {
 		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath); err != nil {
 			return err
 		}

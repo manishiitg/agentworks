@@ -74,3 +74,19 @@ func isCodeProjectPath(workspacePath string) bool {
 	product, _, ok := projectProductForPath(workspacePath)
 	return ok && product.ProfileID == codeproduct.ProfileID
 }
+
+// projectProductName is the display name its product.yaml gives the project
+// product that owns workspacePath (profile.name: "Crew", "Code"). It falls
+// back to the profile id when the profile is not registered.
+func (api *StreamingAPI) projectProductName(userID, workspacePath string) string {
+	product, _, ok := projectProductForPath(workspacePath)
+	if !ok {
+		return "project"
+	}
+	if api != nil && api.agentProfiles != nil {
+		if profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, userID); err == nil && strings.TrimSpace(profile.Name) != "" {
+			return strings.TrimSpace(profile.Name)
+		}
+	}
+	return product.ProfileID
+}

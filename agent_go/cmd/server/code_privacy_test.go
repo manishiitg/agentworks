@@ -126,3 +126,25 @@ func TestProjectProductPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestCodeFileLinkOpensForOwnerOnly(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	target := codePrivacyOwnerRoot + "/code/main.go"
+	open := func(userID string) (int, bool) {
+		req := httptest.NewRequest(http.MethodGet, "/file?uid=owner", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: userID, Username: userID}))
+		rec := httptest.NewRecorder()
+		// Crew's cross-user reader path must never take a Code link.
+		if _, _, _, handled, _ := api.crewReaderSharedAsset(rec, req, target); handled {
+			t.Fatalf("crew reader path handled a Code link for %s", userID)
+		}
+		_, _, ok := authorizedSharedAsset(rec, req, target)
+		return rec.Code, ok
+	}
+	if _, ok := open("owner"); !ok {
+		t.Fatal("the owner could not open their own Code link")
+	}
+	if code, ok := open("other"); ok || code != http.StatusForbidden {
+		t.Fatalf("another user opened the owner's Code link: ok=%v code=%d", ok, code)
+	}
+}
