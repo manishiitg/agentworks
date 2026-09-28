@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 	"io"
 	"log"
 	"net/http"
@@ -100,6 +101,34 @@ func ImportToWorkspaceDir(ctx context.Context, workspaceAPIURL, source, targetDi
 
 	log.Printf("[SKILLS CLI] Installed via workspace API: %v", result.InstalledSkills)
 	return &result, nil
+}
+
+// DeleteProjectSkill removes one skill from a project's skills folder
+// (targetDir, docs-relative) through the workspace service, which refuses any
+// path through a link. A project folder is writable by its agent, so the
+// generic file API, which follows links, must not be used for it.
+func DeleteProjectSkill(ctx context.Context, workspaceAPIURL, targetDir, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
+		return fmt.Errorf("invalid skill folder name %q", name)
+	}
+	reqBody, _ := json.Marshal(map[string]string{"target_dir": strings.Trim(strings.TrimSpace(targetDir), "/"), "name": name})
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/skills/project/delete", workspaceAPIURL), bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	wsauth.SetHeader(httpReq)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("workspace API call failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }
 
 // FindSkills searches for skills via the workspace container's CLI.

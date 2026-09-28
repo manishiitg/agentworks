@@ -11871,7 +11871,7 @@ func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkil
 		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
 	}
 	scoped.DeleteSkill = func(ctx context.Context, folderName string) error {
-		return skills.DeleteSkillIn(wsURL, projectSkillsDir, folderName)
+		return skills.DeleteProjectSkill(ctx, wsURL, projectSkillsDir, folderName)
 	}
 	return &scoped
 }

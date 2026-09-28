@@ -237,6 +237,37 @@ var workspaceProxyBodyPathFields = map[string]bool{
 	"workspace_path":    true,
 	"working_directory": true, "working_dir": true,
 	"read_paths": true, "write_paths": true, "blocked_paths": true, "blocked_write_paths": true,
+	"target_dir": true,
+}
+
+// workspaceProxyServerOnlyBodyFields are request fields only the agent server
+// may set on the workspace API: a browser request carrying one is refused
+// outright, whatever path it names. target_dir points a skill install at a
+// project's private skills folder (a Code's); browsers install into the
+// shared library only.
+var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true}
+
+// workspaceProxyServerOnlyRoutes are workspace routes whose JSON body is
+// vetted for server-only fields whatever Content-Type the browser claims:
+// the workspace binds them with ShouldBindJSON, which ignores Content-Type.
+var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": true, "api/skills/project/delete": true}
+
+func workspaceProxyJSONHasServerOnlyField(node any) bool {
+	switch value := node.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if workspaceProxyServerOnlyBodyFields[key] || workspaceProxyJSONHasServerOnlyField(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, entry := range value {
+			if workspaceProxyJSONHasServerOnlyField(entry) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // workspaceProxyMultipartPathFields are the multipart form fields that
@@ -416,11 +447,15 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 		return 0, "", nil
 	}
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	if strings.Contains(contentType, "json") {
+	if strings.Contains(contentType, "json") || workspaceProxyServerOnlyRoutes[strings.Trim(workspaceProxyRelativePath(r), "/")] {
 		var decoded any
 		if err := json.NewDecoder(spooled.open()).Decode(&decoded); err != nil {
 			spooled.close()
 			return http.StatusBadRequest, "request body is not valid JSON", nil
+		}
+		if workspaceProxyJSONHasServerOnlyField(decoded) {
+			spooled.close()
+			return http.StatusForbidden, "request body field reserved for the server", nil
 		}
 		if workspaceProxyJSONAddressesOtherUser(decoded, policy) {
 			spooled.close()

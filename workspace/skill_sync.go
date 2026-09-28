@@ -192,10 +192,133 @@ func skillInstallTargetDir(docsDir, target string) (string, error) {
 	if target == "" {
 		return filepath.Join(docsDir, "skills"), nil
 	}
+	return projectSkillsDir(docsDir, target)
+}
+
+// projectSkillsDir validates a project skills folder and returns it, created
+// if missing. The project must exist, and no path component below the docs
+// root may be a symlink: an agent may create links inside its own project
+// (the sandbox allows it), and following one would install into, or delete
+// from, another user's tree.
+func projectSkillsDir(docsDir, target string) (string, error) {
+	target = strings.Trim(filepath.ToSlash(strings.TrimSpace(target)), "/")
 	if strings.Contains(target, "..") || !projectSkillsDirPattern.MatchString(target) {
 		return "", fmt.Errorf("target_dir must be a project's skills folder")
 	}
-	return filepath.Join(docsDir, filepath.FromSlash(target)), nil
+	dir := filepath.Join(docsDir, filepath.FromSlash(target))
+	project := filepath.Dir(dir)
+	if err := refuseSymlinkComponents(docsDir, project); err != nil {
+		return "", err
+	}
+	if info, err := os.Lstat(project); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("target_dir's project does not exist")
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
+		return "", fmt.Errorf("create project skills folder: %w", err)
+	}
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("target_dir must be a real folder, not a link")
+	}
+	return dir, nil
+}
+
+// refuseSymlinkComponents fails when any existing component of dir below
+// root is a symlink. Missing components are fine: they are not links.
+func refuseSymlinkComponents(root, dir string) error {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("target_dir escapes the workspace")
+	}
+	current := root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("target_dir must not pass through a link")
+		}
+	}
+	return nil
+}
+
+// installSkillFolder copies src into dir/name. The copy is made in a fresh,
+// unpredictably named folder beside the target and renamed into place, so a
+// link planted at dir/name is never written through: renaming a folder onto
+// a link fails instead.
+func installSkillFolder(src, dir, name string) error {
+	staging, err := os.MkdirTemp(dir, ".install-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := copyDir(src, staging); err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, name)
+	if info, err := os.Lstat(dest); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a link; remove it first", name)
+		}
+		if err := os.RemoveAll(dest); err != nil {
+			return err
+		}
+	}
+	return os.Rename(staging, dest)
+}
+
+// projectSkillDeleteRequest is POST /api/skills/project/delete.
+type projectSkillDeleteRequest struct {
+	TargetDir string `json:"target_dir"`
+	Name      string `json:"name"`
+}
+
+// handleProjectSkillDelete removes one skill from a project's skills folder
+// (a private Code's), refusing any path that passes through a link. A link
+// named like the skill is removed itself, never followed.
+func handleProjectSkillDelete(c *gin.Context) {
+	var req projectSkillDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid skill name"})
+		return
+	}
+	dir, err := projectSkillsDir(viper.GetString("docs-dir"), req.TargetDir)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	path := filepath.Join(dir, name)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "skill not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		err = os.Remove(path)
+	} else {
+		err = os.RemoveAll(path)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // skillInstallResponse is the response from install
@@ -293,9 +416,16 @@ func handleSkillInstall(c *gin.Context) {
 			}
 
 			srcDir := filepath.Join(agentsSkillsDir, entry.Name())
-			destDir := filepath.Join(skillsDir, entry.Name())
-			os.RemoveAll(destDir)
-			if copyErr := copyDir(srcDir, destDir); copyErr != nil {
+			var copyErr error
+			if strings.TrimSpace(req.TargetDir) != "" {
+				// A project folder is writable by its agent: never follow a link.
+				copyErr = installSkillFolder(srcDir, skillsDir, entry.Name())
+			} else {
+				destDir := filepath.Join(skillsDir, entry.Name())
+				os.RemoveAll(destDir)
+				copyErr = copyDir(srcDir, destDir)
+			}
+			if copyErr != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to copy %s: %v", entry.Name(), copyErr))
 				continue
 			}

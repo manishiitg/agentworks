@@ -27,8 +27,14 @@ func TestCodeProjectSkillCallbacksStayInTheProject(t *testing.T) {
 			_ = json.Unmarshal(body, &req)
 			installTargets = append(installTargets, req["target_dir"])
 			_, _ = w.Write([]byte(`{"installed_skills":["demo"]}`))
+		case strings.HasSuffix(r.URL.Path, "/api/skills/project/delete"):
+			var req map[string]string
+			_ = json.Unmarshal(body, &req)
+			deletedPaths = append(deletedPaths, req["target_dir"]+"|"+req["name"])
+			_, _ = w.Write([]byte(`{"success":true}`))
 		case r.Method == http.MethodDelete:
-			deletedPaths = append(deletedPaths, r.URL.String())
+			// The generic file API follows links; a Code must never use it.
+			deletedPaths = append(deletedPaths, "GENERIC:"+r.URL.String())
 			_, _ = w.Write([]byte(`{"success":true}`))
 		default:
 			_, _ = w.Write([]byte(`{"success":true,"data":[]}`))
@@ -55,7 +61,36 @@ func TestCodeProjectSkillCallbacksStayInTheProject(t *testing.T) {
 	if len(installTargets) != 1 || installTargets[0] != dir {
 		t.Fatalf("install targets = %v, want the project's skills folder", installTargets)
 	}
-	if len(deletedPaths) != 1 || !strings.Contains(deletedPaths[0], "app-c0de0001") {
-		t.Fatalf("deletes = %v, want only inside the project", deletedPaths)
+	if len(deletedPaths) != 1 || deletedPaths[0] != dir+"|demo" {
+		t.Fatalf("deletes = %v, want one link-safe project delete", deletedPaths)
+	}
+}
+
+// Only the agent server may point a skill install at a project's private
+// skills folder: a browser request carrying target_dir is refused whatever
+// its Content-Type (the workspace binds the body as JSON regardless), and
+// whoever's project it names -- including the caller's own.
+func TestWorkspaceProxyRefusesSkillInstallTargetDir(t *testing.T) {
+	verdict := func(contentType, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/wp/api/skills/cli/install", strings.NewReader(body))
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		status, _, cleanup := workspaceProxyCrossUserBlock(req, "bob")
+		if cleanup != nil {
+			t.Cleanup(cleanup)
+		}
+		return status
+	}
+	for _, target := range []string{"_users/alice/Chats/Code/projects/app-1/skills", "_users/alice/Chats/Work/projects/c-1/skills", "_users/bob/Chats/Code/projects/mine/skills"} {
+		body := `{"source":"attacker/repo@x","target_dir":"` + target + `"}`
+		for _, contentType := range []string{"application/json", "text/plain", ""} {
+			if status := verdict(contentType, body); status != http.StatusForbidden {
+				t.Fatalf("target_dir %s with Content-Type %q = %d, want 403", target, contentType, status)
+			}
+		}
+	}
+	if status := verdict("application/json", `{"source":"owner/repo@skill"}`); status != 0 {
+		t.Fatalf("a shared-library install was refused: %d", status)
 	}
 }
