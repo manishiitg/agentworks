@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,12 +10,12 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
 // Admin inspection of Code workspaces (docs/design/code_product.md, "Admin
@@ -51,7 +52,27 @@ func codeAdminAuditPath(t time.Time) string {
 	return "config/code-admin-audit/" + t.UTC().Format("2006-01") + ".jsonl"
 }
 
-var codeAdminAuditMu sync.Mutex
+// codeAdminAuditAppend adds one line to a month's log through the workspace
+// service's append-only endpoint (O_APPEND; the log is never rewritten, and
+// browsers cannot write config/ even as admins). Tests replace it.
+var codeAdminAuditAppend = func(ctx context.Context, month, entry string) error {
+	body, _ := json.Marshal(map[string]string{"month": month, "entry": entry})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(getWorkspaceAPIURL(), "/")+"/api/audit/code-admin/append", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	wsauth.SetHeader(req)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("audit append failed: status %d", resp.StatusCode)
+	}
+	return nil
+}
 
 // recordCodeAdminView appends one entry. A view that cannot be recorded is
 // refused, so no admin view goes unaudited.
@@ -65,14 +86,7 @@ func recordCodeAdminView(ctx context.Context, claims *UserClaims, action, ownerI
 	if err != nil {
 		return err
 	}
-	codeAdminAuditMu.Lock()
-	defer codeAdminAuditMu.Unlock()
-	file := codeAdminAuditPath(now)
-	existing, _, err := readFileFromWorkspace(ctx, file)
-	if err != nil {
-		return err
-	}
-	if err := writeFileToWorkspace(ctx, file, existing+string(raw)+"\n"); err != nil {
+	if err := codeAdminAuditAppend(ctx, now.Format("2006-01"), string(raw)); err != nil {
 		return err
 	}
 	log.Printf("[CODE_ADMIN] %s by %s owner=%s project=%s target=%s", action, entry.AdminID, ownerID, projectID, target)

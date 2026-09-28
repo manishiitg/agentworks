@@ -94,3 +94,85 @@ func TestWorkspaceProxyRefusesSkillInstallTargetDir(t *testing.T) {
 		t.Fatalf("a shared-library install was refused: %d", status)
 	}
 }
+
+// The workspace binds JSON whatever Content-Type is claimed, so the proxy
+// vets any JSON-looking body the same way, and refuses one that looks like
+// JSON but does not parse.
+func TestWorkspaceProxyVetsJSONBodiesWhateverTheirType(t *testing.T) {
+	verdict := func(contentType, body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/wp/api/folders", strings.NewReader(body))
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		status, _, cleanup := workspaceProxyCrossUserBlock(req, "bob")
+		if cleanup != nil {
+			t.Cleanup(cleanup)
+		}
+		return status
+	}
+	crossUser := `{"folder_path":"_users/alice/Chats/Code/projects/app-1/code/x"}`
+	for _, contentType := range []string{"application/json", "text/plain", "application/octet-stream", ""} {
+		if status := verdict(contentType, crossUser); status != http.StatusForbidden {
+			t.Fatalf("cross-user path as %q = %d, want 403", contentType, status)
+		}
+		if status := verdict(contentType, strings.Repeat(" ", 2048)+crossUser); status != http.StatusForbidden {
+			t.Fatalf("padded cross-user path as %q = %d, want 403", contentType, status)
+		}
+	}
+	// A JSON value labelled multipart is a preamble to the multipart walk,
+	// but a JSON endpoint still binds it.
+	multipartSmuggle := crossUser + "\r\n--x--\r\n"
+	if status := verdict("multipart/form-data; boundary=x", multipartSmuggle); status != http.StatusForbidden {
+		t.Fatalf("cross-user path in a multipart preamble = %d, want 403", status)
+	}
+	installSmuggle := `{"target_dir":"_users/alice/Chats/Code/projects/p/skills","source":"x/y@z"}` + "\r\n--x--\r\n"
+	req := httptest.NewRequest(http.MethodPost, "/api/wp/api/skills/cli/install", strings.NewReader(installSmuggle))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	if status, _, cleanup := workspaceProxyCrossUserBlock(req, "bob"); status != http.StatusForbidden {
+		if cleanup != nil {
+			cleanup()
+		}
+		t.Fatalf("target_dir in a multipart preamble = %d, want 403", status)
+	}
+	if status := verdict("text/plain", `{"folder_path": "_users/alice/x"`); status != http.StatusBadRequest {
+		t.Fatalf("truncated JSON-looking body = %d, want 400", status)
+	}
+	if status := verdict("text/plain", `{"folder_path":"_users/bob/Chats/Code/projects/mine/code"}`); status != 0 {
+		t.Fatalf("own path refused: %d", status)
+	}
+}
+
+// Code sharing and the admin audit log are written only by the server:
+// through the proxy not even an admin may write them, and the audit append
+// route is unreachable from a browser.
+func TestWorkspaceProxyProtectsServerOwnedFilesFromAdmins(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"boss","username":"boss","admin":true}]}`)
+	call := func(method, target, body string) int {
+		req := httptest.NewRequest(method, target, strings.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "boss", Username: "boss"}))
+		req.Header.Set("Content-Type", "application/json")
+		status, _, cleanup := workspaceProxyCrossUserBlock(req, "boss")
+		if cleanup != nil {
+			t.Cleanup(cleanup)
+		}
+		return status
+	}
+	for _, write := range []struct{ method, target, body string }{
+		{http.MethodPut, "/api/wp/api/documents/config/code-shares.json", `{"content":"{}"}`},
+		{http.MethodDelete, "/api/wp/api/documents/config/code-shares.json", ``},
+		{http.MethodPut, "/api/wp/api/documents/config/code-admin-audit/2026-09.jsonl", `{"content":""}`},
+		{http.MethodDelete, "/api/wp/api/folders/config", ``},
+		{http.MethodPost, "/api/wp/api/audit/code-admin/append", `{"month":"2026-09","entry":"{}"}`},
+	} {
+		if status := call(write.method, write.target, write.body); status != http.StatusForbidden {
+			t.Fatalf("admin %s %s = %d, want 403", write.method, write.target, status)
+		}
+	}
+	// Reading them, and writing the rest of config/, stays admin-allowed.
+	if status := call(http.MethodGet, "/api/wp/api/documents/config/code-shares.json", ""); status != 0 {
+		t.Fatalf("admin read of shares refused: %d", status)
+	}
+	if status := call(http.MethodPut, "/api/wp/api/documents/config/scheduler.json", `{"content":"{}"}`); status != 0 {
+		t.Fatalf("admin write of other config refused: %d", status)
+	}
+}

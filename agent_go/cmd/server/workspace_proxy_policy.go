@@ -64,13 +64,37 @@ func (p workspaceProxyPolicy) deniesPath(key, raw string) bool {
 	return workspaceProxyPathIsOtherUser(raw, p.own) || p.denies(key, raw) != ""
 }
 
+// workspaceProxyServerOwnedFiles are written only by the server, never by a
+// browser -- not even an admin's: Code sharing (an admin could otherwise make
+// themselves co-owner with no audit entry) and the admin audit log (which
+// must not be editable by the admins it records).
+var workspaceProxyServerOwnedFiles = []string{codeSharesFilePath(), "config/code-admin-audit"}
+
+// serverOwnedWrite reports whether a write to clean would change a
+// server-owned file: the file itself, anything inside it, or config/ as a
+// whole (deleting or moving the folder that holds them).
+func serverOwnedWrite(clean string) bool {
+	if clean == "config" {
+		return true
+	}
+	for _, owned := range workspaceProxyServerOwnedFiles {
+		if clean == owned || strings.HasPrefix(clean, owned+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // denies returns why raw may not be reached, or "" when it may.
 func (p workspaceProxyPolicy) denies(key, raw string) string {
+	write := p.write && !workspaceProxySourceKeys[key]
+	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
+	if write && serverOwnedWrite(clean) {
+		return "this file is written only by the server"
+	}
 	if p.admin {
 		return ""
 	}
-	write := p.write && !workspaceProxySourceKeys[key]
-	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
 	if clean == "" || clean == "." {
 		if write || p.bulk {
 			return "the whole workspace is admin-only"

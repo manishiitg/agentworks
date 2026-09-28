@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -149,6 +150,9 @@ func workspaceProxyRelativePath(r *http.Request) string {
 func workspaceProxyCrossUserBlock(r *http.Request, callerID string) (status int, detail string, cleanup func()) {
 	policy := newWorkspaceProxyPolicy(r, callerID)
 	rel := workspaceProxyRelativePath(r)
+	if workspaceProxyRefusedRoutes[strings.Trim(rel, "/")] {
+		return http.StatusForbidden, "server-only route", nil
+	}
 	if workspaceProxyURLIsOtherUser(rel, policy.own) {
 		return http.StatusForbidden, "url path", nil
 	}
@@ -252,6 +256,10 @@ var workspaceProxyServerOnlyBodyFields = map[string]bool{"target_dir": true}
 // the workspace binds them with ShouldBindJSON, which ignores Content-Type.
 var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": true, "api/skills/project/delete": true}
 
+// workspaceProxyRefusedRoutes are workspace routes only the agent server may
+// call; a browser never reaches them, not even an admin's.
+var workspaceProxyRefusedRoutes = map[string]bool{"api/audit/code-admin/append": true}
+
 func workspaceProxyJSONHasServerOnlyField(node any) bool {
 	switch value := node.(type) {
 	case map[string]any:
@@ -307,6 +315,26 @@ func (s *workspaceProxySpooledBody) open() io.Reader {
 		return s.file
 	}
 	return bytes.NewReader(s.mem)
+}
+
+// looksLikeJSON reports whether the body's first non-space byte opens a JSON
+// object or array: what a JSON binder would accept.
+func (s *workspaceProxySpooledBody) looksLikeJSON() bool {
+	reader := bufio.NewReader(s.open())
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			return false
+		}
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{', '[':
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 func (s *workspaceProxySpooledBody) close() {
@@ -447,7 +475,16 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 		return 0, "", nil
 	}
 	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	if strings.Contains(contentType, "json") || workspaceProxyServerOnlyRoutes[strings.Trim(workspaceProxyRelativePath(r), "/")] {
+	// The workspace binds JSON bodies with ShouldBindJSON, which ignores
+	// Content-Type: a path field sent as text/plain (or with no type) is
+	// bound all the same. So every body that could be JSON is decoded and
+	// vetted, whatever type it claims, and one that looks like JSON but does
+	// not parse is refused. That includes a body labelled multipart: a JSON
+	// value before the first boundary is a preamble to the multipart walk but
+	// is still bound by a JSON endpoint. Real multipart bodies are also walked
+	// below.
+	multipartBody := strings.HasPrefix(contentType, "multipart/")
+	if spooled.looksLikeJSON() || workspaceProxyServerOnlyRoutes[strings.Trim(workspaceProxyRelativePath(r), "/")] || (!multipartBody && strings.Contains(contentType, "json")) {
 		var decoded any
 		if err := json.NewDecoder(spooled.open()).Decode(&decoded); err != nil {
 			spooled.close()
@@ -461,9 +498,11 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 			spooled.close()
 			return http.StatusForbidden, "request body path", nil
 		}
-		return replay()
+		if !multipartBody {
+			return replay()
+		}
 	}
-	if strings.HasPrefix(contentType, "multipart/") {
+	if multipartBody {
 		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || !strings.HasPrefix(mediaType, "multipart/") || params["boundary"] == "" {
 			spooled.close()

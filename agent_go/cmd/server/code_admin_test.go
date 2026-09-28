@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,14 +20,22 @@ func newCodeAdminFixture(t *testing.T, adminInspection bool) (*StreamingAPI, *mo
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"boss","username":"boss","admin":true,"can_create":true}]}`)
 	mock := &mockWorkspaceAPI{files: map[string]string{
-		codePrivacyOwnerRoot + "/product.json":                       `{"schema_version":1,"product":"code","id":"c0de0001-0000","title":"App","session_id":"code:project:c0de0001-0000"}`,
-		codePrivacyOwnerRoot + "/workflow.json":                      `{"schema_version":1,"id":"c0de0001-0000","label":"App","capabilities":{}}`,
-		codePrivacyOwnerRoot + "/code/main.go":                       "package main",
+		codePrivacyOwnerRoot + "/product.json":                         `{"schema_version":1,"product":"code","id":"c0de0001-0000","title":"App","session_id":"code:project:c0de0001-0000"}`,
+		codePrivacyOwnerRoot + "/workflow.json":                        `{"schema_version":1,"id":"c0de0001-0000","label":"App","capabilities":{}}`,
+		codePrivacyOwnerRoot + "/code/main.go":                         "package main",
 		codePrivacyOwnerRoot + "/.sandbox-cache/home/.git-credentials": "https://token@github.com",
 	}}
 	ws := httptest.NewServer(mock)
 	t.Cleanup(ws.Close)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	previousAppend := codeAdminAuditAppend
+	codeAdminAuditAppend = func(_ context.Context, month, entry string) error {
+		mock.mu.Lock()
+		defer mock.mu.Unlock()
+		mock.files["config/code-admin-audit/"+month+".jsonl"] += entry + "\n"
+		return nil
+	}
+	t.Cleanup(func() { codeAdminAuditAppend = previousAppend })
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
 		ID: "code", Name: "Code", Version: 1, SystemPromptTemplate: "hi", BuiltIn: true, Product: "code", AdminInspection: adminInspection,
