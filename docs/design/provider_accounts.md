@@ -215,5 +215,12 @@ The workflow / Crew / Code model picker groups accounts the same way.
    access.)*
 3. The hybrid-mode rule: accept "shared accounts run MCP-only for others"
    until CLIs are confined?
-4. Should admins be able to share an admin-configured account with specific
-   users only (it is then just an installed account with a `users` policy)?
+4. *(Decided 2026-09-28: yes, from the UI. An admin sets an
+   admin-configured account's "Available to" (everyone, admins, products,
+   people) on the Providers page; the installation policy is the default
+   and an installation-pinned account stays read-only.)*
+5. *(Direction 2026-09-28: native tools on by default. Blocked on confining
+   the coding CLIs themselves under Landlock and the private /tmp (PLAT-364
+   part 2); until then native tools would read other users' trees and every
+   account's login files. Once CLIs are confined, the "shared accounts run
+   MCP-only for others" rule above is dropped.)*
