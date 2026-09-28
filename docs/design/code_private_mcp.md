@@ -1,161 +1,194 @@
-# Private MCP servers in Code
+# MCP servers in Code: global and personal
 
-Status: design, for review. Not built. Owner decision (2026-09-28): **a Code's
-MCP servers are private to that Code only**. A Code never sees or uses the
-shared platform MCP servers, and nothing outside the Code sees or uses its
-servers. Parent design: [code_product.md](code_product.md).
+Status: design, for review. Not built. Parent design:
+[code_product.md](code_product.md).
+
+Owner decisions (2026-09-28):
+
+1. **Everyone who chats in a Code uses MCP, each with their own servers.** A
+   person's own MCP servers and logins are theirs alone: nobody else in the
+   Code (not the owner, not an editor) uses or sees them.
+2. **Secrets for MCP are personal too.** A server that needs an API key takes
+   it from the chatting person's own secrets, never from someone else's.
+3. **Global MCP servers and global secrets also work in Code**, as they do in
+   a Crew: the admin-provided platform servers and global secrets can be
+   selected.
+
+So a Code chat sees two kinds of server: **global** (platform, admin-managed,
+shared login, as today) and **personal** (the chatting person's own).
 
 ## How MCP works today (the parts this changes)
 
 - **One platform catalog.** The release's base config plus an overlay in the
   service state dir (`mcp_servers_<product>_user.json`,
   `agent_go/cmd/server/mcp_runtime_config.go`). `install_mcp_server` and
-  `add_mcp_server` edit the overlay for the whole server.
-- **Per-project selection.** A Crew's `workflow.json` capabilities hold
-  `selected_servers` / `selected_tools`; chats only get selected servers.
+  `add_mcp_server` edit it for the whole server.
+- **Per-project selection.** A project's `workflow.json` capabilities hold
+  `selected_servers` / `selected_tools`.
 - **Per-call authorization.** The bridge resolves each call through
   `resolveSelectedMCPServer` (`mcp_session_scope.go`): the server must be in
   the session's selection.
-- **One login per server, for everyone.** OAuth tokens live at
+- **One login per global server, for everyone.** OAuth tokens at
   `<tokens root>/_platform/<server>.json` (`getUserTokenFilePath`,
-  `oauth_routes.go`) and connections share the `mcp-platform` connection
-  session. Anyone whose project selects the server acts as that one login.
+  `oauth_routes.go`); connections share the `mcp-platform` session.
+- **Secrets.** Global secrets (admin-managed, selected per project) and
+  project secrets, which since PLAT-272 are shared by everyone with access to
+  the project (`workflow_shared_secrets.go`). There is no personal secret
+  store today.
 - **Stdio servers run on the host**, outside any project sandbox.
 
-Every one of these is platform-wide, so none can hold a private server.
+## Model
+
+| | Global servers | Personal servers |
+|---|---|---|
+| Who adds them | Admins (platform catalog, as today) | Any person, for themselves |
+| Login | The one platform login (`_platform`) | That person's own login |
+| Which run in a Code chat | The Code's selection, set by owner/co-owners | The chatting person's own, switched on per Code by them |
+| Who sees credentials | Nobody in Code (admin only) | Nobody but the store; not even the person after connecting |
+| Transport | As the platform allows | **Remote only** (HTTP/SSE), never stdio |
+
+Secrets in the same shape: **global secrets** (selected for the Code as in a
+Crew) and **personal secrets** (the chatting person's own). A Code chat never
+resolves another person's personal secret.
 
 ## Decisions (recommended)
 
-1. **Remote servers only.** HTTP (streamable) or SSE. No stdio, ever: a stdio
-   server is an arbitrary program on the host, outside the Code's sandbox.
-2. **The URL must be public.** Refuse loopback, private, link-local and
-   cloud-metadata addresses, checked on every connect after DNS resolution
-   (and on redirects), so a Code cannot use MCP to reach the server's own
-   services or its network (SSRF).
-3. **Owner only manages.** Only the Code's owner adds, connects (OAuth),
-   reconnects and removes servers, like private Gmail. Co-owners and editors
-   cannot change them.
-4. **One login per Code.** The owner's OAuth login for a server belongs to
-   that Code. Two Codes of the same owner that add the same server each
-   connect separately.
-5. **Everyone who can chat in the Code uses its servers** in their own chats,
-   acting as the owner's login, and never sees tokens or credential headers.
-   The UI tells the owner this when they share the Code. *(Alternative for
-   the owner to decide: owner's chats only, as with Gmail. See Open
-   questions.)*
-6. **Fail closed.** A Code session resolves MCP only from its own registry.
-   If the Code cannot be identified, no MCP server is available, never the
-   platform catalog.
+1. **Personal servers are per person, reusable across their Codes.** Connect
+   once; switch each on per Code. Never usable in anyone else's chat, and
+   never in Crews or workflows (Code only, for now).
+2. **Remote only, public URLs only** for personal servers. No stdio. Refuse
+   loopback, private, link-local and cloud-metadata addresses, checked on every
+   connect after DNS resolution and on every redirect, including OAuth
+   endpoints, so MCP cannot reach the server's own services or network (SSRF).
+3. **The chat's person decides.** A chat's MCP set is: the Code's global
+   selection + the chatting person's personal servers enabled for this Code.
+   Background work and sub-agents inherit the person of the chat that started
+   them. Slack/WhatsApp DMs run as the person who sent them.
+4. **Fail closed.** If a Code session's person or Code cannot be identified,
+   it gets no personal servers and no personal secrets (global ones still
+   follow the Code's selection).
+5. **Admin inspection** shows which personal servers a person enabled in a
+   Code (name, URL, connected), never tokens or secret values; audited.
 
 ## Design
 
-### Storage (outside the Code, server-owned)
-
-A private store per Code, like private Gmail's gog store:
+### Personal store (server-owned, outside every workspace)
 
 ```
-<AGENTWORKS_STATE_ROOT>/code-mcp/<sha256(owner, project)[:32]>/   (0700)
-  servers.json      # the Code's servers: name, url, transport, oauth metadata
+<AGENTWORKS_STATE_ROOT>/personal-mcp/<sha256(user)[:32]>/   (0700)
+  servers.json        # name, url, transport, oauth metadata, header refs
   tokens/<server>.json
-  clients/<server>.json   # DCR client registrations
+  clients/<server>.json   # dynamic client registrations
 ```
 
-- Never inside the Code's folder: the agent, editors and the shell tool can
-  read the Code's files, and a token there would leak. The Landlock read set
-  is an allowlist that never includes this directory.
-- Never reachable through the browser workspace proxy (it is not under the
-  workspace docs root at all).
-- `servers.json` holds no secrets. Credential headers (for servers that use
-  an API key instead of OAuth) reference a **Code secret by name**, resolved
-  at connect time, so the value stays in the Code's encrypted secrets.
+- Never inside a Code or the user's workspace tree: the agent and anyone with
+  file access to a Code can read its files. The Landlock read set is an
+  allowlist that never includes this directory; the browser workspace proxy
+  cannot reach it (not under the docs root).
+- Per-Code enablement lives with the Code, keyed by person, and holds no
+  secrets: `workflow.json` capabilities gain
+  `personal_servers: { "<user>": ["linear", ...] }` (names only).
 
-### Server entry
+### Personal secrets
 
-```json
-{ "name": "linear", "url": "https://mcp.linear.app/mcp", "transport": "http",
-  "oauth": { "auth_url": "...", "token_url": "...", "registration_endpoint": "..." },
-  "headers": { "Authorization": { "secret": "LINEAR_API_KEY", "format": "Bearer {}" } },
-  "added_by": "<owner>", "added_at": "..." }
-```
+A new per-person secret store, AES-GCM bound to the user id (AAD), stored in
+the same personal state dir (`secrets.json`). Managed from the person's own
+Setup; values are write-only in the UI. Used by:
 
-`name` is unique within the Code. The platform catalog (search) is only a
-source of URLs and OAuth metadata to copy from; installing copies the entry
-into the Code's `servers.json`, never a reference to the platform entry.
+- personal MCP credential headers:
+  `"headers": {"Authorization": {"secret": "LINEAR_API_KEY", "format": "Bearer {}"}}`
+  resolved at connect time from **the chatting person's** personal secrets
+  (then global secrets, if the Code selected that global secret);
+- optionally the agent's `$SECRET_<NAME>` in that person's own chats (open
+  question 1).
 
 ### Resolution and the bridge
 
-- The Code session is already marked (`common.MarkCodeSession`, inherited by
-  sub-agents). A new `resolveCodeMCPServer(sessionID, server, tool)` runs
-  first in the bridge resolver: if `common.CodeSessionRoot(sessionID)` is set,
-  it resolves **only** from that Code's `servers.json` plus the Code's
-  `selected_servers` / `selected_tools`, sets `OAuth.TokenFile` to the Code's
-  `tokens/<server>.json`, and uses the connection session
-  `mcp-code-<hash>` so connections are never shared across Codes or with
-  the platform. It never falls through to the platform resolver.
-- Turn start: the tool list a Code chat registers comes from the same
-  registry, not the platform catalog.
-- Every connect re-checks the URL rules (decision 2).
+`resolveCodeMCPServer(sessionID, server, tool)` runs first in the bridge
+resolver whenever `common.CodeSessionRoot(sessionID)` is set:
+
+1. Person = the session owner (already tracked for every chat; inherited by
+   sub-agents and background work).
+2. If `server` is one of the person's personal servers **and** enabled for
+   this Code for this person: resolve from the personal store, token file in
+   the personal `tokens/`, connection session `mcp-user-<hash(user)>`
+   (connections are never shared between people or with the platform).
+3. Else if `server` is in the Code's global selection: resolve exactly as
+   today (`resolveSelectedMCPServer`, `_platform` login).
+4. Else refuse. A name clash between a personal and a global server resolves
+   to personal only when the person enabled it; the UI prevents clashes on
+   add.
+
+The turn-start tool list is built the same way. Every personal connect
+re-checks the URL rules.
 
 ### Agent tools and skill
 
-- `mcp` feature on Code with an option `{servers: own}` (like
-  `bots: {gmail: own}`). With it, the MCP tools act on the Code's registry:
-  `list_mcp_servers`, `search_mcp_catalog` (read-only platform metadata),
-  `install_mcp_server` (remote entries only; copies into the Code),
-  `remove_mcp_server`, `trigger_mcp_discovery`, `get_mcp_server_logs`,
-  `update_project_mcp_server_selection`.
-- `add_mcp_server` accepts only a remote URL (no command/stdio).
-- The management tools run only in the **owner's** chats (decision 3); in
-  anyone else's chat they refuse with "only the owner manages this Code's MCP
-  servers".
-- The `code-mcp` skill (rendered from the shared template) gets a private-mode
-  section: servers are this Code's own; remote only; the owner connects.
+- The `mcp` feature on Code with an option `{personal: true}`:
+  - `list_mcp_servers` shows the Code's global selection plus the chatting
+    person's personal servers.
+  - `search_mcp_catalog` (platform metadata as a source of URLs/OAuth info).
+  - `install_mcp_server` / `add_mcp_server` add to **the chatting person's**
+    personal store only, remote URLs only; they never change the platform
+    catalog from a Code.
+  - `remove_mcp_server` removes the person's own server.
+  - `update_project_mcp_server_selection`: the global selection needs owner or
+    co-owner; a person's personal enablement is theirs alone.
+- The `code-mcp` skill (rendered from the shared template) gets a section on
+  global vs personal servers and secrets.
 
 ### UI
 
-- Code Integrations shows an **Apps** tab again, backed by the Code's
-  registry: the owner sees Add (search the catalog or paste a URL), Connect,
-  Reconnect, Remove, and per-server tool selection. Others see the connected
-  servers' names only.
-- No shared-platform list, and no "platform connection" wording, in Code.
+Code Setup → Integrations → Apps:
+
+- **Global:** the platform servers the Code uses (owner/co-owners choose).
+- **Yours:** the viewing person's own servers: add (search or URL), connect,
+  reconnect, remove, and on/off for this Code. Nobody sees anyone else's.
+
+Setup → Secrets gains **Your secrets** (personal, write-only values) next to
+the global secrets the Code selects.
 
 ### Lifecycle
 
-- **Remove a server:** delete its token and client files, close its
-  connection, drop it from the selection.
-- **Delete the Code:** delete the whole store directory and close every
-  `mcp-code-<hash>` connection (alongside the existing share-list cleanup).
-- **Unshare:** nothing to do; servers belong to the Code, not the person.
-- **Owner account deleted/disabled:** tokens stay with the Code; its chats
-  cannot connect once the owner is disabled (session start already refuses).
+- **Remove a personal server:** delete its token and client files, close the
+  person's connection, drop it from every Code's enablement.
+- **Person loses access to a Code:** their enablement entry is dropped; their
+  servers stay theirs.
+- **Code deleted:** its enablement map goes with `workflow.json`; personal
+  stores are untouched.
+- **Account deleted/disabled:** disabled sessions cannot start; on delete the
+  personal store is deleted.
 
-### Admin inspection, audit and cost
+### Cost
 
-- Code inspection lists a Code's servers (name, URL, connected yes/no), never
-  tokens or headers; the view is audited like the rest.
-- MCP calls are already recorded in the cost ledger per session with the
-  workspace path (`recordMCPBridgeCall`), so they land on the Code's cost row.
+MCP calls are already recorded per session with the workspace path
+(`recordMCPBridgeCall`), so they land on the Code's cost row, split by person.
 
 ## Tests (end-to-end, not mocked)
 
-1. Owner adds a public no-auth remote server (e.g. DeepWiki) to Code A; A's
-   chat lists and calls its tool.
-2. Code B (same owner) and a Crew cannot see or call it; the bridge refuses
-   by name.
-3. An editor's chat in A uses it (decision 5) but the editor cannot add,
-   remove or reconnect, and never receives the token.
-4. `add_mcp_server` with a stdio command, `http://127.0.0.1`, a private IP, a
-   metadata IP, or a public name that resolves or redirects to one: refused.
-5. OAuth server: owner connects; the token lands only in A's store; B's
-   session cannot use it.
-6. Delete A: store directory and connections are gone.
-7. A Code session with no Code mark gets no MCP servers (fail closed).
+1. A adds a public no-auth remote server (e.g. DeepWiki), enables it in Code
+   X; A's chat lists and calls its tool.
+2. B (an editor of X) cannot see or call A's server in B's own chat; B adds
+   and uses their own.
+3. The Code's global selection works for both A and B with the platform
+   login, as in a Crew.
+4. A's server is not callable from a Crew, a workflow, or a Code where A did
+   not enable it.
+5. An API-key server takes A's personal secret in A's chat; B's chat cannot
+   resolve A's secret by name.
+6. Refused: stdio commands; `http://127.0.0.1`; private, link-local and
+   metadata IPs; a public name that resolves or redirects to one (including
+   OAuth endpoints).
+7. OAuth: A's token lands only in A's personal store.
+8. A Code session with no identifiable person gets no personal servers or
+   secrets.
 
 ## Open questions for the owner
 
-1. **Who may use the Code's servers:** everyone who can chat in the Code
-   (recommended, decision 5), or only the owner's chats (as Gmail)?
-2. **API-key servers:** allow credential headers from Code secrets, or OAuth
-   and no-auth servers only for now?
-3. **Existing platform catalog:** keep it as a search source for installing
-   privately (recommended), or hide it from Code entirely?
+1. **Personal secrets beyond MCP:** should the agent also be able to use a
+   person's personal secrets as `$SECRET_<NAME>` in their own chats, or only
+   for MCP credential headers for now?
+2. **Project (shared) secrets in Code:** keep them (shared by everyone with
+   access to the Code, as today), or replace them with personal + global only?
+3. **Personal servers outside Code:** Code only for now (recommended), or
+   also in the person's own Crews later?

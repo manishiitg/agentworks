@@ -277,8 +277,9 @@ Code ships a basic setup first; integrations come later. In Code's
 
 - **Code to Crew:** not supported. A Code does not become a Crew.
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
-- **MCP servers are private to the Code only** (user, 2026-09-28). A Code
-  never uses the shared platform servers. Design, for review:
+- **MCP in Code: global + personal** (user, 2026-09-28). Everyone who chats in
+  a Code uses MCP with their own servers and personal secrets; the global
+  platform servers and global secrets work too. Design, for review:
   [code_private_mcp.md](code_private_mcp.md). Until it is built, Code has no
   MCP servers.
 - **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
