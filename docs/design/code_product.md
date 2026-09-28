@@ -15,7 +15,8 @@ same chat), with four differences:
 - **Just a name.** A Code has no identity, role or purpose. It is a
   workspace, not an agent persona.
 - **Closed to callers.** It has no MCP connections, no functions, no
-  `ask_crew`, no Slack or WhatsApp, and no Crew templates.
+  `ask_crew`, no Slack channels or group chats, and no Crew templates. The
+  owner can reach their own Code from a Slack DM or WhatsApp.
 
 It is the concrete "sit down and code" surface for
 [Workbench](https://agentworkshq.com/workbench/). There, CLI subscriptions
@@ -37,7 +38,8 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Identity / purpose / role | Yes | No, just a name |
 | Templates (Crew catalog, playbooks) | Yes | No |
 | MCP servers, MCP exposure (`ask_crew`, functions) | Yes | No, for now |
-| Bots (Slack, WhatsApp, Gmail), triggers | Yes | No |
+| Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
+| Triggers | Yes | No |
 | Schedules | Message-only | No, for now |
 | Chat UI | tmux terminal + chat area | Same |
 | Coding CLIs, models, secrets, skills, browser, terminal | Yes | Yes |
@@ -55,7 +57,13 @@ Proposed features for `code`:
 - **Keep:** `live-chat`, `coding`, `files`, `terminal`, `models`,
   `secrets`, `skills`, `browser`, `costs`, `background-work`, `workspace-ui`,
   `memory`, `attached-folders`.
-- **Leave out:** `mcp`, `bots`, `triggers`, `schedules`, `workflow-references`,
+- **Keep, restricted:** `bots` limited to `slack,whatsapp` and 1:1 only
+  (a new `dm_only` option). Slack channel and group routes can't be
+  created for a Code, and a message from a Slack channel or group is
+  refused. Each DM or WhatsApp message continues the sender's own chat of
+  the Code, the same one-person-one-chat rule as Crew (`senderProfileTurn`),
+  and only people with access to that Code are answered.
+- **Leave out:** `mcp`, `triggers`, `schedules`, `workflow-references`,
   `voice`, `database`.
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.
 
@@ -74,7 +82,7 @@ Other settings:
 Code-specific work outside the definition:
 
 1. **Not callable.** Leave Code out of `list_crews`, the MCP Crew tools,
-   Crew-to-Crew calls, trigger links and bot routes. The server should refuse
+   Crew-to-Crew calls, trigger links and Slack channel or group routes. The server should refuse
    them for profile `code`, not merely hide them.
 2. **No templates.** The Crew template catalog, playbooks and "install a
    role" flows do not appear anywhere in Code: not in creation, the empty
@@ -153,8 +161,9 @@ users has to hold:
    - Register it and add it to the product switcher.
 2. **Private by default + sharing.** Owner-only visibility, viewer, editor
    and co-owner grants, and the one-chat-per-person rule for editors.
-3. **Not callable, no templates.** Refuse MCP, function, bot and trigger
-   access for profile `code`. Hide the template, playbook and role flows.
+3. **Not callable, no templates, DM-only bots.** Refuse MCP, function,
+   trigger and Slack channel or group access for profile `code`. Allow Slack
+   DM and WhatsApp for people with access, each in their own chat. Hide the template, playbook and role flows.
 4. **Files-first UI.** Land on files; editor and terminal alongside chat;
    dashboard as a tab.
 5. **Admin inspection.** Per-product setting, read-only views, the user
@@ -175,8 +184,14 @@ users has to hold:
      but can't send or edit.
    - The view appears in the audit log, and A sees the "admins can view"
      note.
-3. **Closed.** `list_crews`, `ask_crew`, functions, bot routes and triggers
-   never reach a Code, and there are no templates anywhere.
+3. **Closed.**
+   - `list_crews`, `ask_crew`, functions and triggers never reach a Code,
+     and there are no templates anywhere.
+   - A Slack channel or group route to a Code can't be created, and a
+     channel message is refused.
+   - The owner's Slack DM and WhatsApp messages continue the owner's own
+     chat of the Code.
+   - A DM from someone without access is refused.
 4. **Isolation.** From A's Code terminal and shell tool, B's files, `/tmp`,
    tmux and browser are unreachable (QA #236 checks, plus the browser socket
    check).
