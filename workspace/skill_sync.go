@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -175,6 +176,26 @@ func handleSkillCLIAvailable(c *gin.Context) {
 // skillInstallRequest is the request body for POST /api/skills/cli/install
 type skillInstallRequest struct {
 	Source string `json:"source"` // owner/repo@skill-name
+	// TargetDir, when set, installs into one project's skills folder
+	// (docs-relative _users/<user>/Chats/<Product>/projects/<project>/skills)
+	// instead of the account-wide skills/ library, e.g. a private Code.
+	TargetDir string `json:"target_dir,omitempty"`
+}
+
+// projectSkillsDirPattern is the only shape a TargetDir may have.
+var projectSkillsDirPattern = regexp.MustCompile(`^_users/[A-Za-z0-9._@-]+/Chats/[A-Za-z]+/projects/[A-Za-z0-9._-]+/skills$`)
+
+// skillInstallTargetDir resolves the folder an install writes to: the
+// account-wide library, or a validated project skills folder.
+func skillInstallTargetDir(docsDir, target string) (string, error) {
+	target = strings.Trim(filepath.ToSlash(strings.TrimSpace(target)), "/")
+	if target == "" {
+		return filepath.Join(docsDir, "skills"), nil
+	}
+	if strings.Contains(target, "..") || !projectSkillsDirPattern.MatchString(target) {
+		return "", fmt.Errorf("target_dir must be a project's skills folder")
+	}
+	return filepath.Join(docsDir, filepath.FromSlash(target)), nil
 }
 
 // skillInstallResponse is the response from install
@@ -210,7 +231,11 @@ func handleSkillInstall(c *gin.Context) {
 	}
 
 	docsDir := viper.GetString("docs-dir")
-	skillsDir := filepath.Join(docsDir, "skills")
+	skillsDir, err := skillInstallTargetDir(docsDir, req.TargetDir)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Parse source
 	cliSource := req.Source
@@ -286,7 +311,10 @@ func handleSkillInstall(c *gin.Context) {
 		}
 		if json.Unmarshal(lockData, &lockFile) == nil {
 			result.LockEntries = lockFile.Skills
-			syncLockFile(docsDir, lockFile.Skills)
+			// The account-wide lock file tracks the shared library only.
+			if strings.TrimSpace(req.TargetDir) == "" {
+				syncLockFile(docsDir, lockFile.Skills)
+			}
 		}
 	}
 

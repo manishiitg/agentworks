@@ -60,7 +60,18 @@ func IsAvailable() bool {
 // ImportToWorkspace installs skills via the workspace container's CLI.
 // Calls POST /api/skills/cli/install on the workspace API.
 func ImportToWorkspace(ctx context.Context, workspaceAPIURL, source string) (*CLIImportResult, error) {
-	reqBody, _ := json.Marshal(map[string]string{"source": source})
+	return ImportToWorkspaceDir(ctx, workspaceAPIURL, source, "")
+}
+
+// ImportToWorkspaceDir is ImportToWorkspace into targetDir, a project's
+// skills folder (docs-relative, e.g. _users/<u>/Chats/Code/projects/<p>/skills),
+// instead of the account-wide skills/ library. Empty means the library.
+func ImportToWorkspaceDir(ctx context.Context, workspaceAPIURL, source, targetDir string) (*CLIImportResult, error) {
+	payload := map[string]string{"source": source}
+	if targetDir = strings.Trim(strings.TrimSpace(targetDir), "/"); targetDir != "" {
+		payload["target_dir"] = targetDir
+	}
+	reqBody, _ := json.Marshal(payload)
 
 	apiURL := fmt.Sprintf("%s/api/skills/cli/install", workspaceAPIURL)
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqBody))

@@ -1053,7 +1053,9 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         reduced
         walkthroughSurface={selected ? 'crew' : 'empty-crew'}
         walkthroughReady={!sessionsLoading && !creating && !error}
-        walkthroughPaused={createOpen || deleteCandidate !== null}
+        // The guided tour is Crew's (identity, templates, automation); a Code
+        // never opens it on its own.
+        walkthroughPaused={createOpen || deleteCandidate !== null || !product.hasIdentity}
       />
       {shareOpen && selected && product.profileId === 'code' ? (
         <CodeShareDialog projectId={selected.id} projectTitle={selected.identity?.name || selected.title} onClose={() => setShareOpen(false)} />

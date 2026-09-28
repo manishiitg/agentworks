@@ -319,7 +319,10 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             selectionLabel="Skills for this project"
             emptySelectionText="No project skills yet — pick one below."
             selectionScopeLabel="project"
+            libraryReadOnly={product.profileId === 'code'}
+            libraryReadOnlyHint="Ask the agent to install or create a skill; it stays private to this workspace."
           />
+          {product.profileId === 'code' ? <p className="text-xs text-muted-foreground">Skills you add here stay in this workspace’s skills/ folder: ask the agent to install or create one. The shared library above is read-only from a Code.</p> : null}
         </div>}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 )
 
 func putCodeShares(t *testing.T, api *StreamingAPI, caller, body string) *httptest.ResponseRecorder {
@@ -137,5 +138,69 @@ func TestCodeChatBindingFollowsRole(t *testing.T) {
 	// The editor's chat is their own: no coupling to the owner's manifest.
 	if binding.ManifestPath != "" || binding.AuthoritativeSessionID != "" || binding.WorkspacePath != codePrivacyOwnerRoot {
 		t.Fatalf("editor binding = %+v", binding)
+	}
+}
+
+// A Code calling a Crew or workflow is a valid caller for its owner and for
+// people it is shared with; nobody else can stamp calls as that Code.
+func TestCodeIsAValidOutboundCaller(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	service := &ProductScheduleService{api: api, registry: api.agentProfiles}
+	ctx := context.Background()
+	if !service.crewProjectExists(ctx, "owner", "code", "c0de0001-0000") {
+		t.Fatal("the owner's Code is not a valid caller")
+	}
+	if service.crewProjectExists(ctx, "other", "code", "c0de0001-0000") {
+		t.Fatal("an unshared user stamped calls as the owner's Code")
+	}
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
+	if !service.crewProjectExists(ctx, "other", "code", "c0de0001-0000") {
+		t.Fatal("an editor's calls from the shared Code were refused")
+	}
+}
+
+// A Code is never a reference, attachment or call target, not even for its
+// owner and not when shared.
+func TestCodeIsNeverAReferenceOrTarget(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"co_owner"}]}`)
+	for _, user := range []string{"owner", "other"} {
+		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
+		for _, ref := range []string{"Chats/Code/projects/app-c0de0001", codePrivacyOwnerRoot} {
+			if _, _, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{ref}); err == nil {
+				t.Fatalf("%s attached Code %s as a reference", user, ref)
+			}
+			if target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: user, Username: user}, ref); err == nil {
+				t.Fatalf("%s resolved Code %s as a call target: %+v", user, ref, target)
+			}
+		}
+	}
+}
+
+// A Code answers only 1:1 Slack DMs and WhatsApp, each sender in their own
+// chat, and only people with at least editor access.
+func TestCodeBotTurnsAreDirectMessageOnly(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	ctx := context.Background()
+	route := &services.ProfileRoute{ProfileID: "code", ConversationKey: "c0de0001-0000", WorkspaceUserID: "owner"}
+	turn := func(sender string, msg services.BotIncomingMessage) error {
+		msg.Text = "hi"
+		msg.PresetProfile = route
+		_, _, _, err := api.botProfileTurn(ctx, sender, msg, services.ThreadID{Platform: msg.Platform, ChannelID: "c", ThreadTS: "t"})
+		return err
+	}
+	if err := turn("owner", services.BotIncomingMessage{Platform: "slack", ChannelID: "C123"}); err == nil || !strings.Contains(err.Error(), "only 1:1") {
+		t.Fatalf("a Slack channel message reached the Code: %v", err)
+	}
+	if err := turn("owner", services.BotIncomingMessage{Platform: "gmail"}); err == nil {
+		t.Fatal("a non-DM platform reached the Code")
+	}
+	// No access, then view-only: refused even in a DM.
+	if err := turn("other", services.BotIncomingMessage{Platform: "slack", DirectMessage: true}); err == nil {
+		t.Fatal("a DM from someone without access reached the Code")
+	}
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"viewer"}]}`)
+	if err := turn("other", services.BotIncomingMessage{Platform: "whatsapp"}); err == nil {
+		t.Fatal("a viewer's WhatsApp message ran the Code")
 	}
 }

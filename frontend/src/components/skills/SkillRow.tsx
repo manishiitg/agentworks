@@ -5,7 +5,8 @@ import { READ_ONLY_TITLE } from '../../hooks/useCanWriteWorkflow'
 
 interface SkillRowProps {
   skill: Skill
-  onDelete: () => void
+  /** Omitted when the shared library is read-only here (a private Code). */
+  onDelete?: () => void
   // When provided (the workflow-panel embedding), the row also gets an
   // add/remove-from-workflow toggle -- kept as a separate control from the
   // expand/collapse click target so the two actions never conflict.
@@ -106,7 +107,7 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
             {folder_name !== frontmatter.name ? (
               <span className="font-mono text-[11px] text-gray-400 dark:text-gray-500">{folder_name}</span>
             ) : <span />}
-            <button
+            {onDelete ? <button
               type="button"
               onClick={onDelete}
               disabled={readOnly}
@@ -115,7 +116,7 @@ export default function SkillRow({ skill, onDelete, selected, onToggleSelect, on
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete
-            </button>
+            </button> : null}
           </div>
         </div>
       )}

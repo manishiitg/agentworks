@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
 	"path"
 	"strings"
@@ -187,6 +188,16 @@ func (api *StreamingAPI) botProfileTurn(ctx context.Context, userID string, msg 
 		return nil, "", false, fmt.Errorf("%s no longer takes WhatsApp messages", profile.Name)
 	}
 	productInteractions.Note(ctx, workspaceUserID, profile.Product)
+	// A Code talks 1:1 only: a Slack DM or WhatsApp (which admits 1:1 chats
+	// only), each sender in their own chat of it, and only people with
+	// access to it (senderProfileTurn refuses anyone else and viewers).
+	// Slack channels, group DMs and anything else are refused.
+	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
+		if !((msg.Platform == "slack" && msg.DirectMessage) || msg.Platform == "whatsapp") {
+			return nil, "", false, fmt.Errorf("%s answers only 1:1 Slack DMs and WhatsApp, not channels or group chats", profile.Name)
+		}
+		return api.senderProfileTurn(ctx, userID, profile, conversationKey, msg, threadID)
+	}
 	// A crew reached by a 1:1 Slack DM or by WhatsApp runs in the sender's
 	// own chat of it (their reader chat when someone else owns it).
 	if msg.PresetProfile != nil && strings.EqualFold(profile.ID, "work") && ((msg.Platform == "slack" && msg.DirectMessage) || msg.Platform == "whatsapp") {

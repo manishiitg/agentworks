@@ -373,9 +373,19 @@ func GetSkillIn(workspaceAPIURL, workspacePath, folderName string) (*Skill, erro
 
 // DeleteSkill deletes a skill folder
 func DeleteSkill(workspaceAPIURL, folderName string) error {
+	return DeleteSkillIn(workspaceAPIURL, SkillsBasePath, folderName)
+}
+
+// DeleteSkillIn removes one skill folder under basePath (a project's skills
+// folder, or the account-wide library).
+func DeleteSkillIn(workspaceAPIURL, basePath, folderName string) error {
 	client := NewWorkspaceAPIClient(workspaceAPIURL)
 
-	skillFolderPath := path.Join(SkillsBasePath, folderName)
+	folderName = strings.TrimSpace(folderName)
+	if folderName == "" || strings.Contains(folderName, "/") || strings.Contains(folderName, "..") {
+		return fmt.Errorf("invalid skill folder name %q", folderName)
+	}
+	skillFolderPath := path.Join(basePath, folderName)
 	if err := client.DeleteFolder(skillFolderPath); err != nil {
 		return fmt.Errorf("failed to delete skill: %w", err)
 	}

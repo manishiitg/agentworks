@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -162,7 +163,9 @@ func usableSlackBots(r *http.Request, api *StreamingAPI, svc *services.SlackServ
 		}
 		bots = append(bots, projectUsableSlackBot(r.Context(), conn))
 	}
-	sort.Slice(bots, func(i, j int) bool { return strings.ToLower(bots[i].DisplayName) < strings.ToLower(bots[j].DisplayName) })
+	sort.Slice(bots, func(i, j int) bool {
+		return strings.ToLower(bots[i].DisplayName) < strings.ToLower(bots[j].DisplayName)
+	})
 	return bots
 }
 
@@ -230,6 +233,11 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 		workspacePath := physicalProductSlackScope(r.Context(), profileID, cleanSlackDestinationPath(req.WorkspacePath))
 		if workspacePath == "" {
 			http.Error(w, "workspace_path is required", http.StatusBadRequest)
+			return
+		}
+		// A Code talks 1:1 only (Slack DMs, WhatsApp); it never gets a channel.
+		if strings.EqualFold(profileID, codeproduct.ProfileID) || isCodeProjectPath(workspacePath) {
+			http.Error(w, "Code workspaces answer only 1:1 Slack DMs and WhatsApp, not Slack channels", http.StatusBadRequest)
 			return
 		}
 		if err := requireSlackRouteDestinationWriter(r.Context(), api, workspacePath, profileID); err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"strings"
 )
 
@@ -141,6 +142,19 @@ func findWorkflowManifestByID(ctx context.Context, workflowID string) (string, *
 func (s *ProductScheduleService) crewProjectExists(ctx context.Context, userID, profileID, projectID string) bool {
 	if strings.TrimSpace(profileID) == "" {
 		profileID = "work"
+	}
+	// A calling Code has no schedules, so it is verified the way a Code turn
+	// is: the caller's own, or one shared with them.
+	if strings.EqualFold(strings.TrimSpace(profileID), codeproduct.ProfileID) {
+		if s.registry == nil {
+			return false
+		}
+		profile, err := s.registry.Resolve(profileID, 0, userID)
+		if err != nil {
+			return false
+		}
+		_, err = resolveCrewProjectBinding(ctx, userID, profile, projectID, "")
+		return err == nil
 	}
 	// Crews are shared server-wide, so a caller Crew may belong to any owner.
 	_, _, _, _, err := s.projectManifestAnyOwner(ctx, userID, profileID, projectID)

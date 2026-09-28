@@ -1621,70 +1621,73 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 		})
 	}
 
-	// Crew projects are user-owned product conversations, not workflows. Scan
-	// the same user-scoped workspace API and build profile routes so selecting
-	// a Crew enters its canonical persistent project chat.
-	crewList, crewErr := wsClient.ListWorkspaceFiles(ctx, workspace.ListWorkspaceFilesParams{Folder: "Chats/Work/projects", MaxDepth: &maxDepth})
-	if crewErr != nil {
-		log.Printf("[WHATSAPP] Failed to list Crew projects for user %s: %v", owner.UserID, crewErr)
-	} else {
-		var crewResp whatsappDocumentListResponse
-		if err := json.Unmarshal(crewList.Raw, &crewResp); err != nil {
-			log.Printf("[WHATSAPP] Failed to parse Crew project list for user %s: %v", owner.UserID, err)
+	// Crew and Code projects are user-owned product conversations, not
+	// workflows. Scan the same user-scoped workspace API and build profile
+	// routes so selecting one enters its canonical persistent project chat
+	// (for a Code: the sender's own chat, 1:1 only).
+	seenCrewIDs := map[string]bool{}
+	for _, projects := range []struct{ root, product string }{{"Chats/Work/projects", "work"}, {"Chats/Code/projects", "code"}} {
+		crewList, crewErr := wsClient.ListWorkspaceFiles(ctx, workspace.ListWorkspaceFilesParams{Folder: projects.root, MaxDepth: &maxDepth})
+		if crewErr != nil {
+			log.Printf("[WHATSAPP] Failed to list Crew projects for user %s: %v", owner.UserID, crewErr)
 		} else {
-			var crewManifestPaths []string
-			walkDocs = func(docs []whatsappDocument) {
-				for _, doc := range docs {
-					if strings.HasSuffix(doc.FilePath, "/product.json") {
-						crewManifestPaths = append(crewManifestPaths, doc.FilePath)
+			var crewResp whatsappDocumentListResponse
+			if err := json.Unmarshal(crewList.Raw, &crewResp); err != nil {
+				log.Printf("[WHATSAPP] Failed to parse Crew project list for user %s: %v", owner.UserID, err)
+			} else {
+				var crewManifestPaths []string
+				walkDocs = func(docs []whatsappDocument) {
+					for _, doc := range docs {
+						if strings.HasSuffix(doc.FilePath, "/product.json") {
+							crewManifestPaths = append(crewManifestPaths, doc.FilePath)
+						}
+						if len(doc.Children) > 0 {
+							walkDocs(doc.Children)
+						}
 					}
-					if len(doc.Children) > 0 {
-						walkDocs(doc.Children)
+				}
+				walkDocs(crewResp.Data)
+				sort.Strings(crewManifestPaths)
+				seenCrewPaths := make(map[string]bool, len(crewManifestPaths))
+				for _, manifestPath := range crewManifestPaths {
+					manifestPath = filepath.ToSlash(strings.TrimSpace(manifestPath))
+					if manifestPath == "" || seenCrewPaths[manifestPath] {
+						continue
 					}
+					seenCrewPaths[manifestPath] = true
+					content, err := wsClient.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: manifestPath})
+					if err != nil {
+						log.Printf("[WHATSAPP] Failed to read Crew manifest %s: %v", manifestPath, err)
+						continue
+					}
+					var manifest whatsappCrewManifest
+					if err := json.Unmarshal([]byte(content.Content), &manifest); err != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), projects.product) {
+						continue
+					}
+					id := strings.TrimSpace(manifest.ID)
+					if id == "" || seenCrewIDs[strings.ToLower(id)] {
+						continue
+					}
+					label := strings.TrimSpace(manifest.Title)
+					if label == "" {
+						label = strings.TrimSpace(manifest.Identity.Name)
+					}
+					if label == "" {
+						continue
+					}
+					seenCrewIDs[strings.ToLower(id)] = true
+					candidates = append(candidates, whatsappDestinationCandidate{
+						Kind:            "crew",
+						ID:              id,
+						Label:           label,
+						WorkspacePath:   strings.TrimSuffix(manifestPath, "/product.json"),
+						Slug:            slugifyWhatsAppWorkflow(label),
+						WorkshopMode:    "run",
+						ProfileID:       projects.product,
+						ConversationKey: id,
+						ProfileLabel:    label,
+					})
 				}
-			}
-			walkDocs(crewResp.Data)
-			sort.Strings(crewManifestPaths)
-			seenCrewPaths := make(map[string]bool, len(crewManifestPaths))
-			seenCrewIDs := make(map[string]bool, len(crewManifestPaths))
-			for _, manifestPath := range crewManifestPaths {
-				manifestPath = filepath.ToSlash(strings.TrimSpace(manifestPath))
-				if manifestPath == "" || seenCrewPaths[manifestPath] {
-					continue
-				}
-				seenCrewPaths[manifestPath] = true
-				content, err := wsClient.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: manifestPath})
-				if err != nil {
-					log.Printf("[WHATSAPP] Failed to read Crew manifest %s: %v", manifestPath, err)
-					continue
-				}
-				var manifest whatsappCrewManifest
-				if err := json.Unmarshal([]byte(content.Content), &manifest); err != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), "work") {
-					continue
-				}
-				id := strings.TrimSpace(manifest.ID)
-				if id == "" || seenCrewIDs[strings.ToLower(id)] {
-					continue
-				}
-				label := strings.TrimSpace(manifest.Title)
-				if label == "" {
-					label = strings.TrimSpace(manifest.Identity.Name)
-				}
-				if label == "" {
-					continue
-				}
-				seenCrewIDs[strings.ToLower(id)] = true
-				candidates = append(candidates, whatsappDestinationCandidate{
-					Kind:            "crew",
-					ID:              id,
-					Label:           label,
-					WorkspacePath:   strings.TrimSuffix(manifestPath, "/product.json"),
-					Slug:            slugifyWhatsAppWorkflow(label),
-					WorkshopMode:    "run",
-					ProfileID:       "work",
-					ConversationKey: id,
-					ProfileLabel:    label,
-				})
 			}
 		}
 	}
@@ -1762,10 +1765,7 @@ func formatWhatsAppDestinationList(candidates []whatsappDestinationCandidate) st
 			othersHeader = true
 			sb.WriteString("\nOther crews (read-only):\n")
 		}
-		kind := "Workflow"
-		if c.Kind == "crew" {
-			kind = "Crew"
-		}
+		kind := c.kindLabel()
 		label := c.Label
 		if c.Others && c.Owner != "" {
 			label += " (" + c.Owner + ")"
@@ -1780,11 +1780,7 @@ func formatWhatsAppDestinationMatches(candidates []whatsappDestinationCandidate)
 	var sb strings.Builder
 	sb.WriteString("Multiple destinations matched. Pick one:\n")
 	for _, c := range candidates {
-		kind := "Workflow"
-		if c.Kind == "crew" {
-			kind = "Crew"
-		}
-		sb.WriteString(fmt.Sprintf("%d. %s: %s\n", c.Number, kind, c.Label))
+		sb.WriteString(fmt.Sprintf("%d. %s: %s\n", c.Number, c.kindLabel(), c.Label))
 	}
 	sb.WriteString("\nUse @switch <number>.")
 	return strings.TrimSpace(sb.String())
@@ -1834,6 +1830,17 @@ func (w *WhatsAppService) findDestinationCandidateByRoute(ctx context.Context, o
 		}
 	}
 	return nil
+}
+
+// kindLabel names a destination's product in @list replies.
+func (c whatsappDestinationCandidate) kindLabel() string {
+	switch {
+	case c.Kind != "crew":
+		return "Workflow"
+	case strings.EqualFold(strings.TrimSpace(c.ProfileID), "code"):
+		return "Code"
+	}
+	return "Crew"
 }
 
 func (c whatsappDestinationCandidate) autoRouteKey() string {

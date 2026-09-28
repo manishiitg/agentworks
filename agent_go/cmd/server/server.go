@@ -6254,9 +6254,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if resolvedProfile != nil {
 					skillProductID = resolvedProfile.Definition.ID
 				}
-				if err := api.registerMultiAgentSkillTools(llmAgent, func(toolName string) bool {
+				// A Code's skills are private to it: installs and removals act on
+				// its own skills/ folder, never the shared library.
+				projectSkillsDir := ""
+				if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) && isActiveWorkProjectWorkspace(currentUserID, req.SelectedFolder) {
+					projectSkillsDir = strings.TrimSuffix(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder), "/") + "/skills"
+				}
+				if err := api.registerMultiAgentSkillToolsIn(llmAgent, func(toolName string) bool {
 					return profileDisablesVirtualTool(resolvedProfile, toolName)
-				}, skillProductID); err != nil {
+				}, skillProductID, projectSkillsDir); err != nil {
 					logfWithContext(queryLogCtx, "[SKILL TOOLS] Failed to register multi-agent skill tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register multi-agent skill tools: %v", err), true)
 					return
@@ -11823,6 +11829,37 @@ func skillSelectionHint(productID, skillNames string) string {
 	return fmt.Sprintf("Use update_workflow_config to add %s to the workflow's selected skills.", skillNames)
 }
 
+// projectSkillCallbacks points install, import and uninstall at one project's
+// skills folder; listing and search still see the shared library.
+func projectSkillCallbacks(base *todo_creation_human.SkillCallbacks, projectSkillsDir, productID string) *todo_creation_human.SkillCallbacks {
+	wsURL := getWorkspaceAPIURL()
+	scoped := *base
+	scoped.InstallSkill = func(ctx context.Context, source string) (string, error) {
+		result, err := skills.ImportToWorkspaceDir(ctx, wsURL, source, projectSkillsDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to install skill: %w", err)
+		}
+		if len(result.InstalledSkills) == 0 {
+			return "No skills were installed. Check the source format (e.g., 'owner/repo@skill-name').", nil
+		}
+		return fmt.Sprintf("Installed into this workspace's private skills/ folder: %s. %s", strings.Join(result.InstalledSkills, ", "), skillSelectionHint(productID, "These skills")), nil
+	}
+	scoped.ImportSkill = func(ctx context.Context, githubURL, token string) (string, error) {
+		resp, err := skills.ImportGitHubSkillInto(wsURL, githubURL, token, projectSkillsDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to import skill: %w", err)
+		}
+		if !resp.Success {
+			return fmt.Sprintf("Failed to import skill: %s", resp.Error), nil
+		}
+		return fmt.Sprintf("Imported skill **%s** into this workspace's private skills/ folder. %s", resp.SkillName, skillSelectionHint(productID, "It")), nil
+	}
+	scoped.DeleteSkill = func(ctx context.Context, folderName string) error {
+		return skills.DeleteSkillIn(wsURL, projectSkillsDir, folderName)
+	}
+	return &scoped
+}
+
 func (api *StreamingAPI) buildSkillCallbacksForProduct(productID string) *todo_creation_human.SkillCallbacks {
 	wsURL := getWorkspaceAPIURL() // workspace container URL, not backend URL
 	return &todo_creation_human.SkillCallbacks{
@@ -11902,9 +11939,22 @@ func (api *StreamingAPI) registerMultiAgentSkillTools(registrar interface {
 	if len(productID) > 0 {
 		activeProductID = productID[0]
 	}
+	return api.registerMultiAgentSkillToolsIn(registrar, disabled, activeProductID, "")
+}
+
+// registerMultiAgentSkillToolsIn registers the skill tools. A non-empty
+// projectSkillsDir (a private Code's docs-relative skills folder) makes
+// install, import and uninstall act on that folder only: the account-wide
+// library stays readable but is never written from the project.
+func (api *StreamingAPI) registerMultiAgentSkillToolsIn(registrar interface {
+	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
+}, disabled func(string) bool, activeProductID, projectSkillsDir string) error {
 	skillFuncs := api.buildSkillCallbacksForProduct(activeProductID)
 	if skillFuncs == nil {
 		return fmt.Errorf("skill callbacks unavailable")
+	}
+	if projectSkillsDir = strings.Trim(strings.TrimSpace(projectSkillsDir), "/"); projectSkillsDir != "" {
+		skillFuncs = projectSkillCallbacks(skillFuncs, projectSkillsDir, activeProductID)
 	}
 
 	registerTool := func(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error)) error {

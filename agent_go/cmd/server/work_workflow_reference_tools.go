@@ -431,8 +431,8 @@ func readWorkWorkflowReferences(ctx context.Context, workspacePath string) ([]st
 	if err := json.Unmarshal([]byte(productRaw), &productManifest); err != nil {
 		return nil, fmt.Errorf("decode Work product manifest: %w", err)
 	}
-	if strings.TrimSpace(productManifest.Product) != "work" {
-		return nil, fmt.Errorf("workspace is not a Work project")
+	if !isProjectProfileID(productManifest.Product) {
+		return nil, fmt.Errorf("workspace is not a Crew or Code project")
 	}
 	raw, _, err := readProjectRuntimeManifest(ctx, "work", workspacePath)
 	if err != nil {
