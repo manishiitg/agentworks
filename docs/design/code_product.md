@@ -241,6 +241,12 @@ users has to hold:
 
 ## To think about
 
+- [ ] **Gmail in Code (later).** Code has no Gmail today: its `bots` feature
+  is `dm_only`, which drops the Gmail and Google Workspace tools, and Setup
+  hides the Gmail tab. To add it later, allow Gmail in Code's bots options
+  (a Code's mailbox grants stay with that Code, like its other connections)
+  and show the tab again.
+
 - [ ] **App preview.** When someone builds a web app in a Code, the agent runs
   it on the server (for example `npm run dev` on port 3000). A private
   preview link, which only people with access to the Code can open, would let
