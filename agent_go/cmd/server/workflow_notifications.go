@@ -170,7 +170,7 @@ func notificationAccountChannels(ctx context.Context, selectedSenderID string) [
 		selectedFound := false
 		selectedReady := false
 		selectedChecking := false
-		for _, conn := range gmail.ListConnections() {
+		for _, conn := range gmail.ConnectionsUsableFrom(services.GmailUseScope{}) {
 			connAuth, _ := gmail.AuthStatusForConnection(conn.ID)
 			email := conn.Email
 			if connAuth.Email != "" {

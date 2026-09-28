@@ -33,8 +33,9 @@ profile:
       # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
       # editor access or more, each in their own chat); never the shared bot
       # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
-      # No Gmail or Google Workspace.
-      options: {channels: "slack,whatsapp", dm_only: "true"}
+      # gmail: own -- Google accounts connected in this Code only, private to
+      # it and usable only in its owner's chats; never the shared accounts.
+      options: {channels: "slack,whatsapp", dm_only: "true", gmail: own}
     - dashboard
     - memory
     - costs

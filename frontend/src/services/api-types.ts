@@ -3113,6 +3113,8 @@ export interface GmailConnectionsResponse {
 }
 
 export interface GmailConnectionRequest {
+  /** On create: make the connection private to this Code workspace. */
+  workspace_path?: string
   display_name?: string
   config_home?: string
   credentials_file?: string

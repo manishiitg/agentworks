@@ -203,19 +203,16 @@ type GoogleCLIAccess struct {
 // which backend serves Gmail send/status, but Drive/Sheets/Slides/etc. have
 // no gws equivalent, so this always resolves to gog.
 func (g *GmailService) GoogleCLIAccessForConnection(ctx context.Context, connectionID string) (GoogleCLIAccess, error) {
-	connectionID = strings.TrimSpace(connectionID)
-	var conn GmailConnection
-	var ok bool
-	if connectionID == "" {
-		conn, ok = g.DefaultConnection()
-		if !ok {
-			return GoogleCLIAccess{}, fmt.Errorf("no default Google account connection is configured — connect one in workflow bots settings")
-		}
-	} else {
-		conn, ok = g.GetConnection(connectionID)
-		if !ok {
-			return GoogleCLIAccess{}, fmt.Errorf("Google account connection %q not found", connectionID)
-		}
+	return g.GoogleCLIAccessForConnectionIn(ctx, connectionID, GmailUseScope{})
+}
+
+// GoogleCLIAccessForConnectionIn is GoogleCLIAccessForConnection for a use in
+// scope: a Code session reaches only its own private accounts (as its owner),
+// every other session only shared ones.
+func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, connectionID string, scope GmailUseScope) (GoogleCLIAccess, error) {
+	conn, err := g.ConnectionForScope(connectionID, scope)
+	if err != nil {
+		return GoogleCLIAccess{}, err
 	}
 	if !conn.Enabled {
 		return GoogleCLIAccess{}, fmt.Errorf("Google account connection %q (%s) is disabled — reconnect it before use", conn.ID, conn.DisplayName)
@@ -318,6 +315,11 @@ const googleCLIOutputLimit = 20000
 // too, so gogcli itself refuses any mutating call rather than trusting the
 // caller not to attempt one.
 func RunGoogleCLI(ctx context.Context, connectionID string, args []string) (string, error) {
+	return RunGoogleCLIIn(ctx, connectionID, args, GmailUseScope{})
+}
+
+// RunGoogleCLIIn is RunGoogleCLI for a use in scope (see GmailUseScope).
+func RunGoogleCLIIn(ctx context.Context, connectionID string, args []string, scope GmailUseScope) (string, error) {
 	trimmed := make([]string, 0, len(args))
 	for _, a := range args {
 		if v := strings.TrimSpace(a); v != "" {
@@ -347,7 +349,7 @@ func RunGoogleCLI(ctx context.Context, connectionID string, args []string) (stri
 	if svc == nil {
 		return "", fmt.Errorf("Google account connections are not configured on this server")
 	}
-	access, err := svc.GoogleCLIAccessForConnection(ctx, connectionID)
+	access, err := svc.GoogleCLIAccessForConnectionIn(ctx, connectionID, scope)
 	if err != nil {
 		return "", err
 	}

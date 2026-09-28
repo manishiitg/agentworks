@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"net/http"
 	"strings"
@@ -82,6 +83,9 @@ type GmailConnectionRequest struct {
 	CredentialsFile string `json:"credentials_file,omitempty"`
 	// ClientName is required on create — see services.GmailService.CreateConnection.
 	ClientName string `json:"client_name,omitempty"`
+	// WorkspacePath, on create, makes the connection private to that Code
+	// workspace (its owner only). Ignored on update.
+	WorkspacePath string `json:"workspace_path,omitempty"`
 	// AllowReadAccess opts the connection into gmail.readonly on top of the
 	// always-requested gmail.send. Omitted/false is send-only, the default
 	// on create — see services.GmailConnection.AllowReadAccess. A pointer so
@@ -188,7 +192,40 @@ func gmailConnectionService(w http.ResponseWriter, r *http.Request) (*services.G
 		http.Error(w, fmt.Sprintf("failed to initialize Gmail service: %v", err), http.StatusInternalServerError)
 		return nil, "", false
 	}
-	return svc, strings.TrimSpace(mux.Vars(r)["id"]), true
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	// A Code's private account is its owner's alone: nobody else can read,
+	// change, test, authorize or delete it.
+	if conn, found := svc.GetConnection(id); found && conn.IsPrivate() {
+		claims := GetUserFromContext(r.Context())
+		if claims == nil || sanitizeUserIDForPath(claims.UserID) != strings.TrimSpace(conn.OwnerID) {
+			http.Error(w, fmt.Sprintf("gmail connection %q not found", id), http.StatusNotFound)
+			return nil, "", false
+		}
+	}
+	return svc, id, true
+}
+
+// gmailRequestScope is the account set a Gmail settings request works on:
+// with a Code workspace_path, that Code's private accounts (its owner only);
+// otherwise the shared accounts.
+func gmailRequestScope(r *http.Request, workspacePath string) (services.GmailUseScope, error) {
+	workspacePath = strings.TrimSpace(workspacePath)
+	if workspacePath == "" {
+		return services.GmailUseScope{}, nil
+	}
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
+		return services.GmailUseScope{}, fmt.Errorf("sign in to manage this Code's Google accounts")
+	}
+	root := common.CodeProjectRoot(claims.UserID, workspacePath)
+	if root == "" {
+		return services.GmailUseScope{}, nil
+	}
+	caller := sanitizeUserIDForPath(claims.UserID)
+	if owner, ok := crewProjectOwnerID(root); !ok || owner != caller {
+		return services.GmailUseScope{}, fmt.Errorf("only this Code's owner can manage its Google accounts")
+	}
+	return services.GmailUseScope{CodeWorkspace: root, UserID: caller}, nil
 }
 
 func listGmailConnectionsHandler(api *StreamingAPI) http.HandlerFunc {
@@ -206,8 +243,16 @@ func listGmailConnectionsHandler(api *StreamingAPI) http.HandlerFunc {
 			log.Printf("[GMAIL] adopted the host's authenticated gws account as the default connection")
 		}
 		autoConfigureGmailIfAuthenticated(r.Context(), svc)
+		scope, scopeErr := gmailRequestScope(r, r.URL.Query().Get("workspace_path"))
+		if scopeErr != nil {
+			http.Error(w, scopeErr.Error(), http.StatusForbidden)
+			return
+		}
 		defaultID := svc.GetConfig().DefaultConnectionID
-		conns := svc.ListConnections()
+		if scope.CodeWorkspace != "" {
+			defaultID = "" // a Code has no default; it uses its own accounts
+		}
+		conns := svc.ConnectionsUsableFrom(scope)
 		out := GmailConnectionsResponse{
 			Connections:         make([]GmailConnectionResponse, 0, len(conns)),
 			DefaultConnectionID: defaultID,
@@ -251,7 +296,14 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 			return
 		}
+		scope, scopeErr := gmailRequestScope(r, req.WorkspacePath)
+		if scopeErr != nil {
+			http.Error(w, scopeErr.Error(), http.StatusForbidden)
+			return
+		}
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{
+			ScopeWorkspace:        scope.CodeWorkspace,
+			OwnerID:               scope.UserID,
 			DisplayName:           req.DisplayName,
 			ConfigHome:            req.ConfigHome,
 			CredentialsFile:       req.CredentialsFile,

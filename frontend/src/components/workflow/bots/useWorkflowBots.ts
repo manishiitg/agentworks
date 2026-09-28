@@ -1,3 +1,4 @@
+import { projectProductForPath } from '../../../products/work/projectProduct'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentApi } from '../../../services/api'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
@@ -56,6 +57,8 @@ export type BotRouteTarget = {
 }
 
 export function useWorkflowBots(workspacePath: string | null, target?: BotRouteTarget, section: 'bots' | 'email' | 'all' = 'all') {
+  // A Code's Google accounts are its own: list and connect only those.
+  const gmailScopeWorkspace = projectProductForPath(workspacePath || undefined)?.profileId === 'code' ? (workspacePath || undefined) : undefined
   // ── Workflow identity ─────────────────────────────────────────────────────
   // Crew passes a fresh target object when chat state changes. Effects must
   // depend on its values so typing does not reload the Slack setup panel.
@@ -284,7 +287,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
 
   const loadGmailConnections = useCallback(async (attempt = 0) => {
     try {
-      const data = await agentApi.listGmailConnections()
+      const data = await agentApi.listGmailConnections(gmailScopeWorkspace)
       const connections = data.connections || []
       setGmailConnections(connections)
       // The server answers the first read with "checking" while it runs each
@@ -301,7 +304,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       // this panel has always shown.
       setGmailConnections([])
     }
-  }, [])
+  }, [gmailScopeWorkspace])
 
   const loadGmailOAuthClients = useCallback(async () => {
     try {
@@ -346,7 +349,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       // Capture server state before starting. Reconnect often begins while
       // the old token is still healthy, so `ready === true` cannot prove the
       // new consent flow completed.
-      const beforeData = await agentApi.listGmailConnections()
+      const beforeData = await agentApi.listGmailConnections(gmailScopeWorkspace)
       const before = beforeData.connections.find(entry => entry.id === id)
       if (!before) throw new Error(`Gmail connection ${id} no longer exists.`)
       const { auth_url } = await agentApi.startGmailConnectionAuth(id)
@@ -393,7 +396,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
         }
 
         try {
-          const data = await agentApi.listGmailConnections().catch(() => null)
+          const data = await agentApi.listGmailConnections(gmailScopeWorkspace).catch(() => null)
           const after = data?.connections?.find(entry => entry.id === id)
           const connected = gmailOAuthAttemptCompleted(before, after)
           if (!connected && !timedOut) return
@@ -412,7 +415,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       setGmailAuthUrl(null)
       setGmailError(error instanceof Error ? error.message : 'Could not start Google sign-in')
     }
-  }, [loadGmailConnections])
+  }, [gmailScopeWorkspace, loadGmailConnections])
 
   // Registers the OAuth client, creates its sending account, and immediately
   // opens Google's consent screen for it — upload + email + one click is the
@@ -442,6 +445,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       setGmailOAuthClientError(null)
       const client = await agentApi.createGmailOAuthClient(name, clientSecretJson)
       const connection = await agentApi.createGmailConnection({
+        ...(gmailScopeWorkspace ? { workspace_path: gmailScopeWorkspace } : {}),
         display_name: trimmedEmail,
         client_name: client.name,
         allow_read_access: allowReadAccess,
@@ -458,7 +462,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     } finally {
       setGmailOAuthClientsBusy(false)
     }
-  }, [loadGmailOAuthClients, loadGmailConnections, connectGmailAccount])
+  }, [gmailScopeWorkspace, loadGmailOAuthClients, loadGmailConnections, connectGmailAccount])
 
   // Removes a sending account and, when it was the last one using its OAuth
   // client, the client too — the two were created together as one action

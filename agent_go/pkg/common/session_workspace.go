@@ -124,3 +124,37 @@ func SessionUserIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// CodeProjectRoot returns the physical root of the Code workspace path lies
+// in (_users/<owner>/Chats/Code/projects/<project>), or "" when path is not
+// inside a Code. Only the physical form names an owner, so a logical
+// Chats/Code/... path resolves under userID.
+func CodeProjectRoot(userID, path string) string {
+	clean := strings.Trim(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
+	parts := strings.Split(clean, "/")
+	if len(parts) >= 6 && parts[0] == "_users" && parts[1] != "" && parts[2] == "Chats" && parts[3] == "Code" && parts[4] == "projects" && parts[5] != "" {
+		return strings.Join(parts[:6], "/")
+	}
+	if len(parts) >= 4 && parts[0] == "Chats" && parts[1] == "Code" && parts[2] == "projects" && parts[3] != "" && strings.TrimSpace(userID) != "" {
+		return "_users/" + sanitizeSessionUserIDForPath(userID) + "/" + strings.Join(parts[:4], "/")
+	}
+	return ""
+}
+
+// GmailScopeFromContext is the Code workspace (if any) and user of the
+// session a tool runs in, for Google account scoping.
+func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string) {
+	userID = SessionUserIDFromContext(ctx)
+	if userID != "" {
+		userID = sanitizeSessionUserIDForPath(userID)
+	}
+	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
+	if cfg := GetSessionShellConfig(sessionID); cfg != nil {
+		for _, candidate := range []string{cfg.WorkingDir, cfg.WorkflowPath} {
+			if root := CodeProjectRoot(userID, candidate); root != "" {
+				return root, userID
+			}
+		}
+	}
+	return "", userID
+}

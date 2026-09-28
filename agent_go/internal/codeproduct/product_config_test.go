@@ -26,7 +26,7 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	for _, tool := range profile.ToolPolicy.Enabled {
 		switch tool {
 		case "set_work_identity", "define_function", "return_function_result", "report_function_progress",
-			"create_project_trigger", "create_project_schedule", "google_workspace_cli", "create_slack_bot_route":
+			"create_project_trigger", "create_project_schedule", "create_slack_bot_route", "update_gmail_connection_grants_shared":
 			t.Fatalf("Code enables forbidden tool %s", tool)
 		}
 	}
@@ -34,6 +34,11 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 		if strings.HasPrefix(binding.ID, "work.") {
 			t.Fatalf("Code binds Crew tool %s", binding.ID)
 		}
+	}
+	// Google tools stay, for this Code's own private accounts (gmail: own);
+	// scoping is enforced at use (services.GmailUseScope).
+	if agentprofiles.FeatureOption(profile, "bots", "gmail") != "own" {
+		t.Fatal("Code's Google accounts must be its own (bots gmail: own)")
 	}
 	if profile.Runtime.AgentTools.Mode != "mcp_only" {
 		t.Fatalf("Code must default to MCP-only agent tools until native reads are sandboxed, got %q", profile.Runtime.AgentTools.Mode)

@@ -353,7 +353,8 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 				return
 			}
 			conn, found := gmail.GetConnection(id)
-			if !found || !conn.Enabled {
+			// A Code's private account never sends for a workflow.
+			if !found || !conn.Enabled || conn.IsPrivate() {
 				http.Error(w, "Notify sender must be an enabled Gmail connection", http.StatusBadRequest)
 				return
 			}

@@ -787,7 +787,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerSlackBotTools(registrar, sessionID, workspacePath, resolved.Definition.ID, !readOnly && policy.Origin == "interactive" && registerWorkUIAllowed(input), !readOnly); err != nil {
 			return err
 		}
-		if !readOnly && agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" {
+		// Google account tools: everywhere a product keeps its channels, and
+		// in a Code (gmail: own) for its owner's chats only.
+		ownGmail := agentprofiles.FeatureOption(resolved.Definition, "bots", "gmail") == "own"
+		if !readOnly && (agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" || (ownGmail && crewProjectOwnedByCaller(userID, workspacePath))) {
 			if err := api.registerGmailConnectionManagementTools(registrar, sessionID, workspacePath); err != nil {
 				return err
 			}
