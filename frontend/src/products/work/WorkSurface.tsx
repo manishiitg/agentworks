@@ -1139,7 +1139,21 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
                     Files, an editor and a terminal on the team server, with a coding agent beside them. Only you can see your workspaces until you share them.
                   </p>
-                  <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-muted-foreground">Admins on this server can view your {product.noun} workspaces.</p>
+                  <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">Files and a terminal</span>
+                      Your own project folder, an editor, and a shell sandboxed to this workspace.
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">A coding agent beside you</span>
+                      Ask it to write, run and fix code here. It can call the Crews and workflows you can use.
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
+                      <span className="block font-medium text-foreground">Private until you share</span>
+                      Add a teammate as viewer, editor or co-owner. Editors get their own shell.
+                    </div>
+                  </div>
+                  <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can view your {product.noun} workspaces; every view is logged.</p>
                   <button
                     type="button"
                     onClick={openCreateProject}
