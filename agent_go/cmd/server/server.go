@@ -5556,6 +5556,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
+		if req.ExternalBuilderOperationID != "" {
+			claims := GetUserFromContext(r.Context())
+			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
@@ -5633,7 +5637,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Legacy manifests may still place built-in tool categories in
 		// SelectedServers. Keep those categories for direct tool registration,
 		// but never attempt to connect to them as MCP servers.
-		selectedServers = runtimeMCPServers(selectedServers)
+		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
 		} else {

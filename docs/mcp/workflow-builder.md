@@ -44,6 +44,8 @@ Reusing a submission ID with the same payload returns the same operation. Reusin
 | `builder_status` | `operation_id` | Returns the operation's state, final `answer`, error, and `pending_inputs`. It does not stream the shared conversation's other turns. |
 | `builder_reply_input` | `operation_id`, `request_id`, `response` | Answers an operation-owned question; `request_id` is the pending input's `unique_id`. Choices, expiry and current access are checked. |
 | `builder_cancel` | `operation_id` | Removes that operation's queued turn, or interrupts its active foreground work and withdraws its questions. Other queued browser turns and unrelated questions remain intact. Completed edits are not rolled back. |
+| `builder_file_history` | `path` | Lists your recorded Builder file edits for one source path, including revision and edit IDs. A replacement credential from the same account can recover prior edits. |
+| `builder_restore_file` | `path`, `edit_id`, `expected_revision` | Restores the file content from before that edit. It refuses to overwrite a file whose current revision differs from `expected_revision`. Restoring the creation of a new file removes it. |
 
 Status is `queued`, `running`, `completed`, `failed`, `canceled`, or `interrupted`. Pending questions are returned only for a running operation. Poll until terminal or until a question needs a reply. Repeating a completed cancel is harmless. Another connection may submit to the same person's chat, but cannot read/control an operation created by a different connection.
 
@@ -59,11 +61,15 @@ Browser follow-ups queue while a Builder MCP operation owns the foreground. They
 
 The model uses managed read/list/search/write tools and target-bound plan tools. File writes require `expected_revision`, reject traversal/symlinks, and refuse private runtime files, raw database files, workflow manifests and raw plan files. Plan changes use existing typed plan operations. Writes are staged and revisions rechecked before replacement. MCP file edits are serialized with each other, but replacement is not an atomic compare-and-swap with the browser's independent direct file editor; avoid editing the same file concurrently there.
 
+Every managed Builder plan mutation and source-file write writes an audit row before the change. Rows identify the user, credential grant, operation, tool, workflow and target, and record whether the call completed. Plan changelog entries also carry `external_builder` origin, operation ID and `via_token`. File rows retain the prior and resulting UTF-8 contents and revisions in server-owned SQLite. `builder_file_history` and `builder_restore_file` expose revision-checked file recovery to the same account, even after its old credential is revoked. This is separate from the workspace UI's Git-based file-history view, which does not automatically commit ordinary editor writes. The server-owned state and its backups therefore contain copies of edited source files. Direct file restoration does not roll back plan changes or effects of any workflow run.
+
+The workflow's connected MCP servers and account tools are removed for external Builder turns after manifest selection, and the final tool gate rejects tools outside the managed set. The current account product permission and per-user workflow allow-list are rechecked during execution.
+
 An operation that had started before a server restart is not automatically replayed: its outcome may be uncertain, so it becomes interrupted. Inspect the workflow before sending a new edit. Durable questions/model execution recovery remain separate work. Unstarted queued operations can resume only after fresh grant validation.
 
 ## Verification
 
-The regression coverage includes actual Streamable HTTP MCP discovery/submit/poll/cancel, owner main-chat continuity, editor isolation, cross-grant denial, duplicate and conflicting submissions, reservation recovery, OAuth restoration, consent/refresh/migration, canceled and revoked work, scoped questions, managed file path and revision checks, runtime policy changes and native-tool denial.
+The regression coverage includes actual Streamable HTTP MCP discovery/submit/poll/cancel, owner main-chat continuity, editor isolation, cross-grant denial, duplicate and conflicting submissions, reservation recovery, OAuth restoration, consent/refresh/migration, canceled and revoked work, scoped questions, managed file path and revision checks, file restoration and mode preservation, audit binding, runtime policy changes and connected/native-tool denial.
 
 Useful focused commands, from `agent_go/`:
 

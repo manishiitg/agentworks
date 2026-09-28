@@ -31,6 +31,7 @@ import (
 // See docs/design/agent_tool_surface_single_source.md.
 type productToolGate struct {
 	profileID string
+	deny      func(string) bool
 
 	// allowed is nil in observe mode: every tool passes and is recorded, so a
 	// real enabled: list can be seeded from a live session instead of guessed.
@@ -125,6 +126,17 @@ func (g *productToolGate) DenyReaderTools(names ...string) {
 	}
 }
 
+// DenyWhere adds an authority boundary to every registration path, including
+// connected MCP and the coding-agent bridge, independently of profile focus.
+func (g *productToolGate) DenyWhere(denied func(string) bool) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.deny = denied
+}
+
 // Allows reports the current policy without recording a registration attempt.
 // Prompt assembly uses this to describe only tools the agent can actually see.
 func (g *productToolGate) Allows(name string) bool {
@@ -137,6 +149,9 @@ func (g *productToolGate) Allows(name string) bool {
 }
 
 func (g *productToolGate) allowsLocked(name string) bool {
+	if g.deny != nil && g.deny(name) {
+		return false
+	}
 	if _, denied := g.readerDenied[name]; denied {
 		return false
 	}

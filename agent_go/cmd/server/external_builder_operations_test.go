@@ -122,6 +122,50 @@ func TestExternalBuilderOperationsContinueMainChatAndSeparateEditor(t *testing.T
 	f.call(t, owner, "builder_status", map[string]any{"operation_id": first.ID}, 401)
 }
 
+func TestExternalBuilderLiveGrantHonorsWorkflowAllowlist(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	token, _ := f.issue(t, "owner")
+	claims, err := accessTokenClaims(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, userProductAccessFilePath(), `{"owner":{"workflow_ids":["secret"]}}`)
+	if _, err := validateBuilderGrant(t.Context(), claims, "invoices", "Workflow/invoices"); err == nil {
+		t.Fatal("removed allow-list entry still authorized Builder")
+	}
+}
+
+func TestExternalBuilderPlanWriteRecordsGrantAndOperation(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	token, raw := f.issue(t, "owner")
+	op := f.submit(t, raw, "audit-plan", "Edit the plan")
+	_, ctx, _ := f.claim(t, "owner")
+	reg := &chatPolicyTestDefinition{}
+	called := false
+	if err := externalBuilderRegistrar(reg, GetUserFromContext(ctx)).RegisterCustomTool("update_step", "", nil,
+		func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil }, "workflow"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["update_step"].exec(ctx, map[string]interface{}{"step_id": "fetch-invoices"}); err != nil || !called {
+		t.Fatalf("plan edit failed: %v", err)
+	}
+	s, err := openExternalBuilderStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var operationID, grantID, path, status string
+	if err := s.db.QueryRow(`SELECT operation_id,grant_id,path,status FROM external_builder_edits WHERE tool='update_step'`).Scan(&operationID, &grantID, &path, &status); err != nil {
+		t.Fatal(err)
+	}
+	if operationID != op.ID || grantID != token.ID || path != "planning/plan.json#step=fetch-invoices" || status != "completed" {
+		t.Fatalf("plan edit audit mismatch: operation=%s grant=%s path=%s status=%s", operationID, grantID, path, status)
+	}
+}
+
 func TestExternalBuilderOperationsBrowserRetryQueuesOnce(t *testing.T) {
 	f := newBuilderOperationFixture(t)
 	session := f.sessions["owner"]
@@ -392,10 +436,15 @@ func TestExternalBuilderOperationsRealMCPTransportAndDiscovery(t *testing.T) {
 	initializeExternalMCP(t, ctx, cli)
 	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{})
 	requireRemoteSuccess(t, spec, "Builder catalog")
-	for _, name := range []string{"builder_chat", "builder_status", "builder_reply_input", "builder_cancel"} {
+	for _, name := range []string{"builder_chat", "builder_status", "builder_reply_input", "builder_cancel", "builder_file_history", "builder_restore_file"} {
 		if !strings.Contains(marshalStructured(t, spec), name) {
 			t.Fatalf("enabled scoped catalog missing %s", name)
 		}
+	}
+	history := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_file_history", "arguments": map[string]any{"workflow_id": "invoices", "path": "code/task.py"}})
+	requireRemoteSuccess(t, history, "Builder file history")
+	if !strings.Contains(marshalStructured(t, history), `"edits":[]`) {
+		t.Fatalf("unexpected file history: %s", marshalStructured(t, history))
 	}
 	submitted := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "builder_chat", "arguments": map[string]any{"workflow_id": "invoices", "submission_id": "transport", "message": "Update validation"}})
 	requireRemoteSuccess(t, submitted, "Builder submit")

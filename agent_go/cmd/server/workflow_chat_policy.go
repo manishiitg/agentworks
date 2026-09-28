@@ -239,12 +239,12 @@ func (r externalBuilderDefinitionRegistrar) RegisterCustomTool(name, description
 	if externalBuilderToolDenied(r.claims, name) {
 		return nil
 	}
-	return r.definitionRegistrar.RegisterCustomTool(name, description, schema, run, category)
+	return r.definitionRegistrar.RegisterCustomTool(name, description, schema, auditExternalBuilderPlanTool(name, run), category)
 }
 
 func (r externalBuilderDefinitionRegistrar) RegisterCustomToolWithTimeout(name, description string, schema map[string]interface{}, run func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
 	if externalBuilderToolDenied(r.claims, name) {
 		return nil
 	}
-	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, run, timeout, category)
+	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, auditExternalBuilderPlanTool(name, run), timeout, category)
 }

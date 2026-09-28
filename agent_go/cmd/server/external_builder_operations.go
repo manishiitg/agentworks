@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // External authoring is opt-in at both deployment and connection level.
@@ -22,6 +23,10 @@ func externalBuilderEnabled() bool {
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Poll builder_status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
 		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat.")}, "message", "submission_id")
+	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
+		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
+	add("builder_restore_file", "Restore the content that preceded one audited Builder file edit. Requires the file's current revision to prevent overwriting newer work.", true, true,
+		map[string]any{"path": externalString("Workflow-relative source file path."), "edit_id": externalString("Edit ID from builder_file_history."), "expected_revision": externalString("Current revision from read_file, or missing.")}, "path", "edit_id", "expected_revision")
 	for _, name := range []string{"builder_status", "builder_reply_input", "builder_cancel"} {
 		props := map[string]any{"operation_id": externalString("Operation ID returned by builder_chat.")}
 		required := []string{"operation_id"}
@@ -96,6 +101,17 @@ func openExternalBuilderStore() (*mcpOAuthStore, error) {
 		s.Close()
 		return nil, err
 	}
+	_, err = s.db.Exec(`CREATE TABLE IF NOT EXISTS external_builder_edits (
+ id TEXT PRIMARY KEY, operation_id TEXT NOT NULL, user_id TEXT NOT NULL, grant_id TEXT NOT NULL,
+ workflow_id TEXT NOT NULL, workspace TEXT NOT NULL, tool TEXT NOT NULL, path TEXT NOT NULL,
+ before_revision TEXT NOT NULL DEFAULT '', after_revision TEXT NOT NULL DEFAULT '',
+ before_content TEXT NOT NULL DEFAULT '', after_content TEXT NOT NULL DEFAULT '',
+ before_exists INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL)`)
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -158,7 +174,7 @@ func validateBuilderGrant(ctx context.Context, claims *UserClaims, workflow, wor
 	if err != nil {
 		return nil, err
 	}
-	if live.UserID != claims.UserID || !live.AccessToken.BuilderAccess() || !live.AccessToken.AllowsWorkflow(workflow) {
+	if live.UserID != claims.UserID || !live.AccessToken.BuilderAccess() || !live.AccessToken.AllowsWorkflow(workflow) || !userAllowedWorkflowID(live, workflow) || !userAllowedProduct(live, "agentworks") {
 		return nil, errors.New("Builder grant no longer authorizes this workflow")
 	}
 	level, manifest := workflowAccessForWorkspacePath(ctx, live, workspace)
@@ -166,6 +182,15 @@ func validateBuilderGrant(ctx context.Context, claims *UserClaims, workflow, wor
 		return nil, errors.New("workflow write access is required")
 	}
 	return live, nil
+}
+
+// The manifest's connected servers are a browser Builder choice, not authority
+// delegated to an external MCP client. Apply this after manifest selection.
+func externalBuilderMCPServers(req QueryRequest, selected []string) []string {
+	if req.ExternalBuilderOperationID != "" {
+		return []string{mcpclient.NoServers}
+	}
+	return runtimeMCPServers(selected)
 }
 func (api *StreamingAPI) validateExternalBuilderTurn(ctx context.Context, id, session, workspace string) (*UserClaims, error) {
 	op, err := readExternalBuilder(ctx, id)
@@ -192,6 +217,10 @@ func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *
 	}
 	if name == "builder_chat" {
 		api.submitExternalBuilder(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), args, workflow)
+		return
+	}
+	if name == "builder_file_history" || name == "builder_restore_file" {
+		api.externalBuilderFileCall(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, claims)), name, args, workflow)
 		return
 	}
 	op, err := readExternalBuilder(r.Context(), externalArg(args, "operation_id"))

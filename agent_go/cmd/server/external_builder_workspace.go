@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -141,6 +142,17 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if before.Revision != expected {
 		return wf.Result{}, errors.New("file revision conflict; reread and reconcile the latest contents")
 	}
+	if before.Exists && before.Encoding != "utf-8" {
+		return wf.Result{}, errors.New("Builder can only edit UTF-8 source files")
+	}
+	mode := os.FileMode(0644)
+	if before.Exists {
+		info, statErr := root.Stat(p)
+		if statErr != nil {
+			return wf.Result{}, statErr
+		}
+		mode = info.Mode().Perm()
+	}
 	if err = root.MkdirAll(path.Dir(p), 0755); err != nil {
 		return wf.Result{}, err
 	}
@@ -150,6 +162,10 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 		return wf.Result{}, err
 	}
 	defer root.Remove(tmp)
+	if err = f.Chmod(mode); err != nil {
+		f.Close()
+		return wf.Result{}, err
+	}
 	if _, err = f.WriteString(content); err != nil {
 		f.Close()
 		return wf.Result{}, err
@@ -169,8 +185,123 @@ func externalBuilderWriteFile(ctx context.Context, workspace, p, content, expect
 	if err = ctx.Err(); err != nil {
 		return wf.Result{}, err
 	}
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.AccessToken == nil || claims.ExternalBuilderOperationID == "" {
+		return wf.Result{}, errors.New("Builder file edit lacks a bound operation")
+	}
+	versionID, err := prepareExternalBuilderEdit(ctx, claims, claims.ExternalBuilderOperationID,
+		strings.TrimPrefix(rootPath, "Workflow/"), rootPath, "write_file", p,
+		before.Revision, wf.Revision([]byte(content)), before.Content, content, before.Exists)
+	if err != nil {
+		return wf.Result{}, fmt.Errorf("Builder edit audit unavailable: %w", err)
+	}
 	if err = root.Rename(tmp, p); err != nil {
+		_ = finishExternalBuilderEdit(versionID, "failed", "replacement failed")
 		return wf.Result{}, err
 	}
+	if err = finishExternalBuilderEdit(versionID, "completed", ""); err != nil {
+		return wf.Result{}, fmt.Errorf("file was written but audit confirmation failed: %w", err)
+	}
 	return wf.Result{File: wf.File{Path: p, Exists: true, Content: content, Encoding: "utf-8", Revision: wf.Revision([]byte(content)), Size: int64(len(content))}}, nil
+}
+
+func (api *StreamingAPI) externalBuilderFileCall(w http.ResponseWriter, r *http.Request, name string, args map[string]interface{}, workflow DiscoveredWorkflow) {
+	p, err := externalBuilderFilePath(externalArg(args, "path"), true)
+	if err != nil || p == "." {
+		externalError(w, 400, "invalid_path", "A public workflow source file path is required")
+		return
+	}
+	claims := GetUserFromContext(r.Context())
+	if name == "builder_file_history" {
+		edits, err := listExternalBuilderFileEdits(r.Context(), claims, workflow.Manifest.ID, workflow.WorkspacePath, p)
+		if err != nil {
+			externalError(w, 503, "audit_unavailable", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"edits": edits})
+		return
+	}
+	version, err := readExternalBuilderFileEdit(r.Context(), claims, workflow.Manifest.ID, workflow.WorkspacePath, p, externalArg(args, "edit_id"))
+	if err != nil {
+		externalError(w, 404, "edit_not_found", "Completed Builder file edit not found")
+		return
+	}
+	expected := externalArg(args, "expected_revision")
+	if expected == "" {
+		externalError(w, 400, "invalid_revision", "Current expected_revision is required")
+		return
+	}
+	copy := *claims
+	copy.ExternalBuilderOperationID = "restore-" + uuid.NewString()
+	ctx := context.WithValue(r.Context(), UserContextKey, &copy)
+	var result wf.Result
+	if version.BeforeExists {
+		result, err = externalBuilderWriteFile(ctx, workflow.WorkspacePath, p, version.BeforeContent, expected)
+	} else {
+		result, err = externalBuilderRemoveFile(ctx, workflow.WorkspacePath, p, expected)
+	}
+	if err != nil {
+		externalError(w, 409, "restore_failed", err.Error())
+		return
+	}
+	externalJSON(w, map[string]any{"restored": result, "from_edit_id": version.ID})
+}
+
+func externalBuilderRemoveFile(ctx context.Context, workspace, p, expected string) (wf.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return wf.Result{}, err
+	}
+	if expected == "" {
+		return wf.Result{}, errors.New("expected_revision is required")
+	}
+	rootPath, err := wf.CleanRelative(workspace)
+	if err != nil || !strings.HasPrefix(rootPath, "Workflow/") || len(strings.Split(rootPath, "/")) != 2 {
+		return wf.Result{}, errors.New("invalid workflow root")
+	}
+	if p, err = externalBuilderFilePath(p, true); err != nil {
+		return wf.Result{}, err
+	}
+	externalBuilderFileWriteMu.Lock()
+	defer externalBuilderFileWriteMu.Unlock()
+	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
+	if err != nil {
+		return wf.Result{}, err
+	}
+	defer base.Close()
+	if err = externalNoSymlinks(base, rootPath); err != nil {
+		return wf.Result{}, err
+	}
+	root, err := base.OpenRoot(rootPath)
+	if err != nil {
+		return wf.Result{}, err
+	}
+	defer root.Close()
+	before, err := externalScopedFile(root, p)
+	if err != nil {
+		return wf.Result{}, err
+	}
+	if !before.Exists || before.Revision != expected {
+		return wf.Result{}, errors.New("file revision conflict; reread before restoring")
+	}
+	if before.Encoding != "utf-8" {
+		return wf.Result{}, errors.New("Builder can only restore UTF-8 source files")
+	}
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.AccessToken == nil || claims.ExternalBuilderOperationID == "" {
+		return wf.Result{}, errors.New("Builder restore lacks a bound grant")
+	}
+	id, err := prepareExternalBuilderEdit(ctx, claims, claims.ExternalBuilderOperationID,
+		strings.TrimPrefix(rootPath, "Workflow/"), rootPath, "restore_file", p,
+		before.Revision, wf.MissingRevision, before.Content, "", true)
+	if err != nil {
+		return wf.Result{}, fmt.Errorf("Builder edit audit unavailable: %w", err)
+	}
+	if err = root.Remove(p); err != nil {
+		_ = finishExternalBuilderEdit(id, "failed", "remove failed")
+		return wf.Result{}, err
+	}
+	if err = finishExternalBuilderEdit(id, "completed", ""); err != nil {
+		return wf.Result{}, fmt.Errorf("file was removed but audit confirmation failed: %w", err)
+	}
+	return wf.Result{File: wf.File{Path: p, Revision: wf.MissingRevision}}, nil
 }

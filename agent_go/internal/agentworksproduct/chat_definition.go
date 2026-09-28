@@ -47,7 +47,7 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 			}
 		}
 		if mode == "builder" {
-			expected := map[string]bool{"builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true}
+			expected := map[string]bool{"builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true}
 			for _, name := range def.ExternalTools {
 				if !expected[name] {
 					return fmt.Errorf("invalid Builder external tool %q", name)

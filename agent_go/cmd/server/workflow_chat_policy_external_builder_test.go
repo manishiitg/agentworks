@@ -5,7 +5,31 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
+
+func TestExternalBuilderConnectedServersAndBridgeToolGate(t *testing.T) {
+	req := QueryRequest{ExternalBuilderOperationID: "op"}
+	servers := externalBuilderMCPServers(req, []string{"gmail", "slack"})
+	if len(servers) != 1 || servers[0] != mcpclient.NoServers {
+		t.Fatalf("connected servers reached Builder model: %v", servers)
+	}
+	claims := &UserClaims{ExternalBuilderOperationID: "op"}
+	gate := newProductToolGate(nil)
+	gate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+	for _, name := range []string{"gmail_send", "slack_post", "execute_shell_command", "review_step_code"} {
+		if gate.Admit(name) || gate.Allows(name) {
+			t.Fatalf("connected or indirect tool admitted: %s", name)
+		}
+	}
+	if !gate.Admit("update_step") || !gate.Admit("read_file") {
+		t.Fatal("managed Builder tools were removed")
+	}
+	if got := externalBuilderMCPServers(QueryRequest{}, []string{"gmail"}); len(got) != 1 || got[0] != "gmail" {
+		t.Fatalf("ordinary browser servers changed: %v", got)
+	}
+}
 
 func TestExternalBuilderPolicyIsOperationScopedAndNeverNative(t *testing.T) {
 	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/test", ExternalBuilderOperationID: "op-1"}

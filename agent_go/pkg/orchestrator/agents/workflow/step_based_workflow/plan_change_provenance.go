@@ -18,6 +18,8 @@ type PlanChangeOrigin struct {
 	SessionID    string   `json:"session_id,omitempty"`
 	UserID       string   `json:"user_id,omitempty"`
 	Username     string   `json:"username,omitempty"`
+	OperationID  string   `json:"operation_id,omitempty"`
+	ViaToken     string   `json:"via_token,omitempty"`
 	PulseRunID   string   `json:"pulse_run_id,omitempty"`
 	IssueIDs     []string `json:"issue_ids,omitempty"`
 	FixAttemptID string   `json:"fix_attempt_id,omitempty"`
@@ -44,6 +46,9 @@ func (r planChangeOriginRegistrar) RegisterCustomToolWithTimeout(name, descripti
 }
 
 func withPlanChangeOrigin(ctx context.Context, agentName string) context.Context {
+	if existing, ok := ctx.Value(planChangeOriginContextKey{}).(PlanChangeOrigin); ok && existing.Type == "external_builder" {
+		return ctx
+	}
 	agentName = strings.TrimSpace(agentName)
 	sessionID := strings.TrimSpace(mcpexecutor.SessionIDFromContext(ctx))
 	if sessionID == "" {
@@ -64,6 +69,16 @@ func withPlanChangeOrigin(ctx context.Context, agentName string) context.Context
 	return context.WithValue(ctx, planChangeOriginContextKey{}, PlanChangeOrigin{
 		Type: originType, AgentName: agentName, SessionID: sessionID,
 		UserID: strings.TrimSpace(userID), Username: strings.TrimSpace(username),
+	})
+}
+
+// WithExternalBuilderPlanOrigin is called only after the server validates the
+// persisted operation grant. The normal workflow-builder decorator preserves
+// this stronger provenance in the plan changelog.
+func WithExternalBuilderPlanOrigin(ctx context.Context, operationID, grantID, userID, username, sessionID string) context.Context {
+	return context.WithValue(ctx, planChangeOriginContextKey{}, PlanChangeOrigin{
+		Type: "external_builder", AgentName: "workflow-builder", SessionID: sessionID,
+		UserID: userID, Username: username, OperationID: operationID, ViaToken: "token:" + grantID,
 	})
 }
 

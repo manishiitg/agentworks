@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	stepbased "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -97,6 +98,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 			copy = *fresh
 			ctx = virtualtools.WithFeedbackOperation(ctx, copy.ExternalBuilderOperationID)
+			ctx = stepbased.WithExternalBuilderPlanOrigin(ctx, copy.ExternalBuilderOperationID, copy.AccessToken.ID, copy.UserID, copy.Username, authoritySession)
 			if externalBuilderToolDenied(&copy, tool) {
 				return nil, fmt.Errorf("%s is unavailable to external Builder operations", tool)
 			}
