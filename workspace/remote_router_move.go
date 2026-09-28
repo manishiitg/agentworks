@@ -2,8 +2,11 @@ package main
 
 // Moving a workflow between this workspace and a remote workspace server.
 // A workflow lives in exactly one place, so a move copies it, verifies the
-// copy, flips placement, and retires the old copy to _system/moved-workflows
-// (a recovery point, never read by anything).
+// copy, flips placement, and retires the old copy (a recovery point, never
+// read by anything). Moves are serialized; a failed move to a server removes
+// the partial server copy so it can be retried.
+//
+// Known limit: a move does not check for a run in progress on this machine.
 
 import (
 	"archive/zip"
@@ -26,10 +29,23 @@ import (
 
 const movedWorkflowsRelPath = "_system/moved-workflows"
 
+// excludedFromMove are workflow-local folders that must not travel: the
+// sandbox cache holds this machine's HOME (git credentials, CLI config) and
+// platform-specific pip/npm builds.
+var excludedFromMove = map[string]bool{".sandbox-cache": true}
+
+func excludedMoveEntry(rel string) bool {
+	first := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+	return excludedFromMove[first]
+}
+
 // handleRemoteAPI serves /api/remote/*. Returns false when the path is not a
-// remote-management route.
+// remote-management route. Callers are already token-checked.
 func (rr *remoteRouter) handleRemoteAPI(c *gin.Context) bool {
 	switch c.Request.URL.Path {
+	case "/api/remote/whoami":
+		// In server mode X-User-ID was pinned from the caller's token.
+		c.JSON(http.StatusOK, gin.H{"success": true, "user": strings.TrimSpace(c.GetHeader("X-User-ID")), "docs_dir": rr.localRoot})
 	case "/api/remote/placements":
 		cfg := rr.config()
 		servers := map[string]string{}
@@ -89,7 +105,27 @@ type moveResult struct {
 	Retired  string `json:"retired_copy"`
 }
 
-func (rr *remoteRouter) moveToServer(c *gin.Context, workflow, serverID string) (moveResult, error) {
+func escapedFolderPath(rel string) string {
+	return (&url.URL{Path: rel}).EscapedPath()
+}
+
+// deleteServerFolder removes a workflow folder on the server (rollback or
+// retiring the server copy).
+func (rr *remoteRouter) deleteServerFolder(c *gin.Context, id string, srv remoteServerConfig, rel string) error {
+	resp, body, err := rr.callServer(c.Request.Context(), id, srv, http.MethodDelete, "/api/folders/"+escapedFolderPath(rel)+"?confirm=true", http.Header{}, nil, false)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (rr *remoteRouter) moveToServer(c *gin.Context, workflow, serverID string) (result moveResult, err error) {
+	rr.moveMu.Lock()
+	defer rr.moveMu.Unlock()
+
 	rel, err := validateWorkflowRel(workflow)
 	if err != nil {
 		return moveResult{}, err
@@ -103,14 +139,13 @@ func (rr *remoteRouter) moveToServer(c *gin.Context, workflow, serverID string) 
 		return moveResult{}, fmt.Errorf("%s is already on server %q", rel, id)
 	}
 	localDir := filepath.Join(rr.localRoot, filepath.FromSlash(rel))
-	if info, err := os.Stat(localDir); err != nil || !info.IsDir() {
+	if info, statErr := os.Stat(localDir); statErr != nil || !info.IsDir() {
 		return moveResult{}, fmt.Errorf("%s does not exist locally", rel)
 	}
 	serverRoot, err := rr.serverRoot(c.Request.Context(), serverID, srv)
 	if err != nil {
 		return moveResult{}, err
 	}
-
 	existing, err := rr.countServerFiles(c, serverID, srv, rel)
 	if err != nil {
 		return moveResult{}, err
@@ -119,23 +154,50 @@ func (rr *remoteRouter) moveToServer(c *gin.Context, workflow, serverID string) 
 		return moveResult{}, fmt.Errorf("%s already has %d files on server %q; refusing to overwrite", rel, existing, serverID)
 	}
 
-	archive, files, err := zipFolder(localDir, rr.localRoot, serverRoot)
+	archive, files, err := zipFolderToTemp(localDir, rr.localRoot, serverRoot)
 	if err != nil {
 		return moveResult{}, fmt.Errorf("pack %s: %w", rel, err)
 	}
-	var form bytes.Buffer
-	mw := multipart.NewWriter(&form)
-	part, _ := mw.CreateFormFile("file", filepath.Base(rel)+".zip")
-	_, _ = part.Write(archive)
-	_ = mw.WriteField("workspace_path", rel)
-	// Safe: the server folder was just verified to hold no files (an empty
-	// leftover from an interrupted move is the only thing replaced).
-	_ = mw.WriteField("overwrite", "true")
-	_ = mw.Close()
+	defer os.Remove(archive)
+
+	// From here on, any failure removes the partial server copy so the move
+	// can simply be retried.
+	imported := false
+	defer func() {
+		if err != nil && imported {
+			if delErr := rr.deleteServerFolder(c, serverID, srv, rel); delErr != nil {
+				err = fmt.Errorf("%w (and the partial server copy could not be removed: %v)", err, delErr)
+			}
+		}
+	}()
+
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		part, perr := mw.CreateFormFile("file", filepath.Base(rel)+".zip")
+		if perr == nil {
+			var f *os.File
+			if f, perr = os.Open(archive); perr == nil { // #nosec G304 -- temp file created above
+				_, perr = io.Copy(part, f)
+				_ = f.Close()
+			}
+		}
+		if perr == nil {
+			perr = mw.WriteField("workspace_path", rel)
+		}
+		if perr == nil {
+			// Safe: the server folder was just verified to hold no files.
+			perr = mw.WriteField("overwrite", "true")
+		}
+		if perr == nil {
+			perr = mw.Close()
+		}
+		_ = pw.CloseWithError(perr)
+	}()
 	header := http.Header{}
 	header.Set("Content-Type", mw.FormDataContentType())
-	header.Set("X-User-ID", c.GetHeader("X-User-ID"))
-	resp, body, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/workspace/import", header, form.Bytes())
+	imported = true // a failed upload can still leave files behind
+	resp, body, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/workspace/import", header, pr, false)
 	if err != nil {
 		return moveResult{}, err
 	}
@@ -147,20 +209,23 @@ func (rr *remoteRouter) moveToServer(c *gin.Context, workflow, serverID string) 
 		return moveResult{}, err
 	}
 	if remoteFiles != files {
-		return moveResult{}, fmt.Errorf("server copy of %s has %d files, local has %d; placement not changed", rel, remoteFiles, files)
+		return moveResult{}, fmt.Errorf("server copy of %s has %d files, local has %d; move rolled back", rel, remoteFiles, files)
 	}
-
-	if err := rr.setPlacement(rel, serverID); err != nil {
+	if err = rr.setPlacement(rel, serverID); err != nil {
 		return moveResult{}, err
 	}
-	retired, err := rr.retireLocalCopy(localDir, rel)
-	if err != nil {
-		return moveResult{}, fmt.Errorf("%s is now served from %q, but the old local copy could not be retired: %w", rel, serverID, err)
+	imported = false // placement flipped: the server copy is now the copy
+	retired, retireErr := rr.retireLocalCopy(localDir, rel)
+	if retireErr != nil {
+		return moveResult{}, fmt.Errorf("%s is now served from %q, but the old local copy could not be retired: %w", rel, serverID, retireErr)
 	}
 	return moveResult{Workflow: rel, Server: serverID, Files: files, Retired: retired}, nil
 }
 
 func (rr *remoteRouter) moveToLocal(c *gin.Context, workflow string) (moveResult, error) {
+	rr.moveMu.Lock()
+	defer rr.moveMu.Unlock()
+
 	rel, err := validateWorkflowRel(workflow)
 	if err != nil {
 		return moveResult{}, err
@@ -175,15 +240,14 @@ func (rr *remoteRouter) moveToLocal(c *gin.Context, workflow string) (moveResult
 	if _, err := os.Stat(localDir); err == nil {
 		return moveResult{}, fmt.Errorf("a local folder already exists at %s; remove it first", rel)
 	}
-	serverRoot, err := rr.serverRoot(c.Request.Context(), serverID, srv)
+	user, serverRoot, err := rr.whoami(c.Request.Context(), serverID, srv)
 	if err != nil {
 		return moveResult{}, err
 	}
 	payload, _ := json.Marshal(map[string]string{"workspace_path": rel})
 	header := http.Header{}
 	header.Set("Content-Type", "application/json")
-	header.Set("X-User-ID", c.GetHeader("X-User-ID"))
-	resp, archive, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/workspace/export", header, payload)
+	resp, archive, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/workspace/export", header, bytes.NewReader(payload), false)
 	if err != nil {
 		return moveResult{}, err
 	}
@@ -196,30 +260,30 @@ func (rr *remoteRouter) moveToLocal(c *gin.Context, workflow string) (moveResult
 		return moveResult{}, fmt.Errorf("unpack %s: %w", rel, err)
 	}
 	if err := rr.setPlacement(rel, ""); err != nil {
+		_ = os.RemoveAll(localDir)
 		return moveResult{}, err
 	}
-	// The server copy is retired by renaming it inside the server's own
-	// workspace, which keeps it recoverable there.
+	// Retire the server copy into the moving user's own server area, which
+	// keeps it recoverable there and is a path that user may write.
 	stamp := time.Now().UTC().Format("20060102T150405Z")
-	retiredRel := movedWorkflowsRelPath + "/" + filepath.Base(rel) + "-" + stamp
+	retiredRel := "_users/" + user + "/moved-workflows/" + filepath.Base(rel) + "-" + stamp
 	copyBody, _ := json.Marshal(map[string]string{"source_path": rel, "destination_path": retiredRel})
-	if resp, body, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/folders/copy", header, copyBody); err != nil || resp.StatusCode >= 300 {
-		return moveResult{Workflow: rel, Files: files}, fmt.Errorf("%s is local again, but the server copy was not retired (%v %s); delete it on the server", rel, err, strings.TrimSpace(string(body)))
+	if resp, body, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodPost, "/api/folders/copy", header, bytes.NewReader(copyBody), false); err != nil || resp.StatusCode >= 300 {
+		return moveResult{Workflow: rel, Files: files}, fmt.Errorf("%s is local again, but the server copy was not archived (%v %s); delete it on the server", rel, err, strings.TrimSpace(string(body)))
 	}
-	delPath := "/api/folders/" + (&url.URL{Path: rel}).EscapedPath() + "?confirm=true"
-	if resp, body, err := rr.callServer(c.Request.Context(), serverID, srv, http.MethodDelete, delPath, header, nil); err != nil || resp.StatusCode >= 300 {
-		return moveResult{Workflow: rel, Files: files}, fmt.Errorf("%s is local again and the server copy was archived, but not deleted (%v %s)", rel, err, strings.TrimSpace(string(body)))
+	if err := rr.deleteServerFolder(c, serverID, srv, rel); err != nil {
+		return moveResult{Workflow: rel, Files: files}, fmt.Errorf("%s is local again and the server copy was archived, but not deleted: %v", rel, err)
 	}
 	return moveResult{Workflow: rel, Files: files, Retired: "server:" + retiredRel}, nil
 }
 
+// countServerFiles counts a workflow's files on the server, ignoring folders
+// that never travel with a move.
 func (rr *remoteRouter) countServerFiles(c *gin.Context, id string, srv remoteServerConfig, rel string) (int, error) {
 	q := url.Values{}
 	q.Set("pattern", "**/*")
 	q.Set("folder", rel)
-	header := http.Header{}
-	header.Set("X-User-ID", c.GetHeader("X-User-ID"))
-	resp, body, err := rr.callServer(c.Request.Context(), id, srv, http.MethodGet, "/api/glob?"+q.Encode(), header, nil)
+	resp, body, err := rr.callServer(c.Request.Context(), id, srv, http.MethodGet, "/api/glob?"+q.Encode(), http.Header{}, nil, false)
 	if err != nil {
 		return 0, err
 	}
@@ -237,15 +301,22 @@ func (rr *remoteRouter) countServerFiles(c *gin.Context, id string, srv remoteSe
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return 0, fmt.Errorf("verify server copy: %w", err)
 	}
-	return len(parsed.Data), nil
+	count := 0
+	for _, f := range parsed.Data {
+		inner := strings.TrimPrefix(cleanRelPath(f.Filepath), rel+"/")
+		if !excludedMoveEntry(inner) {
+			count++
+		}
+	}
+	return count, nil
 }
 
+// setPlacement updates the placement file. Callers hold rr.moveMu.
 func (rr *remoteRouter) setPlacement(rel, serverID string) error {
-	cfgPath := filepath.Join(rr.localRoot, filepath.FromSlash(remotePlacementRelPath))
 	var cfg remotePlacementConfig
-	if raw, err := os.ReadFile(cfgPath); err == nil { // #nosec G304 -- fixed path under the docs root
+	if raw, err := os.ReadFile(rr.cfgPath); err == nil { // #nosec G304 -- operator-owned path outside the docs root
 		if err := json.Unmarshal(raw, &cfg); err != nil {
-			return fmt.Errorf("parse %s: %w", remotePlacementRelPath, err)
+			return fmt.Errorf("parse %s: %w", rr.cfgPath, err)
 		}
 	}
 	if cfg.Workflows == nil {
@@ -260,14 +331,29 @@ func (rr *remoteRouter) setPlacement(rel, serverID string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(rr.cfgPath), 0o700); err != nil {
 		return err
 	}
-	tmp := cfgPath + ".tmp"
-	if err := os.WriteFile(tmp, append(out, '\n'), 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(rr.cfgPath), "."+filepath.Base(rr.cfgPath)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, cfgPath); err != nil {
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(append(out, '\n')); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, rr.cfgPath); err != nil {
+		_ = os.Remove(tmpName)
 		return err
 	}
 	rr.mu.Lock()
@@ -289,22 +375,38 @@ func (rr *remoteRouter) retireLocalCopy(localDir, rel string) (string, error) {
 	return retiredRel, nil
 }
 
-// zipFolder packs dir with entries relative to it, rewriting embedded docs
-// roots in text files. Returns the archive and its file count.
-func zipFolder(dir, fromRoot, toRoot string) ([]byte, int, error) {
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+// zipFolderToTemp packs dir into a temp zip (entries relative to dir),
+// skipping excluded folders and rewriting embedded docs roots in text files.
+// Returns the archive path and its file count.
+func zipFolderToTemp(dir, fromRoot, toRoot string) (string, int, error) {
+	out, err := os.CreateTemp("", "workflow-move-*.zip")
+	if err != nil {
+		return "", 0, err
+	}
+	archive := out.Name()
+	fail := func(err error) (string, int, error) {
+		_ = out.Close()
+		_ = os.Remove(archive)
+		return "", 0, err
+	}
+	zw := zip.NewWriter(out)
 	files := 0
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
-		}
-		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
-			return nil
 		}
 		rel, err := filepath.Rel(dir, p)
 		if err != nil {
 			return err
+		}
+		if rel != "." && excludedMoveEntry(rel) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+			return nil
 		}
 		data, err := os.ReadFile(p) // #nosec G304 -- walking the workflow folder being moved
 		if err != nil {
@@ -324,16 +426,20 @@ func zipFolder(dir, fromRoot, toRoot string) ([]byte, int, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, 0, err
+		return fail(err)
 	}
 	if err := zw.Close(); err != nil {
-		return nil, 0, err
+		return fail(err)
 	}
-	return buf.Bytes(), files, nil
+	if err := out.Close(); err != nil {
+		_ = os.Remove(archive)
+		return "", 0, err
+	}
+	return archive, files, nil
 }
 
 // unzipWorkflow extracts a server export (entries prefixed with the workflow
-// folder name) into dest.
+// folder name) into dest, skipping folders that never travel.
 func unzipWorkflow(archive []byte, dest, fromRoot, toRoot string) (int, error) {
 	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
@@ -345,7 +451,7 @@ func unzipWorkflow(archive []byte, dest, fromRoot, toRoot string) (int, error) {
 		name := filepath.ToSlash(f.Name)
 		name = strings.TrimPrefix(name, base+"/")
 		clean := cleanRelPath(name)
-		if clean == "" || strings.HasSuffix(f.Name, "/") {
+		if clean == "" || strings.HasSuffix(f.Name, "/") || excludedMoveEntry(clean) {
 			continue
 		}
 		target := filepath.Join(dest, filepath.FromSlash(clean))

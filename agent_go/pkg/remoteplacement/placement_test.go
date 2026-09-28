@@ -3,18 +3,20 @@ package remoteplacement
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestServerFor(t *testing.T) {
-	root := t.TempDir()
+	root := filepath.Join(t.TempDir(), "workspace-docs")
+	t.Setenv(FileEnv, "")
 	if IsRemote(root, "Workflow/a") {
 		t.Fatal("no placement file must mean local")
 	}
-	if err := os.MkdirAll(filepath.Join(root, "_system"), 0o755); err != nil {
-		t.Fatal(err)
+	if rel, err := filepath.Rel(root, File(root)); err == nil && !strings.HasPrefix(rel, "..") {
+		t.Fatalf("placement file %s is inside the docs root", File(root))
 	}
-	if err := os.WriteFile(filepath.Join(root, RelPath), []byte(`{"workflows":{"Workflow/a":"team"}}`), 0o600); err != nil {
+	if err := os.WriteFile(File(root), []byte(`{"workflows":{"Workflow/a":"team"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for path, want := range map[string]string{

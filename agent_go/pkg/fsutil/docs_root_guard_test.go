@@ -16,11 +16,15 @@ import (
 // it from this list; adding one needs a reason: laptop-local state only.
 var docsRootAllowlist = map[string]bool{
 	"cmd/server/access_tokens.go":                                                          true,
+	"cmd/server/chat_history_dedupe_migration.go":                                          true,
 	"cmd/server/chat_history_persistence.go":                                               true,
 	"cmd/server/coding_agent_modes.go":                                                     true,
 	"cmd/server/durable_chat_migration_command.go":                                         true,
+	"cmd/server/external_file_reads.go":                                                    true,
 	"cmd/server/mcp_oauth_store.go":                                                        true,
+	"cmd/server/pulse_crew_calls_tool.go":                                                  true,
 	"cmd/server/pulse_step_concerns.go":                                                    true,
+	"cmd/server/report_human_inputs.go":                                                    true,
 	"cmd/server/scheduler.go":                                                              true,
 	"cmd/server/server.go":                                                                 true,
 	"cmd/server/services/gmail_connections.go":                                             true,
@@ -45,7 +49,7 @@ var docsRootAllowlist = map[string]bool{
 	"pkg/pulseintake/runtime.go":                                                           true,
 }
 
-var docsRootCall = regexp.MustCompile(`\bWorkspaceDocsRoot\(\)`)
+var docsRootCall = regexp.MustCompile(`\b(WorkspaceDocsRoot|getWorkspaceDocsAbsPath)\(\)`)
 
 func TestNoNewDirectDocsRootAccess(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -84,6 +88,6 @@ func TestNoNewDirectDocsRootAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(offenders) > 0 {
-		t.Fatalf("new direct workspace-docs access via WorkspaceDocsRoot() in %v; read workflow data through the workspace API instead (or add laptop-local state to docsRootAllowlist with a reason)", offenders)
+		t.Fatalf("new direct workspace-docs access via WorkspaceDocsRoot()/getWorkspaceDocsAbsPath() in %v; read workflow data through the workspace API instead (or add laptop-local state to docsRootAllowlist with a reason)", offenders)
 	}
 }
