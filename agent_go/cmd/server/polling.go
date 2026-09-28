@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	claudecodeadapter "github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
@@ -98,6 +99,8 @@ func (api *StreamingAPI) liveSteerTransportReady(sessionID string, runningAgent 
 		return picli.InteractiveSessionRegistered(sessionID)
 	case "muse-cli":
 		return musecli.InteractiveSessionRegistered(sessionID)
+	case "agy-cli":
+		return agycli.AgyInteractiveSessionActive(sessionID)
 	default:
 		return true
 	}

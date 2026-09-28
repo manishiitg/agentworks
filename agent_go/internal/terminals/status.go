@@ -80,6 +80,8 @@ func providerLabel(content string, metadata map[string]interface{}) string {
 			return "Pi CLI"
 		case "muse-cli", "musecli":
 			return "Muse"
+		case "agy-cli", "agycli":
+			return "Antigravity CLI"
 		default:
 			return provider
 		}
@@ -95,6 +97,8 @@ func providerLabel(content string, metadata map[string]interface{}) string {
 		return "Cursor CLI"
 	case strings.Contains(lower, "muse code"):
 		return "Muse"
+	case strings.Contains(lower, "antigravity cli"):
+		return "Antigravity CLI"
 	default:
 		return ""
 	}

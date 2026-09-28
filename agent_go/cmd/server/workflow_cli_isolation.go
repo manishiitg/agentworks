@@ -9,7 +9,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
@@ -77,20 +76,7 @@ func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
 	}
-	if err := trustAgyWorkingDir(provider, dir); err != nil {
-		return "", fmt.Errorf("cannot trust isolated AGY CLI runtime: %w", err)
-	}
 	return dir, nil
-}
-
-func trustAgyWorkingDir(provider, dir string) error {
-	if !strings.EqualFold(provider, "agy-cli") {
-		return nil
-	}
-	// AGY requires exact-cwd trust before its sidecar starts. The server
-	// selected this directory from its own workspace or private runtime.
-	_, err := agycli.TrustAgyWorkspaceDir(dir)
-	return err
 }
 
 func workflowCLIWorkspaceInstructions(folder string) string {

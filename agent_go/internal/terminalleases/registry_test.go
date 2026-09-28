@@ -161,6 +161,7 @@ func TestProviderFromTmuxSessionRecognizesEveryRegisteredProvider(t *testing.T) 
 		"mlp-cursor-cli-int-1":        "cursor-cli",
 		"mlp-pi-cli-int-1":            "pi-cli",
 		"mlp-muse-f42a1454-cf58-4948": "muse-cli",
+		"agy-int-owner-abcdef":       "agy-cli",
 		"something-unrelated":         "coding-cli",
 	}
 	for session, want := range cases {

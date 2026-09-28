@@ -5442,12 +5442,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if !isWorkflowPhase {
-			if err := trustAgyWorkingDir(finalProvider, chatWorkingDir); err != nil {
-				sendError(fmt.Sprintf("Failed to trust AGY CLI working directory: %v", err), true)
-				return
-			}
-		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
 		if chatWorkingDir != sharedChatWorkingDir {

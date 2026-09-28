@@ -376,6 +376,34 @@ func TestIsPublishedLLMProviderAllowedCodingAgentsOnly(t *testing.T) {
 	}
 }
 
+func TestAgyAlphaRequiresExplicitFlag(t *testing.T) {
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "")
+	t.Setenv("AGY_ALPHA", "")
+	for _, provider := range getSupportedProviders() {
+		if provider == "agy-cli" {
+			t.Fatal("agy-cli offered without AGY_ALPHA=1")
+		}
+	}
+	if isPublishedLLMProviderAllowed("agy-cli") {
+		t.Fatal("agy-cli publication allowed without alpha flag")
+	}
+	t.Setenv("AGY_ALPHA", "1")
+	if !isPublishedLLMProviderAllowed("agy-cli") {
+		t.Fatal("agy-cli publication denied with alpha flag")
+	}
+	found := false
+	for _, provider := range getSupportedProviders() {
+		found = found || provider == "agy-cli"
+	}
+	if !found {
+		t.Fatal("agy-cli missing with alpha flag")
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if isPublishedLLMProviderAllowed("agy-cli") {
+		t.Fatal("agy-cli allowed on a shared multi-user server")
+	}
+}
+
 // TestProviderManifestMarksDeprecatedAPIModelProviders is the regression for
 // the 2026-08-20 direct-API-transport deprecation
 // (docs/design/api_transport_vs_pi_tradeoff.md). Uses the real HTTP handler,
