@@ -4,6 +4,7 @@ package security
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -149,6 +150,9 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 		}
 		_ = unix.Close(h.fd)
 	}
+	if err := applyReadOnlyOverlays(policy.ReadOnlyOverlays); err != nil {
+		return err
+	}
 	// The mount capability is for the steps above only.
 	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
 		return fmt.Errorf("clear ambient capabilities: %w", err)
@@ -184,4 +188,32 @@ func privateTmpKeepPaths(policy LandlockPolicy) []string {
 		}
 	}
 	return out
+}
+
+// applyReadOnlyOverlays bind-mounts each blocked-write path onto itself
+// read-only, so writes, deletes and renames there fail even though Landlock
+// grants write on the folder around it. The command cannot undo the mounts:
+// it runs without CAP_SYS_ADMIN, and mounts made in a user namespace are
+// locked to it. A path that vanished since the policy was built is skipped,
+// as the mount-namespace backend does.
+func applyReadOnlyOverlays(paths []string) error {
+	for _, path := range paths {
+		if err := unix.Mount(path, path, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+			if errors.Is(err, unix.ENOENT) {
+				continue
+			}
+			return fmt.Errorf("protect %s: %w", path, err)
+		}
+		// A remount must keep the flags the kernel locked on the source
+		// mount (nosuid, nodev, ...), or it is refused in a user namespace.
+		var st unix.Statfs_t
+		if err := unix.Statfs(path, &st); err != nil {
+			return fmt.Errorf("protect %s: %w", path, err)
+		}
+		keep := uintptr(st.Flags) & (unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC | unix.MS_NOATIME | unix.MS_NODIRATIME | unix.MS_RELATIME)
+		if err := unix.Mount("", path, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY|keep, ""); err != nil {
+			return fmt.Errorf("protect %s read-only: %w", path, err)
+		}
+	}
+	return nil
 }

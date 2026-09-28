@@ -17,6 +17,11 @@ type LandlockPolicy struct {
 	BrowserScoped bool `json:"browser_scoped,omitempty"`
 	// AllowPTY: an interactive shell may open terminal devices.
 	AllowPTY bool `json:"allow_pty,omitempty"`
+	// ReadOnlyOverlays are blocked-write paths inside a writable path.
+	// Landlock rules only add access, so it cannot take write back from a
+	// subpath; the launcher bind-mounts each one read-only in its own mount
+	// namespace instead. Requires PrivateTmp (the namespaces).
+	ReadOnlyOverlays []string `json:"read_only_overlays,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must
