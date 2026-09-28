@@ -227,16 +227,18 @@ users has to hold:
    check).
 5. **Regression.** Crews work exactly as before.
 
+## Decisions (2026-09-28)
+
+- **Code to Crew:** not supported. A Code does not become a Crew.
+- **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
+- **Terminal:** both, the vendor CLI's own terminal (as in Crew today) and a
+  plain shell, in the same sandbox as the shell tool.
+
 ## Open questions
 
-These change what gets built:
-
-1. Can a Code be turned into a Crew later, keeping its files and history?
-   What happens to its private MCP servers and skills then?
-2. Should a Code also see the server-wide MCP connections and skills an
-   admin set up for everyone? Proposed: yes, read-only, alongside its
-   private ones.
-3. Is app preview (running a dev server and opening it in the browser) in
-   the first version? It is the first thing coders ask for, and the hardest:
-   dev-server ports must be exposed safely per user.
-4. Is the terminal the vendor CLI's own terminal, a plain shell, or both?
+1. App preview. When someone builds a web app in a Code, the agent runs it on
+   the server (for example `npm run dev` listening on port 3000). Should the
+   person be able to open that running app from their browser through
+   AgentWorks, via a private preview link that only people with access to the
+   Code can open? Without it they can see the code but not the running app.
+   Proposed: not in the first version.
