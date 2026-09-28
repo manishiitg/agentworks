@@ -9,6 +9,7 @@ import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import { SecretSelectionSection } from '../secrets/SecretSelectionSection'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
+import WorkflowRelaySlackPanel from './WorkflowRelaySlackPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import ConnectorsBrowser from '../connectors/ConnectorsBrowser'
@@ -51,7 +52,7 @@ const MCP_TABS: Array<{ value: McpTab; label: string }> = [
   { value: 'gmail', label: 'Gmail' },
   { value: 'cli', label: 'Connect' },
 ]
-const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'gmail')
+const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'slack' || option.value === 'gmail')
 
 type IdentityTab = IdentityTabId
 
@@ -318,13 +319,15 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
             : section === 'identity'
               ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
-          subtitle={relayMode && section === 'mcp' ? 'Choose the MCP tools, skills, and Gmail account this Relay may use.' : relayMode && section === 'identity' ? 'Name, delete, and choose the Builder model for this Relay.' : copy.description}
+          subtitle={relayMode && section === 'mcp' ? 'Choose the MCP tools, skills, Slack app, and Gmail account this Relay may use.' : relayMode && section === 'identity' ? 'Name, delete, and choose the Builder model for this Relay.' : copy.description}
           actions={(
             <WorkspaceViewActions
               workspacePath={workspacePath}
               message={section === 'mcp'
                 ? relayMode && activeMcpTab === 'apps'
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
+                  : relayMode && activeMcpTab === 'slack'
+                    ? 'Help me connect Slack to this Relay for agent tool calls and notifications. Inspect its selected Slack app and explain what setup is needed. Do not set up a Slack chat route for this Relay.'
                   : getIntegrationTabAskAIMessage(activeMcpTab)
                 : section === 'identity'
                   ? relayMode
@@ -534,6 +537,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
                 {!relayMode && activeMcpTab === 'slack' && (
                   <div className="mt-3">
                     <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="slack" />
+                  </div>
+                )}
+                {relayMode && activeMcpTab === 'slack' && (
+                  <div className="mt-3">
+                    <WorkflowRelaySlackPanel workspacePath={workspacePath} />
                   </div>
                 )}
                 {!relayMode && activeMcpTab === 'whatsapp' && (

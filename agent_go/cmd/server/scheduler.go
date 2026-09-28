@@ -594,7 +594,7 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		if sctx.Capabilities.Notifications != nil {
 			notifications = *sctx.Capabilities.Notifications
 		}
-		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
+		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "whatsapp")
 		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {
