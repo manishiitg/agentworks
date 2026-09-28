@@ -182,7 +182,7 @@ func (c *Client) diffPatchMultiFile(ctx context.Context, sections []ApplyPatchSe
 			return DiffPatchResult{}, fmt.Errorf("%s: %w; restored %d already-patched file(s)%s", f.section.Path, err, restored, failed)
 		}
 		f.applied = true
-		noteReportFileWrite(f.path)
+		noteWorkspaceFileWrite(f.path)
 	}
 
 	summary := make([]map[string]interface{}, 0, len(files))

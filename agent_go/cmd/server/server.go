@@ -9590,10 +9590,14 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 	api.observeRuntimeSnapshot(sessionID)
 	if changed {
 		publishSessionsChanged()
-		// Only a finished scheduled run refreshes the right pane. A chat turn
-		// (sending a message) must change nothing outside the chat.
-		if scheduled && liveFeedTerminalStatus(status) {
-			publishWorkflowSettled(workspacePath)
+		if liveFeedTerminalStatus(status) {
+			if scheduled {
+				publishWorkflowSettled(workspacePath)
+			} else {
+				// Coding CLIs can edit plan files directly, outside workspace
+				// tools. The terminal notice catches up with those edits.
+				publishPlanChanged(workspacePath + "/planning/plan.json")
+			}
 		}
 	}
 }

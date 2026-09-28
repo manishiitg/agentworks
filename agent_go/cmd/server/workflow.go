@@ -316,6 +316,7 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
+	publishPlanChanged(configPath)
 	return nil
 }
 
@@ -351,6 +352,7 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
+	publishPlanChanged(filePath)
 	return nil
 }
 
@@ -2173,6 +2175,7 @@ func writePlanToWorkspace(ctx context.Context, workspacePath string, plan *todo_
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	publishPlanChanged(planPath)
 	return nil
 }
 
@@ -4736,6 +4739,7 @@ func writeRawFileToWorkspace(ctx context.Context, filePath string, content strin
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	publishPlanChanged(filePath)
 	return nil
 }
 

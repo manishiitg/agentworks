@@ -46,11 +46,11 @@ func (c *Client) UpdateWorkspaceFile(ctx context.Context, params UpdateWorkspace
 
 	var apiResp APIResponse
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		noteReportFileWrite(params.Filepath)
+		noteWorkspaceFileWrite(params.Filepath)
 		return UpdateFileResult{Success: true, Message: string(respBody)}, nil
 	}
 	if apiResp.Success {
-		noteReportFileWrite(params.Filepath)
+		noteWorkspaceFileWrite(params.Filepath)
 	}
 
 	return UpdateFileResult{

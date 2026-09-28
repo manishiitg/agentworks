@@ -1,6 +1,6 @@
 # Live update feed: one SSE per tab instead of timers
 
-Status: Phase 1 built (2026-09-24).
+Status: Phase 1 built (2026-09-24); shared Plan/Graph refresh restored (2026-09-28).
 - **Server:** `agent_go/internal/livefeed`, `cmd/server/live_feed.go`.
 - **Client:** `frontend/src/services/liveFeed.ts`,
   `frontend/src/hooks/useLiveRefetch.ts`.
@@ -68,16 +68,22 @@ the user's clicks. The one allowed link is explicit agent navigation
 (ui-control `open_workspace_view`), delivered over the chat's SSE. Its lease
 renews every 5 minutes; this used to be a 10s poll.
 
-**Sending a message changes only the chat.** An interactive chat turn
-finishing never refreshes the right pane. Only these do: a finished
-**workflow run** (tracked execution with source `workflow_run`), a finished
-**scheduled session**, or a real data write (a decision recorded, a report
-file written). ChatArea no longer fires `WORKFLOW_LOG_REFRESH_EVENT` at all. The
-decisions panel listens for `human_inputs` notices instead.
+**Sending a message does not directly refresh the right pane.** A concrete
+workspace write publishes its own notice, and a workflow or Crew chat turn
+publishes one `plan` catch-up notice when it finishes because a coding CLI may
+have written plan files directly. Finished workflow runs and scheduled sessions
+also publish notices for their affected views. ChatArea does not fire
+`WORKFLOW_LOG_REFRESH_EVENT`; the decisions panel listens for `human_inputs`.
 
-**Plan edits are out of scope too.** The Plan canvas does not watch for
-outside edits: they are infrequent, and the canvas has a manual refresh.
-The changelog poll was removed on 2026-09-24.
+**Plan/Graph edits use this feed.** Workspace tool and server writes to
+`planning/plan.json`, `planning/step_config.json`, or `workflow.json` publish a
+`plan` notice. The visible shared canvas in AgentWorks and Relays refetches
+the plan and triggers without clearing the existing graph. A Builder chat turn
+also publishes once when it finishes, covering direct coding-CLI file writes
+that bypass workspace tools. The manual refresh remains available.
+Crew's separate Plan panel subscribes to the same notice. Legacy Crew project
+paths publish a path-free `plan` notice; the panel refetches through its normal
+authorized read endpoint, so no private project path appears in the stream.
 
 ### Wire format
 
@@ -103,6 +109,7 @@ These are the kinds, and the refetch each one triggers:
 | `browser_sessions` | global | Header: runtime health | `browser/sessions` |
 | `pulse_state` | workflow | Right pane: Pulse (only while open) | `pulse-module-state` |
 | `report` | workflow | Right pane: Report dashboard | re-run the dashboard (`ReportViewer` `refresh()`: document catalog + HTML) |
+| `plan` | workflow, shared crew, or path-free legacy project | Right pane: Graph/Plan while open | refetch `plan.json`, `step_config.json`, and graph triggers |
 
 A notice never contains the changed data. The client always refetches through
 the existing endpoint, which applies its own access rules. This keeps the
@@ -193,11 +200,10 @@ three ways:
 
 1. **Resync** on every (re)connect, and whenever the tab becomes visible
    again.
-2. **Session completion.** Most of these writes happen during an agent turn.
-   When a session reaches a terminal status, the server publishes
-   `pulse_state`, `human_inputs` and `notifications` for that session's
-   workflow. `ChatArea.tsx:2074` already does this in the client for
-   `WORKFLOW_LOG_REFRESH_EVENT`.
+2. **Session completion.** Most direct file writes happen during an agent
+   turn. On terminal workflow or Crew chat status the server publishes `plan`;
+   finished tracked runs publish `plan` alongside their other right-pane
+   notices. This catches writes that bypass workspace tools.
 3. **Safety poll.** A slow poll every 5 minutes, only while the tab is
    visible. It replaces the current 10–30s timers.
 
