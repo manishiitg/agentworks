@@ -92,13 +92,18 @@ describe('CodingProvidersPanel', () => {
           setup_hint: 'Install Claude Code',
         }),
         provider({
+          id: 'agy-cli',
+          display_name: 'Antigravity CLI (Alpha)',
+          runtime_command: 'agy',
+        }),
+        provider({
           id: 'openai',
           display_name: 'OpenAI API',
           kind: 'api',
           integration_kind: 'api_model',
         }),
       ],
-      provider_order: ['claude-code', 'codex-cli', 'openai'],
+      provider_order: ['claude-code', 'codex-cli', 'agy-cli', 'openai'],
       integration_kinds: {},
     })
 
@@ -115,6 +120,7 @@ describe('CodingProvidersPanel', () => {
       expect(dialog.textContent).toContain('Available providers')
       expect(dialog.textContent).toContain('Claude Code')
       expect(dialog.textContent).toContain('Codex')
+      expect(dialog.textContent).toContain('Antigravity CLI (Alpha)')
       expect(dialog.textContent).not.toContain('OpenAI API')
       expect(dialog.textContent).toContain('Not installed')
       expect(dialog.textContent).toContain('CLI availability')

@@ -23,7 +23,6 @@ const DEFAULT_CHAT_MODEL = 'codex-cli'
 // media providers) are dropped wherever they appear in saved or persisted
 // config; their models are reachable only through Pi's sub-provider routing.
 const FRONTEND_DEPRECATED_PROVIDER_IDS = new Set<string>([
-  'agy-cli',
   'openai',
   'anthropic',
   'vertex',

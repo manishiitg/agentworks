@@ -102,8 +102,8 @@ const PROVIDER_DISPLAY_INFO: Record<ProviderType, ProviderDisplayInfo> = {
     colorClass: 'text-slate-600 dark:text-slate-300',
   },
   'agy-cli': {
-    name: 'Antigravity CLI',
-    authDescription: 'Local CLI (Agy sign-in)',
+    name: 'Antigravity CLI (Alpha)',
+    authDescription: 'Local CLI (Google sign-in)',
     colorClass: 'text-zinc-600 dark:text-zinc-300',
   },
   'pi-cli': {
