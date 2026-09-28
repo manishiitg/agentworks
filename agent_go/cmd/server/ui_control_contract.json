@@ -96,6 +96,15 @@
       "targets": []
     },
     {
+      "id": "human-actions",
+      "label": "Human actions",
+      "actions": [
+        "open",
+        "refresh"
+      ],
+      "targets": []
+    },
+    {
       "id": "backup",
       "label": "Backup",
       "actions": [

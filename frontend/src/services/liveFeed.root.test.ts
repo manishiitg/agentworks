@@ -1,4 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// llm-config-api resolves the API base URL at import time and sits in an
+// import cycle through the stores liveFeed pulls in; stub it, as other suites
+// do, so this pure-function test does not depend on module init order.
+vi.mock('./llm-config-api', () => {
+  const service = new Proxy({}, { get: () => vi.fn(async () => ({})) })
+  return { llmConfigService: service, default: service }
+})
+
 import { liveFeedWorkflowRoot } from './liveFeed'
 
 describe('liveFeedWorkflowRoot', () => {

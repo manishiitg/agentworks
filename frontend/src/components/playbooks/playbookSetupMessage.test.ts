@@ -5,7 +5,8 @@ import { playbookSetupMessage } from './playbookSetupMessage'
 describe('Playbook Builder setup prompt', () => {
   it('names every authored handoff and requires a blocking validator before its consumer', () => {
     const proposals = PLAYBOOK_CATALOG.filter(item => item.agentSlots?.length)
-    expect(proposals).toHaveLength(40)
+    // The catalog grows; guard against authored playbooks disappearing.
+    expect(proposals.length).toBeGreaterThanOrEqual(40)
     for (const playbook of proposals) {
       const message = playbookSetupMessage(playbook, `agentworks-playbook-${playbook.id}`)
       expect(message).toContain('update_validation_schema on that Crew step')

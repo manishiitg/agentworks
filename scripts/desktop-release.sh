@@ -157,6 +157,24 @@ notes_file="$(mktemp)"
 {
   echo "Desktop release $tag."
   echo
+  # Install through curl only: the app is not notarized, and macOS
+  # quarantines a browser download and then refuses to open it.
+  cat <<INSTALL
+## Install (macOS, Apple Silicon)
+
+Install from Terminal with \`curl\`. Do not download the DMG in a browser: AgentWorks is not notarized by Apple, so macOS blocks a browser-downloaded copy ("is damaged and can't be opened"). A curl download is not quarantined.
+
+\`\`\`bash
+curl -fL -o /tmp/AgentWorks.dmg https://github.com/$REPO/releases/download/$tag/AgentWorks-$version-arm64.dmg
+hdiutil attach -nobrowse -quiet -mountpoint /tmp/agentworks-dmg /tmp/AgentWorks.dmg
+rm -rf /Applications/AgentWorks.app && cp -R /tmp/agentworks-dmg/AgentWorks.app /Applications/
+hdiutil detach -quiet /tmp/agentworks-dmg && rm /tmp/AgentWorks.dmg
+open /Applications/AgentWorks.app
+\`\`\`
+
+Already installed? The app updates itself from this release.
+
+INSTALL
   if [[ -n "$previous_tag" ]]; then
     echo "Changes since $previous_tag:"
     if ! git log --no-merges --pretty=format:'- %s (%h)' "$previous_tag"..HEAD; then
