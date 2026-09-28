@@ -329,7 +329,8 @@ func (api *StreamingAPI) handleProviderAccountStatus(w http.ResponseWriter, r *h
 		http.Error(w, "connection unavailable", http.StatusNotFound)
 		return
 	}
-	if !providerAccountManagedBy(target, caller, currentUserIsAdmin(r)) {
+	manager := providerAccountManagedBy(target, caller, currentUserIsAdmin(r))
+	if !manager {
 		allowed := false
 		if target.Server {
 			allowed = api.serverAccountAvailableToCaller(r.Context(), caller, target.Provider)
@@ -341,7 +342,9 @@ func (api *StreamingAPI) handleProviderAccountStatus(w http.ResponseWriter, r *h
 			return
 		}
 	}
-	verify := r.URL.Query().Get("verify") == "1"
+	// The real check sends one model request on the account: only its
+	// managers may spend that; everyone else gets the free status command.
+	verify := r.URL.Query().Get("verify") == "1" && manager
 	_ = json.NewEncoder(w).Encode(checkProviderAccountStatus(r.Context(), target, verify))
 }
 
