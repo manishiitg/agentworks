@@ -11,7 +11,7 @@ Use the existing workflow plan tools to create and edit a Relay. Read the curren
 
 ## Inputs, outputs, and integrations
 
-- User messages and system prompts may reference `{{input.field}}` and `{{steps.id.output.field}}`. Missing paths fail the run. Each authored agent must produce valid JSON in `result.json`; the designated output agent's JSON is the API result.
-- Configure an existing function trigger with object `INPUT` for API calls. Cron and calendar schedules use `trigger_payload` for the same input. Inspect schedule and run results with the existing workflow tools.
+- User messages and system prompts may reference `{{input}}` for the whole caller JSON object, `{{input.field}}` for a required field, and `{{steps.id.output.field}}` for an earlier output. `INPUT` is already the root object, so do not use `{{input.INPUT}}`. Missing paths fail the run. Each authored agent must produce valid JSON in `result.json`; the designated output agent's JSON is the API result.
+- Configure an existing function trigger with object `INPUT` for API calls. On a new Relay, declare `INPUT` in `variables/variables.json` and add a `default` variable group before creating the trigger. Cron and calendar schedules use `trigger_payload` for the same input. Inspect schedule and run results with the existing workflow tools.
 - Use Relay-selected MCP tools and per-step skills for execution. Slack and Gmail may be used as configured. Do not create Slack or WhatsApp chat routes or WhatsApp notifications.
 - Validate the graph with the existing plan tool and test a targeted step or run before describing it as ready.

@@ -32,7 +32,7 @@ func renderAuthoredPromptWithSteps(prompt string, variables map[string]string, l
 		var current any
 		keys := parts[1:]
 		switch {
-		case len(parts) >= 2 && parts[0] == "input":
+		case parts[0] == "input":
 			if !inputLoaded {
 				inputLoaded = true
 				if raw := strings.TrimSpace(variables["INPUT"]); raw == "" {
@@ -65,7 +65,7 @@ func renderAuthoredPromptWithSteps(prompt string, variables map[string]string, l
 			}
 			keys = parts[3:]
 		default:
-			renderErr = fmt.Errorf("unsupported variable %q; use {{input.field}} or {{steps.id.output.field}}", path)
+			renderErr = fmt.Errorf("unsupported variable %q; use {{input}}, {{input.field}}, or {{steps.id.output.field}}", path)
 			return match
 		}
 		for _, key := range keys {
