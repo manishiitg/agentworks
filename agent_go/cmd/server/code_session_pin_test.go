@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -40,5 +41,54 @@ func TestCodeSessionPersonIsPinnedOnce(t *testing.T) {
 	}
 	if _, ok, _ := codeSessionPinFor("child"); ok {
 		t.Fatal("a non-Code parent pinned its child")
+	}
+}
+
+// Every entry that adds a turn to an existing Code chat (handleQuery before
+// live-input delivery, /live-input) refuses anyone but the pinned person,
+// and any channel-route principal.
+func TestOnlyThePinnedPersonAddsTurnsToACodeChat(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := pinCodeSession("chat", "alice", "_users/alice/Chats/Code/projects/x"); err != nil {
+		t.Fatal(err)
+	}
+	for name, claims := range map[string]*UserClaims{
+		"editor":     {UserID: "bob"},
+		"no claims":  nil,
+		"bot route":  {UserID: "alice", Provider: "bot_route"},
+		"empty user": {UserID: ""},
+	} {
+		if codeSessionTurnRefusal("chat", claims) == "" {
+			t.Errorf("%s added a turn to alice's Code chat", name)
+		}
+	}
+	if refusal := codeSessionTurnRefusal("chat", &UserClaims{UserID: "alice"}); refusal != "" {
+		t.Fatalf("alice refused in her own chat: %s", refusal)
+	}
+	if refusal := codeSessionTurnRefusal("crew-chat", &UserClaims{UserID: "bob"}); refusal != "" {
+		t.Fatalf("a non-Code chat was refused: %s", refusal)
+	}
+}
+
+// A deleted session's pin goes with it, and the sweep removes pins of Codes
+// that no longer exist while keeping live ones.
+func TestCodeSessionPinsAreCleanedUp(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	if err := pinCodeSession("live", "owner", codePrivacyOwnerRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := pinCodeSession("orphan", "owner", "_users/owner/Chats/Code/projects/deleted-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pinCodeSession("deleted-chat", "owner", codePrivacyOwnerRoot); err != nil {
+		t.Fatal(err)
+	}
+	deleteCodeSessionPin("deleted-chat")
+	api.sweepOrphanCodeSessionPins(context.Background())
+	for session, want := range map[string]bool{"live": true, "orphan": false, "deleted-chat": false} {
+		if _, ok, _ := codeSessionPinFor(session); ok != want {
+			t.Errorf("%s pinned = %v, want %v", session, ok, want)
+		}
 	}
 }

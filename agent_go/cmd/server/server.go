@@ -2379,7 +2379,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats", api.handleAdminCodeChats).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// Pins of Code chats whose Code is gone, once the workspace is up.
+	go func() {
+		time.Sleep(3 * time.Minute)
+		api.sweepOrphanCodeSessionPins(context.Background())
+	}()
 	// A person's own MCP servers and secrets (docs/design/code_private_mcp.md).
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
@@ -3784,6 +3790,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Get current user ID for session isolation
 	currentUserID := GetUserIDFromContext(r.Context())
+	// A Code chat belongs to its pinned person: nothing else (a live-input
+	// delivery below, a queued turn) may run in it as anyone else.
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
+		return
+	}
 	queryLogCtx := requestLogContext(r.Context(), req, sessionID)
 	registerServerLogContext(queryLogCtx, sessionID, queryID)
 	queryLogger := queryLogCtx.Logger(api.logger)
@@ -5601,6 +5613,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// else's), carried as complete configs (docs/design/code_private_mcp.md).
 		if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 			codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+			// A channel-route turn acts for arbitrary channel members: a
+			// Code (DM-only) never pins one to a person.
+			if claims := GetUserFromContext(r.Context()); claims != nil && claims.Provider == "bot_route" {
+				sendError("Code chats are direct messages only.", true)
+				return
+			}
 			if pinErr := pinCodeSession(sessionID, currentUserID, codeRoot); pinErr != nil {
 				if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
 					sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
@@ -10352,6 +10370,10 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	}
 	if !api.canAccessTerminalSession(r, sessionID) {
 		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
 		return
 	}
 

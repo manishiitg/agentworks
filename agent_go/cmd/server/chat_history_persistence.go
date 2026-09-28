@@ -3747,6 +3747,7 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 }
 
 func deleteUserChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID string) (ChatHistoryCleanupResult, error) {
+	deleteCodeSessionPin(sessionID)
 	root := chatHistoryRoot(userID)
 	baseDir, ok := resolveLocalChatHistoryDir(root)
 	if !ok {

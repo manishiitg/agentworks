@@ -121,12 +121,12 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 }
 
 // isPersonalMCPInternalName reports whether name has the personal-server
-// shape (u<8 hex>__<name>), whoever it belongs to.
+// shape (u<32 hex>__<name>), whoever it belongs to.
 func isPersonalMCPInternalName(name string) bool {
-	if len(name) < 12 || name[0] != 'u' || name[9:11] != "__" {
+	if len(name) < 36 || name[0] != 'u' || name[33:35] != "__" {
 		return false
 	}
-	for _, c := range name[1:9] {
+	for _, c := range name[1:33] {
 		if !strings.ContainsRune("0123456789abcdef", c) {
 			return false
 		}

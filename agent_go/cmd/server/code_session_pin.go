@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -116,4 +118,76 @@ func inheritCodeSessionPin(parentSessionID, childSessionID string) error {
 		return err
 	}
 	return pinCodeSession(childSessionID, parent.Person, parent.CodeRoot)
+}
+
+// codeSessionTurnRefusal is why a request may not add a turn to sessionID,
+// or "" when it may: a pinned Code chat accepts turns only from its own
+// person, and never from a channel-route (bot_route) principal, which acts
+// for arbitrary channel members. Every entry that adds a turn to an existing
+// session checks it (handleQuery before live-input delivery, /live-input).
+func codeSessionTurnRefusal(sessionID string, claims *UserClaims) string {
+	pin, pinned, err := codeSessionPinFor(sessionID)
+	if err != nil {
+		return "This Code chat is unavailable."
+	}
+	if !pinned {
+		return ""
+	}
+	if claims == nil || claims.Provider == "bot_route" || sanitizeUserIDForPath(strings.TrimSpace(claims.UserID)) != pin.Person {
+		return "This Code chat belongs to another person. Open your own chat of this Code."
+	}
+	return ""
+}
+
+// deleteCodeSessionPin removes a deleted session's pin.
+func deleteCodeSessionPin(sessionID string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if path, err := codeSessionPinPath(sessionID); err == nil {
+		_ = os.Remove(path)
+	}
+}
+
+// sweepOrphanCodeSessionPins removes pins whose Code no longer exists (a
+// session deleted outside the paths above, or a pin left by a crash). It runs
+// once, a few minutes after start, when the workspace service is up.
+func (api *StreamingAPI) sweepOrphanCodeSessionPins(ctx context.Context) {
+	root, err := workflowCLIStateRoot()
+	if err != nil {
+		return
+	}
+	dir := filepath.Join(root, "code-session-pins")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	gone := map[string]bool{}
+	removed := 0
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		data, err := os.ReadFile(path) //nolint:gosec // G304: entries of the pin directory
+		if err != nil {
+			continue
+		}
+		var pin codeSessionPin
+		if json.Unmarshal(data, &pin) != nil || pin.CodeRoot == "" {
+			_ = os.Remove(path)
+			removed++
+			continue
+		}
+		missing, seen := gone[pin.CodeRoot]
+		if !seen {
+			_, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
+			missing = err == nil && !found
+			gone[pin.CodeRoot] = missing
+		}
+		if missing {
+			_ = os.Remove(path)
+			removed++
+		}
+	}
+	if removed > 0 {
+		log.Printf("[CODE_SESSION] removed %d pin(s) of deleted Codes", removed)
+	}
 }

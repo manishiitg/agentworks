@@ -75,8 +75,8 @@ person's folder, network, MCP, or tool authorization.
 Two kinds of MCP server can appear here. **Global** servers are the platform
 connections the Code's owner selected (managed as the `code-mcp` skill
 describes). **Personal** servers belong to the person you are talking with:
-they appear under names like `u1a2b3c4d__linear` (the part after `__` is the
-name they gave it) and act with that person's own login. The person adds,
+they appear under names like `u<id>__linear` (the part after `__` is the name
+they gave it) and act with that person's own login. The person adds,
 connects and switches them on for this Code in Setup → Integrations →
 Apps → Your servers; you cannot add them for someone, and other people in this
 Code never see or use them. A newly switched-on server is available from the

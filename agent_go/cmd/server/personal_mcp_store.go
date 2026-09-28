@@ -92,17 +92,19 @@ func personalMCPDir(userID string) (string, error) {
 	return dir, nil
 }
 
-// personalMCPInternalName is the name every cache, connection and generated
-// package uses for a person's server, so a personal "linear" never shares a
-// cached tool list or connection with the platform "linear" or with another
-// person's. The model and the UI see the plain name.
+// personalMCPInternalName is the name every cache, pooled connection and
+// generated package uses for a person's server, so a personal "linear" never
+// shares a cached tool list or connection with the platform "linear" or with
+// another person's. It carries the person's whole 128-bit store id: pooled
+// connections are keyed by this name alone, so a shorter id could let two
+// people collide on one connection (and its login). The UI shows the plain name.
 func personalMCPInternalName(userID, name string) string {
-	return "u" + personalMCPStoreID(userID)[:8] + "__" + name
+	return "u" + personalMCPStoreID(userID) + "__" + name
 }
 
 // personalMCPPlainName reverses personalMCPInternalName for this person.
 func personalMCPPlainName(userID, internal string) (string, bool) {
-	prefix := "u" + personalMCPStoreID(userID)[:8] + "__"
+	prefix := "u" + personalMCPStoreID(userID) + "__"
 	if !strings.HasPrefix(internal, prefix) {
 		return "", false
 	}
