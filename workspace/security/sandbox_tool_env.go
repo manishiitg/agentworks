@@ -183,12 +183,20 @@ func privateSandboxHome(env []string, home string) []string {
 	if err := os.MkdirAll(config, 0o700); err != nil {
 		return env
 	}
-	out := make([]string, 0, len(env)+1)
+	out := make([]string, 0, len(env)+2)
+	socketDirSet := false
 	for _, kv := range env {
 		if strings.HasPrefix(kv, "HOME=") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
 			continue
 		}
+		socketDirSet = socketDirSet || strings.HasPrefix(kv, "AGENT_BROWSER_SOCKET_DIR=")
 		out = append(out, kv)
 	}
-	return append(out, "HOME="+home, "XDG_CONFIG_HOME="+config)
+	out = append(out, "HOME="+home, "XDG_CONFIG_HOME="+config)
+	// agent-browser keeps its sockets under $HOME by default; a workflow
+	// home is far past the 103-byte Unix socket path limit.
+	if !socketDirSet {
+		out = append(out, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
+	}
+	return out
 }

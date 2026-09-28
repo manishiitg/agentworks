@@ -38,6 +38,9 @@ func TestSandboxHomeIsPrivateToTheWorkflowOrCrew(t *testing.T) {
 		t.Fatalf("Crew HOME = %q", got)
 	}
 
+	if got := homeEnvValue(env, "AGENT_BROWSER_SOCKET_DIR"); got != browserSocketDir {
+		t.Fatalf("browser sockets must stay in a short folder, got %q", got)
+	}
 	for _, kv := range env {
 		if kv == "HOME=/tmp" || strings.HasPrefix(kv, "XDG_CONFIG_HOME=/tmp") {
 			t.Fatalf("shared /tmp home survived: %q", kv)
