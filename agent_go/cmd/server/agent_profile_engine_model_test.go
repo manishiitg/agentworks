@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -154,6 +155,23 @@ func TestProfileQueryReasoningEffortMustBeDeclared(t *testing.T) {
 	_, err = queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hi", Engine: "codex-cli", ReasoningEffort: "high"}, conversation)
 	if err == nil || !strings.Contains(err.Error(), "not offered") {
 		t.Fatalf("an engine with no declared levels should refuse any reasoning effort, got %v", err)
+	}
+}
+
+func TestCrewAgyHighEffortChatRequest(t *testing.T) {
+	manifest, err := workproduct.WorkManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := ProductConversationRecord{SessionID: "work:project:test", WorkspacePath: "Chats/Work/projects/test", ConversationKey: "test"}
+	req, err := queryRequestForAgentProfileChat(manifest.Profile, AgentProfileChatRequest{
+		Message: "hello", Engine: "agy-cli", ModelID: "gemini-3.8-flash-high", ReasoningEffort: "high",
+	}, conversation)
+	if err != nil {
+		t.Fatalf("Crew AGY chat request rejected: %v", err)
+	}
+	if req.Provider != "agy-cli" || req.ModelID != "gemini-3.8-flash-high" || req.ReasoningEffort != "high" {
+		t.Fatalf("Crew AGY runtime = %q/%q/%q", req.Provider, req.ModelID, req.ReasoningEffort)
 	}
 }
 

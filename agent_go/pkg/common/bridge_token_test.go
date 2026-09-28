@@ -1,8 +1,11 @@
 package common
 
 import (
+	"encoding/base64"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBridgeTokenBindsItsSession(t *testing.T) {
@@ -17,8 +20,16 @@ func TestBridgeTokenBindsItsSession(t *testing.T) {
 	parts := strings.Split(token, ".")
 	forged := BridgeTokenForSession("chat-b")
 	forgedParts := strings.Split(forged, ".")
-	if _, ok := VerifyBridgeToken(parts[0] + "." + forgedParts[1] + "." + parts[2]); ok {
+	if _, ok := VerifyBridgeToken(parts[0] + "." + forgedParts[1] + "." + parts[2] + "." + parts[3]); ok {
 		t.Fatal("a token with another session's name must not verify")
+	}
+	bridgeTokenMu.RLock()
+	key := bridgeTokenKey
+	bridgeTokenMu.RUnlock()
+	oldHour := strconv.FormatInt(time.Now().Add(-3*time.Hour).Unix()/3600, 10)
+	expired := bridgeTokenPrefix + base64.RawURLEncoding.EncodeToString([]byte("chat-a")) + "." + oldHour + "." + base64.RawURLEncoding.EncodeToString(bridgeTokenMAC(key, "chat-a", oldHour))
+	if _, ok := VerifyBridgeToken(expired); ok {
+		t.Fatal("expired token must not verify")
 	}
 	for _, bad := range []string{"", "server-secret", "mcps1.", "mcps1.x.y", token + "x"} {
 		if _, ok := VerifyBridgeToken(bad); ok {

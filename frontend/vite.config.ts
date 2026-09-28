@@ -7,6 +7,12 @@ import { defineConfig } from "vite"
 // ESM-safe __dirname: package.json has "type": "module" so the top-level
 // CommonJS __dirname isn't defined when Vite loads this config.
 const projectRoot = path.dirname(fileURLToPath(import.meta.url))
+// Keep local browser API calls on the Vite origin; embedded browsers can block
+// direct requests to a second loopback port even when that backend is healthy.
+const backendUrl = process.env.MCP_AGENT_SERVER_URL || 'http://127.0.0.1:18743'
+const backendProxy = {
+  '/api': { target: backendUrl, changeOrigin: true, ws: true },
+}
 
 const isolatedRuntimeConfigPath = process.env.AGENTWORKS_RUNTIME_CONFIG_PATH
 
@@ -56,7 +62,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: '0.0.0.0',
+    proxy: backendProxy,
   },
+  preview: { proxy: backendProxy },
   build: {
     // Connector brand marks are decoration on one panel, so they must not ride
     // in the eager JS chunk. Vite inlines any asset under 4 kB as a base64 data

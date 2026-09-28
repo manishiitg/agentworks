@@ -583,17 +583,31 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     || ''
   const defaultReasoningEffort = typeof currentGroup?.option.options?.reasoning_effort === 'string' ? currentGroup.option.options.reasoning_effort : undefined
   const metadataMatchesEngine = metadataEngine === currentEngine
-  const currentReasoningEffort = (metadataMatchesEngine ? activeTab?.metadata?.agentProfileReasoningEffort : undefined)
+  const currentReasoningEffort = (currentGroup?.option.provider === 'agy-cli' ? currentModel.match(/-(low|medium|high)$/)?.[1] : undefined)
+    || (metadataMatchesEngine ? activeTab?.metadata?.agentProfileReasoningEffort : undefined)
     || defaultReasoningEffort
     || currentGroup?.reasoningLevels[0]?.id
     || ''
   const selectProductEngine = useCallback((engine: string, modelId: string, reasoningEffort?: string) => {
     if (!activeTabId || !agentProfileId) return
+    const group = engineGroups.find(candidate => candidate.option.id === engine)
+    if (group?.option.provider === 'agy-cli') {
+      const bakedEffort = modelId.match(/-(low|medium|high)$/)?.[1]
+      if (bakedEffort) {
+        if (modelId === currentModel && reasoningEffort && reasoningEffort !== bakedEffort) {
+          const nextModel = modelId.replace(/-(low|medium|high)$/, `-${reasoningEffort}`)
+          if (group.models.some(candidate => candidate.id === nextModel)) modelId = nextModel
+          else reasoningEffort = bakedEffort
+        } else {
+          reasoningEffort = bakedEffort
+        }
+      }
+    }
     useChatStore.getState().setTabMetadata(activeTabId, { agentProfileEngine: engine, agentProfileModelID: modelId, ...(reasoningEffort ? { agentProfileReasoningEffort: reasoningEffort } : {}) })
     window.dispatchEvent(new CustomEvent('agentworks:product-engine-selected', {
-      detail: { profileId: agentProfileId, tabId: activeTabId, engine, provider: engineGroups.find(group => group.option.id === engine)?.option.provider, modelId, reasoningEffort },
+      detail: { profileId: agentProfileId, tabId: activeTabId, engine, provider: group?.option.provider, modelId, reasoningEffort },
     }))
-  }, [activeTabId, agentProfileId, engineGroups])
+  }, [activeTabId, agentProfileId, engineGroups, currentModel])
 
   // "New chat" for product surfaces, offered when the profile declares
   // runtime.capabilities.new_conversation; the product owns what happens.

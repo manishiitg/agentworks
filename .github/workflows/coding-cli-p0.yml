@@ -89,6 +89,12 @@ jobs:
           go -C ../multi-llm-provider-go test ./pkg/adapters/picli -run '^TestPiBoundedCleanupUsesSharedTmuxKillDelay$' -count=1
           go -C ../mcpagent test ./agent -run '^TestFinishStreamingTerminalEndIncludesRetentionMetadata$' -count=1
 
+      - name: Verify AGY promptless terminal recovery
+        working-directory: coding-agent-loop
+        run: |
+          go -C ../multi-llm-provider-go test ./pkg/adapters/agycli -run '^Test(AgyLaunchOnlyDoesNotRequireHumanPrompt|AgyInteractiveEffortMustMatchModel)$' -count=1
+          go -C ../mcpagent test ./agent -run '^TestRestoredAgyTransportLaunchEnablesInteractiveLane$' -count=1
+
       - name: Verify Claude multiline live-input submission
         working-directory: coding-agent-loop
         run: >-
@@ -109,6 +115,14 @@ jobs:
           go -C agent_go test ./cmd/server
           -run '^Test(AgentWorksProductSurfaceE2E|CrewProductSurfaceE2E|ProductSurfaceGuardRejectsUndeclaredAdditions|WorkflowUpgradePromptsOnlyCallScheduledBuilderTools|ExplicitUpgradeToolReferencesFindsHiddenNativeName|SlackRouteToolAcceptsAuthenticatedCLIBridgeOwner)$'
           -count=1
+
+      - name: Verify product CLI model and reasoning selections
+        working-directory: coding-agent-loop
+        run: |
+          go -C agent_go test ./internal/workproduct ./internal/sparkquillproduct \
+            -run '^Test(WorkManifestDeclaresProjectScopeAndCodingAllowlist|EveryProviderOptionDeclaresAnOwnReasoningEffort|SparkQuillDefaultModelsAndReasoningEfforts)$' -count=1
+          go -C agent_go test ./cmd/server \
+            -run '^Test(CrewAgyHighEffortChatRequest|ProfileQueryReasoningEffortMustBeDeclared)$' -count=1
 
       - name: Verify execution-principal topology matrix
         working-directory: coding-agent-loop
@@ -160,7 +174,7 @@ jobs:
 
       - name: Verify frontend live-input submission contract
         working-directory: coding-agent-loop
-        run: npm --prefix frontend test -- src/utils/liveInputSubmission.test.ts
+        run: npm --prefix frontend test -- src/utils/liveInputSubmission.test.ts src/utils/chatSubmitHelpers.test.ts
 
   real-contract:
     name: P0 live CLI + MCP bridge + workflow

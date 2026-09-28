@@ -20,6 +20,7 @@ package agentsession
 import (
 	"context"
 	"fmt"
+	_ "github.com/manishiitg/coding-agent-loop/agent_go/pkg/common" // register coding-agent bridge token and managed-file guard
 	"net"
 	"net/http"
 	"os"

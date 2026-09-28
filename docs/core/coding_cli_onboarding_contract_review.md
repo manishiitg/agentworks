@@ -144,6 +144,7 @@ implementation map, not a claim that every provider needs every optional feature
 | Delivery receipt and history projection | `agent_go/cmd/server/live_input_durable.go`, `claude_native_transcript_sync.go` | ACK dispatch defaults to failed for an unhandled provider; native transcript projection has another provider switch. |
 | Catalog, install, setup, credentials | `agent_go/cmd/server/llm_provider_manifest.go`, `provider_setup.go`, `provider_connections.go`, `llm_config_handlers.go` | A runnable SDK adapter may be invisible or have incomplete product setup. |
 | UI setup and provider typing | `frontend/src/services/api-types.ts`, `components/providers/CodingProvidersPanel.tsx`, `codingProviderGuides.ts`, `GuidedProviderTerminal.tsx`, `stores/useLLMStore.ts` | Manifest-driven behavior coexists with local lists, guides, and fallback metadata. |
+| Product-specific model pickers | Each product's `product.yaml` `runtime.provider_options` (for Crew, `agent_go/internal/workproduct/product.yaml`) and its manifest contract test | A CLI can be connected in Providers and available in workflows yet absent from a product's Models tab. |
 | UI runtime semantics | structured `user_message`, progress/tool, and canonical `unified_completion` events | Formatted Chat is provider-neutral and must not read or merge provider-native transcripts. Native transcript readers belong behind the backend adapter/recovery boundary and publish normalized structured events. |
 | Live test selection | `SDK/cmd/coding-agent-p0-tests/main.go`, `SDK/scripts/agentic-p0.sh`, `scripts/run-coding-cli-p0.sh`, `.github/workflows/coding-cli-p0.yml` | Test names are registry-derived, but packages and provider selection are still separately enumerated. |
 
@@ -168,10 +169,10 @@ successful live runs supply evidence.
 
 | Gate | Required evidence |
 | --- | --- |
-| Deterministic integration gate | Bidirectional registration consistency; declared capabilities have callable operations and proof bindings; model/auth/options propagation; event and UI routing. This can run without provider credentials. |
+| Deterministic integration gate | Bidirectional registration consistency; declared capabilities have callable operations and proof bindings; model/auth/options propagation; event and UI routing. For each product picker, validate that its default model and reasoning effort are offered by the profile and accepted by the server chat request. This can run without provider credentials. |
 | P0 adapter base | Real fresh launch; runtime system/skill/MCP context; exact cwd; trust/auth handling; MCP reachability and native-tool restrictions; slow-tool false-idle protection; completion and clean final extraction; tmux multi-turn; live/busy input; cancellation; parallel isolation; reply formatting fidelity. |
 | P0 capability-dependent | Structured streaming when claimed; independent structured multi-turn when persistent native resume is claimed; stalled-turn diagnosis when claimed; durable ACK when claimed. Restart/no-history-replay must be resolved under R2. |
-| P0 application | Real MCP-backed workflow completion and next-step advancement; retained chat through the agent layer; exactly-once delivery/routing; stable turn identity and one canonical completion; persisted final response/history. Adapter-only proof is insufficient. |
+| P0 application | Real MCP-backed workflow completion and next-step advancement; retained chat through the agent layer; exactly-once delivery/routing; stable turn identity and one canonical completion; persisted final response/history. In every product that offers the new CLI, select it in the running UI and send a message with the saved model and reasoning effort; a picker-only check misses request-validation failures. Adapter-only proof is insufficient. |
 | P0 lifecycle | CLI install detection, version floor, certified-version currency, and token-usage reporting, per the lifecycle contracts below. |
 | P1 hardening | Lifecycle/retention, cancel-then-reuse, external session loss/recovery, stale drafts, shared-directory config isolation, startup visibility, model/auth/environment variants, status/usage, and provider upgrades, as applicable. Map each requirement to a concrete executable test. |
 | Capability publication | Unsupported behavior is explicit. Optional capability claims need their corresponding proof before advertisement; accepted restrictions must remain visible. Muse's named best-effort tool exception must not become the default for new CLIs. |
@@ -240,6 +241,9 @@ registration per responsibility.
 
 ## New CLI checklist using today's code
 
+For concrete gaps found during AGY onboarding and a manual-test log to extend
+for the next provider, see [AGY onboarding lessons](agy_cli_onboarding_lessons.md).
+
 1. Define supported surfaces and transports first: interactive chat, retained
    follow-up, workflow step, and background/sub-agent execution. Specify auth,
    native resume, tool restrictions, token source, and unsupported features.
@@ -251,7 +255,13 @@ registration per responsibility.
    explicit errors. Verify registration in both directions.
 4. Bind server classification, lifecycle, manifest/setup/auth, durable receipts,
    and native history. Check frontend setup and reconciliation behavior using
-   manifest/event fixtures for the new provider.
+   manifest/event fixtures for the new provider. For every product that should
+   offer the CLI, add it to that product's `runtime.provider_options` and its
+   manifest test. Open the product's Models tab in the running app, select the
+   provider, and confirm the provider and model persist after a page reload.
+   Submit a message: any saved default reasoning effort must be one of that
+   product option's declared `reasoning_efforts`, or the chat request fails
+   validation before reaching the CLI.
 5. Register real certification tests and required deterministic regression tests.
    Update every current runner/provider/package list until generated discovery
    replaces them. Test the default and explicit subset selections.

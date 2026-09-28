@@ -10,6 +10,7 @@ import type { ModeCategory } from '../stores/useModeStore'
 import { useChatStore } from '../stores/useChatStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { logger } from './logger'
+import type { AgentProfileProviderOption } from './agentProfileCapabilities'
 
 // Workflow phases that support conversational chat mode instead of blocking human_feedback
 const CHAT_COMPATIBLE_PHASES = new Set([
@@ -223,6 +224,25 @@ export function buildAgentProfileChatRequest(payload: AgentQueryRequest, convers
     ...(payload.workflow_context_paths?.length ? { workflow_context_paths: payload.workflow_context_paths } : {}),
     ...(payload.workflow_context_refs?.length ? { workflow_context_refs: payload.workflow_context_refs } : {}),
   }
+}
+
+// A running server may still have an older embedded product profile after the
+// frontend gains a CLI. Omit a saved effort it does not offer so chat can use
+// the selected model's default instead of failing validation before launch.
+export function offeredProfileReasoningEffort(
+  options: AgentProfileProviderOption[],
+  engine: string | undefined,
+  effort: string | undefined,
+  modelId?: string,
+): string | undefined {
+  if (!engine) return effort
+  const option = options.find(candidate => candidate.id === engine)
+  if (option?.provider === 'agy-cli') {
+    const modelEffort = modelId?.match(/-(low|medium|high)$/)?.[1]
+    if (modelEffort && option.reasoning_efforts?.includes(modelEffort)) return modelEffort
+  }
+  if (!effort) return effort
+  return option && !option.reasoning_efforts?.includes(effort) ? undefined : effort
 }
 
 // ---------------------------------------------------------------------------

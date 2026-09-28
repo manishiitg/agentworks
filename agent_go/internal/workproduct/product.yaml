@@ -133,6 +133,13 @@ profile:
         reasoning_efforts: [medium, high, xhigh, max]
         options:
           reasoning_effort: max
+      - id: agy-cli
+        label: Antigravity CLI (Alpha)
+        provider: agy-cli
+        model_id: gemini-3.8-flash-high
+        reasoning_efforts: [low, medium, high]
+        options:
+          reasoning_effort: high
     # The default option is also declared in the common runtime fields so the
     # shared composer can show the correct runtime before the first turn.
     provider: claude-code

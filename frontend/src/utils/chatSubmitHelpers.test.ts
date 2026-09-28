@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentQueryRequest, PollingEvent } from '../services/api-types'
 import type { ChatTab } from '../stores/useChatStore'
-import { applyAgentProfileBinding, buildAgentProfileChatRequest, remainingWorkflowContextAfterSubmission, withoutOptimisticUserMessage } from './chatSubmitHelpers'
+import { applyAgentProfileBinding, buildAgentProfileChatRequest, offeredProfileReasoningEffort, remainingWorkflowContextAfterSubmission, withoutOptimisticUserMessage } from './chatSubmitHelpers'
 
 describe('one-shot workflow references', () => {
   const hdfc = { presetId: 'hdfc', label: 'HDFC', workspacePath: 'Workflow/HDFC' }
@@ -81,6 +81,17 @@ describe('agent profile query binding', () => {
 
 it('carries a private account into product chat requests',()=>{
  expect(buildAgentProfileChatRequest({query:'hello',connection_id:'account-B'} as Parameters<typeof buildAgentProfileChatRequest>[0],'conversation','codex-cli','gpt-test')).toMatchObject({connection_id:'account-B',engine:'codex-cli'})
+})
+
+it('omits an effort the running product profile does not offer', () => {
+  expect(offeredProfileReasoningEffort([{ id: 'agy-cli', reasoning_efforts: [] }], 'agy-cli', 'high')).toBeUndefined()
+  expect(offeredProfileReasoningEffort([{ id: 'agy-cli', reasoning_efforts: ['low', 'high'] }], 'agy-cli', 'high')).toBe('high')
+})
+
+it('uses the effort baked into the selected AGY model', () => {
+  const options = [{ id: 'agy-cli', provider: 'agy-cli', reasoning_efforts: ['low', 'medium', 'high'] }]
+  expect(offeredProfileReasoningEffort(options, 'agy-cli', 'high', 'gemini-3.8-flash-low')).toBe('low')
+  expect(offeredProfileReasoningEffort(options, 'agy-cli', undefined, 'gemini-3.8-flash-medium')).toBe('medium')
 })
 
 describe('withoutOptimisticUserMessage', () => {
