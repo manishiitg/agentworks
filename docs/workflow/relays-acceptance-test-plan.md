@@ -1,0 +1,48 @@
+# Relays acceptance test plan
+
+Date: 2026-09-28. Run against the isolated `relays-preview` instance only: frontend `5181`, agent API `18841`, workspace API `18842`. Test Relays live in this instance's `Workflow/` directory. Do not use the separate AgentWorks instance.
+
+## Pass criteria
+
+A case passes only after the saved graph or configuration is visible, a real run reaches a terminal state, and the polled API result and execution record match the expected result. A passing unit test alone is not a live pass. Record run IDs and defects below. The product is ready for external use only when all core cases pass and the known gaps at the end have been resolved or explicitly removed from the launch scope.
+
+## Ordered cases
+
+| ID | Case | Expected evidence | Status |
+| --- | --- | --- | --- |
+| R0 | One authored agent, whole JSON input, final JSON output | `hello({"name":"Ada"})` returns `{"message":"Hello, Ada!"}`; `{}` returns world; Graph and trigger visible | Passed 2026-09-28 |
+| R1 | Two authored agents in sequence | Agent 1 JSON is interpolated into agent 2; final JSON and two completed step records | Passed 2026-09-28 |
+| R2 | Strict Python script followed by an agent | Saved `main.py` runs once, agent consumes its output, final JSON matches; script failure stops without agent repair | Passed 2026-09-28; log-label defect below |
+| R3 | Deterministic branch with two routes | Two inputs take different routes, each reaches the same final output agent; unchosen steps do not run | Passed 2026-09-28 |
+| R4 | API contract and failures | Invalid request rejected; missing input path and malformed agent JSON fail visibly; idempotency returns the same run and rejects conflicting reuse | Passed 2026-09-28 |
+| R5 | Schedule and observability | A schedule passes `trigger_payload` as `INPUT`; manual firing produces a durable run and execution log | Passed 2026-09-28; log label issue below |
+| R6 | Builder and UI round trip | Builder chat creates/edits graph and trigger; Graph, Triggers and execution logs reflect saved state after reload | Passed 2026-09-28; stale live graph noted below |
+| R7 | Restart durability | Completed run remains pollable after agent restart; an interrupted in-flight run has an honest recoverable or terminal state | Passed for honest terminal state; resume remains a gap |
+| R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; unauthorized callers cannot access runs | Partially passed; no-route claim checked in config, not live |
+| R9 | Optional integrations | Selected MCP tool/skill, Gmail, Slack, model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
+
+## Live evidence
+
+- R0 Relay: `wf_bb882752` (`Workflow/helloworldtest`). Named run `b28e48e9-a19d-5042-abca-a5205162f7c5` completed with `{"message":"Hello, Ada!"}`. Empty-input run `1195c3ab-e658-5498-a3ab-be8fb2abecc0` completed with `{"message":"Hello, world!"}`. Repeating its idempotency key returned that run with `duplicate: true`.
+- R0 found a Builder template mistake: `{{input.INPUT}}` failed before the agent started. The test graph was corrected to `{{input}}`; runtime support and Builder guidance were added in commit `799548e5b`.
+- R1 Relay: `wf_821fa96e` (`Workflow/relaytestchain`). The visible Graph shows `Normalize name → Compose greeting` and the `chain` trigger. Run `2b351565-295c-5ad5-b835-eb85400d355c` with `{"name":"ada"}` completed with `{"message":"Hello, ADA!","source":"two-agent"}` and step records for `normalize` and `answer`.
+- R2 Relay: `wf_a5a92e2d` (`Workflow/relaytestscript`). The visible Graph shows `Prepare greeting` (script) → `Return greeting` (agent). Run `a63279d8-2f1e-56d3-8a01-d04ad4c822b8` with `{"name":"ada lovelace"}` completed with `{"message":"Hello, Ada Lovelace!","source":"python-script"}`; the in-app Execution Logs pane shows both completed steps. Run `ea89bb5f-f564-58e1-a9f3-458019bd27b8` with `{"name":42}` failed in the saved Python script with `AttributeError` and never started the agent. The run dropdown shows both runs after refreshing the page.
+- R3 Relay: `wf_0fd1c889` (`Workflow/relaytestbranch`). Its Graph in the in-app browser shows `Choose route` with Quick and Deep paths converging on `Final JSON`. Quick run `a9df9366-5cd0-58e5-b4cb-a4e3494dfaff` returned `{"message":"Route quick complete.","route":"quick"}` and only `choose`, `quick_agent`, `answer` step records. Deep run `7e66e043-7aab-5b83-8283-93c4c95fe139` returned `{"message":"Route deep complete.","route":"deep"}` and only `choose`, `deep_agent`, `answer`.
+- R4 on `wf_0fd1c889`: missing required fields and string input returned HTTP 400; unknown function returned 404; unauthenticated run creation returned 401. Repeating key `r4-idem-20260928` returned the same run `3f5d7d93-bef8-563b-85f6-efb068a6dc26` with `duplicate: true`, while reusing it with a different input returned 409. Missing `input.kind` failed run `bf8a8599-d603-5d73-b9c5-a1e990f44e38` with an explicit `input path "input.kind" is missing` error. Separate Relay `wf_d433a5fe` returned plain text `hello`; run `4ede0953-ca5a-5588-9b4a-85b0980a9b6b` failed with `final agent response must be valid JSON`.
+- R5 on `wf_bb882752`: saved enabled cron schedule `73d01adb-a95e-4d0d-911a-f0963a45e04c` (`scheduled_hello`) with `trigger_payload: {"name":"Schedule"}`. Manual firing through `/api/scheduler/jobs/{id}/trigger` produced a scheduler history row with status `success`, run folder `iteration-6-hook`, and final `result.json` of `{"message":"Hello, Schedule!"}`. The in-app Schedules pane shows the schedule and one recorded execution; Execution Logs shows the completed Hello agent and JSON output.
+- R6 Relay `wf_27f22a2f` (`Workflow/relaytestuibuilder`) was created through the visible in-app UI, then the chat Builder authored the `Greeting` agent, `INPUT` variable, output selection, and `greet` function trigger. After page reload, the Graph shows the authored agent, output choice, and trigger. API run `e9ad4997-e37f-5d98-a9ea-d0a11886924a` with `{"name":"UI"}` completed with `{"message":"Hello, UI!"}`; the in-app Execution Logs pane shows the Greeting step. The Builder also reported a successful named-input run with `{"message":"Hello, Ada!"}`.
+- The visible [Builder chat and completed Greeting execution](evidence/relay-ui-builder-run.jpg) were captured in the in-app browser on the isolated preview. The tab is left open on this Relay for inspection.
+- R7 completed-run half: after restarting only the isolated preview servers to load the prompt fix, R3 run `a9df9366-5cd0-58e5-b4cb-a4e3494dfaff` still polled as `completed` with its original JSON result, and R2 failed run `ea89bb5f-f564-58e1-a9f3-458019bd27b8` still polled as `failed`.
+- R7 interrupted-run half on `wf_566e8ca2`: while saved Python was sleeping, graceful preview shutdown made run `b8800a83-b245-593f-a1a3-fe0c5bc9500e` terminal `stopped` with its cancellation reason. Killing the isolated agent process with SIGKILL during another script run and restarting the preview made run `3fbb8128-c3d3-578d-bb45-2e606cf25adc` terminal `interrupted` with `interrupted: server restarted`. Both remained pollable. Neither resumed the interrupted node.
+- R8 checks: an unauthenticated Relay run request returned HTTP 401. `agent_go/internal/relayproduct/product.yaml` declares only Builder chat, its `relay-builder` skill and a scoped tool list; `TestBuilderSurfaceIsRelaySpecific` and Relay server tests passed. The list excludes WhatsApp/chat bot creation tools. A separate live attempt to enter a Crew/AgentWorks chat route through a Relay was not performed.
+
+## Known readiness gaps
+
+- The current Builder prompt explicitly treats immutable publishing, run-scoped browser sessions, and node-boundary crash recovery as unfinished. R7 passes the stated durable-status criterion, but 100% node resume and the browser part of R9 require implementation and live proof.
+- R7 proves durable and honest statuses, but the hard-crashed Python node did not resume. Its API run became terminal `interrupted`; the in-app Execution Logs card showed `Not run` / `0 exec` even though `webhook_progress.json` recorded that step as `running` before the crash. Node recovery and this log projection remain readiness gaps for a 100% resume claim.
+- The R2 failed run's Execution Logs card initially mislabeled `Prepare greeting` **Completed** because the shared status helper ignored the saved script's `success: false` and nonzero exit code. The helper is fixed with a focused test. The in-app browser now shows **Failed run** on that step and `fail · exit=1` in its execution details.
+- The schedule execution above appears as `Webhook` in the shared Execution Logs run picker because timed Relay runs currently use the hook run-folder suffix. The run and payload are correct, but the trigger source label should be corrected.
+- A fresh Relay Builder chat initially failed before its first model turn because the product prompt's literal `{{input}}` example was parsed as a Go template function. The prompt now escapes those examples and a focused render test protects them. The retried Builder completed the graph/trigger, but the empty Graph pane stayed stale during the chat and showed the saved graph only after page reload.
+- External account actions in R9 need dedicated test connections and authorization before sending messages or email.
+
+Update the table and evidence as each case runs. Preserve failing run IDs and the precise error instead of turning an attempted test into a pass.
