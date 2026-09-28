@@ -11,6 +11,12 @@ also go to #qa?". It offers to send that to the owner as a suggestion
 optionally the function or schedule it is about. Nothing about the Crew
 changes, and you do not see other people's suggestions.
 
+From outside AgentWorks, the MCP tool `suggest_crew_change` (or
+`agentworks crews suggest --crew <id> --suggestion "..."`) does the same; it
+needs the `crews:run` permission. Workflows have `suggest_workflow_change`
+(`agentworks functions suggest --workflow <id> --suggestion "..."`), open to
+anyone with access to the workflow, including read-only users.
+
 ## For the owner
 
 The Crew's right pane has a **Suggestions** view (lightbulb icon), with a

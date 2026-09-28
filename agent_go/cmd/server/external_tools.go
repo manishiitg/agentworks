@@ -126,6 +126,11 @@ func externalTools() ([]externalTool, error) {
 			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the outcome before returning a call_id to poll (default 0: return at once; max 25)."},
 		}, "function")
 		addRun("get_workflow_function_call", "Poll a call started with call_workflow_function: status (queued, running, completed, failed), the run outcome, and any error.", false, map[string]any{"call_id": externalString("call_id returned by call_workflow_function.")}, "call_id")
+		addRun("suggest_workflow_change", "Suggest a change to a workflow you can use: what it should do differently. It goes to the workflow owner's decisions panel for review; nothing changes until they act. Available to read-only users.", false, map[string]any{
+			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
+			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
+			"step_id":    map[string]any{"type": "string", "description": "Optional related workflow step ID.", "maxLength": 200},
+		}, "suggestion")
 		addRun("list_executions", "List the workflow's active executions: execution and session IDs, step, status, and run folder.", false, nil)
 		addRun("list_schedules", "List the workflow's schedules: IDs, type, cron or calendar shape, timezone, enabled state, and groups.", false, nil)
 		p = page()
@@ -157,6 +162,11 @@ func externalTools() ([]externalTool, error) {
 		wait := map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the result before returning a call_id to poll (default 0: return at once; max 25, proxies cut requests near 30s)."}
 		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. The Crew does the work in your own continuing conversation with it (never its main chat); the result is validated against the function's result schema. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait}), "crew_id", "function")
 		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. Repeated asks continue one conversation with that Crew, so you can chat with it: it remembers your earlier asks. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait}), "crew_id", "message")
+		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its role, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
+			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
+			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
+			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
+		}), "crew_id", "suggestion")
 		add("get_crew_function_call", "Poll a call started with call_crew_function or ask_crew: status (queued, running, completed, failed), progress reports, and the result or error. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function or ask_crew.")}, "call_id")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
@@ -410,6 +420,16 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "list_step_code" {
 		api.externalListStepCode(w, r, *selected, args)
+		return
+	}
+	if tool.Name == "suggest_workflow_change" {
+		str := func(key string) string { value, _ := args[key].(string); return value }
+		input, err := submitWorkflowSuggestion(r.Context(), GetUserFromContext(r.Context()), selected.WorkspacePath, "", str("suggestion"), str("reason"), str("step_id"))
+		if err != nil {
+			externalError(w, 400, "suggestion_refused", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "workflow_id": selected.Manifest.ID, "suggestion_id": input.ID})
 		return
 	}
 	switch tool.Name {

@@ -16,7 +16,7 @@ import (
 
 var externalCrewTools = map[string]bool{
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
-	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true,
+	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 }
@@ -197,6 +197,15 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	switch name {
 	case "get_crew":
 		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
+	case "suggest_crew_change":
+		// Stored at the owner's physical Crew root, where the owner reviews it.
+		crewPath := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
+		input, err := submitCrewSuggestion(ctx, claims, crewPath, "", str("suggestion"), str("reason"), str("about"))
+		if err != nil {
+			externalError(w, 400, "suggestion_refused", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "call_crew_function", "ask_crew":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
