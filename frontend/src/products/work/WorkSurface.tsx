@@ -58,14 +58,14 @@ const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
-  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
+  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp',
   // Legacy agent + preference ids land on the consolidated Setup views.
   skills: 'mcp', secrets: 'identity', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
-  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations', shell: 'Shell',
+  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations',
   skills: 'Skills', secrets: 'Secrets', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
 }
 
@@ -801,26 +801,22 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
-  // Code's plain shell: owners, co-owners and editors, never viewers.
-  const showShell = product.profileId === 'code' && (!selected?.shared || selected.shared.role === 'editor' || selected.shared.role === 'co_owner')
   const isShared = Boolean(selected?.shared)
   // A Code has no Memory: someone else's Code offers only its files.
   const sharedPanels = product.profileId === 'code' ? SHARED_CODE_WORKSPACE_PANELS : SHARED_CREW_WORKSPACE_PANELS
-  const workspacePanels = useMemo(() => isShared
-    ? (showShell ? new Set([...sharedPanels, 'shell']) : sharedPanels)
-    : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels, showShell])
+  const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
-    if (selected?.shared && !sharedPanels.has(panel) && !(panel === 'shell' && showShell)) return
+    if (selected?.shared && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
     setPanelOpen(true)
     selectWorkspaceView(panel)
-  }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels])
+  }, [selected?.shared, selectWorkspaceView, sharedPanels, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -966,7 +962,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     if (selected?.shared) {
       // Identity is always "enabled", so shared Crews need their own
       // fallback: a stale saved view must land on the inspect surface.
-      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files')
+      if (!sharedPanels.has(workspaceView)) selectWorkspaceView('files')
       return
     }
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
@@ -975,7 +971,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView(product.defaultView)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, sharedPanels, workspaceView])
 
   useEffect(() => {
     if (!selected) return
@@ -1145,7 +1141,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
                     <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
                       <span className="block font-medium text-foreground">Files and a terminal</span>
-                      Your own project folder, an editor, and a shell sandboxed to this workspace.
+                      Your own project folder and a coding agent that works in it, sandboxed to this workspace.
                     </div>
                     <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
                       <span className="block font-medium text-foreground">A coding agent beside you</span>
@@ -1153,7 +1149,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                     </div>
                     <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
                       <span className="block font-medium text-foreground">Private until you share</span>
-                      Add a teammate as viewer, editor or co-owner. Editors get their own shell.
+                      Add a teammate as viewer, editor or co-owner. Each person keeps their own chats.
                     </div>
                   </div>
                   <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
@@ -1245,7 +1241,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
                     </button>
                   ) : null}
-                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} /> : null}
+                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
                   {/* A Code's privacy notice lives in Setup → General and the
@@ -1347,7 +1343,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}
                         shared={sharedWorkspaceOwner}
-                        showShell={showShell}
                         projectLLMConfig={selected.llmConfig}
                         selectedSecrets={selected.selectedSecrets}
                         selectedGlobalSecrets={selected.selectedGlobalSecrets}

@@ -281,8 +281,10 @@ Code ships a basic setup first; integrations come later. In Code's
   Code uses the shared platform MCP servers like a Crew. When built: remote
   (HTTP/SSE) only, never stdio, since a stdio server runs an arbitrary
   command on the server outside the sandbox.
-- **Terminal:** both, the vendor CLI's own terminal (as in Crew today) and a
-  plain shell, in the same sandbox as the shell tool.
+- **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
+  standalone shell panel (user, 2026-09-28; it was built and then removed):
+  commands run through the agent's sandboxed shell tool, under the Code's
+  Folder Guard.
 
 ## To think about
 

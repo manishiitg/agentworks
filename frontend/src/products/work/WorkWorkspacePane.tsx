@@ -10,7 +10,6 @@ import {
   Monitor,
   Route,
   Server,
-  SquareTerminal,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -47,10 +46,9 @@ const AutomationHubPanel = lazy(() => import('../../components/automation/Automa
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
 const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
-const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -68,8 +66,6 @@ const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIc
 
 const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
   { id: 'files', label: 'Files', icon: Files },
-  // Code only: a sandboxed shell in this workspace (see showShell).
-  { id: 'shell', label: 'Shell', icon: SquareTerminal },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'costs', label: 'Costs and usage', icon: DollarSign },
 ]
@@ -118,7 +114,7 @@ function WorkToolbarButton({ active, icon: Icon, label, onClick, badge }: { acti
   return <Tooltip><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent side="bottom"><p>{label}</p></TooltipContent></Tooltip>
 }
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
   const isCode = useProjectProduct().profileId === 'code'
@@ -134,10 +130,9 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
     .filter(item => item.id !== 'suggestions' || hasSuggestions)
   const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions, view)
-  const visibleOps = (readOnly
-    ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
-    : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
-    .filter(item => item.id !== 'shell' || showShell)
+  const visibleOps = readOnly
+    ? opsButtons.filter(item => item.id === 'files')
+    : enabledPanels ? opsButtons.filter(item => enabledPanels.has(item.id)) : opsButtons
   // Setup (identity, integrations) edits owner state, so someone else's
   // Crew offers no setup views at all — not even the always-on identity.
   const visibleSetup = readOnly
@@ -161,7 +156,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           <div className="inline-flex items-center gap-0.5 px-0.5">
             {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
           </div>
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={isCode ? undefined : () => setOpenGroup(current => current === 'ops' ? null : 'ops')} title={isCode ? 'Operations: files, shell, browser and costs' : 'Operations: project files, database and costs'}>
+          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={isCode ? undefined : () => setOpenGroup(current => current === 'ops' ? null : 'ops')} title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open title="Setup: identity and integrations">
@@ -259,7 +254,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared }: { workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const product = useProjectProduct()
   const noun = product.noun
@@ -329,10 +324,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // fallback: a stale saved view or an agent-driven view request must never
   // render an owner-only panel (identity editors, transcripts, usage)
   // for someone else's Crew.
-  if (view === 'shell' && !showShell) {
-    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">The shell needs editor access to this workspace.</div>
-  }
-  if (readOnly && view !== 'memory' && view !== 'files' && view !== 'shell') {
+  if (readOnly && view !== 'memory' && view !== 'files') {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
   }
 
@@ -356,7 +348,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onAsk={async message => { await ask(message) }}
           iconOnly
         />} /></Suspense>)}
-        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><CodeShellPanel projectId={projectId} /></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           projectId={projectId}

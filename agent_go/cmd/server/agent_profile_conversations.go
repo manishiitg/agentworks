@@ -375,9 +375,8 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	// Other crews and workflows that attached this crew stop pointing at it.
 	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
-		// A deleted Code takes its shells and its share list with it.
+		// A deleted Code takes its share list with it.
 		owner := sanitizeUserIDForPath(userID)
-		stopCodeShellsFor(owner, projectID, nil)
 		_ = codeShares.update(context.WithoutCancel(r.Context()), func(doc *codeSharesDoc) error {
 			delete(doc.Projects, codeShareKey(owner, projectID))
 			return nil

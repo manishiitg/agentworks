@@ -11,8 +11,6 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
   if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
-  // Code's plain shell: offered by the surface only to Code editors and up.
-  if (view === 'shell') return true
   if (view === 'mcp') return enabledPanels.has('mcp') || enabledPanels.has('skills') || enabledPanels.has('bots')
   return enabledPanels.has(view)
 }
