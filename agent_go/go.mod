@@ -41,11 +41,8 @@ replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
 
 replace github.com/manishiitg/coding-agent-loop/mcpoauth => ./pkg/mcpoauth
 
-// Local checkouts so in-flight work is exercised before it is tagged. Drop
-// these and bump the pinned versions above once the changes are released.
+// Keep the multi-llm-provider checkout until its in-flight work is tagged.
 replace github.com/manishiitg/multi-llm-provider-go => ../../multi-llm-provider-go
-
-replace github.com/manishiitg/mcpagent => ../../mcpagent
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
