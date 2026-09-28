@@ -11,11 +11,17 @@ This connection reads and runs, like the Slack and WhatsApp run-mode channels: t
 
 ## Connect
 
+It is a standard remote MCP server (streamable HTTP, OAuth sign-in), usable from any MCP client. Add it to the client you are running in, not another one: a Codex agent running `claude mcp add` configures Claude Code, not itself.
+
 ```sh
+# Claude Code
 claude mcp add --transport http agentworks 'https://your-server/api/external/v1/mcp'
+# Codex
+codex mcp add agentworks --url 'https://your-server/api/external/v1/mcp'
+codex mcp login agentworks
 ```
 
-Approve the MCP connection in your browser. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
+Other clients: add the same URL as a remote (streamable HTTP) MCP server. Approve the MCP connection in your browser. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
 
 ## First step
 
