@@ -218,8 +218,15 @@ func landlockSystemReadPaths() []string {
 }
 
 func landlockSystemWritePaths() []string {
+	// Not /tmp: every sandboxed command runs as the same service user, so a
+	// shared /tmp let one user's agent read what another's left there -- on
+	// RTS a Crew's repository clones, and git credentials written through
+	// HOME=/tmp (2026-09-28). Each command gets its own scratch (TMPDIR) and
+	// home instead (see ExecuteIsolated and sandboxToolEnv); only the browser
+	// daemons' socket folder stays shared.
+	_ = os.MkdirAll(browserSocketDir, 0o700)
 	paths := []string{
-		"/tmp",
+		browserSocketDir,
 		"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty",
 	}
 	if profile := browserconfig.SharedProfile(); profile != "" {
