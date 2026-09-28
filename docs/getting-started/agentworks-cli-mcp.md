@@ -1,8 +1,8 @@
 # Connect an AI agent to AgentWorks with MCP
 
-Connect Claude Code, Codex, ChatGPT, Claude Cowork, or another MCP client to
+Connect Claude Code, Codex, Cursor, Muse, ChatGPT, Claude Cowork, or another MCP client to
 `https://your-server/api/external/v1/mcp`. The client signs in through AgentWorks
-OAuth in your browser. Claude Code and Codex can use this HTTP connection directly;
+OAuth in your browser. Terminal AI agents use this HTTP connection directly;
 you do not need to install the AgentWorks CLI for a terminal AI agent.
 
 ```sh
@@ -162,7 +162,21 @@ codex mcp add agentworks --url 'https://your-server/api/external/v1/mcp'
 codex mcp login agentworks
 ```
 
-Both clients approve access through the browser. Existing stdio registrations
+Cursor and Muse read the server from a config file, then sign in:
+
+```sh
+# Cursor: add to ~/.cursor/mcp.json
+#   {"mcpServers": {"agentworks": {"url": "https://your-server/api/external/v1/mcp"}}}
+cursor-agent mcp login agentworks
+
+# Muse: add to ~/.config/muse/settings.json
+#   {"schema_version": 1, "mcpServers": {"agentworks": {"url": "https://your-server/api/external/v1/mcp"}}}
+muse mcp login agentworks
+```
+
+Add AgentWorks to the client you are actually using: `claude mcp add` run from
+another agent configures Claude Code, not that agent. Every client approves
+access through the browser. Existing stdio registrations
 using `agentworks mcp serve` continue to work, but new setups do not need them.
 
 Example request:

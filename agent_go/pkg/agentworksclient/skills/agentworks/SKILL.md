@@ -19,6 +19,10 @@ claude mcp add --transport http agentworks 'https://your-server/api/external/v1/
 # Codex
 codex mcp add agentworks --url 'https://your-server/api/external/v1/mcp'
 codex mcp login agentworks
+# Cursor: add {"mcpServers": {"agentworks": {"url": "<url>"}}} to ~/.cursor/mcp.json, then
+cursor-agent mcp login agentworks
+# Muse: add the same mcpServers entry to ~/.config/muse/settings.json, then
+muse mcp login agentworks
 ```
 
 Other clients: add the same URL as a remote (streamable HTTP) MCP server. Approve the MCP connection in your browser. Its scopes allow reading (`workflows:read`, `files:read`) and running (`runs:execute`) workflows the account can access, reading (`crews:read`), asking or calling (`crews:run`), and creating and editing (`crews:write`) its Crews. The remote MCP surface has `get_api_spec` to discover available tool names and schemas, then `call_tool` to invoke one by name. Unavailable tools are omitted from the catalog.
