@@ -15,8 +15,6 @@ type LandlockPolicy struct {
 	// BrowserScoped: the command's own browser socket folder and profile are
 	// in WritePaths, so the shared browser folders are not granted.
 	BrowserScoped bool `json:"browser_scoped,omitempty"`
-	// AllowPTY: an interactive shell may open terminal devices.
-	AllowPTY bool `json:"allow_pty,omitempty"`
 	// ReadOnlyOverlays are blocked-write paths inside a writable path.
 	// Landlock rules only add access, so it cannot take write back from a
 	// subpath; the launcher bind-mounts each one read-only in its own mount

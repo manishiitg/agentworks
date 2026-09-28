@@ -95,7 +95,7 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", AllowPTY: iso.AllowPTY, ReadOnlyOverlays: overlays}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", ReadOnlyOverlays: overlays}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {

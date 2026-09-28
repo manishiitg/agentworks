@@ -99,13 +99,6 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return err
 		}
 	}
-	if policy.AllowPTY {
-		for _, path := range existingCanonicalPaths([]string{"/dev/ptmx", "/dev/pts"}) {
-			if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
-				return err
-			}
-		}
-	}
 
 	if err := os.Chdir(policy.WorkDir); err != nil {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: enter working directory: %w", err)

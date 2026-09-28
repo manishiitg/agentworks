@@ -52,9 +52,6 @@ type Isolator struct {
 	// browser's socket folder and profile (see scopeBrowser); when empty it
 	// keeps the shared browser grants.
 	BrowserSession string
-	// AllowPTY grants the terminal devices (/dev/ptmx, /dev/pts) an
-	// interactive shell needs. Never set for ordinary commands.
-	AllowPTY bool
 }
 
 const defaultBaseDir = "/app/workspace-docs"
