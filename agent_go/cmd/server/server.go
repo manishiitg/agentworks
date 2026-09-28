@@ -5624,7 +5624,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		toolGate := newProductToolGate(resolvedProfile)
 		relayChat := false
 		if isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
-			manifest, found, manifestErr := ReadWorkflowManifest(r.Context(), workflowPhaseFolder)
+			// /api/query acknowledges before this worker finishes; the HTTP request
+			// context is already canceled here. Match the workflow setup reads above.
+			manifest, found, manifestErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder)
 			if manifestErr != nil {
 				sendError(fmt.Sprintf("Failed to read workflow manifest: %v", manifestErr), true)
 				return
