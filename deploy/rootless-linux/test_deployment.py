@@ -9,7 +9,7 @@ REPO = ROOT.parents[1]
 
 class SharedRootlessDeploymentTest(unittest.TestCase):
     def test_products_only_define_configuration_and_assets(self):
-        for product in ("confida", "sparkquill"):
+        for product in ("confida", "sparkquill", "agents"):
             directory = ROOT / "products" / product
             with self.subTest(product=product):
                 self.assertTrue((directory / "product.env").is_file())
