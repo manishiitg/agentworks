@@ -69,3 +69,18 @@ The Codex browser tool rejected reopening its pre-existing crashed tab with: “
 ## Release boundary
 
 This plan validates a single-user loopback alpha. Team internet testing needs individual sign-in and durable governance storage. A separate reverse proxy can expose a loopback listener without the gateway knowing, so none is used in this run.
+
+## Full pre-merge pass (2026-09-28, PR #228 at `9c262770c`)
+
+| Scope | Result | Evidence |
+| --- | --- | --- |
+| Gateway | Pass | `go test -race ./...` and `go vet ./...` in `mcp-gateway`. Includes OAuth, grants, denial, revocation, PII, audit, connector races, and paginated discovery. |
+| Live upstream | Pass | `GATEWAY_LIVE_TEST=1 go test ./e2e -run TestM0LiveContext7 -v -count=1`: two Context7 tools discovered; approved resolver call succeeded. |
+| OAuth module | Pass | `go test ./...` and `go vet ./...` in `agent_go/pkg/mcpoauth`. |
+| Frontend | Pass | Full Vitest run: 389 files and 2,192 tests passed, one skipped. `npm run build` passed all catalog checks, TypeScript, Vite build, release assets, and enforced bundle budget. Eager JS was 959.29 kB gzip, above the 950 kB warning threshold and below the 1,030 kB limit. |
+| Agent Go PR paths | Pass | The exact CI topology matrix and focused OAuth/external MCP server tests passed locally. The nested `mcpbridge` build now uses a temporary workspace with the resolved provider dependency; the corresponding GitHub deterministic-contract job passed after this fix. |
+| Agent Go broad suite | Failed outside changed paths | `go test ./... -timeout 5m` failed in unchanged server catalog, provider-key, and prompt-size tests, unchanged browser anonymous-capture test, and unchanged workflow model-default test. The provider checkout returns Claude Opus 5.5 and GPT-6 Sol builder defaults while the test expects Sonnet 5 and GPT-6 Astra. These failures are not counted as gateway passes. |
+| Agent Go vet | Failed outside changed paths | `go vet ./...` reports a missing `cancel()` on one path in unchanged `message_sequence_stop_test.go`. |
+| Browser visual walkthrough | Blocked | The Codex in-app browser previously refused reopening its crashed local tab under URL policy. B1-B6 remain unverified visually; API and component tests cover their underlying paths. |
+
+The broad-suite failures and browser gap mean this is not a clean full-product test pass. Keep PR #228 unmerged until the desired merge gate is clear and the visual walkthrough has been completed.
