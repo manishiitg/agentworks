@@ -197,6 +197,27 @@ func TestScheduleStateLockKeyFromRuntimeKey(t *testing.T) {
 	}
 }
 
+// A Pulse fix run holds the Pulse lock, not the workflow's schedule lock: a
+// real schedule that comes due while Pulse repairs the workflow still starts
+// (salesoutreach/upwork/social-media lost runs to fix runs, 2026-09-26/28).
+func TestPulseFixRunDoesNotHoldTheWorkflowScheduleLock(t *testing.T) {
+	workflow := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "daily-send"}}
+	fix := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: pulseFixRunScheduleID}}
+	pulse := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: manualWorkflowPulseScheduleID}}
+	_, _, workflowKey := scheduleStateScope(workflow)
+	_, _, fixKey := scheduleStateScope(fix)
+	_, _, pulseKey := scheduleStateScope(pulse)
+	if fixKey == workflowKey {
+		t.Fatalf("a Pulse fix run took the workflow schedule lock %q", workflowKey)
+	}
+	if fixKey != pulseKey {
+		t.Fatalf("fix runs and scheduled Pulse must share the one-Pulse-per-workflow lock: %q vs %q", fixKey, pulseKey)
+	}
+	if got := scheduleStateLockKeyFromRuntimeKey(workflowScheduleRuntimeKey("Workflow/demo", pulseFixRunScheduleID)); got != pulseKey {
+		t.Fatalf("runtime-key mapping for a fix run = %q, want %q", got, pulseKey)
+	}
+}
+
 func TestScheduleStateScopeUsesIndependentParallelLane(t *testing.T) {
 	sequential := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "growth"}}
 	parallel := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{

@@ -134,7 +134,7 @@ func scheduleStateLockKeyFromRuntimeKey(runtimeKey string) string {
 	if len(parts) < 3 || parts[0] != "workflow" {
 		return runtimeKey
 	}
-	if parts[2] == manualWorkflowPulseScheduleID {
+	if parts[2] == manualWorkflowPulseScheduleID || parts[2] == pulseFixRunScheduleID {
 		return strings.Join([]string{"workflow-pulse", parts[1]}, scheduleScopeSeparator)
 	}
 	return strings.Join(parts[:2], scheduleScopeSeparator)
@@ -149,7 +149,11 @@ func scheduleStateScope(sctx *ScheduleContext) (scopeType, scopeID, lockKey stri
 			}
 			return "workflow", scopeID, strings.Join([]string{"workflow-hook", scopeID, sctx.Schedule.ID}, scheduleScopeSeparator)
 		}
-		if sctx.Schedule.ID == manualWorkflowPulseScheduleID {
+		// Pulse runs, scheduled and fix runs alike, hold their own lock: one
+		// Pulse at a time per workflow, in parallel with the workflow's own
+		// schedules, never blocking them. Fix runs used to take the workflow
+		// lock and refuse real schedules that came due while they ran.
+		if sctx.Schedule.ID == manualWorkflowPulseScheduleID || sctx.Schedule.ID == pulseFixRunScheduleID {
 			return "workflow", scopeID, strings.Join([]string{"workflow-pulse", scopeID}, scheduleScopeSeparator)
 		}
 		if scheduleAllowsParallel(sctx.Schedule) {
