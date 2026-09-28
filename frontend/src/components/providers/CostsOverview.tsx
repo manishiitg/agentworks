@@ -6,6 +6,7 @@ import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
+import { AccountCostList } from './AccountCosts'
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -193,6 +194,14 @@ export default function CostsOverview() {
           </div>
 
           <CostExplorer data={data} days={days} itemLabel={itemLabel} />
+
+          {(data.by_account?.length ?? 0) > 0 && (
+            <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+              <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">By account</summary>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Cost per provider and the account each turn ran on. Expand an account to see where it was used and by whom.</p>
+              <div className="mt-3"><AccountCostList providers={data.by_account ?? []} /></div>
+            </details>
+          )}
 
           {providerRows.length > 0 && (
             <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">

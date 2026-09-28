@@ -1,5 +1,6 @@
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
+import ProductDefaults from './ProductDefaults'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
@@ -12,6 +13,7 @@ import {
   Gauge,
   Loader2,
   RefreshCw,
+  Settings2,
   ShieldCheck,
   Terminal,
   X,
@@ -45,6 +47,10 @@ const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
   'cursor-cli': '/provider-icons/cursor.svg',
   'pi-cli': '/provider-icons/pi.svg',
 }
+
+// Signing in here replaces the login everyone on the server uses; say so.
+const serverSignInLabel = (provider: ProviderManifestEntry) =>
+  `Sign in the server's shared ${PROVIDER_SIDEBAR_NAMES[provider.id] || provider.display_name} login (used by everyone allowed below)`
 
 type ProviderStatus = 'ready' | 'auth' | 'missing' | 'deprecated'
 
@@ -194,7 +200,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [view, setView] = useState<'provider' | 'costs'>('provider')
+  const [view, setView] = useState<'provider' | 'costs' | 'defaults'>('provider')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guidedSession, setGuidedSession] = useState<ProviderSetupSession | null>(null)
@@ -384,10 +390,27 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-gray-400 ${view === 'costs' ? 'text-violet-500' : ''}`} />
                 </div>
               </button>
+              <button
+                type="button"
+                onClick={() => setView('defaults')}
+                aria-pressed={view === 'defaults'}
+                className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                  view === 'defaults'
+                    ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800'
+                    : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'
+                }`}
+              >
+                <div className="flex min-h-6 items-center gap-2">
+                  <Settings2 aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">Product defaults</span>
+                  <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-gray-400 ${view === 'defaults' ? 'text-violet-500' : ''}`} />
+                </div>
+              </button>
             </aside>
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               {view === 'costs' && <CostsOverview />}
+              {view === 'defaults' && <ProductDefaults providers={orderedProviders} isAdmin={!isMultiUserMode || isAdmin} />}
 
               {view === 'provider' && !loading && orderedProviders.length === 0 && !error && (
                 <div className="flex h-full items-center justify-center text-sm text-gray-500">No coding providers are available.</div>
@@ -405,7 +428,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                     </div>
                   </div>
 
-                  <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} />
+                  <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} />
 
                   {selectedProvider.deprecated && selectedProvider.deprecation_reason && (
                     <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
@@ -520,7 +543,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                               >
                                 {guidedStarting === 'authenticate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
-                                {selectedProvider.id === 'pi-cli' ? 'Manage provider logins' : 'Change sign-in'}
+                                {selectedProvider.id === 'pi-cli' ? 'Manage provider logins' : serverSignInLabel(selectedProvider)}
                               </button>
                               <button
                                 type="button"
@@ -585,7 +608,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                           {guidedStarting === 'authenticate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
                           {selectedProvider.id === 'pi-cli'
                             ? (selectedProvider.auth_configured ? 'Manage connections' : 'Connect a provider')
-                            : (selectedProvider.auth_configured ? 'Sign in again' : 'Start sign-in')}
+                            : serverSignInLabel(selectedProvider)}
                         </button>
                       ) : (
                         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">An administrator must authenticate providers on this server.</p>

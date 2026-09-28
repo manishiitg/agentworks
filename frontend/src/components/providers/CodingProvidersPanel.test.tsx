@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../services/llm-config-api', () => ({
-  llmConfigService: { getProviderManifest: vi.fn(), getProviderModels: vi.fn(), startProviderSetup: vi.fn(), cancelProviderSetup: vi.fn(), getProviderConnections: vi.fn() },
+  llmConfigService: { getProviderManifest: vi.fn(), getProviderModels: vi.fn(), startProviderSetup: vi.fn(), cancelProviderSetup: vi.fn(), getProviderConnections: vi.fn(), getProviderAccountCosts: vi.fn(async () => ({ providers: [] })), getProductDefaults: vi.fn(async () => ({})), setProductDefaults: vi.fn() },
+  providerApiErrorText: (_error: unknown, fallback: string) => fallback,
 }))
 vi.mock('../../stores/useAuthStore', () => ({
   useAuthStore: (selector: (state: { isMultiUserMode: boolean; user: null }) => unknown) => selector({ isMultiUserMode: false, user: null }),
@@ -132,7 +133,7 @@ describe('CodingProvidersPanel', () => {
 
       await act(async () => Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.includes('Codex'))!.click())
       expect(dialog.textContent).toContain('Authentication detected via Codex home')
-      expect(dialog.textContent).toContain('Change sign-in')
+      expect(dialog.textContent).toContain("Sign in the server's shared Codex login (used by everyone allowed below)")
       expect(dialog.textContent).toContain('Open terminal')
       expect(dialog.textContent).toContain('Check usage')
       expect(dialog.textContent).toContain('Type /status')
@@ -184,7 +185,7 @@ describe('CodingProvidersPanel', () => {
     try {
       await act(async () => root.render(<CodingProvidersPanel isOpen onClose={vi.fn()} />))
       await act(async () => Promise.resolve())
-      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Change sign-in'))!.click())
+      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes("Sign in the server's shared"))!.click())
       await act(async () => Promise.resolve())
 
       const replaceButton = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('End existing session and start new'))
@@ -250,7 +251,7 @@ describe('CodingProvidersPanel', () => {
       await act(async () => refresh.click())
       await act(async () => Promise.resolve())
 
-      expect(dialog.textContent).toContain('Start sign-in')
+      expect(dialog.textContent).toContain("Sign in the server's shared")
       expect(dialog.textContent).toContain('No SSH or direct server access is required')
     } finally {
       await act(async () => root.unmount())

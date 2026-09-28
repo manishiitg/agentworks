@@ -234,4 +234,36 @@ describe('workflow account tree', () => {
       expect(persist).not.toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
+
+  it('asks for accounts usable at this path, groups them, and keeps a no-longer-usable selection visible', async () => {
+    storeState.providerManifest = [provider({})]
+    vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+      { id: 'global:claude-code', provider: 'claude-code', display_name: 'Server account', scope: 'global', auth_method: 'server', relation: 'server', kind: 'installed', usable: true },
+      { id: 'own-a', provider: 'claude-code', display_name: 'Mine', scope: 'user', auth_method: 'api_key', relation: 'own', usable: true },
+      { id: 'dana', provider: 'claude-code', display_name: 'Dana team', scope: 'user', auth_method: 'api_key', relation: 'shared_with_workflow', owner_name: 'Dana', usable: true, native_tools_off: true },
+      { id: 'erin', provider: 'claude-code', display_name: 'Erin old', scope: 'user', auth_method: 'api_key', relation: 'shared_with_you', owner_name: 'Erin', usable: false },
+      { id: 'frank', provider: 'claude-code', display_name: 'Frank hidden', scope: 'user', auth_method: 'api_key', relation: 'shared_with_you', owner_name: 'Frank', usable: false },
+      { id: 'admin-only', provider: 'claude-code', display_name: 'Other person', scope: 'user', auth_method: 'api_key', relation: 'admin_view', usable: false },
+    ])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host); const persist = vi.fn()
+    try {
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="Workflow/research" llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: 'claude-code', connection_id: 'erin' }} onChange={vi.fn()} onUseProvider={persist} />))
+      await act(async () => Promise.resolve())
+      expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ workspacePath: 'Workflow/research', product: undefined })
+      const tree = host.querySelector('[aria-label="Claude Code accounts"]')!
+      expect(tree.textContent).toContain('Shared with this workflow')
+      expect(tree.textContent).toContain('Dana team')
+      expect(tree.textContent).toContain('Native tools off')
+      expect(tree.textContent).toContain('Erin old')
+      expect(tree.textContent).toContain('No longer available here')
+      expect(tree.textContent).not.toContain('Frank hidden')
+      expect(tree.textContent).not.toContain('Other person')
+      expect(host.querySelector<HTMLButtonElement>('[aria-label="Use Claude Code account Erin old"]')?.disabled).toBe(true)
+      expect(host.textContent).toContain('Account unavailable')
+      expect(persist).not.toHaveBeenCalled()
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Use Claude Code account Dana team"]')?.click())
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude-code', connection_id: 'dana' }))
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
 })

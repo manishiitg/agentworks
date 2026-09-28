@@ -19,6 +19,8 @@ import (
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
@@ -558,6 +560,16 @@ func TestProviderAccountsProductDefaults(t *testing.T) {
 	}
 	if defaults != 1 {
 		t.Fatalf("want exactly one default engine: %+v", profile.Runtime.ProviderOptions)
+	}
+	// The real Code and Crew profiles still register with a default engine
+	// they did not list.
+	for _, builtin := range append(codeproduct.BuiltinAgentProfiles(), workproduct.BuiltinAgentProfiles()...) {
+		builtin.Product = builtin.ID
+		value := productDefault{Provider: "muse-cli", Model: "muse-1"}
+		applyProductDefaultToProfile(&builtin, value, true)
+		if err := agentprofiles.NewRegistry().RegisterProfile(builtin); err != nil {
+			t.Fatalf("%s with an installation default does not register: %v", builtin.ID, err)
+		}
 	}
 
 	// Pinned products are read-only; members cannot edit; a default must be

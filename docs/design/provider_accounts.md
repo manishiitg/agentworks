@@ -1,6 +1,7 @@
 # Provider accounts: installed, private and shared
 
-Status: design, for the owner's review. Not built.
+Status: built on branch `feat/provider-accounts` (not merged, not deployed).
+See "Implementation notes" at the end.
 
 A provider is a coding CLI (Claude Code, Codex, Cursor, Muse, Pi, agy). An
 account is whose login or key that CLI runs as. This design makes every
@@ -253,3 +254,108 @@ provider and account.
    part 2); until then native tools would read other users' trees and every
    account's login files. Once CLIs are confined, the "shared accounts run
    MCP-only for others" rule above is dropped.)*
+
+## Implementation notes
+
+Built on branch `feat/provider-accounts` (2026-09-28).
+
+### What was built
+
+- **Installation policy.** `AGENTWORKS_PROVIDER_POLICY` per provider:
+  `available_to` is `all`, `admins`, or `{admins, products, users}`
+  (products: `agentworks`/`workflows`, `work`/`crews`, `code`; users: email,
+  username or user ID). An entry may add `"pinned": true`. An absent policy
+  or provider means everyone (today's behaviour). A broken policy stops the
+  server at start.
+- **Admin "Available to".** Admins change any server account's "Available
+  to" on the Providers page (`PATCH /api/provider-connections/global:<p>`,
+  stored in `config/provider-account-settings.json`); `null` returns to the
+  installation policy. A pinned entry is read-only (409). A change that
+  would take a provider away from a product whose default uses it is
+  refused.
+- **Product defaults.** `AGENTWORKS_PRODUCT_DEFAULTS` (`provider`, `model`,
+  optional `account` = `global:<provider>`, optional `pinned`). Checked at
+  start against the provider's policy. Admins change unpinned products
+  (`GET/PUT /api/provider-accounts/product-defaults`). Applied where new
+  items read their model: `primary_config` and `product_defaults` in
+  `/api/llm-config/defaults` (workflows), the default engine of the Crew
+  and Code profiles (profile listing and server-side Crew creation). The
+  installation default is added to a profile's engines at registration if
+  the product did not list it; an admin default must be an engine the
+  product offers.
+- **User accounts and sharing.** `sharing: {mode, workflows, crews, users}`
+  on each stored account (workflow IDs, Crew roots, user IDs). Only the owner
+  or an admin edits sharing, re-signs or removes; sharing may only name
+  workflows, Crews and people the owner can see
+  (`GET /api/provider-connections/share-targets`). Removing an account also
+  deletes its HOME (login files).
+- **Admission on every turn.** `connectionAPIKeys(ctx, providerAccountScope,
+  provider, id)` applies the table above. The resolver attached by
+  `withConnectionResolver(keys, scope)` runs at every model init; a model
+  that names no account goes through the same check for the server account
+  (`llmguard.WithServerAccountAdmission`, applied in `pkg/agentwrapper` and
+  the two orchestrator init sites). `/api/query` re-checks before a retained
+  CLI gets live input, and `/sessions/{id}/live-input` re-checks too.
+  Denials say "this account is no longer available to <workflow / Crew /
+  this Code>" and never fall back.
+- **Native tools.** A turn on a user account the principal does not own
+  runs MCP-only (`providerAccountForcesMCPOnly`, applied in `handleQuery`
+  to the profile's agent-tools mode and the workflow "Native agent tools"
+  switch). Workflow steps and sub-agents were already MCP-only.
+- **Usage.** Owners and admins run `usage` on any account in its own HOME.
+  Someone else (shared account, or the server account for a non-admin) may
+  run usage only for Claude Code, whose usage terminal has every tool off.
+- **Cost.** Every ledger entry records `account_id` (`global:<provider>` or
+  a user account ID; empty on older rows = "Unrecorded account").
+  `GET /api/provider-accounts/costs` and `by_account` in `/api/cost/overview`
+  give provider → account → (work, person). Admins see everything, an
+  account's owner its full split, everyone else their own share.
+- **UI.** Providers page: server accounts with Installed / Admin-configured
+  badge, source, "Available to" (admin edit), per-account Usage, sharing
+  editor and warning, "Shared with you", product defaults, cost by account.
+  The model picker lists only accounts usable for the workflow / Crew / Code
+  being edited.
+
+### File map
+
+- `agent_go/cmd/server/provider_accounts.go`: policy, admin settings,
+  product defaults, run scope, admission, sharing validation, MCP-only rule.
+- `agent_go/cmd/server/provider_account_routes.go`: account list / add /
+  edit / remove, server-account "Available to", share targets, product
+  defaults API.
+- `agent_go/cmd/server/provider_account_defaults.go`: product defaults on
+  profiles.
+- `agent_go/cmd/server/provider_account_costs.go`: cost per provider and
+  account.
+- `agent_go/cmd/server/provider_connections.go`: credentials, account HOME,
+  resolver.
+- `agent_go/cmd/server/provider_setup.go`: who may open a setup / usage
+  terminal on which account.
+- `agent_go/pkg/llmguard/llmguard.go`: `WithServerAccountAdmission`.
+- `agent_go/pkg/costledger`, `agent_go/pkg/costobserver`: `account_id`.
+- Frontend: `frontend/src/components/providers/*` and
+  `frontend/src/components/workflow/WorkflowLLMConfigurationPanel.tsx`.
+- Tests: `agent_go/cmd/server/provider_accounts_e2e_test.go` (tests 1-7).
+
+### Known gaps
+
+- One server account per provider. A product default's `account` can only
+  be `global:<provider>`; there are no extra named admin accounts.
+- The server account's source does not show the CLI login's email; the
+  status comes from the existing inspect action.
+- Usage of someone else's account is Claude Code only (see above), a
+  narrower rule than "everyone who can use it", because the Codex and Muse
+  usage terminals can read the account's login files.
+- Crew Run mode lets every user with the Crew product chat with any Crew,
+  so an account shared with a Crew reaches all of them.
+- Test 4 checks the MCP-only decision and the turn's account lookup, not a
+  live coding-CLI turn. The live part of test 7 is skipped unless
+  `AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME` points at a HOME with a Muse login.
+- Admission reads the account registry and the settings file from the
+  workspace on each model init and fails closed if the read fails.
+- Tool-cost ledger rows (paid tools) have no account.
+- The UI creates a new workflow without a model, so a workflow with no saved
+  model follows the current workflows default at run time instead of a
+  copied one. Crew and Code copy their profile's default engine at creation.
+- The model picker's optional `product` prop is not passed by callers yet;
+  the server works out the product from `workspace_path`.

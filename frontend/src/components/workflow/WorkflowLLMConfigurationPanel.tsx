@@ -1,4 +1,4 @@
-import ProviderAccounts from '../providers/ProviderAccounts'
+import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountRelation, accountUsable } from '../providers/ProviderAccounts'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
@@ -95,6 +95,8 @@ type WorkflowLLMConfigurationPanelProps = {
   /** Product-profile bindings remain authoritative under the deployment-wide
    * workflow/chat lock, matching the server's agent-profile resolution. */
   configurationSource?: 'agent_profile'
+  /** Product the settings belong to (agentworks, work, code) when the path alone does not say. */
+  product?: string
 }
 
 const hasOptions = (options?: Record<string, unknown>) => Boolean(options && Object.keys(options).length > 0)
@@ -168,6 +170,7 @@ export default function WorkflowLLMConfigurationPanel({
   showModelsPerRole = true,
   readOnlyReason,
   configurationSource,
+  product,
 }: WorkflowLLMConfigurationPanelProps) {
   const {
     availableLLMs,
@@ -248,13 +251,20 @@ export default function WorkflowLLMConfigurationPanel({
  const [privateConnections,setPrivateConnections]=useState<import("../../services/llm-config-api").ProviderConnection[]>([])
   useEffect(() => {
     let cancelled = false
-    const refreshAccounts = () => { void llmConfigService.getProviderConnections().then(records => {
-      if (!cancelled) {setAccountRecords(records);setPrivateProviderIds(records.filter(record => record.scope === 'user').map(record => record.provider));setPrivateConnections(records.filter(record=>record.scope==='user'))}
+    // Ask for the accounts usable here: the server decides from the
+    // workflow, Crew or Code path (and product) which ones this person may pick.
+    const refreshAccounts = () => { void llmConfigService.getProviderConnections(workspacePath || product ? { workspacePath, product } : undefined).then(records => {
+      if (!cancelled) {
+        const userAccounts = records.filter(record => record.scope === 'user' && accountRelation(record) !== 'admin_view')
+        setAccountRecords(records)
+        setPrivateProviderIds(userAccounts.filter(accountUsable).map(record => record.provider))
+        setPrivateConnections(userAccounts)
+      }
     }).catch(() => undefined) }
     refreshAccounts()
     window.addEventListener('provider-connections-changed', refreshAccounts)
     return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refreshAccounts) }
-  }, [])
+  }, [workspacePath, product])
 
   const providerIsReadyForUse = useCallback((row: ProviderRow) => {
     const status = providerStatus(row.entry, isProviderLocked(row.id))
@@ -440,10 +450,15 @@ export default function WorkflowLLMConfigurationPanel({
   const selectedConnectionID = llmConfig?.mode === 'provider_profile'
     ? llmConfig.connection_id
     : llmConfig?.builder_llm?.connection_id || llmConfig?.connection_id
-  const selectedPrivateAccount = selectedConnectionID && !selectedConnectionID.startsWith('global:')
+  // The selected user account, usable here or not (kept for its name).
+  const selectedAccountRecord = selectedConnectionID && !selectedConnectionID.startsWith('global:')
     ? privateConnections.find(record => record.id === selectedConnectionID && record.provider === selectedProfile?.provider)
     : undefined
-  const selectedAccountUnavailable = Boolean(selectedConnectionID && !selectedConnectionID.startsWith('global:') && !selectedPrivateAccount)
+  const selectedPrivateAccount = selectedAccountRecord && accountUsable(selectedAccountRecord) ? selectedAccountRecord : undefined
+  const selectedServerRecord = selectedConnectionID?.startsWith('global:') ? accountRecords.find(record => record.id === selectedConnectionID) : undefined
+  const selectedAccountUnavailable = Boolean(selectedConnectionID && (selectedConnectionID.startsWith('global:')
+    ? selectedServerRecord?.usable === false
+    : !selectedPrivateAccount))
   // Role defaults to compare against / reset to. For a pi backend that's the
   // backend's model for every role; otherwise the provider profile's manifest
   // defaults.
@@ -462,7 +477,7 @@ export default function WorkflowLLMConfigurationPanel({
     if (!row.selectable) return null
     if (!accountID && row.entry.integration_kind === 'coding_agent' && !providerIsReadyForUse(row)) return null
     const existingID=llmConfig?.provider===row.entry.id ? llmConfig.connection_id : llmConfig?.builder_llm?.provider===row.entry.id ? llmConfig.builder_llm.connection_id : undefined
- const personal=privateConnections.find(record=>record.provider===row.entry.id && (!row.groupFilter || row.modelId?.startsWith(record.underlying_provider+"/")))
+ const personal=privateConnections.find(record=>record.provider===row.entry.id && accountRelation(record)==='own' && accountUsable(record) && (!row.groupFilter || row.modelId?.startsWith(record.underlying_provider+"/")))
  const connection_id=accountID || existingID || (!row.entry.usable ? personal?.id : undefined)
  if (row.groupFilter) {
       const option = piGroupOption(row)
@@ -631,24 +646,50 @@ export default function WorkflowLLMConfigurationPanel({
   }
 
   const renderAccountTree = (row: ProviderRow) => {
-    const global = accountRecords.find(record => record.id === `global:${row.entry.id}`)
-    const accounts = [global || { id: `global:${row.entry.id}`, provider: row.entry.id, display_name: 'Server account', scope: 'global' as const, auth_method: 'server' }, ...privateConnections.filter(record => record.provider === row.entry.id && (!row.groupFilter || row.modelId?.startsWith(`${record.underlying_provider}/`)))]
+    const serverID = `global:${row.entry.id}`
+    const global = accountRecords.find(record => record.id === serverID)
+    const server = global || { id: serverID, provider: row.entry.id, display_name: 'Server account', scope: 'global' as const, auth_method: 'server' }
+    const userAccounts = privateConnections.filter(record => record.provider === row.entry.id && (!row.groupFilter || row.modelId?.startsWith(`${record.underlying_provider}/`)))
     const selectedProvider = selectedRow?.entry.id === row.entry.id && (!row.groupFilter || selectedRow?.groupFilter === row.groupFilter)
-    const activeID = selectedConnectionID || `global:${row.entry.id}`
+    const activeID = selectedConnectionID || serverID
+    // Only accounts usable here are listed; the one this item already uses
+    // stays visible when it is not, so saving never silently switches it.
+    const listed = [server, ...userAccounts].filter(account => accountUsable(account) || (selectedProvider && account.id === activeID))
+    const missingSelected = selectedProvider && !listed.some(account => account.id === activeID)
+    const renderAccount = (account: typeof server | import('../../services/llm-config-api').ProviderConnection, unavailable: boolean) => {
+      const inUse = selectedProvider && activeID === account.id
+      const available = !unavailable && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
+      const relation = accountRelation(account)
+      const note = relation === 'own' ? ('sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private')
+        : relation === 'server' ? 'Server'
+          : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
+      return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">
+        {account.scope === 'global' ? <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" /> : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
+        <span className="min-w-0 break-words text-xs font-medium text-foreground">{account.display_name}</span>
+        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
+        {'native_tools_off' in account && account.native_tools_off && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300" title="Runs on someone else's shared account use AgentWorks tools only">Native tools off</span>}
+        {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
+        {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
+        <span className="min-w-0 flex-1" />
+        <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={unavailable ? NO_LONGER_AVAILABLE : !available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use account'}</Button>
+      </div>
+    }
+    const showHeadings = listed.some(account => accountRelation(account) !== 'server' && accountRelation(account) !== 'own')
     return (
       <div className="ml-5 border-l border-border py-1 pl-3 pr-3">
-        {accounts.map(account => {
-          const inUse = selectedProvider && activeID === account.id
-          const available = row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
-          return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">
-            {account.scope === 'global' ? <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" /> : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
-            <span className="min-w-0 break-words text-xs font-medium text-foreground">{account.display_name}</span>
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{account.scope === 'global' ? 'Shared' : 'Private'}</span>
-            {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
-            <span className="min-w-0 flex-1" />
-            <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={!available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use account'}</Button>
+        {ACCOUNT_GROUPS.map(group => {
+          const accounts = listed.filter(account => group.relations.includes(accountRelation(account)))
+          if (accounts.length === 0) return null
+          return <div key={group.label}>
+            {showHeadings && <div className="pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</div>}
+            {accounts.map(account => renderAccount(account, !accountUsable(account)))}
           </div>
         })}
+        {missingSelected && <div className="flex flex-wrap items-center gap-2 py-2">
+          <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="min-w-0 break-words text-xs font-medium text-foreground">Selected account</span>
+          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>
+        </div>}
         {selectedProvider && selectedAccountUnavailable && <p role="alert" className="py-2 text-xs text-amber-600 dark:text-amber-400">The selected account is unavailable. Choose another configured account or manage accounts in Providers.</p>}
       </div>
     )
@@ -1059,7 +1100,7 @@ export default function WorkflowLLMConfigurationPanel({
           {value ? (
             <>
             <LLMRoleSelector availableLLMs={workflowOptions} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
-            {value?.provider && ["claude-code","codex-cli","cursor-cli","pi-cli","muse-cli"].includes(value.provider) && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly onSelect={connection_id=>updateRole(row.key,{...value,connection_id})} />}
+            {value?.provider && ["claude-code","codex-cli","cursor-cli","pi-cli","muse-cli"].includes(value.provider) && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly workspacePath={workspacePath} product={product} onSelect={connection_id=>updateRole(row.key,{...value,connection_id})} />}
             </>
           ) : (
             <span className="text-xs text-muted-foreground">Select a provider first.</span>
