@@ -36,6 +36,25 @@ var projectSession = regexp.MustCompile(`^(?:[A-Za-z0-9_-]+--)?project-[a-f0-9]{
 
 func IsUserSession(session string) bool { return userSession.MatchString(session) }
 
+// SocketRoot is where agent-browser daemons kept their sockets before each
+// managed browser got its own folder; the global shared browser still does.
+const SocketRoot = "/tmp/.agent-browser"
+
+var managedOwner = regexp.MustCompile(`(workflow|project|session|user|guest|workspace)-([a-f0-9]{16})--browser$`)
+
+// SocketDirForSession is the socket folder of one managed browser: one per
+// workflow, Crew/Code project or session. Sandboxed commands are granted only
+// their own browser's folder, so one owner's agent cannot drive another
+// owner's browser through a shared socket folder. Kept short: a Unix socket
+// path must fit in 103 bytes and agent-browser names it <session>.sock.
+func SocketDirForSession(session string) string {
+	m := managedOwner.FindStringSubmatch(session)
+	if m == nil || !IsUserSession(session) {
+		return SocketRoot
+	}
+	return filepath.Join(SocketRoot, "o", m[1][:1]+m[2])
+}
+
 // ProfilePathForSession returns the persistent Chrome profile directory this
 // session launches with, or "" when no shared profile is configured
 // (session-isolated/ephemeral mode, no --profile flag at all).

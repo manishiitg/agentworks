@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 // ShouldRunGlobalStartupCleanup reports whether singleton startup may clean
@@ -64,8 +66,37 @@ func CleanupStaleRuntimeState() {
 		dirs = append(dirs, tmpABDir)
 	}
 
+	if owners, err := filepath.Glob(filepath.Join(browserconfig.SocketRoot, "o", "*")); err == nil {
+		dirs = append(dirs, owners...)
+	}
 	for _, dir := range dirs {
 		cleanupDir(dir)
+	}
+	closeManagedBrowsersInSharedFolder()
+}
+
+// closeManagedBrowsersInSharedFolder stops managed browsers (one per
+// workflow, project or session) still running from the shared socket folder,
+// left by a release before each got its own folder. Left running, they keep
+// their Chrome profile locked, so the same browser could not start again in
+// its own folder. The next command starts it there with the same profile and
+// logins.
+func closeManagedBrowsersInSharedFolder() {
+	entries, err := os.ReadDir(browserconfig.SocketRoot)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".pid") {
+			continue
+		}
+		session := strings.TrimSuffix(name, ".pid")
+		if !browserconfig.IsUserSession(session) || browserconfig.SocketDirForSession(session) == browserconfig.SocketRoot {
+			continue
+		}
+		log.Printf("[BROWSER_CLEANUP] Closing %s, still running from the shared socket folder", session)
+		killSessionRuntimeFully(session)
 	}
 }
 

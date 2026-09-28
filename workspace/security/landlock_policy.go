@@ -12,6 +12,9 @@ type LandlockPolicy struct {
 	// PrivateTmp: the launcher was started in its own user and mount
 	// namespaces and must give the command a private /tmp (Linux).
 	PrivateTmp bool `json:"private_tmp,omitempty"`
+	// BrowserScoped: the command's own browser socket folder and profile are
+	// in WritePaths, so the shared browser folders are not granted.
+	BrowserScoped bool `json:"browser_scoped,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

@@ -41,6 +41,9 @@ type FolderGuardConfig struct {
 	// to the workspace shell isolator (deny-by-default, optional no-network).
 	StrictAllowlist bool `json:"strict_allowlist,omitempty"`
 	DenyNetwork     bool `json:"deny_network,omitempty"`
+	// BrowserSession scopes the sandbox to this session's own managed browser
+	// (common.SandboxBrowserSession).
+	BrowserSession string `json:"browser_session,omitempty"`
 	// Source is which resolution branch produced this guard (session / ctx / client
 	// fallback). Internal only (never serialized); surfaced in denial logs so a
 	// denied write shows which guard layer decided, without logging every success.

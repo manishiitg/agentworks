@@ -158,7 +158,10 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 
 // privateTmpKeepPaths lists the policy paths under /tmp, outermost only.
 func privateTmpKeepPaths(policy LandlockPolicy) []string {
-	candidates := append(append(append([]string{}, policy.ReadPaths...), policy.WritePaths...), policy.WorkDir, browserSocketDir)
+	candidates := append(append(append([]string{}, policy.ReadPaths...), policy.WritePaths...), policy.WorkDir)
+	if !policy.BrowserScoped {
+		candidates = append(candidates, browserSocketDir)
+	}
 	var under []string
 	for _, path := range candidates {
 		clean := filepath.Clean(path)

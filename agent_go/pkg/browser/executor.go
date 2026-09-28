@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 const cdpTabListTimeout = 15 * time.Second
@@ -790,6 +791,12 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 	if folderGuard != nil && len(folderGuard.ReadPaths) == 0 && len(folderGuard.WritePaths) == 0 {
 		return "", fmt.Errorf("ACCESS DENIED: agent_browser has no granted workspace paths")
+	}
+	if folderGuard != nil {
+		folderGuard.BrowserSession = common.SandboxBrowserSession(agentSessionID)
+		if folderGuard.BrowserSession == "" && workflowSessionID != "" {
+			folderGuard.BrowserSession = common.SandboxBrowserSession(workflowSessionID)
+		}
 	}
 
 	// Execute via client
@@ -1762,6 +1769,11 @@ func sessionDirs() []string {
 	if homeDir == "" || tmpDir != filepath.Join(homeDir, ".agent-browser") {
 		dirs = append(dirs, tmpDir)
 	}
+	// Each managed browser keeps its sockets in its own folder
+	// (browserconfig.SocketDirForSession); the host side must find them all.
+	if owners, err := filepath.Glob(filepath.Join(browserconfig.SocketRoot, "o", "*")); err == nil {
+		dirs = append(dirs, owners...)
+	}
 	return dirs
 }
 
@@ -1977,6 +1989,21 @@ func gracefulCloseSession(session string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "agent-browser", "--session", session, "close", "--json")
+	// Reach the daemon in the folder it actually runs in: a managed browser's
+	// own folder (browserconfig.SocketDirForSession), or the shared one for
+	// browsers started before per-owner folders.
+	for _, dir := range sessionDirs() {
+		if _, err := os.Stat(filepath.Join(dir, session+".pid")); err == nil {
+			env := make([]string, 0, len(os.Environ())+1)
+			for _, kv := range os.Environ() {
+				if !strings.HasPrefix(kv, "AGENT_BROWSER_SOCKET_DIR=") {
+					env = append(env, kv)
+				}
+			}
+			cmd.Env = append(env, "AGENT_BROWSER_SOCKET_DIR="+dir)
+			break
+		}
+	}
 	if err := cmd.Run(); err != nil {
 		log.Printf("[BROWSER] Graceful close failed for %q (%v) — falling back to force kill", session, err)
 		return false

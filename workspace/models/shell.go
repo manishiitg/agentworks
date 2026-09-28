@@ -62,6 +62,11 @@ type FolderGuardConfig struct {
 	StrictAllowlist bool   `json:"strict_allowlist,omitempty"`
 	DenyNetwork     bool   `json:"deny_network,omitempty"`
 	EnforcementMode string `json:"enforcement_mode"` // "strict" | "warn" | "audit"
+	// BrowserSession is the managed browser this command's workflow, Crew or
+	// Code project owns (set by the agent server from the session, never by
+	// the model). The sandbox then grants only that browser's socket folder
+	// and profile instead of every browser's.
+	BrowserSession string `json:"browser_session,omitempty"`
 }
 
 // IsPathBlocked checks if a path is in the blocked paths list
