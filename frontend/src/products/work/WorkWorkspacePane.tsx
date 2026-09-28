@@ -6,6 +6,7 @@ import {
   Files,
   Fingerprint,
   LayoutDashboard,
+  Lightbulb,
   Monitor,
   Route,
   Server,
@@ -43,9 +44,10 @@ const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
+const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'identity' | 'mcp'
+export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string) {
   return sendWorkspacePaneMessageToChat({ profileId: 'work', conversationKey: projectId, message })
@@ -57,6 +59,8 @@ const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIc
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'browser', label: 'Browser', icon: Monitor },
   { id: 'schedules', label: 'Automation', icon: Zap },
+  // Change requests from other users of this Crew; the owner reviews them.
+  { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
 ]
 
 const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
@@ -70,16 +74,39 @@ const SETUP_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideI
   { id: 'mcp', label: 'Integrations', icon: Server },
 ]
 
-function WorkToolbarButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
+// usePendingCrewSuggestions counts suggestions waiting for the owner, for
+// the toolbar badge. Refreshed on view changes and every minute.
+function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view: WorkWorkspaceView): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled || !workspacePath) {
+      setCount(0)
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      agentApi.listReportHumanInputs(workspacePath, 'pending', 'user_suggestion')
+        .then(response => { if (!cancelled) setCount(response.inputs?.length ?? 0) })
+        .catch(() => { if (!cancelled) setCount(0) })
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [workspacePath, enabled, view])
+  return count
+}
+
+function WorkToolbarButton({ active, icon: Icon, label, onClick, badge }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void; badge?: number }) {
   const button = (
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-      aria-label={label}
+      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
+      aria-label={badge ? `${label} (${badge} pending)` : label}
       aria-pressed={active}
     >
       <Icon className="h-3.5 w-3.5" />
+      {!!badge && <span className="absolute -right-1 -top-1 min-w-[14px] rounded-full bg-amber-500 px-1 text-[9px] font-semibold leading-[14px] text-white">{badge > 9 ? '9+' : badge}</span>}
     </button>
   )
   if (active) return button
@@ -89,7 +116,8 @@ function WorkToolbarButton({ active, icon: Icon, label, onClick }: { active: boo
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean }) {
   const visibleViews = readOnly
     ? VIEW_BUTTONS.filter(item => item.id === 'memory')
-    : enabledPanels ? VIEW_BUTTONS.filter(item => enabledPanels.has(item.id)) : VIEW_BUTTONS
+    : enabledPanels ? VIEW_BUTTONS.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : VIEW_BUTTONS
+  const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly, view)
   const visibleOps = readOnly
     ? OPS_BUTTONS.filter(item => item.id === 'files')
     : enabledPanels ? OPS_BUTTONS.filter(item => enabledPanels.has(item.id)) : OPS_BUTTONS
@@ -113,7 +141,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
           <div className="inline-flex items-center gap-0.5 px-0.5">
-            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
           </div>
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={() => setOpenGroup(current => current === 'ops' ? null : 'ops')} title="Operations: project files, database and costs">
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
@@ -364,6 +392,18 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
             iconOnly
           />} />}
+          {view === 'suggestions' && <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <p className="text-xs text-muted-foreground">Changes other people using this Crew asked for. Accepting records your decision; make the change in chat.</p>
+              <AskAIButton
+                workspacePath={workspacePath}
+                message="Look at the accepted suggestions in this Crew's Suggestions view and help me make those changes to the Crew."
+                onAsk={async message => { await sendWorkProjectPaneMessage(projectId, message) }}
+                iconOnly
+              />
+            </div>
+            <ReportHumanInputPanel workspacePath={workspacePath} source="user_suggestion" showEmptyState className="min-h-0 flex-1 overflow-auto p-3" />
+          </div>}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton
             workspacePath={workspacePath}

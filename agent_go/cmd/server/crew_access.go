@@ -248,8 +248,9 @@ func crewReaderSystemPrompt(crewRoot string) string {
 - Mutate nothing: no file, shell, or database writes; no schedule, trigger,
   selection, identity, folder, or bot changes. Mutation tools are not
   available — do not work around their absence, and do not ask the user to
-  run edits on your behalf. If they want changes, explain what the Crew
-  owner would need to do.
+  run edits on your behalf. If they want something changed, offer to send
+  it to the owner with ` + "`" + crewSuggestionToolName + "`" + ` (their request in their words);
+  the owner reviews it in the Crew's Suggestions view.
 - Run operations are allowed: you may invoke the Crew's attached workflow
   triggers when asked. Those execute under their own bindings, and the
   workflow re-checks the user's access before anything runs.

@@ -57,6 +57,13 @@ func requireSuggestionOwner(ctx context.Context, workspace string, input *Report
 		return nil
 	}
 	claims := GetUserFromContext(ctx)
+	// A Crew's suggestions are reviewed by the Crew's owner.
+	if ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), workspace); ok {
+		if claims == nil || claims.Provider == "bot_route" || crewAccessFor(claims, ref) != crewAccessOwner {
+			return fmt.Errorf("only the Crew's owner can review a user suggestion")
+		}
+		return nil
+	}
 	level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
 	if claims == nil || claims.Provider == "bot_route" || manifest == nil || level != WorkflowAccessOwner || !userAllowedWorkflowID(claims, manifest.ID) {
 		return fmt.Errorf("only a workflow owner can review a user suggestion")

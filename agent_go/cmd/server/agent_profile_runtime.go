@@ -700,6 +700,15 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
+	// Someone using another user's Crew can leave its owner a suggestion.
+	if readOnly && activeWorkProject && resolved.Definition.ID == "work" {
+		if ref, ok := resolveCrewPath(context.Background(), userID, workspacePath); ok && ref.OwnerID != sanitizeUserIDForPath(userID) {
+			gate.Declare(crewSuggestionToolName)
+			if err := api.registerCrewSuggestionTool(registrar, userID, sessionID, ref.Root); err != nil {
+				return err
+			}
+		}
+	}
 	if !readOnly && activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "files") {
 		if err := api.registerWorkShareLinkTool(registrar, userID, workspacePath); err != nil {
 			return err
