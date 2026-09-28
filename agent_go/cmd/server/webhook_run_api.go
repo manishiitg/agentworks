@@ -143,6 +143,9 @@ type webhookStepOutput struct {
 	Artifacts []webhookArtifact      `json:"artifacts"`
 }
 type webhookRunResult struct {
+	// SessionID is internal call-routing metadata. Public webhook results must
+	// not expose the assistant session used by the run.
+	SessionID        string                 `json:"-"`
 	ArtifactsExpired bool                   `json:"artifacts_expired,omitempty"`
 	Progress         []webhookProgressEntry `json:"progress"`
 	RunID            string                 `json:"run_id"`
@@ -383,6 +386,7 @@ func readWebhookRunResult(workspacePath string, run schedulerstate.Run) (webhook
 	} else if run.RunFolder != "" && !result.ArtifactsExpired {
 		return webhookRunResult{}, fmt.Errorf("%w: %w", errWebhookRunOutputs, e)
 	}
+	result.SessionID = run.ActiveSessionID
 	return result, nil
 }
 

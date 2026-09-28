@@ -68,10 +68,12 @@ func workflowAskMessage(caller triggerLinkCaller, message string) string {
 // crewFunctionHardCap) and its reply is delivered as a late answer.
 func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTarget, caller triggerLinkCaller, message string, timeout time.Duration) {
 	hardCap := crewFunctionHardCap(timeout)
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
-	defer cancel()
 	manifest := target.Manifest
 	sessionID := workflowAskSessionID(manifest.ID, caller.Stamp)
+	releaseSession := lockExternalAskSession(sessionID)
+	defer releaseSession()
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
+	defer cancel()
 	query := QueryRequest{
 		Query: workflowAskMessage(caller, message), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
 		PresetQueryID: manifest.ID, SelectedFolder: target.Path,

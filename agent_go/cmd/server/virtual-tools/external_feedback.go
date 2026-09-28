@@ -35,10 +35,21 @@ func (s *HumanFeedbackStore) PendingForSession(sessionID string, now time.Time) 
 // store/waiter protocol used by the UI. Checking a public ListPending snapshot
 // before SubmitResponse would race IDs reused by another session.
 func (s *HumanFeedbackStore) SubmitResponseForSession(sessionID, requestID, response string, now time.Time) error {
+	return s.submitResponseForSession(sessionID, requestID, response, now, nil)
+}
+
+// SubmitResponseForSessionCreatedAt also pins the pending request instance.
+// Call-scoped replies first discover a question, then submit it; a request ID
+// reused between those operations must not answer a replacement question.
+func (s *HumanFeedbackStore) SubmitResponseForSessionCreatedAt(sessionID, requestID, response string, now, createdAt time.Time) error {
+	return s.submitResponseForSession(sessionID, requestID, response, now, &createdAt)
+}
+
+func (s *HumanFeedbackStore) submitResponseForSession(sessionID, requestID, response string, now time.Time, createdAt *time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	request := s.requests[requestID]
-	if request == nil || sessionID == "" || request.SessionID != sessionID || request.IsCompleted || (!request.ExpiresAt.IsZero() && !now.Before(request.ExpiresAt)) {
+	if request == nil || sessionID == "" || request.SessionID != sessionID || request.IsCompleted || (createdAt != nil && !request.CreatedAt.Equal(*createdAt)) || (!request.ExpiresAt.IsZero() && !now.Before(request.ExpiresAt)) {
 		return ErrFeedbackNotPending
 	}
 	if !request.AllowFeedback && len(request.Options) > 0 {

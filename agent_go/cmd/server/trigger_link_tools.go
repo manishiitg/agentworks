@@ -221,11 +221,12 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 
 // triggerTargetRunState is one poll of a target run.
 type triggerTargetRunState struct {
-	Terminal bool
-	Failed   bool
-	Status   string
-	Result   string
-	Raw      interface{}
+	Terminal  bool
+	Failed    bool
+	Status    string
+	Result    string
+	SessionID string
+	Raw       interface{}
 }
 
 func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID string) (triggerTargetRunState, error) {
@@ -235,7 +236,7 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 		if err != nil {
 			return triggerTargetRunState{}, crewWorkflowRunError(err)
 		}
-		state := triggerTargetRunState{Terminal: status.Terminal, Status: status.Status, Raw: status}
+		state := triggerTargetRunState{Terminal: status.Terminal, Status: status.Status, SessionID: status.SessionID, Raw: status}
 		state.Failed = status.Terminal && !strings.EqualFold(status.Status, "success")
 		if state.Failed {
 			state.Result = firstNonEmptyTrimmed(status.Error, "no error detail recorded")
@@ -252,7 +253,7 @@ func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string
 		if err != nil {
 			return triggerTargetRunState{}, crewWorkflowRunError(err)
 		}
-		state := triggerTargetRunState{Terminal: result.Terminal, Status: result.Status, Raw: result}
+		state := triggerTargetRunState{Terminal: result.Terminal, Status: result.Status, SessionID: result.SessionID, Raw: result}
 		state.Failed = result.Terminal && (strings.TrimSpace(result.Error) != "" || workflowRunStatusFailed(result.Status))
 		encoded, _ := json.MarshalIndent(map[string]interface{}{"status": result.Status, "error": result.Error, "steps": result.Steps, "run_folder": result.RunFolder}, "", "  ")
 		state.Result = string(encoded)

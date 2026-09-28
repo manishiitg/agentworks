@@ -125,7 +125,8 @@ func externalTools() ([]externalTool, error) {
 			"args":         map[string]any{"type": "object", "description": "Inputs matching the function's input schema."},
 			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the outcome before returning a call_id to poll (default 0: return at once; max 25)."},
 		}, "function")
-		addRun("get_workflow_function_call", "Poll a call started with call_workflow_function: status (queued, running, completed, failed), the run outcome, and any error.", false, map[string]any{"call_id": externalString("call_id returned by call_workflow_function.")}, "call_id")
+		addRun("get_workflow_function_call", "Poll a call started with call_workflow_function: status, outcome, error, and pending_inputs when it needs a human answer. Answer those with reply_function_call_input.", false, map[string]any{"call_id": externalString("call_id returned by call_workflow_function.")}, "call_id")
+		add("reply_function_call_input", "Answer a pending question shown by get_crew_function_call or get_workflow_function_call. The call_id identifies the work and request_id identifies its question; access to the actual target is checked again before submission.", false, false, map[string]any{"call_id": externalString("Call ID returned by ask_crew, call_crew_function, or call_workflow_function."), "request_id": externalString("Request ID from that call's pending_inputs."), "response": externalString("The answer to submit.")}, "call_id", "request_id", "response")
 		addRun("suggest_workflow_change", "Suggest a change to a workflow you can use: what it should do differently. It goes to the workflow owner's decisions panel for review; nothing changes until they act. Available to read-only users.", false, map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
@@ -178,7 +179,7 @@ func externalTools() ([]externalTool, error) {
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
 			"about":      map[string]any{"type": "string", "description": "Optional part of the Crew it concerns, e.g. a function or schedule name.", "maxLength": 200},
 		}), "crew_id", "suggestion")
-		add("get_crew_function_call", "Poll a call started with call_crew_function or ask_crew: status (queued, running, completed, failed), progress reports, and the result or error. Requires crews:read or crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function or ask_crew.")}, "call_id")
+		add("get_crew_function_call", "Poll a call started with call_crew_function or ask_crew: status, progress, result, error, and pending_inputs when it needs a human answer. Answer those with reply_function_call_input. Requires crews:read or crews:run; pending inputs require crews:run.", false, false, map[string]any{"call_id": externalString("call_id returned by call_crew_function or ask_crew.")}, "call_id")
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
@@ -345,6 +346,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "reply_function_call_input" {
+		api.externalReplyFunctionCallInput(w, r, call.Arguments)
 		return
 	}
 	if isExternalCodeReviewTool(tool.Name) {
