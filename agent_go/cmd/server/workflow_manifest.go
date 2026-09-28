@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -995,6 +996,21 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
 		return fmt.Errorf("Relays do not support Pulse")
 	}
+	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
+		return fmt.Errorf("Relays do not support Slack connections")
+	}
+	if m.Kind == "relay" && m.Capabilities.Notifications != nil {
+		notifications := m.Capabilities.Notifications
+		unsupportedChannel := func(channels []string) bool {
+			return slices.ContainsFunc(channels, func(channel string) bool {
+				return strings.EqualFold(strings.TrimSpace(channel), "slack") || strings.EqualFold(strings.TrimSpace(channel), "whatsapp")
+			})
+		}
+		if strings.TrimSpace(notifications.SlackWebhookSecretName) != "" || len(notifications.RunSummarySlackWebhookSecretNames) > 0 || len(notifications.PulseSummarySlackWebhookSecretNames) > 0 ||
+			unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) {
+			return fmt.Errorf("Relays do not support Slack or WhatsApp notification channels")
+		}
+	}
 	if m.Label == "" {
 		return fmt.Errorf("label is required")
 	}
@@ -1179,11 +1195,17 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	for i, sched := range m.Schedules {
-		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
-			return fmt.Errorf("schedules[%d]: Relays support only function triggers", i)
+		if m.Kind == "relay" && !sched.IsFunctionTrigger() && scheduleTypeOrDefault(sched.ScheduleType) != "cron" && scheduleTypeOrDefault(sched.ScheduleType) != "calendar" {
+			return fmt.Errorf("schedules[%d]: Relays support function, cron, or calendar triggers", i)
+		}
+		if m.Kind == "relay" && !sched.IsFunctionTrigger() && len(sched.TriggerPayload) > 0 {
+			var payload map[string]interface{}
+			if err := json.Unmarshal(sched.TriggerPayload, &payload); err != nil || payload == nil {
+				return fmt.Errorf("schedules[%d].trigger_payload must be a JSON object for a Relay", i)
+			}
 		}
 		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) != 1 {
-			return fmt.Errorf("schedules[%d]: a Relay function must select exactly one variable group", i)
+			return fmt.Errorf("schedules[%d]: a Relay trigger must select exactly one variable group", i)
 		}
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)

@@ -91,6 +91,8 @@ type WorkflowLLMConfigurationPanelProps = {
   /** Work selects Pi as one coding CLI, then chooses its model separately. */
   splitPiProviders?: boolean
   showModelsPerRole?: boolean
+  /** Relays expose the Builder choice here; execution models are selected on agent steps. */
+  builderOnly?: boolean
   readOnlyReason?: string
   /** Product-profile bindings remain authoritative under the deployment-wide
    * workflow/chat lock, matching the server's agent-profile resolution. */
@@ -168,6 +170,7 @@ export default function WorkflowLLMConfigurationPanel({
   allowedProviderIds,
   splitPiProviders = true,
   showModelsPerRole = true,
+  builderOnly = false,
   readOnlyReason,
   configurationSource,
   product,
@@ -1093,7 +1096,7 @@ export default function WorkflowLLMConfigurationPanel({
               <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">Customized</span>
             )}
           </div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{row.description}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">{builderOnly && row.key === 'builder_llm' ? 'Used for the Relay Builder chat and graph editing.' : row.description}</div>
         </div>
         <div className="min-w-0 flex-1 space-y-1.5">
           {value ? (
@@ -1119,6 +1122,7 @@ export default function WorkflowLLMConfigurationPanel({
 
   return (
     <div className="space-y-4">
+      {builderOnly && <p className="text-xs text-muted-foreground">Choose the Builder model here. Ask the Builder to set an execution model for each agent step as needed.</p>}
       <div className="rounded-lg border border-border bg-muted/20 p-3">
         {renderStatusLine()}
         {renderTokenLine()}
@@ -1190,7 +1194,10 @@ export default function WorkflowLLMConfigurationPanel({
       </>
       )}
 
-      {showModelsPerRole && !changing && (selectedRow || advanced) && (
+      {builderOnly && !changing && (selectedRow || advanced) && (
+        <div className="overflow-hidden rounded-md border border-border bg-background">{renderRole(ROLE_ROWS.find(row => row.key === 'builder_llm')!)}</div>
+      )}
+      {!builderOnly && showModelsPerRole && !changing && (selectedRow || advanced) && (
       <div className="rounded-md border border-border">
         <button
           type="button"

@@ -224,7 +224,7 @@ function SignInLinkBox({ url }: { url: string }) {
 export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk }: {
   bots: GmailNotificationsBots
   workspacePath: string | null
-  scopeNoun?: 'workflow' | 'project'
+  scopeNoun?: 'workflow' | 'project' | 'relay'
   onAsk?: (message: string) => void | Promise<void>
 }) {
   const {

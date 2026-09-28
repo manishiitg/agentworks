@@ -5,10 +5,12 @@ describe('identity section layout', () => {
   it('separates general, secrets, folders, llm, and upgrades into header tabs with general first', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
-    expect(panel).toContain("usePersistentTab<IdentityTab>('agentworks.tab.workflow-identity', 'general'")
+    expect(panel).toContain("relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general'")
     expect(panel).toMatch(/IDENTITY_TABS[^=]*=[\s\S]*?'general'[\s\S]*?'secrets'[\s\S]*?'folders'[\s\S]*?'llm'[\s\S]*?'upgrades'/)
     expect(panel).toContain("ariaLabel: 'Identity'")
-    expect(panel).toContain('getIdentityTabAskAIMessage(identityTab)')
+    expect(panel).toContain('getIdentityTabAskAIMessage(activeIdentityTab)')
+    expect(panel).toContain("const RELAY_IDENTITY_TABS = IDENTITY_TABS.filter(option => option.value === 'general' || option.value === 'llm')")
+    expect(panel).toContain('builderOnly={relayMode}')
   })
 
   it('embeds identity, secrets, folders, llm, and upgrades panels inside the Identity tabs instead of standalone views', () => {

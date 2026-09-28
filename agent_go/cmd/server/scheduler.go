@@ -33,6 +33,7 @@ type ScheduleContext struct {
 	WorkspacePath string
 	WorkflowID    string
 	WorkflowLabel string
+	WorkflowKind  string
 	Schedule      WorkflowSchedule
 	WebhookInput  *WorkflowWebhookDelivery
 	Capabilities  WorkflowCapabilities
@@ -582,9 +583,18 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		WorkspacePath: workspacePath,
 		WorkflowID:    manifest.ID,
 		WorkflowLabel: manifest.Label,
+		WorkflowKind:  manifest.Kind,
 		Schedule:      sched,
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
+	}
+	if manifest.Kind == "relay" {
+		notifications := WorkflowNotificationConfig{}
+		if sctx.Capabilities.Notifications != nil {
+			notifications = *sctx.Capabilities.Notifications
+		}
+		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
+		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {
 		// PLAT-115: a workflow's own periodic Pulse-review schedule reuses the
@@ -2257,6 +2267,21 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 			state.ConsecutiveFailures++
 		})
 		s.cleanupRemovedScheduleRuntimeState(runtimeKey)
+	}
+	if sctx.WorkflowKind == "relay" && sctx.WebhookInput == nil && !sctx.PulseOnly {
+		input, inputErr := relayScheduledInput(sctx, runID)
+		if inputErr == nil {
+			var data []byte
+			data, inputErr = json.Marshal(input)
+			if inputErr == nil {
+				inputErr = writeFileToWorkspace(ctx, webhookInputPath(sctx.WorkspacePath, runID), string(data))
+			}
+		}
+		if inputErr != nil {
+			failBeforeHistory(inputErr, "")
+			return "", inputErr
+		}
+		sctx.WebhookInput = input
 	}
 
 	if !sctx.PulseOnly && sctx.WebhookInput == nil {

@@ -87,7 +87,7 @@ export function AutomationHubPanel({
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(chatContent ? ['chats' as const] : []),
-    ...(!relayMode ? ['schedules' as const] : []),
+    'schedules' as const,
     ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
@@ -146,7 +146,7 @@ export function AutomationHubPanel({
         icon={Zap}
         title={relayMode ? 'Relay' : 'Automation'}
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle="Chat history and the channels that can start work."
+        subtitle={relayMode ? 'Schedules, API triggers, and chat history for this Relay.' : 'Chat history and the channels that can start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />

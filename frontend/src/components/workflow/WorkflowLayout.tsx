@@ -127,7 +127,7 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = f
         {relayMode ? <>
           <li>• Add agents with your own system prompts and message templates</li>
           <li>• Connect them with scripts and define the final JSON output</li>
-          <li>• Set up API triggers and inspect execution logs</li>
+          <li>• Set up API triggers or schedules and inspect execution logs</li>
         </> : <>
           <li>• Build or change the workflow and its plan</li>
           <li>• Create a schedule, webhook, bot, dashboard, or database</li>
@@ -138,7 +138,7 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = f
   </div>
 )
 
-const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'workshop', 'costs', 'execution-logs', 'files', 'mcp', 'access'])
+const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access'])
 import { agentApi, workflowManifestApi } from '../../services/api'
 import {
   type ActiveSessionInfo,
@@ -870,10 +870,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     return null
   }, [activePresetId, activeWorkflowWorkspacePath])
 
+  const initializedRelayViewPresetRef = useRef<string | null>(null)
   useEffect(() => {
     if (!relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath) return
     const currentView = workflowWorkspaceView ?? lastCanvasView
-    if (!hasSavedWorkflowWorkspaceView(activePresetId) || !RELAY_WORKSPACE_VIEWS.has(currentView)) {
+    const firstVisit = initializedRelayViewPresetRef.current !== activePresetId
+    initializedRelayViewPresetRef.current = activePresetId
+    if ((firstVisit && !hasSavedWorkflowWorkspaceView(activePresetId)) || !RELAY_WORKSPACE_VIEWS.has(currentView)) {
       useWorkflowStore.getState().openWorkspaceView('flow')
     }
   }, [activePresetId, lastCanvasView, relayMode, selectedModeCategory, workflowWorkspaceView, workspacePath])
