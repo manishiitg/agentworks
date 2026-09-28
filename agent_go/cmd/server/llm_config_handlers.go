@@ -270,6 +270,12 @@ func buildProviderCapabilities(ctx context.Context) map[string][]string {
 
 // getPrimaryProviderAndModelFromDefaults extracts provider and model_id from llm.GetLLMDefaults().PrimaryConfig.
 func getPrimaryProviderAndModelFromDefaults() (provider, modelID string) {
+	// The workflows product default, when set, is the server's fallback
+	// model too, so the UI and the runtime agree.
+	productDefaults, _ := effectiveProductDefaults(context.Background())
+	if value, ok := productDefaults[productWorkflows]; ok && value.Provider != "" && value.Model != "" {
+		return value.Provider, value.Model
+	}
 	defaults := llm.GetLLMDefaults()
 	defaultProvider, defaultModelID := defaultPublishedLLMProviderAndModel()
 	bytes, err := json.Marshal(defaults.PrimaryConfig)

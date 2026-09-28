@@ -12,6 +12,7 @@ vi.mock('../../services/llm-config-api', () => ({
     setServerAccountAvailability: vi.fn(),
     getProviderShareTargets: vi.fn(),
     startProviderSetup: vi.fn(),
+    checkProviderUsage: vi.fn(),
     getProviderAccountCosts: vi.fn(),
   },
   providerApiErrorText: (error: { response?: { data?: unknown } }, fallback: string) => typeof error?.response?.data === 'string' ? error.response.data : fallback,
@@ -148,11 +149,19 @@ it('shows server validation text when saving fails', async () => {
 })
 
 it('runs usage for the chosen account and shows it inline', async () => {
-  vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({ id: 'usage-1', provider: 'claude-code', action: 'usage', status: 'running', created_at: '', updated_at: '' })
+  vi.mocked(llmConfigService.checkProviderUsage).mockResolvedValue({ session: { id: 'usage-1', provider: 'claude-code', action: 'usage', status: 'running', created_at: '', updated_at: '' } })
   const container = await render(<ProviderAccounts provider="claude-code" />)
   await click(container.querySelector('[aria-label="Usage for Dana team"]'))
-  expect(llmConfigService.startProviderSetup).toHaveBeenCalledWith('claude-code', 'usage', 100, 24, undefined, false, 'acct-dana')
+  expect(llmConfigService.checkProviderUsage).toHaveBeenCalledWith('claude-code', 'acct-dana')
   expect(container.querySelector('[data-testid="guided-terminal"]')?.textContent).toBe('Terminal usage-1')
+})
+
+it('shows server-collected usage text, with no terminal, for an account the viewer does not manage', async () => {
+  vi.mocked(llmConfigService.checkProviderUsage).mockResolvedValue({ usage_output: 'Plan: Max · resets 5pm' })
+  const container = await render(<ProviderAccounts provider="claude-code" />)
+  await click(container.querySelector('[aria-label="Usage for Dana team"]'))
+  expect(container.querySelector('[aria-label="Usage output for Dana team"]')?.textContent).toBe('Plan: Max · resets 5pm')
+  expect(container.querySelector('[data-testid="guided-terminal"]')).toBeNull()
 })
 
 it('picker lists usable accounts in groups and keeps an unavailable selection', async () => {

@@ -674,6 +674,7 @@ func createLLMFromTierModel(ctx context.Context, model *TierModel, apiKeys *llm.
 	if err := llmguard.RequireCodingAgentProvider(model.Provider); err != nil {
 		return nil, err
 	}
+	apiKeys = keysWithTurnResolver(ctx, apiKeys)
 	llmCfg := llm.Config{
 		Provider:     llm.Provider(model.Provider),
 		ConnectionID: model.ConnectionID,
@@ -683,7 +684,7 @@ func createLLMFromTierModel(ctx context.Context, model *TierModel, apiKeys *llm.
 		MaxRetries:   3,
 	}
 
-	return llm.InitializeLLM(llmCfg)
+	return llm.InitializeLLM(llmguard.WithServerAccountAdmission(llmCfg))
 }
 
 // structuredOneShotCallOptions keeps generate_text_llm out of every coding
@@ -907,6 +908,9 @@ func wrapReadImageWithLLM(
 
 func createImageAnalysisLLM(ctx context.Context, workspaceURL, requestedProvider, requestedModelID string) (llmtypes.Model, string, string, error) {
 	apiKeys := loadWorkspaceProviderAPIKeys(ctx, workspaceURL)
+	// Configured image models run on the server account: admit it for this
+	// turn's scope first.
+	admitServer := func(provider string) error { return admitServerAccountFromContext(ctx, provider) }
 	requestedProvider = strings.TrimSpace(requestedProvider)
 	requestedModelID = strings.TrimSpace(requestedModelID)
 	if requestedProvider == "<nil>" {
@@ -924,6 +928,9 @@ func createImageAnalysisLLM(ctx context.Context, workspaceURL, requestedProvider
 		apiKeysWithEnv := imageAnalysisAPIKeysWithEnv(apiKeys)
 		if !hasWorkspaceDefaultImageAnalysisAuth(provider, apiKeysWithEnv) {
 			return nil, "", "", fmt.Errorf("read_image requires auth/runtime for requested provider/model %s/%s. Use list_llm_capabilities(capability=\"read_image\", include_models=true) to choose a usable provider/model pair", provider, modelID)
+		}
+		if err := admitServer(provider); err != nil {
+			return nil, "", "", err
 		}
 		model, err := llm.InitializeLLM(llm.Config{
 			Provider: llm.Provider(provider),
@@ -953,6 +960,10 @@ func createImageAnalysisLLM(ctx context.Context, workspaceURL, requestedProvider
 					continue
 				}
 				if !hasImageAnalysisProviderAuth(provider, apiKeys) {
+					continue
+				}
+				if err := admitServer(provider); err != nil {
+					log.Printf("[READ_IMAGE_DEBUG] %s server account not admitted: %v", provider, err)
 					continue
 				}
 				model, err := llm.InitializeLLM(llm.Config{
@@ -1053,14 +1064,25 @@ func createLLMFromConfig(ctx context.Context, config mcpagent.LLMModel) (llmtype
 		}
 	}
 
+	// The agent's own model: same account, same scope as its turn.
+	connectionID := ""
+	if turnKeys := ProviderAccountKeysFromContext(ctx); turnKeys != nil {
+		keys := turnKeys.Clone()
+		if apiKeys != nil {
+			keys.CodexCLI, keys.CursorCLI, keys.PiCLI = firstKey(apiKeys.CodexCLI, keys.CodexCLI), firstKey(apiKeys.CursorCLI, keys.CursorCLI), firstKey(apiKeys.PiCLI, keys.PiCLI)
+		}
+		apiKeys = keys
+		connectionID = config.ConnectionID
+	}
 	llmCfg := llm.Config{
-		Provider: llm.Provider(config.Provider),
-		ModelID:  config.ModelID,
-		Context:  ctx,
-		APIKeys:  apiKeys,
+		Provider:     llm.Provider(config.Provider),
+		ConnectionID: connectionID,
+		ModelID:      config.ModelID,
+		Context:      ctx,
+		APIKeys:      apiKeys,
 	}
 
-	return llm.InitializeLLM(llmCfg)
+	return llm.InitializeLLM(llmguard.WithServerAccountAdmission(llmCfg))
 }
 
 func generateTextAPIKeys(ctx context.Context, workspaceURL string, tiers *WorkflowLLMTierConfig) *llm.ProviderAPIKeys {
@@ -1068,4 +1090,63 @@ func generateTextAPIKeys(ctx context.Context, workspaceURL string, tiers *Workfl
 		return tiers.APIKeys.Clone()
 	}
 	return loadWorkspaceProviderAPIKeys(ctx, workspaceURL)
+}
+
+type providerAccountKeysContextKey struct{}
+
+// WithProviderAccountKeys carries a turn's provider keys, including the
+// server's account resolver for that turn's scope, to the tools the turn
+// runs.
+func WithProviderAccountKeys(ctx context.Context, keys *llm.ProviderAPIKeys) context.Context {
+	if keys == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, providerAccountKeysContextKey{}, keys)
+}
+
+// ProviderAccountKeysFromContext returns the turn's keys, if any.
+func ProviderAccountKeysFromContext(ctx context.Context) *llm.ProviderAPIKeys {
+	if ctx == nil {
+		return nil
+	}
+	keys, _ := ctx.Value(providerAccountKeysContextKey{}).(*llm.ProviderAPIKeys)
+	return keys
+}
+
+// keysWithTurnResolver makes sure keys that name accounts can be resolved:
+// keys without a resolver take the turn's.
+func keysWithTurnResolver(ctx context.Context, keys *llm.ProviderAPIKeys) *llm.ProviderAPIKeys {
+	if keys != nil && keys.ResolveConnection != nil {
+		return keys
+	}
+	turnKeys := ProviderAccountKeysFromContext(ctx)
+	if turnKeys == nil || turnKeys.ResolveConnection == nil {
+		return keys
+	}
+	if keys == nil {
+		return turnKeys.Clone()
+	}
+	withResolver := keys.Clone()
+	withResolver.ResolveConnection = turnKeys.ResolveConnection
+	return withResolver
+}
+
+// admitServerAccountFromContext runs the server-account admission of the
+// turn's scope for provider, without changing which keys are used.
+func admitServerAccountFromContext(ctx context.Context, provider string) error {
+	turnKeys := ProviderAccountKeysFromContext(ctx)
+	if turnKeys == nil || turnKeys.ResolveConnection == nil {
+		return nil
+	}
+	_, err := turnKeys.ResolveConnection(ctx, llm.Provider(provider), llmguard.ServerDefaultConnectionPrefix+provider)
+	return err
+}
+
+func firstKey(values ...*string) *string {
+	for _, value := range values {
+		if value != nil && *value != "" {
+			return value
+		}
+	}
+	return nil
 }

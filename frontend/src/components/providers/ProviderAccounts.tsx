@@ -66,6 +66,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [authMethod, setAuthMethod] = useState('api_key')
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
+  const [usageText, setUsageText] = useState<{ rowId: string; text: string } | null>(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [credential, setCredential] = useState('')
@@ -122,8 +123,14 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const runSetup = async (record: ProviderConnection, action: 'authenticate' | 'usage') => {
     setBusy(true); setError(null)
     try {
-      setSession(await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id))
-      setSessionRowId(record.id)
+      if (action === 'usage') {
+        const result = await llmConfigService.checkProviderUsage(provider, record.id)
+        if (result.session) { setSession(result.session); setSessionRowId(record.id) }
+        else setUsageText({ rowId: record.id, text: result.usage_output || 'No usage output.' })
+      } else {
+        setSession(await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id))
+        setSessionRowId(record.id)
+      }
     } catch (setupError) { setError(providerApiErrorText(setupError, action === 'usage' ? 'Could not check usage.' : 'Could not start account login.')) }
     finally { setBusy(false) }
   }
@@ -165,9 +172,14 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const usageButton = (record: ProviderConnection) => record.can_view_usage && USAGE_PROVIDERS.has(provider) && (
     <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Usage for ${record.display_name}`} onClick={() => void runSetup(record, 'usage')}><Gauge className="h-3.5 w-3.5" /> Usage</button>
   )
-  const terminalFor = (record: ProviderConnection) => session && sessionRowId === record.id && (
+  const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
-  )
+  )) || (usageText && usageText.rowId === record.id && (
+    <div className="mt-3 w-full">
+      <pre aria-label={`Usage output for ${record.display_name}`} className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200">{usageText.text}</pre>
+      <button type="button" className={`${secondaryButtonClass} mt-2`} onClick={() => setUsageText(null)}>Close</button>
+    </div>
+  ))
   const sharingEditor = (record: ProviderConnection) => sharingId === record.id && (
     <form className="mt-3 w-full space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveSharing(record) }}>
       <SharingFields value={sharingDraft} onChange={setSharingDraft} disabled={busy} />

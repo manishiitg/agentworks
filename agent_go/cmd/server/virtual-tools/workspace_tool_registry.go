@@ -2,6 +2,7 @@ package virtualtools
 
 import (
 	"context"
+	"github.com/manishiitg/mcpagent/llm"
 	"strings"
 	"sync"
 
@@ -16,6 +17,9 @@ type WorkspaceToolRegistryConfig struct {
 	SessionID            string
 	ExtraEnvVars         map[string]string
 	GenerateTextLLMTiers *WorkflowLLMTierConfig
+	// APIKeys are the turn's provider keys, carrying the server's account
+	// resolver for the turn's scope.
+	APIKeys *llm.ProviderAPIKeys
 }
 
 // WorkspaceToolRegistry is the single assembly point for LLM-visible workspace
@@ -45,7 +49,11 @@ func CreateWorkspaceToolRegistry(cfg WorkspaceToolRegistryConfig) WorkspaceToolR
 	tools = append(tools, CreateWorkspaceImageTools()...)
 
 	advancedExecutors, env := createWorkspaceAdvancedExecutorsForRegistry(cfg, workspaceURL)
-	SetGenerateTextWorkflowTierConfig(advancedExecutors, workspaceURL, cfg.GenerateTextLLMTiers)
+	if cfg.APIKeys != nil {
+		SetGenerateTextWorkflowTierConfig(advancedExecutors, workspaceURL, cfg.GenerateTextLLMTiers, cfg.APIKeys)
+	} else {
+		SetGenerateTextWorkflowTierConfig(advancedExecutors, workspaceURL, cfg.GenerateTextLLMTiers)
+	}
 	executors := make(map[string]func(ctx context.Context, args map[string]any) (string, error), len(advancedExecutors)+8)
 	for name, executor := range advancedExecutors {
 		executors[name] = executor

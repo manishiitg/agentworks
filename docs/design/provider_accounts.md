@@ -287,8 +287,11 @@ Built on branch `feat/provider-accounts` (2026-09-28).
   on each stored account (workflow IDs, Crew roots, user IDs). Only the owner
   or an admin edits sharing, re-signs or removes; sharing may only name
   workflows, Crews and people the owner can see
-  (`GET /api/provider-connections/share-targets`). Removing an account also
-  deletes its HOME (login files).
+  (`GET /api/provider-connections/share-targets`; people are the enabled
+  accounts every signed-in user already sees in the workflow and Code share
+  dialogs, `/api/users/directory`, minus read-only accounts unless the
+  caller is an admin). Removing an account first stops the retained CLIs
+  whose last turn ran on it, then deletes its HOME (login files).
 - **Admission on every turn.** `connectionAPIKeys(ctx, providerAccountScope,
   provider, id)` applies the table above. The resolver attached by
   `withConnectionResolver(keys, scope)` runs at every model init; a model
@@ -299,17 +302,26 @@ Built on branch `feat/provider-accounts` (2026-09-28).
   Denials say "this account is no longer available to <workflow / Crew /
   this Code>" and never fall back.
 - **Native tools.** A turn on a user account the principal does not own
-  runs MCP-only (`providerAccountForcesMCPOnly`, applied in `handleQuery`
-  to the profile's agent-tools mode and the workflow "Native agent tools"
-  switch). Workflow steps and sub-agents were already MCP-only.
-- **Usage.** Owners and admins run `usage` on any account in its own HOME.
-  Someone else (shared account, or the server account for a non-admin) may
-  run usage only for Claude Code, whose usage terminal has every tool off.
+  runs MCP-only. `handleQuery` decides it on the turn's FINAL account
+  (`finalQueryTurnConnection`: a workflow chat that does not override its
+  manifest runs on the manifest's account) and re-checks it on the account
+  the agent is built with. The retained-CLI compatibility check rebuilds the
+  key with the same forced mode, and a CLI launched with native tools never
+  takes a shared-account turn (live input answers 409). Workflow steps and
+  sub-agents were already MCP-only.
+- **Usage.** Owners and admins run `usage` in an interactive terminal in
+  the account's own HOME. Anyone else who may use the account (a shared
+  account, or the server account for a non-admin) gets no terminal: the
+  server sends `/usage` (`/status` for Codex), collects the output, ends the
+  session and returns the text; every input to such a session is dropped.
+  `authenticate` and `inspect` stay owner/admin only.
 - **Cost.** Every ledger entry records `account_id` (`global:<provider>` or
   a user account ID; empty on older rows = "Unrecorded account").
   `GET /api/provider-accounts/costs` and `by_account` in `/api/cost/overview`
   give provider → account → (work, person). Admins see everything, an
-  account's owner its full split, everyone else their own share.
+  account's owner its full split, everyone else their own share. A
+  workflow, Crew or Code the viewer cannot open is shown as "a workflow you
+  can't see" (the person and the numbers stay).
 - **UI.** Providers page: server accounts with Installed / Admin-configured
   badge, source, "Available to" (admin edit), per-account Usage, sharing
   editor and warning, "Shared with you", product defaults, cost by account.
@@ -343,19 +355,24 @@ Built on branch `feat/provider-accounts` (2026-09-28).
   be `global:<provider>`; there are no extra named admin accounts.
 - The server account's source does not show the CLI login's email; the
   status comes from the existing inspect action.
-- Usage of someone else's account is Claude Code only (see above), a
-  narrower rule than "everyone who can use it", because the Codex and Muse
-  usage terminals can read the account's login files.
 - Crew Run mode lets every user with the Crew product chat with any Crew,
   so an account shared with a Crew reaches all of them.
 - Test 4 checks the MCP-only decision and the turn's account lookup, not a
   live coding-CLI turn. The live part of test 7 is skipped unless
   `AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME` points at a HOME with a Muse login.
-- Admission reads the account registry and the settings file from the
-  workspace on each model init and fails closed if the read fails.
+- The account registry and the settings file are cached in memory (read
+  once, updated on every save; this server is their only writer). If the
+  settings file was never readable, the installation policy applies (or
+  everyone, without one), so a deployment with no settings never fails a
+  turn.
+- The mcpagent continuation relaunch and model switch
+  (`agent/llm_generation.go`) call InitializeLLM themselves. mcpagent branch
+  `feat/llm-config-hook` adds `llm.ConfigHook`; once it is merged and
+  go.mod bumped, set `mcpllm.ConfigHook = llmguard.WithServerAccountAdmission`
+  at start. Until then those two re-inits are covered only by the per-turn
+  server-account check in `handleQuery`.
+- Crew and Code creation copy the default through the profile's default
+  engine; new workflows copy it into `llm_config` on create.
 - Tool-cost ledger rows (paid tools) have no account.
-- The UI creates a new workflow without a model, so a workflow with no saved
-  model follows the current workflows default at run time instead of a
-  copied one. Crew and Code copy their profile's default engine at creation.
 - The model picker's optional `product` prop is not passed by callers yet;
   the server works out the product from `workspace_path`.

@@ -330,16 +330,69 @@ type providerAccountSettings struct {
 	ProductDefaults map[string]productDefault        `json:"product_defaults,omitempty"`
 }
 
+// The settings are cached in memory like the account registry: loaded once
+// (at start, else on first use), updated in place on every save through the
+// API. A read error with a cached value keeps the cached value.
+var providerAccountSettingsCache struct {
+	sync.Mutex
+	url    string
+	loaded bool
+	value  providerAccountSettings
+}
+
+func cloneProviderAccountSettings(in providerAccountSettings) providerAccountSettings {
+	out := providerAccountSettings{}
+	if in.AvailableTo != nil {
+		out.AvailableTo = make(map[string]*providerAvailability, len(in.AvailableTo))
+		for key, value := range in.AvailableTo {
+			if value != nil {
+				copied := *value
+				out.AvailableTo[key] = &copied
+			}
+		}
+	}
+	if in.ProductDefaults != nil {
+		out.ProductDefaults = make(map[string]productDefault, len(in.ProductDefaults))
+		for key, value := range in.ProductDefaults {
+			out.ProductDefaults[key] = value
+		}
+	}
+	return out
+}
+
 func loadProviderAccountSettings(ctx context.Context) (providerAccountSettings, error) {
+	url := getWorkspaceAPIURL()
+	providerAccountSettingsCache.Lock()
+	cached, hasCache := providerAccountSettingsCache.value, providerAccountSettingsCache.loaded && providerAccountSettingsCache.url == url
+	providerAccountSettingsCache.Unlock()
+	if hasCache {
+		return cloneProviderAccountSettings(cached), nil
+	}
 	settings := providerAccountSettings{}
 	raw, exists, err := readFileFromWorkspace(ctx, providerAccountSettingsPath)
-	if err != nil || !exists || strings.TrimSpace(raw) == "" {
+	if err != nil {
 		return settings, err
 	}
-	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
-		return providerAccountSettings{}, fmt.Errorf("invalid provider account settings")
+	if exists && strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+			return providerAccountSettings{}, fmt.Errorf("invalid provider account settings")
+		}
 	}
+	providerAccountSettingsCache.Lock()
+	providerAccountSettingsCache.url, providerAccountSettingsCache.loaded, providerAccountSettingsCache.value = url, true, cloneProviderAccountSettings(settings)
+	providerAccountSettingsCache.Unlock()
 	return settings, nil
+}
+
+// preloadProviderAccountSettings fills the caches at server start so no
+// turn reads them; a failure here only means the first use reads them.
+func preloadProviderAccountSettings() {
+	if _, err := loadProviderAccountSettings(context.Background()); err != nil {
+		log.Printf("[PROVIDER_ACCOUNT] settings not loaded at start (will load on first use): %v", err)
+	}
+	if _, err := loadProviderConnections(context.Background()); err != nil {
+		log.Printf("[PROVIDER_ACCOUNT] account registry not loaded at start (will load on first use): %v", err)
+	}
 }
 
 func saveProviderAccountSettings(ctx context.Context, settings providerAccountSettings) error {
@@ -347,7 +400,13 @@ func saveProviderAccountSettings(ctx context.Context, settings providerAccountSe
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, providerAccountSettingsPath, string(data))
+	if err := writeFileToWorkspace(ctx, providerAccountSettingsPath, string(data)); err != nil {
+		return err
+	}
+	providerAccountSettingsCache.Lock()
+	providerAccountSettingsCache.url, providerAccountSettingsCache.loaded, providerAccountSettingsCache.value = getWorkspaceAPIURL(), true, cloneProviderAccountSettings(settings)
+	providerAccountSettingsCache.Unlock()
+	return nil
 }
 
 // serverAccountAvailability is the effective "Available to" of a server
@@ -372,9 +431,12 @@ func effectiveServerAccountAvailability(ctx context.Context, provider string) (s
 		result.AvailableTo, result.Source, result.Pinned = *entry.AvailableTo, "installation", entry.Pinned
 	}
 	if !result.Pinned {
+		// A cached value is always used; only a never-loaded settings file can
+		// fail to read. Then the installation policy (or everyone, without
+		// one) applies, so a deployment with no settings never fails a turn.
 		settings, settingsErr := loadProviderAccountSettings(ctx)
 		if settingsErr != nil {
-			return serverAccountAvailability{}, settingsErr
+			log.Printf("[PROVIDER_ACCOUNT] admin settings unreadable, using the installation policy for %s: %v", provider, settingsErr)
 		}
 		if override := settings.AvailableTo[provider]; override != nil {
 			result.AvailableTo, result.Source = *override, "admin"
@@ -773,4 +835,83 @@ func (api *StreamingAPI) queryTurnConnectionForSession(req QueryRequest, session
 		return queryTurnConnection(previous)
 	}
 	return "", ""
+}
+
+// finalQueryTurnConnection is the account a /api/query turn will run on
+// after every override handleQuery applies: a workflow chat that does not
+// override its manifest runs on the manifest's model and account (the same
+// rule as handleQuery's workflow-phase block).
+func (api *StreamingAPI) finalQueryTurnConnection(ctx context.Context, req QueryRequest, sessionID string) (provider, connectionID string) {
+	provider, connectionID = api.queryTurnConnectionForSession(req, sessionID)
+	if isGlobalLLMConfigLocked() || req.LLMConfig == nil || requestLLMConfigOverridesManifest(req) {
+		return provider, connectionID
+	}
+	workspace := ""
+	if strings.TrimSpace(req.PresetQueryID) != "" {
+		if resolved, err := api.resolveWorkspacePathFromPreset(ctx, req.PresetQueryID); err == nil {
+			workspace = resolved
+		}
+	}
+	if workspace == "" {
+		workspace = req.SelectedFolder
+	}
+	if strings.TrimSpace(workspace) == "" {
+		return provider, connectionID
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
+	if err != nil || !found || manifest == nil || manifest.Capabilities.LLMConfig == nil {
+		return provider, connectionID
+	}
+	phaseLLM, _ := workshopResolveLLMConfig(lockedPresetLLMConfig(manifest.Capabilities.LLMConfig))
+	if phaseLLM == nil || phaseLLM.Provider == "" || phaseLLM.ModelID == "" {
+		return provider, connectionID
+	}
+	return phaseLLM.Provider, phaseLLM.ConnectionID
+}
+
+// applySharedAccountToolMode forces MCP-only on profile when the turn's
+// account is someone else's, exactly as the launch did. It reports whether
+// it did.
+func (api *StreamingAPI) applySharedAccountToolMode(ctx context.Context, principal string, req QueryRequest, sessionID string, profile *resolvedAgentProfile) bool {
+	_, connectionID := api.finalQueryTurnConnection(ctx, req, sessionID)
+	if !api.providerAccountForcesMCPOnly(ctx, principal, connectionID) {
+		return false
+	}
+	if profile != nil {
+		profile.Definition.Runtime.AgentTools.Mode = "mcp_only"
+	}
+	return true
+}
+
+// launchedAgentToolsModes records the agent-tools mode each session's coding
+// CLI was actually launched with ("hybrid" or "mcp_only").
+var launchedAgentToolsModes sync.Map
+
+func recordLaunchedAgentToolsMode(sessionID, mode string) {
+	if strings.TrimSpace(sessionID) != "" {
+		launchedAgentToolsModes.Store(sessionID, normalizeAgentToolsMode(mode))
+	}
+}
+
+// retainedToolModeAllowsAccount reports whether the CLI retained for
+// sessionID may take a turn by principal on account connectionID: never when
+// the account is someone else's and the CLI runs native tools.
+func (api *StreamingAPI) retainedToolModeAllowsAccount(ctx context.Context, principal, sessionID, connectionID string) bool {
+	if !api.providerAccountForcesMCPOnly(ctx, principal, connectionID) {
+		return true
+	}
+	mode, ok := launchedAgentToolsModes.Load(sessionID)
+	return !ok || mode.(string) != "hybrid"
+}
+
+// serverDefaultConnectionID is the marker a model naming no account resolves
+// through (see llmguard.WithServerAccountAdmission).
+func serverDefaultConnectionID(provider string) string {
+	return llmguard.ServerDefaultConnectionPrefix + provider
+}
+
+// delegationProviderAccountScope is a sub-agent's account scope: the
+// principal of the parent turn and the parent's workspace and product.
+func delegationProviderAccountScope(principal string, parentReq QueryRequest) providerAccountScope {
+	return providerAccountScope{Principal: principal, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID}
 }

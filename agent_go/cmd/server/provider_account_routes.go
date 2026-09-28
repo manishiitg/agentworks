@@ -115,12 +115,9 @@ func serverAccountProviders() []string {
 	return providers
 }
 
-// providerUsageTerminalSafeForOthers reports whether the usage terminal of
-// provider can be shown to someone who does not own the account. Only
-// Claude Code's usage terminal runs with every tool off; the Codex and Muse
-// terminals can still read files, including the account's login.
-func providerUsageTerminalSafeForOthers(provider string) bool {
-	return provider == "claude-code"
+// providerHasUsageCommand reports whether provider has a usage action.
+func providerHasUsageCommand(provider string) bool {
+	return providerUsageCommands[provider] != ""
 }
 
 // GET  /api/provider-connections[?workspace_path=&product=] lists the
@@ -182,7 +179,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,
 			CanManage:            admin,
-			CanViewUsage:         admin || (usable && providerUsageTerminalSafeForOthers(provider)),
+			CanViewUsage:         providerHasUsageCommand(provider) && (admin || usable),
 		}
 		views = append(views, view)
 	}
@@ -216,7 +213,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		}
 		view.Usable = view.Relation != "admin_view" && !personalProviderConnectionsLocked(record.Provider)
 		view.CanManage = own || admin
-		view.CanViewUsage = own || admin || (view.Usable && providerUsageTerminalSafeForOthers(record.Provider))
+		view.CanViewUsage = providerHasUsageCommand(record.Provider) && (own || admin || view.Usable)
 		if !view.CanManage {
 			view.Sharing = nil
 			view.OwnerUserID = ""
@@ -414,6 +411,12 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 			return
 		}
 		if r.Method == http.MethodDelete {
+			// Stop the CLIs still running on this account before its HOME
+			// (their login files) goes away.
+			closed := api.closeSessionsOnProviderAccount(id)
+			if closed > 0 {
+				log.Printf("[PROVIDER_ACCOUNT] closed %d session(s) on removed account %s", closed, id)
+			}
 			if home, err := providerConnectionHome(id); err == nil {
 				_ = os.RemoveAll(filepath.Dir(home))
 			}
@@ -558,10 +561,15 @@ func (api *StreamingAPI) handleProviderShareTargets(w http.ResponseWriter, r *ht
 			}
 		}
 	}
+	// People: the same list every signed-in user already sees in the
+	// workflow and Code share dialogs (/api/users/directory: enabled
+	// accounts), minus read-only accounts unless the caller is an admin.
 	people := []target{}
+	admin := currentUserIsAdmin(r)
 	if dir, err := loadUserDirectory(); err == nil && dir != nil {
-		for _, rec := range dir.Users {
-			if rec.Disabled || rec.ID == userID {
+		for i := range dir.Users {
+			rec := dir.Users[i]
+			if rec.Disabled || rec.ID == userID || (!admin && roleForRecord(&rec) == UserRoleViewer) {
 				continue
 			}
 			people = append(people, target{ID: rec.ID, Name: rec.Username, Email: rec.Email})
@@ -666,4 +674,22 @@ func productDefaultsResponse(defaults map[string]productDefault) map[string]map[
 		out[product] = map[string]any{"provider": value.Provider, "model_id": value.Model, "connection_id": "global:" + value.Provider, "pinned": value.Pinned}
 	}
 	return out
+}
+
+// closeSessionsOnProviderAccount stops every retained session whose last
+// turn ran on account id and returns how many it stopped.
+func (api *StreamingAPI) closeSessionsOnProviderAccount(id string) int {
+	type target struct{ session, provider string }
+	targets := []target{}
+	api.lastQueryMu.RLock()
+	for session, request := range api.lastQueryRequests {
+		if provider, connectionID := queryTurnConnection(request); connectionID == id {
+			targets = append(targets, target{session, provider})
+		}
+	}
+	api.lastQueryMu.RUnlock()
+	for _, t := range targets {
+		api.interruptWorkflowPolicySession(t.session, t.provider)
+	}
+	return len(targets)
 }

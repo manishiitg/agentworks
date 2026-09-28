@@ -400,6 +400,9 @@ type StreamingAPI struct {
 	// internalLiveInputDeliver replaces the synchronous live-input send in
 	// tests of the fast-response window.
 	internalLiveInputDeliver func(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string) bool
+	// internalAgentToolsModeDecided lets tests see the agent-tools mode a
+	// turn decided (after provider-account rules) and stop the turn there.
+	internalAgentToolsModeDecided func(sessionID, mode string) bool
 	// internalSteerTransportReady lets gate tests observe steer
 	// readiness without a real CLI registry. Production dispatch
 	// checks the provider's interactive-session registration.
@@ -2824,6 +2827,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	go api.cleanupInactiveSessions()
 	go api.watchScheduleSummaryForLiveFeed()
 	go api.warmLLMConfigCaches()
+	go preloadProviderAccountSettings()
 
 	// Initialize and start the cron scheduler
 	// Set SCHEDULER_ENABLED=false in .env to disable on secondary machines sharing the same workspace files.
@@ -3834,9 +3838,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// account the turn names here, before any retained CLI gets the message.
 	// A denied account fails the turn; it never falls back to another one.
 	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
-	turnProvider, turnConnectionID := api.queryTurnConnectionForSession(req, sessionID)
-	if turnConnectionID != "" && turnProvider != "" {
-		if _, accountErr := api.admitProviderAccount(r.Context(), accountScope, turnProvider, turnConnectionID); accountErr != nil {
+	// The FINAL account of the turn: a workflow chat that does not override
+	// the manifest runs on the workflow's saved model and account.
+	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
+	if turnProvider != "" {
+		admitID := turnConnectionID
+		if admitID == "" {
+			// No account named: the turn runs on the server account. Checked
+			// here too, so a retained CLI relaunch or live input is covered.
+			admitID = serverDefaultConnectionID(turnProvider)
+		}
+		if _, accountErr := api.admitProviderAccount(r.Context(), accountScope, turnProvider, admitID); accountErr != nil {
 			http.Error(w, accountErr.Error(), http.StatusForbidden)
 			return
 		}
@@ -3883,6 +3895,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
+	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	// Scheduled/Chief requests may already carry the configured secret name at
 	// this point. Resolve it for backend delivery and strip it from agent env.
 	api.resolveNotificationSecretForRequest(r.Context(), currentUserID, req.SelectedFolder, &req)
@@ -5381,6 +5397,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Execution is stopped by explicit cancellation, not by a wall-clock timeout.
 		streamCtx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 		streamCtx = queryLogCtx.Context(streamCtx)
+		// Tools that start their own model (generate_text_llm, read_image)
+		// resolve and admit accounts with this turn's scope.
+		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
 
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
@@ -5449,12 +5468,27 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// shell and file changes still go through the bridge, so mcpagent's
 		// shell/diff routing block stays in every mode.
 		var profileBridgeRoutingInstructions *string
+		// Re-check native tools against the account the agent is actually
+		// built with, after every manifest, profile and LLM-config override.
+		if _, finalConnectionID := queryTurnConnection(req); !sharedAccountTurn && api.providerAccountForcesMCPOnly(streamCtx, currentUserID, finalConnectionID) {
+			log.Printf("[PROVIDER_ACCOUNT] session %s: final account %s is not %s's own; native tools off", sessionID, finalConnectionID, currentUserID)
+			sharedAccountTurn = true
+			workflowNativeAgentTools = false
+			if resolvedProfile != nil {
+				resolvedProfile.Definition.Runtime.AgentTools.Mode = "mcp_only"
+			}
+			api.conversationMux.Lock()
+			api.lastAgentToolsModeBySession[sessionID] = "mcp_only"
+			api.lastAgentProfileKeyBySession[sessionID] = agentProfileSessionKey(resolvedProfile)
+			api.conversationMux.Unlock()
+		}
 		if resolvedProfile != nil {
 			profileAgentToolsMode = resolvedProfile.Definition.Runtime.AgentTools.Mode
 			profileApprovalsMode = resolvedProfile.Definition.Runtime.Approvals.Mode
 		} else if workflowNativeAgentTools {
 			profileAgentToolsMode = "hybrid"
 		}
+		recordLaunchedAgentToolsMode(sessionID, profileAgentToolsMode)
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
 		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
@@ -5814,6 +5848,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				SessionID:            sessionID,
 				ExtraEnvVars:         chatAgentSecretEnv,
 				GenerateTextLLMTiers: generateTextWorkflowTiers(presetLLMConfig),
+				APIKeys:              mergedAPIKeys,
 			})
 			if len(chatAgentSecretEnv) > 0 {
 				logfWithContext(queryLogCtx, "[SECRETS] Injected %d secret(s) into chat agent shell env (isWorkflowPhase=%v)", len(chatAgentSecretEnv), isWorkflowPhase)
@@ -10447,12 +10482,18 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	policyRequest, policyKnown := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
 	// Live input is a turn too: re-check the session's account for the
-	// person sending it (sharing changes apply from the next turn).
+	// person sending it (sharing changes apply from the next turn), and never
+	// hand someone else's shared account to a CLI running native tools.
 	if policyKnown {
 		if provider, connectionID := queryTurnConnection(policyRequest); provider != "" && connectionID != "" {
-			scope := providerAccountScope{Principal: GetUserIDFromContext(r.Context()), WorkspacePath: policyRequest.SelectedFolder, Product: policyRequest.AgentProfileID}
+			sender := GetUserIDFromContext(r.Context())
+			scope := providerAccountScope{Principal: sender, WorkspacePath: policyRequest.SelectedFolder, Product: policyRequest.AgentProfileID}
 			if _, accountErr := api.admitProviderAccount(r.Context(), scope, provider, connectionID); accountErr != nil {
 				http.Error(w, accountErr.Error(), http.StatusForbidden)
+				return
+			}
+			if !api.retainedToolModeAllowsAccount(r.Context(), sender, sessionID, connectionID) {
+				http.Error(w, "this chat's running CLI has native tools on, which a shared account does not allow; send the message as a new turn", http.StatusConflict)
 				return
 			}
 		}

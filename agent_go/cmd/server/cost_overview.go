@@ -440,7 +440,7 @@ func (api *StreamingAPI) handleCostOverview(w http.ResponseWriter, r *http.Reque
 		return currentUserWorkflowAccess(r, id) != WorkflowAccessNone
 	}
 	resp := buildCostOverview(summary, visible, currentUserIsAdmin(r))
-	resp.ByAccount = buildProviderAccountCosts(summary, GetUserIDFromContext(r.Context()), currentUserIsAdmin(r), providerAccountsByID(r.Context())).Providers
+	resp.ByAccount = buildProviderAccountCosts(summary, GetUserIDFromContext(r.Context()), currentUserIsAdmin(r), providerAccountsByID(r.Context()), costWorkVisibleTo(r)).Providers
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }

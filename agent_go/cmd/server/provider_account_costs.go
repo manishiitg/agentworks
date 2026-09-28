@@ -55,7 +55,7 @@ type providerAccountCostsResponse struct {
 
 // buildProviderAccountCosts folds a ledger summary into provider → account
 // → (work, person) rows the viewer may see.
-func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin bool, accounts map[string]storedProviderConnection) *providerAccountCostsResponse {
+func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin bool, accounts map[string]storedProviderConnection, workVisible func(id, kind string) bool) *providerAccountCostsResponse {
 	resp := &providerAccountCostsResponse{Providers: []*providerCost{}}
 	if summary == nil {
 		return resp
@@ -94,6 +94,11 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 		}
 		row.Total.Merge(*aggregate)
 		workID, workKind, workName, _ := costOverviewRoot(key.WorkflowID)
+		// An account owner sees who used the account, but never the name of
+		// a workflow, Crew or Code they cannot open themselves.
+		if !admin && workKind != costOverviewKindOther && (workVisible == nil || !workVisible(workID, workKind)) {
+			workID, workName = "hidden:"+workKind, hiddenWorkName(workKind)
+		}
 		splitKey := workID + "\x00" + key.UserID
 		split := splits[pk][splitKey]
 		if split == nil {
@@ -131,6 +136,38 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 	return resp
 }
 
+func hiddenWorkName(kind string) string {
+	switch kind {
+	case costOverviewKindWorkflow:
+		return "a workflow you can't see"
+	case costOverviewKindCrew:
+		return "a Crew you can't see"
+	default:
+		return "work you can't see"
+	}
+}
+
+// costWorkVisibleTo reports whether the caller may open a cost row's work:
+// a workflow they have access to, a Crew they can read, or their own (or,
+// for reviewers, any) Code / product project.
+func costWorkVisibleTo(r *http.Request) func(id, kind string) bool {
+	claims := GetUserFromContext(r.Context())
+	userID := GetUserIDFromContext(r.Context())
+	admin, reviewer := currentUserIsAdmin(r), currentUserCanReviewCode(r)
+	return func(id, kind string) bool {
+		switch kind {
+		case costOverviewKindCrew:
+			ref, ok := resolveCrewPath(r.Context(), userID, id)
+			return ok && crewAccessFor(claims, ref) != crewAccessNone
+		case costOverviewKindProduct:
+			return costOverviewProductVisibleTo(id, userID, admin, reviewer)
+		case costOverviewKindWorkflow:
+			return currentUserWorkflowAccess(r, id) != WorkflowAccessNone
+		}
+		return admin
+	}
+}
+
 func providerAccountsByID(ctx context.Context) map[string]storedProviderConnection {
 	providerConnectionsMu.Lock()
 	records, _ := loadProviderConnections(ctx)
@@ -164,5 +201,5 @@ func (api *StreamingAPI) handleProviderAccountCosts(w http.ResponseWriter, r *ht
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(buildProviderAccountCosts(summary, userID, currentUserIsAdmin(r), providerAccountsByID(r.Context())))
+	_ = json.NewEncoder(w).Encode(buildProviderAccountCosts(summary, userID, currentUserIsAdmin(r), providerAccountsByID(r.Context()), costWorkVisibleTo(r)))
 }

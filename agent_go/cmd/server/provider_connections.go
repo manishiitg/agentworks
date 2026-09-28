@@ -41,7 +41,41 @@ type storedProviderConnection struct {
 	Credential string `json:"credential"`
 }
 
+// The registry is cached in memory: this server is its only writer, so it is
+// read from the workspace once (per workspace API) and every save through
+// saveProviderConnections updates the cache. A turn therefore never waits on
+// the workspace to admit its account.
+var providerConnectionsCache struct {
+	sync.Mutex
+	url     string
+	loaded  bool
+	records []storedProviderConnection
+}
+
+func copyProviderConnections(records []storedProviderConnection) []storedProviderConnection {
+	return append([]storedProviderConnection(nil), records...)
+}
+
 func loadProviderConnections(ctx context.Context) ([]storedProviderConnection, error) {
+	url := getWorkspaceAPIURL()
+	providerConnectionsCache.Lock()
+	if providerConnectionsCache.loaded && providerConnectionsCache.url == url {
+		records := copyProviderConnections(providerConnectionsCache.records)
+		providerConnectionsCache.Unlock()
+		return records, nil
+	}
+	providerConnectionsCache.Unlock()
+	records, err := readProviderConnections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	providerConnectionsCache.Lock()
+	providerConnectionsCache.url, providerConnectionsCache.loaded, providerConnectionsCache.records = url, true, copyProviderConnections(records)
+	providerConnectionsCache.Unlock()
+	return records, nil
+}
+
+func readProviderConnections(ctx context.Context) ([]storedProviderConnection, error) {
 	raw, exists, err := readFileFromWorkspace(ctx, providerConnectionsPath)
 	if err != nil || !exists {
 		return nil, err
@@ -60,6 +94,7 @@ func loadProviderConnections(ctx context.Context) ([]storedProviderConnection, e
 	}
 	return records, nil
 }
+
 func saveProviderConnections(ctx context.Context, records []storedProviderConnection) error {
 	plain, err := json.Marshal(records)
 	if err != nil {
@@ -69,7 +104,16 @@ func saveProviderConnections(ctx context.Context, records []storedProviderConnec
 	if err != nil {
 		return err
 	}
-	return writeFileToWorkspace(ctx, providerConnectionsPath, base64.StdEncoding.EncodeToString(ciphertext))
+	if err := writeFileToWorkspace(ctx, providerConnectionsPath, base64.StdEncoding.EncodeToString(ciphertext)); err != nil {
+		providerConnectionsCache.Lock()
+		providerConnectionsCache.loaded = false
+		providerConnectionsCache.Unlock()
+		return err
+	}
+	providerConnectionsCache.Lock()
+	providerConnectionsCache.url, providerConnectionsCache.loaded, providerConnectionsCache.records = getWorkspaceAPIURL(), true, copyProviderConnections(records)
+	providerConnectionsCache.Unlock()
+	return nil
 }
 
 func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPIKeys, error) {

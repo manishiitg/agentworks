@@ -35,6 +35,11 @@ func (api *StreamingAPI) workflowRetainedPolicyCompatible(ctx context.Context, s
 	if err != nil {
 		return false, err
 	}
+	// A CLI launched with native tools never takes a turn on someone else's
+	// shared account.
+	if _, connectionID := api.finalQueryTurnConnection(validated, req, session); !api.retainedToolModeAllowsAccount(validated, GetUserIDFromContext(validated), session, connectionID) {
+		return false, nil
+	}
 	access, err := api.conversationTargetAccess(validated, req)
 	if err != nil || access == WorkflowAccessNone {
 		if err == nil {
@@ -159,6 +164,14 @@ func (api *StreamingAPI) agentProfileRetainedPolicyCompatible(ctx context.Contex
 	}
 	if profile == nil {
 		return false, fmt.Errorf("product profile is unavailable")
+	}
+	// The launch key carried the forced MCP-only mode of a shared account;
+	// rebuild it the same way or every follow-up relaunches the CLI.
+	if api.applySharedAccountToolMode(ctx, user, req, session, profile) {
+		_, connectionID := api.finalQueryTurnConnection(ctx, req, session)
+		if !api.retainedToolModeAllowsAccount(ctx, user, session, connectionID) {
+			return false, nil
+		}
 	}
 	key := agentProfileSessionKey(profile)
 	api.conversationMux.RLock()

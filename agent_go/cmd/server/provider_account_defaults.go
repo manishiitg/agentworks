@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
 // Product defaults (docs/design/provider_accounts.md, "Product defaults"):
@@ -109,4 +110,15 @@ func (api *StreamingAPI) productDefaultAllowedByProfile(product string, value pr
 		}
 	}
 	return fmt.Errorf("%s does not offer %s with model %s; pick one of its engines", productDisplayName(product), value.Provider, value.Model)
+}
+
+// productDefaultWorkflowLLMConfig is the model settings a new workflow
+// copies from the workflows product default (nil without one).
+func productDefaultWorkflowLLMConfig(ctx context.Context) *workflowtypes.PresetLLMConfig {
+	defaults, _ := effectiveProductDefaults(ctx)
+	value, ok := defaults[productWorkflows]
+	if !ok || value.Provider == "" || value.Model == "" {
+		return nil
+	}
+	return &workflowtypes.PresetLLMConfig{SchemaVersion: 2, Mode: workflowtypes.LLMConfigModeExplicit, BuilderLLM: &workflowtypes.AgentLLMConfig{Provider: value.Provider, ModelID: value.Model}}
 }

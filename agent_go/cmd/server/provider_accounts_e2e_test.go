@@ -278,7 +278,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 		t.Fatalf("carol used an account not shared with her: %v", err)
 	}
 	view, ok := findAccountView(env.list(t, "bob", ""), account.ID)
-	if !ok || view.Relation != "shared_with_you" || !view.Usable || view.CanViewUsage {
+	if !ok || view.Relation != "shared_with_you" || !view.Usable || !view.CanViewUsage {
 		t.Fatalf("bob's view: %+v", view)
 	}
 	if strings.Contains(mustJSON(t, env.list(t, "bob", "")), "alice-codex-key") {
@@ -404,13 +404,67 @@ func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	if w := usage("bob", "muse-cli", account.ID); w.Code != http.StatusForbidden {
 		t.Fatalf("bob saw Alice's private usage: %d", w.Code)
 	}
-	// A member may see Claude Code usage of the server account (no tools),
-	// but not Muse's (its usage terminal can read files).
-	if w := usage("bob", "claude-code", ""); w.Code != http.StatusCreated {
-		t.Fatalf("member Claude Code server usage: %d %s", w.Code, w.Body.String())
+	// A member sees server-account usage as text the server collected; they
+	// never get a terminal.
+	w = usage("bob", "claude-code", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"usage_output":"server-usage"`) {
+		t.Fatalf("member server usage: %d %s", w.Code, w.Body.String())
 	}
-	if w := usage("bob", "muse-cli", ""); w.Code != http.StatusForbidden {
-		t.Fatalf("member Muse server usage: %d", w.Code)
+	if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "inspect"}, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("member inspected the server account: %d", w.Code)
+	}
+	closeProviderSetups(env.api)
+}
+
+// Usage for someone who does not manage the account runs without a
+// terminal: the server sends /usage, returns the text, ends the session,
+// and drops every input.
+func TestProviderAccountsUsageForNonManagersIsNotInteractive(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	original, settle := providerSetupCommands, providerUsageSettle
+	providerUsageSettle = 300 * time.Millisecond
+	providerSetupCommands = map[string]map[string]providerSetupCommand{
+		"muse-cli": {"usage": {command: "/bin/sh", args: []string{"-c", `printf '\033[1m❯\033[0m\n'; while IFS= read -r line; do printf 'got:%s home:%s\n' "$line" "$HOME"; done`}}},
+	}
+	t.Cleanup(func() { providerSetupCommands, providerUsageSettle = original, settle })
+	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
+	for _, action := range []string{"authenticate", "inspect"} {
+		if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": action, "connection_id": account.ID}, nil); w.Code != http.StatusForbidden {
+			t.Fatalf("non-owner %s: %d", action, w.Code)
+		}
+	}
+	w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "usage", "connection_id": account.ID}, nil)
+	var body struct {
+		UsageOutput string                 `json:"usage_output"`
+		Session     *providerSetupSnapshot `json:"session"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Session != nil {
+		t.Fatalf("non-owner usage: %d %s", w.Code, w.Body.String())
+	}
+	accountHome, _ := providerConnectionHome(account.ID)
+	if !strings.Contains(body.UsageOutput, "got:/usage home:"+accountHome) || strings.Contains(body.UsageOutput, "\x1b") {
+		t.Fatalf("usage text: %q", body.UsageOutput)
+	}
+	manager := env.api.providerSetupManager()
+	manager.mu.Lock()
+	remaining := len(manager.sessions)
+	manager.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("the usage session was left running: %d", remaining)
+	}
+
+	// A read-only session drops browser input (what the stream handler sends).
+	session, err := manager.start("bob", "muse-cli", "usage", 80, 24, nil, nil, false, account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.mu.Lock()
+	session.readOnly = true
+	session.mu.Unlock()
+	_ = session.userInput("cat ~/.muse/credentials\r")
+	time.Sleep(600 * time.Millisecond)
+	if strings.Contains(session.outputText(), "got:cat") {
+		t.Fatalf("read-only session accepted input: %q", session.outputText())
 	}
 	closeProviderSetups(env.api)
 }

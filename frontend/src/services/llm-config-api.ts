@@ -345,6 +345,22 @@ export const llmConfigService = {
     return response.data.session
   },
 
+  // Usage for one account. The owner and admins get a terminal session;
+  // anyone else gets the text the server collected (never a terminal).
+  checkProviderUsage: async (
+    provider: string,
+    connectionId: string,
+  ): Promise<{ session?: ProviderSetupSession; usage_output?: string }> => {
+    const response = await llmConfigApi.post('/api/provider-setup/sessions', {
+      provider,
+      action: 'usage',
+      connection_id: connectionId,
+      cols: 100,
+      rows: 24,
+    })
+    return response.data
+  },
+
   getProviderSetup: async (sessionId: string): Promise<ProviderSetupSession> => {
     const response = await llmConfigApi.get(`/api/provider-setup/sessions/${encodeURIComponent(sessionId)}`)
     return response.data.session
