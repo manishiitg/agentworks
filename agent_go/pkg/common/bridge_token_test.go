@@ -26,7 +26,14 @@ func TestBridgeTokenBindsItsSession(t *testing.T) {
 	bridgeTokenMu.RLock()
 	key := bridgeTokenKey
 	bridgeTokenMu.RUnlock()
-	oldHour := strconv.FormatInt(time.Now().Add(-3*time.Hour).Unix()/3600, 10)
+	// A 3h-old token (a warm session's) still works; one past the lifetime
+	// does not.
+	warmHour := strconv.FormatInt(time.Now().Add(-3*time.Hour).Unix()/3600, 10)
+	warm := bridgeTokenPrefix + base64.RawURLEncoding.EncodeToString([]byte("chat-a")) + "." + warmHour + "." + base64.RawURLEncoding.EncodeToString(bridgeTokenMAC(key, "chat-a", warmHour))
+	if sid, ok := VerifyBridgeToken(warm); !ok || sid != "chat-a" {
+		t.Fatal("a long-lived session's token must keep working")
+	}
+	oldHour := strconv.FormatInt(time.Now().Add(-bridgeTokenLifetime-time.Hour).Unix()/3600, 10)
 	expired := bridgeTokenPrefix + base64.RawURLEncoding.EncodeToString([]byte("chat-a")) + "." + oldHour + "." + base64.RawURLEncoding.EncodeToString(bridgeTokenMAC(key, "chat-a", oldHour))
 	if _, ok := VerifyBridgeToken(expired); ok {
 		t.Fatal("expired token must not verify")

@@ -31,7 +31,15 @@ import (
 // for another session.
 
 const bridgeTokenPrefix = "mcps2."
-const bridgeTokenLifetime = 2 * time.Hour
+// bridgeTokenLifetime bounds how long a leaked token stays usable within one
+// server run (the signing secret is random per start, so a restart revokes
+// every token anyway). A running CLI keeps the token it was launched with:
+// warm sessions live up to the 3h idle limit and long steps or background
+// agents run for hours, so a 2h lifetime made every tool call of a
+// long-lived session fail with 401 "invalid API token" (82c864776, caught in
+// review 2026-09-28 before it fired on RTS). Keep it well above any session
+// lifetime until tokens are refreshed in place.
+const bridgeTokenLifetime = 7 * 24 * time.Hour
 
 var (
 	bridgeTokenMu  sync.RWMutex
