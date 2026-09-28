@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
@@ -139,6 +141,129 @@ func TestExternalBuilderManagedFileTools(t *testing.T) {
 	for _, entry := range listed.Entries {
 		if entry.Path == "db" || entry.Path == "db/db.sqlite" || entry.Path == "link" {
 			t.Fatal("private list entry", entry)
+		}
+	}
+}
+
+func TestExternalBuilderAuditCapsContentAndHistory(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("AUTH_SECRET", "builder-audit-cap-test-secret")
+	ctx := context.Background()
+	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{ID: "grant"}}
+	large := strings.Repeat("x", externalBuilderAuditContentCap+1)
+	id, err := prepareExternalBuilderEdit(ctx, claims, "op", "test", "Workflow/test", "write_file", "code/large.py", "old", "new", large, large, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = finishExternalBuilderEdit(id, "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	edits, err := listExternalBuilderFileEdits(ctx, claims, "test", "Workflow/test", "code/large.py")
+	if err != nil || len(edits) != 1 || edits[0].Restorable || edits[0].BeforeSize != int64(len(large)) || edits[0].AfterSize != int64(len(large)) {
+		t.Fatalf("oversized edit not marked unavailable: %+v %v", edits, err)
+	}
+	store, err := openExternalBuilderStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var beforeLength, afterLength int
+	if err = store.db.QueryRow(`SELECT length(before_content),length(after_content) FROM external_builder_edits WHERE id=?`, id).Scan(&beforeLength, &afterLength); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	if beforeLength != 0 || afterLength != 0 {
+		t.Fatalf("file content persisted: before=%d after=%d", beforeLength, afterLength)
+	}
+	api := &StreamingAPI{}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(context.WithValue(ctx, UserContextKey, claims))
+	api.externalBuilderFileCall(w, r, "builder_restore_file", map[string]interface{}{"path": "code/large.py", "edit_id": id, "expected_revision": "new"}, DiscoveredWorkflow{WorkspacePath: "Workflow/test", Manifest: &WorkflowManifest{ID: "test"}})
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "restore_unavailable") {
+		t.Fatalf("oversized restore: %d %s", w.Code, w.Body.String())
+	}
+	for i := 0; i < externalBuilderAuditHistoryLimit+2; i++ {
+		if _, err = prepareExternalBuilderEdit(ctx, claims, "op", "test", "Workflow/test", "write_file", "code/main.py", "old", "new", "before", "after", true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err = openExternalBuilderStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var count int
+	if err = store.db.QueryRow(`SELECT count(*) FROM external_builder_edits WHERE path='code/main.py'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != externalBuilderAuditHistoryLimit {
+		t.Fatalf("retained %d edits, want %d", count, externalBuilderAuditHistoryLimit)
+	}
+	if _, err = store.db.Exec(`UPDATE external_builder_edits SET created_at=? WHERE id=?`, time.Now().Add(-externalBuilderAuditRetention-time.Hour).UnixNano(), id); err != nil {
+		t.Fatal(err)
+	}
+	path, err := mcpOAuthSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalBuilderAuditPruneState.Lock()
+	delete(externalBuilderAuditPruneState.last, path)
+	externalBuilderAuditPruneState.Unlock()
+	if err = migrateAndPruneExternalBuilderEdits(store.db); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.db.QueryRow(`SELECT count(*) FROM external_builder_edits WHERE id=?`, id).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("expired edit remains: %d %v", count, err)
+	}
+}
+
+func TestExternalBuilderAuditMigratesLegacyContents(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("AUTH_SECRET", "builder-audit-legacy-test-secret")
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.db.Exec(`CREATE TABLE external_builder_edits (
+ id TEXT PRIMARY KEY, operation_id TEXT NOT NULL, user_id TEXT NOT NULL, grant_id TEXT NOT NULL,
+ workflow_id TEXT NOT NULL, workspace TEXT NOT NULL, tool TEXT NOT NULL, path TEXT NOT NULL,
+ before_revision TEXT NOT NULL DEFAULT '', after_revision TEXT NOT NULL DEFAULT '',
+ before_content TEXT NOT NULL DEFAULT '', after_content TEXT NOT NULL DEFAULT '',
+ before_exists INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := strings.Repeat("x", externalBuilderAuditContentCap+1)
+	for _, row := range []struct{ id, before string }{{"large", large}, {"small", "prior"}} {
+		_, err = store.db.Exec(`INSERT INTO external_builder_edits
+ (id,operation_id,user_id,grant_id,workflow_id,workspace,tool,path,before_content,after_content,before_exists,status,created_at)
+ VALUES (?,'op','owner','grant','test','Workflow/test','write_file','code/main.py',?, 'result',1,'completed',?)`, row.id, row.before, time.Now().UnixNano())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	store.Close()
+	store, err = openExternalBuilderStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, row := range []struct {
+		id                    string
+		beforeSize, available int
+		before                string
+	}{
+		{"large", len(large), 0, ""}, {"small", len("prior"), 1, "prior"},
+	} {
+		var before, after string
+		var beforeSize, afterSize, available int
+		if err = store.db.QueryRow(`SELECT before_content,after_content,before_size,after_size,before_content_available FROM external_builder_edits WHERE id=?`, row.id).Scan(&before, &after, &beforeSize, &afterSize, &available); err != nil {
+			t.Fatal(err)
+		}
+		if before != row.before || after != "" || beforeSize != row.beforeSize || afterSize != len("result") || available != row.available {
+			t.Fatalf("legacy %s not bounded: before=%d after=%d sizes=%d/%d available=%d", row.id, len(before), len(after), beforeSize, afterSize, available)
 		}
 	}
 }

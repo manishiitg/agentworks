@@ -223,6 +223,10 @@ func (api *StreamingAPI) externalBuilderFileCall(w http.ResponseWriter, r *http.
 	}
 	version, err := readExternalBuilderFileEdit(r.Context(), claims, workflow.Manifest.ID, workflow.WorkspacePath, p, externalArg(args, "edit_id"))
 	if err != nil {
+		if errors.Is(err, errExternalBuilderVersionNotRestorable) {
+			externalError(w, 409, "restore_unavailable", err.Error())
+			return
+		}
 		externalError(w, 404, "edit_not_found", "Completed Builder file edit not found")
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,7 +13,22 @@ import (
 
 // Edits live in server-owned state. Prepared rows are written before a tool
 // mutates anything, so a crash cannot turn a change into an invisible event.
-// File rows retain the previous and resulting text for exact restoration.
+// File rows retain bounded previous text for restoration; revisions and sizes
+// remain available when the previous file exceeds the recovery cap.
+const (
+	externalBuilderAuditContentCap   = 128 << 10
+	externalBuilderAuditHistoryLimit = 30
+	externalBuilderAuditRetention    = 30 * 24 * time.Hour
+)
+
+var externalBuilderAuditPruneState = struct {
+	sync.Mutex
+	last     map[string]time.Time
+	migrated map[string]bool
+}{last: map[string]time.Time{}, migrated: map[string]bool{}}
+
+var errExternalBuilderVersionNotRestorable = errors.New("file version exceeds recovery cap")
+
 type externalBuilderEdit struct {
 	ID             string    `json:"edit_id"`
 	OperationID    string    `json:"operation_id"`
@@ -23,11 +39,94 @@ type externalBuilderEdit struct {
 	BeforeRevision string    `json:"before_revision,omitempty"`
 	AfterRevision  string    `json:"after_revision,omitempty"`
 	BeforeExists   bool      `json:"before_exists"`
+	Restorable     bool      `json:"restorable"`
+	BeforeSize     int64     `json:"before_size"`
+	AfterSize      int64     `json:"after_size"`
 	Status         string    `json:"status"`
 	Detail         string    `json:"detail,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	BeforeContent  string    `json:"-"`
-	AfterContent   string    `json:"-"`
+}
+
+func migrateAndPruneExternalBuilderEdits(db *sql.DB) error {
+	path, err := mcpOAuthSecret()
+	if err != nil {
+		return err
+	}
+	externalBuilderAuditPruneState.Lock()
+	defer externalBuilderAuditPruneState.Unlock()
+	if !externalBuilderAuditPruneState.migrated[path] {
+		if err := migrateExternalBuilderEdits(db); err != nil {
+			return err
+		}
+		externalBuilderAuditPruneState.migrated[path] = true
+	}
+	now := time.Now().UTC()
+	if now.Sub(externalBuilderAuditPruneState.last[path]) < time.Hour {
+		return nil
+	}
+	if _, err = db.Exec(`DELETE FROM external_builder_edits WHERE created_at<?`, now.Add(-externalBuilderAuditRetention).UnixNano()); err != nil {
+		return err
+	}
+	externalBuilderAuditPruneState.last[path] = now
+	return nil
+}
+
+func migrateExternalBuilderEdits(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`PRAGMA table_info(external_builder_edits)`)
+	if err != nil {
+		return err
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, kind string
+		var defaultValue sql.NullString
+		if err = rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		columns[name] = true
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	legacy := !columns["before_content_available"]
+	for _, col := range []struct{ name, definition string }{
+		{"before_content_available", "INTEGER NOT NULL DEFAULT 1"},
+		{"before_size", "INTEGER NOT NULL DEFAULT 0"},
+		{"after_size", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if !columns[col.name] {
+			if _, err = tx.Exec("ALTER TABLE external_builder_edits ADD COLUMN " + col.name + " " + col.definition); err != nil {
+				return err
+			}
+		}
+	}
+	if legacy {
+		_, err = tx.Exec(`UPDATE external_builder_edits SET
+ before_size=length(CAST(before_content AS BLOB)), after_size=length(CAST(after_content AS BLOB)),
+ before_content_available=CASE WHEN length(CAST(before_content AS BLOB))>? THEN 0 ELSE 1 END,
+ before_content=CASE WHEN length(CAST(before_content AS BLOB))>? THEN '' ELSE before_content END,
+ after_content=''`, externalBuilderAuditContentCap, externalBuilderAuditContentCap)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS external_builder_edits_created ON external_builder_edits(created_at)`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS external_builder_edits_path ON external_builder_edits(user_id,workflow_id,workspace,path,created_at)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func prepareExternalBuilderEdit(ctx context.Context, claims *UserClaims, operationID, workflow, workspace, tool, path, beforeRevision, afterRevision, beforeContent, afterContent string, beforeExists bool) (string, error) {
@@ -44,10 +143,30 @@ func prepareExternalBuilderEdit(ctx context.Context, claims *UserClaims, operati
 	if beforeExists {
 		exists = 1
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO external_builder_edits
- (id,operation_id,user_id,grant_id,workflow_id,workspace,tool,path,before_revision,after_revision,before_content,after_content,before_exists,status,created_at)
- VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?)`, id, operationID, claims.UserID, claims.AccessToken.ID, workflow, workspace, tool, path, beforeRevision, afterRevision, beforeContent, afterContent, exists, time.Now().UTC().UnixNano())
-	return id, err
+	beforeSize, afterSize := len(beforeContent), len(afterContent)
+	available := 1
+	if beforeSize > externalBuilderAuditContentCap {
+		beforeContent = ""
+		available = 0
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO external_builder_edits
+ (id,operation_id,user_id,grant_id,workflow_id,workspace,tool,path,before_revision,after_revision,before_content,before_exists,before_content_available,before_size,after_size,status,created_at)
+ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?)`, id, operationID, claims.UserID, claims.AccessToken.ID, workflow, workspace, tool, path, beforeRevision, afterRevision, beforeContent, exists, available, beforeSize, afterSize, time.Now().UTC().UnixNano())
+	if err != nil {
+		return "", err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM external_builder_edits WHERE user_id=? AND workflow_id=? AND workspace=? AND path=?
+ AND id NOT IN (SELECT id FROM external_builder_edits WHERE user_id=? AND workflow_id=? AND workspace=? AND path=? ORDER BY created_at DESC,rowid DESC LIMIT ?)`,
+		claims.UserID, workflow, workspace, path, claims.UserID, workflow, workspace, path, externalBuilderAuditHistoryLimit)
+	if err != nil {
+		return "", err
+	}
+	return id, tx.Commit()
 }
 
 func finishExternalBuilderEdit(id, status, detail string) error {
@@ -68,9 +187,9 @@ func listExternalBuilderFileEdits(ctx context.Context, claims *UserClaims, workf
 		return nil, err
 	}
 	defer s.Close()
-	rows, err := s.db.QueryContext(ctx, `SELECT id,operation_id,grant_id,workflow_id,tool,path,before_revision,after_revision,before_exists,status,detail,created_at
+	rows, err := s.db.QueryContext(ctx, `SELECT id,operation_id,grant_id,workflow_id,tool,path,before_revision,after_revision,before_exists,before_content_available,before_size,after_size,status,detail,created_at
  FROM external_builder_edits WHERE user_id=? AND workflow_id=? AND workspace=? AND path=?
- AND tool IN ('write_file','restore_file') ORDER BY created_at DESC LIMIT 100`, claims.UserID, workflow, workspace, path)
+	 AND tool IN ('write_file','restore_file') AND created_at>=? ORDER BY created_at DESC LIMIT ?`, claims.UserID, workflow, workspace, path, time.Now().Add(-externalBuilderAuditRetention).UnixNano(), externalBuilderAuditHistoryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -79,13 +198,14 @@ func listExternalBuilderFileEdits(ctx context.Context, claims *UserClaims, workf
 	for rows.Next() {
 		var item externalBuilderEdit
 		var grantID string
-		var exists int
+		var exists, available int
 		var created int64
-		if err := rows.Scan(&item.ID, &item.OperationID, &grantID, &item.WorkflowID, &item.Tool, &item.Path, &item.BeforeRevision, &item.AfterRevision, &exists, &item.Status, &item.Detail, &created); err != nil {
+		if err := rows.Scan(&item.ID, &item.OperationID, &grantID, &item.WorkflowID, &item.Tool, &item.Path, &item.BeforeRevision, &item.AfterRevision, &exists, &available, &item.BeforeSize, &item.AfterSize, &item.Status, &item.Detail, &created); err != nil {
 			return nil, err
 		}
 		item.ViaToken = "token:" + grantID
 		item.BeforeExists = exists != 0
+		item.Restorable = !item.BeforeExists || available != 0
 		item.CreatedAt = time.Unix(0, created).UTC()
 		edits = append(edits, item)
 	}
@@ -99,19 +219,23 @@ func readExternalBuilderFileEdit(ctx context.Context, claims *UserClaims, workfl
 	}
 	defer s.Close()
 	var item externalBuilderEdit
-	var exists int
+	var exists, available int
 	var created int64
 	var grantID string
-	err = s.db.QueryRowContext(ctx, `SELECT id,operation_id,grant_id,workflow_id,tool,path,before_revision,after_revision,before_content,after_content,before_exists,status,detail,created_at
+	err = s.db.QueryRowContext(ctx, `SELECT id,operation_id,grant_id,workflow_id,tool,path,before_revision,after_revision,before_content,before_exists,before_content_available,before_size,after_size,status,detail,created_at
  FROM external_builder_edits WHERE id=? AND user_id=? AND workflow_id=? AND workspace=? AND path=?
- AND tool IN ('write_file','restore_file') AND status='completed'`, id, claims.UserID, workflow, workspace, path).
-		Scan(&item.ID, &item.OperationID, &grantID, &item.WorkflowID, &item.Tool, &item.Path, &item.BeforeRevision, &item.AfterRevision, &item.BeforeContent, &item.AfterContent, &exists, &item.Status, &item.Detail, &created)
+	 AND tool IN ('write_file','restore_file') AND status='completed' AND created_at>=?`, id, claims.UserID, workflow, workspace, path, time.Now().Add(-externalBuilderAuditRetention).UnixNano()).
+		Scan(&item.ID, &item.OperationID, &grantID, &item.WorkflowID, &item.Tool, &item.Path, &item.BeforeRevision, &item.AfterRevision, &item.BeforeContent, &exists, &available, &item.BeforeSize, &item.AfterSize, &item.Status, &item.Detail, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return externalBuilderEdit{}, errors.New("file version not found")
 	}
 	item.BeforeExists = exists != 0
+	item.Restorable = !item.BeforeExists || available != 0
 	item.ViaToken = "token:" + grantID
 	item.CreatedAt = time.Unix(0, created).UTC()
+	if err == nil && !item.Restorable {
+		return externalBuilderEdit{}, fmt.Errorf("%w of %d bytes", errExternalBuilderVersionNotRestorable, externalBuilderAuditContentCap)
+	}
 	return item, err
 }
 

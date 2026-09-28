@@ -106,9 +106,15 @@ func openExternalBuilderStore() (*mcpOAuthStore, error) {
  workflow_id TEXT NOT NULL, workspace TEXT NOT NULL, tool TEXT NOT NULL, path TEXT NOT NULL,
  before_revision TEXT NOT NULL DEFAULT '', after_revision TEXT NOT NULL DEFAULT '',
  before_content TEXT NOT NULL DEFAULT '', after_content TEXT NOT NULL DEFAULT '',
- before_exists INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+ before_exists INTEGER NOT NULL DEFAULT 0, before_content_available INTEGER NOT NULL DEFAULT 1,
+ before_size INTEGER NOT NULL DEFAULT 0, after_size INTEGER NOT NULL DEFAULT 0,
+ status TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL)`)
 	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err = migrateAndPruneExternalBuilderEdits(s.db); err != nil {
 		s.Close()
 		return nil, err
 	}
