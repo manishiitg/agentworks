@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -674,6 +675,18 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			return
 		}
 	}
+	// Which login a setup session touches: the server's own, or a private
+	// account's (paths only, never credentials).
+	target, home := "server account", "service HOME"
+	if request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") {
+		target = "private account " + request.ConnectionID
+		for _, entry := range environment {
+			if value, ok := strings.CutPrefix(entry, "HOME="); ok {
+				home = value
+			}
+		}
+	}
+	log.Printf("[PROVIDER_SETUP] %s %s for %s (HOME %s) by %s", request.Provider, request.Action, target, home, GetUserIDFromContext(r.Context()))
 	session, err := api.providerSetupManager().start(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, request.ConnectionID)
 	if err != nil {
 		status := http.StatusBadRequest
