@@ -65,13 +65,16 @@ func (api *StreamingAPI) crewOwnChatAskRequest(ctx context.Context, userID strin
 // caller; the turn keeps running and its reply is delivered late.
 func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target triggerTarget, message string, timeout time.Duration) {
 	hardCap := crewFunctionHardCap(timeout)
-	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
-	defer cancel()
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID})
 	reqMap, sessionID, err := api.crewOwnChatAskRequest(ctx, call.UserID, target, message)
 	if err != nil {
 		call.settle("failed", nil, err.Error())
 		return
 	}
+	releaseSession := lockExternalAskSession(sessionID)
+	defer releaseSession()
+	ctx, cancel := context.WithTimeout(ctx, hardCap)
+	defer cancel()
 	call.mu.Lock()
 	call.Status = "running"
 	call.RunID, call.RunIDs = sessionID, []string{sessionID}

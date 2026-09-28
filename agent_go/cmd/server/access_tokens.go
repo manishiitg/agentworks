@@ -274,6 +274,11 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return true
 	}
 	t := c.AccessToken
+	if tool.Name == "reply_function_call_input" {
+		// The call record determines which of these scopes is actually needed.
+		// The reply handler rechecks the target kind and current access.
+		return t.Allows("crews:run") || t.Allows("runs:execute")
+	}
 	if isExternalCrewTool(tool.Name) {
 		switch tool.Name {
 		case "call_crew_function", "ask_crew", "suggest_crew_change":

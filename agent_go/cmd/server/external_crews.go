@@ -180,7 +180,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
-		externalJSON(w, externalCrewCallResponse(ctx, call, 0))
+		out := externalCrewCallResponse(ctx, call, 0)
+		api.addExternalCallPendingInputs(ctx, call, out)
+		externalJSON(w, out)
 		return
 	}
 	if name == "list_crews" {
@@ -242,7 +244,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 400, "call_refused", err.Error())
 			return
 		}
-		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
+		out := externalCrewCallResponse(ctx, call, externalCrewWait(args))
+		api.addExternalCallPendingInputs(ctx, call, out)
+		externalJSON(w, out)
 	case "list_crew_functions":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":

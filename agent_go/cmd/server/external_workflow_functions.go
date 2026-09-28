@@ -36,7 +36,9 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
-		externalJSON(w, externalWorkflowCallResponse(ctx, call, 0))
+		out := externalWorkflowCallResponse(ctx, call, 0)
+		api.addExternalCallPendingInputs(ctx, call, out)
+		externalJSON(w, out)
 	case "call_workflow_function":
 		if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 			externalError(w, 403, "forbidden", "Calling a workflow function needs owner or editor access to the workflow.")
@@ -55,7 +57,9 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			externalError(w, 400, "call_refused", err.Error())
 			return
 		}
-		externalJSON(w, externalWorkflowCallResponse(ctx, call, externalCrewWait(args)))
+		out := externalWorkflowCallResponse(ctx, call, externalCrewWait(args))
+		api.addExternalCallPendingInputs(ctx, call, out)
+		externalJSON(w, out)
 	default:
 		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
 	}
