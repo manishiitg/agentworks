@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Eye, Loader2, PanelLeftOpen, PanelRightOpen, Plus, Share2, Sparkles, Trash2 } from 'lucide-react'
+import { Eye, Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -19,7 +19,6 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
-import { CodeShareDialog } from './CodeShareDialog'
 import { AdminCodeInspector } from './AdminCodeInspector'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIdentityComplete } from './workIdentity'
@@ -82,7 +81,7 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // data (transcripts, run databases, usage) the proxy will not serve
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
-const SHARED_CODE_WORKSPACE_PANELS: Set<string> = new Set(['files'])
+const SHARED_CODE_WORKSPACE_PANELS: Set<string> = new Set(['files', 'share'])
 
 function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
   if (typeof window === 'undefined' || !projectId) return null
@@ -766,7 +765,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
-  const [shareOpen, setShareOpen] = useState(false)
   const [inspectOpen, setInspectOpen] = useState(false)
   // Code opts into admin inspection; Crew chats stay owner-only for admins.
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
@@ -1082,9 +1080,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         walkthroughPaused={createOpen || deleteCandidate !== null || !product.hasIdentity}
       />
       {inspectOpen ? <AdminCodeInspector onClose={() => setInspectOpen(false)} /> : null}
-      {shareOpen && selected && product.profileId === 'code' ? (
-        <CodeShareDialog projectId={selected.id} projectTitle={selected.identity?.name || selected.title} onClose={() => setShareOpen(false)} />
-      ) : null}
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
@@ -1231,16 +1226,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               >
                 <WorkspaceTopToolbar className={layout.toolbarClassName}>
                   {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
-                  {product.profileId === 'code' && selected ? (
-                    <button
-                      type="button"
-                      onClick={() => setShareOpen(true)}
-                      title={selected.shared ? `${selected.shared.ownerUsername || selected.shared.ownerId}’s ${product.noun} · you are ${selected.shared.role === 'co_owner' ? 'a co-owner' : `a ${selected.shared.role || 'viewer'}`}` : 'Share this workspace'}
-                      className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground"
-                    >
-                      <Share2 className="h-3.5 w-3.5" /> {selected.shared && selected.shared.role !== 'co_owner' ? 'People' : 'Share'}
-                    </button>
-                  ) : null}
                   {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>

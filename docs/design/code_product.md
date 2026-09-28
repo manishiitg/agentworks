@@ -143,9 +143,11 @@ everyone does in Code.**
 - **Read-only.** An admin can open any user's Code: chats, terminal
   transcripts, files and usage. They cannot send messages, resume a session,
   or edit files as that user.
-- **Visible to users.** Setup → General ("Access") and the Share dialog say
+- **Visible to users.** Setup → General ("Access") and Setup → Share say
   that admins and Code reviewers can view the workspace, read-only and
-  logged. It is not a strip above every chat (user, 2026-09-28). "Private"
+  logged. Sharing lives in Setup → Share, the same sharing UI as a workflow's
+  access list (owner and co-owners as Owners, editors, viewers as
+  read-only); there is no toolbar Share button or separate dialog. It is not a strip above every chat (user, 2026-09-28). "Private"
   means private from colleagues, not from admins.
 - **Audited.** Every admin view is logged: who, which Code, what, and when.
   An admin can see the log, so the audit trail covers admins too.

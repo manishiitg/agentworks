@@ -24,7 +24,9 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("id: 'plan', label: 'Plan'")
     expect(source).toContain("id: 'identity', label: 'Identity'")
     expect(source).toContain("id: 'mcp', label: 'Integrations'")
-    expect(source).toContain('title="Setup: identity and integrations"')
+    expect(source).toContain("'Setup: identity and integrations'")
+    // A Code adds Share to Setup; its first group is omitted when empty.
+    expect(source).toContain("id: 'share', label: 'Share'")
     expect(source).toContain('<AutomationHubPanel')
     expect(source).not.toContain('botContent=')
     expect(source).toContain("productTriggerScope={enabledPanels?.has('triggers')")
