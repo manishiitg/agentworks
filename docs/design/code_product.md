@@ -9,12 +9,13 @@ server. It works like a Crew project (files, coding CLIs in a terminal, the
 same chat), with four differences:
 
 - **Private by default.** Only the owner sees a Code until they share it.
+  MCP servers and skills added in a Code are private to it too.
   Admins can inspect every Code (see [Admin inspection](#admin-inspection)).
 - **Files first.** The files view opens by default. The dashboard is
   secondary.
 - **Just a name.** A Code has no identity, role or purpose. It is a
   workspace, not an agent persona.
-- **Closed to callers.** It has no MCP connections, no functions, no
+- **Closed to callers.** It isn't exposed over MCP: no functions, no
   `ask_crew`, no Slack channels or group chats, and no Crew templates. The
   owner can reach their own Code from a Slack DM or WhatsApp.
 
@@ -38,7 +39,9 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Identity / purpose / role | Yes | No, just a name |
 | Templates (Crew catalog, playbooks) | Yes | No |
 | Reaching others | Crews and workflows (as caller) | Crews and workflows the person can access (as caller); never another Code |
-| MCP servers, MCP exposure (`ask_crew`, functions) | Yes | No, for now |
+| MCP servers used inside | Yes, shared per server/Crew | Yes, but private: ones added in a Code belong to that Code |
+| Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
+| Exposed over MCP (`ask_crew`, functions) | Yes | No |
 | Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
 | Triggers | Yes | No |
 | Schedules | Message-only | No, for now |
@@ -56,7 +59,7 @@ sets different defaults. The Crew code must not be forked: every Crew fix
 Proposed features for `code`:
 
 - **Keep:** `live-chat`, `coding`, `files`, `terminal`, `models`,
-  `secrets`, `skills`, `browser`, `costs`, `background-work`, `workspace-ui`,
+  `secrets`, `browser`, `costs`, `background-work`, `workspace-ui`,
   `memory`, `attached-folders`.
 - **Keep, restricted:** `bots` limited to `slack,whatsapp` and 1:1 only
   (a new `dm_only` option). Slack channel and group routes can't be
@@ -70,7 +73,16 @@ Proposed features for `code`:
   it can access, with that person's permissions. Another Code is never a
   valid target: calls, reads and attached folders pointing at a Code are
   refused.
-- **Leave out:** `mcp`, `triggers`, `schedules`, `voice`, `database`.
+- **Keep, private:**
+  - `mcp`: MCP servers added in a Code, and their credentials, are stored
+    with that Code. Other Codes, Crews and workflows never see or use them,
+    and a Code sees none of the MCP servers another Code added.
+  - `skills`: skills added, installed or created in a Code live in its own
+    `skills/` folder and aren't published to the shared skills list. Other
+    Codes and Crews never load them.
+  - Viewers and editors of a shared Code use its MCP servers and skills, but
+    never see MCP credentials.
+- **Leave out:** `triggers`, `schedules`, `voice`, `database`.
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.
 
 Other settings:
@@ -203,6 +215,9 @@ users has to hold:
    - The owner's Slack DM and WhatsApp messages continue the owner's own
      chat of the Code.
    - A DM from someone without access is refused.
+   - An MCP server or skill added in A's Code is usable there. It is
+     absent from B's Codes, every Crew and the shared skills list, and B
+     can't read A's MCP credentials even when A's Code is shared with B.
    - From a Code, calling a Crew function, asking a Crew and running a
      workflow the person can access all work.
    - The same calls against another Code (by ID, path or attached folder)
@@ -217,7 +232,11 @@ users has to hold:
 These change what gets built:
 
 1. Can a Code be turned into a Crew later, keeping its files and history?
-2. Is app preview (running a dev server and opening it in the browser) in
+   What happens to its private MCP servers and skills then?
+2. Should a Code also see the server-wide MCP connections and skills an
+   admin set up for everyone? Proposed: yes, read-only, alongside its
+   private ones.
+3. Is app preview (running a dev server and opening it in the browser) in
    the first version? It is the first thing coders ask for, and the hardest:
    dev-server ports must be exposed safely per user.
-3. Is the terminal the vendor CLI's own terminal, a plain shell, or both?
+4. Is the terminal the vendor CLI's own terminal, a plain shell, or both?
