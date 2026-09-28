@@ -12,6 +12,10 @@ func TestRenderAuthoredPrompt(t *testing.T) {
 	if err != nil || got != "For Asha, use 2 items; enabled=true." {
 		t.Fatalf("render = %q, %v", got, err)
 	}
+	whole, err := renderAuthoredPrompt("INPUT: {{input}}", variables)
+	if err != nil || whole != `INPUT: {"count":2,"customer":{"name":"Asha"},"enabled":true}` {
+		t.Fatalf("whole input = %q, %v", whole, err)
+	}
 	for _, prompt := range []string{"{{input.customer.missing}}", "{{steps.other.output}}", "{{input.customer.name}}"} {
 		values := variables
 		if strings.Contains(prompt, "name") {
