@@ -56,10 +56,17 @@ export interface ProviderConnection {
   availability_editable?: boolean
   /** Whether the caller may select it where the list was requested. */
   usable?: boolean
-  /** The caller's runs on it run MCP-only (someone else's shared account). */
-  native_tools_off?: boolean
   can_manage?: boolean
   can_view_usage?: boolean
+}
+
+/** A non-interactive account check. Never carries a credential. */
+export interface ProviderAccountStatus {
+  state: 'signed_in' | 'signed_out' | 'key_rejected' | 'unknown'
+  identity?: string
+  detail?: string
+  verified: boolean
+  checked_at: string
 }
 
 export interface ProviderShareTargets {
@@ -359,6 +366,21 @@ export const llmConfigService = {
       rows: 24,
     })
     return response.data
+  },
+
+  /** Status of one account; verify adds the real login check (Claude Code). */
+  getProviderAccountStatus: async (connectionId: string, verify = false, workspacePath?: string | null): Promise<ProviderAccountStatus> => {
+    const query = new URLSearchParams()
+    if (verify) query.set('verify', '1')
+    if (workspacePath) query.set('workspace_path', workspacePath)
+    const suffix = query.size > 0 ? `?${query.toString()}` : ''
+    const response = await llmConfigApi.get(`/api/provider-connections/${encodeURIComponent(connectionId)}/status${suffix}`)
+    return response.data
+  },
+
+  /** Runs the CLI's own logout in the account's HOME. The account stays. */
+  signOutProviderAccount: async (connectionId: string): Promise<void> => {
+    await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/sign-out`)
   },
 
   getProviderSetup: async (sessionId: string): Promise<ProviderSetupSession> => {

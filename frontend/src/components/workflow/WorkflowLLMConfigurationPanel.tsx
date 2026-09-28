@@ -667,7 +667,6 @@ export default function WorkflowLLMConfigurationPanel({
         {account.scope === 'global' ? <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" /> : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
         <span className="min-w-0 break-words text-xs font-medium text-foreground">{account.display_name}</span>
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
-        {'native_tools_off' in account && account.native_tools_off && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300" title="Runs on someone else's shared account use AgentWorks tools only">Native tools off</span>}
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
         <span className="min-w-0 flex-1" />

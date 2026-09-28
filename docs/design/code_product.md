@@ -196,8 +196,13 @@ users has to hold:
   - They only read; writes and execution go through the sandbox.
   - Tracked in PLAT-364; the fix is to run the CLIs under the Landlock
     launcher with per-user CLI homes.
-  - Until then, Code should default to MCP-only tools, where native tools are
-    off.
+  - *(Decided 2026-09-28 by the owner: native tools on by default.)* Code
+    now runs with native agent tools through its "Native agent tools"
+    switch, like Crew, unless the Code turned it off. Known exposure until
+    the CLIs are confined (PLAT-364 part 2): native reads in a Code can
+    reach files outside the Code, and a run on someone else's shared
+    provider account can read that account's login files. Confining the
+    CLIs closes both.
 - **Open.** The browser socket folder `/tmp/.agent-browser` is shared by all
   users, so one user's command could drive another user's browser daemon.
   It needs per-user socket folders before Code enables the browser for

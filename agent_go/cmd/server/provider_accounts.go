@@ -681,30 +681,6 @@ func containsFold(values []string, value string) bool {
 	return false
 }
 
-// providerAccountForcesMCPOnly reports whether a turn by principal on
-// account id must run with native agent tools off: a user account someone
-// else owns. A coding CLI in hybrid mode is not under Landlock and could
-// read the account HOME, including the owner's login.
-func (api *StreamingAPI) providerAccountForcesMCPOnly(ctx context.Context, principal, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" || strings.HasPrefix(id, "global:") || strings.HasPrefix(id, llmguard.ServerDefaultConnectionPrefix) {
-		return false
-	}
-	providerConnectionsMu.Lock()
-	records, err := loadProviderConnections(ctx)
-	providerConnectionsMu.Unlock()
-	if err != nil {
-		return true
-	}
-	for _, record := range records {
-		if record.ID == id {
-			return record.OwnerUserID != strings.TrimSpace(principal)
-		}
-	}
-	// An unknown account never runs; fail closed on the tool mode too.
-	return true
-}
-
 // ---- sharing -----------------------------------------------------------------
 
 const (
@@ -869,49 +845,14 @@ func (api *StreamingAPI) finalQueryTurnConnection(ctx context.Context, req Query
 	return phaseLLM.Provider, phaseLLM.ConnectionID
 }
 
-// applySharedAccountToolMode forces MCP-only on profile when the turn's
-// account is someone else's, exactly as the launch did. It reports whether
-// it did.
-func (api *StreamingAPI) applySharedAccountToolMode(ctx context.Context, principal string, req QueryRequest, sessionID string, profile *resolvedAgentProfile) bool {
-	_, connectionID := api.finalQueryTurnConnection(ctx, req, sessionID)
-	if !api.providerAccountForcesMCPOnly(ctx, principal, connectionID) {
-		return false
-	}
-	if profile != nil {
-		profile.Definition.Runtime.AgentTools.Mode = "mcp_only"
-	}
-	return true
-}
-
-// launchedAgentToolsModes records the agent-tools mode each session's coding
-// CLI was actually launched with ("hybrid" or "mcp_only").
-var launchedAgentToolsModes sync.Map
-
-func recordLaunchedAgentToolsMode(sessionID, mode string) {
-	if strings.TrimSpace(sessionID) != "" {
-		launchedAgentToolsModes.Store(sessionID, normalizeAgentToolsMode(mode))
-	}
-}
-
-// retainedToolModeAllowsAccount reports whether the CLI retained for
-// sessionID may take a turn by principal on account connectionID: never when
-// the account is someone else's and the CLI runs native tools.
-func (api *StreamingAPI) retainedToolModeAllowsAccount(ctx context.Context, principal, sessionID, connectionID string) bool {
-	if !api.providerAccountForcesMCPOnly(ctx, principal, connectionID) {
-		return true
-	}
-	mode, ok := launchedAgentToolsModes.Load(sessionID)
-	return !ok || mode.(string) != "hybrid"
+// delegationProviderAccountScope is a sub-agent's account scope: the
+// principal of the parent turn and the parent's workspace and product.
+func delegationProviderAccountScope(principal string, parentReq QueryRequest) providerAccountScope {
+	return providerAccountScope{Principal: principal, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID}
 }
 
 // serverDefaultConnectionID is the marker a model naming no account resolves
 // through (see llmguard.WithServerAccountAdmission).
 func serverDefaultConnectionID(provider string) string {
 	return llmguard.ServerDefaultConnectionPrefix + provider
-}
-
-// delegationProviderAccountScope is a sub-agent's account scope: the
-// principal of the parent turn and the parent's workspace and product.
-func delegationProviderAccountScope(principal string, parentReq QueryRequest) providerAccountScope {
-	return providerAccountScope{Principal: principal, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID}
 }

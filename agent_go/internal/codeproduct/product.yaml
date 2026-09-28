@@ -105,8 +105,11 @@ profile:
           reasoning_effort: high
     provider: claude-code
     model_id: claude-sonnet-5
-    # MCP-only until hybrid-mode native reads are sandboxed (PLAT-364): the
-    # CLIs' own read tools are not confined to the owner's tree.
+    # The profile's base mode, as for Crew. Every Code chat switches to
+    # native agent tools (hybrid) through the Code's "Native agent tools"
+    # switch, which is on unless the Code turned it off (owner decision
+    # 2026-09-28). Known exposure until the CLIs are confined (PLAT-364
+    # part 2): their own read tools can reach files outside the Code.
     agent_tools:
       mode: mcp_only
     approvals:

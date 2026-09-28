@@ -13,6 +13,8 @@ vi.mock('../../services/llm-config-api', () => ({
     getProviderShareTargets: vi.fn(),
     startProviderSetup: vi.fn(),
     checkProviderUsage: vi.fn(),
+    getProviderAccountStatus: vi.fn(),
+    signOutProviderAccount: vi.fn(),
     getProviderAccountCosts: vi.fn(),
   },
   providerApiErrorText: (error: { response?: { data?: unknown } }, fallback: string) => typeof error?.response?.data === 'string' ? error.response.data : fallback,
@@ -41,7 +43,7 @@ const own: ProviderConnection = {
 }
 const sharedWithMe: ProviderConnection = {
   id: 'acct-dana', provider: 'claude-code', display_name: 'Dana team', scope: 'user', auth_method: 'api_key',
-  kind: 'user', relation: 'shared_with_you', owner_name: 'Dana', usable: true, native_tools_off: true, can_manage: false, can_view_usage: true,
+  kind: 'user', relation: 'shared_with_you', owner_name: 'Dana', usable: true, can_manage: false, can_view_usage: true,
 }
 const adminView: ProviderConnection = {
   id: 'acct-erin', provider: 'claude-code', display_name: 'Erin personal', scope: 'user', auth_method: 'api_key',
@@ -55,6 +57,9 @@ beforeEach(() => {
     workflows: [{ id: 'wf-1', name: 'Research' }], crews: [{ id: '_users/bob/Chats/Work/projects/c1', name: 'Ops Crew', owner: 'bob' }], users: [{ id: 'u-bob', name: 'bob', email: 'bob@x.com' }],
   })
   vi.mocked(llmConfigService.getProviderAccountCosts).mockResolvedValue({ providers: [] })
+  vi.mocked(llmConfigService.getProviderAccountStatus).mockImplementation(async (id: string) => (
+    id === 'acct-own' ? { state: 'signed_in', identity: 'me@x.com', verified: false, checked_at: '' } : { state: 'signed_out', verified: false, checked_at: '' }
+  ))
   Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) })
 })
 afterEach(() => { act(() => { root?.unmount() }); root = undefined; document.body.innerHTML = ''; vi.clearAllMocks() })
@@ -103,11 +108,11 @@ it('groups own, shared-with-you and admin-view accounts with the right controls'
   expect(container.textContent).toContain('Shared with 1 workflow, 0 Crews, 2 people')
   expect(container.textContent).toContain('Shared with you')
   expect(container.textContent).toContain('Shared by Dana')
-  expect(container.textContent).toContain('Native tools off')
+  expect(container.textContent).not.toContain('Native tools off')
   expect(container.querySelector('[aria-label="Remove Dana team"]')).toBeNull()
   expect(container.querySelector('[aria-label="Sharing for Dana team"]')).toBeNull()
   expect(container.textContent).toContain("Other people's accounts")
-  expect(container.textContent).toContain('Owner: Erin · Private')
+  expect(container.textContent).toContain('Owner: Erin · Private (only Erin can use it)')
   await click(container.querySelector('[aria-label="Remove Erin personal"]'))
   expect(llmConfigService.deleteProviderConnection).toHaveBeenCalledWith('acct-erin')
 })
@@ -171,5 +176,36 @@ it('picker lists usable accounts in groups and keeps an unavailable selection', 
   expect([...select.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['Server account', 'Your accounts', 'Shared with you'])
   expect(select.value).toBe('acct-erin')
   expect(select.options[0].textContent).toBe('Erin personal (no longer available here)')
-  expect(select.textContent).toContain('Dana team (Dana) · native tools off')
+  expect(select.textContent).toContain('Dana team (Dana)')
+})
+
+it('shows each account\'s status and offers the per-account actions to managers only', async () => {
+  const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
+  await act(async () => Promise.resolve())
+  expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Signed in as me@x.com')
+  expect(container.querySelector('[aria-label="Open terminal for My Max (your account)"]')).not.toBeNull()
+  expect(container.querySelector('[aria-label="Open terminal for Server account (server account (shared))"]')).not.toBeNull()
+  expect(buttonByText(container, 'Sign in the shared server login (used by everyone allowed)')).toBeDefined()
+  // Not a manager of Dana's account: no terminal, no sign-out.
+  expect(container.querySelector('[aria-label="Open terminal for Dana team (Dana\'s account)"]')).toBeNull()
+  expect(container.querySelector('[aria-label="Sign out Dana team"]')).toBeNull()
+  // API-key accounts have no sign-out.
+  expect(container.querySelector('[aria-label="Sign out Erin personal"]')).toBeNull()
+  vi.mocked(llmConfigService.getProviderAccountStatus).mockResolvedValue({ state: 'key_rejected', detail: '401 invalid token', verified: true, checked_at: '' })
+  await click(container.querySelector('[aria-label="Refresh status of My Max"]'))
+  expect(llmConfigService.getProviderAccountStatus).toHaveBeenLastCalledWith('acct-own', true, undefined)
+  expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Login rejected: 401 invalid token')
+})
+
+it('confirms before signing out the server account', async () => {
+  const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
+  await click(container.querySelector('[aria-label="Sign out Server account"]'))
+  expect(window.confirm).toHaveBeenCalledWith('Every run that uses the Claude Code server account will stop working until someone signs in again.')
+  expect(llmConfigService.signOutProviderAccount).toHaveBeenCalledWith('global:claude-code')
+})
+
+it('shows no native-tools badge on accounts the viewer does not own', async () => {
+  const container = await render(<ProviderAccounts provider="claude-code" />)
+  expect(container.textContent).not.toMatch(/native tools off/i)
+  expect(container.textContent).toContain('Owner: Erin · Private (only Erin can use it)')
 })

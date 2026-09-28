@@ -49,8 +49,8 @@ const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
 }
 
 // Signing in here replaces the login everyone on the server uses; say so.
-const serverSignInLabel = (provider: ProviderManifestEntry) =>
-  `Sign in the server's shared ${PROVIDER_SIDEBAR_NAMES[provider.id] || provider.display_name} login (used by everyone allowed below)`
+const serverSignInLabel = (_provider: ProviderManifestEntry) =>
+  'Sign in the shared server login (used by everyone allowed)'
 
 type ProviderStatus = 'ready' | 'auth' | 'missing' | 'deprecated'
 

@@ -36,12 +36,9 @@ type providerAccountView struct {
 	AvailabilityEditable bool                       `json:"availability_editable,omitempty"`
 	// Usable reports whether the caller may select the account for the
 	// requested workflow, Crew, Code or product.
-	Usable bool `json:"usable"`
-	// NativeToolsOff reports that the caller's runs on this account run
-	// MCP-only (someone else's shared account).
-	NativeToolsOff bool `json:"native_tools_off,omitempty"`
-	CanManage      bool `json:"can_manage"`
-	CanViewUsage   bool `json:"can_view_usage"`
+	Usable       bool `json:"usable"`
+	CanManage    bool `json:"can_manage"`
+	CanViewUsage bool `json:"can_view_usage"`
 }
 
 // serverAccountEnvNames lists the installation variables that carry a
@@ -209,7 +206,6 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 				view.Relation = "admin_view"
 			}
 			view.OwnerName = logUsernameForUserID(record.OwnerUserID)
-			view.NativeToolsOff = true
 		}
 		view.Usable = view.Relation != "admin_view" && !personalProviderConnectionsLocked(record.Provider)
 		view.CanManage = own || admin
@@ -683,7 +679,10 @@ func (api *StreamingAPI) closeSessionsOnProviderAccount(id string) int {
 	targets := []target{}
 	api.lastQueryMu.RLock()
 	for session, request := range api.lastQueryRequests {
-		if provider, connectionID := queryTurnConnection(request); connectionID == id {
+		provider, connectionID := queryTurnConnection(request)
+		// The server account also runs every turn that names no account.
+		serverTurn := strings.HasPrefix(id, "global:") && provider == strings.TrimPrefix(id, "global:") && connectionID == ""
+		if connectionID == id || serverTurn {
 			targets = append(targets, target{session, provider})
 		}
 	}

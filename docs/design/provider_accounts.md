@@ -152,9 +152,9 @@ finish.
   tools") is not under Landlock (PLAT-364 part 2), so the agent can read the
   account HOME it runs with, including the login token. For the owner's own
   runs that is their own token. For **shared** accounts it would let someone
-  else's run read the owner's login. Until CLIs are confined, shared user
-  accounts run **MCP-only** (native tools off) in every session that is not
-  the owner's; the UI says so when sharing.
+  else's run read the owner's login. *(Superseded 2026-09-28: the owner
+  decided native tools stay on by default everywhere, shared accounts
+  included; see "Decision 2026-09-28: native tools on by default".)*
 - **Whose identity and bill.** A shared account's runs act as the owner's
   CLI account: quota, billing, and anything the provider ties to it. The
   share dialog says this plainly.
@@ -189,7 +189,7 @@ Providers page, per provider:
 - **Your accounts**: add (Browser login / API key), then "Who can use it":
   Private / Shared with workflows, Crews, people (pickers limited to what
   the owner can see). A warning when sharing: runs act as your account and
-  are billed to it; others' runs use it with native tools off.
+  are billed to it.
 - **Shared with you**: accounts others shared, with the owner's name.
 
 The workflow / Crew / Code model picker groups accounts the same way.
@@ -226,8 +226,8 @@ provider and account.
    Bob selects it in his own workflow V and is refused; Alice removes W from
    the list and Bob's next W turn is refused with the clear error.
 3. Alice shares with Bob (c); Bob uses it in his Code; Carol cannot.
-4. A shared account in Bob's session runs MCP-only; Alice's own session keeps
-   her configured mode.
+4. *(Flipped 2026-09-28.)* A shared account in Bob's session keeps the
+   configured tool mode (native tools on by default), like Alice's own.
 5. Signing in the server account is admin-only and logged as the server
    account; a private browser login never touches the service HOME.
 6. A turn on Alice's shared account, run by Bob in workflow W, lands in the
@@ -243,8 +243,8 @@ provider and account.
    an account shared with it: viewers, editors, co-owners, schedules and
    triggers. Choosing the account in the model settings still needs edit
    access.)*
-3. The hybrid-mode rule: accept "shared accounts run MCP-only for others"
-   until CLIs are confined?
+3. *(Decided 2026-09-28: no. Native tools stay on by default for every
+   turn, shared accounts included; see below.)*
 4. *(Decided 2026-09-28: yes, from the UI. An admin sets an
    admin-configured account's "Available to" (everyone, admins, products,
    people) on the Providers page; the installation policy is the default
@@ -254,6 +254,23 @@ provider and account.
    part 2); until then native tools would read other users' trees and every
    account's login files. Once CLIs are confined, the "shared accounts run
    MCP-only for others" rule above is dropped.)*
+
+## Decision 2026-09-28: native tools on by default
+
+The owner decided: "native tools, keep it on by default always now".
+
+- Native agent tools (hybrid) are the default wherever nothing chose
+  otherwise: workflow chats, Crews and Code (through their "Native agent
+  tools" switch, on unless turned off). Items that explicitly chose
+  AgentWorks-only tools keep that choice. Step agents, schedules, webhooks,
+  bots and read-only users are unchanged.
+- The forced MCP-only for turns on someone else's shared account is
+  removed; such turns keep the configured mode.
+- **Known exposure until the coding CLIs run under Landlock (PLAT-364
+  part 2):** a run on someone else's shared account can read that
+  account's login files in its HOME, and native reads in a Code (or any
+  hybrid chat) can reach files outside the Code. Confining the CLIs is the
+  follow-up that closes both.
 
 ## Implementation notes
 
@@ -301,14 +318,36 @@ Built on branch `feat/provider-accounts` (2026-09-28).
   CLI gets live input, and `/sessions/{id}/live-input` re-checks too.
   Denials say "this account is no longer available to <workflow / Crew /
   this Code>" and never fall back.
-- **Native tools.** A turn on a user account the principal does not own
-  runs MCP-only. `handleQuery` decides it on the turn's FINAL account
-  (`finalQueryTurnConnection`: a workflow chat that does not override its
-  manifest runs on the manifest's account) and re-checks it on the account
-  the agent is built with. The retained-CLI compatibility check rebuilds the
-  key with the same forced mode, and a CLI launched with native tools never
-  takes a shared-account turn (live input answers 409). Workflow steps and
-  sub-agents were already MCP-only.
+- **Native tools.** Since 2026-09-28 the account does not change the tool
+  mode (see the decision above). `handleQuery` still admits the turn on its
+  FINAL account (`finalQueryTurnConnection`: a workflow chat that does not
+  override its manifest runs on the manifest's account).
+- **Per-account actions** (every row, server account and user accounts
+  alike; permissions enforced server-side):
+  - *Status* (`GET /api/provider-connections/{id}/status[?verify=1]`):
+    the CLI's own status command in the account's environment, returning
+    signed in / signed out / key rejected and the identity (email or org)
+    only. Verified commands: `claude auth status --json` (plus, on
+    Refresh, one real `claude -p hi --model claude-haiku-4-5 --max-turns 1`
+    because status reports loggedIn for any token), `codex login status`,
+    `cursor-agent status --format json`. Muse has no status command; its
+    `$XDG_CONFIG_HOME/muse/auth.json` is read for `providers.meta` and only
+    `user_email` is returned. Anyone who may use or manage the account.
+  - *Usage*: managers get the terminal, others the server-collected text.
+  - *Open terminal* (`inspect`): owner or admin for a user account, admins
+    for the server account.
+  - *Sign in*: per account; the server account's button reads "Sign in the
+    shared server login (used by everyone allowed)", admins only.
+  - *Sign out* (`POST /api/provider-connections/{id}/sign-out`): the CLI's
+    own logout in the account's environment (`claude auth logout`, `codex
+    logout`, `cursor-agent logout`, `muse logout`, all verified with
+    `--help`; no login files are removed by hand). Browser-login user
+    accounts: owner or admin; the server account: admins, after a
+    confirmation. Retained CLIs on the account are stopped first. Logged as
+    `[PROVIDER_SETUP] <provider> sign-out for server account | private
+    account <id> by <user>`. The account record stays. Key accounts have no
+    sign-out (remove the account or change the key).
+  - *Remove*: user accounts only.
 - **Usage.** Owners and admins run `usage` in an interactive terminal in
   the account's own HOME. Anyone else who may use the account (a shared
   account, or the server account for a non-admin) gets no terminal: the
@@ -331,7 +370,9 @@ Built on branch `feat/provider-accounts` (2026-09-28).
 ### File map
 
 - `agent_go/cmd/server/provider_accounts.go`: policy, admin settings,
-  product defaults, run scope, admission, sharing validation, MCP-only rule.
+  product defaults, run scope, admission, sharing validation.
+- `agent_go/cmd/server/provider_account_actions.go`: per-account status
+  and sign-out.
 - `agent_go/cmd/server/provider_account_routes.go`: account list / add /
   edit / remove, server-account "Available to", share targets, product
   defaults API.
@@ -357,8 +398,8 @@ Built on branch `feat/provider-accounts` (2026-09-28).
   status comes from the existing inspect action.
 - Crew Run mode lets every user with the Crew product chat with any Crew,
   so an account shared with a Crew reaches all of them.
-- Test 4 checks the MCP-only decision and the turn's account lookup, not a
-  live coding-CLI turn. The live part of test 7 is skipped unless
+- Test 4 now checks (through `handleQuery`) that a shared-account Builder
+  turn and a Code turn get hybrid by default. The live part of test 7 is skipped unless
   `AGENTWORKS_LIVE_MUSE_ACCOUNT_HOME` points at a HOME with a Muse login.
 - The account registry and the settings file are cached in memory (read
   once, updated on every save; this server is their only writer). If the

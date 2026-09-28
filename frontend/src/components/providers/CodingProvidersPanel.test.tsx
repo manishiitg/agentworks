@@ -133,7 +133,7 @@ describe('CodingProvidersPanel', () => {
 
       await act(async () => Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.includes('Codex'))!.click())
       expect(dialog.textContent).toContain('Authentication detected via Codex home')
-      expect(dialog.textContent).toContain("Sign in the server's shared Codex login (used by everyone allowed below)")
+      expect(dialog.textContent).toContain("Sign in the shared server login (used by everyone allowed)")
       expect(dialog.textContent).toContain('Open terminal')
       expect(dialog.textContent).toContain('Check usage')
       expect(dialog.textContent).toContain('Type /status')
@@ -185,7 +185,7 @@ describe('CodingProvidersPanel', () => {
     try {
       await act(async () => root.render(<CodingProvidersPanel isOpen onClose={vi.fn()} />))
       await act(async () => Promise.resolve())
-      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes("Sign in the server's shared"))!.click())
+      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes("Sign in the shared server login (used by everyone allowed)"))!.click())
       await act(async () => Promise.resolve())
 
       const replaceButton = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('End existing session and start new'))
@@ -251,7 +251,7 @@ describe('CodingProvidersPanel', () => {
       await act(async () => refresh.click())
       await act(async () => Promise.resolve())
 
-      expect(dialog.textContent).toContain("Sign in the server's shared")
+      expect(dialog.textContent).toContain("Sign in the shared server login (used by everyone allowed)")
       expect(dialog.textContent).toContain('No SSH or direct server access is required')
     } finally {
       await act(async () => root.unmount())

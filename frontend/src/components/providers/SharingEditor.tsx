@@ -45,7 +45,7 @@ export function sharingSummary(sharing?: ProviderAccountSharing): string {
   return `Shared with ${plural(sharing.workflows?.length ?? 0, 'workflow', 'workflows')}, ${plural(sharing.crews?.length ?? 0, 'Crew', 'Crews')}, ${plural(sharing.users?.length ?? 0, 'person', 'people')}`
 }
 
-export const SHARING_WARNING = 'Runs by others act as your account and are billed to it. Their runs use it with native tools off.'
+export const SHARING_WARNING = 'Runs by others act as your account and are billed to it. Nobody else sees the key or the login files.'
 
 type PickOption = { id: string; label: string; detail?: string }
 

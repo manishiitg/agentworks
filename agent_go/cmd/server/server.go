@@ -2436,6 +2436,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/share-targets", api.handleProviderShareTargets).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/status", api.handleProviderAccountStatus).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/sign-out", api.handleProviderAccountSignOut).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
@@ -3874,12 +3876,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Someone else's shared account runs MCP-only: a CLI with native tools is
-	// not confined and could read the owner's login in the account HOME.
-	sharedAccountTurn := api.providerAccountForcesMCPOnly(r.Context(), currentUserID, turnConnectionID)
-	if sharedAccountTurn && resolvedProfile != nil {
-		resolvedProfile.Definition.Runtime.AgentTools.Mode = "mcp_only"
-	}
 	crewGuest := crewGuestCallerForTurn(req, currentUserID)
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
@@ -3927,7 +3923,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	agentToolsMode := agentProfileToolsMode(resolvedProfile)
 	// A workflow's Builder/Run chat takes the workflow's "Native agent tools"
 	// switch (a Crew's comes through its resolved profile).
-	workflowNativeAgentTools := resolvedProfile == nil && !sharedAccountTurn && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
+	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
 	if workflowNativeAgentTools {
 		agentToolsMode = "hybrid"
 	}
@@ -5506,27 +5502,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// shell and file changes still go through the bridge, so mcpagent's
 		// shell/diff routing block stays in every mode.
 		var profileBridgeRoutingInstructions *string
-		// Re-check native tools against the account the agent is actually
-		// built with, after every manifest, profile and LLM-config override.
-		if _, finalConnectionID := queryTurnConnection(req); !sharedAccountTurn && api.providerAccountForcesMCPOnly(streamCtx, currentUserID, finalConnectionID) {
-			log.Printf("[PROVIDER_ACCOUNT] session %s: final account %s is not %s's own; native tools off", sessionID, finalConnectionID, currentUserID)
-			sharedAccountTurn = true
-			workflowNativeAgentTools = false
-			if resolvedProfile != nil {
-				resolvedProfile.Definition.Runtime.AgentTools.Mode = "mcp_only"
-			}
-			api.conversationMux.Lock()
-			api.lastAgentToolsModeBySession[sessionID] = "mcp_only"
-			api.lastAgentProfileKeyBySession[sessionID] = agentProfileSessionKey(resolvedProfile)
-			api.conversationMux.Unlock()
-		}
 		if resolvedProfile != nil {
 			profileAgentToolsMode = resolvedProfile.Definition.Runtime.AgentTools.Mode
 			profileApprovalsMode = resolvedProfile.Definition.Runtime.Approvals.Mode
 		} else if workflowNativeAgentTools {
 			profileAgentToolsMode = "hybrid"
 		}
-		recordLaunchedAgentToolsMode(sessionID, profileAgentToolsMode)
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
 		claudeCodePersistentInteractive, codexPersistentInteractive, cursorPersistentInteractive, piPersistentInteractive, musePersistentInteractive, agyPersistentInteractive := codingAgentPersistentInteractiveFlags(finalProvider, allowPersistentInteractive, forceStructuredCodingAgent)
@@ -10573,18 +10554,13 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	policyRequest, policyKnown := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
 	// Live input is a turn too: re-check the session's account for the
-	// person sending it (sharing changes apply from the next turn), and never
-	// hand someone else's shared account to a CLI running native tools.
+	// person sending it (sharing changes apply from the next turn).
 	if policyKnown {
 		if provider, connectionID := queryTurnConnection(policyRequest); provider != "" && connectionID != "" {
 			sender := GetUserIDFromContext(r.Context())
 			scope := providerAccountScope{Principal: sender, WorkspacePath: policyRequest.SelectedFolder, Product: policyRequest.AgentProfileID}
 			if _, accountErr := api.admitProviderAccount(r.Context(), scope, provider, connectionID); accountErr != nil {
 				http.Error(w, accountErr.Error(), http.StatusForbidden)
-				return
-			}
-			if !api.retainedToolModeAllowsAccount(r.Context(), sender, sessionID, connectionID) {
-				http.Error(w, "this chat's running CLI has native tools on, which a shared account does not allow; send the message as a new turn", http.StatusConflict)
 				return
 			}
 		}

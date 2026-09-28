@@ -219,7 +219,7 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 
 	// Bob sees the account in W's picker (metadata only), not elsewhere.
 	view, ok := findAccountView(env.list(t, "bob", "?workspace_path=Workflow/w"), account.ID)
-	if !ok || view.Relation != "shared_with_workflow" || !view.Usable || !view.NativeToolsOff || view.Sharing != nil || view.OwnerUserID != "" || view.OwnerName != "alice" || view.CanManage {
+	if !ok || view.Relation != "shared_with_workflow" || !view.Usable || view.Sharing != nil || view.OwnerUserID != "" || view.OwnerName != "alice" || view.CanManage {
 		t.Fatalf("bob's view in W: %+v", view)
 	}
 	if _, ok := findAccountView(env.list(t, "bob", "?workspace_path=Workflow/v"), account.ID); ok {
@@ -306,28 +306,13 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 	}
 }
 
-// Test 4: someone else's shared account runs MCP-only; the owner's own run
-// keeps its configured mode.
-func TestProviderAccountsSharedAccountForcesMCPOnly(t *testing.T) {
+// Test 4 (flipped by the owner decision of 2026-09-28: native tools on by
+// default everywhere): a turn on someone else's shared account keeps the
+// configured tool mode, see TestProviderAccountsSharedAccountAndCodeTurnsAreHybrid.
+// The query path still derives the account a lightweight follow-up runs on.
+func TestProviderAccountsFollowUpKeepsItsAccount(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
-	ctx := context.Background()
-	if !env.api.providerAccountForcesMCPOnly(ctx, "bob", account.ID) {
-		t.Fatal("bob's turn on Alice's account keeps native tools")
-	}
-	if env.api.providerAccountForcesMCPOnly(ctx, "alice", account.ID) {
-		t.Fatal("alice's own turn lost her configured tool mode")
-	}
-	for _, id := range []string{"", "global:claude-code", llmguard.ServerDefaultConnectionPrefix + "claude-code"} {
-		if env.api.providerAccountForcesMCPOnly(ctx, "bob", id) {
-			t.Fatalf("server account %q forced MCP-only", id)
-		}
-	}
-	if !env.api.providerAccountForcesMCPOnly(ctx, "bob", "missing-account") {
-		t.Fatal("an unknown account must fail closed")
-	}
-	// The query path derives the account a turn names from the request, or
-	// from the session's last full request for a lightweight follow-up.
 	env.api.lastQueryRequests = map[string]QueryRequest{"s1": {Provider: "claude-code", ConnectionID: account.ID}}
 	if provider, id := env.api.queryTurnConnectionForSession(QueryRequest{Query: "next"}, "s1"); provider != "claude-code" || id != account.ID {
 		t.Fatalf("follow-up turn lost its account: %s %s", provider, id)
@@ -672,7 +657,7 @@ func TestProviderAccountsDefaultsKeepTodaysBehaviour(t *testing.T) {
 		}
 	}
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "cursor-cli", "display_name": "Mine", "credential": "k"})
-	if view, _ := findAccountView(env.list(t, "alice", ""), account.ID); view.Sharing == nil || view.Sharing.Mode != providerSharingPrivate || view.NativeToolsOff {
+	if view, _ := findAccountView(env.list(t, "alice", ""), account.ID); view.Sharing == nil || view.Sharing.Mode != providerSharingPrivate {
 		t.Fatalf("a new account must be private: %+v", view)
 	}
 	if _, err := env.api.connectionAPIKeys(context.Background(), providerAccountScope{Principal: "bob"}, "cursor-cli", account.ID); err == nil {

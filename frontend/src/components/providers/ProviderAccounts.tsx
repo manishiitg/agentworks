@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Users, Plus, ShieldCheck, UserRound, Pencil, Trash2, LogIn, Loader2, X, Gauge, Share2, Lock } from 'lucide-react'
+import { Users, Plus, ShieldCheck, UserRound, Pencil, Trash2, LogIn, LogOut, Loader2, X, Gauge, Share2, Lock, Terminal, RefreshCw } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ProviderAccountCostsSection from './AccountCosts'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
@@ -8,6 +8,7 @@ import {
   providerApiErrorText,
   type ProviderAccountRelation,
   type ProviderAccountSharing,
+  type ProviderAccountStatus,
   type ProviderAvailableTo,
   type ProviderConnection,
   type ProviderSetupSession,
@@ -15,6 +16,35 @@ import {
 
 // Providers whose CLI has a usage command the guided terminal can run.
 const USAGE_PROVIDERS = new Set(['claude-code', 'codex-cli', 'muse-cli'])
+// Providers with a browser login the server can sign out (the CLI's own logout).
+const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
+
+/** One line for an account's status; never a credential. */
+export function accountStatusText(status?: ProviderAccountStatus | 'loading'): string {
+  if (!status) return ''
+  if (status === 'loading') return 'Checking status…'
+  switch (status.state) {
+    case 'signed_in': return `Signed in${status.identity ? ` as ${status.identity}` : ''}${status.verified ? ' (checked)' : ''}`
+    case 'signed_out': return 'Signed out'
+    case 'key_rejected': return `Login rejected${status.detail ? `: ${status.detail}` : ''}`
+    default: return status.detail ? `Status unknown: ${status.detail}` : 'Status unknown'
+  }
+}
+
+/** Whose account a row is, for action labels. */
+export function accountScopeLabel(record: ProviderConnection): string {
+  const relation = accountRelation(record)
+  if (relation === 'server') return 'server account (shared)'
+  if (relation === 'own') return 'your account'
+  return `${record.owner_name || 'another person'}'s account`
+}
+
+/** Subtitle for someone else's account the viewer sees but may not use. */
+export function otherAccountDetail(record: ProviderConnection, summary: string): string {
+  const owner = record.owner_name || record.owner_user_id || 'unknown'
+  if (record.sharing?.mode !== 'shared') return `Owner: ${owner} · Private (only ${owner} can use it)`
+  return `Owner: ${owner} · ${summary}`
+}
 
 /** How the caller reaches an account; an older server sends no relation. */
 export const accountRelation = (record: ProviderConnection): ProviderAccountRelation =>
@@ -67,6 +97,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
   const [usageText, setUsageText] = useState<{ rowId: string; text: string } | null>(null)
+  const [statuses, setStatuses] = useState<Record<string, ProviderAccountStatus | 'loading'>>({})
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [credential, setCredential] = useState('')
@@ -85,6 +116,39 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     refresh(); window.addEventListener('provider-connections-changed', refresh)
     return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refresh) }
   }, [provider, workspacePath, product])
+  // Each row shows its status; the cheap check runs on load, the real one on Refresh.
+  useEffect(() => {
+    if (!manage) return
+    let cancelled = false
+    for (const record of connections) {
+      if (record.usable === false && !record.can_manage) continue
+      void llmConfigService.getProviderAccountStatus(record.id, false, workspacePath).then(status => {
+        if (!cancelled) setStatuses(current => ({ ...current, [record.id]: status }))
+      }).catch(() => undefined)
+    }
+    return () => { cancelled = true }
+  }, [connections, manage, workspacePath])
+  const refreshStatus = async (record: ProviderConnection) => {
+    setStatuses(current => ({ ...current, [record.id]: 'loading' }))
+    try {
+      const status = await llmConfigService.getProviderAccountStatus(record.id, true, workspacePath)
+      setStatuses(current => ({ ...current, [record.id]: status }))
+    } catch (statusError) {
+      setStatuses(current => { const next = { ...current }; delete next[record.id]; return next })
+      setError(providerApiErrorText(statusError, 'Could not check status.'))
+    }
+  }
+  const signOut = async (record: ProviderConnection) => {
+    const server = accountRelation(record) === 'server'
+    const message = server
+      ? `Every run that uses the ${providerLabel || provider} server account will stop working until someone signs in again.`
+      : `Sign out ${record.display_name}? Runs that use it stop working until it signs in again. The account stays.`
+    if (!window.confirm(message)) return
+    setBusy(true); setError(null)
+    try { await llmConfigService.signOutProviderAccount(record.id); changed(); await refreshStatus(record) }
+    catch (signOutError) { setError(providerApiErrorText(signOutError, 'Could not sign out.')) }
+    finally { setBusy(false) }
+  }
   const resetForm = () => { setName(''); setCredential(''); setAuthMethod('api_key'); setNewSharing({ mode: 'private' }); setError(null) }
   useEffect(() => {
     if (!addRequest) return
@@ -120,7 +184,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save account. Check the provider and administrator policy.')) }
     finally { setBusy(false) }
   }
-  const runSetup = async (record: ProviderConnection, action: 'authenticate' | 'usage') => {
+  const runSetup = async (record: ProviderConnection, action: 'authenticate' | 'usage' | 'inspect') => {
     setBusy(true); setError(null)
     try {
       if (action === 'usage') {
@@ -131,7 +195,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         setSession(await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id))
         setSessionRowId(record.id)
       }
-    } catch (setupError) { setError(providerApiErrorText(setupError, action === 'usage' ? 'Could not check usage.' : 'Could not start account login.')) }
+    } catch (setupError) { setError(providerApiErrorText(setupError, action === 'usage' ? 'Could not check usage.' : action === 'inspect' ? 'Could not open the terminal.' : 'Could not start account login.')) }
     finally { setBusy(false) }
   }
   const login = (record: ProviderConnection) => runSetup(record, 'authenticate')
@@ -172,6 +236,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const usageButton = (record: ProviderConnection) => record.can_view_usage && USAGE_PROVIDERS.has(provider) && (
     <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Usage for ${record.display_name}`} onClick={() => void runSetup(record, 'usage')}><Gauge className="h-3.5 w-3.5" /> Usage</button>
   )
+  // Per-account actions. The server enforces who may run each one.
+  const statusLine = (record: ProviderConnection) => statuses[record.id] && (
+    <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300" aria-label={`Status of ${record.display_name}`}>{accountStatusText(statuses[record.id])}</p>
+  )
+  const statusButton = (record: ProviderConnection) => statuses[record.id] !== undefined && (
+    <button disabled={busy || statuses[record.id] === 'loading'} type="button" className={secondaryButtonClass} aria-label={`Refresh status of ${record.display_name}`} title="Run the real login check" onClick={() => void refreshStatus(record)}><RefreshCw className="h-3.5 w-3.5" /> Status</button>
+  )
+  const terminalButton = (record: ProviderConnection) => record.can_manage && (
+    <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Open terminal for ${record.display_name} (${accountScopeLabel(record)})`} onClick={() => void runSetup(record, 'inspect')}><Terminal className="h-3.5 w-3.5" /> Open terminal ({accountScopeLabel(record)})</button>
+  )
+  const signOutButton = (record: ProviderConnection) => record.can_manage && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login') && (
+    <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Sign out ${record.display_name}`} onClick={() => void signOut(record)}><LogOut className="h-3.5 w-3.5" /> Sign out</button>
+  )
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
   )) || (usageText && usageText.rowId === record.id && (
@@ -196,7 +273,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     const canManage = own || record.can_manage === true
     let detail: string
     if (own) detail = sharingSummary(record.sharing)
-    else if (relation === 'admin_view') detail = `Owner: ${record.owner_name || record.owner_user_id || 'unknown'} · ${sharingSummary(record.sharing)}`
+    else if (relation === 'admin_view') detail = otherAccountDetail(record, sharingSummary(record.sharing))
     else detail = `Shared by ${record.owner_name || 'another person'}`
     return (
       <li key={record.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
@@ -208,16 +285,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <div className="flex flex-wrap items-center gap-2">
               <span className="break-words text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name}</span>
               {own && <span className={`${badgeClass} bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300`}>{record.sharing?.mode === 'shared' ? 'Shared' : 'Private'}</span>}
-              {record.native_tools_off && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="Your runs on this account use AgentWorks tools only">Native tools off</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
-            {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Your runs on it use native tools off. You cannot see its credential.</p>}
+            {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
+            {statusLine(record)}
           </div>
         </div>
         {!disabled && (
           <div className="flex flex-wrap items-center gap-1">
+            {statusButton(record)}
             {usageButton(record)}
-            {canManage && own && record.auth_method === 'cli_login' && personalAllowed && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
+            {terminalButton(record)}
+            {canManage && record.auth_method === 'cli_login' && personalAllowed && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
+            {personalAllowed && signOutButton(record)}
             {canManage && manage && <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Sharing for ${record.display_name}`} onClick={() => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) }}><Share2 className="h-3.5 w-3.5" /> Sharing</button>}
             {own && personalAllowed && <button disabled={busy} type="button" aria-label={`Edit ${record.display_name}`} title="Edit account" className={iconButtonClass} onClick={() => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') }}><Pencil className="h-3.5 w-3.5" /></button>}
             {canManage && <button disabled={busy} type="button" aria-label={`Remove ${record.display_name}`} title="Remove account" className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-red-500/10 dark:hover:text-red-400" onClick={() => void remove(record)}><Trash2 className="h-3.5 w-3.5" /></button>}
@@ -245,11 +325,16 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               {record.source && <p className="mt-0.5 break-words text-xs text-gray-500 dark:text-gray-400">{record.source}</p>}
               {availability && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Available to: {availability.text}</p>}
               {availability?.pinned && <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><Lock className="h-3 w-3" /> Set by the installation</p>}
+              {statusLine(record)}
             </div>
           </div>
           {!disabled && (
             <div className="flex flex-wrap items-center gap-1">
+              {statusButton(record)}
               {usageButton(record)}
+              {terminalButton(record)}
+              {record.can_manage && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in the shared server login (used by everyone allowed)</button>}
+              {signOutButton(record)}
               {record.availability_editable && availabilityDraft === null && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(availability?.available_to ?? 'all')}>Edit who can use it</button>}
             </div>
           )}
@@ -356,13 +441,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               const records = selectable.filter(record => groupSpec.relations.includes(accountRelation(record)))
               if (records.length === 0) return null
               return <optgroup key={groupSpec.label} label={groupSpec.label}>
-                {records.map(record => <option key={record.id} value={record.id}>{accountOptionLabel(record)}{record.native_tools_off ? ' · native tools off' : ''}</option>)}
+                {records.map(record => <option key={record.id} value={record.id}>{accountOptionLabel(record)}</option>)}
               </optgroup>
             })}
           </select>
         </label>
       )}
-      {onSelect && !formOnly && selectedRecord?.native_tools_off && !selectedMissing && <p className="mt-1 text-[11px] text-muted-foreground">Native tools off: runs on someone else's account use AgentWorks tools only.</p>}
 
       {!formOnly && !selectionOnly && <ul className="mt-4 divide-y divide-gray-200 dark:divide-gray-700">{own.map(userRow)}</ul>}
       {addForm}

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -62,74 +62,57 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID strin
 	return decided, w.Code
 }
 
-// HIGH 1: MCP-only is decided on the turn's FINAL account (the workflow's
-// saved connection), not the request's.
-func TestProviderAccountsWorkflowPhaseSharedAccountIsMCPOnly(t *testing.T) {
+// Owner decision 2026-09-28: native tools are on by default everywhere. A
+// Builder turn on someone else's shared account keeps the workflow's
+// configured mode (hybrid), and so does a Code turn.
+func TestProviderAccountsSharedAccountAndCodeTurnsAreHybrid(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	env.setWorkflowW(t, account.ID)
-	mode, code := env.queryToolsMode(t, "bob", "bob-builder")
-	if mode != "mcp_only" {
-		t.Fatalf("bob's Builder turn on Alice's shared account decided %q (status %d), want mcp_only", mode, code)
+	if mode, code := env.queryToolsMode(t, "bob", "bob-builder"); mode != "hybrid" {
+		t.Fatalf("bob's Builder turn on Alice's shared account decided %q (status %d), want hybrid", mode, code)
 	}
 	if mode, _ := env.queryToolsMode(t, "alice", "alice-builder"); mode != "hybrid" {
-		t.Fatalf("alice's own Builder turn decided %q, want her configured hybrid", mode)
+		t.Fatalf("alice's own Builder turn decided %q, want hybrid", mode)
 	}
-	// The final account also decides admission: once W's share is gone Bob's
-	// turn is refused before it starts.
+	// The final account still decides admission.
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
 		t.Fatalf("unshare: %d", w.Code)
 	}
 	if mode, code := env.queryToolsMode(t, "bob", "bob-builder-2"); code != http.StatusForbidden || mode != "" {
 		t.Fatalf("bob's turn after unsharing: status %d mode %q", code, mode)
 	}
-}
 
-// MEDIUM 3 and live input: the retained key rebuilt for a follow-up carries
-// the forced mode, and a CLI launched with native tools never takes a
-// shared-account turn.
-func TestProviderAccountsRetainedCLIAndLiveInputKeepSharedAccountMCPOnly(t *testing.T) {
-	env := newProviderAccountsEnv(t, "")
-	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
-	ctx := context.Background()
-	req := QueryRequest{Provider: "claude-code", ConnectionID: account.ID, SelectedFolder: "_users/bob/Chats/Code/projects/p1"}
-	profile := func() *resolvedAgentProfile {
-		return &resolvedAgentProfile{Definition: agentprofiles.Profile{ID: "code", Runtime: agentprofiles.RuntimePolicy{AgentTools: agentprofiles.AgentToolsPolicy{Mode: "hybrid"}}}}
+	// A Code turn: the real Code profile, a Code with no switch set.
+	const codeRoot = "_users/alice/Chats/Code/projects/site"
+	env.mock.mu.Lock()
+	env.mock.files[codeRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"site","title":"Site","session_id":"code:site"}`
+	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{}}`
+	env.mock.mu.Unlock()
+	registry := agentprofiles.NewRegistry()
+	for _, profile := range codeproduct.BuiltinAgentProfiles() {
+		profile.Product = codeproduct.ProfileID
+		if err := registry.RegisterProfile(profile); err != nil {
+			t.Fatal(err)
+		}
 	}
-	// What handleQuery launched with.
-	launched := profile()
-	launched.Definition.Runtime.AgentTools.Mode = "mcp_only"
-	launchKey := agentProfileSessionKey(launched)
-	// What the follow-up compatibility check rebuilds.
-	followUp := profile()
-	if !env.api.applySharedAccountToolMode(ctx, "bob", req, "s-bob", followUp) || agentProfileSessionKey(followUp) != launchKey {
-		t.Fatal("follow-up key differs from the launch key; the retained CLI would be killed")
+	env.api.agentProfiles = registry
+	codeTurn := func() string {
+		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: codeproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
+		resolved, err := env.api.resolveAgentProfileForQuery(context.Background(), &req, "alice", "code-session")
+		if err != nil {
+			t.Fatalf("resolve Code turn: %v", err)
+		}
+		return normalizeAgentToolsMode(resolved.Definition.Runtime.AgentTools.Mode)
 	}
-	own := profile()
-	if env.api.applySharedAccountToolMode(ctx, "alice", req, "s-alice", own) || own.Definition.Runtime.AgentTools.Mode != "hybrid" {
-		t.Fatal("owner's follow-up lost her configured mode")
+	if mode := codeTurn(); mode != "hybrid" {
+		t.Fatalf("Code turn with no switch set decided %q, want hybrid", mode)
 	}
-
-	recordLaunchedAgentToolsMode("s-hybrid", "hybrid")
-	recordLaunchedAgentToolsMode("s-mcp", "mcp_only")
-	if env.api.retainedToolModeAllowsAccount(ctx, "bob", "s-hybrid", account.ID) {
-		t.Fatal("a native-tools CLI accepted a shared-account turn")
-	}
-	if !env.api.retainedToolModeAllowsAccount(ctx, "bob", "s-mcp", account.ID) || !env.api.retainedToolModeAllowsAccount(ctx, "alice", "s-hybrid", account.ID) {
-		t.Fatal("compatible retained CLI refused")
-	}
-
-	// Live input into a native-tools CLI on someone else's account is refused.
-	env.api.lastQueryRequests = map[string]QueryRequest{"s-hybrid": req}
-	env.api.sessionWorkspaceFolders = map[string]string{"s-hybrid": req.SelectedFolder}
-	env.api.activeSessions = map[string]*ActiveSessionInfo{"s-hybrid": {UserID: "bob"}}
-	delivered := false
-	env.api.internalLiveInputDeliver = func(http.ResponseWriter, *http.Request, string, string, string) bool { delivered = true; return true }
-	w := httptest.NewRecorder()
-	liveReq := mux.SetURLVars(sharedSecretsRequest(http.MethodPost, "/", "bob", map[string]string{"message": "cat the token"}), map[string]string{"session_id": "s-hybrid"})
-	env.api.handleLiveInputMessage(w, liveReq)
-	if delivered || w.Code != http.StatusConflict {
-		t.Fatalf("live input into a native-tools CLI on a shared account: %d delivered=%v %s", w.Code, delivered, w.Body.String())
+	env.mock.mu.Lock()
+	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{"native_agent_tools":false}}`
+	env.mock.mu.Unlock()
+	if mode := codeTurn(); mode != "mcp_only" {
+		t.Fatalf("a Code that turned native tools off decided %q", mode)
 	}
 }
 

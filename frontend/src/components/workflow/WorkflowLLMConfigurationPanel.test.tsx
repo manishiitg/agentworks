@@ -240,7 +240,7 @@ describe('workflow account tree', () => {
     vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
       { id: 'global:claude-code', provider: 'claude-code', display_name: 'Server account', scope: 'global', auth_method: 'server', relation: 'server', kind: 'installed', usable: true },
       { id: 'own-a', provider: 'claude-code', display_name: 'Mine', scope: 'user', auth_method: 'api_key', relation: 'own', usable: true },
-      { id: 'dana', provider: 'claude-code', display_name: 'Dana team', scope: 'user', auth_method: 'api_key', relation: 'shared_with_workflow', owner_name: 'Dana', usable: true, native_tools_off: true },
+      { id: 'dana', provider: 'claude-code', display_name: 'Dana team', scope: 'user', auth_method: 'api_key', relation: 'shared_with_workflow', owner_name: 'Dana', usable: true },
       { id: 'erin', provider: 'claude-code', display_name: 'Erin old', scope: 'user', auth_method: 'api_key', relation: 'shared_with_you', owner_name: 'Erin', usable: false },
       { id: 'frank', provider: 'claude-code', display_name: 'Frank hidden', scope: 'user', auth_method: 'api_key', relation: 'shared_with_you', owner_name: 'Frank', usable: false },
       { id: 'admin-only', provider: 'claude-code', display_name: 'Other person', scope: 'user', auth_method: 'api_key', relation: 'admin_view', usable: false },
@@ -254,7 +254,7 @@ describe('workflow account tree', () => {
       const tree = host.querySelector('[aria-label="Claude Code accounts"]')!
       expect(tree.textContent).toContain('Shared with this workflow')
       expect(tree.textContent).toContain('Dana team')
-      expect(tree.textContent).toContain('Native tools off')
+      expect(tree.textContent).not.toContain('Native tools off')
       expect(tree.textContent).toContain('Erin old')
       expect(tree.textContent).toContain('No longer available here')
       expect(tree.textContent).not.toContain('Frank hidden')
