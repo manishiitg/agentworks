@@ -1,6 +1,37 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLocalAdminTokenRotatesAndStaysPrivate(t *testing.T) {
+	dir := t.TempDir()
+	first, err := localAdminToken(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := localAdminToken(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || len(second) != 64 {
+		t.Fatal("local admin token was not regenerated")
+	}
+	path := filepath.Join(dir, "admin-token")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("token file mode = %o, want 600", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != second {
+		t.Fatal("token file does not contain the current token")
+	}
+}
 
 func TestResolveBind(t *testing.T) {
 	cases := []struct {
@@ -74,7 +105,10 @@ func TestValidateExposure(t *testing.T) {
 	if err := validateExposure("0.0.0.0", "http://127.0.0.1:18745"); err == nil {
 		t.Fatal("public bind with local advertised URL must fail")
 	}
-	if err := validateExposure("0.0.0.0", "https://caplayer.example.com"); err != nil {
-		t.Fatalf("hosted HTTPS endpoint should work: %v", err)
+	if err := validateExposure("0.0.0.0", "https://caplayer.example.com"); err == nil {
+		t.Fatal("public alpha endpoint should fail before per-user sign-in and persistence exist")
+	}
+	if err := validateExposure("127.0.0.1", "https://caplayer.example.com"); err == nil {
+		t.Fatal("reverse-proxied public alpha endpoint should fail")
 	}
 }

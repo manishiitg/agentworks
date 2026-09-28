@@ -1,9 +1,7 @@
 /**
  * Typed client for the MCP Gateway admin API (`/api/admin/*`).
  *
- * Shapes mirror the gateway's Go structs (capitalized JSON keys). Locally
- * the gateway trusts loopback callers as admin, so no token is attached;
- * a 401 here means a remote gateway the local user cannot reach.
+ * Shapes mirror the gateway's Go structs (capitalized JSON keys).
  */
 export interface GatewayUser {
   ID: string
@@ -123,12 +121,30 @@ export class GatewayApiError extends Error {
   }
 }
 
+export const GATEWAY_AUTH_REQUIRED_EVENT = 'caplayer-admin-auth-required'
+
+function tokenKey(base: string): string {
+  return `caplayer-admin-token:${base}`
+}
+
+export function gatewayAdminToken(base: string): string {
+  try { return sessionStorage.getItem(tokenKey(base)) ?? '' } catch { return '' }
+}
+
+export function setGatewayAdminToken(base: string, token: string): void {
+  try {
+    if (token) sessionStorage.setItem(tokenKey(base), token)
+    else sessionStorage.removeItem(tokenKey(base))
+  } catch { /* Private browsing may block storage; the request will fail closed. */ }
+}
+
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   let resp: Response
   try {
+    const token = gatewayAdminToken(base)
     resp = await fetch(`${base}${path}`, {
       ...init,
-      headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
+      headers: { Accept: 'application/json', ...(init?.headers ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     })
   } catch {
     throw new GatewayApiError(0, 'Gateway is unreachable. Start the backend with the gateway enabled and retry.')
@@ -141,6 +157,10 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     // Non-JSON body; fall through to the status check below.
   }
   if (!resp.ok) {
+    if (resp.status === 401 && typeof window !== 'undefined') {
+      setGatewayAdminToken(base, '')
+      window.dispatchEvent(new CustomEvent(GATEWAY_AUTH_REQUIRED_EVENT, { detail: base }))
+    }
     const detail =
       typeof data === 'object' && data !== null && 'error' in data && typeof (data as { error: unknown }).error === 'string'
         ? (data as { error: string }).error

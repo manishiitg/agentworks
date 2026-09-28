@@ -15,6 +15,7 @@ func TestValidateURLAndPrivateEgress(t *testing.T) {
 	for _, raw := range []string{
 		"http://127.0.0.1:8080/mcp", "http://127.0.0.1.evil.example/mcp",
 		"https://user:pass@example.com/mcp", "file:///etc/passwd", "https://example.com/mcp#fragment",
+		"https://example.com/mcp?api_key=secret",
 	} {
 		if _, err := ValidateURL(raw, DialOptions{}); err == nil {
 			t.Fatalf("accepted %s", raw)

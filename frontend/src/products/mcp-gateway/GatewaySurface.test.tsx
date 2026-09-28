@@ -60,6 +60,7 @@ describe('GatewaySurface', () => {
     stubGatewayUrl(null)
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    sessionStorage.clear()
   })
 
   async function renderSurface(): Promise<void> {
@@ -117,6 +118,33 @@ describe('GatewaySurface', () => {
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore)
     expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+  })
+
+  it('prompts for the admin token after a 401 and sends it as a bearer credential', async () => {
+    stubGatewayUrl(BASE)
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string> | undefined
+      if (headers?.Authorization !== 'Bearer test-admin-secret') {
+        return Promise.resolve(jsonResponse(401, { error: 'unauthorized' }))
+      }
+      return healthyFetch()(url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await renderSurface()
+
+    const form = container!.querySelector('[data-testid="gateway-admin-login"]') as HTMLFormElement
+    expect(form).not.toBeNull()
+    const input = form.querySelector('input') as HTMLInputElement
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'test-admin-secret')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
+    await act(async () => {})
+
+    expect(container!.querySelector('[data-testid="gateway-admin-login"]')).toBeNull()
+    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+    expect(fetchMock.mock.calls.some(([, init]) => (init?.headers as Record<string, string>)?.Authorization === 'Bearer test-admin-secret')).toBe(true)
   })
 
   it('explains itself when no gateway is configured', async () => {

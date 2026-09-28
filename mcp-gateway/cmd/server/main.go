@@ -1,15 +1,17 @@
-// Command server runs the MCP Gateway: one workspace's governed remote MCP
-// endpoint plus the (M1+) admin API.
+// Command server runs the local-alpha MCP Gateway: one workspace's governed
+// remote MCP endpoint plus the admin API.
 //
 // M0 configuration is static: one workspace, one human, one upstream
 // connector, grants named by GATEWAY_GRANT_TOOLS (comma-separated upstream
 // tool names, granted after discovery). MCP clients sign in through the
-// shared OAuth authorization server; the human approves consent with
-// GATEWAY_HUMAN_TOKEN until the shared IdP lands.
+// shared OAuth authorization server; the local human approves consent with
+// GATEWAY_HUMAN_TOKEN until individual sign-in lands.
 package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"log"
 	"net"
@@ -42,9 +44,8 @@ func main() {
 	}
 }
 
-// resolveBind defaults local runs to loopback. A public bind requires an
-// explicitly configured human token, so the single-user admin assumption
-// cannot silently escape the machine on a default install.
+// resolveBind defaults local runs to loopback. validateExposure rejects all
+// non-loopback binds for this local-alpha release.
 func resolveBind(bind, humanToken string) (string, error) {
 	if bind == "" {
 		bind = "127.0.0.1"
@@ -57,8 +58,7 @@ func resolveBind(bind, humanToken string) (string, error) {
 	return bind, nil
 }
 
-// A public URL may terminate TLS at a reverse proxy, so validate the
-// advertised endpoint independently of the process bind address.
+// Validate the advertised endpoint independently of the process bind address.
 func validatePublicURL(raw, humanToken string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") ||
@@ -77,11 +77,51 @@ func validatePublicURL(raw, humanToken string) error {
 }
 
 func validateExposure(bind, publicURL string) error {
+	// This release has one static OAuth human and in-memory governance. Keep
+	// the alpha on the same machine until per-user login and durable storage
+	// are available. This check cannot detect an independently configured
+	// reverse proxy, which operators must keep private.
+	if !loopbackURL(publicURL) {
+		return errors.New("public CapLayer is unavailable until per-user sign-in and durable governance storage are configured")
+	}
 	ip := net.ParseIP(bind)
-	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) && loopbackURL(publicURL) {
-		return errors.New("non-loopback GATEWAY_BIND requires a public HTTPS GATEWAY_PUBLIC_URL")
+	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return errors.New("CapLayer alpha must bind to loopback")
 	}
 	return nil
+}
+
+// localAdminToken creates a fresh secret for this process. The console user
+// reads the 0600 file and enters it once per browser session. No loopback
+// request receives admin authority merely because of its source address.
+func localAdminToken(stateDir string) (string, error) {
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(random[:])
+	f, err := os.CreateTemp(stateDir, ".admin-token-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0600); err != nil {
+		f.Close()
+		return "", err
+	}
+	if _, err := f.WriteString(token); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	path := filepath.Join(stateDir, "admin-token")
+	if err := os.Rename(f.Name(), path); err != nil {
+		return "", err
+	}
+	log.Printf("gateway: local admin token written to %s", path)
+	return token, nil
 }
 
 func run() error {
@@ -91,7 +131,20 @@ func run() error {
 	grants := strings.Split(env("GATEWAY_GRANT_TOOLS", ""), ",")
 	publicURL := env("GATEWAY_PUBLIC_URL", "http://127.0.0.1:"+port)
 	stateDir := env("GATEWAY_STATE_DIR", filepath.Join(".", "var"))
-	humanToken := env("GATEWAY_HUMAN_TOKEN", "m0-human-token")
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return err
+	}
+	humanToken := os.Getenv("GATEWAY_HUMAN_TOKEN")
+	if humanToken == "" && loopbackURL(publicURL) {
+		var err error
+		humanToken, err = localAdminToken(stateDir)
+		if err != nil {
+			return err
+		}
+	}
+	if len(humanToken) < 32 || humanToken == "local-admin" || humanToken == "m0-human-token" {
+		return errors.New("GATEWAY_HUMAN_TOKEN must be a unique secret of at least 32 characters, or unset for an auto-generated local token")
+	}
 	if err := validatePublicURL(publicURL, humanToken); err != nil {
 		return err
 	}
@@ -103,21 +156,11 @@ func run() error {
 	if err := validateExposure(bind, publicURL); err != nil {
 		return err
 	}
-	bindIP := net.ParseIP(bind)
-	loopbackBind := bind == "localhost" || (bindIP != nil && bindIP.IsLoopback())
-	allowPrivateUpstreams := loopbackBind || os.Getenv("GATEWAY_ALLOW_PRIVATE_UPSTREAMS") == "1"
-	localAdmin := os.Getenv("GATEWAY_LOCAL_ADMIN") == "1"
-	if localAdmin && (!loopbackBind || !loopbackURL(publicURL)) {
-		return errors.New("GATEWAY_LOCAL_ADMIN requires a loopback bind and public URL")
+	allowPrivateUpstreams := os.Getenv("GATEWAY_ALLOW_PRIVATE_UPSTREAMS") == "1"
+	if os.Getenv("GATEWAY_LOCAL_ADMIN") == "1" {
+		return errors.New("GATEWAY_LOCAL_ADMIN no longer bypasses authentication; remove this setting")
 	}
 	human := mcpoauth.User{ID: "u1", Username: "m0", Email: "m0@example.com", Provider: "m0-static"}
-
-	if os.Getenv("GATEWAY_HUMAN_TOKEN") == "" {
-		log.Printf("gateway: GATEWAY_HUMAN_TOKEN unset, using insecure dev default")
-	}
-	if err := os.MkdirAll(stateDir, 0700); err != nil {
-		return err
-	}
 
 	cat, err := catalog.Load()
 	if err != nil {
@@ -166,7 +209,6 @@ func run() error {
 	adm := &admin.Admin{
 		Store: st, Gateway: gw, Catalog: cat,
 		WorkspaceID: "w1", HumanToken: humanToken, PublicURL: publicURL,
-		LocalAdmin: localAdmin,
 	}
 	mux := gw.Handler()
 	adm.APIRoutes(mux)

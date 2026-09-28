@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
@@ -33,7 +34,8 @@ type Admin struct {
 	WorkspaceID string
 	HumanToken  string
 	PublicURL   string
-	LocalAdmin  bool // explicitly enabled for a direct, loopback-only local run
+	sessionsMu  sync.Mutex
+	sessions    map[string]time.Time
 }
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -45,14 +47,6 @@ func newID(prefix string) string {
 }
 
 func (a *Admin) authed(r *http.Request) bool {
-	// Explicit local mode treats a direct loopback peer as the single admin.
-	// Hosted deployments leave LocalAdmin false, including when a reverse
-	// proxy connects to this process over loopback.
-	if a.LocalAdmin && isLoopbackPeer(r) && isLoopbackHost(r.Host) &&
-		(r.Header.Get("Origin") == "" || isLoopbackOrigin(r.Header.Get("Origin"))) &&
-		r.Header.Get("Sec-Fetch-Site") != "cross-site" {
-		return true
-	}
 	if a.HumanToken == "" {
 		return false
 	}
@@ -60,7 +54,7 @@ func (a *Admin) authed(r *http.Request) bool {
 		return subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(h, "Bearer ")), []byte(a.HumanToken)) == 1
 	}
 	c, err := r.Cookie("gw_admin")
-	if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.HumanToken)) != 1 || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	if err != nil || !a.validSession(c.Value) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		return false
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
@@ -72,30 +66,47 @@ func (a *Admin) authed(r *http.Request) bool {
 	return true
 }
 
-func isLoopbackHost(hostport string) bool {
-	host := hostport
-	if parsed, _, err := net.SplitHostPort(hostport); err == nil {
-		host = parsed
+const adminSessionLifetime = 12 * time.Hour
+
+func (a *Admin) issueSession() (string, error) {
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
 	}
-	if host == "localhost" {
-		return true
+	token := hex.EncodeToString(random[:])
+	a.sessionsMu.Lock()
+	defer a.sessionsMu.Unlock()
+	if a.sessions == nil {
+		a.sessions = make(map[string]time.Time)
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	for value, expiry := range a.sessions {
+		if !time.Now().Before(expiry) {
+			delete(a.sessions, value)
+		}
+	}
+	if len(a.sessions) >= 1024 {
+		var oldest string
+		var earliest time.Time
+		for value, expiry := range a.sessions {
+			if oldest == "" || expiry.Before(earliest) {
+				oldest, earliest = value, expiry
+			}
+		}
+		delete(a.sessions, oldest)
+	}
+	a.sessions[token] = time.Now().Add(adminSessionLifetime)
+	return token, nil
 }
 
-// isLoopbackPeer reports whether the request arrived directly from a
-// loopback address.
-func isLoopbackPeer(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
+func (a *Admin) validSession(token string) bool {
+	a.sessionsMu.Lock()
+	defer a.sessionsMu.Unlock()
+	expiry, ok := a.sessions[token]
+	if ok && !time.Now().Before(expiry) {
+		delete(a.sessions, token)
 		return false
 	}
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return ok
 }
 
 // isLoopbackOrigin reports whether an Origin header value names loopback

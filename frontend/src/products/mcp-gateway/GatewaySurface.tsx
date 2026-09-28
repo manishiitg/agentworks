@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { PlugZap, ScrollText, Server, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { gatewayBaseUrl } from '../productSurfaceConfig'
 import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
@@ -8,6 +8,7 @@ import { GatewayUsersPanel } from './GatewayUsersPanel'
 import { GatewayAuditPanel } from './GatewayAuditPanel'
 import { GatewayConnectPanel } from './GatewayConnectPanel'
 import { GatewayPIIPanel } from './GatewayPIIPanel'
+import { GATEWAY_AUTH_REQUIRED_EVENT, listUsers, setGatewayAdminToken } from './gatewayAdminApi'
 
 const SECTIONS = [
   { id: 'servers', label: 'MCP Gateway', icon: Server },
@@ -22,14 +23,44 @@ type SectionId = (typeof SECTIONS)[number]['id']
 
 /**
  * Embedded CapLayer console. Its MCP Gateway UI talks to the gateway admin API
- * directly; locally the gateway trusts loopback callers as admin, so there
- * is no token prompt. Entry is hidden unless a gateway URL is configured;
+ * directly. Entry is hidden unless a gateway URL is configured;
  * the null branch only fires for a persisted surface after the URL was
  * removed.
  */
 export function GatewaySurface() {
   const base = gatewayBaseUrl()
   const [section, setSection] = useState<SectionId>('servers')
+  const [authRequired, setAuthRequired] = useState(false)
+  const [token, setToken] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [revision, setRevision] = useState(0)
+
+  useEffect(() => {
+    const onAuthRequired = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === base) setAuthRequired(true)
+    }
+    window.addEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
+    return () => window.removeEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
+  }, [base])
+
+  async function submitToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!base || !token.trim()) return
+    setAuthBusy(true)
+    setAuthError('')
+    setGatewayAdminToken(base, token.trim())
+    try {
+      await listUsers(base)
+      setToken('')
+      setAuthRequired(false)
+      setRevision(value => value + 1)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not sign in')
+    } finally {
+      setAuthBusy(false)
+    }
+  }
 
   if (!base) {
     return (
@@ -45,7 +76,17 @@ export function GatewaySurface() {
         <ProductSurfaceSwitcher />
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {authRequired ? (
+        <main className="grid min-h-0 flex-1 place-items-center p-6">
+          <form onSubmit={event => void submitToken(event)} className="w-full max-w-sm space-y-3 rounded-md border border-border bg-card p-6" data-testid="gateway-admin-login">
+            <h2 className="text-lg font-semibold text-foreground">Sign in to CapLayer</h2>
+            <p className="text-sm text-muted-foreground">Enter the admin token from the file path printed by the gateway launcher.</p>
+            <input aria-label="Admin token" type="password" autoComplete="off" value={token} onChange={event => setToken(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            {authError && <p role="alert" className="text-sm text-destructive">{authError}</p>}
+            <button type="submit" disabled={authBusy || !token.trim()} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">{authBusy ? 'Signing in…' : 'Sign in'}</button>
+          </form>
+        </main>
+      ) : <div key={revision} className="flex min-h-0 flex-1">
         <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r border-border p-3" aria-label="CapLayer sections">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
@@ -71,7 +112,7 @@ export function GatewaySurface() {
           {section === 'pii' && <GatewayPIIPanel base={base} />}
           {section === 'connect' && <GatewayConnectPanel base={base} />}
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

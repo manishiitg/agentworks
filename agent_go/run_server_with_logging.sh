@@ -400,8 +400,6 @@ if [ "$ONLY_GATEWAY" = true ]; then
     GATEWAY_LOG_PATH="${LOG_DIR}/gateway_debug.log"
     export GATEWAY_PORT
     export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
-    export GATEWAY_HUMAN_TOKEN="${GATEWAY_HUMAN_TOKEN:-local-admin}"
-    export GATEWAY_LOCAL_ADMIN="${GATEWAY_LOCAL_ADMIN:-1}"
     export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
     export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
     export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
@@ -409,6 +407,7 @@ if [ "$ONLY_GATEWAY" = true ]; then
     echo "🚀 Starting MCP Gateway..."
     echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
     echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     if [ "$BACKGROUND_MODE" = true ]; then
         nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
@@ -947,8 +946,6 @@ else
 fi
 export GATEWAY_PORT
 export GATEWAY_PUBLIC_URL="${GATEWAY_PUBLIC_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
-export GATEWAY_HUMAN_TOKEN="${GATEWAY_HUMAN_TOKEN:-local-admin}"
-export GATEWAY_LOCAL_ADMIN="${GATEWAY_LOCAL_ADMIN:-1}"
 export GATEWAY_DEMO="${GATEWAY_DEMO:-}"
 export GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-${GATEWAY_DIR}/var}"
 export GATEWAY_GRANT_TOOLS="${GATEWAY_GRANT_TOOLS:-resolve-library-id}"
@@ -1809,6 +1806,7 @@ start_mcp_gateway() {
     echo "🚀 Starting MCP Gateway..."
     echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
     echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
+    echo "🔑 Local admin token file: ${GATEWAY_STATE_DIR}/admin-token"
 
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     echo "=========================================" >> "$GATEWAY_LOG_PATH"

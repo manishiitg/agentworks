@@ -35,7 +35,7 @@ const maxResponseBytes = 2 << 20
 // destinations outside an explicitly permitted loopback development setup.
 func ValidateURL(raw string, opts DialOptions) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("invalid upstream URL")
 	}
 	if u.Scheme != "https" {

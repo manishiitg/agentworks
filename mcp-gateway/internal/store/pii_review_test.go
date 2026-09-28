@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -17,5 +18,17 @@ func TestPIIReviewApprovalExpires(t *testing.T) {
 	s.AddPIIReview(PIIReview{ID: "approved-old", WorkspaceID: "w", UserID: "u", PublicName: "tool", Direction: "input", PayloadHash: "hash", Status: "approved", CreatedAt: time.Now().Add(-25 * time.Hour)})
 	if s.ConsumePIIReview("w", "u", "tool", "input", "hash") {
 		t.Fatal("expired approval was consumed")
+	}
+}
+
+func TestPIIReviewQueueIsBounded(t *testing.T) {
+	s := NewMemoryStore()
+	for i := 0; i < 10_000; i++ {
+		if !s.AddPIIReview(PIIReview{ID: strconv.Itoa(i), WorkspaceID: "w", Status: "pending", CreatedAt: time.Now()}) {
+			t.Fatalf("review %d was refused before capacity", i)
+		}
+	}
+	if s.AddPIIReview(PIIReview{ID: "overflow", WorkspaceID: "w", Status: "pending", CreatedAt: time.Now()}) {
+		t.Fatal("review queue accepted work beyond its bound")
 	}
 }

@@ -140,7 +140,7 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 
 	// UI pages render.
 	uiReq, _ := http.NewRequest("GET", publicURL+"/admin/tools", nil)
-	uiReq.AddCookie(&http.Cookie{Name: "gw_admin", Value: testHumanToken})
+	uiReq.Header.Set("Authorization", "Bearer "+testHumanToken)
 	uiResp, err := http.DefaultClient.Do(uiReq)
 	if err != nil {
 		t.Fatalf("ui tools: %v", err)
@@ -151,7 +151,7 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 		t.Fatalf("ui tools page: %d, missing tool row", uiResp.StatusCode)
 	}
 
-	// Deleting the connector removes its tools; grants dangle and deny.
+	// Deleting the connector removes its tools and their grants.
 	if code, data := apiCall(t, "DELETE", publicURL+"/api/admin/connectors/"+created.ID, ""); code != 204 {
 		t.Fatalf("delete connector: %d %s", code, data)
 	}

@@ -20,11 +20,19 @@ import (
 func localAdminMux() *http.ServeMux {
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
 	adm.UIRoutes(mux)
 	return mux
+}
+
+func authenticatedMux(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authed := r.Clone(r.Context())
+		authed.Header.Set("Authorization", "Bearer tok")
+		next.ServeHTTP(w, authed)
+	})
 }
 
 func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
@@ -33,10 +41,10 @@ func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
 	st.AppendAudit(store.AuditEvent{ID: "match", CallID: "call-1", Timestamp: now, WorkspaceID: "w1", UserID: "=formula", GroupIDs: []string{"g1"}, PublicName: "fake__tool", Decision: store.DecisionAllow, Outcome: store.OutcomeOK})
 	st.AppendAudit(store.AuditEvent{ID: "other-tenant", Timestamp: now, WorkspaceID: "w2", UserID: "=formula", GroupIDs: []string{"g1"}, PublicName: "secret__tool"})
 	st.AppendAudit(store.AuditEvent{ID: "other-group", Timestamp: now, WorkspaceID: "w1", UserID: "u2", GroupIDs: []string{"g2"}})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", LocalAdmin: true}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(authenticatedMux(mux))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/admin/audit?group=g1&format=csv")
@@ -81,7 +89,7 @@ func TestAuditFiltersAndExportStayInWorkspace(t *testing.T) {
 }
 
 func TestPIIRuleAndSampleAPI(t *testing.T) {
-	srv := httptest.NewServer(localAdminMux())
+	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
 	defer srv.Close()
 	page, err := http.Get(srv.URL + "/admin/pii")
 	if err != nil {
@@ -125,7 +133,7 @@ func TestPIIRuleAndSampleAPI(t *testing.T) {
 }
 
 func TestStandaloneAuditPageRendersFilters(t *testing.T) {
-	srv := httptest.NewServer(localAdminMux())
+	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/admin/audit?user=u1&after=2026-09-01")
 	if err != nil {
@@ -138,9 +146,8 @@ func TestStandaloneAuditPageRendersFilters(t *testing.T) {
 	}
 }
 
-// TestLoopbackBypassesAdminToken: in local runs the user is admin, so
-// loopback requests need no token on either the JSON API or the UI.
-func TestLoopbackBypassesAdminToken(t *testing.T) {
+// A loopback peer is untrusted until it presents the admin token.
+func TestLoopbackRequiresAdminToken(t *testing.T) {
 	srv := httptest.NewServer(admin.LocalhostCORS(localAdminMux()))
 	defer srv.Close()
 
@@ -149,8 +156,8 @@ func TestLoopbackBypassesAdminToken(t *testing.T) {
 		t.Fatalf("api users: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("api users without token: got %d, want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("api users without token: got %d, want 401", resp.StatusCode)
 	}
 
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -161,8 +168,18 @@ func TestLoopbackBypassesAdminToken(t *testing.T) {
 		t.Fatalf("ui dashboard: %v", err)
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("ui dashboard without cookie: got %d, want redirect", resp.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/admin/users", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("ui dashboard without cookie: got %d, want 200", resp.StatusCode)
+		t.Fatalf("valid token on loopback: got %d, want 200", resp.StatusCode)
 	}
 }
 
@@ -216,10 +233,10 @@ func TestGroupMembersRoundTrip(t *testing.T) {
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "local"})
 	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1", Email: "u1@example.com"})
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(authenticatedMux(mux))
 	defer srv.Close()
 
 	post := func(path, body string) (int, []byte) {
@@ -271,10 +288,10 @@ func TestGroupServerGrantRoundTrip(t *testing.T) {
 	st.AddMember("g1", "u1")
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
 	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(authenticatedMux(mux))
 	defer srv.Close()
 
 	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
@@ -317,7 +334,7 @@ func TestGroupServerGrantRoundTrip(t *testing.T) {
 // TestEmptyListsMarshalAsArrays: list endpoints emit [] (never null) so
 // clients can iterate without nil checks.
 func TestEmptyListsMarshalAsArrays(t *testing.T) {
-	srv := httptest.NewServer(localAdminMux())
+	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
 	defer srv.Close()
 
 	for _, path := range []string{
@@ -354,10 +371,10 @@ func TestGroupAPIKeyFlow(t *testing.T) {
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1", Name: "G1"})
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "fake", Label: "fake", Status: store.StatusActive})
 	st.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c1", WorkspaceID: "w1", PublicName: "fake__tool", Status: store.StatusActive})
-	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok", LocalAdmin: true}
+	adm := &admin.Admin{Store: st, WorkspaceID: "w1", HumanToken: "tok"}
 	mux := http.NewServeMux()
 	adm.APIRoutes(mux)
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(authenticatedMux(mux))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/admin/groups/g1/keys", "application/json", strings.NewReader(`{"label":"share"}`))
@@ -424,7 +441,7 @@ func TestGroupAPIKeyFlow(t *testing.T) {
 
 // TestRenameGroup: groups can be renamed; ids stay stable.
 func TestRenameGroup(t *testing.T) {
-	srv := httptest.NewServer(localAdminMux())
+	srv := httptest.NewServer(authenticatedMux(localAdminMux()))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/admin/groups", "application/json", strings.NewReader(`{"ID":"g1","Name":"Old"}`))

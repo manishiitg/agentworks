@@ -174,11 +174,12 @@ type MemoryStore struct {
 	groupGrants  map[string]map[string]bool // group ID -> public names
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
-	groupServers map[string]map[string]bool // group ID -> connector IDs
-	apiKeys      map[string]APIKey          // by SHA-256 of token
-	audit        []AuditEvent
-	piiRules     map[string]pii.Rule
-	piiReviews   map[string]PIIReview
+	groupServers    map[string]map[string]bool // group ID -> connector IDs
+	apiKeys         map[string]APIKey          // by SHA-256 of token
+	audit           []AuditEvent
+	piiRules        map[string]pii.Rule
+	piiReviews      map[string]PIIReview
+	lastReviewPrune time.Time
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -731,6 +732,14 @@ func (s *MemoryStore) AppendAudit(e AuditEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
+	// Keep the local alpha's in-memory history bounded under repeated calls.
+	// Durable, full-history audit storage remains a separate requirement.
+	const maxAuditEvents = 50_000
+	if len(s.audit) >= maxAuditEvents {
+		copy(s.audit, s.audit[1:])
+		s.audit[len(s.audit)-1] = e
+		return
+	}
 	s.audit = append(s.audit, e)
 }
 
@@ -878,11 +887,29 @@ func reviewExpired(review PIIReview, now time.Time) bool {
 	return review.CreatedAt.IsZero() || !now.Before(review.CreatedAt.Add(piiReviewLifetime))
 }
 
-func (s *MemoryStore) AddPIIReview(review PIIReview) {
+// AddPIIReview refuses new work when the bounded local queue is full. Calls
+// stay blocked, and the caller can report that no review was queued.
+func (s *MemoryStore) AddPIIReview(review PIIReview) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	const maxPIIReviews = 10_000
+	if len(s.piiReviews) >= maxPIIReviews {
+		now := time.Now()
+		if now.Sub(s.lastReviewPrune) >= time.Minute {
+			for id, existing := range s.piiReviews {
+				if reviewExpired(existing, now) || existing.Status == "consumed" {
+					delete(s.piiReviews, id)
+				}
+			}
+			s.lastReviewPrune = now
+		}
+		if len(s.piiReviews) >= maxPIIReviews {
+			return false
+		}
+	}
 	review.DataTypes = append([]string(nil), review.DataTypes...)
 	s.piiReviews[review.ID] = review
+	return true
 }
 
 func (s *MemoryStore) ListPIIReviews(workspaceID string) []PIIReview {

@@ -44,6 +44,7 @@ func PublicName(provider, slug, upstreamName string) string {
 type Gateway struct {
 	store           *store.MemoryStore
 	auth            auth.Authenticator
+	operations      sync.Mutex // serialize add, resync, and remove for each gateway
 	mu              sync.RWMutex
 	upstreams       map[string]*upstream.Client // connector ID -> session
 	oauth           *mcpoauth.Server
@@ -189,6 +190,8 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 // AddConnector dials a new upstream instance and syncs its tools while
 // serving. The connector row must already exist in the store.
 func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
+	g.operations.Lock()
+	defer g.operations.Unlock()
 	if _, ok := g.upstreamFor(c.ID); ok {
 		return fmt.Errorf("connector %s already connected", c.ID)
 	}
@@ -211,6 +214,13 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 
 // Resync rediscovers one connector's tools, dialing first if needed.
 func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
+	g.operations.Lock()
+	defer g.operations.Unlock()
+	current, ok := g.store.GetConnector(c.ID)
+	if !ok || current.Status != store.StatusActive || current.WorkspaceID != c.WorkspaceID {
+		return fmt.Errorf("connector %s is no longer active", c.ID)
+	}
+	c = current
 	if _, ok := g.upstreamFor(c.ID); !ok {
 		up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, g.upstreamOptions)
 		if err != nil {
@@ -227,6 +237,8 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 // server keeps the stale handler registrations, but they deny (unknown tool)
 // and hide (list filter), so removal is effective immediately.
 func (g *Gateway) RemoveConnector(id string) {
+	g.operations.Lock()
+	defer g.operations.Unlock()
 	g.mu.Lock()
 	up, ok := g.upstreams[id]
 	delete(g.upstreams, id)
@@ -263,23 +275,23 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	if id.ViaGroup != "" {
 		groups = []string{id.ViaGroup}
 	}
-	queueReview := func(direction string, payload any, found pii.Decision) bool {
+	queueReview := func(direction string, payload any, found pii.Decision) (approved, queued bool) {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return false
+			return false, false
 		}
 		hash := sha256.Sum256(append([]byte(id.WorkspaceID+"\x00"+id.UserID+"\x00"+snap.PublicName+"\x00"+direction+"\x00"), encoded...))
 		key := hex.EncodeToString(hash[:])
 		if g.store.ConsumePIIReview(id.WorkspaceID, id.UserID, snap.PublicName, direction, key) {
-			return true
+			return true, false
 		}
-		g.store.AddPIIReview(store.PIIReview{
+		queued = g.store.AddPIIReview(store.PIIReview{
 			ID: callID, WorkspaceID: id.WorkspaceID, UserID: id.UserID,
 			ConnectorID: snap.ConnectorID, PublicName: snap.PublicName,
 			Direction: direction, PayloadHash: key, DataTypes: found.DataTypes,
 			Status: "pending", CreatedAt: start.UTC(),
 		})
-		return false
+		return false, queued
 	}
 
 	deny := func(err error) (*mcp.CallToolResult, error) {
@@ -319,7 +331,10 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	rules := g.store.ListPIIRules(id.WorkspaceID)
 	scope := pii.Scope{WorkspaceID: id.WorkspaceID, GroupIDs: groups, ConnectorID: snap.ConnectorID, PublicName: snap.PublicName, Direction: pii.Input}
 	inspectedArgs, inputDecision, scanErr := pii.ScanJSON(args, scope, rules)
-	inputReviewApproved := inputDecision.Action == pii.Review && queueReview(pii.Input, args, inputDecision)
+	inputReviewApproved, inputReviewQueued := false, false
+	if inputDecision.Action == pii.Review {
+		inputReviewApproved, inputReviewQueued = queueReview(pii.Input, args, inputDecision)
+	}
 	if scanErr != nil || inputDecision.Action == pii.Block || (inputDecision.Action == pii.Review && !inputReviewApproved) {
 		action := inputDecision.Action
 		if scanErr != nil {
@@ -333,6 +348,9 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 			DurationMs: time.Since(start).Milliseconds(), PIIAction: action, PIIDataTypes: inputDecision.DataTypes,
 		})
 		if action == pii.Review {
+			if !inputReviewQueued {
+				return nil, fmt.Errorf("input blocked: admin review queue is full (call %s)", callID)
+			}
 			return nil, fmt.Errorf("input requires admin review; retry after approval (call %s)", callID)
 		}
 		return nil, fmt.Errorf("input blocked by PII policy (call %s)", callID)
@@ -524,11 +542,13 @@ func (g *Gateway) requireAuth(next http.Handler) http.Handler {
 }
 
 // serveConsentUI renders the M0 approval page. It drives the JSON consent
-// API; the human pastes the M0 session token once (M1 replaces this with the
-// shared-IdP session and AgentWorks-styled UI).
+// API; the local human enters the admin secret for each consent. Individual
+// sign-in must replace this before the gateway is exposed publicly.
 func serveConsentUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	w.Header().Set("X-Frame-Options", "DENY")
 	fmt.Fprint(w, consentUIPage)
 }
 
@@ -537,16 +557,13 @@ const consentUIPage = `<!doctype html>
 <body style="font-family:system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem">
 <h1>Approve MCP access</h1>
 <p id="desc">Loading request…</p>
-<label>Session token <input id="token" type="password" size="40" placeholder="M0 human token"></label>
+<label>Local admin token <input id="token" type="password" size="40" autocomplete="off"></label>
 <p><button id="approve">Approve</button> <button id="deny">Deny</button></p>
 <p id="err" style="color:red"></p>
 <script>
 const q = new URLSearchParams(location.search).get("request") || "";
-const saved = sessionStorage.getItem("gw_human");
-if (saved) document.getElementById("token").value = saved;
 async function api(method, body) {
   const token = document.getElementById("token").value.trim();
-  sessionStorage.setItem("gw_human", token);
   const r = await fetch("/api/oauth/mcp/consent?request=" + encodeURIComponent(q), {
     method, headers: {"Authorization": "Bearer " + token, "Content-Type": "application/json"},
     body: body ? JSON.stringify(body) : undefined});
