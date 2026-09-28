@@ -193,6 +193,30 @@ Providers page, per provider:
 
 The workflow / Crew / Code model picker groups accounts the same way.
 
+## Usage and cost per provider and account
+
+Owner request 2026-09-28: the Providers page shows usage for every
+installed provider and every account inside it, and costs are grouped by
+provider and account.
+
+- **Live usage (quota).** Each account row has a "Usage" button that runs
+  the CLI's own usage command (`/usage` for Claude Code and Muse, `/status`
+  for Codex) with that account's environment, using the existing guided
+  `usage` action with the account's `connection_id`. The result (plan,
+  limits, reset time) is shown inline. A person sees usage for the
+  accounts they can use; only the owner or an admin sees a private account's.
+- **Cost (AgentWorks' own ledger).** Every cost-ledger entry records the
+  provider and the account ID the turn used (`global:<provider>`, an
+  installed or admin account, or a user account ID). The Providers page shows
+  cost and tokens per provider and per account for a date range, split by
+  workflow, Crew, Code and person. The cost overview gains "by provider" and
+  "by account" views.
+  - The owner of a shared account sees its full split (who used it and
+    where); others see their own share.
+  - Admins see everything.
+  - Entries written before this change have no account; they show as
+    "unrecorded account" under their provider.
+
 ## Tests (end-to-end)
 
 1. Installed Cursor account with `available_to: admins`: a member cannot
@@ -205,6 +229,11 @@ The workflow / Crew / Code model picker groups accounts the same way.
    her configured mode.
 5. Signing in the server account is admin-only and logged as the server
    account; a private browser login never touches the service HOME.
+6. A turn on Alice's shared account, run by Bob in workflow W, lands in the
+   ledger under Alice's account with Bob and W in the split; the Providers
+   page shows it for Alice and for an admin, and only Bob's share for Bob.
+7. "Usage" on a private Muse account runs `/usage` in that account's HOME,
+   not the server's.
 
 ## Open questions for the owner
 
