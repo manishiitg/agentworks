@@ -209,8 +209,10 @@ The workflow / Crew / Code model picker groups accounts the same way.
 ## Open questions for the owner
 
 1. *(Decided: yes to product defaults, see "Product defaults".)*
-2. Shared (a)/(b): may everyone with access to the workflow or Crew use the
-   account, or only its editors?
+2. *(Decided 2026-09-28: everyone with access to the workflow or Crew uses
+   an account shared with it: viewers, editors, co-owners, schedules and
+   triggers. Choosing the account in the model settings still needs edit
+   access.)*
 3. The hybrid-mode rule: accept "shared accounts run MCP-only for others"
    until CLIs are confined?
 4. Should admins be able to share an admin-configured account with specific
