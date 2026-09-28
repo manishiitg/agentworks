@@ -26,7 +26,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { BrowserWorkspacePanel } from '../../components/workflow/BrowserWorkspacePanel'
 import type { BrowserAutomationMode } from '../../components/BrowserAutomationSettings'
 import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
+import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import type { WorkRuntimeSelection } from './workTabs'
 import type { ProductIdentity, ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPanel'
@@ -357,7 +357,17 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {view === 'plan' && <WorkPlanPanel workspacePath={workspacePath} onAsk={message => ask(message)} />}
+        {view === 'plan' && <WorkPlanPanel
+          workspacePath={workspacePath}
+          onAsk={message => ask(message)}
+          onCreatePlan={() => { void openWorkspacePaneChatWithDraft({
+            profileId: product.profileId,
+            conversationKey: projectId,
+            message: 'Help me create a plan for this project. Let us define the steps and save the plan in the project.',
+          }).catch(error => {
+            useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open project chat.', 'error')
+          }) }}
+        />}
         {view === 'mcp' && <WorkIntegrationsPanel
           workspacePath={workspacePath}
           projectId={projectId}
