@@ -17,7 +17,7 @@ A case passes only after the saved graph or configuration is visible, a real run
 | R4 | API contract and failures | Invalid request rejected; missing input path and malformed agent JSON fail visibly; idempotency returns the same run and rejects conflicting reuse | Passed 2026-09-28 |
 | R5 | Schedule and observability | A schedule passes `trigger_payload` as `INPUT`; manual firing produces a durable run and execution log | Passed 2026-09-28; log label issue below |
 | R6 | Builder and UI round trip | Builder chat creates/edits graph and trigger; Graph, Triggers and execution logs reflect saved state after reload | Passed 2026-09-28; stale live graph noted below |
-| R7 | Restart durability | Completed run remains pollable after agent restart; an interrupted in-flight run has an honest recoverable or terminal state | Passed for honest terminal state; resume remains a gap |
+| R7 | Restart durability | Completed run remains pollable after agent restart; an interrupted in-flight run has an honest terminal state | Passed; node resume deferred |
 | R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; unauthorized callers cannot access runs | Partially passed; no-route claim checked in config, not live |
 | R9 | Optional integrations | Selected MCP tool/skill, Gmail, Slack, model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
 
@@ -36,10 +36,14 @@ A case passes only after the saved graph or configuration is visible, a real run
 - R7 interrupted-run half on `wf_566e8ca2`: while saved Python was sleeping, graceful preview shutdown made run `b8800a83-b245-593f-a1a3-fe0c5bc9500e` terminal `stopped` with its cancellation reason. Killing the isolated agent process with SIGKILL during another script run and restarting the preview made run `3fbb8128-c3d3-578d-bb45-2e606cf25adc` terminal `interrupted` with `interrupted: server restarted`. Both remained pollable. Neither resumed the interrupted node.
 - R8 checks: an unauthenticated Relay run request returned HTTP 401. `agent_go/internal/relayproduct/product.yaml` declares only Builder chat, its `relay-builder` skill and a scoped tool list; `TestBuilderSurfaceIsRelaySpecific` and Relay server tests passed. The list excludes WhatsApp/chat bot creation tools. A separate live attempt to enter a Crew/AgentWorks chat route through a Relay was not performed.
 
-## Known readiness gaps
+## MVP scope decision
 
-- The current Builder prompt explicitly treats immutable publishing, run-scoped browser sessions, and node-boundary crash recovery as unfinished. R7 passes the stated durable-status criterion, but 100% node resume and the browser part of R9 require implementation and live proof.
-- R7 proves durable and honest statuses, but the hard-crashed Python node did not resume. Its API run became terminal `interrupted`; the in-app Execution Logs card showed `Not run` / `0 exec` even though `webhook_progress.json` recorded that step as `running` before the crash. Node recovery and this log projection remain readiness gaps for a 100% resume claim.
+- On 2026-09-28 the user deferred crash recovery. For this MVP, an in-flight run may end as `interrupted` after a process crash. Completed and failed runs must remain pollable, and interrupted runs must have an honest terminal status. R7 satisfies that criterion. Do not describe this as 100% node resume.
+- Later work: resume the interrupted node from a durable checkpoint. In the hard-crash test, `webhook_progress.json` recorded the Python step as `running`, while the in-app Execution Logs card showed `Not run` / `0 exec`. Correct that log projection when crash recovery is implemented.
+
+## Remaining readiness gaps
+
+- Immutable publishing/versioned runs and run-scoped browser sessions are still unfinished in the Builder prompt. The browser part of R9 requires implementation and live proof. Confirm the intended publishing scope before external use.
 - The R2 failed run's Execution Logs card initially mislabeled `Prepare greeting` **Completed** because the shared status helper ignored the saved script's `success: false` and nonzero exit code. The helper is fixed with a focused test. The in-app browser now shows **Failed run** on that step and `fail · exit=1` in its execution details.
 - The schedule execution above appears as `Webhook` in the shared Execution Logs run picker because timed Relay runs currently use the hook run-folder suffix. The run and payload are correct, but the trigger source label should be corrected.
 - A fresh Relay Builder chat initially failed before its first model turn because the product prompt's literal `{{input}}` example was parsed as a Go template function. The prompt now escapes those examples and a focused render test protects them. The retried Builder completed the graph/trigger, but the empty Graph pane stayed stale during the chat and showed the saved graph only after page reload.
