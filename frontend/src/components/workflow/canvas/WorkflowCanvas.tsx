@@ -44,6 +44,7 @@ import { useWorkspaceViewData, type WorkflowImageExportFormat } from './workspac
 import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { WorkspacePanelGuideButton } from '../WorkspacePanelGuideButton'
+import { PlanEmptyState } from '../PlanEmptyState'
 import { useChatStore } from '../../../stores/useChatStore'
 import { agentApi, workflowManifestApi } from '../../../services/api'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
@@ -2545,48 +2546,33 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const hasPlan = !!(plan && plan.steps && plan.steps.length > 0)
   if (!hasPlan) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center bg-gray-50 dark:bg-gray-900">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-              <span className="text-3xl">📋</span>
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                {relayMode ? 'No Relay Graph Yet' : 'No Plan Yet'}
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {relayMode ? 'Describe the agents, scripts, and output in chat to build your graph.' : 'Create a plan to visualize your workflow'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-            {assistantControl}
-            {onCreatePlan && (
-              <button
-                onClick={onCreatePlan}
-                className="px-6 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"
-              >
-                {relayMode ? 'Build Graph' : 'Build Plan'}
-              </button>
-            )}
-            {!relayMode && <WorkspacePanelGuideButton topic="Plan" />}
-            <button
-              type="button"
-              onClick={() => void (async () => {
-                if (isRefreshingPlan) return
-                setIsRefreshingPlan(true)
-                try { await loadPlanRefresh() } finally { setIsRefreshingPlan(false) }
-              })()}
-              disabled={isRefreshingPlan}
-              className="inline-flex h-[42px] items-center gap-1.5 rounded-lg border border-border bg-background/95 px-4 text-sm font-medium text-foreground shadow-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label={relayMode ? 'Check again for a graph' : 'Check again for a plan'}
-              title={relayMode ? 'Check again for a graph' : 'Check again for a plan'}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingPlan ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-            </div>
-          </div>
-      </div>
+      <PlanEmptyState
+        kind={relayMode ? 'graph' : 'plan'}
+        title={relayMode ? 'Build your Relay graph' : 'Plan your workflow'}
+        description={relayMode
+          ? 'Describe the input, agents, scripts, and JSON output in chat. Your graph will appear here as you build it.'
+          : 'Describe what you want to accomplish in chat. Your plan will appear here when it is ready.'}
+        actionLabel={relayMode ? 'Build graph in chat' : 'Build plan in chat'}
+        onAction={onCreatePlan}
+        secondaryActions={<>
+          {assistantControl}
+          {!relayMode && <WorkspacePanelGuideButton topic="Plan" />}
+          <button
+            type="button"
+            onClick={() => void (async () => {
+              if (isRefreshingPlan) return
+              setIsRefreshingPlan(true)
+              try { await loadPlanRefresh() } finally { setIsRefreshingPlan(false) }
+            })()}
+            disabled={isRefreshingPlan}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={relayMode ? 'Check again for a graph' : 'Check again for a plan'}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingPlan ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </>}
+      />
     )
   }
 
