@@ -34,3 +34,14 @@ func ProtectCodingAgentProjectionWrites(sessionID, workspaceRoot string) {
 	}
 	SetSessionFolderGuardBlockedWritePaths(sessionID, DeduplicateStrings(blocked))
 }
+
+// CodingAgentProjectionBlockedWrites is the blocked-write list
+// ProtectCodingAgentProjectionWrites adds for workspaceRoot, for callers that
+// build a Folder Guard without a session (a Code workspace's plain shell).
+func CodingAgentProjectionBlockedWrites(workspaceRoot string) []string {
+	blocked := make([]string, 0, len(managedCodingAgentProjectionWritePaths)*2)
+	for _, relative := range managedCodingAgentProjectionWritePaths {
+		blocked = append(blocked, filepath.Join(workspaceRoot, relative), relative)
+	}
+	return blocked
+}

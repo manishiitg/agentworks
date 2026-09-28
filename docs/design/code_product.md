@@ -239,6 +239,9 @@ Code ships a basic setup first; integrations come later. In Code's
   outbound `workflow-references` (calling Crews and workflows) and
   `background-work`. Sharing and admin inspection are on.
 - **Later:** `bots` (Slack DMs, WhatsApp, Gmail) and `mcp` (MCP servers).
+  When chat apps come (user, 2026-09-28): a Code gets its **own dedicated
+  Slack bot** only (the Code's own Slack app), never the shared server bot, and
+  **1:1 DMs only**, no channels. WhatsApp follows the same DM-only rule.
   The server refuses chat-app messages to a Code without `bots`, and the
   DM-only narrowing (`bots` with `dm_only`) is already built and tested for
   when it is switched on.

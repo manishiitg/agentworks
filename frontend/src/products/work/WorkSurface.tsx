@@ -58,14 +58,14 @@ const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
   report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
-  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp',
+  suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // Legacy agent + preference ids land on the consolidated Setup views.
   skills: 'mcp', secrets: 'identity', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
-  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations',
+  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations', shell: 'Shell',
   skills: 'Skills', secrets: 'Secrets', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
 }
 
@@ -799,19 +799,24 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
-  const workspacePanels = selected?.shared ? SHARED_CREW_WORKSPACE_PANELS : enabledWorkspacePanels
+  // Code's plain shell: owners, co-owners and editors, never viewers.
+  const showShell = product.profileId === 'code' && (!selected?.shared || selected.shared.role === 'editor' || selected.shared.role === 'co_owner')
+  const isShared = Boolean(selected?.shared)
+  const workspacePanels = useMemo(() => isShared
+    ? (showShell ? new Set([...SHARED_CREW_WORKSPACE_PANELS, 'shell']) : SHARED_CREW_WORKSPACE_PANELS)
+    : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, showShell])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
     const panel = WORK_UI_PRESENTATION_VIEWS[view as WorkUIPresentationView]
     if (!isWorkWorkspaceViewEnabled(panel, workspacePanels)) return
-    if (selected?.shared && !SHARED_CREW_WORKSPACE_PANELS.has(panel)) return
+    if (selected?.shared && !SHARED_CREW_WORKSPACE_PANELS.has(panel) && !(panel === 'shell' && showShell)) return
     if (panel === 'schedules') {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
     setPanelOpen(true)
     selectWorkspaceView(panel)
-  }, [selected?.shared, selectWorkspaceView, workspacePanels])
+  }, [selected?.shared, selectWorkspaceView, showShell, workspacePanels])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {
@@ -957,7 +962,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     if (selected?.shared) {
       // Identity is always "enabled", so shared Crews need their own
       // fallback: a stale saved view must land on the inspect surface.
-      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView)) selectWorkspaceView('files')
+      if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView) && !(workspaceView === 'shell' && showShell)) selectWorkspaceView('files')
       return
     }
     if (!isWorkWorkspaceViewEnabled(workspaceView, enabledWorkspacePanels)) {
@@ -966,7 +971,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       if (readWorkWorkspaceView(selected?.id)) selectWorkspaceView(product.defaultView)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, workspaceView])
+  }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView])
 
   useEffect(() => {
     if (!selected) return
@@ -1212,7 +1217,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               >
                 <WorkspaceTopToolbar className={layout.toolbarClassName}>
                   {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
-                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
+                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
                   {product.profileId === 'code' ? (
@@ -1327,6 +1332,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                         onViewChange={selectWorkspaceView}
                         enabledPanels={workspacePanels}
                         shared={sharedWorkspaceOwner}
+                        showShell={showShell}
                         projectLLMConfig={selected.llmConfig}
                         selectedSecrets={selected.selectedSecrets}
                         selectedGlobalSecrets={selected.selectedGlobalSecrets}
