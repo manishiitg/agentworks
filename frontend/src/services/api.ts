@@ -2746,6 +2746,8 @@ export interface AuthUser {
   // Account level (docs/design/user_accounts_and_workflow_sharing.md):
   // one role per account. The booleans stay for older servers.
   is_admin?: boolean
+  /** Reviews every Code workspace's cost, chats and files (read-only, audited). */
+  is_code_reviewer?: boolean
   can_create?: boolean
   can_edit?: boolean
   /** Effective access per visible workflow id. Gate workflow actions on this, never on the global flags alone. */
@@ -2764,6 +2766,8 @@ export interface AdminUser {
   can_edit: boolean
   role: 'admin' | 'creator' | 'editor' | 'viewer'
   products: string[]
+  /** A permission on top of the role: reviews every Code, read-only and audited. */
+  code_reviewer?: boolean
   disabled: boolean
   created_at?: string
   updated_at?: string
@@ -2778,6 +2782,7 @@ export interface AdminUserWrite {
   can_edit?: boolean
   role?: 'admin' | 'creator' | 'editor' | 'viewer'
   products?: string[]
+  code_reviewer?: boolean
   disabled?: boolean
 }
 

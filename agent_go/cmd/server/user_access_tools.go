@@ -47,8 +47,8 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 			"user_id":        str("Existing account ID for update_user."),
 			"username":       str("Account username for create_user."),
 			"email":          str("Account email."), "password": str("User-provided account password only; never echo it."),
-			"role":           map[string]interface{}{"type": "string", "enum": []string{"admin", "creator", "editor", "viewer"}, "description": "Standardized account role; wins over admin/can_create/can_edit."},
-			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"},
+			"role":  map[string]interface{}{"type": "string", "enum": []string{"admin", "creator", "editor", "viewer"}, "description": "Standardized account role; wins over admin/can_create/can_edit."},
+			"admin": map[string]interface{}{"type": "boolean"}, "can_create": map[string]interface{}{"type": "boolean"}, "can_edit": map[string]interface{}{"type": "boolean"}, "disabled": map[string]interface{}{"type": "boolean"}, "code_reviewer": map[string]interface{}{"type": "boolean", "description": "May review every Code workspace's cost, chats and files, read-only and audited."},
 			"products": map[string]interface{}{"type": "array", "items": str("Allowed product ID.")},
 		}, "required": []string{"action"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -115,7 +115,7 @@ func (api *StreamingAPI) registerUserAccessTools(reg definitionToolRegistrar, us
 				handler = api.handleAdminUpdateUser
 				method = http.MethodPut
 			}
-			for _, key := range []string{"username", "email", "password", "role", "admin", "can_create", "can_edit", "disabled", "products"} {
+			for _, key := range []string{"username", "email", "password", "role", "admin", "can_create", "can_edit", "disabled", "code_reviewer", "products"} {
 				if v, ok := args[key]; ok {
 					payload[key] = v
 				}

@@ -122,3 +122,61 @@ func TestCodeAdminInspectionNeedsTheProductSetting(t *testing.T) {
 		t.Fatal("an admin sees another user's chat history")
 	}
 }
+
+// A Code reviewer is not an admin but reviews every Code like one: read-only,
+// every view audited as a reviewer, and the audit log readable. A disabled
+// reviewer, or a plain member, gets nothing.
+func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
+	api, mock := newCodeAdminFixture(t, true)
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"owner","username":"owner","can_create":true},
+		{"id":"other","username":"other","can_create":true},
+		{"id":"rev","username":"rev","role":"viewer","code_reviewer":true},
+		{"id":"gone","username":"gone","role":"viewer","code_reviewer":true,"disabled":true}]}`)
+	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
+
+	for _, caller := range []string{"other", "gone"} {
+		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/code/workspaces", nil); rec.Code != http.StatusForbidden {
+			t.Fatalf("%s listed every Code: %d", caller, rec.Code)
+		}
+		if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, caller, "/api/admin/code/audit", nil); rec.Code != http.StatusForbidden {
+			t.Fatalf("%s read the audit log: %d", caller, rec.Code)
+		}
+	}
+	if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "rev", "/api/admin/code/workspaces", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"owner_id":"owner"`) {
+		t.Fatalf("reviewer listing = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFile, "rev", "/x?path=code/main.go", project); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "package main") {
+		t.Fatalf("reviewer file = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFile, "rev", "/x?path=.sandbox-cache/home/.git-credentials", project); rec.Code != http.StatusNotFound {
+		t.Fatalf("reviewer read the Code's credentials: %d", rec.Code)
+	}
+	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, "rev", "/api/admin/code/audit", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"role":"reviewer"`) {
+		t.Fatalf("reviewer audit read = %d %s", rec.Code, rec.Body.String())
+	}
+	mock.mu.Lock()
+	log := mock.files[codeAdminAuditPath(time.Now())]
+	mock.mu.Unlock()
+	if !strings.Contains(log, `"admin_id":"rev","admin_username":"rev","role":"reviewer","action":"read_file"`) {
+		t.Fatalf("reviewer view not audited as a reviewer:\n%s", log)
+	}
+}
+
+// A Code reviewer sees every Code's cost row, and no other product's.
+func TestCodeReviewerSeesEveryCodesCost(t *testing.T) {
+	bobCode := "_users/bob/Chats/Code/projects/app-1"
+	bobVideo := "_users/bob/Chats/Video Studio/projects/launch"
+	if !costOverviewProductVisibleTo(bobCode, "rev", false, true) {
+		t.Fatal("a reviewer could not see another user's Code cost")
+	}
+	if costOverviewProductVisibleTo(bobVideo, "rev", false, true) {
+		t.Fatal("a Code reviewer saw another product's cost")
+	}
+	if costOverviewProductVisibleTo(bobCode, "alice", false, false) {
+		t.Fatal("a member saw another user's Code cost")
+	}
+	if !costOverviewProductVisibleTo(bobCode, "bob", false, false) {
+		t.Fatal("an owner lost their own Code cost")
+	}
+}

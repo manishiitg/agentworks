@@ -19,8 +19,9 @@ function partText(part: Record<string, unknown>): string {
   return raw.length > 4000 ? `${raw.slice(0, 4000)}…` : raw
 }
 
-// Read-only inspection of every user's Code workspaces for server admins.
-// Each list, file and chat opened here is recorded in the admin audit log.
+// Read-only inspection of every user's Code workspaces for server admins and
+// Code reviewers. Each list, file and chat opened here is recorded in the
+// audit log.
 export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
   const [workspaces, setWorkspaces] = useState<CodeAdminWorkspace[] | null>(null)
   const [selected, setSelected] = useState<CodeAdminWorkspace | null>(null)
@@ -100,7 +101,7 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-3 border-b border-border px-4 py-2">
         <ShieldCheck className="h-4 w-4 text-primary" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">Inspect Code workspaces (admin)</p>
+          <p className="text-sm font-semibold text-foreground">Inspect Code workspaces</p>
           <p className="truncate text-xs text-muted-foreground">Read-only. Every workspace, file and chat you open here is recorded in the audit log.</p>
         </div>
         <button type="button" onClick={openAudit} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted">
@@ -134,14 +135,14 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
         </aside>
         {audit ? (
           <section className="min-h-0 overflow-auto p-3 md:col-span-2">
-            <p className="mb-2 text-sm font-semibold text-foreground">Admin views this month</p>
+            <p className="mb-2 text-sm font-semibold text-foreground">Reviews this month</p>
             <table className="w-full text-left text-xs">
-              <thead className="text-muted-foreground"><tr><th className="py-1">When</th><th>Admin</th><th>What</th><th>Owner / workspace</th><th>Target</th></tr></thead>
+              <thead className="text-muted-foreground"><tr><th className="py-1">When</th><th>Who</th><th>What</th><th>Owner / workspace</th><th>Target</th></tr></thead>
               <tbody>
                 {audit.map((entry, index) => (
                   <tr key={index} className="border-t border-border">
                     <td className="py-1 pr-2">{new Date(entry.at).toLocaleString()}</td>
-                    <td className="pr-2">{entry.admin_username || entry.admin_id}</td>
+                    <td className="pr-2">{entry.admin_username || entry.admin_id}{entry.role === 'reviewer' ? ' (reviewer)' : ''}</td>
                     <td className="pr-2">{entry.action}</td>
                     <td className="pr-2">{entry.owner_id ? `${entry.owner_id} / ${entry.project_id}` : ''}</td>
                     <td className="break-all">{entry.target}</td>

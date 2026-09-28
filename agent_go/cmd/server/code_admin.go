@@ -23,9 +23,10 @@ import (
 // Code does, Crew and personal chats do not, so chatHistoryVisibleTo stays
 // owner-only for them.
 //
-// Admins read everyone's Code chats, files and sharing, read-only: these
-// endpoints only read, and nothing here resumes a session or writes a file.
-// Every call is appended to an audit log that admins can read too.
+// Admins, and accounts an admin marked as Code reviewers
+// (UserRecord.CodeReviewer), read everyone's Code chats, files and sharing,
+// read-only: these endpoints only read, and nothing here resumes a session or
+// writes a file. Every call is appended to an audit log, which both can read.
 
 // codeAdminHiddenTopSegments are never shown to an admin: the Code's HOME
 // (git and CLI logins) and dependency trees.
@@ -41,10 +42,12 @@ type codeAdminAuditEntry struct {
 	At            string `json:"at"`
 	AdminID       string `json:"admin_id"`
 	AdminUsername string `json:"admin_username,omitempty"`
-	Action        string `json:"action"`
-	OwnerID       string `json:"owner_id,omitempty"`
-	ProjectID     string `json:"project_id,omitempty"`
-	Target        string `json:"target,omitempty"`
+	// Role is "admin" or "reviewer": what let this account in.
+	Role      string `json:"role,omitempty"`
+	Action    string `json:"action"`
+	OwnerID   string `json:"owner_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Target    string `json:"target,omitempty"`
 }
 
 // codeAdminAuditPath keeps one file per month so the log is never trimmed.
@@ -81,6 +84,10 @@ func recordCodeAdminView(ctx context.Context, claims *UserClaims, action, ownerI
 	entry := codeAdminAuditEntry{At: now.Format(time.RFC3339), Action: action, OwnerID: ownerID, ProjectID: projectID, Target: target}
 	if claims != nil {
 		entry.AdminID, entry.AdminUsername = claims.UserID, claims.Username
+		entry.Role = "reviewer"
+		if acc := userAccessForClaims(claims); !acc.Known || acc.Admin {
+			entry.Role = "admin"
+		}
 	}
 	raw, err := json.Marshal(entry)
 	if err != nil {
@@ -108,12 +115,12 @@ func readCodeAdminAudit(ctx context.Context, month time.Time) ([]codeAdminAuditE
 	return entries, nil
 }
 
-// codeAdminProfile returns the Code profile when this caller is an admin and
-// the product has admin inspection on.
+// codeAdminProfile returns the Code profile when this caller is an admin or a
+// Code reviewer and the product has admin inspection on.
 func (api *StreamingAPI) codeAdminProfile(w http.ResponseWriter, r *http.Request) (agentprofiles.Profile, *UserClaims, bool) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !currentUserIsAdmin(r) || api == nil || api.agentProfiles == nil {
-		writeWorkflowPermissionDenied(w, "admin")
+	if claims == nil || !currentUserCanReviewCode(r) || api == nil || api.agentProfiles == nil {
+		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
 		return agentprofiles.Profile{}, nil, false
 	}
 	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, claims.UserID)

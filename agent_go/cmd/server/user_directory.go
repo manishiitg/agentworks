@@ -71,10 +71,15 @@ type UserRecord struct {
 	// Products the account may open. Meaning depends on the account: an
 	// admin ignores it (all products), a member with an empty list gets all
 	// products, a read-only user with an empty list gets none.
-	Products  []string `json:"products"`
-	Disabled  bool     `json:"disabled,omitempty"`
-	CreatedAt string   `json:"created_at,omitempty"`
-	UpdatedAt string   `json:"updated_at,omitempty"`
+	Products []string `json:"products"`
+	// CodeReviewer is a permission on top of the role: the account may review
+	// every Code workspace's cost, chats and files, read-only, with each view
+	// audited (code_admin.go), and read that audit log. It grants no write
+	// anywhere and is not admin.
+	CodeReviewer bool   `json:"code_reviewer,omitempty"`
+	Disabled     bool   `json:"disabled,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
 }
 
 // UserSSO links an account to an external identity provider.
@@ -334,6 +339,8 @@ type UserAccess struct {
 	CanCreate bool
 	CanEdit   bool
 	Disabled  bool
+	// CodeReviewer: see UserRecord.CodeReviewer.
+	CodeReviewer bool
 	// Products the identity may open when ProductsRestricted; ignored
 	// otherwise (all products).
 	Products           []string
@@ -411,7 +418,7 @@ func accessForRecord(rec *UserRecord) UserAccess {
 	case UserRoleEditor:
 		canEdit = true
 	}
-	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled}
+	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CodeReviewer: rec.CodeReviewer}
 	switch {
 	case acc.Admin:
 		acc.ProductsRestricted = false
@@ -456,6 +463,17 @@ func currentUserIsAdmin(r *http.Request) bool {
 		return acc.Admin && !acc.Disabled
 	}
 	return acc.Admin || currentUserCanManageWorkflowAccess(r)
+}
+
+// currentUserCanReviewCode gates Code inspection (code_admin.go) and the
+// Code rows of the cost overview: admins, and enabled accounts an admin
+// marked as Code reviewers.
+func currentUserCanReviewCode(r *http.Request) bool {
+	if currentUserIsAdmin(r) {
+		return true
+	}
+	acc := userAccessForClaims(GetUserFromContext(r.Context()))
+	return acc.Known && acc.CodeReviewer && !acc.Disabled
 }
 
 func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
@@ -640,19 +658,20 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 
 // userAdminView is what the admin page sees; never the hash.
 type userAdminView struct {
-	ID          string   `json:"id"`
-	Username    string   `json:"username"`
-	Email       string   `json:"email,omitempty"`
-	Provider    string   `json:"provider"`
-	HasPassword bool     `json:"has_password"`
-	Admin       bool     `json:"admin"`
-	CanCreate   bool     `json:"can_create"`
-	CanEdit     bool     `json:"can_edit"`
-	Role        string   `json:"role"`
-	Products    []string `json:"products"`
-	Disabled    bool     `json:"disabled"`
-	CreatedAt   string   `json:"created_at,omitempty"`
-	UpdatedAt   string   `json:"updated_at,omitempty"`
+	ID           string   `json:"id"`
+	Username     string   `json:"username"`
+	Email        string   `json:"email,omitempty"`
+	Provider     string   `json:"provider"`
+	HasPassword  bool     `json:"has_password"`
+	Admin        bool     `json:"admin"`
+	CanCreate    bool     `json:"can_create"`
+	CanEdit      bool     `json:"can_edit"`
+	Role         string   `json:"role"`
+	Products     []string `json:"products"`
+	CodeReviewer bool     `json:"code_reviewer"`
+	Disabled     bool     `json:"disabled"`
+	CreatedAt    string   `json:"created_at,omitempty"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -668,8 +687,8 @@ func viewOf(rec UserRecord) userAdminView {
 	return userAdminView{
 		ID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: provider,
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
-		Role: roleForRecord(&rec),
-		Products: products, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Role:     roleForRecord(&rec),
+		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 	}
 }
 
@@ -701,15 +720,16 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 // userWriteRequest is the body for create and update. Pointer fields are
 // "unchanged" when absent on update.
 type userWriteRequest struct {
-	Username  string    `json:"username"`
-	Email     *string   `json:"email"`
-	Password  *string   `json:"password"`
-	Admin     *bool     `json:"admin"`
-	CanCreate *bool     `json:"can_create"`
-	CanEdit   *bool     `json:"can_edit"`
-	Role      *string   `json:"role"`
-	Products  *[]string `json:"products"`
-	Disabled  *bool     `json:"disabled"`
+	Username     string    `json:"username"`
+	Email        *string   `json:"email"`
+	Password     *string   `json:"password"`
+	Admin        *bool     `json:"admin"`
+	CanCreate    *bool     `json:"can_create"`
+	CanEdit      *bool     `json:"can_edit"`
+	Role         *string   `json:"role"`
+	Products     *[]string `json:"products"`
+	CodeReviewer *bool     `json:"code_reviewer"`
+	Disabled     *bool     `json:"disabled"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -816,6 +836,9 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	if req.Products != nil {
 		rec.Products = normalizeProducts(*req.Products)
 	}
+	if req.CodeReviewer != nil {
+		rec.CodeReviewer = *req.CodeReviewer
+	}
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
@@ -824,7 +847,7 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s created user %s (role=%s products=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products)
+	log.Printf("[USERS] %s created user %s (role=%s products=%v code_reviewer=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products, rec.CodeReviewer)
 	writeUsersJSON(w, http.StatusCreated, viewOf(rec))
 }
 
@@ -884,6 +907,9 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	if req.Products != nil {
 		rec.Products = normalizeProducts(*req.Products)
 	}
+	if req.CodeReviewer != nil {
+		rec.CodeReviewer = *req.CodeReviewer
+	}
 	if req.Disabled != nil {
 		rec.Disabled = *req.Disabled
 	}
@@ -892,7 +918,7 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		writeUsersError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v disabled=%v)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.Disabled)
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v disabled=%v)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.Disabled)
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 

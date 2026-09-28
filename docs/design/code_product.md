@@ -147,6 +147,17 @@ everyone does in Code.**
   admins.
 - **Audited.** Every admin view is logged: who, which Code, what, and when.
   An admin can see the log, so the audit trail covers admins too.
+- **Code reviewers** (user, 2026-09-28; built). An admin can tick "Code
+  reviewer" on any account, on top of its role (`UserRecord.code_reviewer`).
+  A reviewer is not an admin but reviews like one, for Code only:
+  - every Code's cost row and per-person split in the cost overview (other
+    products' rows stay owner/admin-only);
+  - every Code's chats and files, read-only, through the same inspection
+    endpoints; each view is audited with `role: "reviewer"`;
+  - the audit log itself (admins and reviewers both read it).
+  A disabled account loses it. Ticking it also enables the Code product for an
+  account whose products are a restricted list, since the inspector lives in
+  Code.
 - **Scoped to Code.** Today chat history is owner-only even for admins
   (`chatHistoryVisibleTo`, `agent_go/cmd/server/chat_history_routes.go:167`),
   and that deliberate rule stays for Crews and personal chats. Admin

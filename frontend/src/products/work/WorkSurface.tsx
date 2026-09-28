@@ -769,7 +769,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [inspectOpen, setInspectOpen] = useState(false)
   // Code opts into admin inspection; Crew chats stay owner-only for admins.
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const canInspect = isAdmin && product.profileId === 'code'
+  const isCodeReviewer = useAuthStore(state => state.user?.is_code_reviewer === true)
+  const canInspect = (isAdmin || isCodeReviewer) && product.profileId === 'code'
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
