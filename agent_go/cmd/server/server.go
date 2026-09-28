@@ -1710,6 +1710,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// not accept a logger. Enforce stable username/workflow keys at the process
 	// boundary and enrich session-tagged lines from the request registry.
 	installDefaultServerLogContextWriter()
+	installProviderAccountConfigHook()
 
 	// Load configuration
 	config := ServerConfig{
