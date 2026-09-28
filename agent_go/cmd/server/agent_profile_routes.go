@@ -63,7 +63,7 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 		return key
 	}
 	resourceID := strings.TrimSpace(input.ResourceID)
-	if strings.EqualFold(strings.TrimSpace(profileID), "work") && resourceID != "" && strings.TrimSpace(input.SessionID) != "" {
+	if isProjectProfileID(profileID) && resourceID != "" && strings.TrimSpace(input.SessionID) != "" {
 		return resourceID + ":" + strings.TrimSpace(input.SessionID)
 	}
 	return resourceID
@@ -638,7 +638,7 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 	// idempotent and also upgrades projects created before the convention was
 	// introduced. The frontend creates it eagerly so it is visible immediately;
 	// this server-side guard keeps non-UI callers consistent.
-	if profile.ID == "work" {
+	if isProjectProfileID(profile.ID) {
 		if err := client.CreateFolder(ctx, filepath.ToSlash(filepath.Join(binding.WorkspacePath, "code"))); err != nil {
 			return fmt.Errorf("initialize product code folder: %w", err)
 		}
@@ -702,7 +702,7 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			api.sessionWorkspaceMu.RUnlock()
 			preferredSessionVerifiedForWorkspace = activeWorkspace != "" && normalizeConversationWorkspace(activeWorkspace) == normalizeConversationWorkspace(binding.WorkspacePath)
 		}
-		if strings.EqualFold(profile.ID, "work") && !preferredSessionVerifiedForWorkspace {
+		if isProjectProfileID(profile.ID) && !preferredSessionVerifiedForWorkspace {
 			return ProductConversationRecord{}, fmt.Errorf("conversation continuity conflict: requested session is not verified in this project")
 		}
 	}
@@ -742,7 +742,7 @@ func shouldRebindWorkConversation(
 	preferredSessionID string,
 	verifiedForWorkspace bool,
 ) bool {
-	if !strings.EqualFold(strings.TrimSpace(profile.ID), "work") || !verifiedForWorkspace {
+	if !isProjectProfileID(profile.ID) || !verifiedForWorkspace {
 		return false
 	}
 	// The base project key is the permanent Builder/current-project slot and is

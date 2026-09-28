@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
@@ -71,9 +73,23 @@ func TestExternalTokenScopeForCrewTools(t *testing.T) {
 	}
 }
 
-func TestExternalAskCrewRunsInCrewChatAndIsPollable(t *testing.T) {
+// A person asking a Crew over MCP talks in their own chat of it, exactly the
+// chat a 1:1 Slack DM or WhatsApp message continues: for the owner, the
+// Crew's own chat. No per-caller trigger conversation is created.
+func TestExternalAskCrewRunsInCallersOwnChatAndIsPollable(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
+	type turn struct {
+		req       map[string]interface{}
+		sessionID string
+		userID    string
+	}
+	turns := make(chan turn, 4)
+	crewOwnChatAskTurn = func(_ *StreamingAPI, _ context.Context, reqMap map[string]interface{}, sessionID, userID string) (internalSessionTurnResult, error) {
+		turns <- turn{reqMap, sessionID, userID}
+		return internalSessionTurnResult{FinalResponse: "Nothing changed today."}, nil
+	}
+	t.Cleanup(func() { crewOwnChatAskTurn = nil })
 	runner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:run"}, CrewIDs: []string{"beta"}}}
 
 	code, out := externalCrewRequest(t, env, runner, "ask_crew", map[string]any{"crew_id": "beta", "message": "what changed today?", "wait_seconds": float64(0)})
@@ -81,19 +97,62 @@ func TestExternalAskCrewRunsInCrewChatAndIsPollable(t *testing.T) {
 		t.Fatalf("ask_crew = %d %v", code, out)
 	}
 	callID, _ := out["call_id"].(string)
-	if callID == "" || out["status"] == "failed" || out["next"] == nil {
-		t.Fatalf("ask_crew must return a pollable running call: %v", out)
+	if callID == "" || out["status"] == "failed" {
+		t.Fatalf("ask_crew must return a pollable call: %v", out)
 	}
-	// The call is a normal internal trigger on the Crew, bound to this user's
-	// external connection and visible in the Crew's own trigger list.
-	triggers, err := env.svc.projectWebhookConfigs(context.Background(), "owner", "work", "beta")
-	if err != nil || len(triggers) != 1 || triggers[0].Caller == nil || triggers[0].Caller.Type != triggerCallerUser || triggers[0].Caller.ID != "owner" {
-		t.Fatalf("expected one trigger bound to the external caller, got %+v err=%v", triggers, err)
+	var got turn
+	select {
+	case got = <-turns:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the ask never reached the Crew")
 	}
-	if code, out := externalCrewRequest(t, env, runner, "get_crew_function_call", map[string]any{"call_id": callID}); code != 200 || out["call_id"] != callID {
-		t.Fatalf("poll = %d %v", code, out)
+	if got.userID != "owner" || got.req["query"] != "what changed today?" || got.req["triggered_by"] != "external" {
+		t.Fatalf("the ask must be the owner's own message in their chat: user=%q req=%v", got.userID, got.req)
 	}
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dmSession, _, err := env.api.senderProfileTurn(context.Background(), "owner", profile, "beta", services.BotIncomingMessage{Platform: "slack", DirectMessage: true, Text: "hi"}, services.ThreadID{})
+	if err != nil || dmSession == "" || got.sessionID != dmSession {
+		t.Fatalf("MCP ask session %q must be the chat a Slack DM continues (%q, err=%v)", got.sessionID, dmSession, err)
+	}
+	if triggers, err := env.svc.projectWebhookConfigs(context.Background(), "owner", "work", "beta"); err != nil || len(triggers) != 0 {
+		t.Fatalf("a person's ask must not create a per-caller trigger conversation, got %+v err=%v", triggers, err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		code, out = externalCrewRequest(t, env, runner, "get_crew_function_call", map[string]any{"call_id": callID})
+		if code != 200 || out["call_id"] != callID {
+			t.Fatalf("poll = %d %v", code, out)
+		}
+		if out["status"] == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("call never completed: %v", out)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if result, _ := out["result"].(map[string]interface{}); result["answer"] != "Nothing changed today." {
+		t.Fatalf("result = %v", out["result"])
+	}
+
 	other := &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}}
+	// Someone else's ask continues their own reader chat, never the owner's.
+	if code, out := externalCrewRequest(t, env, other, "ask_crew", map[string]any{"crew_id": "beta", "message": "can you help?"}); code == 200 {
+		select {
+		case reader := <-turns:
+			if reader.userID != "other" || reader.sessionID == "" || reader.sessionID == dmSession {
+				t.Fatalf("a non-owner's ask must run in their own chat: user=%q session=%q owner=%q", reader.userID, reader.sessionID, dmSession)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the non-owner's ask never ran")
+		}
+	} else {
+		t.Logf("non-owner cannot reach this Crew in the fixture (%d %v)", code, out)
+	}
 	if code, _ := externalCrewRequest(t, env, other, "get_crew_function_call", map[string]any{"call_id": callID}); code != 404 {
 		t.Fatalf("another user's poll must be not-found, got %d", code)
 	}

@@ -7,8 +7,10 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Bridge session tokens bind an agent's tool calls to its own session.
@@ -19,7 +21,7 @@ import (
 // both chosen by the caller: an agent could name another user's session and
 // act as them. Now each agent gets a token for its own session:
 //
-//	mcps1.<base64url(session id)>.<base64url(HMAC-SHA256(key, session id))>
+//	mcps2.<base64url(session id)>.<issued-hour>.<base64url(HMAC-SHA256(key, session id + issued-hour))>
 //
 // The server verifies the HMAC and then requires the session the request
 // names to be the token's session (cmd/server bridge_auth.go). The key comes
@@ -28,7 +30,16 @@ import (
 // that inherits the server's environment must not be able to mint a token
 // for another session.
 
-const bridgeTokenPrefix = "mcps1."
+const bridgeTokenPrefix = "mcps2."
+// bridgeTokenLifetime bounds how long a leaked token stays usable within one
+// server run (the signing secret is random per start, so a restart revokes
+// every token anyway). A running CLI keeps the token it was launched with:
+// warm sessions live up to the 3h idle limit and long steps or background
+// agents run for hours, so a 2h lifetime made every tool call of a
+// long-lived session fail with 401 "invalid API token" (82c864776, caught in
+// review 2026-09-28 before it fired on RTS). Keep it well above any session
+// lifetime until tokens are refreshed in place.
+const bridgeTokenLifetime = 7 * 24 * time.Hour
 
 var (
 	bridgeTokenMu  sync.RWMutex
@@ -65,9 +76,9 @@ func BridgeTokensEnabled() bool {
 	return len(bridgeTokenKey) > 0
 }
 
-func bridgeTokenMAC(key []byte, sessionID string) []byte {
+func bridgeTokenMAC(key []byte, sessionID, issuedHour string) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(sessionID))
+	mac.Write([]byte(sessionID + "." + issuedHour))
 	return mac.Sum(nil)
 }
 
@@ -82,7 +93,8 @@ func BridgeTokenForSession(sessionID string) string {
 		return ""
 	}
 	enc := base64.RawURLEncoding
-	return bridgeTokenPrefix + enc.EncodeToString([]byte(sessionID)) + "." + enc.EncodeToString(bridgeTokenMAC(key, sessionID))
+	issuedHour := strconv.FormatInt(time.Now().Unix()/3600, 10)
+	return bridgeTokenPrefix + enc.EncodeToString([]byte(sessionID)) + "." + issuedHour + "." + enc.EncodeToString(bridgeTokenMAC(key, sessionID, issuedHour))
 }
 
 // IsBridgeSessionToken reports whether token has the session-token shape
@@ -104,7 +116,16 @@ func VerifyBridgeToken(token string) (string, bool) {
 		return "", false
 	}
 	parts := strings.Split(strings.TrimPrefix(token, bridgeTokenPrefix), ".")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
+		return "", false
+	}
+	hour, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || strconv.FormatInt(hour, 10) != parts[1] {
+		return "", false
+	}
+	issued := time.Unix(hour*3600, 0)
+	now := time.Now()
+	if issued.After(now) || !now.Before(issued.Add(bridgeTokenLifetime)) {
 		return "", false
 	}
 	enc := base64.RawURLEncoding
@@ -112,12 +133,12 @@ func VerifyBridgeToken(token string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	gotMAC, err := enc.DecodeString(parts[1])
+	gotMAC, err := enc.DecodeString(parts[2])
 	if err != nil {
 		return "", false
 	}
 	sessionID := string(rawSession)
-	if strings.TrimSpace(sessionID) == "" || subtle.ConstantTimeCompare(gotMAC, bridgeTokenMAC(key, sessionID)) != 1 {
+	if strings.TrimSpace(sessionID) == "" || subtle.ConstantTimeCompare(gotMAC, bridgeTokenMAC(key, sessionID, parts[1])) != 1 {
 		return "", false
 	}
 	return sessionID, true

@@ -1,5 +1,6 @@
 import type { ChatTab } from '../../stores/useChatStore'
 import { useChatStore } from '../../stores/useChatStore'
+import { isProjectProductId } from './projectProduct'
 
 export type WorkRuntimeSelection = {
   connectionId?: string
@@ -15,7 +16,8 @@ export type ProductEngineSelectionDetail = Partial<WorkRuntimeSelection> & {
 }
 
 export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
-  return Boolean(tab.metadata?.agentProfileId === 'work' && (
+  // Crew and Code project ids are UUIDs, so one check serves both products.
+  return Boolean(isProjectProductId(tab.metadata?.agentProfileId) && (
     tab.metadata.agentProfileProjectId === projectId ||
     tab.metadata.agentProfileConversationKey === projectId ||
     tab.metadata.agentProfileConversationKey?.startsWith(`${projectId}:`)
@@ -68,7 +70,7 @@ export function applyWorkProjectRuntimeSelection(
   fallbackTabId: string | null,
   detail: ProductEngineSelectionDetail | undefined,
 ): boolean {
-  if (detail?.profileId !== 'work' || !detail.engine || !detail.modelId) return false
+  if (!isProjectProductId(detail?.profileId) || !detail.engine || !detail.modelId) return false
   const sourceTabId = detail.tabId || fallbackTabId
   if (!sourceTabId) return false
   const sourceTab = useChatStore.getState().chatTabs[sourceTabId]

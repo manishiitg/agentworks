@@ -591,7 +591,10 @@ func durableSubmissionProject(owner, session string) (string, error) {
 	// when the process-local binding disappeared; never guess from a session name.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	roots := []string{"Workflow", filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(owner), "Chats/Work/projects"))}
+	roots := []string{"Workflow"}
+	for _, product := range projectProducts {
+		roots = append(roots, filepath.ToSlash(filepath.Join("_users", sanitizeUserIDForPath(owner), product.ProjectsRoot)))
+	}
 	projects := map[string]bool{}
 	for _, root := range roots {
 		if err := ctx.Err(); err != nil {

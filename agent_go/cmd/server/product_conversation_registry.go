@@ -843,7 +843,7 @@ func resolveProductProjectBindingWithStore(
 		if strings.TrimSpace(manifest.Title) == "" || strings.TrimSpace(manifest.SessionID) == "" {
 			return productConversationBinding{}, fmt.Errorf("project %q has an incomplete product manifest", resourceProjectID)
 		}
-		if strings.EqualFold(profile.ID, "work") {
+		if isProjectProfileID(profile.ID) {
 			runtimePath := filepath.ToSlash(filepath.Join(filepath.Dir(candidate), "workflow.json"))
 			if runtimeRaw, runtimeFound, runtimeErr := store.read(ctx, runtimePath); runtimeErr != nil {
 				return productConversationBinding{}, fmt.Errorf("read project runtime manifest %s: %w", runtimePath, runtimeErr)

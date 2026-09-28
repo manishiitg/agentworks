@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -31,12 +32,23 @@ type SkillFileBinding struct {
 // part stays per-product, since each product's "have I registered yet" is
 // independent of every other product's.
 func RegisterEmbeddedSkills(fsys fs.FS, bindings []SkillFileBinding) error {
+	return RegisterEmbeddedSkillsRendered(fsys, bindings, nil)
+}
+
+// RegisterEmbeddedSkillsRendered is RegisterEmbeddedSkills with every
+// SKILL.md and text supporting file passed through render first, so one
+// embedded template can be registered once per product (see
+// RenderFeatureText). A nil render registers the files unchanged.
+func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, render func(string) string) error {
+	if render == nil {
+		render = func(text string) string { return text }
+	}
 	for _, binding := range bindings {
 		data, err := fs.ReadFile(fsys, binding.Path)
 		if err != nil {
 			return fmt.Errorf("read skill %q: %w", binding.Name, err)
 		}
-		content := string(data)
+		content := render(string(data))
 		if strings.HasPrefix(content, "---\n") {
 			if end := strings.Index(content[4:], "\n---\n"); end >= 0 {
 				content = content[end+9:]
@@ -56,6 +68,9 @@ func RegisterEmbeddedSkills(fsys fs.FS, bindings []SkillFileBinding) error {
 				return err
 			}
 			relPath := strings.TrimPrefix(filePath, root+"/")
+			if utf8.Valid(fileData) {
+				fileData = []byte(render(string(fileData)))
+			}
 			supportingFiles = append(supportingFiles, llmtypes.SkillFile{RelPath: relPath, Content: fileData})
 			return nil
 		}); err != nil {

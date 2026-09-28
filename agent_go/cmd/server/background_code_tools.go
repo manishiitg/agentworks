@@ -97,7 +97,7 @@ func triggerAutoNotifyAvailable(profile *resolvedAgentProfile, userID, workspace
 	if profile == nil {
 		return true
 	}
-	return strings.TrimSpace(profile.Definition.ID) == "work" && isActiveWorkProjectWorkspace(userID, workspace)
+	return isProjectProfileID(profile.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspace)
 }
 
 // registerBackgroundCodeTools exposes one public trigger tool. Python is only

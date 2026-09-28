@@ -92,7 +92,7 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 	call.mu.Unlock()
 	call.persist()
 	turnDone := make(chan struct{})
-	go api.watchWorkflowAskActivity(call, sessionID, timeout, turnDone)
+	go api.watchAskActivity(call, sessionID, fmt.Sprintf("the workflow assistant of %q", call.TargetLabel), timeout, turnDone)
 	var result internalSessionTurnResult
 	if workflowAskTurn != nil {
 		result, err = workflowAskTurn(api, ctx, reqMap, sessionID, call.UserID)
@@ -116,9 +116,10 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 	call.settle("completed", map[string]interface{}{"answer": truncateTriggerTargetResult(answer)}, "")
 }
 
-// watchWorkflowAskActivity releases the caller once the assistant shows no
-// sign of life (progress or session events) for timeout. The turn goes on.
-func (api *StreamingAPI) watchWorkflowAskActivity(call *crewFunctionCall, sessionID string, timeout time.Duration, turnDone <-chan struct{}) {
+// watchAskActivity releases the caller once who (the workflow assistant, a
+// Crew) shows no sign of life (progress or session events) for timeout. The
+// turn goes on.
+func (api *StreamingAPI) watchAskActivity(call *crewFunctionCall, sessionID, who string, timeout time.Duration, turnDone <-chan struct{}) {
 	lastSign := time.Now()
 	ticker := time.NewTicker(call.poll)
 	defer ticker.Stop()
@@ -139,7 +140,7 @@ func (api *StreamingAPI) watchWorkflowAskActivity(call *crewFunctionCall, sessio
 			lastSign = at
 		}
 		if time.Since(lastSign) > timeout {
-			call.timeOut(fmt.Sprintf("no activity from the workflow assistant of %q for %s; stopped waiting. It is still working: its answer is sent to you automatically", call.TargetLabel, timeout))
+			call.timeOut(fmt.Sprintf("no activity from %s for %s; stopped waiting. It is still working: its answer is sent to you automatically", who, timeout))
 			return
 		}
 	}

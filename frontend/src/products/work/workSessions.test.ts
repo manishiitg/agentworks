@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { CODE_PRODUCT } from './projectProduct'
 
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const getPlannerFileContent = vi.hoisted(() => vi.fn())
@@ -120,8 +121,29 @@ describe('createWorkSession', () => {
     expect(runtime.workflow_context_paths).toEqual([])
     expect(createPlannerFolder).toHaveBeenCalledWith(
       `${session.workspacePath}/code`,
-      expect.stringContaining('Initialize Work project code folder'),
+      expect.stringContaining('Initialize Crew project code folder'),
     )
+  })
+
+  it('creates a private Code workspace with a name only', async () => {
+    updatePlannerFile.mockClear()
+    listSharedProjects.mockClear()
+    const session = await createWorkSession('billing service', 'ignored purpose', '🧭', 'finance-analyst', CODE_PRODUCT)
+
+    expect(session.workspacePath).toMatch(/^Chats\/Code\/projects\/billing-service-/)
+    expect(session.product).toBe('code')
+    expect(session.sessionId).toBe(`code:project:${session.id}`)
+    const product = JSON.parse(updatePlannerFile.mock.calls.find(call => call[0] === `${session.workspacePath}/product.json`)![1] as string)
+    expect(product.product).toBe('code')
+    expect(product).not.toHaveProperty('identity')
+    expect(product).not.toHaveProperty('templates')
+    expect(product.description).toBe('')
+    // No template files: a Code never installs Crew templates.
+    expect(updatePlannerFile.mock.calls.every(call => !String(call[0]).includes('/skills/'))).toBe(true)
+    // Private: a Code never lists other owners' projects.
+    loadProductProjects.mockResolvedValueOnce([])
+    await loadWorkSessionsIncludingShared(CODE_PRODUCT)
+    expect(listSharedProjects).not.toHaveBeenCalled()
   })
 
   it('creates a Finance Analyst with its local skill and no active integrations or automations', async () => {

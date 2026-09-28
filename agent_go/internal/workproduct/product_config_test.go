@@ -46,7 +46,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		t.Fatalf("work must report its default provider/model to the shared composer, got provider=%q model_id=%q", manifest.Profile.Runtime.Provider, manifest.Profile.Runtime.ModelID)
 	}
 	options := manifest.Profile.Runtime.ProviderOptions
-	wantProviders := []string{"claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli"}
+	wantProviders := []string{"claude-code", "codex-cli", "cursor-cli", "pi-cli", "muse-cli", "agy-cli"}
 	if len(options) != len(wantProviders) {
 		t.Fatalf("work runtime options = %+v, want all AgentWorks coding CLIs", options)
 	}
@@ -54,6 +54,21 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		if options[i].Provider != want {
 			t.Fatalf("work runtime option %d provider = %q, want %q", i, options[i].Provider, want)
 		}
+		if effort, ok := options[i].Options["reasoning_effort"].(string); ok && effort != "" {
+			offered := false
+			for _, candidate := range options[i].ReasoningEfforts {
+				if candidate == effort {
+					offered = true
+					break
+				}
+			}
+			if !offered {
+				t.Fatalf("work runtime option %q defaults to reasoning effort %q outside its offered levels %v", want, effort, options[i].ReasoningEfforts)
+			}
+		}
+	}
+	if options[len(options)-1].Options["reasoning_effort"] != "high" {
+		t.Fatalf("AGY must declare its high effort default: %+v", options[len(options)-1])
 	}
 	if !options[0].Default {
 		t.Fatal("Claude Code must remain Crew's default coding CLI")

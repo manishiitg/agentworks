@@ -20,6 +20,7 @@ import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
+import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import type { CrewTemplateId } from './crewTemplates'
@@ -35,11 +36,73 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'models', label: 'Models' },
 ]
 
-const IDENTITY_TAB_ASK_AI_MESSAGE: Record<WorkIdentityTab, string> = {
-  general: "Help me with this Crew project's name, icon, and purpose. Explain what's set and ask what I want to change.",
-  secrets: "Help me with this Crew project's saved passwords and keys. Ask what's needed without asking me to reveal values in chat.",
-  folders: 'Help me attach things to this Crew project: folders or other workflows and Crew as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed.',
-  models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
+function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<WorkIdentityTab, string> {
+  return {
+    general: hasIdentity
+      ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
+      : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
+    secrets: `Help me with this ${noun} project's saved passwords and keys. Ask what's needed without asking me to reveal values in chat.`,
+    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed.`,
+    models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
+  }
+}
+
+// Code has a name only: rename and delete, no identity, purpose or templates.
+function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+  projectTitle: string
+  projectIdentity?: ProductIdentity
+  onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
+  onDeleteRequest: () => void
+}) {
+  const current = projectIdentity?.name ?? ''
+  const [nameDraft, setNameDraft] = useState(current)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => { setNameDraft(current); setError(null) }, [current])
+  const dirty = nameDraft.trim() !== current
+  const save = async () => {
+    if (!dirty || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onUpdateIdentity({ name: nameDraft.trim() })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to save.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="space-y-4">
+      {error && <StatusBanner tone="error">{error}</StatusBanner>}
+      <SettingsCard
+        icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
+        title="Name"
+        description="How this workspace appears in your list."
+      >
+        <div>
+          <Label className="mb-2 block">Workspace name</Label>
+          <Input value={nameDraft} onChange={event => setNameDraft(event.target.value)} disabled={saving} placeholder={projectTitle} maxLength={60} />
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => void save()} disabled={!dirty || saving}>
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : 'Save'}
+          </Button>
+        </div>
+      </SettingsCard>
+      <SettingsCard
+        icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
+        title="Delete workspace"
+        description="Removes the workspace folder and everything in it. This cannot be undone."
+      >
+        <div>
+          <Button variant="destructive" onClick={onDeleteRequest} disabled={saving}>
+            <Trash2 className="h-4 w-4" /> Delete workspace
+          </Button>
+        </div>
+      </SettingsCard>
+    </div>
+  )
 }
 
 function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, projectTemplates, onInstallTemplate, onUpdateIdentity, onDeleteRequest }: {
@@ -101,7 +164,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Name and icon"
-        description="How this Crew project appears across AgentWorks."
+        description="How this project appears across AgentWorks."
       >
         <div>
           <Label className="mb-2 block">Project name</Label>
@@ -287,6 +350,8 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
   onDeleteRequest: () => void
 }) {
+  const product = useProjectProduct()
+  const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
   const visibleTabs = IDENTITY_TABS.filter(option => isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
@@ -297,13 +362,13 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Fingerprint}
-        title="Identity"
+        title={product.hasIdentity ? 'Identity' : 'Setup'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
-        subtitle="Name, icon, purpose, secrets, file access, and models for this project."
+        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, file access, and models for this project.' : 'Name, secrets, file access, and models for this workspace.'}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={IDENTITY_TAB_ASK_AI_MESSAGE[activeTab]}
+            message={askMessages[activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
@@ -312,7 +377,13 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
         tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'general' && <WorkGeneralPanel
+        {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
+          projectTitle={projectTitle}
+          projectIdentity={projectIdentity}
+          onUpdateIdentity={onUpdateIdentity}
+          onDeleteRequest={onDeleteRequest}
+        />}
+        {activeTab === 'general' && product.hasIdentity && <WorkGeneralPanel
           projectTitle={projectTitle}
           projectPurpose={projectDescription}
           projectIdentity={projectIdentity}
@@ -345,7 +416,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
               workspacePath={workspacePath}
               onAsk={onAsk}
               label="Ask AI to add"
-              message={IDENTITY_TAB_ASK_AI_MESSAGE.folders}
+              message={askMessages.folders}
               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
@@ -363,7 +434,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
             onRuntimeChange={onRuntimeChange}
             hideHeader
           />
-          <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />
+          {product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
         </div>}
       </div>
     </div>
@@ -385,7 +456,7 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
         description="On by default. Let the coding agent use its native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
         checked={enabled}
         disabled={!onChange || saving}
-        disabledTitle={onChange ? 'Saving…' : 'Only the Crew owner can change this.'}
+        disabledTitle={onChange ? 'Saving…' : 'Only the owner can change this.'}
         onCheckedChange={async checked => {
           if (!onChange) return
           setSaving(true)

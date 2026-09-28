@@ -9,6 +9,9 @@ type LandlockPolicy struct {
 	ReadPaths  []string `json:"read_paths"`
 	WritePaths []string `json:"write_paths"`
 	WorkDir    string   `json:"work_dir"`
+	// PrivateTmp: the launcher was started in its own user and mount
+	// namespaces and must give the command a private /tmp (Linux).
+	PrivateTmp bool `json:"private_tmp,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

@@ -61,8 +61,10 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 	}{
 		{"sparkquill", "claude-code", "claude-sonnet-5", "high"},
 		{"sparkquill", "codex-cli", "gpt-6-luna", "medium"},
+		{"sparkquill", "agy-cli", "gemini-3.8-flash-high", "high"},
 		{"sparkquill-child", "claude-code", "claude-sonnet-5", "medium"},
 		{"sparkquill-child", "codex-cli", "gpt-6-luna", "high"},
+		{"sparkquill-child", "agy-cli", "gemini-3.8-flash-high", "high"},
 	}
 	for _, c := range cases {
 		gotModel, gotEffort := find(c.profileID, c.optionID)
@@ -78,6 +80,8 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 			wantModels := []string{"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"}
 			if o.ID == "claude-code" {
 				wantModels = []string{"claude-sonnet-5", "claude-opus-5-5"}
+			} else if o.ID == "agy-cli" {
+				wantModels = []string{"gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"}
 			}
 			if len(o.Models) != len(wantModels) {
 				t.Errorf("%s/%s: models=%v, want %v", p.ID, o.ID, o.Models, wantModels)

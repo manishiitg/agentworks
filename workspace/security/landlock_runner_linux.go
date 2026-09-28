@@ -56,6 +56,11 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	if err != nil || abi < 1 {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: Landlock filesystem ABI unavailable: %w", err)
 	}
+	if policy.PrivateTmp {
+		if err := enterPrivateTmp(policy); err != nil {
+			return fmt.Errorf("SANDBOX_UNAVAILABLE: %w", err)
+		}
+	}
 	handled := landlockHandledFS(abi)
 	attr := unix.LandlockRulesetAttr{Access_fs: handled}
 	rulesetFD, _, errno := unix.Syscall6(
@@ -79,7 +84,7 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return err
 		}
 	}
-	for _, path := range landlockSystemWritePaths() {
+	for _, path := range landlockSystemWritePaths(policy.PrivateTmp) {
 		if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
 			return err
 		}
@@ -217,11 +222,26 @@ func landlockSystemReadPaths() []string {
 	return existingCanonicalPaths(paths)
 }
 
-func landlockSystemWritePaths() []string {
-	paths := []string{
-		"/tmp",
-		"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty",
+func landlockSystemWritePaths(privateTmp bool) []string {
+	// Never the host /tmp: every sandboxed command runs as the same service
+	// user, so a shared /tmp let one user's agent read what another's left
+	// there -- on RTS a Crew's repository clones, and git credentials written
+	// through HOME=/tmp (2026-09-28). With a private /tmp (its own tmpfs, see
+	// private_tmp_ns_linux.go) the command may use /tmp freely. Without one,
+	// only the browser folders stay writable: the daemons' socket folder, and
+	// the managed Chrome wrapper's temp folder, where Chrome keeps its shared
+	// memory (/dev/shm is not granted). Without that grant every sandboxed
+	// browser launch failed ("Creating shared memory in /tmp/aw-browser-<uid>
+	// failed: Permission denied", RTS 2026-09-28).
+	paths := []string{browserSocketDir}
+	if privateTmp {
+		paths = append(paths, "/tmp")
+	} else {
+		paths = append(paths, browserTempDir())
 	}
+	paths = append(paths,
+		"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty",
+	)
 	if profile := browserconfig.SharedProfile(); profile != "" {
 		// A user or workflow browser never actually writes to `profile` itself --
 		// HeadlessArgsForSession launches Chrome against `<profile>-users/<id>`
@@ -262,4 +282,10 @@ func existingCanonicalPaths(paths []string) []string {
 		result = append(result, resolved)
 	}
 	return result
+}
+
+// browserTempDir is the managed Chrome wrapper's temp folder
+// (deploy/aws-ec2/server/chrome-headless-wrapper.sh).
+func browserTempDir() string {
+	return fmt.Sprintf("/tmp/aw-browser-%d", os.Getuid())
 }

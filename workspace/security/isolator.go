@@ -189,6 +189,9 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		}
 		cmd.Env = append(filtered, key+"="+tmp)
 	}
+	// No workflow or Crew folder to keep a home in: this command's own
+	// scratch, never the shared /tmp.
+	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(tmp, "home"))
 	pythonPath := tmp
 	filtered := cmd.Env[:0]
 	for _, value := range cmd.Env {

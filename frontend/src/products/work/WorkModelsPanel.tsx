@@ -123,13 +123,12 @@ export function WorkModelsPanel({
   const defaultForOption = useCallback((option: AgentProfileProviderOption | undefined) => {
     if (!option) return { modelId: '', reasoningEffort: undefined as string | undefined }
     const defaults = providerManifest.find(provider => provider.id === option.provider)?.default_tier_models?.builder
+    const profileEffort = typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined
+    const manifestEffort = typeof defaults?.options?.reasoning_effort === 'string' ? defaults.options.reasoning_effort : undefined
     return {
       modelId: defaults?.model_id || option.model_id || '',
-      reasoningEffort: typeof defaults?.options?.reasoning_effort === 'string'
-        ? defaults.options.reasoning_effort
-        : typeof option.options?.reasoning_effort === 'string'
-          ? option.options.reasoning_effort
-          : option.reasoning_efforts?.[0],
+      reasoningEffort: [profileEffort, manifestEffort, option.reasoning_efforts?.[0]]
+        .find(effort => effort && option.reasoning_efforts?.includes(effort)),
     }
   }, [providerManifest])
 
@@ -207,7 +206,9 @@ export function WorkModelsPanel({
       connectionId: savedSelection?.connectionId,
       provider: selectedOption.provider,
       modelId,
-      reasoningEffort: (metadataMatchesProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined) || selectedDefaults.reasoningEffort,
+      reasoningEffort: selectedOption.provider === 'agy-cli'
+        ? modelId.match(/-(low|medium|high)$/)?.[1]
+        : (metadataMatchesProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined) || selectedDefaults.reasoningEffort,
     })
   }
 

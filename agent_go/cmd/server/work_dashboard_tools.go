@@ -23,7 +23,7 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 	profile *resolvedAgentProfile,
 	sessionID, userID, workspacePath string,
 ) error {
-	if profile == nil || strings.TrimSpace(profile.Definition.ID) != "work" ||
+	if profile == nil || !isProjectProfileID(profile.Definition.ID) ||
 		(!agentprofiles.HasFeature(profile.Definition, "database") && !agentprofiles.HasFeature(profile.Definition, "dashboard")) {
 		return nil
 	}

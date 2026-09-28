@@ -121,8 +121,9 @@ environment supports. At minimum:
 
 - Claude Code tmux transport.
 - Codex CLI tmux transport.
-- Antigravity CLI tmux transport in explicit local/contract runs; it remains
-  hidden from default published provider lists until rollout is approved.
+- Antigravity CLI tmux transport in explicit local/contract runs; the provider
+  is visible in the UI as **Antigravity CLI (Alpha)**. Release certification
+  still requires the selected live provider and application proofs.
 - Cursor CLI tmux transport when installed.
 - Pi CLI tmux transport when installed.
 

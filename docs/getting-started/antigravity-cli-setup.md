@@ -1,5 +1,8 @@
 # Antigravity CLI (agy) setup
 
+Maintainers: record integration gaps and manual test results in
+[AGY onboarding lessons](../core/agy_cli_onboarding_lessons.md).
+
 AgentWorks uses the locally installed `agy` CLI (Google Antigravity) as a
 coding-agent provider. This is a different product from `gemini-cli`: do not
 substitute one's config, key, or login for the other's.
@@ -63,8 +66,8 @@ AGY's structured conversation records.
 ## 4. API-key mode (unattended / CI)
 
 Interactive Google sign-in cannot run headless. For CI and servers, point
-agy at the Gemini API directly with both of these (the variable alone has
-no effect):
+agy at the Gemini API directly. For standalone `agy`, both of these are
+required (the variable alone has no effect):
 
 ```jsonc
 // ~/.gemini/antigravity-cli/settings.json
@@ -79,13 +82,14 @@ Notes, verified against agy 1.2.12:
 
 - agy never reads `.env` files; export the variable in the process
   environment (or the CI secret store).
+- AgentWorks creates a private AGY home for each run. When its backend has
+  `GEMINI_API_KEY`, it sets `modelProvider: "gemini"` in that private copy;
+  your global AGY settings are not modified.
 - `GOOGLE_API_KEY` is ignored; only `GEMINI_API_KEY` is read.
 - API-key mode bills the key, not the Antigravity subscription, and needs
   no sign-in. `/logout` does not affect it.
-- A managed key alone does not authenticate the provider: the
-  `modelProvider` settings flip is part of the setup, which is why the
-  manifest reports auth from the CLI's own login state rather than from a
-  stored key.
+- The provider manifest reports auth from the CLI's own login state; a
+  stored key is usable when exported to the backend process.
 
 ## 5. Quota
 

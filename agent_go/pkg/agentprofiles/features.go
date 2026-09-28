@@ -129,7 +129,7 @@ var featureCatalog = map[string]featureDefinition{
 		Skills:          []string{"work-skills"},
 		UIPanels:        []string{"skills"},
 		Capabilities:    map[string]CapabilityRequirement{"skill_selection": CapabilityPreferred},
-		PromptExtension: "Reusable skills are enabled. Read the attached `work-skills` skill before managing skills. Discover and select an existing skill when possible. When the user explicitly asks to preserve or improve a repeated procedure, the normal Work agent may create or update a focused project-local skill under `skills/<skill-name>/SKILL.md`; never write Crew-authored skills into the account-wide `skills/custom/` library, and do not switch its identity to Skill Builder.",
+		PromptExtension: "Reusable skills are enabled. Read the attached `work-skills` skill before managing skills. Discover and select an existing skill when possible. When the user explicitly asks to preserve or improve a repeated procedure, the normal {{product}} agent may create or update a focused project-local skill under `skills/<skill-name>/SKILL.md`; never write {{product}}-authored skills into the account-wide `skills/custom/` library, and do not switch its identity to Skill Builder.",
 	},
 	"attached-folders": {
 		Dependencies:    []string{"files"},
@@ -142,7 +142,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
 		Skills:          []string{"work-workflow-files"},
 		Capabilities:    map[string]CapabilityRequirement{"workflow_references": CapabilityPreferred},
-		PromptExtension: "Read-only AgentWorks workflow references are enabled. Read the attached `work-workflow-files` skill before discovering, managing, reading, or invoking them. A # selection applies to one message and is context only; a workflow linked under Attached folders is durable and may be invoked only through its Crew-scoped secretless internal trigger. Never edit the referenced workflow or use public webhook triggers from this product. To have another Crew or workflow do work (the user tags #crew:<name> or #workflow:<name>), call one of its functions: list_functions, then call_function (or the generated <crew>__<function> tool). Every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its Run-mode assistant, one continuing thread per caller); a workflow's typed functions refuse a call missing a required input before anything runs. Results return directly or as an [AUTO-NOTIFICATION]; follow long calls with get_function_call / ask_function_update. Each caller has its own continuing conversation with a Crew, never its main chat. When you receive a [Function call <id>] task, report milestones with report_function_progress and finish with return_function_result.",
+		PromptExtension: "Read-only AgentWorks workflow references are enabled. Read the attached `work-workflow-files` skill before discovering, managing, reading, or invoking them. A # selection applies to one message and is context only; a workflow linked under Attached folders is durable and may be invoked only through its {{product}}-scoped secretless internal trigger. Never edit the referenced workflow or use public webhook triggers from this product. To have another Crew or workflow do work (the user tags #crew:<name> or #workflow:<name>), call one of its functions: list_functions, then call_function (or the generated <crew>__<function> tool). Every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its Run-mode assistant, one continuing thread per caller); a workflow's typed functions refuse a call missing a required input before anything runs. Results return directly or as an [AUTO-NOTIFICATION]; follow long calls with get_function_call / ask_function_update. Each caller has its own continuing conversation with a Crew, never its main chat. When you receive a [Function call <id>] task, report milestones with report_function_progress and finish with return_function_result.",
 	},
 	"terminal": {
 		Capabilities:    map[string]CapabilityRequirement{"raw_terminal": CapabilityPreferred},
@@ -204,7 +204,7 @@ var featureCatalog = map[string]featureDefinition{
 	"workspace-ui": {
 		Tools:           []string{"list_ui_capabilities", "get_ui_state", "perform_ui_action"},
 		Skills:          []string{"work-ui-control"},
-		PromptExtension: "The interactive Crew chat can present its right-side project views. Read the attached `work-ui-control` skill before choosing a view; Crew and Workflow view IDs are different. Trust only an applied browser acknowledgement.",
+		PromptExtension: "The interactive {{product}} chat can present its right-side project views. Read the attached `work-ui-control` skill before choosing a view; {{product}} and Workflow view IDs are different. Trust only an applied browser acknowledgement.",
 	},
 }
 
@@ -262,9 +262,14 @@ func ResolveFeatures(profile *Profile) error {
 		delete(visiting, id)
 		visited[id] = true
 		binding := requested[id]
+		tools, err := featureTools(id, definition.Tools, binding.Options)
+		if err != nil {
+			return err
+		}
 		resolved = append(resolved, ResolvedFeature{
-			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: cloneStrings(definition.Tools),
-			Skills: cloneStrings(definition.Skills), PromptExtension: definition.PromptExtension,
+			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: tools,
+			Skills:          featureSkillNames(profile.ID, definition.Skills),
+			PromptExtension: RenderFeatureText(profile.ID, profile.Name, featurePromptExtension(id, definition.PromptExtension, binding.Options)),
 			UIPanels: cloneStrings(definition.UIPanels), Capabilities: cloneCapabilities(definition.Capabilities),
 			Options: cloneStringMap(binding.Options),
 		})
@@ -288,6 +293,126 @@ func ResolveFeatures(profile *Profile) error {
 		}
 	}
 	return nil
+}
+
+// FeatureSkillTemplates are the shared feature skills rendered once per
+// project product (internal/workproduct/skills). Their text names the
+// product with {{product}}, filled from that product's product.yaml name.
+var FeatureSkillTemplates = map[string]bool{
+	"work-mcp": true, "work-integrations": true, "work-workflow-files": true, "work-skills": true,
+	"work-schedules-and-bots": true, "work-dashboard": true, "work-ui-control": true, "background-work": true,
+}
+
+// FeatureSkillName is the registered name of a shared feature skill for one
+// product. Crew (profile work) keeps the original names; every other product
+// gets its own rendered copy, "<profile>-<base>" (code-mcp,
+// code-background-work). Skills outside FeatureSkillTemplates are global and
+// keep their name.
+func FeatureSkillName(profileID, name string) string {
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" || profileID == "work" || !FeatureSkillTemplates[name] {
+		return name
+	}
+	return profileID + "-" + strings.TrimPrefix(name, "work-")
+}
+
+func featureSkillNames(profileID string, names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, FeatureSkillName(profileID, name))
+	}
+	return out
+}
+
+// RenderFeatureText fills a shared feature text for one product: {{product}}
+// becomes the product.yaml name ("Crew", "Code"), {{profile_id}} its profile
+// id ("work", "code"), and backticked feature skill names become that
+// product's skill names.
+func RenderFeatureText(profileID, productName, text string) string {
+	if strings.TrimSpace(productName) == "" {
+		productName = "Crew"
+	}
+	text = strings.ReplaceAll(text, "{{product}}", strings.TrimSpace(productName))
+	if profileID = strings.TrimSpace(profileID); profileID != "" {
+		text = strings.ReplaceAll(text, "{{profile_id}}", profileID)
+	}
+	for name := range FeatureSkillTemplates {
+		if renamed := FeatureSkillName(profileID, name); renamed != name {
+			text = strings.ReplaceAll(text, "`"+name+"`", "`"+renamed+"`")
+		}
+	}
+	return text
+}
+
+// Callee-side tools of workflow-references: a product with
+// direction=outbound may call Crews and workflows but is never itself
+// callable, so it cannot define or answer functions.
+var workflowReferenceCalleeTools = map[string]bool{
+	"define_function": true, "delete_function": true,
+	"report_function_progress": true, "return_function_result": true,
+}
+
+// Bots tools that reach beyond a 1:1 Slack DM or WhatsApp chat: Gmail and
+// Google Workspace, and Slack channel routes and channel API reads.
+var botsNonDirectMessageTools = map[string]bool{
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"slack": true, "send_slack_message": true,
+	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
+}
+
+// featureTools applies a binding's tool-narrowing options. Options only ever
+// remove tools from the shared bundle; they never add one.
+func featureTools(id string, tools []string, options map[string]string) ([]string, error) {
+	var drop map[string]bool
+	switch id {
+	case "workflow-references":
+		switch direction := strings.TrimSpace(options["direction"]); direction {
+		case "", "both":
+		case "outbound":
+			drop = workflowReferenceCalleeTools
+		default:
+			return nil, fmt.Errorf("feature %q: invalid direction %q (want both or outbound)", id, direction)
+		}
+	case "bots":
+		switch dmOnly := strings.TrimSpace(options["dm_only"]); dmOnly {
+		case "", "false":
+		case "true":
+			drop = botsNonDirectMessageTools
+		default:
+			return nil, fmt.Errorf("feature %q: invalid dm_only %q (want true or false)", id, dmOnly)
+		}
+	}
+	out := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if !drop[tool] {
+			out = append(out, tool)
+		}
+	}
+	return out, nil
+}
+
+// featurePromptExtension swaps in the narrowed wording when an option removed
+// the tools the default extension describes.
+func featurePromptExtension(id, extension string, options map[string]string) string {
+	switch {
+	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
+		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
+	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true":
+		return "Direct-message chat is enabled: people with access can message this workspace 1:1 from a Slack DM or WhatsApp, and each person continues their own chat. Slack channels, group chats, Gmail and Google Workspace are not available here, and you cannot send Slack messages yourself."
+	}
+	return extension
+}
+
+// FeatureOption returns a resolved feature's option value, or "" when the
+// feature is absent or does not set it.
+func FeatureOption(profile Profile, featureID, option string) string {
+	featureID = strings.TrimSpace(featureID)
+	for _, feature := range profile.ResolvedFeatures {
+		if feature.ID == featureID {
+			return strings.TrimSpace(feature.Options[option])
+		}
+	}
+	return ""
 }
 
 // FeaturePromptExtensions returns the ordered prompt additions for a resolved

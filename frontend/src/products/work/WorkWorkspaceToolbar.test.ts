@@ -44,8 +44,8 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("llm: 'identity'")
     expect(source).toContain("bots: 'mcp'")
     expect(source).toContain("email: 'mcp'")
-    expect(source).toContain('landingContent={<WorkNewChatGuide sharedBy={')
-    expect(source).toContain('This is the persistent conversation for this Crew project.')
+    expect(source).toContain('landingContent={<WorkNewChatGuide product={product} sharedBy={')
+    expect(source).toContain('This is the persistent conversation for this {product.noun} project.')
   })
 
   it('keeps a saved Crew view ahead of the content-based landing view', () => {
@@ -57,6 +57,6 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain('writeWorkWorkspaceView(selected?.id, view)')
     expect(source).toContain('const savedView = readWorkWorkspaceView(selected?.id)')
     expect(source).toContain('loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed })')
-    expect(source).toContain("savedView ?? 'identity'")
+    expect(source).toContain('savedView ?? product.defaultView')
   })
 })

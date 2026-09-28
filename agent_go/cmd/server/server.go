@@ -30,6 +30,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
@@ -2100,6 +2101,20 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		if err := workproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
 			log.Fatalf("Failed to register Work agent profile runtime: %v", err)
+		}
+	}
+	if productEnabled(codeproduct.ProfileID) {
+		if err := codeproduct.RegisterProductSkills(); err != nil {
+			log.Fatalf("Failed to register Code skills: %v", err)
+		}
+		for _, profile := range codeproduct.BuiltinAgentProfiles() {
+			profile.Product = codeproduct.ProfileID
+			if err := profileRegistry.RegisterProfile(profile); err != nil {
+				log.Fatalf("Failed to register Code agent profile: %v", err)
+			}
+		}
+		if err := codeproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
+			log.Fatalf("Failed to register Code agent profile runtime: %v", err)
 		}
 	}
 
@@ -5421,7 +5436,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
 		}
-		if resolvedProfile != nil && resolvedProfile.Definition.ID == "work" {
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
 			cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
@@ -5484,7 +5499,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
-		if currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == "work" {
+		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
 		defer toolGate.logSurface(sessionID)
@@ -5803,14 +5818,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// shared read-write like the Crew itself; workflow references
 					// stay read-only. A Crew Run-mode reader keeps them read-only.
 					crewRefWrite, nonCrewReadOnly := splitCrewReferenceFolders(workflowReadOnlyFolders)
-					if currentUserIsReadOnly && resolvedProfile.Definition.ID == "work" {
+					if currentUserIsReadOnly && isProjectProfileID(resolvedProfile.Definition.ID) {
 						crewRefWrite, nonCrewReadOnly = nil, workflowReadOnlyFolders
 					}
 					profileReadOnly := agentProfileReadOnlyFolders(sandbox, nonCrewReadOnly)
 					chatHistoryGrants := agentProfileChatHistoryGrants(sandbox, perUserChatHistory)
 					workGrantWrite := []string(nil)
 					workGrantReadOnly := []string(nil)
-					if resolvedProfile.Definition.ID == "work" {
+					if isProjectProfileID(resolvedProfile.Definition.ID) {
 						// Owner-attached external folders: readable always,
 						// writable for read_write grants, exposed to tools
 						// as WORK_FOLDER_<ALIAS> session env.
@@ -5831,7 +5846,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// not project mutation — as do the caller's own
 					// attached folders. Scoped to the work profile so
 					// other products keep today's behavior.
-					crewReadOnlyTurn := currentUserIsReadOnly && resolvedProfile.Definition.ID == "work"
+					crewReadOnlyTurn := currentUserIsReadOnly && isProjectProfileID(resolvedProfile.Definition.ID)
 					guardWriteRoot := profileRoot
 					guardReadOnly := profileReadOnly
 					guardWrite := []string{profileWrite}
@@ -5850,7 +5865,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						append(append(append(guardWrite, chatHistoryGrants...), workGrantWrite...), crewRefWrite...),
 					)
 					guardBlocked = append(guardBlocked, workGrantReadOnly...)
-					if resolvedProfile.Definition.ID == "work" {
+					if isProjectProfileID(resolvedProfile.Definition.ID) {
 						// A Crew writes only its own database; other Crews' db/
 						// stays readable but never writable.
 						guardBlocked = append(guardBlocked, foreignCrewDBWriteBlockedPaths(profileRoot, workflowReadOnlyFolders)...)
@@ -5858,13 +5873,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if len(guardBlocked) > 0 {
 						workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, guardBlocked)
 					}
-					if resolvedProfile.Definition.ID == "work" {
+					if isProjectProfileID(resolvedProfile.Definition.ID) {
 						// Other Crews' files are shared, their chats are not: deny
 						// every referenced Crew's builder/ (transcripts and other
 						// users' mirrored chats). This Crew's own chats stay open.
 						workspace.SetSessionFolderGuardBlockedPaths(sessionID, foreignCrewChatBlockedPaths(profileRoot, workflowReadOnlyFolders))
 					}
-					if resolvedProfile.Definition.ID == "work" {
+					if isProjectProfileID(resolvedProfile.Definition.ID) {
 						// Work uses the shared managed database boundary: migrations and
 						// row tools are allowed, while raw SQLite/WAL/SHM access is denied.
 						// Readers get the read side of that boundary.
@@ -6046,7 +6061,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 							// Crew Run mode: browser tools in a reader turn
 							// keep the project readable but unwritable,
 							// matching the session guard above.
-							if currentUserIsReadOnly && resolvedProfile.Definition.ID == "work" {
+							if currentUserIsReadOnly && isProjectProfileID(resolvedProfile.Definition.ID) {
 								profileReadOnly = append([]string{strings.TrimSuffix(profileRoot, "/") + "/"}, profileReadOnly...)
 								profileRoot = ""
 							}
@@ -6173,7 +6188,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("[CUSTOM TOOLS] Registered %d custom tools with agent", registeredCount)
 
-			crewReadOnly := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == "work"
+			crewReadOnly := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
 			if err := api.registerAgentProfileTools(llmAgent, toolGate, resolvedProfile, currentUserID, sessionID, req.SelectedFolder, crewReadOnly, req); err != nil {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)
@@ -6473,7 +6488,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs))
 			}
-			if resolvedProfile != nil && resolvedProfile.Definition.ID == "work" {
+			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a
@@ -11797,6 +11812,9 @@ func (api *StreamingAPI) buildSkillCallbacks() *todo_creation_human.SkillCallbac
 }
 
 func skillSelectionHint(productID, skillNames string) string {
+	if strings.EqualFold(strings.TrimSpace(productID), codeproduct.ProfileID) {
+		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future turns in this workspace, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); the selection is saved in workflow.json and shown in Setup > Skills.", skillNames)
+	}
 	if strings.EqualFold(strings.TrimSpace(productID), "work") {
 		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future Crew turns, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); Crew persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"path/filepath"
 	"strings"
 
@@ -128,6 +129,26 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 			return level, fmt.Errorf("profile route access denied")
 		}
 		return level, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), codeproduct.ProfileID) || isCodeProjectPath(req.SelectedFolder) {
+		// A Code is private: only its owner reaches it, resolved in the
+		// owner's own tree. There is no reader tier.
+		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
+			return WorkflowAccessNone, fmt.Errorf("Code access denied")
+		}
+		profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, req.AgentProfileVersion, claims.UserID)
+		if err != nil || !userAllowedProduct(claims, profile.Product) {
+			return WorkflowAccessNone, fmt.Errorf("Code access denied")
+		}
+		key := strings.TrimSpace(req.AgentProfileConversationKey)
+		if key == "" {
+			return WorkflowAccessNone, fmt.Errorf("Code conversation is required")
+		}
+		binding, err := resolveProductConversationBinding(ctx, claims.UserID, profile, key)
+		if err != nil || !workspacePathsMatchForUser(claims.UserID, binding.WorkspacePath, req.SelectedFolder) {
+			return WorkflowAccessNone, fmt.Errorf("Code access denied")
+		}
+		return WorkflowAccessOwner, nil
 	}
 	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {

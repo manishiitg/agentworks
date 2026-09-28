@@ -20,6 +20,7 @@ package agentsession
 import (
 	"context"
 	"fmt"
+	_ "github.com/manishiitg/coding-agent-loop/agent_go/pkg/common" // register coding-agent bridge token and managed-file guard
 	"net"
 	"net/http"
 	"os"
@@ -627,6 +628,7 @@ var interactiveOwnerClosers = map[llm.Provider]func(id, reason string){
 	llm.ProviderCursorCLI:  llmproviders.CloseCursorCLIInteractiveSessionForOwner,
 	llm.ProviderPiCLI:      llmproviders.ClosePiCLIInteractiveSessionForOwner,
 	llm.ProviderMuseCLI:    llmproviders.CloseMuseCLIInteractiveSessionForOwner,
+	llm.ProviderAgyCLI:     llmproviders.CloseAgyCLIInteractiveSessionForOwner,
 }
 
 // closeInteractiveOwner dispatches to the provider-specific owner-scoped close.

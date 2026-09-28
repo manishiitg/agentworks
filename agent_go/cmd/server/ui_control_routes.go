@@ -40,9 +40,8 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 	}
 	isWorkflow := strings.HasPrefix(workspace, "Workflow/")
 	cleanWorkspace := path.Clean(strings.Trim(strings.TrimSpace(workspace), "/"))
-	workPrefix := "Chats/Work/projects/"
-	ownedWorkPrefix := path.Join("_users", sanitizeUserIDForPath(user), "Chats", "Work", "projects") + "/"
-	isOwnedWork := strings.HasPrefix(cleanWorkspace, workPrefix) || strings.HasPrefix(cleanWorkspace, ownedWorkPrefix)
+	ownedPrefix := path.Join("_users", sanitizeUserIDForPath(user)) + "/"
+	isOwnedWork := (!strings.HasPrefix(cleanWorkspace, "_users/") || strings.HasPrefix(cleanWorkspace, ownedPrefix)) && isProjectWorkspacePath(cleanWorkspace)
 	if !isWorkflow && !isOwnedWork {
 		fail("unsupported_surface", http.StatusConflict)
 		return

@@ -606,8 +606,8 @@ if [ "$ONLY_FRONTEND" = true ]; then
     mkdir -p "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
-  apiBaseUrl: "${MCP_AGENT_SERVER_URL}",
-  workspaceApiBaseUrl: "${MCP_AGENT_SERVER_URL}/api/wp",
+  apiBaseUrl: "${FRONTEND_URL}",
+  workspaceApiBaseUrl: "${FRONTEND_URL}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL}",
   cdpEnabled: true,
   appName: "${RUNTIME_APP_NAME}",
@@ -1272,6 +1272,10 @@ write_frontend_runtime_config() {
     local runtime_app_name
     local runtime_favicon_url
     local gateway_config_line
+    local frontend_api_base_url="$MCP_AGENT_SERVER_URL"
+    if [ "$WITH_FRONTEND" = true ]; then
+        frontend_api_base_url="$FRONTEND_URL"
+    fi
     runtime_app_name="$(json_escape_runtime_value "${AGENTWORKS_APP_NAME:-AgentWorks}")"
     runtime_favicon_url="$(json_escape_runtime_value "${AGENTWORKS_FAVICON_URL:-/logo.svg}")"
     gateway_config_line=""
@@ -1282,8 +1286,8 @@ write_frontend_runtime_config() {
     mkdir -p "$(dirname "$FRONTEND_RUNTIME_CONFIG_PATH")"
     cat > "$FRONTEND_RUNTIME_CONFIG_PATH" <<EOF
 window.__APP_RUNTIME_CONFIG__ = {
-  apiBaseUrl: "${MCP_AGENT_SERVER_URL}",
-  workspaceApiBaseUrl: "${MCP_AGENT_SERVER_URL}/api/wp",
+  apiBaseUrl: "${frontend_api_base_url}",
+  workspaceApiBaseUrl: "${frontend_api_base_url}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
   cdpEnabled: true,
   appName: "${runtime_app_name}",

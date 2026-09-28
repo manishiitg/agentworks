@@ -430,9 +430,7 @@ func ReadChatHistoryResumeSnapshot(userID, sessionID, workspacePath string) (jso
 // product chats continue to use the user's central chat_history directory.
 func workProjectChatHistoryConversationPath(userID, workspacePath, sessionID string, t time.Time) (string, bool) {
 	canonicalWorkspace := canonicalChatHistoryWorkspacePath(userID, workspacePath)
-	const workProjectsRoot = "Chats/Work/projects/"
-	projectRelativePath := strings.TrimPrefix(canonicalWorkspace, workProjectsRoot)
-	if projectRelativePath == canonicalWorkspace || strings.Trim(projectRelativePath, "/") == "" {
+	if !isProjectWorkspacePath(canonicalWorkspace) {
 		return "", false
 	}
 
@@ -3396,8 +3394,7 @@ func normalizeRestoredChatHistoryConversationPath(userID, conversationPath strin
 	if cleaned == userRoot || strings.HasPrefix(cleaned, userRoot+"/") {
 		return cleaned, true
 	}
-	workProjectsRoot := pathpkg.Join("_users", sanitizeUserIDForPath(userID), "Chats", "Work", "projects") + "/"
-	if strings.HasPrefix(cleaned, workProjectsRoot) && strings.Contains(cleaned, "/builder/conversation/") && strings.HasSuffix(cleaned, ".json") {
+	if strings.HasPrefix(cleaned, pathpkg.Join("_users", sanitizeUserIDForPath(userID))+"/") && isProjectWorkspacePath(cleaned) && strings.Contains(cleaned, "/builder/conversation/") && strings.HasSuffix(cleaned, ".json") {
 		return cleaned, true
 	}
 	if strings.HasPrefix(cleaned, "Workflow/") && strings.Contains(cleaned, "/builder/") && strings.HasSuffix(cleaned, ".json") {
@@ -3690,7 +3687,7 @@ func DeleteChatHistorySession(userID, sessionID, workspacePath string) (ChatHist
 
 func ownedWorkProjectWorkspacePath(userID, workspacePath string) (string, bool) {
 	canonical := canonicalChatHistoryWorkspacePath(userID, workspacePath)
-	if !strings.HasPrefix(canonical, "Chats/Work/projects/") {
+	if !isProjectWorkspacePath(canonical) {
 		return workspacePath, false
 	}
 	return pathpkg.Join("_users", sanitizeUserIDForPath(userID), canonical), true

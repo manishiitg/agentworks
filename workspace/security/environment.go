@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+// browserSocketDir is where the shared-profile agent-browser daemons keep
+// their sockets. It is the one /tmp folder sandboxed commands may write.
+const browserSocketDir = "/tmp/.agent-browser"
+
+// sandboxSharedHome is the HOME the Docker-mode environment starts with. It is
+// shared by every command, so ExecuteIsolated replaces it with a private one.
+const sandboxSharedHome = "/tmp"
+
 // BuildSafeEnvironment returns a sanitized set of environment variables.
 // In Docker mode, this is a strict whitelist to prevent secret leakage.
 // In native mode, it inherits the host environment but strips known secrets,
@@ -27,7 +35,7 @@ func BuildSafeEnvironment() []string {
 				clean = append(clean, entry)
 			}
 		}
-		env = append(clean, browserconfig.ProfileEnv+"="+browserconfig.SharedProfile(), "AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser", "TZ=UTC")
+		env = append(clean, browserconfig.ProfileEnv+"="+browserconfig.SharedProfile(), "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir, "TZ=UTC")
 	}
 	// A rootless Docker socket controls only containers owned by this service
 	// account. Never forward an arbitrary endpoint (especially the host Docker
@@ -52,7 +60,7 @@ func buildDockerEnvironment() []string {
 	env := []string{
 		// Essential shell variables
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		"HOME=/tmp",
+		"HOME=" + sandboxSharedHome,
 		"USER=agent",
 		"SHELL=/bin/sh",
 

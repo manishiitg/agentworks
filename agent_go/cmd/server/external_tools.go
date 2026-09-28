@@ -154,14 +154,25 @@ func externalTools() ([]externalTool, error) {
 		}
 		add("list_crews", "List the Crews this connection may use: ID, name, identity, owner. Requires crews:read.", false, false, map[string]any{"query": externalString("Filter by Crew name, identity, or ID.")})
 		add("get_crew", "Describe one Crew: identity, description, model, and its functions (typed entry points other Crews and connections can call). Requires crews:read.", false, false, crewID(nil), "crew_id")
-		add("list_crew_files", "List a Crew's project files (crew-relative paths). Private areas — chat transcripts under builder/, db/, and the Crew's manifests — are never listed. Requires crews:read.", false, false, crewID(nil), "crew_id")
+		crewFiles := func(search bool) map[string]any {
+			p := page()
+			p["path"] = externalString("Crew-relative directory to start from; defaults to the Crew root.")
+			p["depth"] = externalInteger(1, 8)
+			p["glob"] = externalString("Optional path glob relative to path; use it to find files by name, e.g. **/*ForgotPassword*. ** matches directories recursively.")
+			if search {
+				p["query"] = externalString("Case-insensitive literal text to find inside files.")
+			}
+			return crewID(p)
+		}
+		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
+		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
 		add("read_crew_file", "Read one text file from a Crew's project (crew-relative path, up to 256 KiB). Private areas are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
 		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, including the built-in ask. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.
 		wait := map[string]any{"type": "integer", "minimum": 0, "maximum": externalCrewMaxWaitSeconds, "description": "Seconds to wait for the result before returning a call_id to poll (default 0: return at once; max 25, proxies cut requests near 30s)."}
 		add("call_crew_function", "Call one of a Crew's functions (see list_crew_functions) with arguments matching its input schema. The Crew does the work in your own continuing conversation with it (never its main chat); the result is validated against the function's result schema. Returns at once with status=running and a call_id for get_crew_function_call (functions take minutes); pass wait_seconds to wait up to 25s for the result. Repeating the same call while it runs returns the same call_id. Requires crews:run.", false, false, crewID(map[string]any{"function": externalString("Function name from list_crew_functions."), "args": map[string]any{"type": "object", "description": "Arguments matching the function's input schema."}, "wait_seconds": wait}), "crew_id", "function")
-		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. Repeated asks continue one conversation with that Crew, so you can chat with it: it remembers your earlier asks. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait}), "crew_id", "message")
+		add("ask_crew", "Ask a Crew anything in free text (its built-in ask function); the answer is its final reply. It is your message in your own chat of that Crew (the chat your web chat, Slack DMs and WhatsApp continue; for your own Crew, its main chat), so you can chat with it and see the exchange in the app. Returns at once with status=running and a call_id for get_crew_function_call; pass wait_seconds to wait up to 25s for the answer. Requires crews:run.", false, false, crewID(map[string]any{"message": externalString("The question or task for the Crew."), "wait_seconds": wait}), "crew_id", "message")
 		add("suggest_crew_change", "Suggest a change to a Crew you use but do not own (its role, instructions, skills, functions, schedules or output). The owner reviews it in the Crew's Suggestions view; nothing changes until they act. Requires crews:run.", false, false, crewID(map[string]any{
 			"suggestion": map[string]any{"type": "string", "description": "The requested change in plain words.", "maxLength": 4000},
 			"reason":     map[string]any{"type": "string", "description": "Optional short reason or example.", "maxLength": 4000},
@@ -457,8 +468,11 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 }
 func externalArg(args map[string]any, name string) string { s, _ := args[name].(string); return s }
 func externalInt(args map[string]any, name string, fallback int) int {
-	if n, ok := args[name].(float64); ok {
+	switch n := args[name].(type) {
+	case float64:
 		return int(n)
+	case int:
+		return n
 	}
 	return fallback
 }

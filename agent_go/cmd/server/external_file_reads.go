@@ -27,15 +27,16 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		return wf.Result{}, &externalUpstreamError{400, "invalid workflow root"}
 	}
 	parts := strings.Split(rootPath, "/")
-	if len(parts) != 2 || parts[0] != "Workflow" || parts[1] == "." {
-		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow"}
+	crewRoot := externalIsCrewRoot(rootPath)
+	if !crewRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
+		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or Crew"}
 	}
 	p, err := wf.CleanRelative(req.Path)
 	if err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
-	if wf.Private(p) {
-		return wf.Result{}, &externalUpstreamError{403, "private workflow path"}
+	if externalPathPrivate(crewRoot, p) {
+		return wf.Result{}, &externalUpstreamError{403, "private path"}
 	}
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
@@ -67,7 +68,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		file, err := externalScopedFile(root, p)
 		return wf.Result{File: file}, err
 	case "list", "search":
-		return externalListFiles(ctx, root, p, req)
+		return externalListFiles(ctx, root, p, req, crewRoot)
 	default:
 		return wf.Result{}, &externalUpstreamError{400, "unsupported file operation"}
 	}
@@ -137,7 +138,34 @@ func externalScopedFile(root *os.Root, p string) (wf.File, error) {
 	return result, nil
 }
 
-func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request) (wf.Result, error) {
+// externalIsCrewRoot reports a Crew project root: "Crew/<id>" or
+// "_users/<owner>/Chats/Work/projects/<id>".
+func externalIsCrewRoot(rootPath string) bool {
+	parts := strings.Split(rootPath, "/")
+	switch {
+	case len(parts) == 2 && parts[0] == crewSharedRootName:
+		return parts[1] != "" && parts[1] != "."
+	case len(parts) == 6 && parts[0] == "_users" && parts[2] == "Chats" && parts[3] == "Work" && parts[4] == "projects":
+		return parts[1] != "" && parts[5] != ""
+	}
+	return false
+}
+
+// externalPathPrivate is the workflow file privacy rule, plus a Crew's own
+// private areas (its database and manifests, as the shared Crew reader view
+// hides them) when the root is a Crew.
+func externalPathPrivate(crewRoot bool, p string) bool {
+	if wf.Private(p) {
+		return true
+	}
+	if !crewRoot {
+		return false
+	}
+	_, private := confineSharedProjectPath("x", p)
+	return !private && p != "." && p != ""
+}
+
+func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Request, crewRoot bool) (wf.Result, error) {
 	if req.Limit <= 0 {
 		req.Limit = 100
 	}
@@ -175,7 +203,7 @@ func externalListFiles(ctx context.Context, root *os.Root, p string, req wf.Requ
 		if walkErr != nil {
 			return walkErr
 		}
-		if d.Type()&os.ModeSymlink != 0 || wf.Private(name) {
+		if d.Type()&os.ModeSymlink != 0 || externalPathPrivate(crewRoot, name) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}

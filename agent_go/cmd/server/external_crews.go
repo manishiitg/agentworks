@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // External (MCP / agentworks CLI) access to Crews. Every tool resolves the
@@ -15,7 +17,7 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
-	"list_crews": true, "get_crew": true, "list_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
+	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
 	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
@@ -234,13 +236,24 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		externalJSON(w, externalCrewCallResponse(ctx, call, externalCrewWait(args)))
 	case "list_crew_functions":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
-	case "list_crew_files":
-		entries := []sharedProjectFileEntry{}
-		truncated := false
-		if listing, exists, err := listWorkspaceFolder(ctx, crew.Binding.WorkspacePath, sharedProjectFileTreeDepth); err == nil && exists {
-			entries, truncated = flattenSharedProjectFiles(crew.Binding.WorkspacePath, listing)
+	case "list_crew_files", "search_crew_files":
+		// The workflow file engine: folder, depth, glob, pagination and text
+		// search. A fixed 4-level, 1,000-entry listing could not reach files
+		// inside the repositories a Crew clones (RTS 2026-09-28: SDE).
+		operation := "list"
+		if name == "search_crew_files" {
+			operation = "search"
 		}
-		externalJSON(w, map[string]any{"crew_id": manifest.ID, "files": entries, "truncated": truncated})
+		result, err := externalFileRequest(ctx, wf.Request{
+			Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Operation: operation,
+			Path: str("path"), Query: str("query"), Glob: str("glob"),
+			Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 4),
+		})
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		externalJSON(w, map[string]any{"crew_id": manifest.ID, "result": result})
 	case "read_crew_file":
 		full, confined := confineSharedProjectPath(crew.Binding.WorkspacePath, str("path"))
 		if !confined {

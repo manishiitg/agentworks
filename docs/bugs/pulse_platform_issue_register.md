@@ -1,3 +1,18 @@
+## Coding CLIs and the tmux socket are outside the sandbox — PLAT-364
+
+[PLAT-364](pulse_platform/security-sandbox/plat-364.md) covers what the
+private `/tmp` change (e59220636, deployed on RTS) left open.
+- **Native reads:** coding CLIs run unsandboxed, so hybrid-mode native reads
+  can see other users' files, CLI logins and `/proc/self/environ`.
+- **tmux socket:** a Landlocked shell can still reach it (verified on RTS), so
+  it can read or type into other users' CLI sessions. This is the most serious
+  item.
+
+tmux socket fixed and deployed on RTS (ab6bb0b4f): each sandboxed command
+gets a private `/tmp` in its own namespace. QA is #236. Still open: run the
+coding CLIs under the Landlock runner with per-user CLI homes, then Seatbelt
+on macOS.
+
 ## Scheduled runs lost to pauses and to Pulse, and Pulse did not act — PLAT-363
 
 [PLAT-363](pulse_platform/scheduler-runs/plat-363.md) explains 21 missed local

@@ -129,6 +129,12 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	if err != nil {
 		return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: %w", err)
 	}
+	// The browser daemons' socket folder must exist on the host before the
+	// launcher binds it into the command's private /tmp.
+	_ = os.MkdirAll(browserSocketDir, 0o700)
+	_ = os.MkdirAll(browserTempDir(), 0o700)
+	privateTmp := privateTmpAvailable(runner)
+	policy.PrivateTmp = privateTmp
 	config, err := os.CreateTemp("", "agentworks-landlock-*.json")
 	if err != nil {
 		return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: create Landlock policy: %w", err)
@@ -156,6 +162,9 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	}
 	cmd := exec.CommandContext(ctx, runner, "--config", configPath, "--", "/bin/sh", "-c", fullCommand)
 	cmd.Dir = policy.WorkDir
+	if privateTmp {
+		cmd.SysProcAttr = privateTmpSysProcAttr()
+	}
 	// Package-manager state routed to disk Landlock lets the step write:
 	// the workflow's persistent .sandbox-cache when granted (PLAT-284),
 	// else the run folder (PLAT-283). Without this, pip/npm/venv default to
@@ -226,7 +235,13 @@ func probeSandboxCapability() SandboxCapability {
 	if abi, err := landlockABI(); err == nil && abi >= 1 {
 		if runner, runnerErr := landlockRunnerPath(); runnerErr == nil {
 			if preflightErr := landlockLauncherPreflight(runner); preflightErr == nil {
-				return SandboxCapability{Available: true, Backend: "landlock", Detail: fmt.Sprintf("filesystem ABI %d; launcher preflight passed", abi)}
+				detail := fmt.Sprintf("filesystem ABI %d; launcher preflight passed", abi)
+				if privateTmpAvailable(runner) {
+					detail += "; private /tmp"
+				} else if privateTmpProbe.detail != "" {
+					detail += "; " + privateTmpProbe.detail
+				}
+				return SandboxCapability{Available: true, Backend: "landlock", Detail: detail}
 			}
 		}
 	}

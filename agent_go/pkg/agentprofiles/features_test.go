@@ -160,6 +160,37 @@ func TestBotsProjectSharedGmailTools(t *testing.T) {
 	}
 }
 
+func TestFeatureOptionsNarrowToolsForOutboundAndDirectMessageOnly(t *testing.T) {
+	profile := Profile{ToolPolicy: ToolPolicy{Mode: ToolPolicyModeAllowlist}, Features: []FeatureBinding{
+		{ID: "workflow-references", Options: map[string]string{"direction": "outbound"}},
+		{ID: "bots", Options: map[string]string{"channels": "slack,whatsapp", "dm_only": "true"}},
+	}}
+	if err := ResolveFeatures(&profile); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
+		if !containsString(profile.ToolPolicy.Enabled, tool) {
+			t.Fatalf("narrowed features dropped caller tool %s: %v", tool, profile.ToolPolicy.Enabled)
+		}
+	}
+	for _, tool := range []string{"define_function", "delete_function", "report_function_progress", "return_function_result", "google_workspace_cli", "list_gmail_connections", "create_slack_bot_route", "send_slack_message", "slack"} {
+		if containsString(profile.ToolPolicy.Enabled, tool) {
+			t.Fatalf("narrowed features kept %s: %v", tool, profile.ToolPolicy.Enabled)
+		}
+	}
+	got := strings.Join(FeaturePromptExtensions(profile), "\n")
+	if strings.Contains(got, "Gmail/Google Workspace accounts are enabled") || strings.Contains(got, "define_function") || !strings.Contains(got, "outbound only") {
+		t.Fatalf("prompt extensions still describe removed tools: %q", got)
+	}
+	if FeatureOption(profile, "bots", "dm_only") != "true" {
+		t.Fatalf("FeatureOption lost dm_only")
+	}
+	bad := Profile{Features: []FeatureBinding{{ID: "workflow-references", Options: map[string]string{"direction": "inbound"}}}}
+	if err := ResolveFeatures(&bad); err == nil {
+		t.Fatal("invalid direction accepted")
+	}
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

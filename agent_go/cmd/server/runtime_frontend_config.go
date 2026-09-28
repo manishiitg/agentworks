@@ -24,7 +24,7 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 	fmt.Fprintf(&b, ",\n  cdpEnabled: %t", browser.CDPEnabled())
 	surfaces := splitAndTrimCommaList(os.Getenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES"))
 	if len(surfaces) == 0 {
-		surfaces = []string{"agentworks", "work"}
+		surfaces = []string{"agentworks", "work", "code"}
 	}
 	fmt.Fprintf(&b, ",\n  enabledProductSurfaces: %s", jsStringArrayLiteral(surfaces))
 	defaultSurface := strings.TrimSpace(os.Getenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE"))

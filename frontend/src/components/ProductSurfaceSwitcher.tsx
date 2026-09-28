@@ -6,6 +6,7 @@ import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
 import { CapLayerMark } from '../products/mcp-gateway/CapLayerMark'
+import { CodeMark } from '../products/work/CodeMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -32,6 +33,7 @@ const products: Array<{
   { id: 'dominion', label: 'Dominion', description: 'Paper-trading watchlist and portfolio', icon: DominionMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
+  { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
   { id: 'mcp-gateway', label: 'CapLayer', description: 'Governed access to tools for every AI agent', icon: CapLayerMark },
 ]
 

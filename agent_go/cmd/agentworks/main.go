@@ -48,7 +48,7 @@ var cliOperationGroups = []struct {
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List and call a workflow's functions (typed, input-checked entry points)", []struct{ command, tool string }{{"list", "list_workflow_functions"}, {"call", "call_workflow_function"}, {"call-status", "get_workflow_function_call"}, {"suggest", "suggest_workflow_change"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"functions", "list_crew_functions"}, {"call", "call_crew_function"}, {"ask", "ask_crew"}, {"call-status", "get_crew_function_call"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -438,16 +438,16 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.Int("limit", 0, "Maximum results")
 		f.Int("offset", 0, "Result offset")
 	}
-	if tool == "list_files" || tool == "search_files" {
+	if tool == "list_files" || tool == "search_files" || tool == "list_crew_files" || tool == "search_crew_files" {
 		f.Int("depth", 0, "Directory traversal depth (1..8)")
 	}
-	if tool == "list_files" || tool == "search_files" || tool == "list_step_code" {
+	if tool == "list_files" || tool == "search_files" || tool == "list_step_code" || tool == "list_crew_files" || tool == "search_crew_files" {
 		f.String("glob", "", "File path glob relative to the selected directory, e.g. '**/*.py'")
 	}
 	if tool == "list_step_code" {
 		f.String("step-id", "", "Optional plan step ID to inventory")
 	}
-	if tool == "search_files" || tool == "list_workflows" || tool == "list_crews" {
+	if tool == "search_files" || tool == "list_workflows" || tool == "list_crews" || tool == "search_crew_files" {
 		f.String("query", "", "Search query")
 	}
 	if tool == "get_run" || tool == "get_logs" {

@@ -137,6 +137,11 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if binding, err := resolveProductProjectBindingWithStore(ctx, callerID, profile, projectID, store); err == nil {
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}
+	// Only Crews resolve under other owners. Every other profile -- a
+	// private Code above all -- is the caller's own or nothing.
+	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		return denied()
+	}
 	// The query path already carries the verified physical root: resolve
 	// directly under its owner instead of scanning every user.
 	if ownerID, ok := crewProjectOwnerID(selectedFolder); ok && ownerID != sanitizeUserIDForPath(callerID) {

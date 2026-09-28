@@ -4,10 +4,11 @@ import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
 import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
-import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from './workData'
+import { WORK_PROFILE_ID } from './workData'
+import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
 import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
-export type WorkSession = ProductProject<typeof WORK_PROFILE_ID>
+export type WorkSession = ProductProject<ProjectProductId>
 
 export type WorkLLMSelection = {
   connectionId?: string
@@ -42,23 +43,23 @@ export function sessionSlug(title: string): string {
   return slugifyTitle(title, 'workspace')
 }
 
-export function parseSessionManifest(content: string, workspacePath: string, lastModified?: string): WorkSession | null {
-  return parseProductProjectManifest(content, workspacePath, WORK_PROFILE_ID, lastModified)
+export function parseSessionManifest(content: string, workspacePath: string, lastModified?: string, product: ProjectProductConfig = CREW_PRODUCT): WorkSession | null {
+  return parseProductProjectManifest(content, workspacePath, product.profileId, lastModified)
 }
 
-export async function loadWorkSessions(): Promise<WorkSession[]> {
-  const sessions = await loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { runtimeManifestName: 'workflow.json' })
+export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
+  const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json' })
   return Promise.all(sessions.map(async original => {
     let session = original
     if (!session.runtimeConfigInitialized || !session.selectionConfigInitialized) {
       session = await updateProductProjectSelections(session, {
         ...(!session.selectionConfigInitialized ? { selectedServers: [], selectedSkills: [] } : {}),
-      }, `Initialize Work project runtime ${session.title}`, 'workflow.json')
+      }, `Initialize ${projectProductConfig(session.product).noun} project runtime ${session.title}`, 'workflow.json')
     }
     if (!original.secretSelectionInitialized) {
       try {
         const stored = await secretsApi.listWorkflowSecrets(session.workspacePath)
-        session = await updateProductProjectSelections(session, { selectedSecrets: stored.map(secret => secret.name) }, `Initialize Work project secret attachments ${session.title}`, 'workflow.json')
+        session = await updateProductProjectSelections(session, { selectedSecrets: stored.map(secret => secret.name) }, `Initialize ${projectProductConfig(session.product).noun} project secret attachments ${session.title}`, 'workflow.json')
       } catch {
         // Keep the project usable during a transient secret-store failure. The
         // server performs the same migration before the next agent turn.
@@ -68,9 +69,9 @@ export async function loadWorkSessions(): Promise<WorkSession[]> {
   }))
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId): Promise<WorkSession> {
-  const template = templateId ? getCrewTemplate(templateId) : undefined
-  const options = await loadAgentProfileProviderOptions(WORK_PROFILE_ID)
+export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession> {
+  const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
+  const options = await loadAgentProfileProviderOptions(product.profileId)
   const selected = options.find(option => option.default) || options[0]
   const reasoningEffort = typeof selected?.options?.reasoning_effort === 'string'
     ? selected.options.reasoning_effort
@@ -79,18 +80,21 @@ export async function createWorkSession(title: string, description: string, icon
     ? workLLMConfigFromSelection({ provider: selected.provider, modelId: selected.model_id, reasoningEffort })
     : undefined
   const project = await createProductProject({
-    root: WORK_PROJECTS_ROOT,
-    product: WORK_PROFILE_ID,
+    root: product.projectsRoot,
+    product: product.profileId,
     title,
-    description,
-    sessionPrefix: 'work:project',
-    slugFallback: 'workspace',
-    commitLabel: 'Create Work project',
-    identity: {
-      name: title.trim(),
-      icon: icon?.trim() || Array.from(title.trim())[0]?.toLocaleUpperCase() || 'C',
-      ...(template ? { role: template.role } : {}),
-    },
+    // A Code has a name only: no purpose, role or icon.
+    description: product.hasIdentity ? description : '',
+    sessionPrefix: product.sessionPrefix,
+    slugFallback: product.slugFallback,
+    commitLabel: `Create ${product.noun} project`,
+    ...(product.hasIdentity ? {
+      identity: {
+        name: title.trim(),
+        icon: icon?.trim() || Array.from(title.trim())[0]?.toLocaleUpperCase() || 'C',
+        ...(template ? { role: template.role } : {}),
+      },
+    } : {}),
     ...(template ? {
       templates: [{ id: template.id, version: template.version }],
       selectedSkills: template.selectedSkills,
@@ -101,7 +105,7 @@ export async function createWorkSession(title: string, description: string, icon
   })
   await agentApi.createPlannerFolder(
     `${project.workspacePath}/code`,
-    `Initialize Work project code folder ${project.title}`,
+    `Initialize ${product.noun} project code folder ${project.title}`,
   )
   return project
 }
@@ -131,7 +135,7 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
   if (session.shared) throw new Error('Shared Crew projects can only be deleted by their owner.')
-  await agentApi.deleteAgentProfileProject(WORK_PROFILE_ID, session.id)
+  await agentApi.deleteAgentProfileProject(session.product, session.id)
 }
 
 export function sharedProjectToWorkSession(row: SharedProjectSummary): WorkSession {
@@ -192,9 +196,10 @@ export async function loadSharedWorkSessions(): Promise<WorkSession[]> {
  * the reader can open and change. Shared-listing failures degrade to
  * owned-only rather than failing the whole Crew surface.
  */
-export async function loadWorkSessionsIncludingShared(): Promise<WorkSession[]> {
+export async function loadWorkSessionsIncludingShared(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
+  if (!product.listsSharedProjects) return loadWorkSessions(product)
   const [owned, shared] = await Promise.all([
-    loadWorkSessions(),
+    loadWorkSessions(product),
     loadSharedWorkSessions().catch(() => [] as WorkSession[]),
   ])
   const ownedIds = new Set(owned.map(session => session.id))
@@ -203,5 +208,5 @@ export async function loadWorkSessionsIncludingShared(): Promise<WorkSession[]> 
 
 export async function updateWorkSessionIdentity(session: WorkSession, patch: ProductIdentityPatch): Promise<WorkSession> {
   if (session.shared) throw new Error('Only the Crew owner can change this.')
-  return updateProductProjectIdentity(session, patch, `Update Crew project identity ${session.title}`)
+  return updateProductProjectIdentity(session, patch, `Update ${projectProductConfig(session.product).noun} project identity ${session.title}`)
 }

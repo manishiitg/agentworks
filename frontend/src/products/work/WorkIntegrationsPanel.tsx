@@ -14,6 +14,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useMCPStore } from '../../stores/useMCPStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
+import { isProjectProductId, useProjectProduct } from './projectProduct'
 import { crewTemplates } from './crewTemplates'
 
 export type WorkIntegrationTab = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
@@ -27,14 +28,21 @@ const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
   { value: 'cli', label: 'Connect' },
 ]
 
-const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<WorkIntegrationTab, string> = {
-  apps: "Help me with this Crew project's connected apps. Explain what's connected and ask what I want to add or change.",
-  skills: "Help me with this Crew project's skills. Explain what's available and ask what I want to add or change.",
-  slack: "Help me with this Crew project's Slack bot. Explain what's connected and ask what I want to change.",
-  whatsapp: "Help me with this Crew project's WhatsApp bot. Explain what's connected and ask what I want to change.",
-  gmail: "Help me with this Crew project's Gmail. Explain the setup and ask what I want to change.",
-  cli: "Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.",
+function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, string> {
+  return {
+    apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
+    skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
+    slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
+    whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
+    gmail: `Help me with this ${noun} project's Gmail. Explain the setup and ask what I want to change.`,
+    cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
+  }
 }
+
+// Code has no Gmail. Its Slack and WhatsApp tabs stay hidden until Code's
+// 1:1 direct-message bots land (docs/design/code_product.md step 3): the
+// shared bots panel creates channel routes, which Code must not have.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['gmail', 'slack', 'whatsapp'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string
@@ -101,7 +109,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
       return
     }
     for (const tab of Object.values(store.chatTabs)) {
-      if (!projectId || tab.metadata?.agentProfileId !== 'work' || tab.metadata?.agentProfileProjectId !== projectId) continue
+      if (!projectId || !isProjectProductId(tab.metadata?.agentProfileId) || tab.metadata?.agentProfileProjectId !== projectId) continue
       store.setTabConfig(tab.tabId, { selectedServers: selected })
       store.setTabMetadata(tab.tabId, { agentProfileMCPSelectionInitialized: true, agentProfileRuntimeDirty: true })
     }
@@ -136,7 +144,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
                 <button
                   type="button"
                   className="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
-                  onClick={() => void onAsk(`Help me connect ${serverName} for this Crew project. It is selected but not connected yet; walk me through signing in or adding its credentials.`)}
+                  onClick={() => void onAsk(`Help me connect ${serverName} for this project. It is selected but not connected yet; walk me through signing in or adding its credentials.`)}
                 >
                   Ask agent
                 </button>
@@ -236,8 +244,10 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
 }) {
   // The Connect tab points at this installation's API origin. Hosted apps need
   // a public origin; local agents can connect directly to a loopback MCP URL.
+  const product = useProjectProduct()
   const visibleTabs = INTEGRATION_TABS.filter(option =>
-    isWorkIntegrationTabEnabled(option.value, enabledPanels))
+    isWorkIntegrationTabEnabled(option.value, enabledPanels) &&
+    !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
   const [tab, setTab] = usePersistentTab<WorkIntegrationTab>('agentworks.tab.crew-integrations', 'apps', INTEGRATION_TABS.map(option => option.value))
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
@@ -257,7 +267,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
       return
     }
     for (const tab of Object.values(store.chatTabs)) {
-      if (tab.metadata?.agentProfileId !== 'work' || tab.metadata?.agentProfileProjectId !== projectId) continue
+      if (tab.metadata?.agentProfileId !== product.profileId || tab.metadata?.agentProfileProjectId !== projectId) continue
       store.setTabConfig(tab.tabId, { selectedSkills: next })
       store.setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
     }
@@ -273,7 +283,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={INTEGRATION_TAB_ASK_AI_MESSAGE[activeTab]}
+            message={integrationTabAskAIMessage(product.noun)[activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
@@ -292,7 +302,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         {activeTab === 'skills' && <div className="space-y-3">
           {templates.map(template => <div key={template.id} className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <p className="text-xs font-semibold text-foreground">Included with {template.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">These skills live in this Crew’s files and are selected only for this Crew.</p>
+            <p className="mt-1 text-xs text-muted-foreground">These skills live in this {product.noun}’s files and are selected only for this {product.noun}.</p>
             {template.selectedSkills.map(skill => <div key={skill} className="mt-2 flex items-center justify-between gap-2 text-xs">
               <span className="font-medium text-foreground">{skill}</span>
               <button type="button" onClick={() => { void toggleSkill(skill) }} className="rounded-md border border-border px-2 py-1 font-semibold text-primary hover:bg-primary/10">
@@ -316,14 +326,14 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           fixedChannel="slack"
           scopeNoun="project"
           onAsk={onAsk}
-          target={{ profileId: 'work', conversationKey: projectId, label: projectTitle }}
+          target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}
         {activeTab === 'whatsapp' && <WorkflowBotsPanel
           workspacePath={workspacePath}
           fixedChannel="whatsapp"
           scopeNoun="project"
           onAsk={onAsk}
-          target={{ profileId: 'work', conversationKey: projectId, label: projectTitle }}
+          target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}
         {activeTab === 'gmail' && <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />}
         {activeTab === 'cli' && <CliMcpSetupPanel />}

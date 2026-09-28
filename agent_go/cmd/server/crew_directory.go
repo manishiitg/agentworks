@@ -126,6 +126,12 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusNotFound, "shared projects not found")
 		return
 	}
+	// Crews are readable server-wide; no other profile lists other owners'
+	// projects (a Code is private to its owner).
+	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
+		return
+	}
 	rows := []sharedProjectSummary{}
 	for _, ownerID := range crewProjectOwnerCandidates(claims.UserID) {
 		for _, row := range listSharedProjectsForOwner(r.Context(), claims, profile, ownerID) {

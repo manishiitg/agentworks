@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"io"
 	"net/http"
 	"strings"
@@ -316,13 +317,15 @@ func invalidateWorkFolderSessions(ctx context.Context, identityKey, reason strin
 	if userID == "" {
 		return
 	}
-	sessions, err := defaultProductConversationRegistryStore().liveSessionIDs(ctx, userID, "work")
-	if err != nil {
-		return
-	}
-	for sessionID := range sessions {
-		common.SetSessionFolderGuard(sessionID, []string{}, []string{})
-		closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+	for _, product := range projectProducts {
+		sessions, err := defaultProductConversationRegistryStore().liveSessionIDs(ctx, userID, product.ProfileID)
+		if err != nil {
+			continue
+		}
+		for sessionID := range sessions {
+			common.SetSessionFolderGuard(sessionID, []string{}, []string{})
+			closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+		}
 	}
 }
 
@@ -349,7 +352,7 @@ func workFolderClaims(w http.ResponseWriter, r *http.Request) *UserClaims {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil
 	}
-	if !userAllowedProduct(claims, "work") {
+	if !userAllowedProduct(claims, crewProfileID) && !userAllowedProduct(claims, codeproduct.ProfileID) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

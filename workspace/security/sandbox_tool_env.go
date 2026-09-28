@@ -55,6 +55,7 @@ func sandboxToolEnv(env []string, workDir string, writePaths []string) []string 
 	}
 
 	if persistent == "" {
+		env = privateSandboxHome(env, filepath.Join(scratch, SandboxPersistentDirName, "home"))
 		cacheDir := filepath.Join(scratch, ".cache")
 		pipCacheDir := filepath.Join(cacheDir, "pip")
 		npmCacheDir := filepath.Join(cacheDir, "npm")
@@ -98,6 +99,7 @@ func sandboxToolEnv(env []string, workDir string, writePaths []string) []string 
 		filepath.Join(cargoHome, "bin"),
 	}, string(os.PathListSeparator))
 
+	env = privateSandboxHome(env, filepath.Join(persistent, "home"))
 	out := make([]string, 0, len(env)+16)
 	pathSeen := false
 	for _, kv := range env {
@@ -159,4 +161,42 @@ func (iso *Isolator) toolEnv(env []string) []string {
 		}
 	}
 	return sandboxToolEnv(env, canonicalPath(iso.WorkDir), writes)
+}
+
+// privateSandboxHome replaces the shared HOME=/tmp of the Docker-mode
+// environment with home, a folder only this workflow or Crew can write: git,
+// ssh, CLI logins and tool config written under HOME used to land in a /tmp
+// every sandboxed command shared. A real host HOME (native mode) is kept,
+// since host-installed CLIs read their config from it.
+func privateSandboxHome(env []string, home string) []string {
+	shared := false
+	for _, kv := range env {
+		if kv == "HOME="+sandboxSharedHome {
+			shared = true
+			break
+		}
+	}
+	if !shared {
+		return env
+	}
+	config := filepath.Join(home, ".config")
+	if err := os.MkdirAll(config, 0o700); err != nil {
+		return env
+	}
+	out := make([]string, 0, len(env)+2)
+	socketDirSet := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "HOME=") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
+			continue
+		}
+		socketDirSet = socketDirSet || strings.HasPrefix(kv, "AGENT_BROWSER_SOCKET_DIR=")
+		out = append(out, kv)
+	}
+	out = append(out, "HOME="+home, "XDG_CONFIG_HOME="+config)
+	// agent-browser keeps its sockets under $HOME by default; a workflow
+	// home is far past the 103-byte Unix socket path limit.
+	if !socketDirSet {
+		out = append(out, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
+	}
+	return out
 }

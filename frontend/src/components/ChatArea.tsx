@@ -49,6 +49,7 @@ import {
   buildQueryRequestPayload,
   applyAgentProfileBinding,
   buildAgentProfileChatRequest,
+  offeredProfileReasoningEffort,
   resolveOrCreateTab,
   createUserMessageEvent,
   withoutOptimisticUserMessage,
@@ -56,6 +57,7 @@ import {
   isChatCompatiblePhase,
   remainingWorkflowContextAfterSubmission,
 } from '../utils/chatSubmitHelpers'
+import { loadAgentProfileProviderOptions } from '../utils/agentProfileCapabilities'
 import {
   shouldKeepChatSessionSubscribed,
 } from '../utils/workflowSessionSubscription'
@@ -3222,10 +3224,20 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (!stillOwnsSubmission()) return false
       chatStore.setSessionId(tabSessionId)
       console.log('[WF_DEBUG] 1. Submitting', { tabId: currentTab.tabId, tabSessionId, eventCount: chatStore.getTabEvents(tabSessionId).length, mode: currentTab.metadata?.mode })
+      const profileOptions = currentTab.metadata?.agentProfileChatContract === 'profile-v1' && currentTab.metadata.agentProfileId
+        ? await loadAgentProfileProviderOptions(currentTab.metadata.agentProfileId, currentTab.metadata.agentProfileVersion)
+        : []
+      if (!stillOwnsSubmission()) return false
+      const reasoningEffort = offeredProfileReasoningEffort(
+        profileOptions,
+        currentTab.metadata?.agentProfileEngine,
+        currentTab.metadata?.agentProfileReasoningEffort,
+        currentTab.metadata?.agentProfileModelID,
+      )
       const response = currentTab.metadata?.agentProfileChatContract === 'profile-v1' && currentTab.metadata.agentProfileId
         ? await agentApi.startAgentProfileQuery(
             currentTab.metadata.agentProfileId,
-            buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, currentTab.metadata.agentProfileReasoningEffort),
+            buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, reasoningEffort),
             tabSessionId,
             { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
           )
