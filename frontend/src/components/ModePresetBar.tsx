@@ -177,15 +177,20 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   // running/needs-input/idle status.
   // This mirrors GlobalActivityMonitor's own currentSessionId derivation so
   // the two stay in agreement about which session is "current".
-  const activeSessionsCache = useChatStore(state => state.activeSessionsCache)
-  const activeTabId = useChatStore(state => state.activeTabId)
-  const chatTabs = useChatStore(state => state.chatTabs)
-  const currentSession = currentActiveSession(
-    activeSessionsCache,
-    currentSessionId(activeTabId, chatTabs, selectedModeCategory, isGlobalPage),
-  )
-  const currentTriggerLabel = currentSession ? workflowTriggerLabel({ sessionId: currentSession.session_id, triggeredBy: currentSession.triggered_by }) : undefined
-  const currentSessionStatusLabel = currentSession ? headerStatusLabel(currentSession) : null
+  // Select the two rendered labels, not the raw session/tab records: those
+  // change identity on every 5s poll and every chat event, which re-rendered
+  // the whole bar (and made header clicks feel laggy) far more often than
+  // the labels themselves change.
+  const { currentTriggerLabel, currentSessionStatusLabel } = useChatStore(useShallow(state => {
+    const currentSession = currentActiveSession(
+      state.activeSessionsCache,
+      currentSessionId(state.activeTabId, state.chatTabs, selectedModeCategory, isGlobalPage),
+    )
+    return {
+      currentTriggerLabel: currentSession ? workflowTriggerLabel({ sessionId: currentSession.session_id, triggeredBy: currentSession.triggered_by }) : undefined,
+      currentSessionStatusLabel: currentSession ? headerStatusLabel(currentSession) : null,
+    }
+  }))
 
   const openWorkflowWalkthrough = useCallback((surface: WalkthroughSurface = currentWalkthroughSurface) => {
     if (showProviders) useLLMStore.getState().setShowLLMModal(false)
