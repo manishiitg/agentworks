@@ -777,7 +777,8 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// A Crew call rides this caller's binding on the Crew; a workflow
 	// function runs its own function trigger.
 	triggerID := fn.TriggerID
-	if target.Kind != triggerCallerWorkflow {
+	// A person's ask runs in their own chat, not through a trigger binding.
+	if target.Kind != triggerCallerWorkflow && !isPersonCrewAsk(target, caller, fn) {
 		var err error
 		triggerID, _, err = api.connectTriggerTarget(ctx, userID, caller, target)
 		if err != nil {
@@ -820,6 +821,19 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		call.saveIndex()
 		call.persist()
 		go api.runWorkflowAsk(call, target, caller, message, timeout)
+		return call, nil
+	}
+	if isPersonCrewAsk(target, caller, fn) {
+		message, _ := args["message"].(string)
+		if strings.TrimSpace(message) == "" {
+			crewFunctionCalls.Lock()
+			delete(crewFunctionCalls.m, id)
+			crewFunctionCalls.Unlock()
+			return nil, fmt.Errorf("ask needs a message")
+		}
+		call.saveIndex()
+		call.persist()
+		go api.runCrewOwnChatAsk(call, target, strings.TrimSpace(message), timeout)
 		return call, nil
 	}
 	var delivery internalTriggerDeliveryResult
