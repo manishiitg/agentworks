@@ -3,7 +3,5 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "http://127.0.0.1:18744",
   cdpEnabled: true,
   appName: "AgentWorks",
-  faviconUrl: "/logo.svg",
-  // Local MCP Gateway (mcp-gateway/cmd/server, default GATEWAY_PORT=18745).
-  gatewayUrl: "http://127.0.0.1:18745"
+  faviconUrl: "/logo.svg"
 };

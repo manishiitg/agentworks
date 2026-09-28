@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -50,7 +51,8 @@ func (a *Admin) requireUI(next http.HandlerFunc) http.HandlerFunc {
 func (a *Admin) uiLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err == nil && a.HumanToken != "" && subtle.ConstantTimeCompare([]byte(r.PostForm.Get("token")), []byte(a.HumanToken)) == 1 {
-			http.SetCookie(w, &http.Cookie{Name: "gw_admin", Value: a.HumanToken, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+			public, _ := url.Parse(a.PublicURL)
+			http.SetCookie(w, &http.Cookie{Name: "gw_admin", Value: a.HumanToken, Path: "/", HttpOnly: true, Secure: r.TLS != nil || public != nil && public.Scheme == "https", SameSite: http.SameSiteStrictMode})
 			http.Redirect(w, r, "/admin/", http.StatusSeeOther)
 			return
 		}

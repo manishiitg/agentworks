@@ -15,11 +15,26 @@ afterEach(() => {
 })
 
 describe('product surface deployment configuration', () => {
-  it('defaults to AgentWorks, Work, and the gateway when no deployment allowlist is configured', () => {
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'mcp-gateway'])
+  it('defaults to AgentWorks and Work when no gateway is configured', () => {
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work'])
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(hasGatewaySSO()).toBe(false)
+  })
+
+  it('opts into CapLayer when a gateway URL is configured', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
+    })
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'mcp-gateway'])
+  })
+
+  it('removes CapLayer from an explicit allowlist when its endpoint is withdrawn', () => {
+    vi.stubGlobal('window', {
+      __APP_RUNTIME_CONFIG__: { enabledProductSurfaces: ['agentworks', 'mcp-gateway'] },
+    })
+    expect(enabledProductSurfaces()).toEqual(['agentworks'])
+    expect(isEnabledProductSurface('mcp-gateway')).toBe(false)
   })
 
   it('constrains the dedicated host to AgentWorks and Video Studio', () => {

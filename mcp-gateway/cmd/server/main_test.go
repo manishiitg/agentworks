@@ -43,3 +43,38 @@ func TestResolveBind(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePublicURL(t *testing.T) {
+	strong := "private-alpha-secret-with-32-characters"
+	cases := []struct {
+		name, publicURL, token string
+		wantError              bool
+	}{
+		{name: "local default", publicURL: "http://127.0.0.1:18745", token: "m0-human-token"},
+		{name: "hosted alpha", publicURL: "https://caplayer.example.com", token: strong},
+		{name: "proxy to loopback still needs strong token", publicURL: "https://caplayer.example.com", token: "m0-human-token", wantError: true},
+		{name: "public http refused", publicURL: "http://caplayer.example.com", token: strong, wantError: true},
+		{name: "URL credentials refused", publicURL: "https://user:pass@caplayer.example.com", token: strong, wantError: true},
+		{name: "path refused", publicURL: "https://caplayer.example.com/mcp", token: strong, wantError: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePublicURL(tc.publicURL, tc.token)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("validatePublicURL(%q) error = %v, wantError %t", tc.publicURL, err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateExposure(t *testing.T) {
+	if err := validateExposure("127.0.0.1", "http://127.0.0.1:18745"); err != nil {
+		t.Fatalf("loopback development should work: %v", err)
+	}
+	if err := validateExposure("0.0.0.0", "http://127.0.0.1:18745"); err == nil {
+		t.Fatal("public bind with local advertised URL must fail")
+	}
+	if err := validateExposure("0.0.0.0", "https://caplayer.example.com"); err != nil {
+		t.Fatalf("hosted HTTPS endpoint should work: %v", err)
+	}
+}

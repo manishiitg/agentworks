@@ -57,6 +57,33 @@ func resolveBind(bind, humanToken string) (string, error) {
 	return bind, nil
 }
 
+// A public URL may terminate TLS at a reverse proxy, so validate the
+// advertised endpoint independently of the process bind address.
+func validatePublicURL(raw, humanToken string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("GATEWAY_PUBLIC_URL must be an http(s) origin without a path, credentials, query, or fragment")
+	}
+	if !loopbackURL(raw) {
+		if u.Scheme != "https" {
+			return errors.New("public GATEWAY_PUBLIC_URL must use HTTPS")
+		}
+		if len(humanToken) < 32 || humanToken == "local-admin" || humanToken == "m0-human-token" {
+			return errors.New("public GATEWAY_PUBLIC_URL requires an explicit GATEWAY_HUMAN_TOKEN of at least 32 characters")
+		}
+	}
+	return nil
+}
+
+func validateExposure(bind, publicURL string) error {
+	ip := net.ParseIP(bind)
+	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) && loopbackURL(publicURL) {
+		return errors.New("non-loopback GATEWAY_BIND requires a public HTTPS GATEWAY_PUBLIC_URL")
+	}
+	return nil
+}
+
 func run() error {
 	port := env("GATEWAY_PORT", "8080")
 	upstreamURL := env("GATEWAY_UPSTREAM_URL", "https://mcp.context7.com/mcp")
@@ -65,8 +92,15 @@ func run() error {
 	publicURL := env("GATEWAY_PUBLIC_URL", "http://127.0.0.1:"+port)
 	stateDir := env("GATEWAY_STATE_DIR", filepath.Join(".", "var"))
 	humanToken := env("GATEWAY_HUMAN_TOKEN", "m0-human-token")
+	if err := validatePublicURL(publicURL, humanToken); err != nil {
+		return err
+	}
+	publicURL = strings.TrimRight(publicURL, "/")
 	bind, err := resolveBind(env("GATEWAY_BIND", ""), humanToken)
 	if err != nil {
+		return err
+	}
+	if err := validateExposure(bind, publicURL); err != nil {
 		return err
 	}
 	bindIP := net.ParseIP(bind)

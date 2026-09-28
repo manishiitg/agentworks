@@ -58,7 +58,7 @@ POSITIONAL_ARGS=()
 print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
-    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend + gateway.'
+    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend.'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
@@ -141,15 +141,11 @@ for arg in "$@"; do
     esac
 done
 
-# Default composition: unless the caller picked a stack shape explicitly
-# (--with-workspace / --with-frontend / --only-frontend / --with-gateway /
-# --only-gateway / --test-connections), run the whole local stack (agent +
-# workspace + frontend + gateway). Bare modifiers (--background,
-# --without-electron, ...) keep the default.
-if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$WITH_GATEWAY" != true ] && [ "$ONLY_GATEWAY" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
+# Default composition runs the existing AgentWorks stack. --with-gateway is
+# additive, so an explicit alpha run gets the full stack plus CapLayer.
+if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$ONLY_GATEWAY" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
     WITH_WORKSPACE=true
     WITH_FRONTEND=true
-    WITH_GATEWAY=true
 fi
 
 # Only connection-test mode accepts a positional MCP configuration path. Treat
@@ -413,7 +409,6 @@ if [ "$ONLY_GATEWAY" = true ]; then
     echo "🚀 Starting MCP Gateway..."
     echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
     echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
-    echo "🔑 Gateway admin token: $GATEWAY_HUMAN_TOKEN"
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     if [ "$BACKGROUND_MODE" = true ]; then
         nohup bash -lc "cd \"$GATEWAY_DIR\" && exec go run ./cmd/server" >> "$GATEWAY_LOG_PATH" 2>&1 &
@@ -1810,7 +1805,6 @@ start_mcp_gateway() {
     echo "🚀 Starting MCP Gateway..."
     echo "📝 Gateway log file: $GATEWAY_LOG_PATH"
     echo "🌐 Gateway MCP URL: ${GATEWAY_PUBLIC_URL}/mcp"
-    echo "🔑 Gateway admin token: $GATEWAY_HUMAN_TOKEN"
 
     echo "🚀 Gateway Session Started: $(date)" > "$GATEWAY_LOG_PATH"
     echo "=========================================" >> "$GATEWAY_LOG_PATH"

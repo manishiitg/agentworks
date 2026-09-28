@@ -21,17 +21,17 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 /**
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation surface and the built-in Work coding surface together, plus
- * the gateway surface whenever a gateway URL is configured (the switcher
- * applies that second gate).  Dedicated product shells can still replace this
- * with their own allowlist.
+ * the automation surface and the built-in Work coding surface together.
+ * A configured gateway URL opts a local deployment into the CapLayer alpha.
+ * Dedicated product shells can replace this with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
-  if (!Array.isArray(configured)) return ['agentworks', 'work', 'mcp-gateway']
+  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'work', 'mcp-gateway'] : ['agentworks', 'work']
+  if (!Array.isArray(configured)) return defaults
 
-  const enabled = configured.filter(isProductSurface)
-  return enabled.length > 0 ? [...new Set(enabled)] : ['agentworks', 'work', 'mcp-gateway']
+  const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
+  return enabled.length > 0 ? [...new Set(enabled)] : defaults
 }
 
 export function deploymentDefaultProductSurface(): ProductSurface {
