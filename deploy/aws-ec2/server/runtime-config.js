@@ -5,7 +5,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "/api/wp",
   cdpEnabled: false,
   defaultProductSurface: "video-studio",
-  enabledProductSurfaces: ["agentworks", "video-studio", "work"],
+  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code"],
   appName: "Video Studio",
   faviconUrl: "/video-studio-favicon.svg"
 };
