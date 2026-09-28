@@ -150,7 +150,15 @@ Agent tool calls reach the server through the executor routes `/tools/...` and
   change, in the adapter's own test).
 
 **Follow-ups from the review (not deploy blockers)**
-- [ ] **D1 (on hold by the user's choice, 2026-09-27).** The Landlock shell has read-write `/tmp`. Other sessions' bridge
+- [ ] **D1: partly done; the rest is tracked in [PLAT-364](plat-364.md).**
+  - Done on RTS 2026-09-28 (e59220636): Landlock no longer grants `/tmp` (only
+    `/tmp/.agent-browser`), HOME moved to `<workflow|Crew>/.sandbox-cache/home`,
+    and leaked `/tmp` dotfiles and credentials were removed.
+  - Still open (verified on RTS): Landlock does not cover `connect()` on
+    pathname Unix sockets, so a sandboxed command can still reach
+    `/tmp/tmux-<uid>/default`. Coding CLIs also run unsandboxed, so their
+    native Read tools are unconfined.
+  - Original finding: the Landlock shell has read-write `/tmp`. Other sessions' bridge
   configs there hold their tokens (Claude structured MCP configs, Pi/Muse
   bridge configs), and the tmux socket `/tmp/tmux-<uid>/default` lets a shell
   capture or type into other users' CLIs.
