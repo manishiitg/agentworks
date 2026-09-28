@@ -1,6 +1,6 @@
 # MCP servers in Code: global and personal
 
-Status: design, for review. Not built. Parent design:
+Status: design, reviewed twice by ai-work-7e (2026-09-28). Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
 [code_product.md](code_product.md).
 
 Owner decisions (2026-09-28):
@@ -49,7 +49,11 @@ shared login, as today) and **personal** (the chatting person's own).
 
 Secrets in the same shape: **global secrets** (selected for the Code as in a
 Crew) and **personal secrets** (the chatting person's own). A Code chat never
-resolves another person's personal secret.
+resolves another person's personal secret. **A personal server's credential
+headers may reference only that person's personal secrets**, never a global or
+project secret: otherwise anyone could add a personal server at their own URL
+with a header naming a global secret the Code selected, and the platform would
+send them its value, turning "usable, never seen" into readable.
 
 ## Decisions (recommended)
 
@@ -64,11 +68,23 @@ resolves another person's personal secret.
    selection + the chatting person's personal servers enabled for this Code.
    Background work and sub-agents inherit the person of the chat that started
    them. Slack/WhatsApp DMs run as the person who sent them.
-4. **Fail closed.** If a Code session's person or Code cannot be identified,
-   it gets no personal servers and no personal secrets (global ones still
-   follow the Code's selection).
+4. **Fail closed, from durable facts.** Whether a session is a Code session,
+   and whose, is decided from the session's durable record (owner + a
+   workspace path under `Chats/Code/projects`, from the event store / session
+   record), not from the in-memory `common.CodeSessionRoot` mark, which a
+   restart loses while a retained CLI keeps calling the bridge with its old
+   session id. For a Code session the resolver returns an error, never
+   `(nil, nil)`: today `(nil, nil)` lets mcpagent's executor fall through to
+   the session registry, the codeexec global registry and finally `mcpcache`,
+   which dials any server name from the global config. If the person or Code
+   cannot be established: no personal servers, no personal secrets, and the
+   global selection only after the Code is established.
 5. **Admin inspection** shows which personal servers a person enabled in a
-   Code (name, URL, connected), never tokens or secret values; audited.
+   Code (name, URL with its query string stripped, connected), never tokens or
+   secret values; audited.
+6. **Nobody acts as someone else's login.** Only the chatting person's own
+   personal servers run in their chat; there is no "use the owner's login"
+   path. (The first draft's "editors act as the owner" is gone.)
 
 ## Design
 
@@ -77,17 +93,54 @@ resolves another person's personal secret.
 ```
 <AGENTWORKS_STATE_ROOT>/personal-mcp/<sha256(user)[:32]>/   (0700)
   servers.json        # name, url, transport, oauth metadata, header refs
-  tokens/<server>.json
-  clients/<server>.json   # dynamic client registrations
+  tokens/<server>.json.enc    # AES-GCM, AAD = this store's id
+  clients/<server>.json.enc   # dynamic client registrations, same sealing
 ```
+
+- **Encrypted at rest.** Tokens and client registrations are sealed with the
+  server secrets key (AES-GCM, AAD = the store id, like `workflow_secrets`)
+  and loaded through a `TokenStore` implementation handed to mcp-go, never a
+  plaintext `TokenFile`. Reason: coding CLIs in *hybrid* mode (other users'
+  Crews and workflows) use their native Read tool on anything the service
+  user can read, including `state/`. The same exposure exists today for
+  `_platform` tokens and the gog stores (tracked as PLAT-364 part 2); this
+  design does not add a new plaintext copy.
+- **Never grant `state/`** in any sandbox policy (cli-runtimes also live
+  there); Landlock's read set is an allowlist and today excludes it.
 
 - Never inside a Code or the user's workspace tree: the agent and anyone with
   file access to a Code can read its files. The Landlock read set is an
   allowlist that never includes this directory; the browser workspace proxy
   cannot reach it (not under the docs root).
-- Per-Code enablement lives with the Code, keyed by person, and holds no
-  secrets: `workflow.json` capabilities gain
-  `personal_servers: { "<user>": ["linear", ...] }` (names only).
+- Per-Code enablement lives **in the person's own store**
+  (`enabled.json`: `{ "<code root>": ["linear", ...] }`), not in the Code's
+  `workflow.json`: editors can write `workflow.json`, and nobody but the
+  person may switch their servers on or off. Access to the Code is re-checked
+  at resolution, so a stale entry for a Code the person lost grants nothing.
+
+### Outbound HTTP guard (SSRF)
+
+One guarded `http.Client` is used for every personal-server request: the
+StreamableHTTP transport (`WithHTTPBasicClient`), the SSE transport, mcp-go's
+OAuth handler, and our own server-side OAuth routes (metadata discovery,
+dynamic client registration, token exchange). Today
+`mcpclient/http_manager.go` uses the default client, which follows
+redirects, honours `HTTPS_PROXY` and has no dial guard.
+
+- `net.Dialer.Control` checks **the IP actually being dialled** (defeats DNS
+  rebinding between check and connect).
+- `Proxy: nil`.
+- `CheckRedirect` refuses cross-origin redirects (Go forwards custom headers
+  like `X-API-Key` across hosts; it strips only `Authorization`/`Cookie`).
+- Size limits and timeouts.
+- Denied: `0/8`, `10/8`, `100.64/10` (incl. `100.100.100.200`), `127/8`,
+  `169.254/16`, `172.16/12`, `192.168/16`, `198.18/15`, `224/4`+; `::1`,
+  `fc00::/7`, `fe80::/10`, `fd00:ec2::254`; IPv4-mapped IPv6; names like
+  `metadata.google.internal`.
+- OAuth metadata (`token_endpoint`, `registration_endpoint`) is controlled by
+  the server's operator, so every server-side fetch goes through this client;
+  the `auth_url` shown to the person must be `https:` (never `javascript:` or
+  `data:`).
 
 ### Personal secrets
 
@@ -98,17 +151,26 @@ Setup; values are write-only in the UI. Used by:
 - personal MCP credential headers:
   `"headers": {"Authorization": {"secret": "LINEAR_API_KEY", "format": "Bearer {}"}}`
   resolved at connect time from **the chatting person's** personal secrets
-  (then global secrets, if the Code selected that global secret);
+  only. They are **never** injected into the shell environment: Code/project
+  secrets become `$SECRET_<NAME>` in the shell (`secrets_tools.go`), so anyone
+  who can run a command in the Code could print them, and files the agent
+  writes are readable by everyone with access to the Code;
 - optionally the agent's `$SECRET_<NAME>` in that person's own chats (open
   question 1).
 
 ### Resolution and the bridge
 
-`resolveCodeMCPServer(sessionID, server, tool)` runs first in the bridge
-resolver whenever `common.CodeSessionRoot(sessionID)` is set:
+`resolveCodeMCPServer(sessionID, server, tool)` is the **first** check in the
+bridge resolver, before the report-run branch and the workshop branch, and it
+also serves Code-root report runs (`window.report.run` from a Code dashboard,
+today resolved by `resolveReportRunMCPServer` in `report_run.go` straight
+from the platform catalog). **A report run gets the Code's global selection
+only, never anyone's personal servers**: a dashboard is shared by everyone with
+access to the Code, and its viewer is not the person who wrote it. It applies
+whenever the session is a Code session by durable facts (decision 4):
 
-1. Person = the session owner (already tracked for every chat; inherited by
-   sub-agents and background work).
+1. Person = the session's **pinned person** (see "Who a session belongs to"
+   below), never the mutable session owner.
 2. If `server` is one of the person's personal servers **and** enabled for
    this Code for this person: resolve from the personal store, token file in
    the personal `tokens/`, connection session `mcp-user-<hash(user)>`
@@ -119,8 +181,52 @@ resolver whenever `common.CodeSessionRoot(sessionID)` is set:
    to personal only when the person enabled it; the UI prevents clashes on
    add.
 
-The turn-start tool list is built the same way. Every personal connect
-re-checks the URL rules.
+The turn-start tool list is built the same way: for a Code session the agent's
+MCP clients come from this resolution, and any platform server name in the
+Code's `workflow.json` that is not in its global selection is ignored.
+
+**Unique internal names.** The codeexec registry, `mcpcache`, generated
+code-exec packages, tool-schema caches and
+`registry.ResolveConnectionSessionID` (which maps to `mcp-platform`) are all
+keyed by server name, so a personal "linear" could be served the platform
+"linear"'s cached tools or connection, or the reverse. Personal servers get an
+internal name unique per person, `u_<hash8>__<name>`, used for every cache,
+connection and generated package; the model and the UI see `<name>`. A
+collision test covers it.
+
+### Who a session belongs to (pinned person)
+
+Today the session owner is last-writer-wins: `EventStore.SetSessionOwner`
+overwrites it on every `trackActiveSession` / `claimAgentWorksChatSession`. If
+any path let a second principal submit a turn into an existing session, the
+owner would flip and the resolver would use that person's personal credentials
+mid-session, including for background agents and retained CLIs that call the
+bridge between turns.
+
+- A Code session's person is **pinned durably when the session is created**
+  (stored with the session record) and never changes.
+- A turn into that session from any other authenticated principal is
+  **refused**: live input, steering, a co-owner or admin posting into someone
+  else's chat, synthetic relay turns.
+- Personal servers and secrets resolve only when the pinned person equals the
+  turn's authenticated principal (and, between turns, only for the pinned
+  person's own sub-agents and background work, which take the pinned parent
+  person).
+- Slack/WhatsApp DM turns run as the **matched sender**, never the bot owner
+  (`bot_owner`): an editor's DM to a Code's bot resolves the editor's servers,
+  not the owner's.
+
+### `workflow.json` is protected in Code
+
+Code's Folder Guard makes the whole root writable, so an editor, or a
+prompt-injected instruction in any chat, could rewrite `workflow.json`,
+including the global selection (which is meant to be owner/co-owner only).
+
+- Add `workflow.json` (and `product.json`) to the Code guard's blocked writes.
+- The global selection changes only through the role-checked API and the
+  `update_project_mcp_server_selection` tool, which checks the chatting
+  person's role on the Code.
+- Personal enablement never lives there (see the personal store).
 
 ### Agent tools and skill
 
@@ -151,11 +257,13 @@ the global secrets the Code selects.
 ### Lifecycle
 
 - **Remove a personal server:** delete its token and client files, close the
-  person's connection, drop it from every Code's enablement.
-- **Person loses access to a Code:** their enablement entry is dropped; their
-  servers stay theirs.
-- **Code deleted:** its enablement map goes with `workflow.json`; personal
-  stores are untouched.
+  person's connection and its pooled entries in the codeexec registry and
+  `mcpcache`, drop it from every Code's enablement.
+- **Person loses access to a Code:** their `enabled.json` entry for it is
+  dropped (and ignored meanwhile, since access is re-checked); their servers
+  stay theirs.
+- **Code deleted:** entries for it in every `enabled.json` are dropped;
+  personal servers are untouched.
 - **Account deleted/disabled:** disabled sessions cannot start; on delete the
   personal store is deleted.
 
@@ -182,6 +290,27 @@ MCP calls are already recorded per session with the workspace path
 7. OAuth: A's token lands only in A's personal store.
 8. A Code session with no identifiable person gets no personal servers or
    secrets.
+9. **Restart fail-closed:** restart the server; a bridge call from an old
+   Code session id is refused, never served from the platform catalog.
+10. **Report run:** a Code dashboard's `window.report.run` reaches the Code's
+    global selection only, never a personal server, and cannot reach a
+    platform server outside the Code's global selection or anyone's personal
+    server.
+11. **Name collision:** a personal "linear" and the platform "linear" in the
+    same process never share a connection, cached tool list or generated
+    package.
+12. **SSRF:** a DNS name that resolves to `127.0.0.1`, and a `302` to the
+    metadata IP (both for the MCP URL and the OAuth endpoints): refused.
+13. **At rest:** token files on disk are ciphertext; a hybrid-mode CLI reading
+    them gets nothing usable.
+14. **Pinned person:** an editor posting into the owner's session is refused;
+    a DM from an editor resolves the editor's servers, not the owner's; the
+    owner field changing cannot change whose credentials a session uses.
+15. **Secret theft:** a personal server header naming a global or project
+    secret is refused at add time and at connect time.
+16. **workflow.json:** the agent (in an editor's chat or via an injected file)
+    cannot write `workflow.json`; the global selection changes only through the
+    role-checked API or tool.
 
 ## Open questions for the owner
 
