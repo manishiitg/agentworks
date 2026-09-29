@@ -31,12 +31,12 @@ the fix and name the runner-up in the ticket body. Then:
 (`agent_go/cmd/server/pulse_register_integrity_test.go`) enforces the
 register ↔ file invariant in both directions.
 
-## Categories (364 unique tickets, 2026-09-29)
+## Categories (365 unique tickets, 2026-09-29)
 
 | Directory | Tickets | What belongs here |
 |---|---|---|
 | `pulse-governance/` | 50 | Pulse reviews, Gate, Fixer, finding identity/lifecycle/dedup, Review+Fix dispatch, verification, review modules, finalizer, focus rotation, goal metrics |
-| `coding-agent-bridge/` | 52 | CLI adapters (Claude/Codex/Pi/Cursor), retained turns, tmux sessions, tool-call event identity, transcripts, live-input, live-attach, MCP bridge behavior |
+| `coding-agent-bridge/` | 53 | CLI adapters (Claude/Codex/Pi/Cursor), retained turns, tmux sessions, tool-call event identity, transcripts, live-input, live-attach, MCP bridge behavior |
 | `step-execution/` | 43 | Step execution models (message_sequence/scripted/todo/routing/branch), step_config, step tool surface and DB/filesystem grants, workspace tools, schema migration |
 | `frontend-chat/` | 35 | Chat UI presentation, activity monitor, report pane and reports, execution logs, decision cards, plan/goal views, deploy chunk issues |
 | `chat-reliability/` | 6 | Durable chat history, user ownership and storage, resume/restore continuity, native transcript reconciliation, chat migration |

@@ -8,7 +8,7 @@ The active planning surface is the eight workstreams below. Individual PLAT file
 |---|---|---|---|
 | External calls and human input | human-decisions, integrations | [PLAT-357](pulse_platform/integrations/plat-357.md), [PLAT-365](pulse_platform/human-decisions/plat-365.md), [PLAT-367](pulse_platform/human-decisions/plat-367.md), [PLAT-369](pulse_platform/integrations/plat-369.md), [PLAT-370](pulse_platform/human-decisions/plat-370.md) | Call-scoped questions, replies, live acceptance, and restart continuation. |
 | Access, ownership and sandbox | security-sandbox | [PLAT-296](pulse_platform/security-sandbox/plat-296.md), [PLAT-330](pulse_platform/security-sandbox/plat-330.md), [PLAT-339](pulse_platform/security-sandbox/plat-339.md), [PLAT-353](pulse_platform/security-sandbox/plat-353.md), [PLAT-362](pulse_platform/security-sandbox/plat-362.md), [PLAT-364](pulse_platform/security-sandbox/plat-364.md), [PLAT-366](pulse_platform/security-sandbox/plat-366.md) | Owner/editor/run permissions, cross-session isolation, and CLI confinement. |
-| Chat and coding-agent continuity | chat-reliability, coding-agent-bridge | [PLAT-178](pulse_platform/chat-reliability/plat-178.md), [PLAT-324](pulse_platform/chat-reliability/plat-324.md), [PLAT-340](pulse_platform/chat-reliability/plat-340.md), [PLAT-351](pulse_platform/coding-agent-bridge/plat-351.md), [PLAT-352](pulse_platform/chat-reliability/plat-352.md), [PLAT-360](pulse_platform/chat-reliability/plat-360.md) | Durable turns, retained sessions, delivery, and restore. |
+| Chat and coding-agent continuity | chat-reliability, coding-agent-bridge | [PLAT-178](pulse_platform/chat-reliability/plat-178.md), [PLAT-324](pulse_platform/chat-reliability/plat-324.md), [PLAT-340](pulse_platform/chat-reliability/plat-340.md), [PLAT-351](pulse_platform/coding-agent-bridge/plat-351.md), [PLAT-352](pulse_platform/chat-reliability/plat-352.md), [PLAT-354](pulse_platform/coding-agent-bridge/plat-354.html), [PLAT-360](pulse_platform/chat-reliability/plat-360.md) | Durable turns, retained sessions, delivery, and restore. |
 | Schedules and step execution | scheduler-runs, step-execution | [PLAT-298](pulse_platform/step-execution/plat-298.md), [PLAT-320](pulse_platform/scheduler-runs/plat-320.md), [PLAT-321](pulse_platform/scheduler-runs/plat-321.md), [PLAT-337](pulse_platform/scheduler-runs/plat-337.md), [PLAT-338](pulse_platform/scheduler-runs/plat-338.md), [PLAT-361](pulse_platform/scheduler-runs/plat-361.md), [PLAT-363](pulse_platform/scheduler-runs/plat-363.md) | Occurrence identity, execution ownership, step contracts, and live checks. |
 | Builder, plans and knowledge | plans-contracts, learnings-knowledge | [PLAT-329](pulse_platform/plans-contracts/plat-329.md), [PLAT-332](pulse_platform/plans-contracts/plat-332.md), [PLAT-358](pulse_platform/plans-contracts/plat-358.md), [PLAT-359](pulse_platform/plans-contracts/plat-359.md) | Builder operations, plan mutations, contract drift, and guidance. |
 | Pulse, evaluation and cost | pulse-governance, evaluation, cost-telemetry | [PLAT-326](pulse_platform/pulse-governance/plat-326.md), [PLAT-333](pulse_platform/evaluation/plat-333.md) | Pulse lifecycle, producer-owned measurement, and accounting. |
@@ -27,7 +27,7 @@ These anchors are a starting point for each workstream, not an exhaustive open-t
 
 ## Complete ticket index
 
-364 unique ticket files across 15 categories as of 2026-09-29. Each link below resolves to the canonical ticket file.
+365 unique PLAT ticket files (364 Markdown, one HTML) across 15 categories as of 2026-09-29. Each link below resolves to the canonical ticket file.
 
 ### human-decisions (14)
 
@@ -59,7 +59,7 @@ These anchors are a starting point for each workstream, not an exhaustive open-t
 [PLAT-178](pulse_platform/chat-reliability/plat-178.md) · [PLAT-323](pulse_platform/chat-reliability/plat-323.md) · [PLAT-324](pulse_platform/chat-reliability/plat-324.md) · [PLAT-340](pulse_platform/chat-reliability/plat-340.md)
 [PLAT-352](pulse_platform/chat-reliability/plat-352.md) · [PLAT-360](pulse_platform/chat-reliability/plat-360.md)
 
-### coding-agent-bridge (52)
+### coding-agent-bridge (53)
 
 [PLAT-002](pulse_platform/coding-agent-bridge/plat-002.md) · [PLAT-020](pulse_platform/coding-agent-bridge/plat-020.md) · [PLAT-024](pulse_platform/coding-agent-bridge/plat-024.md) · [PLAT-029](pulse_platform/coding-agent-bridge/plat-029.md)
 [PLAT-030](pulse_platform/coding-agent-bridge/plat-030.md) · [PLAT-034](pulse_platform/coding-agent-bridge/plat-034.md) · [PLAT-035](pulse_platform/coding-agent-bridge/plat-035.md) · [PLAT-048](pulse_platform/coding-agent-bridge/plat-048.md)
@@ -74,6 +74,7 @@ These anchors are a starting point for each workstream, not an exhaustive open-t
 [PLAT-225](pulse_platform/coding-agent-bridge/plat-225.md) · [PLAT-234](pulse_platform/coding-agent-bridge/plat-234.md) · [PLAT-273](pulse_platform/coding-agent-bridge/plat-273.md) · [PLAT-274](pulse_platform/coding-agent-bridge/plat-274.md)
 [PLAT-275](pulse_platform/coding-agent-bridge/plat-275.md) · [PLAT-297](pulse_platform/coding-agent-bridge/plat-297.md) · [PLAT-313](pulse_platform/coding-agent-bridge/plat-313.md) · [PLAT-314](pulse_platform/coding-agent-bridge/plat-314.md)
 [PLAT-334](pulse_platform/coding-agent-bridge/plat-334.md) · [PLAT-346](pulse_platform/coding-agent-bridge/plat-346.md) · [PLAT-350](pulse_platform/coding-agent-bridge/plat-350.md) · [PLAT-351](pulse_platform/coding-agent-bridge/plat-351.md)
+[PLAT-354](pulse_platform/coding-agent-bridge/plat-354.html)
 
 ### scheduler-runs (33)
 
