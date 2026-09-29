@@ -139,10 +139,10 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Administrator-authorized attached folders are enabled. Read `work-integrations` before managing grants and `work-workflow-files` before reading attached content. Use the least access required and inspect the current grants before changing them.",
 	},
 	"workflow-references": {
-		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
+		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
 		Skills:          []string{"work-workflow-files"},
 		Capabilities:    map[string]CapabilityRequirement{"workflow_references": CapabilityPreferred},
-		PromptExtension: "Read-only AgentWorks workflow references are enabled. Read the attached `work-workflow-files` skill before discovering, managing, reading, or invoking them. A # selection applies to one message and is context only; a workflow linked under Attached folders is durable and may be invoked only through its {{product}}-scoped secretless internal trigger. Never edit the referenced workflow or use public webhook triggers from this product. To have another Crew or workflow do work (the user tags #crew:<name> or #workflow:<name>), call one of its functions: list_functions, then call_function (or the generated <crew>__<function> tool). Every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its Run-mode assistant, one continuing thread per caller); a workflow's typed functions refuse a call missing a required input before anything runs. Results return directly or as an [AUTO-NOTIFICATION]; follow long calls with get_function_call / ask_function_update. Each caller has its own continuing conversation with a Crew, never its main chat. When you receive a [Function call <id>] task, report milestones with report_function_progress and finish with return_function_result.",
+		PromptExtension: "Read-only AgentWorks workflow references are enabled. Read the attached `work-workflow-files` skill before discovering, managing, reading, or invoking them. A # selection applies to one message and is context only; a workflow linked under Attached folders is durable and may be invoked only through its {{product}}-scoped secretless internal trigger. Never edit the referenced workflow or use public webhook triggers from this product. To have another Crew or workflow do work (the user tags #crew:<name> or #workflow:<name>), call one of its functions: list_functions, then call_function (or the generated <crew>__<function> tool). Every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its Run-mode assistant, one continuing thread per caller); a workflow's typed functions refuse a call missing a required input before anything runs. Results return directly or as an [AUTO-NOTIFICATION]; follow long calls with get_function_call / ask_function_update. If get_function_call shows pending_inputs, answer a request_id with reply_function_call. Each caller has its own continuing conversation with a Crew, never its main chat. When you receive a [Function call <id>] task, report milestones with report_function_progress and finish with return_function_result.",
 	},
 	"terminal": {
 		Capabilities:    map[string]CapabilityRequirement{"raw_terminal": CapabilityPreferred},
@@ -383,11 +383,11 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 	switch id {
 	case "workflow-references":
 		switch direction := strings.TrimSpace(options["direction"]); direction {
-		case "", "both":
+		case "", "both", "code_peers":
 		case "outbound":
 			drop = workflowReferenceCalleeTools
 		default:
-			return nil, fmt.Errorf("feature %q: invalid direction %q (want both or outbound)", id, direction)
+			return nil, fmt.Errorf("feature %q: invalid direction %q (want both, outbound or code_peers)", id, direction)
 		}
 	case "mcp":
 		switch scope := strings.TrimSpace(options["scope"]); scope {
@@ -439,10 +439,12 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 // the tools the default extension describes.
 func featurePromptExtension(id, extension string, options map[string]string) string {
 	switch {
+	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "code_peers":
+		return "This private Code can call accessible Crews and workflows, and other Codes owned by the same account, with list_functions and call_function. It may define functions for its own Code and answer calls from same-owner Codes with report_function_progress and return_function_result. Poll with get_function_call; answer pending_inputs using reply_function_call. Codes never appear in the public Crew/MCP catalog, and Crews, workflows, external connections and other owners cannot call a Code."
 	case id == "mcp" && strings.TrimSpace(options["scope"]) == "personal":
 		return "MCP connections here are personal: each person connects their own servers with their own sign-in, used only in their own chats. Use manage_my_mcp_servers to list the catalog and their servers, and to connect one; never install, add or authenticate a connection shared with other people."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
-		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
+		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update and answer its pending_inputs with reply_function_call. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":
 		return "Direct-message chat is enabled: people with access can message this workspace 1:1 from a Slack DM (its own Slack app) or, for its owner, WhatsApp; each person continues their own chat. Slack channels and group chats are not available, and you cannot send Slack messages yourself. Google (Gmail, Drive, Calendar...) is available only through this workspace's own private accounts, and only in its owner's chats: check list_gmail_connections first, then use google_workspace_cli. Read the attached `work-schedules-and-bots` skill for the Google CLI syntax; mailbox reads need a read grant, and drafting or sending needs the owner's agent-write opt-in plus the compose grant."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true":

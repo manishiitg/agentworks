@@ -12829,6 +12829,9 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
+				"client_secret": map[string]interface{}{
+					"type": "string", "description": "Required with client_id for registered GitHub and HubSpot OAuth apps. Prefer entering it in the connector directory so it does not enter chat history.",
+				},
 			},
 			"required": []string{"name"},
 		},
@@ -12847,6 +12850,8 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			apiKey = strings.TrimSpace(apiKey)
 			clientID, _ := args["client_id"].(string)
 			clientID = strings.TrimSpace(clientID)
+			clientSecret, _ := args["client_secret"].(string)
+			clientSecret = strings.TrimSpace(clientSecret)
 
 			// Chat has no other way to learn an install finished — the
 			// connector-directory UI refreshes itself on its own button
@@ -12964,7 +12969,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				return fmt.Sprintf("%q requires OAuth sign-in, and this server has no PUBLIC_URL configured to build a callback URL from chat. Ask the user to connect it from the connector directory in the UI instead.", name), nil
 			}
 
-			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, "", notifyMCPViewRefresh)
+			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, clientSecret, notifyMCPViewRefresh)
 			if err != nil {
 				return "", fmt.Errorf("failed to start OAuth for %q: %w", name, err)
 			}
@@ -13062,7 +13067,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -13158,7 +13163,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -13215,7 +13220,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			affectedWorkflows := workflowsReferencingMCPServer(ctx, name)
 
 			delete(userConfig.MCPServers, name)
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 

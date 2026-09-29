@@ -193,7 +193,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   };
 
   const handleClientIdSubmit = () => {
-    if (!clientIdInput.trim()) return;
+    if (!clientIdInput.trim() || (discoveryInfo?.needs_client_secret && !clientSecretInput.trim())) return;
     setDialogMode(null);
     setDiscoveryInfo(null);
     handleLogin(clientIdInput.trim(), clientSecretInput.trim() || undefined);
@@ -313,7 +313,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
           <div className="flex items-center gap-2">
             <Key className="w-5 h-5 text-orange-500" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Client ID Required
+              OAuth App Credentials Required
             </h3>
           </div>
           <button
@@ -331,6 +331,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
         <p className="mb-4 rounded-md bg-blue-50 p-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
           This OAuth app and its connected account are shared across AgentWorks, including Work, workflows, chats, and schedules.
         </p>
+
 
         {discoveryInfo?.scopes_supported && discoveryInfo.scopes_supported.length > 0 && (
           <div className="mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-700 dark:text-blue-300">
@@ -378,6 +379,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
           )}
         </div>
 
+
         <div className="flex justify-end gap-2">
           <button
             onClick={handleClientIdCancel}
@@ -387,7 +389,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
           </button>
           <button
             onClick={handleClientIdSubmit}
-            disabled={effectiveReadOnly || !clientIdInput.trim()}
+            disabled={effectiveReadOnly || !clientIdInput.trim() || Boolean(discoveryInfo?.needs_client_secret && !clientSecretInput.trim())}
             className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Continue

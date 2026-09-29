@@ -243,7 +243,7 @@ func TestTriggerLinkToolsDeclaredByFeature(t *testing.T) {
 			declared[tool] = true
 		}
 	}
-	for _, name := range []string{"list_functions", "call_function", "get_function_call", "ask_function_update"} {
+	for _, name := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update"} {
 		if !declared[name] {
 			t.Fatalf("%s is not declared by the workflow-references feature", name)
 		}

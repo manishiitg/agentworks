@@ -138,6 +138,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"list_functions":                         false,
 		"call_function":                          false,
 		"get_function_call":                      false,
+		"reply_function_call":                    false,
 		"ask_function_update":                    false,
 		"report_function_progress":               false,
 		"return_function_result":                 false,

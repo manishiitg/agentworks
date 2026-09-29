@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -282,8 +284,24 @@ func (t triggerTarget) stampID() string {
 	return ""
 }
 
-func crewFunctionKey(kind, id string) string {
-	return strings.ToLower(strings.TrimSpace(kind)) + ":" + strings.TrimSpace(id)
+func crewFunctionKey(kind, profileID, id string) string {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if kind == triggerCallerCrew {
+		profileID = strings.ToLower(strings.TrimSpace(normalizeInternalProfileID(profileID)))
+	} else {
+		profileID = ""
+	}
+	return kind + ":" + profileID + ":" + strings.TrimSpace(id)
+}
+
+func crewFunctionScopedKey(kind, profileID, id, workspacePath string) string {
+	key := crewFunctionKey(kind, profileID, id)
+	if profileID == codeproduct.ProfileID {
+		if ownerID, ok := crewProjectOwnerID(workspacePath); ok {
+			return key + ":" + ownerID
+		}
+	}
+	return key
 }
 
 // selfTriggerTarget addresses the calling Crew or workflow itself, for
@@ -292,7 +310,7 @@ func selfTriggerTarget(caller triggerLinkCaller) triggerTarget {
 	target := triggerTarget{Kind: caller.Stamp.Type, Path: caller.Path, Label: caller.Label}
 	if target.Kind == triggerCallerCrew {
 		target.CrewID = caller.Stamp.ID
-		target.CrewProfile = "work"
+		target.CrewProfile = normalizeInternalProfileID(caller.Stamp.ProfileID)
 	} else {
 		target.Manifest = &WorkflowManifest{ID: caller.Stamp.ID}
 	}
@@ -310,26 +328,29 @@ type crewFunctionProgress struct {
 type crewFunctionCall struct {
 	mu sync.Mutex
 
-	ID             string                 `json:"call_id"`
-	Function       string                 `json:"function"`
-	UserID         string                 `json:"-"`
-	CallerKind     string                 `json:"caller_kind"`
-	CallerID       string                 `json:"caller_id"`
-	CallerLabel    string                 `json:"caller_label"`
-	TargetKind     string                 `json:"target_kind"`
-	TargetID       string                 `json:"target_id"`
-	TargetLabel    string                 `json:"target_label"`
-	TargetPath     string                 `json:"target_path"`
-	Chain          []string               `json:"chain"`
-	Root           string                 `json:"root"`
-	TriggerID      string                 `json:"trigger_id"`
-	RunID          string                 `json:"run_id"`
-	RunIDs         []string               `json:"run_ids"`
-	Status         string                 `json:"status"`
-	Result         interface{}            `json:"result,omitempty"`
-	Error          string                 `json:"error,omitempty"`
-	Progress       []crewFunctionProgress `json:"progress,omitempty"`
-	InvalidResults int                    `json:"invalid_results,omitempty"`
+	ID              string                 `json:"call_id"`
+	Function        string                 `json:"function"`
+	UserID          string                 `json:"-"`
+	CallerKind      string                 `json:"caller_kind"`
+	CallerID        string                 `json:"caller_id"`
+	CallerProfileID string                 `json:"caller_profile_id,omitempty"`
+	CallerPath      string                 `json:"-"`
+	CallerLabel     string                 `json:"caller_label"`
+	TargetKind      string                 `json:"target_kind"`
+	TargetID        string                 `json:"target_id"`
+	TargetProfileID string                 `json:"target_profile_id,omitempty"`
+	TargetLabel     string                 `json:"target_label"`
+	TargetPath      string                 `json:"target_path"`
+	Chain           []string               `json:"chain"`
+	Root            string                 `json:"root"`
+	TriggerID       string                 `json:"trigger_id"`
+	RunID           string                 `json:"run_id"`
+	RunIDs          []string               `json:"run_ids"`
+	Status          string                 `json:"status"`
+	Result          interface{}            `json:"result,omitempty"`
+	Error           string                 `json:"error,omitempty"`
+	Progress        []crewFunctionProgress `json:"progress,omitempty"`
+	InvalidResults  int                    `json:"invalid_results,omitempty"`
 	// PartialResult / FinalReply keep what the target actually produced when
 	// the call fails on the result contract, so the caller never loses real
 	// work (e.g. test outcomes and video links) to a formatting mistake.
@@ -349,7 +370,9 @@ type crewFunctionCall struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Joined counts identical calls made while this one was in flight and
 	// answered with it instead of starting another run.
-	Joined int `json:"joined,omitempty"`
+	Joined       int    `json:"joined,omitempty"`
+	SubmissionID string `json:"submission_id,omitempty"`
+	ArgumentsKey string `json:"arguments_key,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
 	argsKey string
@@ -390,6 +413,8 @@ func crewFunctionCallIndexPath(id string) string {
 
 type crewFunctionCallIndex struct {
 	TargetPath string `json:"target_path"`
+	RecordPath string `json:"record_path,omitempty"`
+	CallerPath string `json:"caller_path,omitempty"`
 	UserID     string `json:"user_id"`
 }
 
@@ -410,7 +435,11 @@ func loadSavedCrewFunctionCall(id string) *crewFunctionCall {
 	if json.Unmarshal([]byte(raw), &index) != nil || strings.TrimSpace(index.TargetPath) == "" {
 		return nil
 	}
-	raw, exists, err = readFileFromWorkspace(ctx, strings.TrimSuffix(index.TargetPath, "/")+"/functions/calls/"+id+".json")
+	recordPath := index.RecordPath
+	if recordPath == "" {
+		recordPath = strings.TrimSuffix(index.TargetPath, "/") + "/functions/calls/" + id + ".json"
+	}
+	raw, exists, err = readFileFromWorkspace(ctx, recordPath)
 	if err != nil || !exists {
 		return nil
 	}
@@ -418,7 +447,7 @@ func loadSavedCrewFunctionCall(id string) *crewFunctionCall {
 	if json.Unmarshal([]byte(raw), call) != nil || call.ID != id {
 		return nil
 	}
-	call.UserID, call.done, call.closed = index.UserID, make(chan struct{}), true
+	call.UserID, call.CallerPath, call.done, call.closed = index.UserID, index.CallerPath, make(chan struct{}), true
 	close(call.done)
 	if !call.terminalLocked() || (call.TimedOut && !call.Late) {
 		call.Status = "failed"
@@ -437,7 +466,7 @@ func loadSavedCrewFunctionCall(id string) *crewFunctionCall {
 }
 
 func (c *crewFunctionCall) saveIndex() {
-	encoded, err := json.Marshal(crewFunctionCallIndex{TargetPath: c.TargetPath, UserID: c.UserID})
+	encoded, err := json.Marshal(crewFunctionCallIndex{TargetPath: c.TargetPath, RecordPath: c.recordPath(), CallerPath: c.CallerPath, UserID: c.UserID})
 	if err != nil {
 		return
 	}
@@ -481,6 +510,7 @@ func (c *crewFunctionCall) settleLate(status string, result interface{}, errText
 	onLate := c.onLate
 	c.mu.Unlock()
 	c.persist()
+	virtualtools.GetHumanFeedbackStore().WithdrawOperation(c.ID)
 	if onLate != nil {
 		go onLate()
 	}
@@ -513,10 +543,14 @@ func (c *crewFunctionCall) finish(status string, result interface{}, errText str
 		return false
 	}
 	c.Status, c.Result, c.Error, c.UpdatedAt = status, result, errText, time.Now().UTC()
+	withdraw := !c.TimedOut
 	c.closed = true
 	close(c.done)
 	c.mu.Unlock()
 	c.persist()
+	if withdraw {
+		virtualtools.GetHumanFeedbackStore().WithdrawOperation(c.ID)
+	}
 	return true
 }
 
@@ -563,12 +597,14 @@ func (c *crewFunctionCall) snapshot() map[string]interface{} {
 // call_function was still waiting) joins the running call instead of starting
 // a duplicate run (RTS 2026-09-27: one PR reviewed three times at once).
 // Needs crewFunctionCalls locked.
-func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerID, targetKind, targetID, function, argsKey string) *crewFunctionCall {
+func joinInFlightCrewFunctionCallLocked(userID, callerKind, callerProfileID, callerID, callerPath, targetKind, targetProfileID, targetID, targetPath, function, argsKey string) *crewFunctionCall {
 	for _, call := range crewFunctionCalls.m {
 		call.mu.Lock()
 		same := !call.terminalLocked() && call.UserID == userID &&
-			call.CallerKind == callerKind && call.CallerID == callerID &&
+			crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(callerKind, callerProfileID, callerID) &&
 			call.TargetKind == targetKind && call.TargetID == targetID &&
+			(call.CallerProfileID != codeproduct.ProfileID || canonicalCrewWorkspaceRoot(call.CallerPath) == canonicalCrewWorkspaceRoot(callerPath)) &&
+			(targetProfileID != codeproduct.ProfileID || canonicalCrewWorkspaceRoot(call.TargetPath) == canonicalCrewWorkspaceRoot(targetPath)) &&
 			call.Function == function && call.argsKey == argsKey
 		if same {
 			call.Joined++
@@ -623,7 +659,7 @@ func crewFunctionFailureDetail(snapshot map[string]interface{}) string {
 func (c *crewFunctionCall) persist() {
 	c.mu.Lock()
 	encoded, err := json.MarshalIndent(c, "", "  ")
-	path := strings.TrimSuffix(c.TargetPath, "/") + "/functions/calls/" + c.ID + ".json"
+	path := c.recordPath()
 	userID := c.UserID
 	c.mu.Unlock()
 	if err != nil {
@@ -635,6 +671,13 @@ func (c *crewFunctionCall) persist() {
 	}
 }
 
+func (c *crewFunctionCall) recordPath() string {
+	if c.TargetProfileID == codeproduct.ProfileID {
+		return "_users/" + sanitizeUserIDForPath(c.UserID) + "/chat_history/code-peer-calls/" + c.ID + ".json"
+	}
+	return strings.TrimSuffix(c.TargetPath, "/") + "/functions/calls/" + c.ID + ".json"
+}
+
 // crewFunctionChainFor returns the call chain the caller is currently part
 // of: the longest chain among in-flight calls whose target is the caller.
 func crewFunctionChainFor(callerKey string) (chain []string, root string) {
@@ -643,7 +686,7 @@ func crewFunctionChainFor(callerKey string) (chain []string, root string) {
 	for _, call := range crewFunctionCalls.m {
 		call.mu.Lock()
 		inFlight := !call.terminalLocked()
-		matches := crewFunctionKey(call.TargetKind, call.TargetID) == callerKey
+		matches := crewFunctionScopedKey(call.TargetKind, call.TargetProfileID, call.TargetID, call.TargetPath) == callerKey
 		if inFlight && matches && len(call.Chain) > len(chain) {
 			chain, root = append([]string(nil), call.Chain...), call.Root
 		}
@@ -678,6 +721,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
+			TargetOwnerID: target.CrewOwner, CallerPath: caller.Path,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -728,7 +772,7 @@ When you are done you MUST call return_function_result(call_id=%[1]q, result=<%[
 
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
-func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration) (*crewFunctionCall, error) {
+func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
 	}
@@ -745,14 +789,38 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// encoding/json sorts map keys, so equal arguments give equal keys.
 	argsJSON, _ := json.Marshal(args)
 	argsKey := string(argsJSON)
+	if isWorkflowAsk(target, fn) || isPersonCrewAsk(target, caller, fn) {
+		message, _ := args["message"].(string)
+		if strings.TrimSpace(message) == "" {
+			return nil, fmt.Errorf("ask needs a message")
+		}
+	}
+	submissionID := ""
+	if len(submissionIDs) > 0 {
+		submissionID = strings.TrimSpace(submissionIDs[0])
+		if submissionIDs[0] != "" && submissionID == "" {
+			return nil, fmt.Errorf("submission_id cannot be blank")
+		}
+	}
+	if submissionID != "" {
+		if len(submissionID) > 128 {
+			return nil, fmt.Errorf("submission_id must be at most 128 characters")
+		}
+		if existing, found, err := lookupCrewFunctionSubmission(ctx, userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), submissionID, target, fn.Name, argsKey); err != nil || found {
+			return existing, err
+		}
+	}
 	crewFunctionCalls.Lock()
-	joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey)
+	var joined *crewFunctionCall
+	if submissionID == "" {
+		joined = joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), fn.Name, argsKey)
+	}
 	crewFunctionCalls.Unlock()
 	if joined != nil {
 		return joined, nil
 	}
-	callerKey := crewFunctionKey(caller.Stamp.Type, caller.Stamp.ID)
-	targetKey := crewFunctionKey(target.Kind, target.stampID())
+	callerKey := crewFunctionScopedKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path))
+	targetKey := crewFunctionScopedKey(target.Kind, target.CrewProfile, target.stampID(), target.Path)
 	chain, root := crewFunctionChainFor(callerKey)
 	if len(chain) == 0 {
 		chain = []string{callerKey}
@@ -788,36 +856,54 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	now := time.Now().UTC()
 	call := &crewFunctionCall{
 		ID: id, Function: fn.Name, UserID: userID,
-		CallerKind: caller.Stamp.Type, CallerID: caller.Stamp.ID, CallerLabel: caller.Label,
-		TargetKind: target.Kind, TargetID: target.stampID(), TargetLabel: target.Label, TargetPath: crewFunctionRoot(ctx, target),
+		CallerKind: caller.Stamp.Type, CallerID: caller.Stamp.ID, CallerProfileID: caller.Stamp.ProfileID, CallerPath: agentProfileRuntimeWorkspace(userID, caller.Path), CallerLabel: caller.Label,
+		TargetKind: target.Kind, TargetID: target.stampID(), TargetProfileID: target.CrewProfile, TargetLabel: target.Label, TargetPath: crewFunctionRoot(ctx, target),
 		Chain: append(chain, targetKey), Root: root, TriggerID: triggerID, Status: "queued",
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
-		FreeText: fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
-		target:   target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
+		FreeText:     fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
+		SubmissionID: submissionID, ArgumentsKey: crewFunctionArgumentsFingerprint(argsKey),
+		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
+	}
+	fromPath := caller.Path
+	if caller.Stamp.ProfileID == codeproduct.ProfileID {
+		fromPath = ""
 	}
 	body := map[string]interface{}{
 		"task":    crewFunctionTaskText(call, fn, args),
-		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": caller.Path},
+		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
 	crewFunctionCalls.Lock()
+	if submissionID != "" {
+		if existing, found, err := inMemoryCrewFunctionSubmissionLocked(userID, caller.Stamp, agentProfileRuntimeWorkspace(userID, caller.Path), submissionID, target, fn.Name, argsKey); err != nil || found {
+			crewFunctionCalls.Unlock()
+			return existing, err
+		}
+	}
 	// Re-check under the same lock as the insert: two identical calls racing
 	// past the early check must still start one run.
-	if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey); joined != nil {
-		crewFunctionCalls.Unlock()
-		return joined, nil
+	if submissionID == "" {
+		if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID, agentProfileRuntimeWorkspace(userID, caller.Path), target.Kind, target.CrewProfile, target.stampID(), crewFunctionRoot(ctx, target), fn.Name, argsKey); joined != nil {
+			crewFunctionCalls.Unlock()
+			return joined, nil
+		}
 	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
+	if submissionID != "" {
+		if err := saveCrewFunctionSubmission(ctx, call, caller.Stamp); err != nil {
+			// Another retry may have joined this in-memory call while the
+			// submission index was being written. Settle it so that retry's
+			// call_id cannot hang or disappear under its feet.
+			call.finish("failed", nil, "cannot record submission_id: "+err.Error())
+			return nil, fmt.Errorf("cannot record submission_id: %w", err)
+		}
+		call.saveIndex()
+		call.persist()
+	}
 	if isWorkflowAsk(target, fn) {
 		message, _ := args["message"].(string)
-		if strings.TrimSpace(message) == "" {
-			crewFunctionCalls.Lock()
-			delete(crewFunctionCalls.m, id)
-			crewFunctionCalls.Unlock()
-			return nil, fmt.Errorf("ask needs a message")
-		}
 		call.saveIndex()
 		call.persist()
 		go api.runWorkflowAsk(call, target, caller, message, timeout)
@@ -825,12 +911,6 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if isPersonCrewAsk(target, caller, fn) {
 		message, _ := args["message"].(string)
-		if strings.TrimSpace(message) == "" {
-			crewFunctionCalls.Lock()
-			delete(crewFunctionCalls.m, id)
-			crewFunctionCalls.Unlock()
-			return nil, fmt.Errorf("ask needs a message")
-		}
 		call.saveIndex()
 		call.persist()
 		go api.runCrewOwnChatAsk(call, target, strings.TrimSpace(message), timeout)
@@ -852,6 +932,10 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		delivery, err = api.dispatchTargetTrigger(ctx, userID, caller, target, triggerID, id, crewFunctionEvent, body)
 	}
 	if err != nil {
+		if submissionID != "" {
+			call.finish("failed", nil, err.Error())
+			return call, nil
+		}
 		crewFunctionCalls.Lock()
 		delete(crewFunctionCalls.m, id)
 		crewFunctionCalls.Unlock()
@@ -1205,10 +1289,10 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if strings.TrimSpace(name) == "" {
 			return selfTriggerTarget(caller), nil
 		}
-		return resolveTriggerTarget(ctx, claims, name)
+		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow: its name, a #crew:<name> / #workflow:<name> tag, or its exact workspace_path."}
-	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout, wait time.Duration) (string, error) {
+	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path, or #code:<id> for an editable Code owned by this Code's owner."}
+	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1220,7 +1304,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}
-		call, err := api.startCrewFunctionCall(ctx, userID, caller, target, fn, args, timeout)
+		call, err := api.startCrewFunctionCall(ctx, userID, caller, target, fn, args, timeout, submissionID)
 		if err != nil {
 			return "", err
 		}
@@ -1229,18 +1313,23 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			defer timer.Stop()
 			select {
 			case <-call.done:
-				return jsonOut(call.snapshot())
+				out := call.snapshot()
+				addFunctionCallPending(out, call)
+				return jsonOut(out)
 			case <-timer.C:
 			case <-ctx.Done():
 			}
 		} else {
 			select {
 			case <-call.done: // already settled (e.g. a joined call that finished)
-				return jsonOut(call.snapshot())
+				out := call.snapshot()
+				addFunctionCallPending(out, call)
+				return jsonOut(out)
 			default:
 			}
 		}
 		response := call.snapshot()
+		addFunctionCallPending(response, call)
 		response["status"] = "running"
 		if _, joined := response["joined"]; !joined {
 			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
@@ -1258,7 +1347,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
 
-	if err := register("define_function", "Declare or update a typed function on this Crew/workflow (omit target) or on another Crew (any Crew) or a workflow you can edit. Other Crews and workflows then call it with call_function (or a generated tool) and get back a result validated against result_schema. instructions tell the target what to do when called.", map[string]interface{}{
+	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), another Crew, or an editable private Code with the same owner. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
 		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
 			"target":        targetSchema,
 			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},
@@ -1345,7 +1434,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("list_functions", "List the typed functions a Crew or workflow offers (name, description, input and result schemas). Omit target for this Crew/workflow's own functions.", map[string]interface{}{
+	if err := register("list_functions", "List the typed functions a Crew, workflow or private Code offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{"target": targetSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1370,11 +1459,12 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. It returns at once with status=running and a call_id (functions are agentic and usually take minutes); the result arrives later as an [AUTO-NOTIFICATION] in this chat (unless notify=false). Pass wait_seconds (up to 120) only for a function you expect to finish quickly, to get its result inline. Never call again for the same work: an identical call while one is running returns that same call. Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew, workflow, or editable private Code with the same owner. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
 			"args":            map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
+			"submission_id":   map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended call; reuse it after an uncertain retry to get the original call_id."},
 			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result when it arrives (default true)."},
 			"wait_seconds":    map[string]interface{}{"type": "integer", "minimum": 0, "maximum": int(crewFunctionFastWait / time.Second), "description": "Wait up to this long for the result before returning status=running (default 0: return at once)."},
 			"timeout_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": int(triggerTargetMaxTimeout / time.Minute), "description": "How long the call may take before it fails (default 60)."},
@@ -1386,7 +1476,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			return "", err
 		}
 		raw, _ := args["target"].(string)
-		target, err := resolveTriggerTarget(ctx, claims, raw)
+		target, err := resolveFunctionTarget(ctx, claims, caller, raw)
 		if err != nil {
 			return "", err
 		}
@@ -1403,7 +1493,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		return callFunction(ctx, caller, target, function, callArgs, notify, timeout, crewFunctionWait(args["wait_seconds"]))
+		submissionID, _ := args["submission_id"].(string)
+		return callFunction(ctx, caller, target, function, callArgs, submissionID, notify, timeout, crewFunctionWait(args["wait_seconds"]))
 	}); err != nil {
 		return err
 	}
@@ -1418,17 +1509,41 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if call == nil {
 			return nil, caller, fmt.Errorf("unknown function call %q (calls are tracked while the server runs)", id)
 		}
+		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
+			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
+		}
+		if caller.Stamp.ProfileID == codeproduct.ProfileID {
+			ownerID, ok := crewProjectOwnerID(caller.Path)
+			if !ok && isCodeProjectPath(caller.Path) {
+				ownerID, ok = sanitizeUserIDForPath(userID), true
+			}
+			if !ok || !codeRoleFor(ctx, userID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
+				return nil, caller, fmt.Errorf("private Code access denied")
+			}
+			isCodeSource := crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
+			if isCodeSource && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
+				return nil, caller, fmt.Errorf("private Code access denied")
+			}
+			if call.TargetProfileID == codeproduct.ProfileID && call.CallerProfileID == codeproduct.ProfileID {
+				if err := authorizeCodePeerIDs(ctx, userID, ownerID, call.CallerID, call.TargetID); err != nil {
+					return nil, caller, err
+				}
+			}
+		}
 		return call, caller, nil
 	}
 	isCaller := func(call *crewFunctionCall, caller triggerLinkCaller) bool {
-		return crewFunctionKey(call.CallerKind, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ID)
+		return crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}
 	isTargetOf := func(call *crewFunctionCall, caller triggerLinkCaller) bool {
-		return crewFunctionKey(call.TargetKind, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ID)
+		if call.TargetProfileID == codeproduct.ProfileID && canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
+			return false
+		}
+		return crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}
 	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from call_function, or from the [Function call ...] task you received."}
 
-	if err := register("get_function_call", "Check a function call you made: status, result or error, the target's latest progress reports, and a short tail of what the target is doing right now. Does not interrupt the target.", map[string]interface{}{
+	if err := register("get_function_call", "Check a function call you made: status, result or error, pending_inputs, the target's latest progress reports, and a short tail of what the target is doing right now. Answer a pending request with reply_function_call. Does not interrupt the target.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{"call_id": callIDSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1440,6 +1555,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			return "", fmt.Errorf("function call %s belongs to another caller", call.ID)
 		}
 		out := call.snapshot()
+		addFunctionCallPending(out, call)
 		call.mu.Lock()
 		terminal, runID := call.terminalLocked(), call.RunID
 		call.mu.Unlock()
@@ -1452,6 +1568,39 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			}
 		}
 		return jsonOut(out)
+	}); err != nil {
+		return err
+	}
+
+	if err := register("reply_function_call", "Answer a pending input request on a function call you made. Use the request_id in get_function_call.pending_inputs; a listed choice must match exactly. Works for Crew and workflow targets.", map[string]interface{}{
+		"type": "object", "required": []string{"call_id", "request_id", "response"}, "properties": map[string]interface{}{
+			"call_id":    callIDSchema,
+			"request_id": map[string]interface{}{"type": "string", "description": "Pending request ID from get_function_call."},
+			"response":   map[string]interface{}{"type": "string", "description": "Answer or exact listed choice."},
+		},
+	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		ctx = withClaims(ctx)
+		call, caller, err := callRecord(ctx, args)
+		if err != nil {
+			return "", err
+		}
+		if !isCaller(call, caller) || call.UserID != userID {
+			return "", fmt.Errorf("only the caller of function call %s can answer its pending input", call.ID)
+		}
+		// The call may have started before the actor lost access. Resolve the
+		// exact target again before letting an answer steer its live turn.
+		currentTarget, err := resolveFunctionTarget(ctx, claims, caller, call.TargetPath)
+		if err != nil || currentTarget.Kind != call.TargetKind || currentTarget.stampID() != call.TargetID ||
+			(currentTarget.Kind == triggerCallerCrew && crewFunctionKey(currentTarget.Kind, currentTarget.CrewProfile, currentTarget.CrewID) != crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID)) ||
+			canonicalCrewWorkspaceRoot(crewFunctionRoot(ctx, currentTarget)) != canonicalCrewWorkspaceRoot(call.TargetPath) {
+			return "", fmt.Errorf("function call %s target is unavailable or access denied", call.ID)
+		}
+		requestID, _ := args["request_id"].(string)
+		response, _ := args["response"].(string)
+		if err := submitFunctionCallInput(call, strings.TrimSpace(requestID), response); err != nil {
+			return "", err
+		}
+		return jsonOut(map[string]interface{}{"call_id": call.ID, "request_id": requestID, "status": "submitted"})
 	}); err != nil {
 		return err
 	}
@@ -1608,7 +1757,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	seen := map[string]bool{}
 	for _, raw := range paths {
-		target, err := resolveTriggerTarget(ctx, claims, raw)
+		target, err := resolveFunctionTarget(ctx, claims, caller, raw)
 		if err != nil || caller.isTarget(target) {
 			continue
 		}
@@ -1637,7 +1786,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 				if err != nil {
 					return "", err
 				}
-				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout, 0)
+				return callFunction(ctx, caller, fnTarget, fnName, args, "", true, triggerTargetDefaultTimeout, 0)
 			}); err != nil {
 				return err
 			}

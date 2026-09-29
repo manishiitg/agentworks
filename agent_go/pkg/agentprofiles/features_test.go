@@ -168,7 +168,7 @@ func TestFeatureOptionsNarrowToolsForOutboundAndDirectMessageOnly(t *testing.T) 
 	if err := ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
+	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
 		if !containsString(profile.ToolPolicy.Enabled, tool) {
 			t.Fatalf("narrowed features dropped caller tool %s: %v", tool, profile.ToolPolicy.Enabled)
 		}

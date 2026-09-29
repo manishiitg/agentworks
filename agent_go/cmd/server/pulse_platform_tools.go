@@ -40,7 +40,7 @@ var pulsePlatformReadOperations = map[string]bool{
 
 // pulseCrewWorkOperations make a Crew do work in the owner's own conversation
 // with it. Goal Work gets them with its Run permission.
-var pulseCrewWorkOperations = map[string]bool{"ask_crew": true, "call_crew_function": true}
+var pulseCrewWorkOperations = map[string]bool{"ask_crew": true, "call_crew_function": true, "reply_crew_function_call": true}
 
 func sortedOperations(set map[string]bool) []string {
 	out := make([]string, 0, len(set))
@@ -72,8 +72,8 @@ func createPulsePlatformTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	crewTool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name: "ask_platform_crew",
 		Description: "Have a Crew do work toward this workflow's goal, in the owner's own continuing conversation with that Crew (never its main chat). ask_crew takes {crew_id, message}; call_crew_function takes {crew_id, function, args} per list_crew_functions. " +
-			"Returns the result if it finishes within wait_seconds, else a call_id for search_platform get_crew_function_call. Anything the Crew would post, send or contact outside follows this workflow's outward permission: when that is ask, request only preparation and put the outward step in a decision.",
-		Parameters: params(pulseCrewWorkOperations, "The operation's arguments: {\"crew_id\":\"...\",\"message\":\"...\"} or {\"crew_id\":\"...\",\"function\":\"...\",\"args\":{...}}; optional wait_seconds (max 25)."),
+			"Returns the result if it finishes within wait_seconds, else a call_id for search_platform get_crew_function_call. If that poll shows pending_inputs, answer one with reply_crew_function_call {call_id, request_id, response}. Anything the Crew would post, send or contact outside follows this workflow's outward permission: when that is ask, request only preparation and put the outward step in a decision.",
+		Parameters: params(pulseCrewWorkOperations, "The operation's arguments: {\"crew_id\":\"...\",\"message\":\"...\"} or {\"crew_id\":\"...\",\"function\":\"...\",\"args\":{...}}; optional wait_seconds (max 25) or reply_crew_function_call {\"call_id\":\"...\",\"request_id\":\"...\",\"response\":\"...\"}."),
 	}}
 	executors := map[string]interface{}{
 		"search_platform": func(ctx context.Context, args map[string]interface{}) (string, error) {

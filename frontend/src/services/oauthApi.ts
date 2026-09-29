@@ -38,6 +38,7 @@ export interface OAuthDiscoveryResponse {
   message: string;
   /** The callback URL to register on the OAuth app. */
   redirect_uri?: string;
+  needs_client_secret?: boolean;
 }
 
 export interface OAuthStatusResponse {

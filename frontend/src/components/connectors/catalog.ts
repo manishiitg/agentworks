@@ -164,7 +164,7 @@ const CONNECTOR_GROUPS: Record<string, ConnectorGroup> = {
   Square: 'payments',
   PayPal: 'payments',
   // Accounting: intentionally empty until QuickBooks/Xero land.
-  // Customers: support desks today, CRM (HubSpot) tomorrow.
+  // Customer data and support.
   Intercom: 'customers',
   Zendesk: 'customers',
   Plain: 'customers',

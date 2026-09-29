@@ -18,7 +18,7 @@ import (
 
 var externalCrewTools = map[string]bool{
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true, "list_crew_functions": true,
-	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "suggest_crew_change": true,
+	"call_crew_function": true, "ask_crew": true, "get_crew_function_call": true, "reply_crew_function_call": true, "suggest_crew_change": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 }
@@ -67,6 +67,7 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 		timer.Stop()
 	}
 	out := call.snapshot()
+	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		out["next"] = "Still running in the Crew's chat. Poll get_crew_function_call with this call_id."
 	}
@@ -157,7 +158,11 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.externalCrewAuthoringCall(w, r, name, args)
 		return
 	}
-	if name == "get_crew_function_call" {
+	if name == "get_crew_function_call" || name == "reply_crew_function_call" {
+		if name == "reply_crew_function_call" && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
+			externalError(w, 403, "insufficient_scope", "Answering a Crew question needs crews:run.")
+			return
+		}
 		call := lookupCrewFunctionCall(str("call_id"))
 		if call == nil {
 			externalError(w, 404, "not_found", "Function call not found.")
@@ -178,6 +183,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// the call was made.
 		if _, _, _, ok := api.externalCrewResolve(ctx, claims, targetID); !ok {
 			externalError(w, 404, "not_found", "Function call not found.")
+			return
+		}
+		if name == "reply_crew_function_call" {
+			replyFunctionCallInput(w, call, str("request_id"), str("response"))
 			return
 		}
 		externalJSON(w, externalCrewCallResponse(ctx, call, 0))
@@ -237,7 +246,8 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// The call outlives this request; the Crew works in this user's own
 		// conversation with it.
 		callCtx := context.WithoutCancel(ctx)
-		call, err := api.startCrewFunctionCall(callCtx, claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout)
+		submissionID, _ := args["submission_id"].(string)
+		call, err := api.startCrewFunctionCall(callCtx, claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout, submissionID)
 		if err != nil {
 			externalError(w, 400, "call_refused", err.Error())
 			return

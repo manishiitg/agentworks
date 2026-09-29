@@ -38,6 +38,33 @@ const platformMCPTokenUserID = "_platform"
 
 const platformMCPConnectionSessionID = "mcp-platform"
 
+// These catalog providers issue confidential OAuth clients by hand. Other
+// servers may use public clients even without Dynamic Client Registration.
+func requiresRegisteredMCPClientSecret(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "github", "hubspot", "slack", "render", "box",
+		"googlecalendar", "googlechat", "googledocs", "googledrive",
+		"googlegmail", "googlepeople", "googlesheets", "googleslides":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasRegisteredMCPClientSecret(cfg *oauth.OAuthConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	if strings.TrimSpace(cfg.ClientSecret) != "" {
+		return true
+	}
+	if strings.TrimSpace(cfg.ClientSecretFile) == "" {
+		return false
+	}
+	secret, err := oauth.ReadClientSecretFile(cfg.ClientSecretFile)
+	return err == nil && strings.TrimSpace(secret) != ""
+}
+
 func closePlatformMCPConnection(serverName string) {
 	registry := mcpclient.GetSessionRegistry()
 	connectionSessionID := registry.ResolveConnectionSessionID(platformMCPConnectionSessionID, serverName)
@@ -103,7 +130,8 @@ type OAuthDiscoveryResponse struct {
 	ScopesSupported []string `json:"scopes_supported,omitempty"` // Discovered scopes
 	Message         string   `json:"message"`
 	// RedirectURI is the callback to register on the OAuth app.
-	RedirectURI string `json:"redirect_uri,omitempty"`
+	RedirectURI       string `json:"redirect_uri,omitempty"`
+	NeedsClientSecret bool   `json:"needs_client_secret,omitempty"`
 }
 
 // OAuthStartResponse represents the response when starting OAuth flow
@@ -343,8 +371,14 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		if serverConfig.OAuth == nil {
 			return nil, nil, &oauthStartError{http.StatusBadRequest, fmt.Sprintf("Server '%s' has no oauth configuration; a client_id is not applicable", serverName)}
 		}
+		if clientID != serverConfig.OAuth.ClientID {
+			serverConfig.OAuth.ClientSecret = ""
+			serverConfig.OAuth.ClientSecretFile = ""
+		}
 		serverConfig.OAuth.ClientID = clientID
-		serverConfig.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
+		if strings.TrimSpace(clientSecret) != "" {
+			serverConfig.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
+		}
 		api.logger.Info(fmt.Sprintf("Using user-provided client_id for %s: %s", serverName, clientID))
 	}
 
@@ -367,6 +401,15 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 	if serverConfig.OAuth.AuthURL == "" || serverConfig.OAuth.TokenURL == "" {
 		api.logger.Error(fmt.Sprintf("Server %s is missing auth_url or token_url in config", serverName), nil)
 		return nil, nil, &oauthStartError{http.StatusInternalServerError, fmt.Sprintf("Server '%s' is missing auth_url or token_url in its oauth config. Endpoints are not discovered at runtime; copy authorization_endpoint and token_endpoint from the provider's /.well-known/oauth-authorization-server metadata into the MCP config.", serverName)}
+	}
+	if requiresRegisteredMCPClientSecret(serverName) && (serverConfig.OAuth.ClientID == "" || !hasRegisteredMCPClientSecret(serverConfig.OAuth)) {
+		return nil, &OAuthDiscoveryResponse{
+			Status: "needs_client_id", ServerName: serverName,
+			AuthURL: serverConfig.OAuth.AuthURL, TokenURL: serverConfig.OAuth.TokenURL,
+			Resource: serverConfig.OAuth.Resource, NeedsClientSecret: true,
+			RedirectURI: redirectURI,
+			Message:     "Create an OAuth app with this AgentWorks server's /api/oauth/callback redirect URL, then enter its client ID and secret.",
+		}, nil
 	}
 
 	return api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
@@ -452,14 +495,15 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 	if serverConfig.OAuth.ClientID == "" {
 		api.logger.Info(fmt.Sprintf("No client_id for %s, returning needs_client_id response", serverName))
 		return nil, &OAuthDiscoveryResponse{
-			Status:          "needs_client_id",
-			ServerName:      serverName,
-			AuthURL:         serverConfig.OAuth.AuthURL,
-			TokenURL:        serverConfig.OAuth.TokenURL,
-			Resource:        serverConfig.OAuth.Resource,
-			ScopesSupported: serverConfig.OAuth.Scopes,
-			Message:         fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName),
-			RedirectURI:     redirectURI,
+			Status:            "needs_client_id",
+			ServerName:        serverName,
+			AuthURL:           serverConfig.OAuth.AuthURL,
+			TokenURL:          serverConfig.OAuth.TokenURL,
+			Resource:          serverConfig.OAuth.Resource,
+			ScopesSupported:   serverConfig.OAuth.Scopes,
+			Message:           fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName),
+			RedirectURI:       redirectURI,
+			NeedsClientSecret: requiresRegisteredMCPClientSecret(serverName),
 		}, nil
 	}
 
@@ -791,7 +835,7 @@ func (api *StreamingAPI) removeOverlayEntry(serverName string) error {
 		return nil
 	}
 	delete(userConfig.MCPServers, serverName)
-	if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+	if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 		return fmt.Errorf("failed to save user config after removing %s: %w", serverName, err)
 	}
 	api.logger.Info(fmt.Sprintf("🗑️ Removed %s from user config overlay", serverName))
@@ -986,17 +1030,36 @@ func (api *StreamingAPI) persistOAuthConfig(serverName string, serverConfig mcpc
 	// Update or add the server with OAuth config
 	userConfig.MCPServers[serverName] = serverConfig
 
-	// Save back to user config file, owner-only: it can hold a client secret.
-	err = mcpclient.SaveConfig(userConfigPath, userConfig)
-	if err == nil {
-		err = os.Chmod(userConfigPath, 0o600)
-	}
+	// Save back to user config file
+	err = savePrivateMCPOverlay(userConfigPath, userConfig)
 	if err != nil {
 		api.logger.Error(fmt.Sprintf("💾 Failed to save config: %v", err), err)
 	} else {
 		api.logger.Info(fmt.Sprintf("💾 Successfully saved OAuth config for %s", serverName))
 	}
 	return err
+}
+
+// OAuth client secrets and bearer headers can be present in the overlay.
+// The shared mcpclient.SaveConfig writes 0644, so use a private atomic file.
+func savePrivateMCPOverlay(path string, config *mcpclient.MCPConfig) error {
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".mcp-oauth-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err = tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // getUserConfigPath returns the user config file path (derived from base config path)

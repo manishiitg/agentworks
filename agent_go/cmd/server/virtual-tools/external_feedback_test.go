@@ -61,3 +61,27 @@ func TestExternalFeedbackPendingFiltersSessionExpiryAndResponses(t *testing.T) {
 		t.Fatalf("expired request accepted: %v", err)
 	}
 }
+
+func TestFeedbackOperationIsolatesQuestionsAcrossSharedAndChildSessions(t *testing.T) {
+	store := &HumanFeedbackStore{requests: map[string]*HumanFeedbackRequest{}, waiters: map[string]chan string{}}
+	for _, row := range []struct{ id, session, operation string }{
+		{"first", "shared", "fn-a"}, {"child", "child-session", "fn-a"}, {"foreign", "shared", "fn-b"},
+	} {
+		if err := store.CreatePendingRequest(row.id, row.id, "", row.session, nil, true, time.Minute, row.operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := store.PendingForOperation("fn-a", time.Now())
+	if len(rows) != 2 {
+		t.Fatalf("call A should see root and child questions only: %+v", rows)
+	}
+	if err := store.SubmitResponseForOperationID("fn-a", "foreign", "wrong", time.Now()); !errors.Is(err, ErrFeedbackNotPending) {
+		t.Fatalf("cross-call reply accepted: %v", err)
+	}
+	if err := store.SubmitResponseForOperationID("fn-a", "child", "answer", time.Now()); err != nil {
+		t.Fatalf("child question reply: %v", err)
+	}
+	if err := store.SubmitResponseForOperationID("fn-a", "child", "again", time.Now()); !errors.Is(err, ErrFeedbackNotPending) {
+		t.Fatalf("duplicate reply accepted: %v", err)
+	}
+}

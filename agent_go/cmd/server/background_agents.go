@@ -1853,6 +1853,9 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 // safety net behind NotifyCompletion's best-effort channel send: a dropped or
 // missed send cannot strand a completion permanently.
 func (api *StreamingAPI) requeueUnnotifiedCompletions(sessionID string) {
+	if api == nil || api.bgAgentRegistry == nil {
+		return
+	}
 	for _, agent := range api.bgAgentRegistry.GetAll(sessionID) {
 		if agent == nil {
 			continue

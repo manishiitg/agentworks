@@ -26,9 +26,20 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	}
 	for _, tool := range profile.ToolPolicy.Enabled {
 		switch tool {
-		case "set_work_identity", "define_function", "return_function_result", "report_function_progress",
-			"create_slack_bot_route", "update_gmail_connection_grants_shared":
+		case "set_work_identity", "create_slack_bot_route", "update_gmail_connection_grants_shared":
 			t.Fatalf("Code enables forbidden tool %s", tool)
+		}
+	}
+	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "define_function", "report_function_progress", "return_function_result"} {
+		found := false
+		for _, enabled := range profile.ToolPolicy.Enabled {
+			if enabled == tool {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("Code cannot use private peer function tool %s", tool)
 		}
 	}
 	for _, binding := range profile.Tools {
@@ -47,7 +58,7 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	if profile.Runtime.Workspace.ProjectsRoot != ProjectsRoot {
 		t.Fatalf("projects_root = %q", profile.Runtime.Workspace.ProjectsRoot)
 	}
-	for _, word := range []string{"Crew member", "identity", "define_function", "WORK_IDENTITY"} {
+	for _, word := range []string{"Crew member", "identity", "WORK_IDENTITY"} {
 		if strings.Contains(profile.SystemPromptTemplate, word) {
 			t.Fatalf("Code prompt contains Crew vocabulary %q", word)
 		}

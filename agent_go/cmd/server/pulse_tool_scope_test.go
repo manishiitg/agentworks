@@ -99,6 +99,9 @@ func TestPulsePlatformToolsRefuseASpoofedWorkflow(t *testing.T) {
 // Crew; a Goal Work agent's tool session can, even when its ID is derived
 // from the scheduled session.
 func TestAskPlatformCrewIsRefusedInAScheduledRunsOwnTurns(t *testing.T) {
+	if !pulseCrewWorkOperations["reply_crew_function_call"] || pulsePlatformReadOperations["reply_crew_function_call"] {
+		t.Fatal("answering a Crew question must require the workflow's work permission")
+	}
 	root := executor.WithSessionID(context.Background(), "schedule-cron--wf-a")
 	if err := refuseUnattendedCrewWork(root); err == nil || !strings.Contains(err.Error(), "scheduled run") {
 		t.Fatalf("a scheduled run's own turn must be refused, got %v", err)
