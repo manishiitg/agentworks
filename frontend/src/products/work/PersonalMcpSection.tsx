@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, MessageCircle, Plus, Search, Trash2 } from 'lucide-react'
+import { Check, Loader2, MessageCircle, Plus, Search, Trash2 } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
 import { DEVELOPER_FIRST_GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
@@ -7,6 +7,7 @@ import { ConnectorGroupSection } from '../../components/connectors/ConnectorGrou
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Checkbox } from '../../components/ui/checkbox'
+import { Switch } from '../../components/ui/Switch'
 import { McpAppsSection } from './McpAppsSection'
 import { parseOAuthClientJson } from './oauthClientJson'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -288,56 +289,84 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
           const entries = groups.get(group) ?? []
           const byCatalog = new Map(servers.filter(server => server.catalog).map(server => [server.catalog as string, server]))
           const picks = groupPicks[group] ?? []
-          const needsSignIn = entries.some(entry => { const server = byCatalog.get(entry.catalog); return !!server && server.oauth && !server.connected })
-          const canConnect = picks.length > 0 || needsSignIn
           const label = providerGroupLabel(group)
+          const connectedEntries = entries.filter(entry => byCatalog.has(entry.catalog))
+          const availableEntries = entries.filter(entry => !byCatalog.has(entry.catalog))
+          const provider = label.split(' ')[0]
+          const togglePick = (catalogName: string) => setGroupPicks(current => {
+            const list = current[group] ?? []
+            return { ...current, [group]: list.includes(catalogName) ? list.filter(item => item !== catalogName) : [...list, catalogName] }
+          })
           return (
             <section key={group} data-testid={`mcp-group-${group}`} className="mb-5 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900/60">
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <ConnectionIcon icon={brandSlugFor(label)} name={label} size="lg" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</div>
-                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Tick the services you want and connect once: one {label.split(' ')[0]} sign-in covers them all. Adding one later asks {label.split(' ')[0]} for just its extra permission.</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">One {provider} sign-in covers every service you connect.</p>
                 </div>
-                <Button size="sm" disabled={busy !== null || !canConnect} onClick={() => { void connectGroup(group) }}>
-                  {busy === `group:${group}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}{picks.length > 0 ? 'Connect' : 'Sign in'}
-                </Button>
               </div>
-              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {entries.map(entry => {
-                  const server = byCatalog.get(entry.catalog)
-                  const ready = isConnected(server)
-                  const service = groupServiceLabel(entry.catalog, group)
-                  return (
-                    <div key={entry.catalog} className="flex items-center gap-2 rounded-md border border-gray-100 px-2 py-1.5 text-sm dark:border-gray-800">
-                      {server ? (
-                        <>
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-green-500' : 'bg-amber-500'}`} title={ready ? 'Connected (your account)' : 'Needs sign-in'} />
-                          <span className="min-w-0 flex-1 truncate">{service}</span>
-                          <label className="flex items-center gap-1 text-[11px] text-muted-foreground" title="Use in this Code">
-                            <Checkbox checked={server.enabled} disabled={busy !== null} onCheckedChange={() => { void run(`on:${server.name}`, () => personalMcpApi.setEnabled(server.name, projectId, !server.enabled)) }} aria-label={`Use ${service} in this Code`} />
-                            In this Code
-                          </label>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title={`Disconnect ${service}`} aria-label={`Disconnect ${service}`} disabled={busy !== null}
-                            onClick={() => { void run(`rm:${server.name}`, () => personalMcpApi.remove(server.name)) }}>
-                            <Trash2 className="h-3 w-3" />
+
+              {connectedEntries.length > 0 && (
+                <div className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-100 dark:divide-gray-800 dark:border-gray-800">
+                  {connectedEntries.map(entry => {
+                    const server = byCatalog.get(entry.catalog) as PersonalMcpServer
+                    const ready = isConnected(server)
+                    const service = groupServiceLabel(entry.catalog, group)
+                    return (
+                      <div key={entry.catalog} className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100">{service}</span>
+                        {ready ? (
+                          <span className="text-xs text-green-600 dark:text-green-400">Connected</span>
+                        ) : (
+                          <Button size="sm" variant="outline" className="h-7" disabled={busy !== null} onClick={() => { void connectGroup(group) }}>
+                            {busy === `group:${group}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Sign in
                           </Button>
-                        </>
-                      ) : (
-                        <label className="flex flex-1 items-center gap-2">
-                          <Checkbox checked={picks.includes(entry.catalog)} disabled={busy !== null}
-                            onCheckedChange={() => setGroupPicks(current => {
-                              const list = current[group] ?? []
-                              return { ...current, [group]: list.includes(entry.catalog) ? list.filter(item => item !== entry.catalog) : [...list, entry.catalog] }
-                            })}
-                            aria-label={`Add ${service}`} />
-                          <span className="truncate text-muted-foreground">{service}</span>
+                        )}
+                        <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                          <Switch checked={server.enabled} disabled={busy !== null} aria-label={`Use ${service} in this Code`}
+                            onCheckedChange={() => { void run(`on:${server.name}`, () => personalMcpApi.setEnabled(server.name, projectId, !server.enabled)) }} />
+                          Use in this Code
                         </label>
-                      )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-destructive" title={`Remove ${service}`} aria-label={`Remove ${service}`} disabled={busy !== null}
+                          onClick={() => { void run(`rm:${server.name}`, () => personalMcpApi.remove(server.name)) }}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {availableEntries.length > 0 && (
+                <div className="mt-3">
+                  {connectedEntries.length > 0 && <div className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Add more</div>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableEntries.map(entry => {
+                      const service = groupServiceLabel(entry.catalog, group)
+                      const picked = picks.includes(entry.catalog)
+                      return (
+                        <button key={entry.catalog} type="button" aria-pressed={picked} aria-label={`Add ${service}`} disabled={busy !== null}
+                          onClick={() => togglePick(entry.catalog)}
+                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-50 ${picked
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100'}`}>
+                          {picked ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}{service}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {picks.length > 0 && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Button size="sm" disabled={busy !== null} onClick={() => { void connectGroup(group) }}>
+                        {busy === `group:${group}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                        Connect {picks.length} {picks.length === 1 ? 'service' : 'services'}
+                      </Button>
+                      {connectedEntries.length > 0 && <span className="text-xs text-gray-500 dark:text-gray-400">{provider} asks only for the extra permission.</span>}
                     </div>
-                  )
-                })}
-              </div>
+                  )}
+                </div>
+              )}
             </section>
           )
         })}
