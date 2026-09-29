@@ -373,8 +373,20 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		removedIDs = append(removedIDs, record.SessionID)
 	}
 	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
-	// Other crews and workflows that attached this crew stop pointing at it.
-	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+	detachedWorkflows := 0
+	cleanupWarning := ""
+	if strings.EqualFold(profile.ID, crewProfileID) {
+		// A Crew may be deleted while workflows use it. Remove their saved
+		// attachments now and report the impact; existing Crew steps stay in
+		// the plan so their owner can repair them deliberately.
+		detachedWorkflows, err = detachDeletedCrewFromWorkflows(context.WithoutCancel(r.Context()), profile.ID, binding.ResourceID, binding.WorkspacePath)
+		if err != nil {
+			log.Printf("[CREW_DELETE] attachment cleanup incomplete for project %s: %v", binding.ResourceID, err)
+			cleanupWarning = "Some workflow attachments could not be removed. Check workflows that used this Crew."
+		}
+		// Older context-path references are pruned independently.
+		go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+	}
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
 		// A deleted Code takes its share list with it, and everyone's
 		// personal MCP switches for it.
@@ -394,7 +406,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			return nil
 		})
 	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{
+		"success":            true,
+		"detached_workflows": detachedWorkflows,
+		"cleanup_warning":    cleanupWarning,
+	})
 }
 
 // resumeProductConversation owns saved-history verification and slot switching

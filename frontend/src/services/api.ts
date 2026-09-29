@@ -1275,7 +1275,7 @@ export const agentApi = {
     return response.data
   },
 
-  deleteAgentProfileProject: async (profileId: string, projectId: string): Promise<{ success: boolean }> => {
+  deleteAgentProfileProject: async (profileId: string, projectId: string): Promise<{ success: boolean; detached_workflows?: number; cleanup_warning?: string }> => {
     const response = await api.delete(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`,
     )

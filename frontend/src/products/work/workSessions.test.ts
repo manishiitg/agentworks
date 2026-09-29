@@ -480,9 +480,11 @@ describe('deleteWorkSession', () => {
       session_id: 'work:project:crew-1',
     }), 'Chats/Work/projects/research-crew-1')!
 
-    await deleteWorkSession(session)
+    deleteAgentProfileProject.mockResolvedValueOnce({ success: true, detached_workflows: 2 })
+    const result = await deleteWorkSession(session)
 
     expect(deleteAgentProfileProject).toHaveBeenCalledWith('work', 'crew-1')
+    expect(result.detached_workflows).toBe(2)
   })
 
   it('refuses to delete someone else’s Crew', async () => {
