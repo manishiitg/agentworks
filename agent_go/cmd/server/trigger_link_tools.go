@@ -358,7 +358,11 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(internalBotRequestContext(context.WithoutCancel(ctx), ownerID, reqMap), http.MethodPost, "/api/query", bytes.NewReader(body))
+	// A fresh context for the target Crew's owner, like a queued turn: the
+	// caller's context carries its own session and folder guard, and the
+	// target's prompt variables (its product.json) were read under the
+	// caller's folders and denied (issue #213, E3).
+	httpReq, err := http.NewRequestWithContext(internalBotRequestContext(context.Background(), ownerID, reqMap), http.MethodPost, "/api/query", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
