@@ -22,3 +22,15 @@ func TestCLILandlockRequestedRollout(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIFullRolloutIsSeparate(t *testing.T) {
+	t.Setenv(cliLandlockEnv, "users:a@x.com")
+	t.Setenv(cliFullEnv, "")
+	if !cliLandlockRequested("u1", "a@x.com") || cliFullRequested("u1", "a@x.com") {
+		t.Fatal("Full CLI must be opted in separately from the lock")
+	}
+	t.Setenv(cliFullEnv, "users:a@x.com")
+	if !cliFullRequested("u1", "a@x.com") || cliFullRequested("u2", "b@x.com") {
+		t.Fatal("Full CLI rollout list not honoured")
+	}
+}

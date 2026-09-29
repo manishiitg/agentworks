@@ -18,8 +18,21 @@ import (
 // Linux host whose launcher preflight passes, else CLIs run as before.
 const cliLandlockEnv = "AGENTWORKS_CLI_LANDLOCK"
 
+// cliFullEnv turns on Full CLI (the CLI's own shell and file edits) for
+// confined chats: "on", or "users:<id or email>,…". It only ever applies on
+// top of the Landlock lock and to chats with Native agent tools on.
+const cliFullEnv = "AGENTWORKS_CLI_FULL"
+
 func cliLandlockRequested(userID, userEmail string) bool {
-	value := strings.TrimSpace(os.Getenv(cliLandlockEnv))
+	return cliRolloutRequested(cliLandlockEnv, userID, userEmail)
+}
+
+func cliFullRequested(userID, userEmail string) bool {
+	return cliRolloutRequested(cliFullEnv, userID, userEmail)
+}
+
+func cliRolloutRequested(env, userID, userEmail string) bool {
+	value := strings.TrimSpace(os.Getenv(env))
 	if strings.EqualFold(value, "on") {
 		return true
 	}
@@ -70,6 +83,13 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessio
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not attach the Landlock policy: %v", sessionID, err)
 		return
+	}
+	if cliFullRequested(userID, userEmail) {
+		if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
+			log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
+		} else if upgraded {
+			log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
+		}
 	}
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
 }

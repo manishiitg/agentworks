@@ -717,6 +717,23 @@ func (w *LLMAgentWrapper) AddObserver(observer mcpagent.AgentEventListener) erro
 	return nil
 }
 
+// UpgradeCodingAgentToolsToFull turns a hybrid ("Native agent tools") chat
+// into Full CLI before the Agent is finalized. mcpagent applies Full CLI only
+// when the CLI is confined by the Landlock launcher. It reports whether the
+// mode changed; any other mode is left alone.
+func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return false, errors.New("agent definition is already finalized")
+	}
+	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+		return false, nil
+	}
+	w.runtime.Coding.AgentToolsMode = "full"
+	return true, nil
+}
+
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the
 // immutable Agent is finalized (the chat's folder guard is known only after
 // the wrapper is built).
