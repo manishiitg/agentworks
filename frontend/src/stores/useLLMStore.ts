@@ -699,14 +699,15 @@ export const useLLMStore = create<LLMState>()(
           chatAgentConfig: sanitizeAgentConfig(state.chatAgentConfig),
           workflowPrimaryConfig: stripRetiredLLMFallbacks(state.workflowPrimaryConfig),
           workflowAgentConfig: sanitizeAgentConfig(state.workflowAgentConfig),
-          // Other persisted state
-          showLLMModal: state.showLLMModal,
+          // showLLMModal (the Providers page) is not persisted: people land on their product.
           delegationTierConfig: stripRetiredLLMFallbacks(state.delegationTierConfig),
           // DO NOT persist defaultsLoaded - this should be reset on each app load
         }),
         // Migration: copy legacy config to mode-specific configs on first load
         onRehydrateStorage: () => (state) => {
           if (state) {
+            // Older builds persisted the Providers page as open.
+            state.showLLMModal = false
             state.delegationTierConfig = stripRetiredLLMFallbacks(state.delegationTierConfig)
             state.primaryConfig = normalizePrimaryConfig(state.primaryConfig)
             state.chatPrimaryConfig = normalizePrimaryConfig(state.chatPrimaryConfig)
