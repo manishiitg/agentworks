@@ -40,6 +40,9 @@ type providerAccountView struct {
 	// Configured reports whether the account is set up: signed in, or has
 	// a key. Absent when a check could not tell; that never blocks use.
 	Configured *bool `json:"configured,omitempty"`
+	// Identity is who the account is signed in as (an email or plan name
+	// the CLI reports), so people can see whose login a shared account uses.
+	Identity string `json:"identity,omitempty"`
 	CanManage    bool `json:"can_manage"`
 	CanViewUsage bool `json:"can_view_usage"`
 }
@@ -542,6 +545,7 @@ func (api *StreamingAPI) handleProviderShareTargets(w http.ResponseWriter, r *ht
 		Name  string `json:"name"`
 		Owner string `json:"owner,omitempty"`
 		Email string `json:"email,omitempty"`
+		Self  bool   `json:"self,omitempty"`
 	}
 	claims := principalClaims(userID)
 	workflows := []target{}
@@ -589,10 +593,13 @@ func (api *StreamingAPI) handleProviderShareTargets(w http.ResponseWriter, r *ht
 	if dir, err := loadUserDirectory(); err == nil && dir != nil {
 		for i := range dir.Users {
 			rec := dir.Users[i]
-			if rec.Disabled || rec.ID == userID || (!admin && roleForRecord(&rec) == UserRoleViewer) {
+			if rec.Disabled || (!admin && roleForRecord(&rec) == UserRoleViewer) {
 				continue
 			}
-			people = append(people, target{ID: rec.ID, Name: rec.Username, Email: rec.Email})
+			// The caller is listed too, marked self: sharing your own account
+			// hides it (you always have it), but an admin narrowing the shared
+			// server account may pick themselves.
+			people = append(people, target{ID: rec.ID, Name: rec.Username, Email: rec.Email, Self: rec.ID == userID})
 		}
 	}
 	for _, list := range [][]target{workflows, crews, people} {

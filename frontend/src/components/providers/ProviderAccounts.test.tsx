@@ -86,7 +86,7 @@ it('shows the server account with its origin and lets an admin change who can us
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
   expect(container.textContent).toContain('Installed')
   expect(container.textContent).toContain('Installation (.env: CLAUDE_CODE_OAUTH_TOKEN)')
-  expect(container.textContent).toContain('Available to: Everyone')
+  expect(container.textContent).toContain('Used by: Everyone')
   await click(buttonByText(container, 'Edit who can use it'))
   const adminsOnly = [...container.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Admins only')?.querySelector('input')
   await click(adminsOnly)
@@ -132,7 +132,7 @@ it('edits sharing on an own account', async () => {
 it('adds an account shared with a workflow after showing the billing warning', async () => {
   vi.mocked(llmConfigService.addProviderConnection).mockResolvedValue({ id: 'acct-new', provider: 'claude-code', display_name: 'Team key', scope: 'user', auth_method: 'api_key' })
   const container = await render(<ProviderAccounts provider="claude-code" />)
-  await click(buttonByText(container, 'Add account'))
+  await click(buttonByText(container, 'Add my account'))
   expect(container.textContent).not.toContain(SHARING_WARNING)
   await setValue(container.querySelector<HTMLInputElement>('input[placeholder="e.g. Personal account"]')!, 'Team key')
   await setValue(container.querySelector<HTMLInputElement>('input[type="password"]')!, 'sk-token')
@@ -185,7 +185,7 @@ it('shows each account\'s status and offers the per-account actions to managers 
   expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Signed in as me@x.com')
   expect(container.querySelector('[aria-label="Open terminal for My Max (your account)"]')).not.toBeNull()
   expect(container.querySelector('[aria-label="Open terminal for Server account (server account (shared))"]')).not.toBeNull()
-  expect(buttonByText(container, 'Sign in the shared server login (used by everyone allowed)')).toBeDefined()
+  expect(buttonByText(container, 'Sign in the shared login')).toBeDefined()
   // Not a manager of Dana's account: no terminal, no sign-out.
   expect(container.querySelector('[aria-label="Open terminal for Dana team (Dana\'s account)"]')).toBeNull()
   expect(container.querySelector('[aria-label="Sign out Dana team"]')).toBeNull()

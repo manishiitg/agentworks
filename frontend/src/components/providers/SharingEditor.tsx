@@ -86,7 +86,8 @@ export function PickList({ label, options, selected, onChange, disabled, emptyTe
 
 const workflowOptions = (targets: ProviderShareTargets) => targets.workflows.map(item => ({ id: item.id, label: item.name }))
 const crewOptions = (targets: ProviderShareTargets) => targets.crews.map(item => ({ id: item.id, label: item.name, detail: item.owner }))
-const userOptions = (targets: ProviderShareTargets) => targets.users.map(item => ({ id: item.id, label: item.name, detail: item.email }))
+// Sharing your own account never lists you: you always have it.
+const userOptions = (targets: ProviderShareTargets) => targets.users.filter(item => !item.self).map(item => ({ id: item.id, label: item.name, detail: item.email }))
 
 /** "Who can use it" for a user account: private, or shared with workflows, Crews and people. */
 export function SharingFields({ value, onChange, disabled }: {
@@ -156,7 +157,7 @@ export function AvailabilityFields({ value, onChange, disabled }: {
             </label>
           ))}
         </div>
-        <PickList label="People" options={targets.users.map(item => ({ id: item.email || item.id, label: item.name, detail: item.email }))} selected={(object.users ?? []).map(user => targets.users.find(item => item.id === user)?.email || user)} onChange={users => setObject({ ...object, users })} emptyText="No other people." />
+        <PickList label="People" options={targets.users.map(item => ({ id: item.email || item.id, label: item.self ? `${item.name} (you)` : item.name, detail: item.email }))} selected={(object.users ?? []).map(user => targets.users.find(item => item.id === user)?.email || user)} onChange={users => setObject({ ...object, users })} emptyText="No other people." />
       </>}
     </fieldset>
   )
