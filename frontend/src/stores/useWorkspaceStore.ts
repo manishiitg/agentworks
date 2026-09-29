@@ -24,6 +24,9 @@ interface WorkspaceState {
   // Selected file and content
   selectedFile: {name: string, path: string} | null
   setSelectedFile: (file: {name: string, path: string} | null) => void
+  // Recently opened files, shown as viewer tabs (most recent last).
+  openTabs: {name: string, path: string}[]
+  closeTab: (path: string) => void
   fileContent: string
   setFileContent: (content: string) => void
   loadingFileContent: boolean
@@ -171,6 +174,7 @@ const initialState = {
   error: null,
   searchQuery: '',
   selectedFile: null,
+  openTabs: [],
   fileContent: '',
   loadingFileContent: false,
   showFileContent: false,
@@ -252,6 +256,7 @@ function setFileTreeCacheEntry(key: string, entry: FileTreeCacheEntry) {
 // Tracks in-flight fetchFiles requests to deduplicate concurrent calls for the same folder/depth
 let inflightFetch: { key: string; promise: Promise<void> } | null = null
 let fetchAttemptSequence = 0
+const MAX_OPEN_TABS = 10
 // The tree request whose result is on screen. A refresh of that same tree
 // (or a lazy subfolder load inside it) keeps the rows visible instead of
 // swapping them for a spinner; only a different tree shows loading.
@@ -316,7 +321,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       
       // Selected file and content
-      setSelectedFile: (file) => set({ selectedFile: file }),
+      setSelectedFile: (file) => set(state => {
+        if (!file) return { selectedFile: null }
+        if (state.openTabs.some(tab => tab.path === file.path)) return { selectedFile: file }
+        return { selectedFile: file, openTabs: [...state.openTabs, file].slice(-MAX_OPEN_TABS) }
+      }),
+      closeTab: (path) => set(state => ({ openTabs: state.openTabs.filter(tab => tab.path !== path) })),
       setFileContent: (content) => set({ fileContent: content }),
       setLoadingFileContent: (loading) => set({ loadingFileContent: loading }),
       setShowFileContent: (show) => set({ showFileContent: show }),

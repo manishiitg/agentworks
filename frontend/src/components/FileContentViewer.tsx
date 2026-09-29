@@ -1,8 +1,9 @@
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, Edit, FileText, Github, Link, Loader2, MoreHorizontal, Save, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Github, Link, Loader2, MoreHorizontal } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
+import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
 import { CsvRenderer } from './ui/CsvRenderer'
 import { HtmlRenderer } from './ui/HtmlRenderer'
@@ -10,10 +11,8 @@ import { ConversationRenderer, isConversationJSON } from './ui/ConversationRende
 import { DiffRenderer } from './ui/DiffRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from './ui/RenderedContentSearch'
 import LazyModalFallback from './ui/LazyModalFallback'
-import ConfirmationDialog from './ui/ConfirmationDialog'
 import { useWorkspaceStore, useChatStore } from '../stores'
 import { useAuthStore } from '../stores/useAuthStore'
-import { isValidJSON } from '../utils/event-helpers'
 import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
@@ -180,13 +179,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent,
     showFileContent,
     setShowFileContent,
-    isEditMode,
-    setIsEditMode,
-    editedContent,
-    setEditedContent,
-    isSaving,
-    getHasUnsavedChanges,
-    saveFile,
     binaryFileData,
   } = useWorkspaceStore(useShallow(state => ({
     selectedFile: state.selectedFile,
@@ -194,13 +186,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent: state.loadingFileContent,
     showFileContent: state.showFileContent,
     setShowFileContent: state.setShowFileContent,
-    isEditMode: state.isEditMode,
-    setIsEditMode: state.setIsEditMode,
-    editedContent: state.editedContent,
-    setEditedContent: state.setEditedContent,
-    isSaving: state.isSaving,
-    getHasUnsavedChanges: state.getHasUnsavedChanges,
-    saveFile: state.saveFile,
     binaryFileData: state.binaryFileData,
   })))
 
@@ -213,11 +198,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     binaryFileData,
   )
 
-  const [commitMessage, setCommitMessage] = useState('')
-  const [showCommitDialog, setShowCommitDialog] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const addToast = useChatStore(state => state.addToast)
-  const [pendingConfirm, setPendingConfirm] = useState<'discard-changes' | 'save-large-file' | 'close-viewer' | null>(null)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [showPushToGistDialog, setShowPushToGistDialog] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
@@ -226,8 +207,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const [failedImagePath, setFailedImagePath] = useState<string | null>(null)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
-  // The file view is a viewer: people ask the agent to change files.
-  const canEdit = false
   // Parsed once per render: the dispatch below used to re-parse the whole
   // file up to four times (search gate, conversation check, JSON check).
   const parsedJsonContent: unknown = useMemo(() => {
@@ -240,7 +219,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const isRenderedMarkdownSearchAvailable = (
     showFileContent &&
     !loadingFileContent &&
-    !isEditMode &&
     !!fileContent &&
     !fileContent.startsWith('data:image/') &&
     !isCodeFile(selectedFile?.path || '') &&
@@ -258,21 +236,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     contentKey: `${selectedFile?.path || ''}:${fileContent.length}`,
     enabled: isRenderedMarkdownSearchAvailable,
   })
-
-  // Initialize editedContent when entering edit mode
-  useEffect(() => {
-    if (isEditMode && editedContent === '' && fileContent) {
-      setEditedContent(fileContent)
-    }
-  }, [isEditMode, fileContent, editedContent, setEditedContent])
-
-  // Handle edit mode toggle
-  const handleEdit = useCallback(() => {
-    if (!canEdit) return
-    setEditedContent(fileContent)
-    setIsEditMode(true)
-    setSaveError(null)
-  }, [canEdit, fileContent, setEditedContent, setIsEditMode])
 
   // Handle download
   const handleDownload = useCallback(() => {
@@ -296,68 +259,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     // Give the browser time to start reading the download before releasing it.
     if (!isImageDataUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }, [selectedFile, fileContent, binaryFileData, loadingFileContent])
-
-  // Handle cancel edit
-  const handleCancelEdit = useCallback(() => {
-    if (getHasUnsavedChanges()) {
-      setPendingConfirm('discard-changes')
-    } else {
-      setEditedContent('')
-      setIsEditMode(false)
-      setSaveError(null)
-    }
-  }, [getHasUnsavedChanges, setEditedContent, setIsEditMode])
-
-  const confirmPendingAction = useCallback(() => {
-    if (pendingConfirm === 'discard-changes') {
-      setEditedContent('')
-      setIsEditMode(false)
-      setSaveError(null)
-    } else if (pendingConfirm === 'save-large-file') {
-      setShowCommitDialog(true)
-    } else if (pendingConfirm === 'close-viewer') {
-      setEditedContent('')
-      setIsEditMode(false)
-      setShowFileContent(false)
-    }
-    setPendingConfirm(null)
-  }, [pendingConfirm, setEditedContent, setIsEditMode, setShowFileContent])
-
-  // Handle save
-  const handleSave = useCallback(async () => {
-    // Validate JSON if it's a JSON file
-    if (selectedFile?.path?.toLowerCase().endsWith('.json') || isValidJSON(editedContent)) {
-      try {
-        JSON.parse(editedContent)
-      } catch {
-        setSaveError('Invalid JSON. Please fix the syntax errors before saving.')
-        return
-      }
-    }
-
-    // Check file size (warn if > 1MB)
-    if (editedContent.length > 1024 * 1024) {
-      setPendingConfirm('save-large-file')
-      return
-    }
-
-    setShowCommitDialog(true)
-  }, [selectedFile?.path, editedContent])
-
-  // Handle save with commit message
-  const handleSaveWithCommit = async () => {
-    setSaveError(null)
-    const result = await saveFile(commitMessage || undefined)
-    if (result.success) {
-      setShowCommitDialog(false)
-      setCommitMessage('')
-      setSaveError(null)
-    } else {
-      setSaveError(result.error || 'Failed to save file')
-      // Keep dialog open on error
-    }
-  }
-
 
   // Handle export to PDF
   const handleExportPdf = useCallback(async () => {
@@ -412,47 +313,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     }
   }, [selectedFile, addToast])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    if (!showFileContent) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // The viewer sits next to the chat; only act on shortcuts typed while
-      // focus is inside the viewer.
-      const active = document.activeElement
-      if (!(active instanceof Node) || !rootRef.current?.contains(active)) return
-      // Ctrl+S or Cmd+S: Save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        if (isEditMode && getHasUnsavedChanges()) {
-          handleSave()
-        }
-      }
-      // Ctrl+E or Cmd+E: Toggle edit mode
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault()
-        if (isEditMode) {
-          handleCancelEdit()
-        } else {
-          handleEdit()
-        }
-      }
-      // Esc: leave edit mode, confirming first when there are unsaved
-      // changes. Skipped while the commit dialog is open (it handles its
-      // own Escape) so the two dialogs don't stack.
-      if (e.key === 'Escape' && isEditMode && !showCommitDialog) {
-        if (getHasUnsavedChanges()) {
-          setPendingConfirm('discard-changes')
-        } else {
-          handleCancelEdit()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showFileContent, showCommitDialog, isEditMode, getHasUnsavedChanges, handleSave, handleEdit, handleCancelEdit])
-
   const copyContent = useCallback(async () => {
     if (!fileContent) return
     if (await copyToClipboard(fileContent)) {
@@ -497,19 +357,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     ] : []),
   ]
 
-  // Prevent navigation with unsaved changes
-  useEffect(() => {
-    if (!showFileContent || !getHasUnsavedChanges()) return
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [showFileContent, getHasUnsavedChanges])
-
   return (
     <>
       <div
@@ -518,6 +365,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         data-ui-file-path={selectedFile?.path || undefined}
         data-ui-file-ready={showFileContent && !loadingFileContent ? 'true' : 'false'}
       >
+        <FileTabs />
         <WorkspaceViewHeader
           icon={FileText}
           helpTopic="File"
@@ -525,13 +373,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
             <span className="inline-flex max-w-full items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  if (getHasUnsavedChanges()) {
-                    setPendingConfirm('close-viewer')
-                  } else {
-                    setShowFileContent(false)
-                  }
-                }}
+                onClick={() => setShowFileContent(false)}
                 aria-label="Back to files"
                 title="Back to files"
                 className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -541,54 +383,17 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
               <span className="truncate">{selectedFile.path.split('/').pop() || selectedFile.path}</span>
             </span>
           ) : 'File'}
-          subtitle={selectedFile?.path ? <span title={selectedFile.path}>{selectedFile.path}</span> : undefined}
-          context={getHasUnsavedChanges() && (
-            <span className="text-[10px] text-amber-500" title="Unsaved changes">●</span>
-          )}
+          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} /> : undefined}
           actions={<>
-            {!isEditMode ? (
-              <div className="flex items-center gap-0.5">
-                {canEdit && (
-                  <button onClick={handleEdit} className={ICON_BUTTON_CLASS} title="Edit file (Ctrl+E)">
-                    <Edit className="w-4 h-4" />
-                  </button>
-                )}
-                <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
-                  <Download className="w-4 h-4" />
-                </button>
-                {isRenderedMarkdownSearchAvailable && (
-                  <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
-                )}
-                <PaneActionsMenu actions={paneActions} />
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={handleCancelEdit}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                  title="Cancel edit (Esc)"
-                  disabled={isSaving}
-                >
-                  <X className="w-4 h-4" />
-                  Cancel
-                </button>
-                {getHasUnsavedChanges() && (
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Save file (Ctrl+S)"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Save
-                  </button>
-                )}
-              </>
-            )}
+            <div className="flex items-center gap-0.5">
+              <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
+                <Download className="w-4 h-4" />
+              </button>
+              {isRenderedMarkdownSearchAvailable && (
+                <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
+              )}
+              <PaneActionsMenu actions={paneActions} />
+            </div>
             {headerAction}
           </>}
         />
@@ -596,81 +401,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         {isRenderedMarkdownSearchAvailable && (
           <RenderedContentSearchBar search={renderedContentSearch} />
         )}
-
-        {/* Save Error Message */}
-        {saveError && (
-          <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/20">
-            <p className="text-sm text-destructive">{saveError}</p>
-          </div>
-        )}
-
-        {/* Commit Message Dialog */}
-        {showCommitDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-card rounded-md shadow-md border border-border p-6 w-full max-w-md">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Save File
-              </h3>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Commit Message (optional)
-                </label>
-                <input
-                  type="text"
-                  value={commitMessage}
-                  onChange={(e) => setCommitMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSaveWithCommit()
-                    } else if (e.key === 'Escape') {
-                      setShowCommitDialog(false)
-                      setCommitMessage('')
-                    }
-                  }}
-                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  placeholder="Enter commit message..."
-                  autoFocus
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowCommitDialog(false)
-                    setCommitMessage('')
-                  }}
-                  className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveWithCommit}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-sm text-primary-foreground bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Discard-changes / large-file confirmations */}
-        <ConfirmationDialog
-          isOpen={pendingConfirm !== null}
-          onClose={() => setPendingConfirm(null)}
-          onConfirm={confirmPendingAction}
-          title={pendingConfirm === 'save-large-file' ? 'Save large file?' : 'Discard changes?'}
-          message={
-            pendingConfirm === 'save-large-file'
-              ? 'This file is larger than 1MB. Continue saving?'
-              : 'You have unsaved changes. They will be lost.'
-          }
-          confirmText={pendingConfirm === 'save-large-file' ? 'Save' : 'Discard'}
-          cancelText="Cancel"
-          type="warning"
-          ignoreWorkspaceAutoCollapse
-        />
 
         {/* Scrollable Content */}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -699,18 +429,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
                     />
                   )}
                   <p className="text-sm text-muted-foreground mt-2">Image file</p>
-                </div>
-              ) : isEditMode ? (
-                <div className="h-full overflow-hidden">
-                  <Suspense fallback={<FileSurfaceFallback />}>
-                    <FileEditor
-                      value={editedContent}
-                      filepath={selectedFile?.path || ''}
-                      readOnly={false}
-                      onChange={(value) => setEditedContent(value || '')}
-                      height="100%"
-                    />
-                  </Suspense>
                 </div>
               ) : (selectedFile?.path && isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path)) ? (
                 <div className="h-full overflow-hidden">

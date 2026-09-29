@@ -53,8 +53,9 @@ describe('Files design kit', () => {
       expect(source).not.toContain('fixed bottom-4 right-4')
       expect(source).not.toContain('window.confirm')
       expect(source).toContain('addToast')
-      expect(source).toContain('<ConfirmationDialog')
     }
+    // The viewer is read-only now; the tree's destructive actions still confirm.
+    expect(readFileSync('src/components/Workspace.tsx', 'utf8')).toContain('<ConfirmationDialog')
   })
 
   it('keeps the Files surface on kit tokens (emerald/amber carry success/warning)', () => {
@@ -106,7 +107,9 @@ describe('Files design kit', () => {
     const viewer = readFileSync('src/components/FileContentViewer.tsx', 'utf8')
 
     expect(viewer).not.toContain('exportProgress')
-    expect(viewer).toContain('if (!canEdit) return')
+    // Viewer only: no edit mode (people ask the agent to change files).
+    expect(viewer).not.toContain('isEditMode')
+    expect(viewer).not.toContain('handleSave')
     expect(viewer).not.toContain('navigator.clipboard.writeText')
     expect(viewer).toContain("Couldn't load this image")
     expect(viewer).toContain('parsedJsonContent')

@@ -92,6 +92,8 @@ export default function PlannerFileList({
   const openFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
+  // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
+  const [focusedPath, setFocusedPath] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0, listTop: 0 })
   const visibleRows = useMemo(
@@ -197,6 +199,10 @@ export default function PlannerFileList({
     
     const isSelected = selectedFiles.has(file.filepath)
     const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
+    const isFocused = focusedPath === file.filepath
+    const hasActionMenu = file.type === 'folder'
+      ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)
+      : !!(onFileMove || onFileDownload)
 
     return (
       <div key={file.filepath} className="group h-7 select-none">
@@ -205,6 +211,7 @@ export default function PlannerFileList({
             flex h-7 items-center gap-1.5 rounded-sm px-2 transition-colors
             ${isSelectionMode ? 'cursor-default' : isClickable ? 'cursor-pointer hover:bg-muted' : 'cursor-default'}
             ${isOpenFile ? 'bg-primary/15 hover:bg-primary/20' : ''}
+            ${isFocused ? 'ring-1 ring-inset ring-primary/60' : ''}
             ${isHighlighted ? 'bg-primary/10 ring-1 ring-inset ring-primary/40' : ''}
             ${isInContext ? 'bg-emerald-500/10 border-l-2 border-emerald-500' : ''}
             ${isSelected && isSelectionMode ? 'bg-primary/10' : ''}
@@ -214,7 +221,14 @@ export default function PlannerFileList({
           data-filepath={file.filepath}
           data-original-filepath={file.originalFilepath || undefined}
           data-highlighted={isHighlighted ? 'true' : 'false'}
+          onContextMenu={(event) => {
+            if (isSelectionMode || !hasActionMenu) return
+            event.preventDefault()
+            setFocusedPath(file.filepath)
+            setOpenActionsPath(actionMenuPath)
+          }}
           onClick={() => {
+            setFocusedPath(file.filepath)
             if (isSelectionMode && onToggleFileSelection) {
               onToggleFileSelection(file)
             } else {
@@ -593,6 +607,51 @@ export default function PlannerFileList({
     )
   }
 
+  const ensureRowVisible = (rowIndex: number) => {
+    const container = scrollContainerRef?.current
+    if (!container) return
+    const rowTop = viewport.listTop + rowIndex * FILE_ROW_HEIGHT
+    if (rowTop < container.scrollTop) container.scrollTop = rowTop
+    else if (rowTop + FILE_ROW_HEIGHT > container.scrollTop + container.clientHeight) {
+      container.scrollTop = rowTop + FILE_ROW_HEIGHT - container.clientHeight
+    }
+  }
+
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isSelectionMode || visibleRows.length === 0) return
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    let index = visibleRows.findIndex(row => row.file.filepath === focusedPath)
+    if (index < 0) index = Math.max(0, visibleRows.findIndex(row => row.file.filepath === openFilePath || row.file.originalFilepath === openFilePath))
+    const row = visibleRows[index]
+    const isFolder = row.file.type === 'folder'
+    const isOpen = forceExpandFolders || expandedFolders.has(row.file.filepath)
+    let next = index
+    switch (event.key) {
+      case 'ArrowDown': next = Math.min(visibleRows.length - 1, index + 1); break
+      case 'ArrowUp': next = Math.max(0, index - 1); break
+      case 'Home': next = 0; break
+      case 'End': next = visibleRows.length - 1; break
+      case 'ArrowRight':
+        if (isFolder && !isOpen) { onFolderClick(row.file); return }
+        if (isFolder) next = Math.min(visibleRows.length - 1, index + 1)
+        break
+      case 'ArrowLeft': {
+        if (isFolder && isOpen) { onFolderClick(row.file); return }
+        const parent = row.file.filepath.split('/').slice(0, -1).join('/')
+        const parentIndex = visibleRows.findIndex(candidate => candidate.file.filepath === parent)
+        if (parentIndex >= 0) next = parentIndex
+        break
+      }
+      case 'Enter':
+        if (isFolder) onFolderClick(row.file)
+        else onFileClick(row.file)
+        return
+    }
+    setFocusedPath(visibleRows[next].file.filepath)
+    ensureRowVisible(next)
+  }
+
   if (loading && files.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -643,7 +702,11 @@ export default function PlannerFileList({
     <TooltipProvider>
       <div
         ref={listRef}
-        className={shouldVirtualize ? 'relative' : ''}
+        role="tree"
+        aria-label="Files"
+        tabIndex={0}
+        onKeyDown={handleTreeKeyDown}
+        className={`outline-none ${shouldVirtualize ? 'relative' : ''}`}
         style={shouldVirtualize ? { height: visibleRows.length * FILE_ROW_HEIGHT } : undefined}
       >
         {renderedRows.map((row, renderedIndex) => {

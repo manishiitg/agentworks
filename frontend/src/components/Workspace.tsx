@@ -4,7 +4,7 @@ import { Plus, Upload, FolderPlus, ChevronDown, CheckSquare, X, Trash2, Loader2,
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
-import { isValidJSON } from '../utils/event-helpers'
+import { openWorkspaceFile } from '../utils/openWorkspaceFile'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
 import MoveFileDialog from './workspace/MoveFileDialog'
 import RenameFileDialog from './workspace/RenameFileDialog'
@@ -216,11 +216,9 @@ export default function Workspace({
     highlightedFile,
     setSelectedFile,
     setFileContent,
-    setLoadingFileContent,
     setShowFileContent,
     fetchFiles,
     setActiveFolder,
-    setBinaryFileData,
     needsRefresh,
     setNeedsRefresh
   } = useWorkspaceStore(useShallow(state => ({
@@ -254,11 +252,9 @@ export default function Workspace({
     highlightedFile: state.highlightedFile,
     setSelectedFile: state.setSelectedFile,
     setFileContent: state.setFileContent,
-    setLoadingFileContent: state.setLoadingFileContent,
     setShowFileContent: state.setShowFileContent,
     fetchFiles: state.fetchFiles,
     setActiveFolder: state.setActiveFolder,
-    setBinaryFileData: state.setBinaryFileData,
     needsRefresh: state.needsRefresh,
     setNeedsRefresh: state.setNeedsRefresh,
   })))
@@ -884,107 +880,11 @@ export default function Workspace({
 
   }, [activeFolder, selectedModeCategory, scopedWorkspacePath])
 
-  // Check if a file is a viewable binary format that we can render inline.
-  const isViewableBinaryFile = (fileName: string): boolean => {
-    const ext = fileName.split('.').pop()?.toLowerCase() || ''
-    return ['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'flac', 'opus'].includes(ext)
-  }
-
-  // Handle file click - fetch content and show in chat area
+  // Handle file click - load it into the shared viewer
   const handleFileClick = async (file: PlannerFile) => {
-    if (file.type !== 'folder') {
-      // Reconstruct the original full path if we're in workflow mode with filtered files
-      const fullFilePath = getOriginalFilePath(file)
-      const fileName = fullFilePath.split('/').pop() || fullFilePath
-
-      try {
-        setLoadingFileContent(true)
-
-        setSelectedFile({ name: fileName, path: fullFilePath })
-
-        // For viewable binary files, fetch as raw binary so the main viewer can render them.
-        if (isViewableBinaryFile(fileName)) {
-          const response = await wsRawApi.get(
-            `/api/documents/${encodeURIComponent(fullFilePath)}`,
-            { params: { download: 'true' }, responseType: 'arraybuffer' }
-          )
-          setBinaryFileData(response.data as ArrayBuffer)
-          setFileContent('') // Clear text content
-          setShowFileContent(true)
-          return
-        }
-
-        // Clear binary data when viewing text files
-        setBinaryFileData(null)
-
-        // Use the reconstructed full filepath for the API call
-        const response = await wsFileApi.getFileContent(fullFilePath)
-
-        if (response.success && response.data) {
-          if (response.data.is_binary && !response.data.is_image) {
-            const size = typeof response.data.size === 'number' ? ` (${response.data.size.toLocaleString()} bytes)` : ''
-            setError(`File "${fileName}" is a binary file${size} and cannot be viewed in the editor.`)
-            setLoadingFileContent(false)
-            setShowFileContent(false)
-            return
-          }
-
-          const content = response.data.content ?? ''
-          let processedContent = typeof content === 'string'
-            ? content
-            : String(content)
-          let isJsonFile = false
-          let formattedJson = null
-
-          // Check if this is an image file
-          if (response.data.is_image && processedContent && processedContent.startsWith('data:image/')) {
-            // For images, the content is already base64 encoded data URL
-            // No processing needed for images
-          } else {
-            // Process the content to convert escaped newlines to actual newlines
-            // Only process if content is a non-empty string
-            if (processedContent && typeof processedContent === 'string') {
-              // Check if this is a JSON file (by extension OR content) BEFORE escape replacement
-              // The \\n replacement corrupts JSON strings that contain literal \n escape sequences
-              const extensionIsJson = file.filepath.toLowerCase().endsWith('.json')
-              const contentIsJson = !extensionIsJson && isValidJSON(processedContent)
-              isJsonFile = extensionIsJson || contentIsJson
-
-              if (isJsonFile) {
-                // For JSON files, parse directly (the content already has proper escapes)
-                try {
-                  const parsed = JSON.parse(processedContent)
-                  formattedJson = JSON.stringify(parsed, null, 2)
-                } catch (parseError) {
-                  console.warn('Failed to parse JSON file:', parseError)
-                  formattedJson = null
-                }
-              } else {
-                // For non-JSON files, convert escaped newlines to actual newlines
-                processedContent = processedContent
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\t/g, '\t')
-                  .replace(/\\r/g, '\r')
-              }
-            }
-          }
-
-          // Store both original content and formatted JSON (if applicable)
-          setFileContent(processedContent || '')
-          if (formattedJson) {
-            setFileContent(formattedJson)
-          }
-          setShowFileContent(true)
-        } else {
-          setError(response.message || 'Failed to load file content')
-        }
-      } catch (err) {
-        console.error('Failed to fetch file content:', err)
-        setError(err instanceof Error ? err.message : 'Failed to fetch file content')
-      } finally {
-        setLoadingFileContent(false)
-      }
-    }
+    if (file.type === 'folder') return
+    // Reconstruct the original full path if we're in workflow mode with filtered files
+    await openWorkspaceFile(getOriginalFilePath(file))
   }
 
   // Handle folder click - only folders are clickable now
