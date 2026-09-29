@@ -57,6 +57,8 @@ profile:
     enabled:
       - get_file_link
       - get_report_link
+      # The person's own MCP connections (registered for Code turns only).
+      - manage_my_mcp_servers
   runtime:
     transport: auto
     provider_options:

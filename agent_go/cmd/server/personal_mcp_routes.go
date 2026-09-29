@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -136,14 +137,24 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	body := request.personalMCPServer
+	saved, status, err := api.addPersonalMCP(r.Context(), userID, request.personalMCPServer, request.Catalog)
+	if err != nil {
+		writeAgentProfileError(w, status, err.Error())
+		return
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "oauth": saved.OAuth != nil})
+}
+
+// addPersonalMCP adds (or replaces) one of the person's servers: a catalog
+// server by name, or their own URL. The HTTP route and the Code agent's
+// manage_my_mcp_servers tool both use it. The int is the HTTP status of an error.
+func (api *StreamingAPI) addPersonalMCP(ctx context.Context, userID string, body personalMCPServer, catalog string) (personalMCPServer, int, error) {
 	body.OAuth, body.Catalog = nil, ""
 	var catalogClient *registeredClient
-	if strings.TrimSpace(request.Catalog) != "" {
-		entry, ok := api.personalMCPCatalogEntry(request.Catalog)
+	if strings.TrimSpace(catalog) != "" {
+		entry, ok := api.personalMCPCatalogEntry(catalog)
 		if !ok {
-			writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("%q is not a remote server in the catalog", request.Catalog))
-			return
+			return personalMCPServer{}, http.StatusBadRequest, fmt.Errorf("%q is not a remote server in the catalog", catalog)
 		}
 		body.URL, body.Transport, body.Headers, body.Catalog = entry.config.URL, string(entry.config.GetProtocol()), nil, entry.Catalog
 		if strings.TrimSpace(body.Name) == "" {
@@ -166,21 +177,18 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if err := validatePersonalMCPServer(&body); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-		return
+		return personalMCPServer{}, http.StatusBadRequest, err
 	}
 	if body.OAuth != nil {
 		for _, endpoint := range []string{body.OAuth.AuthURL, body.OAuth.TokenURL} {
 			if err := netguard.CheckURL(endpoint, true); err != nil {
-				writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("the server's sign-in endpoint was refused: %v", err))
-				return
+				return personalMCPServer{}, http.StatusBadRequest, fmt.Errorf("the server's sign-in endpoint was refused: %w", err)
 			}
 		}
-	} else if len(body.Headers) == 0 && request.Catalog == "" {
-		probe, err := services.ProbeMCPServerAuthWith(r.Context(), netguard.Client(15*time.Second), body.URL)
+	} else if len(body.Headers) == 0 && catalog == "" {
+		probe, err := services.ProbeMCPServerAuthWith(ctx, netguard.Client(15*time.Second), body.URL)
 		if err != nil {
-			writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("could not check %s: %v", redactedURL(body.URL), err))
-			return
+			return personalMCPServer{}, http.StatusBadRequest, fmt.Errorf("could not check %s: %w", redactedURL(body.URL), err)
 		}
 		if !probe.NoAuthRequired && probe.Endpoints != nil {
 			body.OAuth = &oauth.OAuthConfig{
@@ -190,8 +198,7 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 			}
 			for _, endpoint := range []string{body.OAuth.AuthURL, body.OAuth.TokenURL} {
 				if err := netguard.CheckURL(endpoint, true); err != nil {
-					writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("the server's sign-in endpoint was refused: %v", err))
-					return
+					return personalMCPServer{}, http.StatusBadRequest, fmt.Errorf("the server's sign-in endpoint was refused: %w", err)
 				}
 			}
 		}
@@ -199,22 +206,19 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 	// Adding over an existing name starts clean: the old sign-in client and
 	// login belong to whatever that name pointed at before.
 	if err := forgetPersonalMCPLogin(userID, body.Name); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
+		return personalMCPServer{}, http.StatusInternalServerError, err
 	}
 	saved, err := addPersonalMCPServer(userID, body)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-		return
+		return personalMCPServer{}, http.StatusBadRequest, err
 	}
 	if catalogClient != nil {
 		if err := writePersonalMCPClient(userID, saved.Name, *catalogClient); err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-			return
+			return personalMCPServer{}, http.StatusInternalServerError, err
 		}
 	}
 	closePersonalMCPConnection(userID, saved.Name)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "oauth": saved.OAuth != nil})
+	return saved, http.StatusOK, nil
 }
 
 // DELETE /api/me/mcp/servers/{name}
@@ -271,30 +275,46 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		ClientSecret string `json:"client_secret"`
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
-	name := mux.Vars(r)["name"]
+	var entered *registeredClient
+	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
+		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
+	}
+	authURL, discovery, status, err := api.startPersonalMCPSignIn(userID, mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
+	if err != nil {
+		writeAgentProfileError(w, status, err.Error())
+		return
+	}
+	if discovery != nil {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"status": discovery.Status, "message": discovery.Message, "redirect_uri": discovery.RedirectURI})
+		return
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"auth_url": authURL})
+}
+
+// startPersonalMCPSignIn starts the person's OAuth sign-in to one of their
+// servers: through the shared flow with public-only discovery, registration
+// and token requests, the token sealed in their own store. It returns the
+// URL to open, or a discovery answer when the provider needs the person's own
+// OAuth app (entered then carries its client ID and secret).
+func (api *StreamingAPI) startPersonalMCPSignIn(userID, name, redirectURI string, entered *registeredClient) (string, *OAuthDiscoveryResponse, int, error) {
 	internal, cfg, err := personalMCPServerConfig(userID, name)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, err.Error())
-		return
+		return "", nil, http.StatusNotFound, err
 	}
 	if cfg.OAuth == nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "this server does not use sign-in")
-		return
+		return "", nil, http.StatusBadRequest, fmt.Errorf("this server does not use sign-in")
 	}
-	redirectURI := deriveOAuthRedirectURI(r)
 	cfg.OAuth.RedirectURL = redirectURI
 	dir, err := personalMCPDir(userID)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
+		return "", nil, http.StatusInternalServerError, err
 	}
-	// A client the person registered on the provider (Google, GitHub) is
-	// kept sealed once the sign-in succeeds, so refreshes keep working and a
-	// mistyped one never replaces a client that works.
-	var enteredClient *registeredClient
-	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
-		enteredClient = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret), RedirectURI: redirectURI}
-		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = enteredClient.ClientID, enteredClient.ClientSecret
+	// An entered client is kept sealed once the sign-in succeeds, so
+	// refreshes keep working and a mistyped one never replaces a client that
+	// works.
+	if entered != nil {
+		entered.RedirectURI = redirectURI
+		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = entered.ClientID, entered.ClientSecret
 	} else if cfg.OAuth.RegistrationEndpoint != "" {
 		// A dynamic registration is tied to its callback; one made for
 		// another address registers again.
@@ -308,8 +328,8 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		ClientFile: personalMCPClientFile(dir, userID, name),
 		Discoverer: oauth.Discoverer{Client: netguard.Client(30 * time.Second)},
 		OnSuccess: func(*OAuthFlowState) {
-			if enteredClient != nil {
-				if err := writePersonalMCPClient(userID, name, *enteredClient); err != nil {
+			if entered != nil {
+				if err := writePersonalMCPClient(userID, name, *entered); err != nil {
 					log.Printf("[PERSONAL_MCP] keep sign-in client for %s: %v", name, err)
 				}
 			}
@@ -317,14 +337,12 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		},
 	})
 	if err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-		return
+		return "", nil, http.StatusBadRequest, err
 	}
 	if discovery != nil {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"status": discovery.Status, "message": discovery.Message, "redirect_uri": discovery.RedirectURI})
-		return
+		return "", discovery, http.StatusOK, nil
 	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"auth_url": start.AuthURL})
+	return start.AuthURL, nil, http.StatusOK, nil
 }
 
 // PUT /api/me/secrets/{name} {encrypted_value} (from /api/secrets/encrypt,

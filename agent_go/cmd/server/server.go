@@ -5735,7 +5735,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot)
+			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot, selectedServers)
 			selectedServers = mergeServerLists(selectedServers, personalNames)
 			if len(personalOverrides) > 0 {
 				if agentConfig.RuntimeOverrides == nil {
@@ -6416,6 +6416,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)
 				return
+			}
+			// A Code chat's agent connects the person's own MCP servers.
+			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+				if err := api.registerPersonalMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
+					sendError(fmt.Sprintf("Failed to register personal MCP tool: %v", err), true)
+					return
+				}
 			}
 			if err := api.registerAgentProfileWorkflowTools(
 				context.WithoutCancel(streamCtx),

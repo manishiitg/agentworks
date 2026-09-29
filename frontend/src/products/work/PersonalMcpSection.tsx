@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { Loader2, MessageCircle, Plus, Search, Trash2 } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
 import { DEVELOPER_FIRST_GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
@@ -30,7 +30,7 @@ interface Card {
  * or uses it. Switch it on per Code. Header keys come from their own secrets
  * (Setup → Secrets).
  */
-export function PersonalMcpSection({ projectId }: { projectId: string }) {
+export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; onAsk?: (message: string) => Promise<void> }) {
   const [servers, setServers] = useState<PersonalMcpServer[]>([])
   const [secrets, setSecrets] = useState<string[]>([])
   const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
@@ -169,6 +169,14 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
             )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 self-center">
+            {onAsk && (
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" title={`Ask the agent about ${card.title}`} aria-label={`Ask the agent about ${card.title}`}
+                onClick={() => { void onAsk(server
+                  ? `Help me with my own ${card.title} MCP connection in this Code: check whether it is signed in and switched on here, then ask what I want to do with it.`
+                  : `Connect ${card.catalog ?? card.title} for me as my own MCP server in this Code, then give me the sign-in link.`) }}>
+                <MessageCircle className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {(!server || (server.oauth && !server.connected)) && (
               <Button size="sm" variant={server ? 'outline' : 'default'} disabled={busy !== null} onClick={() => { void connect(card) }}>
                 {busy === `connect:${card.key}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}{server ? 'Sign in' : 'Connect'}
@@ -199,9 +207,18 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
           className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
       </div>
-      <p className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
-        Connections here are yours alone: you sign in with your own account, and they run only in your chats, in the Codes where you switch them on. Nobody else in this Code sees or uses them. Changes apply from your next message.
-      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+        <p className="min-w-0 flex-1 basis-48 text-xs leading-5 text-muted-foreground">
+          Connections here are yours alone: you sign in with your own account, and they run only in your chats, in the Codes where you switch them on. Nobody else in this Code sees or uses them. Changes apply from your next message.
+        </p>
+        {onAsk && (
+          <Button size="sm" onClick={() => { void onAsk(query.trim()
+            ? `Connect ${JSON.stringify(query.trim())} for me as my own MCP server in this Code. Check the catalog first; if it is not there, find its official remote MCP URL, then give me the sign-in link.`
+            : 'Help me connect one of my own MCP servers in this Code. Ask which app or service I want, then connect it and give me the sign-in link.') }}>
+            <MessageCircle className="mr-1 h-3.5 w-3.5" />Ask the agent to connect
+          </Button>
+        )}
+      </div>
       {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
 
       {clientPrompt && (

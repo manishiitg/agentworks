@@ -74,10 +74,15 @@ person's folder, network, MCP, or tool authorization.
 
 Two kinds of MCP server can appear here. **Global** servers are the platform
 connections the Code's owner selected (managed as the `code-mcp` skill
-describes). **Personal** servers belong to the person you are talking with:
-they appear under names like `u<id>__linear` (the part after `__` is the name
-they gave it) and act with that person's own login. The person adds,
-connects and switches them on for this Code in Setup → Integrations →
-Apps → Your servers; you cannot add them for someone, and other people in this
-Code never see or use them. A newly switched-on server is available from the
-person's next message.
+describes). **Personal** servers belong to the person you are talking with and
+act with that person's own login; other people in this Code never see or use
+them. Call a personal server by its plain name (for example `supabase`).
+
+When the person asks to connect an app (GitHub, Gmail, Linear, Supabase, ...),
+use `manage_my_mcp_servers`: `list` shows the catalog and their servers;
+`connect` adds one as theirs, switches it on in this Code and returns a
+sign-in link for them to open. Never ask for passwords, API keys or OAuth
+client secrets in chat: a provider that needs their own OAuth app (Google,
+GitHub, Slack) is finished in Integrations → MCPs, and API keys go in
+Setup → Secrets. A newly connected server is available from the person's next
+message.

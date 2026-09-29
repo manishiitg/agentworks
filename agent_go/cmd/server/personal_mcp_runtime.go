@@ -20,10 +20,14 @@ import (
 // session is decided by resolveCodeMCPServer, which never falls back to the
 // platform catalog by name.
 
-// personalMCPServersForTurn returns the internal names and overrides for the
-// person's servers switched on in codeRoot. A server that cannot be built
-// (a missing personal secret, say) is skipped and logged, not fatal.
-func personalMCPServersForTurn(person, codeRoot string) ([]string, mcpclient.RuntimeOverrides) {
+// personalMCPServersForTurn returns the names and overrides for the person's
+// servers switched on in codeRoot. The model sees a server's plain name
+// ("supabase"); the bridge maps it back to this person's server
+// (resolveCodeMCPServer). A plain name that a selected global server already
+// uses keeps the internal name, so the two never shadow each other. A server
+// that cannot be built (a missing personal secret, say) is skipped and
+// logged, not fatal.
+func personalMCPServersForTurn(person, codeRoot string, selected []string) ([]string, mcpclient.RuntimeOverrides) {
 	enabled, err := personalMCPEnabled(person, codeRoot)
 	if err != nil || len(enabled) == 0 {
 		if err != nil {
@@ -40,8 +44,12 @@ func personalMCPServersForTurn(person, codeRoot string) ([]string, mcpclient.Run
 			continue
 		}
 		config := cfg
-		names = append(names, internal)
-		overrides[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
+		exposed := name
+		if serverListHasName(selected, name) {
+			exposed = internal
+		}
+		names = append(names, exposed)
+		overrides[exposed] = mcpclient.RuntimeConfigOverride{Server: &config}
 	}
 	return names, overrides
 }
@@ -85,8 +93,9 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
-	// The person's own server, switched on for this Code.
-	if plain, ok := personalMCPPlainName(pin.Person, server); ok {
+	// The person's own server switched on for this Code; ok is false when
+	// plain is not one of them.
+	personal := func(plain string) (*executor.ResolvedMCPServer, bool, error) {
 		enabled, err := personalMCPEnabled(pin.Person, pin.CodeRoot)
 		if err != nil {
 			return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
@@ -101,17 +110,31 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 			}
 			return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: "global"}, true, nil
 		}
-		return nil, true, fmt.Errorf("MCP server %q is not switched on in this Code", plain)
+		return nil, false, nil
+	}
+	if plain, ok := personalMCPPlainName(pin.Person, server); ok {
+		resolved, found, err := personal(plain)
+		if !found && err == nil {
+			err = fmt.Errorf("MCP server %q is not switched on in this Code", plain)
+		}
+		return resolved, true, err
 	}
 	// Anyone else's personal server is never reachable.
 	if isPersonalMCPInternalName(server) {
 		return nil, true, fmt.Errorf("MCP server %q is not available in this chat", server)
 	}
-	// A global server the Code selected.
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
 	}
+	// The person's own server under its plain name, unless a global server
+	// the Code selected has that name (then the plain name is the global one).
+	if !serverListHasName(runtimeMCPServers(manifest.Capabilities.SelectedServers), server) {
+		if resolved, found, err := personal(server); found {
+			return resolved, true, err
+		}
+	}
+	// A global server the Code selected.
 	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
 	if err != nil {
 		return nil, true, fmt.Errorf("load current MCP configuration: %w", err)
@@ -168,4 +191,14 @@ func withPersonalSecrets(person string, secrets []struct {
 		}
 	}
 	return secrets
+}
+
+// serverListHasName reports whether names holds name, ignoring case.
+func serverListHasName(names []string, name string) bool {
+	for _, candidate := range names {
+		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(name)) {
+			return true
+		}
+	}
+	return false
 }

@@ -293,7 +293,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'apps' && product.profileId === 'code' && <PersonalMcpSection projectId={projectId} />}
+        {activeTab === 'apps' && product.profileId === 'code' && <PersonalMcpSection projectId={projectId} onAsk={onAsk} />}
         {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody
           tabId={tabId}
           projectId={projectId}
