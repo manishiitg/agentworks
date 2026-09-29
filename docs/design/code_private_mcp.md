@@ -300,6 +300,24 @@ MCP calls are already recorded per session with the workspace path
   creating their own. Today that means putting `client_id`/`client_secret` in
   the deployment catalog entry.
 
+### Code UI: the full list, yours only (2026-09-29)
+
+- **MCPs tab.** A Code's MCPs tab is the connector directory, with the same
+  cards and groups as a Crew, over the full catalog. Connect adds the server as
+  the person's own, switches it on in this Code, and starts the person's
+  sign-in. "Use in this Code" is the per-Code switch. A "not listed" form adds
+  a custom server.
+- **Global selection hidden.** A Code's global MCP selection is no longer shown
+  in its UI. The backend still honours an existing selection.
+- **Secrets tab.** Setup → Secrets is Crew's secrets UI
+  (`SecretSelectionSection` with a `store`) over the person's own secrets.
+  - Global secrets are hidden, and values are write-only.
+  - Personal secrets reach that person's Code chats as `$SECRET_<NAME>`
+    (`withPersonalSecrets`); a personal secret wins over a Code secret of the
+    same name. They also feed that person's MCP headers.
+- **Catalog link.** A personal server added from the catalog records `catalog`
+  (set by the server only), so the list can match it to its card.
+
 ## Tests (end-to-end, not mocked)
 
 1. A adds a public no-auth remote server (e.g. DeepWiki), enables it in Code

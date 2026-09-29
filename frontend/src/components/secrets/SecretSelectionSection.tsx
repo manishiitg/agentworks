@@ -13,6 +13,19 @@ import { secretsApi } from '../../api/secrets';
 import { useCanWriteWorkflow, READ_ONLY_TITLE } from '../../hooks/useCanWriteWorkflow';
 import { PROJECT_SECRETS_REFRESH_EVENT } from '../../utils/secretMutationRefresh';
 
+/**
+ * Where the secrets live when they are not a workflow's own: a Code passes
+ * the signed-in person's personal secrets (products/work/personalSecretStore.ts),
+ * so both use this one secrets UI. Every stored secret is in use; values are
+ * write-only (no reveal, no promotion to global).
+ */
+export interface SecretStore {
+  list: () => Promise<string[]>;
+  save: (name: string, value: string) => Promise<void>;
+  remove: (name: string) => Promise<void>;
+  description?: React.ReactNode;
+}
+
 interface SecretSelectionSectionProps {
   selectedSecrets: string[];
   onSecretChange: (secrets: string[]) => void;
@@ -27,6 +40,7 @@ interface SecretSelectionSectionProps {
   workspaceSecretsAlwaysEnabled?: boolean;
   allowGlobalPromotion?: boolean;
   persistExplicitGlobalSelection?: boolean;
+  store?: SecretStore;
 }
 
 
@@ -45,6 +59,7 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   workspaceSecretsAlwaysEnabled = false,
   allowGlobalPromotion = true,
   persistExplicitGlobalSelection = false,
+  store,
 }) => {
   const globalSecrets = useSecretsStore((s) => s.globalSecrets);
   const workflowSecretsByPath = useSecretsStore((s) => s.workflowSecretsByPath);
@@ -56,7 +71,9 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   // owners add, delete and reveal them; a read-only user sees the names and
   // may run the workflow with them, but the server refuses reveal and every
   // mutation, so the controls disable here rather than fail on click.
-  const canWrite = useCanWriteWorkflow(workflowPath?.trim() || undefined);
+  const canWriteWorkflow = useCanWriteWorkflow(workflowPath?.trim() || undefined);
+  // A person's own store: they always manage it.
+  const canWrite = store ? true : canWriteWorkflow;
   const isAdmin = useAuthStore(state => state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode));
   const [globalBusy, setGlobalBusy] = useState(false);
   const [globalStatus, setGlobalStatus] = useState('');
@@ -130,9 +147,24 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   };
 
   const normalizedWorkflowPath = workflowPath?.trim() || '';
-  const workflowSecrets = normalizedWorkflowPath
-    ? workflowSecretsByPath[normalizedWorkflowPath] || []
-    : [];
+  const [storeNames, setStoreNames] = useState<string[]>([]);
+  const refreshStore = React.useCallback(async () => {
+    if (!store) return;
+    try {
+      setStoreNames(await store.list());
+    } catch {
+      setWorkflowSecretError('Could not load your secrets.');
+    }
+  }, [store]);
+  useEffect(() => { void refreshStore(); }, [refreshStore]);
+  const workflowSecrets: Array<{ name: string; encrypted_value?: string }> = store
+    ? storeNames.map(name => ({ name }))
+    : normalizedWorkflowPath
+      ? workflowSecretsByPath[normalizedWorkflowPath] || []
+      : [];
+  const hasSecretCard = !!normalizedWorkflowPath || !!store;
+  const secretsAlwaysEnabled = workspaceSecretsAlwaysEnabled || !!store;
+  const canPromote = allowGlobalPromotion && !store;
 
   useEffect(() => {
     if (globalSecrets.length === 0) {
@@ -141,10 +173,10 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   }, [fetchGlobalSecrets, globalSecrets.length]);
 
   useEffect(() => {
-    if (normalizedWorkflowPath) {
+    if (normalizedWorkflowPath && !store) {
       fetchWorkflowSecrets(normalizedWorkflowPath);
     }
-  }, [normalizedWorkflowPath, fetchWorkflowSecrets]);
+  }, [normalizedWorkflowPath, fetchWorkflowSecrets, store]);
 
   // Secrets created by the agent use the server-side project tools, so they
   // do not pass through this component's local add action. Refresh the visible
@@ -181,7 +213,7 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   };
 
   const handleSaveWorkflowSecret = async () => {
-    if (!normalizedWorkflowPath) return;
+    if (!hasSecretCard) return;
     setWorkflowSecretError(null);
     const trimmedName = workflowSecretName.trim().toUpperCase();
     if (!trimmedName) {
@@ -198,6 +230,20 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
     }
 
     setSavingWorkflowSecret(true);
+    if (store) {
+      try {
+        await store.save(trimmedName, workflowSecretValue);
+        setWorkflowSecretName('');
+        setWorkflowSecretValue('');
+        await refreshStore();
+      } catch (err) {
+        const data = axios.isAxiosError(err) ? (err.response?.data as { error?: string } | undefined) : undefined;
+        setWorkflowSecretError(data?.error || (err instanceof Error ? err.message : 'Failed to save secret'));
+      } finally {
+        setSavingWorkflowSecret(false);
+      }
+      return;
+    }
     try {
       const { encrypted } = await secretsApi.encrypt(workflowSecretValue);
       await addWorkflowSecret(normalizedWorkflowPath, trimmedName, encrypted);
@@ -214,6 +260,15 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
   };
 
   const handleDeleteWorkflowSecret = async (name: string) => {
+    if (store) {
+      try {
+        await store.remove(name);
+      } catch {
+        setWorkflowSecretError(`Could not delete ${name}.`);
+      }
+      await refreshStore();
+      return;
+    }
     if (!normalizedWorkflowPath) return;
     await removeWorkflowSecret(normalizedWorkflowPath, name);
     onSecretChange(selectedSecrets.filter(s => s !== name));
@@ -258,7 +313,7 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
     },
   }[pendingConfirm.kind];
 
-  if (globalSecrets.length === 0 && workflowSecrets.length === 0 && !normalizedWorkflowPath) return null;
+  if (globalSecrets.length === 0 && workflowSecrets.length === 0 && !hasSecretCard) return null;
 
   const sortedWorkflowSecrets = [...workflowSecrets].sort((a, b) => a.name.localeCompare(b.name));
   const hasRows = sortedWorkflowSecrets.length > 0
@@ -266,12 +321,12 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
 
   return (
     <div className={fillAvailableHeight ? 'flex h-full min-h-0 flex-col gap-2' : 'space-y-4'}>
-      {normalizedWorkflowPath && canWrite && (
+      {hasSecretCard && canWrite && (
         <SettingsCard
           icon={<KeyRound aria-hidden="true" className="h-4 w-4 text-primary" />}
           title={workspaceSecretHeading}
           count={`${sortedWorkflowSecrets.length} saved`}
-          description={<span className="block truncate">{normalizedWorkflowPath}</span>}
+          description={store?.description ?? <span className="block truncate">{normalizedWorkflowPath}</span>}
           className="shrink-0"
         >
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
@@ -311,9 +366,9 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
           <div key={`workflow-${secret.name}`} className="flex items-center gap-2 border-b border-border p-3 last:border-b-0 hover:bg-muted">
             <Checkbox
               id={`workflow-secret-${secret.name}`}
-              checked={workspaceSecretsAlwaysEnabled || selectedSecretNames.has(secret.name)}
+              checked={secretsAlwaysEnabled || selectedSecretNames.has(secret.name)}
               onCheckedChange={() => toggleSecretName(secret.name)}
-              disabled={workspaceSecretsAlwaysEnabled}
+              disabled={secretsAlwaysEnabled}
             />
             <label htmlFor={`workflow-secret-${secret.name}`} className="flex min-w-0 flex-1 cursor-pointer select-none items-center gap-2 text-sm text-foreground">
               <span className="flex min-w-0 flex-1 flex-col">
@@ -323,8 +378,8 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
                 )}
               </span>
             </label>
-            {allowGlobalPromotion && isAdmin && canWrite && <Button type="button" variant="link" size="sm" disabled={globalBusy} onClick={() => setPendingConfirm({ kind: 'promote', name: secret.name })} className="shrink-0" aria-label={`Make ${secret.name} global`}>Make global</Button>}
-            <Button
+            {canPromote && isAdmin && canWrite && <Button type="button" variant="link" size="sm" disabled={globalBusy} onClick={() => setPendingConfirm({ kind: 'promote', name: secret.name })} className="shrink-0" aria-label={`Make ${secret.name} global`}>Make global</Button>}
+            {!store && <Button
               type="button"
               variant="ghost"
               size="icon"
@@ -334,7 +389,7 @@ export const SecretSelectionSection: React.FC<SecretSelectionSectionProps> = ({
               title={!canWrite ? READ_ONLY_TITLE : revealedValues[secret.name] !== undefined ? 'Hide value' : secret.encrypted_value ? 'Show value' : 'Value not available'}
             >
               {revealedValues[secret.name] !== undefined ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
+            </Button>}
             <Button
               type="button"
               variant="ghost"

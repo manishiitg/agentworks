@@ -51,6 +51,7 @@ type personalMCPServer struct {
 	OAuth     *oauth.OAuthConfig           `json:"oauth,omitempty"`
 	Headers   map[string]personalMCPHeader `json:"headers,omitempty"`
 	AddedAt   string                       `json:"added_at,omitempty"`
+	Catalog   string                       `json:"catalog,omitempty"` // set by the server, never by the request
 }
 
 // personalMCPHeader is a credential header built from one personal secret:

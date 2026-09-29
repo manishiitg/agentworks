@@ -35,6 +35,7 @@ type personalMCPServerView struct {
 	Connected bool     `json:"connected"`
 	Headers   []string `json:"headers,omitempty"` // header names only
 	Enabled   bool     `json:"enabled"`           // in the requested Code
+	Catalog   string   `json:"catalog,omitempty"` // the catalog server it was added from
 }
 
 func personalMCPUser(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -100,7 +101,7 @@ func (api *StreamingAPI) handleListPersonalMCP(w http.ResponseWriter, r *http.Re
 	dir, _ := personalMCPDir(userID)
 	views := make([]personalMCPServerView, 0, len(servers))
 	for _, server := range servers {
-		view := personalMCPServerView{Name: server.Name, URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Enabled: enabled[server.Name]}
+		view := personalMCPServerView{Name: server.Name, URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Enabled: enabled[server.Name], Catalog: server.Catalog}
 		for header := range server.Headers {
 			view.Headers = append(view.Headers, header)
 		}
@@ -136,7 +137,7 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 		return
 	}
 	body := request.personalMCPServer
-	body.OAuth = nil
+	body.OAuth, body.Catalog = nil, ""
 	var catalogClient *registeredClient
 	if strings.TrimSpace(request.Catalog) != "" {
 		entry, ok := api.personalMCPCatalogEntry(request.Catalog)
@@ -144,7 +145,7 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 			writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("%q is not a remote server in the catalog", request.Catalog))
 			return
 		}
-		body.URL, body.Transport, body.Headers = entry.config.URL, string(entry.config.GetProtocol()), nil
+		body.URL, body.Transport, body.Headers, body.Catalog = entry.config.URL, string(entry.config.GetProtocol()), nil, entry.Catalog
 		if strings.TrimSpace(body.Name) == "" {
 			body.Name = entry.Name
 		}

@@ -12,6 +12,8 @@ export interface PersonalMcpServer {
   connected: boolean
   headers?: string[]
   enabled: boolean
+  /** The catalog server it was added from, if any. */
+  catalog?: string
 }
 
 export interface PersonalMcpHeader { secret: string; format?: string }

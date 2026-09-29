@@ -133,3 +133,39 @@ func isPersonalMCPInternalName(name string) bool {
 	}
 	return true
 }
+
+// withPersonalSecrets adds the person's own secrets to a Code chat's
+// secrets; a personal secret wins over a Code secret of the same name.
+func withPersonalSecrets(person string, secrets []struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}) []struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+} {
+	names, err := listPersonalSecretNames(person)
+	if err != nil {
+		log.Printf("[PERSONAL_MCP] personal secrets unavailable for this turn: %v", err)
+		return secrets
+	}
+	for _, name := range names {
+		value, err := personalSecretValue(person, name)
+		if err != nil {
+			log.Printf("[PERSONAL_MCP] skipping personal secret %s: %v", name, err)
+			continue
+		}
+		replaced := false
+		for i := range secrets {
+			if secrets[i].Name == name {
+				secrets[i].Value, replaced = value, true
+			}
+		}
+		if !replaced {
+			secrets = append(secrets, struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			}{Name: name, Value: value})
+		}
+	}
+	return secrets
+}

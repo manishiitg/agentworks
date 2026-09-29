@@ -109,6 +109,9 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil); rec.Code != http.StatusOK {
 		t.Fatalf("add from catalog = %d %s", rec.Code, rec.Body.String())
 	}
+	if rec := personalRoute(api, (*StreamingAPI).handleListPersonalMCP, http.MethodGet, "/x", "", "owner", nil); !strings.Contains(rec.Body.String(), `"catalog":"GoogleGmail"`) {
+		t.Fatalf("list lacks the catalog origin: %s", rec.Body.String())
+	}
 
 	vars := map[string]string{"name": "gmail"}
 	rec = personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", vars)
@@ -150,5 +153,31 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	}
 	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "" {
 		t.Fatalf("old client survived a re-add: %+v, %v", cfg.OAuth, err)
+	}
+}
+
+// A Code chat gets its person's own secrets, and a personal secret wins over a
+// Code secret of the same name; another person's secrets never appear.
+func TestWithPersonalSecretsAddsOnlyThePersonsOwn(t *testing.T) {
+	withPersonalMCPRoot(t)
+	if err := setPersonalSecret("owner", "API_KEY", "mine"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setPersonalSecret("owner", "EXTRA", "extra"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setPersonalSecret("other", "OTHER_KEY", "theirs"); err != nil {
+		t.Fatal(err)
+	}
+	code := []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{{Name: "API_KEY", Value: "code"}, {Name: "CODE_ONLY", Value: "c"}}
+	got := map[string]string{}
+	for _, secret := range withPersonalSecrets("owner", code) {
+		got[secret.Name] = secret.Value
+	}
+	if got["API_KEY"] != "mine" || got["EXTRA"] != "extra" || got["CODE_ONLY"] != "c" || got["OTHER_KEY"] != "" || len(got) != 3 {
+		t.Fatalf("secrets = %v", got)
 	}
 }
