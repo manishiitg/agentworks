@@ -1,15 +1,15 @@
 [← Pulse platform issue index](../../pulse_platform_issue_register.md)
 
-# PLAT-367 — Workflow Ask sessions fail the external status and answer ownership check
+# PLAT-367 — Direct workflow Ask session replies fail the external ownership check
 
 | Coordination | Value |
 |---|---|
-| State | Open — reply rejection reproduced locally; not fixed |
-| Date | 2026-09-28 |
+| State | Mitigated by call-scoped reply in [PR #246](https://github.com/manishiitg/agentworks/pull/246); direct session route still rejects `wfask-` |
+| Date | 2026-09-28; updated 2026-09-29 |
 | Priority | P1 for external interactive Ask |
 | Owner | human-decisions; implementation unassigned |
 | Related subsystems | workflow functions, external MCP/CLI |
-| Reviewed revision | `ebc37cf87` on main, including the local changes present during review |
+| Reviewed revision | `03e6844cf` merge commit on main |
 
 ## Problem and cause
 
@@ -18,6 +18,14 @@ connection. The workflow assistant runs in a continuing `wfask-…` session.
 If it requests blocking human input, its original caller cannot answer
 through `run_reply_input`: token-authenticated requests must name a session
 starting with `pat-<token-id>-`. `run_status` has the same prefix check.
+
+The supported function-call route now uses `get_workflow_function_call` and
+`reply_workflow_function_call` with the server-issued `call_id`, which maps to
+the question's operation ID. It does not pass a `wfask-` session ID through
+the PAT run-session endpoint. This removes the original caller-facing route
+gap for workflow Ask in code, but a real suspended Ask through external REST
+and MCP still needs verification. The direct session API remains restricted;
+its 404 for `wfask-` is no longer evidence that the call-scoped route fails.
 
 This is distinct from [PLAT-365](plat-365.md). Correctly registering the
 question's session ID does not make that session acceptable to these APIs.
@@ -55,14 +63,15 @@ Ask run. The corresponding status rejection follows from the same code check.
 
 ## Proposed fix and acceptance
 
-Resolve external Ask interactions through an authorized call handle that
-maps to the actual assistant session, or persist an explicit external
-session ownership record. Do not remove the existing token/session guards.
-Decide whether separate connections share a user-level Ask thread or require
-separate conversations; the current caller identity shares it per user.
+The authorized call handle is implemented by [PLAT-369](../integrations/plat-369.md).
+Keep the existing PAT session guard. Decide whether separate connections
+should share a user-level Ask thread or require separate conversations; the
+current caller identity shares it per user.
 
-- [ ] The authorized caller can inspect and answer a pending input from its
-  workflow Ask execution, and the waiting execution receives the answer.
+- [x] The call-scoped workflow poll/reply route exists and checks the caller's
+  user, target and current workflow write access before accepting an answer.
+- [ ] A real suspended workflow Ask resumes with an answer submitted through
+  that external REST or MCP route.
 - [ ] Another user, unauthorized workflow grant, or unrelated call cannot
   use a supplied `wfask-…` ID to inspect or answer a question.
 - [ ] Existing `pat-…` run-session isolation remains covered by tests.
@@ -70,6 +79,7 @@ separate conversations; the current caller identity shares it per user.
 - [ ] A regression covers a real pending question and the external MCP or
   REST route, in addition to the focused prefix-rejection probe.
 
-No fix or deployment has started. Coordinate with
-[PLAT-369](../integrations/plat-369.md) for the common call-scoped reply path;
-keep this reproduced ownership mismatch independently tracked.
+The call-scoped path is merged on main. Deployment and live Ask verification
+are not claimed here. The original direct-session rejection remains recorded
+so future clients do not mistake `run_reply_input` for the workflow Ask reply
+tool.

@@ -1,73 +1,64 @@
 [← Pulse platform issue index](../../pulse_platform_issue_register.md)
 
-# PLAT-369 — External crew/function polling has no complete pending-question and reply route
+# PLAT-369 — Call-scoped pending questions and replies for external functions
 
 | Coordination | Value |
 |---|---|
-| State | Open — code-reviewed implementation gap; not implemented |
-| Date | 2026-09-28 |
-| Priority | P2; prerequisite for bidirectional function/Ask support |
-| Owner | integrations; implementation unassigned |
+| State | Implemented on main in [PR #246](https://github.com/manishiitg/agentworks/pull/246); live external-client verification pending |
+| Date | 2026-09-28; updated 2026-09-29 |
+| Priority | P2; live acceptance remains |
+| Owner | integrations |
 | Related subsystems | crews, workflow functions, human-decisions |
-| Reviewed revision | `ebc37cf87` on main, including the local changes present during review |
+| Reviewed revision | `03e6844cf` merge commit on main |
 
-## Missing behavior
+## What changed
 
-`ask_crew`, `call_crew_function`, and `call_workflow_function` produce a
-pollable call ID. Their external pollers return status, progress, run ID, and
-results, but do not expose structured pending human questions. There is no
-external call-scoped answer operation. A caller can see that work is still
-running without being told that a human answer is needed or how to provide it.
+The original gap was that `ask_crew`, `call_crew_function`, and
+`call_workflow_function` returned a pollable call ID but their pollers did not
+show questions suspending execution. The merged implementation uses a
+server-stamped operation ID on each feedback request. The external
+`get_crew_function_call` and `get_workflow_function_call` responses now include
+`pending_inputs` with request ID, prompt, choices, free-text policy and expiry.
+`reply_crew_function_call` and `reply_workflow_function_call` submit an answer
+through the call ID, without asking the caller to supply a target session ID.
+The same `get_function_call` / `reply_function_call` path is available to
+internal Crew, workflow and private Code callers.
 
-The existing workflow-session `run_status`/`run_reply_input` pair covers a
-different scope. Crew trigger-run IDs are not generally chat-session IDs;
-workflow Ask also has the independently reproduced ownership mismatch in
-[PLAT-367](../human-decisions/plat-367.md).
+The backend validates the current user, target kind and access, required token
+scope or workflow write access, request ownership by operation ID, expiry and
+exact-choice answers. Duplicate and cross-call answers are refused. The
+call-scoped path also bypasses the `wfask-` versus `pat-` session mismatch
+described in [PLAT-367](../human-decisions/plat-367.md); it does not change
+the older session-scoped `run_status` / `run_reply_input` rules.
 
-This ticket records a missing integration capability, not a claim that
-ordinary Ask replies fail. A final free-text clarification followed by a new
-Ask call already supports a conversational exchange. The missing route is
-for questions that suspend active execution.
+Useful code anchors: `addFunctionCallPending` and `submitFunctionCallInput` in
+[external_function_feedback.go](../../../../agent_go/cmd/server/external_function_feedback.go),
+the external routes in [external_crews.go](../../../../agent_go/cmd/server/external_crews.go)
+and [external_workflow_functions.go](../../../../agent_go/cmd/server/external_workflow_functions.go),
+and trusted request lookup in
+[external_feedback.go](../../../../agent_go/cmd/server/virtual-tools/external_feedback.go).
 
-## Code evidence
+## Evidence and remaining acceptance
 
-- [crew_functions.go](../../../../agent_go/cmd/server/crew_functions.go): `snapshot` at 312 has no pending-input projection; `crewTargetRunSessionID` at 820 demonstrates the crew run/session distinction.
-- [external_crews.go](../../../../agent_go/cmd/server/external_crews.go): `externalCrewCallResponse` at 48 returns the snapshot and a generic polling instruction.
-- [external_workflow_functions.go](../../../../agent_go/cmd/server/external_workflow_functions.go): workflow polling uses the same response machinery.
-- [external_tools.go](../../../../agent_go/cmd/server/external_tools.go): exposed external tool catalog.
+Focused tests cover Crew REST polling and replies with two concurrent calls,
+wrong choices, a read-only token and duplicate answers
+(`TestCrewFunctionQuestionIsBoundToCallAndRunScope`). They cover internal
+Crew↔Crew, Crew↔workflow and workflow↔workflow reply tools, and access
+revocation. These tests seed pending requests; they do not run a real target
+turn that calls `ask_user` through an external MCP client.
 
-Verification was static path/catalog inspection. No end-to-end crew Ask
-suspension was exercised against a live model or third-party client.
+- [x] The poller projects currently pending questions from the call's
+  operation ID; repeated polling does not start another call.
+- [x] Request IDs remain distinct across calls and child sessions; invalid,
+  duplicate, expired and foreign replies are refused by the common backend.
+- [x] Crew polling preserves the [PLAT-366](../security-sandbox/plat-366.md)
+  target-kind and current-access boundary.
+- [ ] Exercise a real Crew Ask, typed Crew function, workflow Ask and typed
+  workflow function that suspend on `ask_user`, then answer each through the
+  external REST and MCP routes. Verify the waiter resumes with that answer.
+- [ ] Verify the same flow with a warm coding CLI and a third-party MCP client,
+  including a question that arrives after the first polling wait.
 
-## Proposed implementation and acceptance
-
-Introduce a common internal interaction resolver:
-
-```text
-authenticated call_id → authorized target → actual execution session(s)
-                     → pending request_id → validated answer → existing waiter
-```
-
-Expose pending questions on the applicable pollers and add a call-scoped
-reply tool. Each question should have a stable request ID, prompt, choices,
-free-text policy, expiry, and an explicit reply operation. Determine child
-execution ownership from trusted runtime records, not caller-supplied session IDs.
-
-- [ ] A crew Ask, typed crew function, workflow Ask, and typed workflow
-  function can each expose and answer a question when their execution asks one.
-- [ ] A question arriving after the initial 25-second wait is discoverable
-  through polling without restarting or duplicating the call.
-- [ ] Concurrent child questions remain distinct and answers reach only the
-  intended execution.
-- [ ] Invalid, duplicate, expired, cancelled, and foreign replies are handled
-  consistently by the common backend.
-- [ ] Current user, token scope, target kind, and target access are checked;
-  [PLAT-366](../security-sandbox/plat-366.md) is fixed before reusing the crew poll authorization.
-- [ ] Tests cover actual external REST and MCP dispatch with suspended
-  execution, not only manually constructed snapshots.
-
-The polling backend is the first deliverable. Native MCP elicitation and
-Claude Code Channels can later adapt this same API; neither is necessary to
-validate the common question/reply flow. Unsolicited idle-chat delivery and
-restart recovery are not acceptance requirements here; see
-[PLAT-370](../human-decisions/plat-370.md) for recovery.
+Native MCP elicitation and Claude Code Channels can adapt the call-scoped API
+later; neither is required for this polling/reply route. Restarting while a
+question waits is still [PLAT-370](../human-decisions/plat-370.md).

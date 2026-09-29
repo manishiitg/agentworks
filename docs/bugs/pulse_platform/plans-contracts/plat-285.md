@@ -75,3 +75,6 @@ plan, historical run, schedule or business data is repaired or rewritten.
 
 Ticket identity: prepared locally as PLAT-284, then assigned PLAT-285 before publishing because another agent had already published an unrelated PLAT-284. Earlier local reconciliation events retain their original ticket label.
 
+The separately filed PLAT-290 was a duplicate of this ticket (same report,
+cause, repair, and verification). Its references were redirected here on
+2026-09-29; PLAT-285 is the canonical record.
