@@ -141,3 +141,46 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 		t.Fatalf("removed app still resolves: %+v", cfg.OAuth)
 	}
 }
+
+// The operator command reads Google's downloaded client file from stdin and
+// stores the app sealed, the same as the admin card, without echoing the secret.
+func TestSetMCPAppCommandReadsGoogleClientJSONFromStdin(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	for name, input := range map[string]string{
+		"web":       `{"web":{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd","project_id":"p","redirect_uris":["https://a.example.com/api/oauth/callback"]}}`,
+		"installed": `{"installed":{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd"}}`,
+		"plain":     `{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd"}`,
+	} {
+		app, err := parseMCPAppJSON([]byte(input))
+		if err != nil || app.ClientID != "1.apps.googleusercontent.com" || app.ClientSecret != "GOCSPX-cmd" {
+			t.Fatalf("%s: %+v %v", name, app, err)
+		}
+	}
+	for _, bad := range []string{``, `nope`, `{"web":{}}`, `{"web":{"client_id":"a"}}`} {
+		if _, err := parseMCPAppJSON([]byte(bad)); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+	var out strings.Builder
+	setMCPAppCmd.SetIn(strings.NewReader(`{"web":{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd"}}`))
+	setMCPAppCmd.SetOut(&out)
+	if err := setMCPAppCmd.Flags().Set("key", "google"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setMCPAppCmd.RunE(setMCPAppCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "GOCSPX") || !strings.Contains(out.String(), "1.apps.googleusercontent.com") {
+		t.Fatalf("output = %q", out.String())
+	}
+	app, err := readMCPApp("google")
+	if err != nil || app == nil || app.ClientSecret != "GOCSPX-cmd" || app.UpdatedBy != "operator" {
+		t.Fatalf("stored app = %+v %v", app, err)
+	}
+	path, _ := mcpAppFile("google")
+	if raw, _ := os.ReadFile(path); strings.Contains(string(raw), "GOCSPX") {
+		t.Fatalf("stored in the clear: %s", raw)
+	}
+}

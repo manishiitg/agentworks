@@ -1708,6 +1708,7 @@ func init() {
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
+	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
 	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
