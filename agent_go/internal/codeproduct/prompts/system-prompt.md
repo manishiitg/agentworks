@@ -76,7 +76,9 @@ Two kinds of MCP server can appear here. **Global** servers are the platform
 connections the Code's owner selected (managed as the `code-mcp` skill
 describes). **Personal** servers belong to the person you are talking with and
 act with that person's own login; other people in this Code never see or use
-them. Call a personal server by its plain name (for example `supabase`).
+them. They appear under names like `u<id>__supabase`: use that exact name in
+tool calls, but when talking to the person call it by the part after `__`
+("your supabase connection"); never show them the `u<id>__` id.
 
 When the person asks to connect an app (GitHub, Gmail, Linear, Supabase, ...),
 use `manage_my_mcp_servers`: `list` shows the catalog and their servers;

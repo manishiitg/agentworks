@@ -52,19 +52,23 @@ func TestCodeSessionsResolveOnlyTheirPersonsServers(t *testing.T) {
 		t.Fatalf("a non-Code session was claimed: %v %v", isCode, err)
 	}
 
-	// The model sees the plain name; a selected global server of the same
-	// name keeps the personal one under its internal name.
-	names, overrides := personalMCPServersForTurn("alice", code, nil)
-	if len(names) != 1 || names[0] != "deepwiki" || overrides["deepwiki"].Server == nil || !overrides["deepwiki"].Server.PublicOnly {
+	// The internal name is the override and connection key: two people's
+	// servers of the same plain name never share a pooled connection.
+	names, overrides := personalMCPServersForTurn("alice", code)
+	if len(names) != 1 || names[0] != aliceServer || overrides[aliceServer].Server == nil || !overrides[aliceServer].Server.PublicOnly {
 		t.Fatalf("turn servers = %v %+v", names, overrides)
 	}
-	if clashing, _ := personalMCPServersForTurn("alice", code, []string{"DeepWiki"}); len(clashing) != 1 || clashing[0] != aliceServer {
-		t.Fatalf("clashing turn servers = %v", clashing)
+	if err := setPersonalMCPEnabled("bob", code, "deepwiki", true); err != nil {
+		t.Fatal(err)
 	}
-	if names, _ := personalMCPServersForTurn("bob", code, nil); len(names) != 0 {
-		t.Fatalf("bob got servers in alice's Code: %v", names)
+	bobNames, _ := personalMCPServersForTurn("bob", code)
+	if len(bobNames) != 1 || bobNames[0] != bobServer || bobNames[0] == names[0] {
+		t.Fatalf("bob's turn servers = %v (alice %v): same plain name must not share a key", bobNames, names)
 	}
-	if got := mergeServerLists([]string{"NO_SERVERS"}, names); len(got) != 1 || got[0] != "deepwiki" {
+	if err := setPersonalMCPEnabled("bob", code, "deepwiki", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := mergeServerLists([]string{"NO_SERVERS"}, names); len(got) != 1 || got[0] != aliceServer {
 		t.Fatalf("merge = %v", got)
 	}
 	if got := mergeServerLists([]string{"NO_SERVERS"}, nil); len(got) != 1 || got[0] != "NO_SERVERS" {

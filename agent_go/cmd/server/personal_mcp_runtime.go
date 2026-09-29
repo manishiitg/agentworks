@@ -20,14 +20,15 @@ import (
 // session is decided by resolveCodeMCPServer, which never falls back to the
 // platform catalog by name.
 
-// personalMCPServersForTurn returns the names and overrides for the person's
-// servers switched on in codeRoot. The model sees a server's plain name
-// ("supabase"); the bridge maps it back to this person's server
-// (resolveCodeMCPServer). A plain name that a selected global server already
-// uses keeps the internal name, so the two never shadow each other. A server
-// that cannot be built (a missing personal secret, say) is skipped and
-// logged, not fatal.
-func personalMCPServersForTurn(person, codeRoot string, selected []string) ([]string, mcpclient.RuntimeOverrides) {
+// personalMCPServersForTurn returns the internal names and overrides for the
+// person's servers switched on in codeRoot. The internal name u<id>__<name>
+// is the override, connection-pool and tool-cache key: turn-start
+// connections are pooled per server name under the shared "global" session,
+// so a plain name would let two people's "supabase" share one client and
+// login. Only what the model reads shows the plain name (the bridge maps it
+// back, resolveCodeMCPServer). A server that cannot be built (a missing
+// personal secret, say) is skipped and logged, not fatal.
+func personalMCPServersForTurn(person, codeRoot string) ([]string, mcpclient.RuntimeOverrides) {
 	enabled, err := personalMCPEnabled(person, codeRoot)
 	if err != nil || len(enabled) == 0 {
 		if err != nil {
@@ -44,12 +45,8 @@ func personalMCPServersForTurn(person, codeRoot string, selected []string) ([]st
 			continue
 		}
 		config := cfg
-		exposed := name
-		if serverListHasName(selected, name) {
-			exposed = internal
-		}
-		names = append(names, exposed)
-		overrides[exposed] = mcpclient.RuntimeConfigOverride{Server: &config}
+		names = append(names, internal)
+		overrides[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
 	}
 	return names, overrides
 }

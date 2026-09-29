@@ -5741,7 +5741,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot, selectedServers)
+			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot)
 			selectedServers = mergeServerLists(selectedServers, personalNames)
 			if len(personalOverrides) > 0 {
 				if agentConfig.RuntimeOverrides == nil {
