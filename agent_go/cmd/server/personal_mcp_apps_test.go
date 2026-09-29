@@ -306,3 +306,31 @@ func TestSetMCPAppCommandRefusesRootAndUnknownKeys(t *testing.T) {
 		t.Fatalf("the right key failed: %v", err)
 	}
 }
+
+// The admin's shared (platform) connect uses the deployment's sign-in app
+// too: no client-ID prompt once the app exists.
+func TestSharedConnectUsesSignInApp(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	api, _ := newCodePrivacyFixture(t)
+	withPersonalMCPRoot(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	catalog := `{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`
+	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api.mcpConfigPath = catalogPath
+	api.logger = loggerv2.NewNoop()
+
+	_, discovery, err := api.beginOAuthFlow("admin", "", "GoogleGmail", "https://example.com/api/oauth/callback", "", "", nil)
+	if err != nil || discovery == nil || discovery.Status != "needs_client_id" {
+		t.Fatalf("without an app the shared connect asks for a client: %+v %v", discovery, err)
+	}
+	if err := writeMCPApp("google", mcpApp{ClientID: "app-id", ClientSecret: "app-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	start, discovery, err := api.beginOAuthFlow("admin", "", "GoogleGmail", "https://example.com/api/oauth/callback", "", "", nil)
+	if err != nil || discovery != nil || start == nil || !strings.Contains(start.AuthURL, "client_id=app-id") {
+		t.Fatalf("with the app the shared connect goes straight to sign-in: start=%+v discovery=%+v err=%v", start, discovery, err)
+	}
+}
