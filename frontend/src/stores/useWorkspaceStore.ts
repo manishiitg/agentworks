@@ -36,15 +36,6 @@ interface WorkspaceState {
   binaryFileData: ArrayBuffer | null
   setBinaryFileData: (data: ArrayBuffer | null) => void
   
-  // Edit mode state
-  isEditMode: boolean
-  setIsEditMode: (isEdit: boolean) => void
-  editedContent: string
-  setEditedContent: (content: string) => void
-  isSaving: boolean
-  setIsSaving: (saving: boolean) => void
-  getHasUnsavedChanges: () => boolean
-  saveFile: (commitMessage?: string) => Promise<{success: boolean; error?: string}>
   
   // Upload Dialog
   uploadDialog: {
@@ -179,9 +170,6 @@ const initialState = {
   loadingFileContent: false,
   showFileContent: false,
   binaryFileData: null,
-  isEditMode: false,
-  editedContent: '',
-  isSaving: false,
   uploadDialog: {
     isOpen: false,
     isLoading: false,
@@ -332,53 +320,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setShowFileContent: (show) => set({ showFileContent: show }),
       setBinaryFileData: (data) => set({ binaryFileData: data }),
       
-      // Edit mode state
-      setIsEditMode: (isEdit) => set({ isEditMode: isEdit }),
-      setEditedContent: (content) => set({ editedContent: content }),
-      setIsSaving: (saving) => set({ isSaving: saving }),
-      getHasUnsavedChanges: () => {
-        const state = get()
-        return state.editedContent !== state.fileContent && state.isEditMode
-      },
-      saveFile: async (commitMessage?: string) => {
-        const state = get()
-        if (!state.selectedFile) {
-          return { success: false, error: 'No file selected' }
-        }
-        
-        set({ isSaving: true })
-        try {
-          const response = await agentApi.updatePlannerFile(
-            state.selectedFile.path,
-            state.editedContent,
-            commitMessage
-          )
-          
-          if (response.success) {
-            set({
-              fileContent: state.editedContent,
-              editedContent: '',
-              isEditMode: false,
-              isSaving: false
-            })
-            // Refresh file list after a manual save — bypass cache so the tree reflects
-            // any filesystem-level changes immediately.
-            const activeFolder = get().activeFolder
-            await get().fetchFiles(
-              activeFolder ?? undefined,
-              activeFolder ? { force: true } : { force: true, maxDepth: 2 }
-            )
-            return { success: true }
-          } else {
-            set({ isSaving: false })
-            return { success: false, error: response.message || 'Failed to save file' }
-          }
-        } catch (error) {
-          set({ isSaving: false })
-          const errorMessage = error instanceof Error ? error.message : 'Failed to save file'
-          return { success: false, error: errorMessage }
-        }
-      },
       
       // Upload Dialog
       setUploadDialog: (dialog) => set((state) => ({

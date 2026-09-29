@@ -436,7 +436,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
                     <FileEditor
                       value={fileContent}
                       filepath={selectedFile.path}
-                      readOnly={true}
                       height="100%"
                     />
                   </Suspense>

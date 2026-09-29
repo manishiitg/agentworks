@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
-import type { OnChange, OnMount } from '@monaco-editor/react'
+import type { OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -40,8 +40,6 @@ const formatPythonCode = (value: string): string => {
 interface FileEditorProps {
   value: string
   filepath: string
-  readOnly?: boolean
-  onChange?: (value: string) => void
   height?: string
   onMount?: (editor: editor.IStandaloneCodeEditor) => void
 }
@@ -49,8 +47,6 @@ interface FileEditorProps {
 export const FileEditor: React.FC<FileEditorProps> = ({
   value,
   filepath,
-  readOnly = false,
-  onChange,
   height = '100%',
   onMount
 }) => {
@@ -91,7 +87,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
   }
 
   const language = getLanguage(filepath)
-  const displayValue = readOnly && language === 'python'
+  const displayValue = language === 'python'
     ? formatPythonCode(value)
     : value
 
@@ -135,18 +131,12 @@ export const FileEditor: React.FC<FileEditorProps> = ({
       folding: true,
       scrollBeyondLastLine: false,
       automaticLayout: true,
-      formatOnPaste: !readOnly,
-      formatOnType: !readOnly
+      formatOnPaste: false,
+      formatOnType: false
     })
 
     if (onMount) {
       onMount(editor)
-    }
-  }
-
-  const handleChange: OnChange = (value) => {
-    if (onChange && value !== undefined) {
-      onChange(value)
     }
   }
 
@@ -192,18 +182,17 @@ export const FileEditor: React.FC<FileEditorProps> = ({
         language={language}
         value={displayValue}
         theme={getMonacoTheme(theme)}
-        onChange={handleChange}
         onMount={handleEditorDidMount}
         options={{
-          readOnly,
+          readOnly: true,
           minimap: { enabled: true },
           wordWrap: 'on',
           lineNumbers: 'on',
           folding: true,
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          formatOnPaste: !readOnly,
-          formatOnType: !readOnly,
+          formatOnPaste: false,
+          formatOnType: false,
           fontSize: 14,
           fontFamily: 'Menlo, Monaco, "Courier New", monospace',
           tabSize: 2,
