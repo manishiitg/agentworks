@@ -62,8 +62,9 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   hasIdentity: false,
   hasTemplates: false,
   listsSharedProjects: true,
-  // Code stays on MCP-only agent tools until native reads are sandboxed.
-  hasNativeAgentToolsSetting: false,
+  // Native agent tools are on by default (owner decision 2026-09-28/29);
+  // the owner turns them off with the same switch as a Crew.
+  hasNativeAgentToolsSetting: true,
   defaultView: 'files',
   preferenceNamespace: 'code',
 }

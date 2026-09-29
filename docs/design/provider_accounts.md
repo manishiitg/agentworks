@@ -262,8 +262,10 @@ The owner decided: "native tools, keep it on by default always now".
 - Native agent tools (hybrid) are the default wherever nothing chose
   otherwise: workflow chats, Crews and Code (through their "Native agent
   tools" switch, on unless turned off). Items that explicitly chose
-  AgentWorks-only tools keep that choice. Step agents, schedules, webhooks,
-  bots and read-only users are unchanged.
+  AgentWorks-only tools keep that choice. *(Widened 2026-09-29, owner:
+  "only off for workflow steps".)* On for every turn type — interactive
+  chats, schedules, webhooks and triggers, Pulse, Slack and WhatsApp, and
+  plain chats — except workflow step agents and read-only principals.
 - The forced MCP-only for turns on someone else's shared account is
   removed; such turns keep the configured mode.
 - **Known exposure until the coding CLIs run under Landlock (PLAT-364
