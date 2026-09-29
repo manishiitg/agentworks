@@ -1,6 +1,6 @@
 # Project instruction files, skills and the reader role
 
-Status: built and tested on branches 2026-09-30 (not deployed). Ticket:
+Status: merged to `main` 2026-09-30 (not deployed). Ticket:
 [PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md). Supersedes the
 per-adapter "write CLAUDE.md/AGENTS.md, delete on cleanup" behavior that
 [PLAT-296](../bugs/pulse_platform/security-sandbox/plat-296.md) and
@@ -43,7 +43,7 @@ describe for shared folders.
    only when its content is recognisably ours.
 
 Per CLI: Claude → `AGENTS.md` block; Codex, Muse → `AGENTS.md` block; Pi →
-`.pi/APPEND_SYSTEM.md` block; Cursor → `.cursor/rules/mlp-system.mdc` (owned lease);
+`.pi/APPEND_SYSTEM.md` block; Cursor → `.cursor/rules/mlp-system.mdc` and its `mcp.json`, `cli.json`, `hooks.json` and hook script are owned leases (counted, always restoring; a project's own `.cursor` files are put back), and the temporary `.git` marker is shared and removed only by the last session;
 agy → no prompt file (hooks are counted per workspace). Codex can also take the
 prompt through `-c model_instructions_file` and Claude through
 `--system-prompt-file`, but `mcpagent` turns on project-instruction-only for Claude,

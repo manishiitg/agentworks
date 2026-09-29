@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | built and tested locally on branches, **not merged, not deployed** (2026-09-30) |
+| State | merged to `main` in all three repos (2026-09-30), **not deployed** |
 | Date | 2026-09-29 |
 | Owner | security-sandbox |
 | Related | [PLAT-296](plat-296.md) (private folders for workflow Builder/Run), [PLAT-364](plat-364.md) (CLI confinement), [design: project instruction files](../../../design/project_instruction_files.md), [plan: workflows on the shared folder](../../../design/workflow_shared_folder_plan.md) |
@@ -66,6 +66,19 @@ shared instruction file could not hold both.
   "Read-only file system" gets the same message appended to stderr
   (`withReadOnlyShellHint`). Hidden tools stay hidden from the catalog.
 
+## Cursor (2026-09-30)
+
+Cursor wrote several files into `.cursor/` (`mcp.json`, `cli.json`, `hooks.json`, the
+hook script) with restore off by default, deleted a project's `cli.json` at startup,
+and created a temporary `.git` marker that the structured path removed
+unconditionally. Now every config write is a counted, always-restoring lease
+(`projectfile.AcquireOwnedLease*`): a project's own file is restored byte-for-byte by
+the last session and overlapping sessions keep each other's; a project's `cli.json` is
+never deleted (a session with bridge tools replaces it with its allowlist and it is
+restored afterwards); the `.git` marker is shared by sessions, removed by the last one,
+and only if it is still the directory we created (a real repository is never touched).
+Provider commit `667aeec`. Tests: `cursorcli_project_files_safety_test.go`.
+
 ## Evidence
 
 Unit tests in all three repos. Real CLIs: Claude 2.1.284 and Codex 0.159 both read
@@ -100,12 +113,10 @@ local instances (real Claude and Codex through `/api/agent-profiles/*/query`):
 
 ## Not done
 
-- Cursor still removes a project's `.cursor/cli.json` at startup and rewrites
-  `hooks.json` without restoring.
 - agy refuses a second session with a different tool mode in one folder.
 - Skill cleanup is not session-counted (needed before workflows share a folder).
 - Old unmarked skill folders of a provider not in use stay as clutter.
-- Merge order: provider, then bump the `mcpagent` pin, then this repo.
+- Deploy: nothing is deployed. `mcpagent` still pins provider `68688ec` (the Cursor fix is in `667aeec`; this repo pins the newer one and builds against local copies). The `mcpagent` checkout has another session's uncommitted work, so its pin bump was left for that session to land.
 
 ## Pre-existing failures seen (not from this change)
 
