@@ -26,7 +26,7 @@ const products: Array<{
   description: string
   icon: ProductMarkComponent
 }> = [
-  { id: 'agentworks', label: 'AgentWorks', description: 'Set a goal, give the agents a metric, and watch them hit it', icon: RunloopMark },
+  { id: 'agentworks', label: 'Goals', description: 'Set a goal, give the agents a metric, and watch them hit it', icon: RunloopMark },
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
   { id: 'dominion', label: 'Dominion', description: 'Paper-trading watchlist and portfolio', icon: DominionMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },

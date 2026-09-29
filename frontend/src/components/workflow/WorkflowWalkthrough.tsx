@@ -13,13 +13,13 @@ type WalkthroughStep = {
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
   selector: '[aria-label="Switch product"]',
   title: 'Choose a workspace',
-  body: 'Use AgentWorks for repeatable goals with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
+  body: 'Use Goals for repeatable work with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
 }
 
 const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
-    title: 'What is AgentWorks for?',
-    body: 'AgentWorks is for repeatable goals with a measurable result. Tell agents the outcome and metric; they build and run an automation, show progress, and ask for decisions when needed.',
+    title: 'What are Goals for?',
+    body: 'Goals is for repeatable work with a measurable result. Tell agents the outcome and metric; they build and run an automation, show progress, and ask for decisions when needed.',
     example: 'Review new support requests daily and keep urgent response time under one hour.',
   },
   PRODUCT_SWITCHER_STEP,
@@ -31,7 +31,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-activity"]',
     title: 'Activity',
-    body: 'Use this button to get back to updates and pending decisions from anywhere in AgentWorks.',
+    body: 'Use this button to get back to updates and pending decisions from anywhere in Goals.',
   },
   {
     selector: '[data-tour="activity-feed"]',
@@ -58,7 +58,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
 const AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     title: 'From goal to running automation',
-    body: 'This workspace is where AgentWorks turns a measurable goal into work its agents can run. Describe the outcome in chat, review the plan, and use the dashboard to see the result.',
+    body: 'This workspace turns a measurable goal into work agents can run. Describe the outcome in chat, review the plan, and use the dashboard to see the result.',
     example: 'Check new support requests each morning and flag urgent ones within an hour.',
   },
   {
@@ -115,8 +115,8 @@ const AUTOMATION_STEPS: WalkthroughStep[] = [
 
 const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
   {
-    title: 'Choose a goal for AgentWorks',
-    body: 'AgentWorks uses automations to pursue repeatable, measurable goals. Open one to continue, or create one by describing the outcome you want and how you will measure success.',
+    title: 'Choose a goal',
+    body: 'Goals uses automations to pursue repeatable, measurable outcomes. Open one to continue, or create one by describing the outcome you want and how you will measure success.',
     example: 'Qualify incoming leads each day and report how many are ready for follow-up.',
   },
   PRODUCT_SWITCHER_STEP,
@@ -223,9 +223,9 @@ const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
-  overview: { product: 'AgentWorks', section: 'Getting started', aria: 'AgentWorks getting started walkthrough' },
-  'empty-automation': { product: 'AgentWorks', section: 'Choose an automation', aria: 'Empty automation walkthrough' },
-  automation: { product: 'AgentWorks', section: 'Automation', aria: 'Automation workspace walkthrough' },
+  overview: { product: 'Goals', section: 'Getting started', aria: 'Goals getting started walkthrough' },
+  'empty-automation': { product: 'Goals', section: 'Choose an automation', aria: 'Empty automation walkthrough' },
+  automation: { product: 'Goals', section: 'Automation', aria: 'Automation workspace walkthrough' },
   'empty-crew': { product: 'Crew', section: 'Getting started', aria: 'Empty Crew walkthrough' },
   crew: { product: 'Crew', section: 'Workspace', aria: 'Crew workspace walkthrough' },
 }
@@ -436,7 +436,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
             </button>
           </div>
           <div className="mt-2 flex items-center justify-between gap-3">
-            <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore AgentWorks'}</h3>
+            <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore Goals'}</h3>
             {stepTotal > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stepNumber} of {stepTotal}</span>}
           </div>
           <p id="workflow-walkthrough-description" className="mt-2 text-sm leading-5 text-muted-foreground">

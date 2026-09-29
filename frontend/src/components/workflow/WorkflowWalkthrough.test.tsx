@@ -65,8 +65,8 @@ describe('Context walkthroughs', () => {
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
       expect(dialog.textContent).toContain('1 of 6')
-      expect(dialog.textContent).toContain('What is AgentWorks for?')
-      expect(dialog.textContent).toContain('repeatable goals with a measurable result')
+      expect(dialog.textContent).toContain('What are Goals for?')
+      expect(dialog.textContent).toContain('repeatable work with a measurable result')
       expect(dialog.textContent).toContain('Example:')
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
@@ -92,7 +92,7 @@ describe('Context walkthroughs', () => {
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Choose a workspace')
-      expect(dialog.textContent).toContain('repeatable goals with a success metric')
+      expect(dialog.textContent).toContain('repeatable work with a success metric')
       expect(dialog.textContent).toContain('specialist teammate that remembers an ongoing project')
     } finally {
       await act(async () => root.unmount())
@@ -107,7 +107,7 @@ describe('Context walkthroughs', () => {
     try {
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
-      expect(dialog.textContent).toContain('What is AgentWorks for?')
+      expect(dialog.textContent).toContain('What are Goals for?')
       expect(dialog.textContent).toContain('1 of 1')
       expect(dialog.querySelector('[data-testid="workflow-walkthrough-done"]')).not.toBeNull()
       expect(dialog.querySelector('[data-testid="workflow-walkthrough-next"]')).toBeNull()
@@ -170,7 +170,7 @@ describe('Context walkthroughs', () => {
   })
 
   it.each([
-    { surface: 'empty-automation' as const, target: 'automation-empty-state', intro: 'Choose a goal for AgentWorks', title: 'Start with an automation', label: 'Empty automation walkthrough' },
+    { surface: 'empty-automation' as const, target: 'automation-empty-state', intro: 'Choose a goal', title: 'Start with an automation', label: 'Empty automation walkthrough' },
     { surface: 'empty-crew' as const, target: 'crew-empty-state', intro: 'What is Crew for?', title: 'Your Crew starts here', label: 'Empty Crew walkthrough' },
     { surface: 'crew' as const, target: 'crew-selector', intro: 'A teammate that remembers this project', title: 'Current Crew member', label: 'Crew workspace walkthrough' },
   ])('explains $surface before showing its controls', async ({ surface, target, intro, title, label }) => {

@@ -31,7 +31,7 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
 })
 
 const PRODUCT_LABELS: Record<string, string> = {
-  agentworks: 'AgentWorks',
+  agentworks: 'Goals',
   'video-studio': 'Video Studio',
   finance: 'Finance',
   dominion: 'Dominion',
