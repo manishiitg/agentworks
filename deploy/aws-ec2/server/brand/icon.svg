@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="rts-mark" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#215668"/>
+      <stop offset="0.55" stop-color="#102A4A"/>
+      <stop offset="1" stop-color="#080E1F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="url(#rts-mark)" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <text x="32" y="41" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="23" font-weight="700" letter-spacing="0.5" fill="#FFFFFF">RTS</text>
+</svg>
