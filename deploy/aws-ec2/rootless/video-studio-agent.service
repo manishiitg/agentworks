@@ -21,6 +21,9 @@ Environment=STATIC_DIR=%h/video-studio/current/frontend
 Environment=PUBLIC_URL=https://video.realtrainingsys.com
 # RTS never emails invitations (it shares the Supabase project); admins copy them.
 Environment=USER_INVITE_EMAILS=off
+# PLAT-364: coding CLIs run under the Landlock launcher, confined to their
+# folder. Rolled out to named users first; "on" enables it for everyone.
+Environment=AGENTWORKS_CLI_LANDLOCK=users:manish.prakash@realtrainingsys.com
 # %h/.config is root-owned on this host (the bootstrap wrote the systemd user
 # units there), so tools that keep state under XDG config -- cursor-agent
 # does -- get a writable location instead of EACCES.
