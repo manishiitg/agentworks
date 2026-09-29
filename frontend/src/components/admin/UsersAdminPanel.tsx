@@ -9,6 +9,8 @@ import { Badge } from '../ui/badge'
 import { Input } from '../ui/Input'
 import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
+import { enabledProductSurfaces } from '../../products/productSurfaceConfig'
+import { selectableProducts } from './selectableProducts'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -32,10 +34,12 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
 
 const PRODUCT_LABELS: Record<string, string> = {
   agentworks: 'Goals',
+  work: 'Crew',
+  code: 'Code',
   'video-studio': 'Video Studio',
   finance: 'Finance',
   dominion: 'Dominion',
-  code: 'Code',
+  sparkquill: 'SparkQuill',
 }
 const productLabel = (id: string) => PRODUCT_LABELS[id] ?? id
 
@@ -69,7 +73,7 @@ const UsersAdminPanel: React.FC = () => {
     try {
       const resp = await authApi.listAdminUsers()
       setUsers(resp.users || [])
-      setProducts(resp.products || [])
+      setProducts(selectableProducts(resp.products || [], enabledProductSurfaces()))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
