@@ -8,7 +8,7 @@ import { FileTypeIcon } from './fileTypeIcon'
 export function OpenEditors() {
   const openTabs = useWorkspaceStore(state => state.openTabs)
   const activePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? '' : '')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   return (
     <div className="border-b border-border">
       <button

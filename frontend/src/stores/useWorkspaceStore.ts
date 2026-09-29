@@ -27,6 +27,8 @@ interface WorkspaceState {
   // Recently opened files, shown as viewer tabs (most recent last).
   openTabs: {name: string, path: string}[]
   closeTab: (path: string) => void
+  /** Drop tabs (and the open file) that belong to another workspace. */
+  pruneOpenTabs: (workspacePath: string) => void
   fileContent: string
   setFileContent: (content: string) => void
   loadingFileContent: boolean
@@ -315,6 +317,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return { selectedFile: file, openTabs: [...state.openTabs, file].slice(-MAX_OPEN_TABS) }
       }),
       closeTab: (path) => set(state => ({ openTabs: state.openTabs.filter(tab => tab.path !== path) })),
+      pruneOpenTabs: (workspacePath) => set(state => {
+        const root = workspacePath.replace(/^\/+|\/+$/g, '')
+        const inside = (path: string) => { const clean = path.replace(/^\/+/, ''); return clean === root || clean.startsWith(`${root}/`) }
+        const openTabs = state.openTabs.filter(tab => inside(tab.path))
+        const keepsFile = !state.selectedFile || inside(state.selectedFile.path)
+        if (openTabs.length === state.openTabs.length && keepsFile) return {}
+        return keepsFile
+          ? { openTabs }
+          : { openTabs, selectedFile: null, showFileContent: false, fileContent: '', binaryFileData: null }
+      }),
       setFileContent: (content) => set({ fileContent: content }),
       setLoadingFileContent: (loading) => set({ loadingFileContent: loading }),
       setShowFileContent: (show) => set({ showFileContent: show }),

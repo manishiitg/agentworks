@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../utils/openWorkspaceFile', () => ({ openWorkspaceFile: vi.fn() }))
 vi.mock('../services/api', () => ({ agentApi: { getPlannerFileContent: vi.fn(async () => ({ data: { content: 'line one\nline two' } })) } }))
 vi.mock('../stores/useWorkspaceStore', () => {
-  const state = { showFileContent: false, files: [], selectedFile: null }
+  const state = { showFileContent: false, files: [], selectedFile: null, pruneOpenTabs: () => undefined, scrollToFile: async () => undefined }
   return { useWorkspaceStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), { getState: () => state }) }
 })
 vi.mock('./Workspace', () => ({ default: () => <div>tree</div> }))

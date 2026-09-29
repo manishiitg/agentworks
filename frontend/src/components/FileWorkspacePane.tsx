@@ -76,6 +76,12 @@ export function FileWorkspacePane({
     const timer = window.setTimeout(() => { void useWorkspaceGitStore.getState().refresh(workspacePath) }, 1200)
     return () => window.clearTimeout(timer)
   }, [files, workspacePath])
+  // Tabs belong to one workspace: switching projects must not carry the last one's files along.
+  useEffect(() => { if (workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath) }, [workspacePath])
+  // Follow the open file in the tree (VS Code's auto-reveal): expand its folders and scroll to it.
+  useEffect(() => {
+    if (showFileContent && selectedPath) void useWorkspaceStore.getState().scrollToFile(selectedPath)
+  }, [showFileContent, selectedPath])
   // Opening a file from the tree replaces any diff or history panel.
   useEffect(() => { useWorkspaceGitStore.getState().openPanel(null) }, [selectedPath])
   useEffect(() => { if (!hasRepos) setChangesOpen(false) }, [hasRepos])
