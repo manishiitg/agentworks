@@ -378,7 +378,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         <FileTabs />
         <WorkspaceViewHeader
           icon={FileText}
-          helpTopic="File"
+          showWalkthrough={false}
           title={selectedFile?.path ? (
             <span className="inline-flex max-w-full items-center gap-1.5">
               <button

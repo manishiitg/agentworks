@@ -108,6 +108,9 @@ export default function Workspace({
   // Get mode-specific file context and handlers
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const authUser = useAuthStore(state => state.user)
+  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
+  // The managed-files eye (product.json, .git, node_modules) is for admins.
+  const canShowManagedFiles = !isMultiUserMode || authUser?.is_admin === true
   const currentUserFolder = `_users/${authUser?.id || 'default'}`
   const showWorkflowsOverview = useAppStore(state => state.showWorkflowsOverview)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
@@ -1823,7 +1826,7 @@ export default function Workspace({
         <WorkspaceViewHeader
           icon={Files}
           title={title}
-          helpTopic="Files"
+          showWalkthrough={false}
           context={isSelectionMode && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1884,7 +1887,7 @@ export default function Workspace({
               </>
             )}
 
-              {hideManagedEntriesByDefault && !isSelectionMode && (
+              {hideManagedEntriesByDefault && canShowManagedFiles && !isSelectionMode && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button

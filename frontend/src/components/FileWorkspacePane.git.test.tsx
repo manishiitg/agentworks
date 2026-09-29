@@ -12,7 +12,11 @@ vi.mock('./Workspace', () => ({ default: () => <div>tree</div> }))
 vi.mock('./FileContentViewer', () => ({ FileContentViewerBody: () => <div>viewer</div> }))
 vi.mock('../services/workspaceGit', () => ({
   workspaceGitApi: {
-    status: vi.fn(async () => [{ root: 'app', branch: 'main', ahead: 2, behind: 0, upstream: 'origin/main', files: [{ path: 'a.ts', status: 'modified' }] }]),
+    status: vi.fn(async () => [{ root: 'app', branch: 'main', ahead: 2, behind: 0, upstream: 'origin/main', files: [
+      { path: 'a.ts', status: 'modified', worktree_status: 'modified' },
+      { path: 'staged.ts', status: 'added', staged: true, index_status: 'added' },
+    ] }]),
+    act: vi.fn(async () => null),
     diff: vi.fn(async () => ({ diff: '', truncated: false })),
     log: vi.fn(async () => []),
     show: vi.fn(async () => ({ diff: '', truncated: false })),
@@ -34,11 +38,29 @@ describe('FileWorkspacePane git bar', () => {
       await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" />))
       await act(async () => { await Promise.resolve() })
       expect(host.textContent).toContain('main')
-      expect(host.textContent).toContain('Changes (1)')
+      expect(host.textContent).toContain('Source Control')
       // The Changes toggle swaps the tree for the changed-file list.
-      const button = Array.from(host.querySelectorAll('button')).find(item => item.textContent?.startsWith('Changes'))!
+      const button = Array.from(host.querySelectorAll('button')).find(item => item.textContent?.startsWith('Source Control'))!
       await act(async () => button.click())
-      expect(host.querySelector('[aria-label="Changes"]')?.textContent).toContain('a.ts')
+      const view = host.querySelector('[aria-label="Source control"]')!
+      expect(view.textContent).toContain('Staged Changes')
+      expect(view.textContent).toContain('staged.ts')
+      expect(view.textContent).toContain('a.ts')
+      expect(view.textContent).toContain('Commit 1 staged')
+
+      // Commit needs a message; then it sends the commit action and refreshes.
+      const { workspaceGitApi } = await import('../services/workspaceGit')
+      const commitButton = Array.from(view.querySelectorAll('button')).find(item => item.textContent?.startsWith('Commit 1 staged'))!
+      expect(commitButton.hasAttribute('disabled')).toBe(true)
+      const box = view.querySelector('textarea')!
+      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
+      await act(async () => { setValue.call(box, 'add staged'); box.dispatchEvent(new Event('input', { bubbles: true })) })
+      expect(commitButton.hasAttribute('disabled')).toBe(false)
+      await act(async () => commitButton.click())
+      expect(workspaceGitApi.act).toHaveBeenCalledWith('Chats/Code/projects/p1', 'app', { op: 'commit', message: 'add staged', all: false })
+      // Stage all sends the stage action for the whole repo.
+      await act(async () => (view.querySelector('button[aria-label="Stage all"]') as HTMLButtonElement).click())
+      expect(workspaceGitApi.act).toHaveBeenCalledWith('Chats/Code/projects/p1', 'app', { op: 'stage', all: true })
     } finally {
       await act(async () => root.unmount())
       host.remove()

@@ -51,6 +51,11 @@ type workspaceGitFile struct {
 	// Status is one of modified, added, deleted, renamed, untracked, conflict.
 	Status string `json:"status"`
 	Staged bool   `json:"staged,omitempty"`
+	// IndexStatus is the change staged for the next commit ("" when none) and
+	// WorktreeStatus the change not yet staged ("" when none, "untracked" for
+	// a new file). A file can have both.
+	IndexStatus    string `json:"index_status,omitempty"`
+	WorktreeStatus string `json:"worktree_status,omitempty"`
 }
 
 type workspaceGitRepo struct {
@@ -76,20 +81,29 @@ type workspaceGitCommit struct {
 // workspaceGitDocsRoot is the workspace docs directory on this host.
 var workspaceGitDocsRoot = func() string { return strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH")) }
 
-// workspaceGitPhysicalPath maps a workspace path the caller may read to its
-// folder on disk. Per-user logical roots (Chats/...) resolve under the caller.
-func workspaceGitPhysicalPath(r *http.Request, raw string) (string, bool) {
+// workspaceGitCanonicalPath is the workspace path with per-user logical roots
+// (Chats/...) resolved under the caller: "_users/<id>/Chats/...".
+func workspaceGitCanonicalPath(r *http.Request, raw string) (string, bool) {
 	clean, ok := cleanWorkspaceReadPath(raw, true)
 	if !ok {
 		return "", false
 	}
-	segments := strings.Split(clean, "/")
-	if workspaceLogicalPerUserRoots[segments[0]] {
+	if workspaceLogicalPerUserRoots[strings.Split(clean, "/")[0]] {
 		owner := sanitizeUserIDForPath(publicWorkspaceUserID(r))
 		if owner == "" {
 			return "", false
 		}
 		clean = path.Join("_users", owner, clean)
+	}
+	return clean, true
+}
+
+// workspaceGitPhysicalPath maps a workspace path the caller may read to its
+// folder on disk.
+func workspaceGitPhysicalPath(r *http.Request, raw string) (string, bool) {
+	clean, ok := workspaceGitCanonicalPath(r, raw)
+	if !ok {
+		return "", false
 	}
 	root := workspaceGitDocsRoot()
 	if root == "" {
@@ -247,10 +261,10 @@ func parseWorkspaceGitStatus(out []byte) workspaceGitRepo {
 		case strings.HasPrefix(line, "u "):
 			parts := strings.SplitN(line, " ", 11)
 			if len(parts) == 11 {
-				repo.Files = append(repo.Files, workspaceGitFile{Path: parts[10], Status: "conflict"})
+				repo.Files = append(repo.Files, workspaceGitFile{Path: parts[10], Status: "conflict", WorktreeStatus: "conflict"})
 			}
 		case strings.HasPrefix(line, "? "):
-			repo.Files = append(repo.Files, workspaceGitFile{Path: strings.TrimPrefix(line, "? "), Status: "untracked"})
+			repo.Files = append(repo.Files, workspaceGitFile{Path: strings.TrimPrefix(line, "? "), Status: "untracked", WorktreeStatus: "untracked"})
 		}
 		if len(repo.Files) >= workspaceGitMaxFiles {
 			repo.Truncated = true
@@ -260,26 +274,37 @@ func parseWorkspaceGitStatus(out []byte) workspaceGitRepo {
 	return repo
 }
 
+func workspaceGitCodeStatus(code byte) string {
+	switch code {
+	case 'A':
+		return "added"
+	case 'D':
+		return "deleted"
+	case 'R', 'C':
+		return "renamed"
+	case 'U':
+		return "conflict"
+	default:
+		return "modified"
+	}
+}
+
 func workspaceGitFileFor(xy, p string) workspaceGitFile {
 	file := workspaceGitFile{Path: p}
 	x, y := byte('.'), byte('.')
 	if len(xy) == 2 {
 		x, y = xy[0], xy[1]
 	}
-	file.Staged = x != '.' && x != '?'
-	code := y
-	if code == '.' {
-		code = x
+	if x != '.' && x != '?' {
+		file.IndexStatus = workspaceGitCodeStatus(x)
+		file.Staged = true
 	}
-	switch code {
-	case 'A':
-		file.Status = "added"
-	case 'D':
-		file.Status = "deleted"
-	case 'R', 'C':
-		file.Status = "renamed"
-	default:
-		file.Status = "modified"
+	if y != '.' {
+		file.WorktreeStatus = workspaceGitCodeStatus(y)
+	}
+	file.Status = file.WorktreeStatus
+	if file.Status == "" {
+		file.Status = file.IndexStatus
 	}
 	return file
 }
@@ -309,6 +334,28 @@ func writeWorkspaceGitJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// workspaceGitResolveRepo resolves a repo folder (relative to base) to a
+// confined real path; a non-zero status says why it cannot be used.
+func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, message string) {
+	repoRel = strings.Trim(repoRel, "/")
+	dir = realBase
+	if repoRel != "" {
+		clean, ok := workspaceGitRelFile(repoRel)
+		if !ok {
+			return "", http.StatusBadRequest, "invalid repo"
+		}
+		dir = filepath.Join(realBase, filepath.FromSlash(clean))
+	}
+	dir, ok := workspaceGitConfined(realBase, dir)
+	if !ok {
+		return "", http.StatusNotFound, "repo not found"
+	}
+	if !workspaceGitIsRepo(dir) {
+		return "", http.StatusNotFound, "not a git repository"
+	}
+	return dir, 0, ""
 }
 
 // handleWorkspaceGit serves GET /api/workspace-git?workspace_path=&op=
@@ -367,23 +414,9 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	}
 
 	// diff and log name one repo (relative to workspace_path).
-	repoRel := strings.Trim(query.Get("repo"), "/")
-	repoDir := realBase
-	if repoRel != "" {
-		clean, ok := workspaceGitRelFile(repoRel)
-		if !ok {
-			writeWorkspaceGitJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid repo"})
-			return
-		}
-		repoDir = filepath.Join(realBase, filepath.FromSlash(clean))
-	}
-	repoDir, ok = workspaceGitConfined(realBase, repoDir)
-	if !ok {
-		writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "repo not found"})
-		return
-	}
-	if !workspaceGitIsRepo(repoDir) {
-		writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "not a git repository"})
+	repoDir, status, message := workspaceGitResolveRepo(realBase, query.Get("repo"))
+	if status != 0 {
+		writeWorkspaceGitJSON(w, status, map[string]string{"error": message})
 		return
 	}
 	file := ""
