@@ -234,7 +234,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
           className="flex items-center gap-2 border-t border-border px-3 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           <Plus className="h-4 w-4" />
-          <span>Create custom command</span>
+          <span>Ask the agent to create a command</span>
         </button>
       )}
 

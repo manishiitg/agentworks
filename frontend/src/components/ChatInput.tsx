@@ -2551,11 +2551,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [addToast, customCommandWorkspacePath])
 
+  // The agent creates commands (manage_custom_commands, in every product's
+  // chat): the menu asks it in this chat instead of opening a form.
   const handleCreateCommand = useCallback(() => {
     setShowCommandDialog(false)
-    setEditingUserCommand(null)
-    setShowCommandEditor(true)
-  }, [])
+    clearInputState()
+    void onSubmit('Help me create a new custom slash command here. Ask me what it should do and when I would use it, then create it with manage_custom_commands and tell me how to run it.')
+  }, [clearInputState, onSubmit])
 
   const handleCommandEditorClose = useCallback(() => {
     setShowCommandEditor(false)
