@@ -35,10 +35,10 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 			t.Fatalf("Code binds Crew tool %s", binding.ID)
 		}
 	}
-	// Google tools stay, for this Code's own private accounts (gmail: own);
-	// scoping is enforced at use (services.GmailUseScope).
-	if agentprofiles.FeatureOption(profile, "bots", "gmail") != "own" {
-		t.Fatal("Code's Google accounts must be its own (bots gmail: own)")
+	// No built-in Gmail/Google accounts in a Code: it reaches Google through
+	// MCP servers only (user, 2026-09-29).
+	if agentprofiles.FeatureOption(profile, "bots", "gmail") != "" {
+		t.Fatal("Code must not enable built-in Gmail (bots gmail)")
 	}
 	if profile.Runtime.AgentTools.Mode != "mcp_only" {
 		t.Fatalf("Code must default to MCP-only agent tools until native reads are sandboxed, got %q", profile.Runtime.AgentTools.Mode)
