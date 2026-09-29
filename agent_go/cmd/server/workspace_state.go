@@ -339,6 +339,12 @@ func (api *StreamingAPI) handleGetActiveExecutions(w http.ResponseWriter, r *htt
 	workspacePath := r.URL.Query().Get("workspace_path")
 
 	executions := api.listRunningWorkflowExecutionsForWorkspace(workspacePath)
+	// Unfiltered, the tracker lists every user's runs: keep only the
+	// workflows this caller may read (a named workspace_path was already
+	// checked by the route).
+	if workspacePath == "" {
+		executions = activeExecutionsReadableBy(r.Context(), GetUserFromContext(r.Context()), executions)
+	}
 
 	if executions == nil {
 		executions = []ActiveWorkflowExecution{}
@@ -466,8 +472,8 @@ func (api *StreamingAPI) handleGetWorkflowsSummary(w http.ResponseWriter, r *htt
 		return
 	}
 
-	workspacePaths := strings.Split(pathsParam, ",")
 	ctx := r.Context()
+	workspacePaths := workspacePathsReadableBy(ctx, GetUserFromContext(ctx), strings.Split(pathsParam, ","))
 
 	// Build active executions lookup from in-memory registry
 	activeByWorkspace := map[string]string{} // workspace_path -> run_folder
@@ -585,6 +591,7 @@ func (api *StreamingAPI) handleGetWorkflowsOverview(w http.ResponseWriter, r *ht
 		}
 		workspacePaths = append(workspacePaths, workspacePath)
 	}
+	workspacePaths = workspacePathsReadableBy(r.Context(), GetUserFromContext(r.Context()), workspacePaths)
 
 	activeByWorkspace := map[string]map[string]struct{}{}
 	for _, exec := range api.listRunningWorkflowExecutions("") {

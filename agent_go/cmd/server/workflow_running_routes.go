@@ -78,7 +78,8 @@ func (api *StreamingAPI) handleGetRunningWorkflow(w http.ResponseWriter, r *http
 	}
 	api.trackedWorkflowExecutionsMux.RUnlock()
 
-	if !found {
+	// Another user's run answers as missing, exactly like an unknown id.
+	if !found || !runningExecutionVisible(r.Context(), GetUserFromContext(r.Context()), out) {
 		http.Error(w, `{"error":"running workflow not found"}`, http.StatusNotFound)
 		return
 	}
