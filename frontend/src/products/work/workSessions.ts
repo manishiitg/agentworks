@@ -132,9 +132,9 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
   return addProductProjectTemplate(withSkill, { id: template.id, version: template.version }, `Install ${template.name} in Crew ${session.title}`)
 }
 
-export async function deleteWorkSession(session: WorkSession): Promise<{ success: boolean; detached_workflows?: number; cleanup_warning?: string }> {
+export async function deleteWorkSession(session: WorkSession): Promise<void> {
   if (session.shared) throw new Error('Shared Crew projects can only be deleted by their owner.')
-  return agentApi.deleteAgentProfileProject(session.product, session.id)
+  await agentApi.deleteAgentProfileProject(session.product, session.id)
 }
 
 export function sharedProjectToWorkSession(row: SharedProjectSummary, product: ProjectProductConfig = CREW_PRODUCT): WorkSession {

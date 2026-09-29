@@ -225,7 +225,7 @@ function useWorkSessions(product: ProjectProductConfig) {
         if (status !== 404) throw cause
       }
     }
-    const deletion = await deleteWorkSession(project)
+    await deleteWorkSession(project)
 
     const chatStore = useChatStore.getState()
     const projectTabs = Object.values(chatStore.chatTabs).filter(tab => belongsToWorkProject(tab, projectId))
@@ -241,7 +241,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     if (selectedProjectIdFor(product) === projectId) {
       setSelectedId(remaining[0]?.id ?? null)
     }
-    return deletion
   }, [product, sessions, setSelectedId])
 
   const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
@@ -1041,15 +1040,9 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     if (!deleteCandidate || deletingProjectId) return
     setDeletingProjectId(deleteCandidate.id)
     try {
-      const deletion = await remove(deleteCandidate.id)
+      await remove(deleteCandidate.id)
       setDeleteCandidate(null)
-      const detached = deletion.detached_workflows ?? 0
-      const impact = detached > 0 ? ` Removed its attachment from ${detached} workflow${detached === 1 ? '' : 's'}; update any Crew steps that used it.` : ''
-      if (deletion.cleanup_warning) {
-        useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”. ${deletion.cleanup_warning}`, 'error')
-      } else {
-        useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”.${impact}`, 'success')
-      }
+      useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”.`, 'success')
     } catch (cause) {
       const serverMessage = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
       const message = serverMessage || (cause instanceof Error ? cause.message : `Could not delete ${product.noun}.`)
@@ -1111,7 +1104,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         onConfirm={() => { void deleteProject() }}
         title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Workflows using this Crew will lose its attachment, and their Crew steps will need updating.' : ''} This cannot be undone.`
+          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this Crew from every workflow before deleting it.' : ''} This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}

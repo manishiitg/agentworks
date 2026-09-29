@@ -2,57 +2,67 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// detachDeletedCrewFromWorkflows removes a deleted Crew's first-class workflow
-// attachments. Crew steps remain in the plan for an owner to repair; deleting
-// them silently would discard workflow logic. Each successful manifest change
-// also revokes the attachment from live shell sessions.
-func detachDeletedCrewFromWorkflows(ctx context.Context, profileID, projectID, workspacePath string) (int, error) {
+// crewUsedByWorkflow checks saved workflow attachments and Crew steps before
+// deleting a Crew. A workflow owner must remove both references first.
+func crewUsedByWorkflow(ctx context.Context, profileID, projectID, workspacePath string) (bool, error) {
 	targetRoot := workflowtypes.CanonicalCrewAttachmentRoot(workspacePath)
 	if targetRoot == "" {
-		return 0, fmt.Errorf("Crew workspace path is missing")
+		return false, fmt.Errorf("Crew workspace path is missing")
 	}
 	folders, err := listWorkspaceFolders(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("list workflows: %w", err)
+		return false, fmt.Errorf("list workflows: %w", err)
 	}
-	detached := 0
 	for _, folder := range folders {
-		manifest, exists, err := ReadWorkflowManifest(ctx, folder)
+		content, exists, err := readFileFromWorkspace(ctx, manifestPath(folder))
 		if err != nil {
-			return detached, fmt.Errorf("inspect workflow %s: %w", folder, err)
+			return false, fmt.Errorf("inspect workflow %s: %w", folder, err)
 		}
-		if !exists || manifest == nil {
-			continue
-		}
-		kept := make([]workflowtypes.CrewAttachment, 0, len(manifest.CrewAttachments))
-		for _, attachment := range manifest.CrewAttachments {
-			if strings.EqualFold(strings.TrimSpace(attachment.CrewProfileID), strings.TrimSpace(profileID)) &&
-				strings.TrimSpace(attachment.CrewProjectID) == strings.TrimSpace(projectID) &&
-				workflowtypes.CanonicalCrewAttachmentRoot(attachment.CrewWorkspacePath) == targetRoot {
-				continue
+		if exists {
+			var manifest struct {
+				CrewAttachments []workflowtypes.CrewAttachment `json:"crew_attachments"`
 			}
-			kept = append(kept, attachment)
+			if err := json.Unmarshal([]byte(content), &manifest); err != nil {
+				return false, fmt.Errorf("parse workflow %s: %w", folder, err)
+			}
+			for _, attachment := range manifest.CrewAttachments {
+				if strings.EqualFold(strings.TrimSpace(attachment.CrewProfileID), strings.TrimSpace(profileID)) &&
+					strings.TrimSpace(attachment.CrewProjectID) == strings.TrimSpace(projectID) &&
+					workflowtypes.CanonicalCrewAttachmentRoot(attachment.CrewWorkspacePath) == targetRoot {
+					return true, nil
+				}
+			}
 		}
-		if len(kept) == len(manifest.CrewAttachments) {
+		content, exists, err = readFileFromWorkspace(ctx, folder+"/planning/plan.json")
+		if err != nil {
+			return false, fmt.Errorf("inspect workflow plan %s: %w", folder, err)
+		}
+		if !exists {
 			continue
 		}
-		previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
-		manifest.CrewAttachments = kept
-		if err := WriteWorkflowManifest(ctx, folder, manifest); err != nil {
-			return detached, fmt.Errorf("detach Crew from workflow %s: %w", folder, err)
+		var plan struct {
+			Steps []struct {
+				Type          string `json:"type"`
+				CrewProfileID string `json:"crew_profile_id"`
+				CrewProjectID string `json:"crew_project_id"`
+			} `json:"steps"`
 		}
-		live := liveCrewAttachmentBindings(kept)
-		common.ReconcileSessionCrewAttachments(folder, previousRoots, crewAttachmentStoredRoots(live), workflowtypes.CrewAttachmentEnvKeys(live))
-		log.Printf("[CREW_DELETE] detached project %s from workflow %s", projectID, folder)
-		detached++
+		if err := json.Unmarshal([]byte(content), &plan); err != nil {
+			return false, fmt.Errorf("parse workflow plan %s: %w", folder, err)
+		}
+		for _, step := range plan.Steps {
+			if step.Type == "crew" && strings.EqualFold(strings.TrimSpace(step.CrewProfileID), strings.TrimSpace(profileID)) &&
+				strings.TrimSpace(step.CrewProjectID) == strings.TrimSpace(projectID) {
+				return true, nil
+			}
+		}
 	}
-	return detached, nil
+	return false, nil
 }
