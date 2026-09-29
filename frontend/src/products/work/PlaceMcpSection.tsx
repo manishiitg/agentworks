@@ -6,6 +6,8 @@ import { Button } from '../../components/ui/Button'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { personalMcpApi, type PersonalMcpCatalogServer } from '../../api/personalMcp'
 import { placeMcpApi, type PlaceMcpServer } from '../../api/placeMcp'
+import { groupServiceLabel, providerGroupLabel, providerGroups } from './mcpGroups'
+import { Checkbox } from '../../components/ui/checkbox'
 
 const errorText = (cause: unknown, fallback: string) => {
   const response = (cause as { response?: { data?: { error?: string } } })?.response
@@ -33,6 +35,11 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit }: {
   const [message, setMessage] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [confirmAdd, setConfirmAdd] = useState<PersonalMcpCatalogServer | null>(null)
+  // A sign-in group (Google Workspace): pick services, add them, sign in once.
+  const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const [groupPicks, setGroupPicks] = useState<string[]>([])
+  const [confirmGroup, setConfirmGroup] = useState<string | null>(null)
+  const groups = useMemo(() => providerGroups(catalog), [catalog])
 
   const refresh = useCallback(async () => {
     try {
@@ -84,6 +91,26 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit }: {
       if (saved.oauth) await connect(saved.name)
     } catch (cause) {
       setError(errorText(cause, 'Could not add the connection.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const addGroup = async (group: string, picks: string[]) => {
+    setBusy(`group:${group}`)
+    setError(null)
+    try {
+      let first: string | null = null
+      for (const entry of (groups.get(group) ?? []).filter(item => picks.includes(item.catalog))) {
+        const saved = await placeMcpApi.add(workspacePath, entry.catalog)
+        if (saved.oauth) first = first ?? saved.name
+      }
+      setPicking(false); setOpenGroup(null); setGroupPicks([])
+      await refresh()
+      // One sign-in covers every service added here.
+      if (first) await connect(first)
+    } catch (cause) {
+      setError(errorText(cause, 'Could not add the connections.'))
     } finally {
       setBusy(null)
     }
@@ -146,7 +173,30 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit }: {
       {picking && (
         <div className="grid grid-cols-1 gap-1.5 rounded-md border border-dashed border-border p-2 sm:grid-cols-2">
           {catalog.length === 0 && <span className="text-xs text-muted-foreground">Loading…</span>}
-          {catalog.filter(entry => !mineByCatalog.has(entry.catalog)).map(entry => (
+          {[...groups.keys()].map(group => (
+            <button key={`group:${group}`} type="button" disabled={busy !== null} onClick={() => { setOpenGroup(open => open === group ? null : group); setGroupPicks([]) }}
+              className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted">
+              <ConnectionIcon icon={brandSlugFor(providerGroupLabel(group))} name={providerGroupLabel(group)} size="xs" />
+              <span className="truncate">{providerGroupLabel(group)}</span>
+            </button>
+          ))}
+          {openGroup && (
+            <div className="col-span-full rounded-md border border-border p-2">
+              <div className="mb-1.5 text-xs text-muted-foreground">Pick the {providerGroupLabel(openGroup)} services; one sign-in covers them all.</div>
+              <div className="grid grid-cols-2 gap-1">
+                {(groups.get(openGroup) ?? []).filter(entry => !mineByCatalog.has(entry.catalog)).map(entry => (
+                  <label key={entry.catalog} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={groupPicks.includes(entry.catalog)} onCheckedChange={() => setGroupPicks(list => list.includes(entry.catalog) ? list.filter(item => item !== entry.catalog) : [...list, entry.catalog])} aria-label={`Add ${groupServiceLabel(entry.catalog, openGroup)}`} />
+                    {groupServiceLabel(entry.catalog, openGroup)}
+                  </label>
+                ))}
+              </div>
+              <Button size="sm" className="mt-2" disabled={busy !== null || groupPicks.length === 0} onClick={() => setConfirmGroup(openGroup)}>
+                {busy === `group:${openGroup}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Add with your login
+              </Button>
+            </div>
+          )}
+          {catalog.filter(entry => !mineByCatalog.has(entry.catalog) && !(entry.group && groups.has(entry.group))).map(entry => (
             <button
               key={entry.catalog}
               type="button"
@@ -161,6 +211,15 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit }: {
           ))}
         </div>
       )}
+      <ConfirmationDialog
+        isOpen={confirmGroup !== null}
+        onClose={() => setConfirmGroup(null)}
+        onConfirm={() => { const group = confirmGroup; setConfirmGroup(null); if (group) void addGroup(group, groupPicks) }}
+        title={`Add ${confirmGroup ? providerGroupLabel(confirmGroup) : ''} with your login?`}
+        message={`Everyone who can use this ${placeNoun} — every chat, schedule, trigger, workflow that calls it and Slack channel it answers in — can use these ${confirmGroup ? providerGroupLabel(confirmGroup) : ''} services as you: ${groupPicks.map(item => confirmGroup ? groupServiceLabel(item, confirmGroup) : item).join(', ')}. They stay in this ${placeNoun} only. You can remove them any time.`}
+        confirmText="Add with my login"
+        type="warning"
+      />
       <ConfirmationDialog
         isOpen={confirmAdd !== null}
         onClose={() => setConfirmAdd(null)}

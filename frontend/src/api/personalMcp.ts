@@ -26,6 +26,8 @@ export interface PersonalMcpCatalogServer {
   sign_in: boolean
   /** No dynamic registration: the person enters their OAuth app's client. */
   needs_client: boolean
+  /** Sign-in group (google, github, ...): offered together, one login. */
+  group?: string
 }
 
 export interface PersonalMcpConnectResult { auth_url?: string; status?: string; message?: string; redirect_uri?: string }
