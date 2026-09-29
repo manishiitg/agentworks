@@ -1091,7 +1091,7 @@ func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, 
 		return
 	}
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
-	if job.Profile.ID == codeproduct.ProfileID && job.AutomationKind == "trigger" {
+	if job.Profile.ID == codeproduct.ProfileID && job.PeerSourceID != "" {
 		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
 	}
 	duration := int64(0)
@@ -1131,7 +1131,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
-		if job.Profile.ID == codeproduct.ProfileID && kind == "trigger" {
+		if job.Profile.ID == codeproduct.ProfileID && job.PeerSourceID != "" && kind == "trigger" {
 			ownerID, ok := crewProjectOwnerID(job.WorkspacePath)
 			if !ok {
 				bindErr = fmt.Errorf("private Code target is unavailable or access denied")
@@ -1176,7 +1176,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	}
 
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, conversation.WorkspacePath)
-	if job.Profile.ID == codeproduct.ProfileID && job.AutomationKind == "trigger" {
+	if job.Profile.ID == codeproduct.ProfileID && job.PeerSourceID != "" {
 		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
 	}
 	startedAt := time.Now().UTC()

@@ -38,8 +38,31 @@ const platformMCPTokenUserID = "_platform"
 
 const platformMCPConnectionSessionID = "mcp-platform"
 
+// These catalog providers issue confidential OAuth clients by hand. Other
+// servers may use public clients even without Dynamic Client Registration.
 func requiresRegisteredMCPClientSecret(name string) bool {
-	return name == "GitHub" || name == "HubSpot"
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "github", "hubspot", "slack", "render", "box",
+		"googlecalendar", "googlechat", "googledocs", "googledrive",
+		"googlegmail", "googlepeople", "googlesheets", "googleslides":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasRegisteredMCPClientSecret(cfg *oauth.OAuthConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	if strings.TrimSpace(cfg.ClientSecret) != "" {
+		return true
+	}
+	if strings.TrimSpace(cfg.ClientSecretFile) == "" {
+		return false
+	}
+	secret, err := oauth.ReadClientSecretFile(cfg.ClientSecretFile)
+	return err == nil && strings.TrimSpace(secret) != ""
 }
 
 func closePlatformMCPConnection(serverName string) {
@@ -348,8 +371,14 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		if serverConfig.OAuth == nil {
 			return nil, nil, &oauthStartError{http.StatusBadRequest, fmt.Sprintf("Server '%s' has no oauth configuration; a client_id is not applicable", serverName)}
 		}
+		if clientID != serverConfig.OAuth.ClientID {
+			serverConfig.OAuth.ClientSecret = ""
+			serverConfig.OAuth.ClientSecretFile = ""
+		}
 		serverConfig.OAuth.ClientID = clientID
-		serverConfig.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
+		if strings.TrimSpace(clientSecret) != "" {
+			serverConfig.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
+		}
 		api.logger.Info(fmt.Sprintf("Using user-provided client_id for %s: %s", serverName, clientID))
 	}
 
@@ -373,7 +402,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		api.logger.Error(fmt.Sprintf("Server %s is missing auth_url or token_url in config", serverName), nil)
 		return nil, nil, &oauthStartError{http.StatusInternalServerError, fmt.Sprintf("Server '%s' is missing auth_url or token_url in its oauth config. Endpoints are not discovered at runtime; copy authorization_endpoint and token_endpoint from the provider's /.well-known/oauth-authorization-server metadata into the MCP config.", serverName)}
 	}
-	if requiresRegisteredMCPClientSecret(serverName) && (serverConfig.OAuth.ClientID == "" || serverConfig.OAuth.ClientSecret == "") {
+	if requiresRegisteredMCPClientSecret(serverName) && (serverConfig.OAuth.ClientID == "" || !hasRegisteredMCPClientSecret(serverConfig.OAuth)) {
 		return nil, &OAuthDiscoveryResponse{
 			Status: "needs_client_id", ServerName: serverName,
 			AuthURL: serverConfig.OAuth.AuthURL, TokenURL: serverConfig.OAuth.TokenURL,

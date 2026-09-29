@@ -203,3 +203,8 @@ func codePeerPrivateRunsWorkspace(actorID, targetPath, targetID string) string {
 	key := sha256.Sum256([]byte(ownerID + "\x00" + targetID))
 	return "_users/" + sanitizeUserIDForPath(actorID) + "/chat_history/code-peer-runs/" + hex.EncodeToString(key[:])
 }
+
+func isPrivateCodePeerTrigger(profileID string, trigger productWebhookTrigger) bool {
+	return profileID == codeproduct.ProfileID && trigger.IsInternal() && trigger.Caller != nil &&
+		trigger.Caller.Type == triggerCallerCrew && trigger.Caller.ProfileID == codeproduct.ProfileID
+}

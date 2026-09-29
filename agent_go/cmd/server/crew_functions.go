@@ -334,7 +334,7 @@ type crewFunctionCall struct {
 	CallerKind      string                 `json:"caller_kind"`
 	CallerID        string                 `json:"caller_id"`
 	CallerProfileID string                 `json:"caller_profile_id,omitempty"`
-	CallerPath      string                 `json:"caller_path,omitempty"`
+	CallerPath      string                 `json:"-"`
 	CallerLabel     string                 `json:"caller_label"`
 	TargetKind      string                 `json:"target_kind"`
 	TargetID        string                 `json:"target_id"`
@@ -414,6 +414,7 @@ func crewFunctionCallIndexPath(id string) string {
 type crewFunctionCallIndex struct {
 	TargetPath string `json:"target_path"`
 	RecordPath string `json:"record_path,omitempty"`
+	CallerPath string `json:"caller_path,omitempty"`
 	UserID     string `json:"user_id"`
 }
 
@@ -446,7 +447,7 @@ func loadSavedCrewFunctionCall(id string) *crewFunctionCall {
 	if json.Unmarshal([]byte(raw), call) != nil || call.ID != id {
 		return nil
 	}
-	call.UserID, call.done, call.closed = index.UserID, make(chan struct{}), true
+	call.UserID, call.CallerPath, call.done, call.closed = index.UserID, index.CallerPath, make(chan struct{}), true
 	close(call.done)
 	if !call.terminalLocked() || (call.TimedOut && !call.Late) {
 		call.Status = "failed"
@@ -465,7 +466,7 @@ func loadSavedCrewFunctionCall(id string) *crewFunctionCall {
 }
 
 func (c *crewFunctionCall) saveIndex() {
-	encoded, err := json.Marshal(crewFunctionCallIndex{TargetPath: c.TargetPath, RecordPath: c.recordPath(), UserID: c.UserID})
+	encoded, err := json.Marshal(crewFunctionCallIndex{TargetPath: c.TargetPath, RecordPath: c.recordPath(), CallerPath: c.CallerPath, UserID: c.UserID})
 	if err != nil {
 		return
 	}
@@ -864,9 +865,13 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
 	}
+	fromPath := caller.Path
+	if caller.Stamp.ProfileID == codeproduct.ProfileID {
+		fromPath = ""
+	}
 	body := map[string]interface{}{
 		"task":    crewFunctionTaskText(call, fn, args),
-		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": caller.Path},
+		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
 	crewFunctionCalls.Lock()
@@ -888,9 +893,10 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	crewFunctionCalls.Unlock()
 	if submissionID != "" {
 		if err := saveCrewFunctionSubmission(ctx, call, caller.Stamp); err != nil {
-			crewFunctionCalls.Lock()
-			delete(crewFunctionCalls.m, id)
-			crewFunctionCalls.Unlock()
+			// Another retry may have joined this in-memory call while the
+			// submission index was being written. Settle it so that retry's
+			// call_id cannot hang or disappear under its feet.
+			call.finish("failed", nil, "cannot record submission_id: "+err.Error())
 			return nil, fmt.Errorf("cannot record submission_id: %w", err)
 		}
 		call.saveIndex()
@@ -1514,7 +1520,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if !ok || !codeRoleFor(ctx, userID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
 				return nil, caller, fmt.Errorf("private Code access denied")
 			}
-			if call.CallerProfileID == codeproduct.ProfileID && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
+			isCodeSource := crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
+			if isCodeSource && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 				return nil, caller, fmt.Errorf("private Code access denied")
 			}
 			if call.TargetProfileID == codeproduct.ProfileID && call.CallerProfileID == codeproduct.ProfileID {
@@ -1579,6 +1586,14 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		if !isCaller(call, caller) || call.UserID != userID {
 			return "", fmt.Errorf("only the caller of function call %s can answer its pending input", call.ID)
+		}
+		// The call may have started before the actor lost access. Resolve the
+		// exact target again before letting an answer steer its live turn.
+		currentTarget, err := resolveFunctionTarget(ctx, claims, caller, call.TargetPath)
+		if err != nil || currentTarget.Kind != call.TargetKind || currentTarget.stampID() != call.TargetID ||
+			(currentTarget.Kind == triggerCallerCrew && crewFunctionKey(currentTarget.Kind, currentTarget.CrewProfile, currentTarget.CrewID) != crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID)) ||
+			canonicalCrewWorkspaceRoot(crewFunctionRoot(ctx, currentTarget)) != canonicalCrewWorkspaceRoot(call.TargetPath) {
+			return "", fmt.Errorf("function call %s target is unavailable or access denied", call.ID)
 		}
 		requestID, _ := args["request_id"].(string)
 		response, _ := args["response"].(string)

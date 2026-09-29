@@ -93,8 +93,9 @@ Proposed features for `code`:
     own isolated chat), pinned to the owner, with the owner's personal MCP
     servers and secrets.
   - The Automation panel is read-only for people the Code is shared with.
-  - Webhook triggers only: internal triggers (the ones another workflow or
-    Crew calls) are refused for a Code, so nothing calls a Code.
+  - Owner-created Automation triggers are webhooks only. The private
+    Code-to-Code function path uses hidden internal bindings that do not
+    appear in the Automation panel; Crews and workflows cannot invoke them.
   - Anyone with a trigger's URL and secret starts a run as the owner, with
     the owner's MCP servers, secrets and tools, on an untrusted payload. The
     UI and the tool say so, and the turn frames the payload as untrusted

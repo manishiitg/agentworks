@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -16,6 +17,7 @@ import (
 // a later load reads back the same server. This is the mechanism a user asked
 // to have double-checked, not just re-explained from reading the code.
 func TestPersistOAuthConfigWritesServerToUserConfigFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	baseDir := t.TempDir()
 	basePath := filepath.Join(baseDir, "mcp_servers_clean.json")
 	if err := mcpclient.SaveConfig(basePath, &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{}}); err != nil {
@@ -55,8 +57,31 @@ func TestPersistOAuthConfigWritesServerToUserConfigFile(t *testing.T) {
 	if got.URL != wantConfig.URL {
 		t.Fatalf("reloaded server URL = %q, want %q", got.URL, wantConfig.URL)
 	}
-	if got.OAuth == nil || got.OAuth.ClientSecret != wantConfig.OAuth.ClientSecret {
-		t.Fatal("OAuth credentials did not survive the private overlay save")
+	if got.OAuth == nil || got.OAuth.ClientSecret != "" || got.OAuth.ClientSecretFile == "" {
+		t.Fatalf("OAuth overlay did not refer to a sealed client secret: %+v", got.OAuth)
+	}
+	if secret, err := oauth.ReadClientSecretFile(got.OAuth.ClientSecretFile); err != nil || secret != wantConfig.OAuth.ClientSecret {
+		t.Fatalf("sealed OAuth client secret = %q, %v", secret, err)
+	}
+	if !hasRegisteredMCPClientSecret(got.OAuth) {
+		t.Fatal("a saved OAuth client secret was not available for reconnect")
+	}
+	if raw, err := os.ReadFile(userConfigPath); err != nil || strings.Contains(string(raw), wantConfig.OAuth.ClientSecret) {
+		t.Fatal("OAuth client secret leaked into the overlay")
+	}
+}
+
+func TestRegisteredMCPSecretDetection(t *testing.T) {
+	for _, name := range []string{"GitHub", "HubSpot", "Slack", "Render", "Box", "GoogleCalendar", "GoogleChat", "GoogleDocs", "GoogleDrive", "GoogleGmail", "GooglePeople", "GoogleSheets", "GoogleSlides"} {
+		if !requiresRegisteredMCPClientSecret(name) {
+			t.Fatalf("%s did not require its provider-issued OAuth client secret", name)
+		}
+	}
+	if requiresRegisteredMCPClientSecret("TestOwnerConnector") || requiresRegisteredMCPClientSecret("Airtable") {
+		t.Fatal("a public OAuth client was required to have a secret")
+	}
+	if hasRegisteredMCPClientSecret(&oauth.OAuthConfig{ClientSecretFile: filepath.Join(t.TempDir(), "missing")}) {
+		t.Fatal("missing sealed client secret counted as present")
 	}
 }
 
