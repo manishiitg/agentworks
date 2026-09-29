@@ -6218,6 +6218,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// MCP config and provider metadata into the working directory. Keep
 			// those readable for the CLI but outside the agent's write authority.
 			protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
+			// PLAT-364: the guard above is final, so the CLI can be confined to it.
+			landlockEmail := ""
+			if claims := GetUserFromContext(r.Context()); claims != nil {
+				landlockEmail = claims.Email
+			}
+			applyCLILandlock(llmAgent, currentUserID, landlockEmail, sessionID, finalProvider, chatWorkingDir, cliSecurityPolicy)
 
 			// Report the selected filesystem skills, not a restriction. Every
 			// branch above grants "skills/" wholesale, and this list is used

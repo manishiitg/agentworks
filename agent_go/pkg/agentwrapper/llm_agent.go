@@ -717,6 +717,24 @@ func (w *LLMAgentWrapper) AddObserver(observer mcpagent.AgentEventListener) erro
 	return nil
 }
 
+// SetCLISecurityPolicy replaces the coding CLI's launch policy before the
+// immutable Agent is finalized (the chat's folder guard is known only after
+// the wrapper is built).
+func (w *LLMAgentWrapper) SetCLISecurityPolicy(policy *llmtypes.CLISecurityPolicy) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return errors.New("agent definition is already finalized")
+	}
+	if policy == nil {
+		w.runtime.Coding.CLISecurityPolicy = nil
+		return nil
+	}
+	copyPolicy := policy.Clone()
+	w.runtime.Coding.CLISecurityPolicy = &copyPolicy
+	return nil
+}
+
 // SetCodingAgentWorkingDir updates construction-time runtime state before the
 // immutable Agent is finalized. It deliberately does not mutate a live Agent.
 func (w *LLMAgentWrapper) SetCodingAgentWorkingDir(dir string) error {

@@ -19,3 +19,6 @@ func CurrentSandboxCapability() SandboxCapability {
 	}
 	return SandboxCapability{Available: true, Backend: path}
 }
+
+// CLILandlockRunner: Landlock is Linux only.
+func CLILandlockRunner() (string, bool) { return "", false }
