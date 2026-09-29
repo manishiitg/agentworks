@@ -123,11 +123,13 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
     }
   }
 
-  if (normalizedCode === 'authentication_failed' || /(?:authentication|authorization) (?:failed|required)|invalid (?:api )?(?:key|token)|login required|not authenticated|setup token (?:missing|invalid|required|expired)/i.test(raw)) {
+  // Before the timeout check: a CLI stuck on its own login screen times out
+  // too, but the fix is signing in, not retrying (issue #252).
+  if (normalizedCode === 'authentication_failed' || /\[auth\]|(?:authentication|authorization) (?:failed|required)|invalid (?:api )?(?:key|token)|login required|not (?:authenticated|logged in|signed in)|setup token (?:missing|invalid|required|expired)|account with subscription/i.test(raw)) {
     return {
       code: 'authentication_failed',
-      title: `${providerLabel} needs to be reconnected`,
-      message: 'The configured AI provider credentials are no longer accepted. Ask an administrator to reconnect the provider, then retry.',
+      title: `${providerLabel} is not signed in`,
+      message: `${providerLabel} has no working login here. Pick a provider that is set up in Setup → Models, add your own account under Providers → Add my account, or ask an admin to sign in the shared account.`,
       provider,
       retryable: false,
       technicalDetails,

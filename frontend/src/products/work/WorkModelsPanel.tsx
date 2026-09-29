@@ -11,7 +11,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
-import { WORK_PROFILE_ID, WORK_PROFILE_VERSION } from './workData'
+import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
 
@@ -32,6 +32,10 @@ export function WorkModelsPanel({
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   hideHeader?: boolean
 }) {
+  // The provider options of this project's own product: a Code asks the Code
+  // profile. Asking Crew's left a Code-only member (Excellence) with no
+  // providers at all (issue #252).
+  const product = useProjectProduct()
   const tab = useChatStore(state => state.chatTabs[tabId])
   const events = useChatStore(state => tab?.sessionId ? state.tabEvents[tab.sessionId] : undefined)
   const activeRuntime = useChatStore(state => tab?.sessionId
@@ -65,11 +69,11 @@ export function WorkModelsPanel({
 
   useEffect(() => {
     let cancelled = false
-    void loadAgentProfileProviderOptions(WORK_PROFILE_ID, WORK_PROFILE_VERSION).then(loaded => {
+    void loadAgentProfileProviderOptions(product.profileId, product.profileVersion).then(loaded => {
       if (!cancelled) setOptions(loaded)
     })
     return () => { cancelled = true }
-  }, [])
+  }, [product.profileId, product.profileVersion])
 
   useEffect(() => {
     if (!providerManifestLoaded) void loadProviderManifest()
@@ -79,14 +83,14 @@ export function WorkModelsPanel({
     setRefreshing(true)
     try {
       const [loaded] = await Promise.all([
-        loadAgentProfileProviderOptions(WORK_PROFILE_ID, WORK_PROFILE_VERSION),
+        loadAgentProfileProviderOptions(product.profileId, product.profileVersion),
         loadProviderManifest(),
       ])
       setOptions(loaded)
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest])
+  }, [loadProviderManifest, product.profileId, product.profileVersion])
 
   const modelCatalog = useMemo(
     () => providerManifest.flatMap(provider => provider.models || []),
