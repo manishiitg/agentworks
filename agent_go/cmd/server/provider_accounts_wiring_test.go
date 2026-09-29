@@ -111,8 +111,9 @@ func TestProviderAccountsSharedAccountAndCodeTurnsAreHybrid(t *testing.T) {
 	env.mock.mu.Lock()
 	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{"native_agent_tools":false}}`
 	env.mock.mu.Unlock()
-	if mode := codeTurn(); mode != "mcp_only" {
-		t.Fatalf("a Code that turned native tools off decided %q", mode)
+	// No switch any more (2026-09-29): an older Code's stored "off" is ignored.
+	if mode := codeTurn(); mode != "hybrid" {
+		t.Fatalf("a Code with a stored off decided %q, want hybrid: native tools are always on", mode)
 	}
 }
 
