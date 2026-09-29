@@ -1,13 +1,10 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut, Plug } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { HelpCircle, Keyboard, KeyRound, LogOut } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import NotificationsControl from './NotificationsControl'
 import ChangePasswordDialog from './ChangePasswordDialog'
 import { APP_VERSION } from '../../version'
-
-// Loaded on open: it pulls in the MCP setup panel and the API client.
-const McpConnectDialog = lazy(() => import('./McpConnectDialog'))
 
 /**
  * AccountControl - the signed-in user's avatar (their initial) which opens a
@@ -24,7 +21,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
   const { user, logout, isMultiUserMode } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
-  const [connectingMcp, setConnectingMcp] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -45,8 +41,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
 
   if (!user) return null
 
-  // Admins and Code reviewers review Code from their own AI agent over MCP.
-  const canConnectMcp = user.is_admin === true || user.is_code_reviewer === true
   const displayName = isMultiUserMode ? (user.username || user.email || 'User') : 'Local account'
   const initial = displayName.trim().charAt(0).toUpperCase() || '?'
   const itemClass =
@@ -97,13 +91,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             Keyboard shortcuts
           </button>}
           <NotificationsControl menuItem />
-          {canConnectMcp && <button type="button" role="menuitem" className={itemClass} onClick={() => {
-            setOpen(false)
-            setConnectingMcp(true)
-          }}>
-            <Plug className="h-4 w-4 text-muted-foreground" />
-            Connect an AI agent (MCP)
-          </button>}
           <div role="separator" className="my-1 border-t border-border" />
           {isMultiUserMode && <button
             type="button"
@@ -117,7 +104,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             <KeyRound className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             Change password
           </button>}
-          { /* User management lives in the workspace Access view, not the account menu. */ }
+          { /* User management: the Users icon in the top bar (admins only), and Access → Users in a workflow. */ }
           {isMultiUserMode && <button
             type="button"
             role="menuitem"
@@ -134,7 +121,6 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
       )}
 
       <ChangePasswordDialog isOpen={changingPassword} onClose={() => setChangingPassword(false)} />
-      {connectingMcp && <Suspense fallback={null}><McpConnectDialog isOpen onClose={() => setConnectingMcp(false)} codeReview={user.is_code_reviewer === true || (user.is_admin === true && isMultiUserMode)} /></Suspense>}
     </div>
   )
 }

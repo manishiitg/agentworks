@@ -25,6 +25,8 @@ import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
+import McpControl from './topbar/McpControl'
+import UsersControl from './topbar/UsersControl'
 import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { GlobalActivityButton } from './topbar/GlobalActivityButton'
@@ -753,6 +755,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               <GlobalActivityMonitor />
 
               <ProvidersControl />
+
+              <McpControl />
+
+              <UsersControl />
 
               {!reduced && <GlobalActivityButton
                 workspacePaths={workflowActivityPaths}
