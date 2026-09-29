@@ -2774,6 +2774,8 @@ export interface AdminUser {
   /** A permission on top of the role: reviews every Code, read-only and audited. */
   code_reviewer?: boolean
   disabled: boolean
+  /** Added by email, no password, and not signed in with SSO yet. */
+  invited?: boolean
   created_at?: string
   updated_at?: string
 }

@@ -374,3 +374,47 @@ func TestApplyRoleWriteStampsAndDualWrites(t *testing.T) {
 		t.Fatalf("legacy write should clear role and map from booleans: %+v", rec)
 	}
 }
+
+func TestAdminAddUserByEmail(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","email":"alice@example.com","admin":true,"can_create":true,"products":[]}]}`)
+	api := &StreamingAPI{}
+	alice := &UserClaims{UserID: "a1", Username: "alice"}
+	create := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", body, alice, nil))
+		return rec
+	}
+
+	rec := create(`{"username":"bob@example.com","email":"bob@example.com","role":"viewer","products":["code"]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add by email: %d %s", rec.Code, rec.Body.String())
+	}
+	var bob userAdminView
+	_ = json.Unmarshal(rec.Body.Bytes(), &bob)
+	if !bob.Invited || bob.HasPassword || bob.Role != "viewer" || len(bob.Products) != 1 {
+		t.Fatalf("invited view: %+v", bob)
+	}
+
+	// SSO resolves the account by email, so an address belongs to one account.
+	if rec := create(`{"username":"bob2","email":"BOB@example.com"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate email: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := create(`{"username":"carol","email":"Carol <carol@example.com>"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("display-name email: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	requireAdmin(api.handleAdminUpdateUser)(rec, adminRequest(http.MethodPut, "/api/admin/users/"+bob.ID, `{"email":"alice@example.com"}`, alice, map[string]string{"id": bob.ID}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("update to another account's email: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// First SSO sign-in links the invited account: same id, no longer invited.
+	linked := ensureDirectoryUserForExternal("google-sub", &ExternalUser{ExternalID: "google-sub", Email: "bob@example.com", Username: "bob@example.com", Provider: "supabase-google"})
+	if linked == nil || linked.ID != bob.ID {
+		t.Fatalf("SSO did not resolve the invited account: %+v", linked)
+	}
+	if viewOf(*linked).Invited {
+		t.Fatal("a signed-in account must not show as invited")
+	}
+}

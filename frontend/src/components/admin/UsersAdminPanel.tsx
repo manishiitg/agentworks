@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2 } from 'lucide-react'
+import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/checkbox'
 import { Badge } from '../ui/badge'
+import { Input } from '../ui/Input'
 import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 
@@ -54,6 +55,14 @@ const UsersAdminPanel: React.FC = () => {
   const [resetPassword, setResetPassword] = useState('')
   const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null)
 
+  // Add by email: no password; the person signs in with SSO using this
+  // address and the account keeps the role and products set here.
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<Role>('viewer')
+  const [inviteProducts, setInviteProducts] = useState<string[]>([])
+  const [inviting, setInviting] = useState(false)
+  const inviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())
+
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -98,10 +107,80 @@ const UsersAdminPanel: React.FC = () => {
     return patch
   }
 
+  const addByEmail = async () => {
+    const email = inviteEmail.trim()
+    setInviting(true)
+    setError(null)
+    try {
+      await authApi.createAdminUser({
+        username: email,
+        email,
+        ...roleFields(inviteRole),
+        products: inviteRole === 'admin' ? [] : inviteProducts,
+      })
+      setInviteEmail('')
+      setInviteProducts([])
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInviting(false)
+    }
+  }
+
   const sorted = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users])
 
   return (
     <div className="space-y-4">
+      <SettingsCard
+        icon={<UserPlus className="h-4 w-4 text-primary" />}
+        title="Add a user"
+        description="Add someone by email. There is no password: they sign in with SSO (for example Google) using this address, and the account keeps the role and products you set here. They show as Invited until their first sign-in."
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && inviteEmailValid && !inviting) void addByEmail() }}
+              placeholder="name@example.com"
+              aria-label="Email"
+              className="sm:max-w-xs"
+            />
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as Role)}
+              aria-label="Role"
+              className="px-2 py-1.5 text-sm bg-muted/40 border border-border rounded"
+            >
+              {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+            <Button disabled={!inviteEmailValid || inviting} onClick={() => { void addByEmail() }}>
+              {inviting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <UserPlus className="mr-1 h-3.5 w-3.5" />}
+              Add user
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{ROLES.find((r) => r.value === inviteRole)?.hint}</p>
+          {inviteRole !== 'admin' && products.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="text-muted-foreground">Products:</span>
+              {products.map((p) => (
+                <label key={p} className="inline-flex items-center gap-1.5">
+                  <Checkbox
+                    checked={inviteProducts.includes(p)}
+                    onCheckedChange={() => setInviteProducts((list) => toggleProduct(list, p))}
+                    aria-label={`${productLabel(p)} for the new user`}
+                  />
+                  {productLabel(p)}
+                </label>
+              ))}
+              {inviteProducts.length === 0 && <span className="text-muted-foreground">{inviteRole === 'creator' ? '(none ticked: all)' : '(none ticked: none)'}</span>}
+            </div>
+          )}
+        </div>
+      </SettingsCard>
+
       <SettingsCard
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
@@ -120,7 +199,7 @@ const UsersAdminPanel: React.FC = () => {
             <span>Loading accounts…</span>
           </div>
         ) : sorted.length === 0 ? (
-          <SettingsEmpty>No accounts yet. New accounts appear here after they are added.</SettingsEmpty>
+          <SettingsEmpty>No accounts yet. Add one above.</SettingsEmpty>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -141,7 +220,7 @@ const UsersAdminPanel: React.FC = () => {
                   <tr key={u.id} className={`border-t border-border ${u.disabled ? 'opacity-60' : ''}`}>
                     <td className="py-2 pr-3 align-top">
                       <div className="font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</div>
-                      <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {u.provider}{u.has_password ? '' : ' · no password'}</div>
+                      <div className="text-[11px] text-muted-foreground">{u.email || '—'} · {u.invited ? 'signs in with SSO' : `${u.provider}${u.has_password ? '' : ' · no password'}`}</div>
                     </td>
                     <td className="py-2 pr-3 align-top">
                       <select
@@ -192,7 +271,9 @@ const UsersAdminPanel: React.FC = () => {
                     <td className="py-2 pr-3 align-top text-xs">
                       {u.disabled
                         ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Disabled</Badge>
-                        : <Badge variant="secondary"><CheckCircle2 className="mr-1 h-3 w-3" />Active</Badge>}
+                        : u.invited
+                          ? <Badge variant="outline" title="Added by email; not signed in yet"><Mail className="mr-1 h-3 w-3" />Invited</Badge>
+                          : <Badge variant="secondary"><CheckCircle2 className="mr-1 h-3 w-3" />Active</Badge>}
                     </td>
                     <td className="py-2 align-top">
                       <div className="flex items-center justify-end gap-1">

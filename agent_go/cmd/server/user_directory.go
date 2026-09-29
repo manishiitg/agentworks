@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"sort"
 	"strings"
@@ -670,8 +671,10 @@ type userAdminView struct {
 	Products     []string `json:"products"`
 	CodeReviewer bool     `json:"code_reviewer"`
 	Disabled     bool     `json:"disabled"`
-	CreatedAt    string   `json:"created_at,omitempty"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
+	// Invited: added by email, no password, not signed in with SSO yet.
+	Invited   bool   `json:"invited"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -689,7 +692,26 @@ func viewOf(rec UserRecord) userAdminView {
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
 		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Invited: rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
 	}
+}
+
+// adminEmailError checks an email an admin sets on the account with ID
+// selfID ("" for a new account): a plain address, not already another
+// account's. SSO sign-in resolves the account by this address, so two
+// accounts sharing one would make the first silently win.
+func adminEmailError(dir *userDirectory, email, selfID string) string {
+	if email == "" {
+		return ""
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email || !strings.Contains(email, "@") {
+		return "enter a plain email address, like name@example.com"
+	}
+	if other := dir.byEmail(email); other != nil && other.ID != selfID {
+		return "another account already uses that email"
+	}
+	return ""
 }
 
 func writeUsersJSON(w http.ResponseWriter, status int, v any) {
@@ -817,6 +839,10 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	if req.Email != nil {
 		rec.Email = strings.TrimSpace(*req.Email)
 	}
+	if msg := adminEmailError(dir, rec.Email, ""); msg != "" {
+		writeUsersError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if req.Password != nil && *req.Password != "" {
 		if len(*req.Password) < 8 {
 			writeUsersError(w, http.StatusBadRequest, "password must be at least 8 characters")
@@ -886,7 +912,12 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if req.Email != nil {
-		rec.Email = strings.TrimSpace(*req.Email)
+		email := strings.TrimSpace(*req.Email)
+		if msg := adminEmailError(dir, email, rec.ID); msg != "" {
+			writeUsersError(w, http.StatusBadRequest, msg)
+			return
+		}
+		rec.Email = email
 	}
 	if req.Password != nil && *req.Password != "" {
 		if len(*req.Password) < 8 {
