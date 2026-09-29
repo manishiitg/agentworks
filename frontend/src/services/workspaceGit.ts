@@ -36,10 +36,39 @@ export interface GitCommit {
 
 const ENDPOINT = '/api/workspace-git'
 
+export interface GitBranch {
+  name: string
+  current?: boolean
+  upstream?: string
+  /** A remote-tracking branch with no local copy yet. */
+  remote?: boolean
+}
+
+export interface GitStash {
+  ref: string
+  message: string
+  date: string
+}
+
+export interface GitBlameLine {
+  line: number
+  hash: string
+  author: string
+  /** Unix seconds. */
+  time: number
+  summary: string
+  uncommitted?: boolean
+}
+
 export type GitAction =
   | { op: 'stage' | 'unstage' | 'discard'; files: string[] }
   | { op: 'stage' | 'unstage'; all: true }
   | { op: 'commit'; message: string; all?: boolean }
+  | { op: 'checkout'; branch: string; remote?: boolean }
+  | { op: 'create_branch' | 'delete_branch'; branch: string }
+  | { op: 'stash'; message?: string }
+  | { op: 'stash_apply' | 'stash_pop' | 'stash_drop'; ref: string }
+  | { op: 'resolve'; files: [string]; choice: 'ours' | 'theirs' | 'both' }
 
 /** The server's own sentence for a failed action (permission, nothing staged, filters, lock...). */
 export function gitActionError(error: unknown): string {
@@ -64,6 +93,18 @@ export const workspaceGitApi = {
   async log(workspacePath: string, repo: string, file?: string): Promise<GitCommit[]> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'log', repo, file } })
     return (response.data?.commits as GitCommit[] | undefined) ?? []
+  },
+  async branches(workspacePath: string, repo: string): Promise<GitBranch[]> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'branches', repo } })
+    return (response.data?.branches as GitBranch[] | undefined) ?? []
+  },
+  async stashes(workspacePath: string, repo: string): Promise<GitStash[]> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'stashes', repo } })
+    return (response.data?.stashes as GitStash[] | undefined) ?? []
+  },
+  async blame(workspacePath: string, repo: string, file: string): Promise<{ lines: GitBlameLine[]; truncated: boolean }> {
+    const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'blame', repo, file } })
+    return { lines: (response.data?.lines as GitBlameLine[] | undefined) ?? [], truncated: !!response.data?.truncated }
   },
   async show(workspacePath: string, repo: string, file: string, commit: string): Promise<{ diff: string; truncated: boolean }> {
     const response = await api.get(ENDPOINT, { params: { workspace_path: workspacePath, op: 'show', repo, file, commit } })

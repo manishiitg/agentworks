@@ -5,6 +5,7 @@ import { workspaceGitApi, type GitChangedFile, type GitRepo } from '../services/
 export type GitPanel =
   | { kind: 'diff'; repo: string; file: string }
   | { kind: 'history'; repo: string; file: string }
+  | { kind: 'blame'; repo: string; file: string }
 
 export interface GitDecoration {
   status: GitChangedFile['status']

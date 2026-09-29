@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -146,5 +147,157 @@ func TestWorkspaceGitWriteRefusesRepoFiltersAndNeverRunsHooks(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a repo filter ran")
+	}
+}
+
+func branchNames(body map[string]any) map[string]map[string]any {
+	out := map[string]map[string]any{}
+	list, _ := body["branches"].([]any)
+	for _, b := range list {
+		branch := b.(map[string]any)
+		out[branch["name"].(string)] = branch
+	}
+	return out
+}
+
+func TestWorkspaceGitBranches(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	gitRun(t, repo, "stash", "-u") // start clean: switching with local edits is git's call, not this test's
+	if code, body := gitPost(t, "alice", actionBody("create_branch", map[string]any{"branch": "feature/x"})); code != http.StatusOK || body["repo"].(map[string]any)["branch"] != "feature/x" {
+		t.Fatalf("create: %d %v", code, body)
+	}
+	if code, body := gitPost(t, "alice", actionBody("checkout", map[string]any{"branch": "main"})); code != http.StatusOK || body["repo"].(map[string]any)["branch"] != "main" {
+		t.Fatalf("checkout: %d %v", code, body)
+	}
+	code, list := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branches"}, "repo": {"app"}})
+	names := branchNames(list)
+	if code != http.StatusOK || names["main"]["current"] != true || names["feature/x"] == nil {
+		t.Fatalf("branches: %d %v", code, list)
+	}
+	if code, _ := gitPost(t, "alice", actionBody("delete_branch", map[string]any{"branch": "main"})); code != http.StatusConflict {
+		t.Fatalf("deleted the current branch: %d", code)
+	}
+	if code, _ := gitPost(t, "alice", actionBody("delete_branch", map[string]any{"branch": "feature/x"})); code != http.StatusOK {
+		t.Fatalf("delete: %d", code)
+	}
+	for _, bad := range []string{"-c", "a..b", "x y", "--detach", "a.lock", "/abs", ""} {
+		if code, _ := gitPost(t, "alice", actionBody("checkout", map[string]any{"branch": bad})); code != http.StatusBadRequest {
+			t.Fatalf("branch %q accepted: %d", bad, code)
+		}
+	}
+	if code, _ := gitPost(t, "bob", actionBody("create_branch", map[string]any{"branch": "hack"})); code != http.StatusForbidden {
+		t.Fatalf("stranger created a branch: %d", code)
+	}
+}
+
+func TestWorkspaceGitStash(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	code, body := gitPost(t, "alice", actionBody("stash", map[string]any{"message": "wip: two"}))
+	if code != http.StatusOK || len(repoFiles(body)) != 0 {
+		t.Fatalf("stash: %d %v", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "loose.txt")); err == nil {
+		t.Fatal("untracked file not stashed")
+	}
+	_, list := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"stashes"}, "repo": {"app"}})
+	stashes := list["stashes"].([]any)
+	if len(stashes) != 1 || !strings.Contains(stashes[0].(map[string]any)["message"].(string), "wip: two") {
+		t.Fatalf("stashes: %v", list)
+	}
+	ref := stashes[0].(map[string]any)["ref"].(string)
+	if code, body = gitPost(t, "alice", actionBody("stash_pop", map[string]any{"ref": ref})); code != http.StatusOK || len(repoFiles(body)) == 0 {
+		t.Fatalf("pop: %d %v", code, body)
+	}
+	if code, _ := gitPost(t, "alice", actionBody("stash_drop", map[string]any{"ref": "stash@{0}; rm -rf"})); code != http.StatusBadRequest {
+		t.Fatalf("bad stash ref accepted: %d", code)
+	}
+}
+
+// makeConflict leaves the repo mid-merge with a.txt conflicted:
+// main says "main side", feature says "feature side".
+func makeConflict(t *testing.T, repo string) {
+	t.Helper()
+	gitRun(t, repo, "stash", "-u")
+	gitRun(t, repo, "switch", "-c", "feature")
+	writeFile(t, filepath.Join(repo, "a.txt"), "feature side\n")
+	gitRun(t, repo, "commit", "-qam", "feature change")
+	gitRun(t, repo, "switch", "main")
+	writeFile(t, filepath.Join(repo, "a.txt"), "main side\n")
+	gitRun(t, repo, "commit", "-qam", "main change")
+	cmd := exec.Command("git", "-C", repo, "merge", "feature")
+	_ = cmd.Run() // conflicts: non-zero exit is expected
+}
+
+func TestWorkspaceGitResolveConflict(t *testing.T) {
+	for _, tc := range []struct{ choice, want string }{
+		{"ours", "main side\n"},
+		{"theirs", "feature side\n"},
+		{"both", "main side\nfeature side\n"},
+	} {
+		t.Run(tc.choice, func(t *testing.T) {
+			_, repo := gitTestEnv(t)
+			makeConflict(t, repo)
+			_, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+			var status string
+			for _, r := range body["repos"].([]any) {
+				for _, f := range r.(map[string]any)["files"].([]any) {
+					if f.(map[string]any)["path"] == "a.txt" {
+						status, _ = f.(map[string]any)["worktree_status"].(string)
+					}
+				}
+			}
+			if status != "conflict" {
+				t.Fatalf("a.txt status %q, want conflict", status)
+			}
+			code, res := gitPost(t, "alice", actionBody("resolve", map[string]any{"files": []string{"a.txt"}, "choice": tc.choice}))
+			if code != http.StatusOK {
+				t.Fatalf("resolve: %d %v", code, res)
+			}
+			if got, _ := os.ReadFile(filepath.Join(repo, "a.txt")); string(got) != tc.want {
+				t.Fatalf("a.txt = %q, want %q", got, tc.want)
+			}
+			f := repoFiles(res)["a.txt"]
+			switch {
+			case tc.choice == "ours":
+				// Identical to HEAD once resolved: nothing left to show.
+				if f != nil {
+					t.Fatalf("a.txt still listed after choosing ours: %v", f)
+				}
+			case f == nil || f["index_status"] == nil || f["worktree_status"] != nil:
+				t.Fatalf("a.txt should now be staged, not conflicted: %v", f)
+			}
+		})
+	}
+	// A non-conflicted file and a bad choice are refused.
+	_, repo := gitTestEnv(t)
+	makeConflict(t, repo)
+	if code, _ := gitPost(t, "alice", actionBody("resolve", map[string]any{"files": []string{"keep.txt"}, "choice": "ours"})); code != http.StatusConflict {
+		t.Fatalf("resolved a file with no conflict: %d", code)
+	}
+	if code, _ := gitPost(t, "alice", actionBody("resolve", map[string]any{"files": []string{"a.txt"}, "choice": "yolo"})); code != http.StatusBadRequest {
+		t.Fatalf("bad choice: %d", code)
+	}
+}
+
+func TestWorkspaceGitBlame(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	gitRun(t, repo, "stash", "-u")
+	writeFile(t, filepath.Join(repo, "a.txt"), "one\ntwo\n")
+	gitRun(t, repo, "commit", "-qam", "add two")
+	writeFile(t, filepath.Join(repo, "a.txt"), "one\ntwo\nthree\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"blame"}, "repo": {"app"}, "file": {"a.txt"}})
+	lines, _ := body["lines"].([]any)
+	if code != http.StatusOK || len(lines) != 3 {
+		t.Fatalf("blame: %d %v", code, body)
+	}
+	first, second, third := lines[0].(map[string]any), lines[1].(map[string]any), lines[2].(map[string]any)
+	if first["summary"] != "first commit" || second["summary"] != "add two" {
+		t.Fatalf("summaries: %v %v", first, second)
+	}
+	if third["uncommitted"] != true {
+		t.Fatalf("an uncommitted line is not marked: %v", third)
+	}
+	if code, _ := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"blame"}, "repo": {"app"}, "file": {"nope.txt"}}); code != http.StatusNotFound {
+		t.Fatalf("blame of an untracked file: %d", code)
 	}
 }

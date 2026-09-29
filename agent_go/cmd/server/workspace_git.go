@@ -71,6 +71,30 @@ type workspaceGitRepo struct {
 	Truncated bool               `json:"truncated,omitempty"`
 }
 
+type workspaceGitBranch struct {
+	Name     string `json:"name"`
+	Current  bool   `json:"current,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+	// Remote is a remote-tracking branch (origin/feature) with no local copy.
+	Remote bool `json:"remote,omitempty"`
+}
+
+type workspaceGitStash struct {
+	Ref     string `json:"ref"`
+	Message string `json:"message"`
+	Date    string `json:"date"`
+}
+
+type workspaceGitBlameLine struct {
+	Line    int    `json:"line"`
+	Hash    string `json:"hash"`
+	Author  string `json:"author"`
+	Time    int64  `json:"time"`
+	Summary string `json:"summary"`
+	// Uncommitted lines are not in any commit yet.
+	Uncommitted bool `json:"uncommitted,omitempty"`
+}
+
 type workspaceGitCommit struct {
 	Hash    string `json:"hash"`
 	Author  string `json:"author"`
@@ -471,6 +495,35 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 			out, truncated = out[:workspaceGitMaxDiffBytes], true
 		}
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"diff": string(out), "truncated": truncated})
+	case "branches":
+		out, err := workspaceGitCommand(ctx, repoDir, "for-each-ref", "--count=400", "--format=%(refname)%1f%(HEAD)%1f%(upstream:short)", "refs/heads", "refs/remotes").Output()
+		if err != nil {
+			writeWorkspaceGitJSON(w, http.StatusInternalServerError, map[string]string{"error": "git failed"})
+			return
+		}
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"branches": parseWorkspaceGitBranches(string(out))})
+	case "stashes":
+		out, _ := workspaceGitCommand(ctx, repoDir, "stash", "list", "--max-count=50", "--format=%gd%x1f%gs%x1f%cI").Output()
+		stashes := []workspaceGitStash{}
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			parts := strings.Split(line, "\x1f")
+			if len(parts) == 3 {
+				stashes = append(stashes, workspaceGitStash{Ref: parts[0], Message: parts[1], Date: parts[2]})
+			}
+		}
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"stashes": stashes})
+	case "blame":
+		if file == "" {
+			writeWorkspaceGitJSON(w, http.StatusBadRequest, map[string]string{"error": "file is required"})
+			return
+		}
+		out, err := workspaceGitCommand(ctx, repoDir, "blame", "--line-porcelain", "--", file).Output()
+		if err != nil {
+			writeWorkspaceGitJSON(w, http.StatusNotFound, map[string]string{"error": "this file has no git history yet"})
+			return
+		}
+		lines, truncated := parseWorkspaceGitBlame(out)
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"lines": lines, "truncated": truncated})
 	case "log":
 		args := []string{"log", "--no-color", "-n", strconv.Itoa(workspaceGitMaxCommits), "--date=iso-strict", "--format=%H%x1f%an%x1f%ad%x1f%s%x1f%D%x1e"}
 		if file != "" {
@@ -498,4 +551,72 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	default:
 		writeWorkspaceGitJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown op"})
 	}
+}
+
+// parseWorkspaceGitBranches reads for-each-ref output: local branches, then
+// remote-tracking branches that have no local branch of the same name.
+func parseWorkspaceGitBranches(out string) []workspaceGitBranch {
+	local := []workspaceGitBranch{}
+	remotes := []string{}
+	haveLocal := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.Split(line, "\x1f")
+		if len(parts) != 3 {
+			continue
+		}
+		ref := parts[0]
+		switch {
+		case strings.HasPrefix(ref, "refs/heads/"):
+			name := strings.TrimPrefix(ref, "refs/heads/")
+			haveLocal[name] = true
+			local = append(local, workspaceGitBranch{Name: name, Current: strings.TrimSpace(parts[1]) == "*", Upstream: parts[2]})
+		case strings.HasPrefix(ref, "refs/remotes/") && !strings.HasSuffix(ref, "/HEAD"):
+			remotes = append(remotes, strings.TrimPrefix(ref, "refs/remotes/"))
+		}
+	}
+	for _, remote := range remotes {
+		short := remote
+		if i := strings.Index(remote, "/"); i >= 0 {
+			short = remote[i+1:]
+		}
+		if !haveLocal[short] {
+			local = append(local, workspaceGitBranch{Name: remote, Remote: true})
+		}
+	}
+	return local
+}
+
+// parseWorkspaceGitBlame reads `git blame --line-porcelain`: per line a header
+// "<hash> <orig> <final> [count]", author/author-time/summary, then the tab
+// prefixed line itself.
+func parseWorkspaceGitBlame(out []byte) ([]workspaceGitBlameLine, bool) {
+	const maxLines = 20000
+	lines := []workspaceGitBlameLine{}
+	var current workspaceGitBlameLine
+	for _, raw := range strings.Split(string(out), "\n") {
+		if len(lines) >= maxLines {
+			return lines, true
+		}
+		switch {
+		case strings.HasPrefix(raw, "\t"):
+			lines = append(lines, current)
+			current = workspaceGitBlameLine{}
+		case strings.HasPrefix(raw, "author "):
+			current.Author = strings.TrimPrefix(raw, "author ")
+		case strings.HasPrefix(raw, "author-time "):
+			current.Time, _ = strconv.ParseInt(strings.TrimPrefix(raw, "author-time "), 10, 64)
+		case strings.HasPrefix(raw, "summary "):
+			current.Summary = strings.TrimPrefix(raw, "summary ")
+		default:
+			fields := strings.Fields(raw)
+			if len(fields) >= 3 && len(fields[0]) >= 40 && workspaceGitCommitRe.MatchString(fields[0]) {
+				current.Hash = fields[0]
+				if n, err := strconv.Atoi(fields[2]); err == nil {
+					current.Line = n
+				}
+				current.Uncommitted = strings.Trim(fields[0], "0") == ""
+			}
+		}
+	}
+	return lines, false
 }

@@ -164,7 +164,7 @@ export function FileWorkspacePane({
       )}
       {gitPanel && workspacePath ? (
         <div className="min-h-0 min-w-0 flex-1">
-          <GitFilePanel workspacePath={workspacePath} panel={gitPanel} onClose={() => useWorkspaceGitStore.getState().openPanel(null)} />
+          <GitFilePanel workspacePath={workspacePath} panel={gitPanel} onClose={() => useWorkspaceGitStore.getState().openPanel(null)} onAsk={onAsk} />
         </div>
       ) : showFileContent && (
         <div className="min-h-0 min-w-0 flex-1">

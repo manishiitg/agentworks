@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -121,6 +122,47 @@ type workspaceGitActionRequest struct {
 	Files         []string `json:"files"`
 	All           bool     `json:"all"`
 	Message       string   `json:"message"`
+	// Branch operations. Remote names a remote-tracking branch to track.
+	Branch string `json:"branch"`
+	Remote bool   `json:"remote"`
+	// Ref names a stash entry ("stash@{0}"); Choice resolves a conflict.
+	Ref    string `json:"ref"`
+	Choice string `json:"choice"`
+}
+
+var (
+	workspaceGitBranchRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$`)
+	workspaceGitStashRe  = regexp.MustCompile(`^stash@\{[0-9]{1,3}\}$`)
+)
+
+// workspaceGitBranchName validates a branch name as git itself would take it,
+// and refuses anything that could read as an option.
+func workspaceGitBranchName(ctx context.Context, dir, name string) bool {
+	if !workspaceGitBranchRe.MatchString(name) || strings.Contains(name, "..") || strings.HasSuffix(name, "/") || strings.HasSuffix(name, ".lock") {
+		return false
+	}
+	_, err := workspaceGitRunWrite(ctx, dir, nil, "check-ref-format", "--branch", name)
+	return err == nil
+}
+
+// workspaceGitResolveBoth keeps both sides of every conflict block, dropping
+// the markers (and any diff3 base section).
+func workspaceGitResolveBoth(content string) string {
+	var out []string
+	inBase := false
+	for _, line := range strings.SplitAfter(content, "\n") {
+		switch {
+		case strings.HasPrefix(line, "<<<<<<< "), strings.HasPrefix(line, ">>>>>>> "), strings.HasPrefix(line, "=======") && strings.TrimRight(line, "\r\n") == "=======":
+			inBase = false
+		case strings.HasPrefix(line, "||||||| "):
+			inBase = true
+		default:
+			if !inBase {
+				out = append(out, line)
+			}
+		}
+	}
+	return strings.Join(out, "")
 }
 
 // gitIdentity is the commit author: the signed-in person.
@@ -303,6 +345,113 @@ func (api *StreamingAPI) handleWorkspaceGitAction(w http.ResponseWriter, r *http
 		name, email := gitIdentity(claims)
 		env := []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_COMMITTER_NAME=" + name, "GIT_COMMITTER_EMAIL=" + email}
 		if out, err := workspaceGitRunWrite(ctx, repoDir, env, "commit", "-q", "--no-gpg-sign", "-m", text); err != nil {
+			gitFail(out, err)
+			return
+		}
+	case "checkout", "create_branch", "delete_branch":
+		if !workspaceGitBranchName(ctx, repoDir, req.Branch) {
+			fail(http.StatusBadRequest, "invalid branch name")
+			return
+		}
+		var args []string
+		switch req.Op {
+		case "checkout":
+			args = []string{"switch", req.Branch}
+			if req.Remote {
+				args = []string{"switch", "--track", req.Branch}
+			}
+		case "create_branch":
+			args = []string{"switch", "-c", req.Branch}
+		default:
+			current, _ := workspaceGitStatus(ctx, repoDir)
+			if current.Branch == req.Branch {
+				fail(http.StatusConflict, "cannot delete the branch you are on")
+				return
+			}
+			args = []string{"branch", "-d", req.Branch}
+		}
+		if out, err := workspaceGitRunWrite(ctx, repoDir, nil, args...); err != nil {
+			gitFail(out, err)
+			return
+		}
+	case "stash", "stash_apply", "stash_pop", "stash_drop":
+		name, email := gitIdentity(claims)
+		env := []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_COMMITTER_NAME=" + name, "GIT_COMMITTER_EMAIL=" + email}
+		var args []string
+		if req.Op == "stash" {
+			args = []string{"stash", "push", "--include-untracked"}
+			if text := strings.TrimSpace(req.Message); text != "" {
+				if len(text) > 200 {
+					fail(http.StatusBadRequest, "keep the stash message under 200 characters")
+					return
+				}
+				args = append(args, "-m", text)
+			}
+		} else {
+			if !workspaceGitStashRe.MatchString(req.Ref) {
+				fail(http.StatusBadRequest, "invalid stash")
+				return
+			}
+			args = []string{"stash", strings.TrimPrefix(req.Op, "stash_"), req.Ref}
+		}
+		if out, err := workspaceGitRunWrite(ctx, repoDir, env, args...); err != nil {
+			gitFail(out, err)
+			return
+		}
+	case "resolve":
+		files, ok := workspaceGitActionPaths(req.Files)
+		if !ok || len(files) != 1 {
+			fail(http.StatusBadRequest, "name one file to resolve")
+			return
+		}
+		file := files[0]
+		current, err := workspaceGitStatus(ctx, repoDir)
+		if err != nil {
+			fail(http.StatusInternalServerError, "git failed")
+			return
+		}
+		conflicted := false
+		for _, entry := range current.Files {
+			if entry.Path == file && entry.WorktreeStatus == "conflict" {
+				conflicted = true
+			}
+		}
+		if !conflicted {
+			fail(http.StatusConflict, file+" has no merge conflict")
+			return
+		}
+		switch req.Choice {
+		case "ours", "theirs":
+			if out, err := workspaceGitRunWrite(ctx, repoDir, nil, "checkout", "--"+req.Choice, "--", file); err != nil {
+				gitFail(out, err)
+				return
+			}
+		case "both":
+			target := filepath.Join(repoDir, filepath.FromSlash(file))
+			// A symlinked folder on the way could point outside the repo.
+			if _, inside := workspaceGitConfined(repoDir, filepath.Dir(target)); !inside {
+				fail(http.StatusConflict, "this file cannot be resolved here; ask the agent")
+				return
+			}
+			info, err := os.Lstat(target)
+			if err != nil || !info.Mode().IsRegular() || info.Size() > 2<<20 {
+				fail(http.StatusConflict, "this file cannot be resolved here; ask the agent")
+				return
+			}
+			raw, err := os.ReadFile(target)
+			if err != nil {
+				fail(http.StatusConflict, "could not read "+file)
+				return
+			}
+			if err := os.WriteFile(target, []byte(workspaceGitResolveBoth(string(raw))), info.Mode().Perm()); err != nil {
+				fail(http.StatusConflict, "could not write "+file)
+				return
+			}
+		default:
+			fail(http.StatusBadRequest, "choice must be ours, theirs or both")
+			return
+		}
+		if out, err := workspaceGitRunWrite(ctx, repoDir, nil, "add", "--", file); err != nil {
 			gitFail(out, err)
 			return
 		}
