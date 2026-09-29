@@ -707,6 +707,9 @@ func (r *BackgroundAgentRegistry) Get(sessionID, agentID string) *BackgroundAgen
 
 // GetAll returns all background agents for a session
 func (r *BackgroundAgentRegistry) GetAll(sessionID string) []*BackgroundAgent {
+	if r == nil {
+		return nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	sessionAgents, ok := r.agents[sessionID]
@@ -1754,6 +1757,10 @@ const (
 
 var failedCompletionRetries sync.Map // sessionID -> int
 
+// completionRetryAfterFunc schedules a retry; tests replace it so no timer
+// outlives them.
+var completionRetryAfterFunc = func(delay time.Duration, run func()) { time.AfterFunc(delay, run) }
+
 func resetFailedCompletionRetries(sessionID string) {
 	failedCompletionRetries.Delete(sessionID)
 }
@@ -1792,7 +1799,7 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 	api.completionRetryScheduled[sessionID] = true
 	api.pendingMu.Unlock()
 
-	time.AfterFunc(delay, func() {
+	completionRetryAfterFunc(delay, func() {
 		api.pendingMu.Lock()
 		delete(api.completionRetryScheduled, sessionID)
 		api.pendingMu.Unlock()
