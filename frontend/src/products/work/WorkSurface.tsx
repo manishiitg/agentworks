@@ -1075,7 +1075,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       <ModePresetBar
         productControl={topBarControl}
         reduced
-        walkthroughSurface={selected ? 'crew' : 'empty-crew'}
+        walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
         walkthroughReady={!sessionsLoading && !creating && !error}
         // The guided tour is Crew's (identity, templates, automation); a Code
         // never opens it on its own.
