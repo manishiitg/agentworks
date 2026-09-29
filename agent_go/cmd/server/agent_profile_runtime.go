@@ -30,6 +30,13 @@ type resolvedAgentProfile struct {
 	// one. It feeds the session fingerprint so a retained native session
 	// relaunches when the identity it was launched with changes.
 	IdentityKey string
+	// ChatConnections are this chat's own MCP connections: a Code's personal
+	// servers switched on for it, or a Crew's attached ones. They join the
+	// turn's servers later in the query path; here they only feed the session
+	// fingerprint, so connecting Gmail to a Code relaunches its retained CLI
+	// (resuming the same conversation) instead of the old process answering
+	// "not registered by any connected server" (RTS 2026-09-29).
+	ChatConnections []string
 	// APIKeys carries the project-scoped credential this resolver loaded from the
 	// encrypted per-user/workspace store. It is returned on the resolver's own
 	// result rather than handed back through req.LLMConfig so the query path can
@@ -69,11 +76,14 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	}
 	servers := append([]string(nil), profile.SelectedServers...)
 	sort.Strings(servers)
+	connections := append([]string(nil), profile.ChatConnections...)
+	sort.Strings(connections)
 	payload, err := json.Marshal(struct {
 		Definition      agentprofiles.Profile `json:"definition"`
 		SelectedServers []string              `json:"selected_servers,omitempty"`
 		IdentityKey     string                `json:"identity_key,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey})
+		ChatConnections []string              `json:"chat_connections,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -569,7 +579,24 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			req.Servers = nil
 		}
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey}, nil
+	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey,
+		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)}, nil
+}
+
+// chatMCPConnections are the chat's own connections, resolved exactly as the
+// query path adds them to the turn: a Code's personal servers switched on
+// for it, else the Crew's attached servers.
+func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
+	root := agentProfileRuntimeWorkspace(userID, selectedFolder)
+	if strings.EqualFold(profileID, codeproduct.ProfileID) {
+		names, _ := personalMCPServersForTurn(userID, root)
+		return names
+	}
+	if isProjectProfileID(profileID) {
+		names, _ := attachedMCPServersForRoot(ctx, root)
+		return names
+	}
+	return nil
 }
 
 func profileRuntimeEventType(event any) string {
