@@ -84,6 +84,51 @@ func TestMountNamespaceFallbackSharesExternalBrowserSocketFolder(t *testing.T) {
 	}
 }
 
+func TestMountNamespaceFallbackKeepsTmpPrivateBetweenWorkflows(t *testing.T) {
+	if !mountNamespaceAvailable() {
+		t.Skip("mount namespaces are unavailable")
+	}
+	root := t.TempDir()
+	workA := filepath.Join(root, "Workflow", "qa-a")
+	workB := filepath.Join(root, "Workflow", "qa-b")
+	for _, dir := range []string{workA, workB} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marker := filepath.Join(os.TempDir(), "agentworks-fallback-tmp-"+filepath.Base(root))
+	if err := os.WriteFile(marker, []byte("host"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(marker)
+	run := func(work, command string) string {
+		t.Helper()
+		iso := &Isolator{BaseDir: root, WorkDir: work, ReadPaths: []string{work}, WritePaths: []string{work}}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cmd, cleanup, err := iso.executeIsolatedMountNamespace(ctx, command, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanup()
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("sandboxed command failed: %v\n%s", err, output)
+		}
+		return string(output)
+	}
+	if output := run(workA, fmt.Sprintf(`test ! -e %q && printf from-a > %q && cat %q`, marker, marker, marker)); output != "from-a" {
+		t.Fatalf("workflow A did not get its own /tmp: %q", output)
+	}
+	if output := run(workB, fmt.Sprintf(`test ! -e %q && printf isolated`, marker)); output != "isolated" {
+		t.Fatalf("workflow B saw another /tmp: %q", output)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil || string(data) != "host" {
+		t.Fatalf("host /tmp was modified: data=%q err=%v", data, err)
+	}
+}
+
 func TestLandlockEnforcesExternalFolderAccess(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	readOnlyRoot := t.TempDir()

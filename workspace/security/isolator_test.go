@@ -504,6 +504,24 @@ func TestMountScriptBindsExternalAbsolutePathsFromHost(t *testing.T) {
 	}
 }
 
+func TestMountNamespacePrivateTmpKeepsOnlyGrantedPaths(t *testing.T) {
+	const socket = "/tmp/.agent-browser/o/w0123456789abcdef"
+	iso := &Isolator{
+		BaseDir:        "/srv/workspace",
+		WorkDir:        "/tmp/ungranted-workdir",
+		ReadPaths:      []string{"/srv/workspace/Workflow/example"},
+		WritePaths:     []string{socket},
+		BrowserSession: "workflow-0123456789abcdef--browser",
+	}
+	got := iso.mountTmpKeepPaths()
+	if len(got) != 1 || got[0] != socket {
+		t.Fatalf("private /tmp grants = %v, want only %q", got, socket)
+	}
+	if script := iso.generateMountScript("true", nil); !strings.Contains(script, "mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp") {
+		t.Fatal("mount namespace fallback did not make /tmp private")
+	}
+}
+
 // TestMacOSAuthorizedSiblingDirectory verifies the complete permission path
 // used by Builder attachments: an allowed directory below workspace-docs must
 // permit access to the directory node as well as its descendants. A subpath-

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -224,21 +225,10 @@ func (iso *Isolator) executeIsolatedLinux(ctx context.Context, command string, a
 // Callers must prove that unshare is permitted for the service identity before
 // selecting it; invoking it optimistically is PLAT-118's root cause.
 func (iso *Isolator) executeIsolatedMountNamespace(ctx context.Context, command string, args []string) (*exec.Cmd, func(), error) {
-	// Generate mount script for isolation
+	// Pass the script on stdin. It remains available after the command mounts
+	// a private /tmp, and another same-UID agent cannot read it from a host
+	// temporary file while this command runs.
 	mountScript := iso.generateMountScript(command, args)
-
-	// Create unique temp script file (PID + timestamp to avoid collisions)
-	scriptPath := filepath.Join("/tmp", fmt.Sprintf("exec-%d-%d.sh", os.Getpid(), time.Now().UnixNano()))
-
-	// Write script with error handling
-	if err := os.WriteFile(scriptPath, []byte(mountScript), 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to write mount script: %w", err)
-	}
-
-	// Cleanup function to remove script after execution
-	cleanup := func() {
-		os.Remove(scriptPath)
-	}
 
 	// Execute using unshare (creates new mount + user namespace).
 	// --mount: mount namespace, containing the bind mounts/tmpfs the script sets up.
@@ -251,7 +241,8 @@ func (iso *Isolator) executeIsolatedMountNamespace(ctx context.Context, command 
 	//   it -- this mirrors mountNamespaceAvailable()'s probe, which must test
 	//   the exact same privilege shape this actually uses.
 	// --propagation private: don't propagate mounts to parent namespace.
-	cmd := exec.CommandContext(ctx, "unshare", "--mount", "--user", "--map-root-user", "--propagation", "private", "sh", scriptPath)
+	cmd := exec.CommandContext(ctx, "unshare", "--mount", "--user", "--map-root-user", "--propagation", "private", "sh", "-s")
+	cmd.Stdin = strings.NewReader(mountScript)
 
 	// Set working directory for proper error messages
 	cmd.Dir = iso.WorkDir
@@ -260,7 +251,7 @@ func (iso *Isolator) executeIsolatedMountNamespace(ctx context.Context, command 
 	// routed to the workflow's persistent sandbox folder (PLAT-284).
 	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist))
 
-	return cmd, cleanup, nil
+	return cmd, func() {}, nil
 }
 
 // executeIsolatedMacOS uses sandbox-exec for filesystem isolation on macOS
@@ -687,6 +678,69 @@ func writeBindMountOnly(sb *strings.Builder, tempPath, absPath string, readOnly 
 	sb.WriteString("fi\n")
 }
 
+func mountScriptQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+// The mount-namespace fallback needs the same private /tmp boundary as the
+// Landlock launcher. Keep only explicit grants under /tmp, plus the sandbox's
+// own workspace and the legacy shared browser socket when no managed browser
+// is scoped. An outer grant covers its descendants.
+func (iso *Isolator) mountTmpKeepPaths() []string {
+	candidates := append([]string{iso.getBaseDir()}, iso.ReadPaths...)
+	candidates = append(candidates, iso.WritePaths...)
+	if !browserconfig.IsUserSession(iso.BrowserSession) {
+		candidates = append(candidates, browserconfig.SocketRoot)
+	}
+	var under []string
+	for _, path := range candidates {
+		clean := filepath.Clean(path)
+		if filepath.IsAbs(clean) && strings.HasPrefix(clean, "/tmp/") {
+			under = append(under, clean)
+		}
+	}
+	sort.Slice(under, func(i, j int) bool { return len(under[i]) < len(under[j]) })
+	var keep []string
+	for _, path := range under {
+		covered := false
+		for _, parent := range keep {
+			if pathWithin(path, parent) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			keep = append(keep, path)
+		}
+	}
+	return keep
+}
+
+func (iso *Isolator) writePrivateTmpMount(sb *strings.Builder) {
+	sb.WriteString("# Isolate /tmp while keeping only this command's explicitly granted paths.\n")
+	sb.WriteString("tmp_hold=$(mktemp -d /var/tmp/agentworks-tmp-XXXXXX)\n")
+	paths := iso.mountTmpKeepPaths()
+	for i, path := range paths {
+		quoted := mountScriptQuote(path)
+		sb.WriteString(fmt.Sprintf("tmp_keep_%d=\n", i))
+		sb.WriteString(fmt.Sprintf("if [ -d %s ]; then\n", quoted))
+		sb.WriteString(fmt.Sprintf("  mkdir \"$tmp_hold/%d\"\n  mount --bind %s \"$tmp_hold/%d\"\n  tmp_keep_%d=d\n", i, quoted, i, i))
+		sb.WriteString(fmt.Sprintf("elif [ -e %s ]; then\n", quoted))
+		sb.WriteString(fmt.Sprintf("  : > \"$tmp_hold/%d\"\n  mount --bind %s \"$tmp_hold/%d\"\n  tmp_keep_%d=f\n", i, quoted, i, i))
+		sb.WriteString("fi\n")
+	}
+	sb.WriteString("mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp\n")
+	for i, path := range paths {
+		quoted := mountScriptQuote(path)
+		sb.WriteString(fmt.Sprintf("if [ \"$tmp_keep_%d\" = d ]; then\n", i))
+		sb.WriteString(fmt.Sprintf("  mkdir -p %s\n  mount --bind \"$tmp_hold/%d\" %s\n  umount \"$tmp_hold/%d\"\n  rmdir \"$tmp_hold/%d\"\n", quoted, i, quoted, i, i))
+		sb.WriteString(fmt.Sprintf("elif [ \"$tmp_keep_%d\" = f ]; then\n", i))
+		sb.WriteString(fmt.Sprintf("  mkdir -p %s\n  : > %s\n  mount --bind \"$tmp_hold/%d\" %s\n  umount \"$tmp_hold/%d\"\n  rm \"$tmp_hold/%d\"\n", mountScriptQuote(filepath.Dir(path)), quoted, i, quoted, i, i))
+		sb.WriteString("fi\n")
+	}
+	sb.WriteString("rmdir \"$tmp_hold\"\n\n")
+}
+
 // generateMountScript creates a shell script for filesystem isolation
 // Strategy: Bind workspace to temp, hide with tmpfs, then selectively expose allowed paths
 func (iso *Isolator) generateMountScript(command string, args []string) string {
@@ -694,6 +748,7 @@ func (iso *Isolator) generateMountScript(command string, args []string) string {
 
 	sb.WriteString("#!/bin/sh\n")
 	sb.WriteString("set -e\n\n")
+	iso.writePrivateTmpMount(&sb)
 
 	baseDir := iso.getBaseDir()
 
