@@ -46,7 +46,8 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   hasIdentity: true,
   hasTemplates: true,
   listsSharedProjects: true,
-  hasNativeAgentToolsSetting: true,
+  // No switch (owner decision 2026-09-29): native agent tools are always on.
+  hasNativeAgentToolsSetting: false,
   defaultView: 'identity',
   preferenceNamespace: 'work',
 }

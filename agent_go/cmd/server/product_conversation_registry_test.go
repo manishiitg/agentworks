@@ -526,8 +526,9 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 	}
 }
 
-// The crew's "Native agent tools" switch lives in workflow.json capabilities
-// and must reach the binding that resolveAgentProfileForQuery reads.
+// A project's native agent tools are always on: the switch is gone (2026-09-29),
+// and an older project's stored "off" no longer reaches the binding that
+// resolveAgentProfileForQuery reads.
 func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
 	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
@@ -540,7 +541,7 @@ func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 	}{
 		{`{"native_agent_tools":true}`, true},
 		{`{}`, true}, // on by default
-		{`{"native_agent_tools":false}`, false},
+		{`{"native_agent_tools":false}`, true}, // no switch any more: a stored off is ignored
 	} {
 		store := productProjectStore{
 			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
