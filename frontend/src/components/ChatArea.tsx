@@ -3264,7 +3264,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             currentTab.metadata.agentProfileId,
             buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, reasoningEffort),
             tabSessionId,
-            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery, attendedChat: true },
+            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
           )
         : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery, attendedChat: true })
       recordChatSubmissionTelemetry('api_acknowledged', response.session_id || tabSessionId, receipt.id, {

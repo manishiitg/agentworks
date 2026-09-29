@@ -75,7 +75,7 @@ func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 // so its questions must be auto-answered or the run waits forever. Bot
 // conversations are excluded too: the question card is only in AgentWorks,
 // not in the Slack or WhatsApp thread.
-// attendedChatHeader is sent only by the AgentWorks chat composer when a
+// attendedChatHeader is sent only by the builder chat composer when a
 // person submits a message. It is an allow-list: schedules, bots, webhooks,
 // Crew calls, workflow runs and API clients never send it, so any new
 // automated path auto-answers native questions by default.
@@ -93,6 +93,12 @@ func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) boo
 		return false
 	}
 	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.TriggeredBy)), "bot:") {
+		return false
+	}
+	// Only the builder chat shows question cards (user, 2026-09-29). Product
+	// chats (Code, Crew, Video Studio, ...) run on a server-stamped agent
+	// profile and auto-answer like every automated path.
+	if strings.TrimSpace(req.AgentProfileID) != "" {
 		return false
 	}
 	// "Make interactive" hands a schedule session to the user on purpose.

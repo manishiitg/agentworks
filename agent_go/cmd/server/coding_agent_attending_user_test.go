@@ -27,6 +27,7 @@ func TestCodingAgentRequestHasAttendingUser(t *testing.T) {
 		{"child session", QueryRequest{ParentSessionID: "parent"}, "child", false},
 		{"typed runtime stage", QueryRequest{SessionKind: "pulse_reviewer"}, "abc", false},
 		{"auto notification turn", QueryRequest{IsAutoNotification: true}, "abc", false},
+		{"product chat (Code, Crew, ...)", QueryRequest{AgentProfileID: "code"}, "6eaa17e1-9457-42fb-aa8e-d1772cb14334", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

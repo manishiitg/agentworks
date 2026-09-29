@@ -14,8 +14,9 @@ export interface ChatRequestContext {
   continuation?: boolean
   identity?: number
   queuedDelivery?: boolean
-  /** A person typed this in the chat composer; only then may a coding
-   *  agent's native question wait for them (everything else auto-answers). */
+  /** A person typed this in the builder chat composer; only then may a
+   *  coding agent's native question wait for them. Product chats and every
+   *  automated path auto-answer. */
   attendedChat?: boolean
 }
 
