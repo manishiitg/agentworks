@@ -5383,6 +5383,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.setSyntheticTurn(sessionID, false)
 				api.setSessionBusy(sessionID, false)
 			}
+			// Live input the CLI accepted during this turn can still be
+			// running as a retained turn (see observeRetainedMainTurnEvent).
+			// Its own completion settles it; do not show the chat idle now.
+			if turnStatus == trackedExecutionStatusCompleted && api.retainedMainTurnTracked(sessionID) {
+				log.Printf("[RETAINED_TURN] Foreground turn ended with live input still being answered; keeping session=%s running", sessionID)
+				api.setSessionBusy(sessionID, true)
+				api.updateSessionStatus(sessionID, "running")
+			}
 			api.observeRuntimeSnapshot(sessionID)
 			if queryInputLaneRelease != nil {
 				queryInputLaneRelease()
@@ -9137,6 +9145,31 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	api.observeRetainedMainTurnEvent(sessionID, event)
 }
 
+// completionMetadataFlag reports whether a unified completion carries a true
+// boolean metadata flag.
+func completionMetadataFlag(event events.Event, key string) bool {
+	if event.Data == nil {
+		return false
+	}
+	completion, ok := event.Data.Data.(*unifiedevents.UnifiedCompletionEvent)
+	if !ok || completion == nil || completion.Metadata == nil {
+		return false
+	}
+	flag, _ := completion.Metadata[key].(bool)
+	return flag
+}
+
+// retainedMainTurnTracked reports whether a retained main-agent turn is open.
+func (api *StreamingAPI) retainedMainTurnTracked(sessionID string) bool {
+	if api == nil {
+		return false
+	}
+	api.retainedMainTurnsMu.Lock()
+	defer api.retainedMainTurnsMu.Unlock()
+	_, tracked := api.retainedMainTurns[sessionID]
+	return tracked
+}
+
 func retainedMainTurnCompletionEvent(eventType string) bool {
 	switch strings.ToLower(strings.TrimSpace(eventType)) {
 	case "streaming_end", "agent_end", "conversation_end", "unified_completion":
@@ -9178,6 +9211,16 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	startedAt, tracked := api.retainedMainTurns[sessionID]
 	api.retainedMainTurnsMu.Unlock()
 	if !tracked || (!event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
+		return
+	}
+	// Live input reached the CLI while this completion's Session.Run was
+	// still running. The CLI may answer it only after this response, so the
+	// mcpagent Session owns a follow-up watch that emits the input's own
+	// completion (or closes it as answered by this response). Settling here
+	// took the older response as the input's answer and left the CLI's real
+	// reply with no stream (Excellence 2026-09-29 06:27).
+	if completionMetadataFlag(event, mcpagent.LiveInputFollowupMetadataKey) {
+		log.Printf("[RETAINED_TURN] Completion precedes a live-input follow-up; keeping the input's turn open session=%s", sessionID)
 		return
 	}
 
@@ -9296,7 +9339,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	// Persist an exact structured completion directly whenever it carries the
 	// final reply. Native transcript reconciliation is only the emergency path
 	// for missing structured output or a failed canonical append.
-	if !api.persistRetainedStructuredCompletion(sessionID, event) {
+	// A follow-up answered by the previous response carries no text of its own;
+	// that response is already persisted, so there is nothing to reconcile.
+	if !completionMetadataFlag(event, mcpagent.AnsweredByPreviousResponseMetadataKey) &&
+		!api.persistRetainedStructuredCompletion(sessionID, event) {
 		api.scheduleWorkflowBuilderNativeTranscriptSync(sessionID)
 	}
 	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s",
