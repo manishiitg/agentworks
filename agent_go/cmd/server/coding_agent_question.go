@@ -56,6 +56,14 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 		return
 	}
 	if err := musecli.SubmitQuestionAnswers(ctx, sessionID, req.PromptID, answers); err != nil {
+		// "Let Muse choose" is the way out of a question; if even that cannot
+		// be entered, interrupt the run rather than leave the chat waiting.
+		if req.Auto && !strings.Contains(err.Error(), "no longer pending") {
+			if interruptErr := musecli.InterruptPendingQuestion(ctx, sessionID); interruptErr == nil {
+				http.Error(w, "Muse could not take its first option, so the run was stopped. Send your message again.", http.StatusConflict)
+				return
+			}
+		}
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}

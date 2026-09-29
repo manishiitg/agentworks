@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -74,6 +75,16 @@ func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 // so its questions must be auto-answered or the run waits forever. Bot
 // conversations are excluded too: the question card is only in AgentWorks,
 // not in the Slack or WhatsApp thread.
+// attendedChatHeader is sent only by the AgentWorks chat composer when a
+// person submits a message. It is an allow-list: schedules, bots, webhooks,
+// Crew calls, workflow runs and API clients never send it, so any new
+// automated path auto-answers native questions by default.
+const attendedChatHeader = "X-AgentWorks-Attended-Chat"
+
+func requestFromAttendedChat(r *http.Request) bool {
+	return r != nil && strings.TrimSpace(r.Header.Get(attendedChatHeader)) == "1"
+}
+
 func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) bool {
 	if req == nil {
 		return false

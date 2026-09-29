@@ -973,12 +973,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
   ), [activeSessionId, displayEvents, olderHistory.events, olderHistory.sessionId])
-  // Questions the server says are no longer open (the CLI restarted or the
-  // turn ended without a settled record) must not keep the composer locked.
+  // A question only locks the composer while its turn is running. One left
+  // without a settled record (crash, restart) must not lock the chat again on
+  // every reload; the server's "no longer open" answer also releases it.
   const [closedCodingAgentQuestions, setClosedCodingAgentQuestions] = useState<ReadonlySet<string>>(() => new Set())
-  const pendingCodingAgentChoice = useMemo(() => buildCleanConversationItems(transcriptEvents).some(
+  const pendingCodingAgentChoice = useMemo(() => isStreaming && buildCleanConversationItems(transcriptEvents).some(
     (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
-  ), [transcriptEvents, closedCodingAgentQuestions])
+  ), [isStreaming, transcriptEvents, closedCodingAgentQuestions])
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.
@@ -3263,9 +3264,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             currentTab.metadata.agentProfileId,
             buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, reasoningEffort),
             tabSessionId,
-            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
+            { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery, attendedChat: true },
           )
-        : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery })
+        : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery, attendedChat: true })
       recordChatSubmissionTelemetry('api_acknowledged', response.session_id || tabSessionId, receipt.id, {
         tabId: currentTab.tabId,
         elapsedMS: performance.now() - submittedAtPerformanceMS,

@@ -14,6 +14,9 @@ export interface ChatRequestContext {
   continuation?: boolean
   identity?: number
   queuedDelivery?: boolean
+  /** A person typed this in the chat composer; only then may a coding
+   *  agent's native question wait for them (everything else auto-answers). */
+  attendedChat?: boolean
 }
 
 function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {}) {
@@ -27,6 +30,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
       ...(context.queuedDelivery ? { 'X-Queued-Chat-Delivery': 'true' } : {}),
+      ...(context.attendedChat ? { 'X-AgentWorks-Attended-Chat': '1' } : {}),
     },
   }
 }

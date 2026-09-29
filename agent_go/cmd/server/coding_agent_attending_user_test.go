@@ -1,6 +1,10 @@
 package server
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 // PLAT-354: only a chat a person is attending may make a native CLI question
 // wait for an answer. A scheduled run keeps its native session alive, but a
@@ -31,5 +35,25 @@ func TestCodingAgentRequestHasAttendingUser(t *testing.T) {
 				t.Fatalf("codingAgentRequestHasAttendingUser() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// Only the chat composer's header opts in. Internal callers (bots, Crew
+// calls, webhooks, queued turns built from them) and API clients build their
+// own requests without it, so they auto-answer even if the body looks like a
+// plain chat.
+func TestRequestFromAttendedChatIsAllowListed(t *testing.T) {
+	plain := httptest.NewRequest(http.MethodPost, "/api/query", nil)
+	if requestFromAttendedChat(plain) || requestFromAttendedChat(nil) {
+		t.Fatal("a request without the composer header must auto-answer")
+	}
+	composer := httptest.NewRequest(http.MethodPost, "/api/query", nil)
+	composer.Header.Set(attendedChatHeader, "1")
+	if !requestFromAttendedChat(composer) {
+		t.Fatal("the composer header must opt in")
+	}
+	composer.Header.Set(attendedChatHeader, "true")
+	if requestFromAttendedChat(composer) {
+		t.Fatal("only the exact value opts in")
 	}
 }

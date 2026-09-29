@@ -3459,7 +3459,7 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-AgentWorks-Attended-Chat")
 		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
@@ -5698,7 +5698,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			PiPersistentInteractiveSession:         piPersistentInteractive,
 			MusePersistentInteractiveSession:       musePersistentInteractive,
 			AgyPersistentInteractiveSession:        agyPersistentInteractive,
-			CodingAgentUserAnswersNativeQuestions:  codingAgentRequestHasAttendingUser(&req, sessionID),
+			CodingAgentUserAnswersNativeQuestions:  requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID),
 			ClaudeCodeTransport:                    claudeCodeTransport,
 			ForceStructuredCodingAgent:             forceStructuredCodingAgent,
 			CodingAgentWorkingDir:                  chatWorkingDir,
