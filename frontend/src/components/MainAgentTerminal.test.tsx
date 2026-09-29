@@ -198,4 +198,68 @@ describe('MainAgentTerminal sizing', () => {
       host.remove()
     }
   })
+
+  // One bad poll must never take down a working terminal: a slow or failed
+  // request (the server is busy while a message is sent) used to replace it
+  // with an error, and one 404 with "not started"; the next poll then brought
+  // it back, which looked like a one-second crash.
+  describe('with a terminal already showing', () => {
+    const live = {
+      terminal_id: 'terminal-1', session_id: 'session-1', tmux_session: 'tmux-1', content: '', rows: [], chunk_index: 1,
+      active: true, state: 'running', process_state: 'live', status: {}, created_at: '2026-09-29T00:00:00Z', updated_at: '2026-09-29T00:00:00Z',
+    }
+    async function mount() {
+      vi.useFakeTimers()
+      const host = document.createElement('div')
+      document.body.append(host)
+      const root = createRoot(host)
+      await act(async () => root.render(<MainAgentTerminal sessionId="session-1" />))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+      return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers() } }
+    }
+    const poll = () => act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+
+    it('keeps it through a failed poll', async () => {
+      getMainTerminal.mockResolvedValueOnce(live).mockRejectedValueOnce(new Error('timeout of 15000ms exceeded')).mockResolvedValue(live)
+      const { host, cleanup } = await mount()
+      try {
+        await poll()
+        expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+        expect(host.textContent).not.toContain('timeout')
+        await poll()
+        expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+      } finally { await cleanup() }
+    })
+
+    it('keeps it through a single 404 and drops it only when the pane stays gone', async () => {
+      const gone = { response: { status: 404 } }
+      getMainTerminal.mockResolvedValueOnce(live).mockRejectedValueOnce(gone).mockResolvedValueOnce(live)
+        .mockRejectedValueOnce(gone).mockRejectedValueOnce(gone).mockRejectedValueOnce(gone)
+      const { host, cleanup } = await mount()
+      try {
+        await poll() // one miss
+        expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+        await poll() // recovered: the miss count resets
+        await poll() // miss 1 again
+        await poll() // miss 2
+        expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+        await poll() // miss 3: gone
+        expect(host.querySelector('[data-testid="main-agent-terminal-not-started"]')).not.toBeNull()
+      } finally { await cleanup() }
+    })
+
+    it('still shows the error when there was never a terminal', async () => {
+      vi.useFakeTimers()
+      getMainTerminal.mockRejectedValue(new Error('boom'))
+      const host = document.createElement('div')
+      document.body.append(host)
+      const root = createRoot(host)
+      try {
+        await act(async () => root.render(<MainAgentTerminal sessionId="session-1" />))
+        await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+        expect(host.textContent).toContain('boom')
+      } finally { await act(async () => root.unmount()); host.remove(); vi.useRealTimers() }
+    })
+  })
 })

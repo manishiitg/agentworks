@@ -19,6 +19,7 @@ type MainAgentTerminalProps = {
 // repeatedly shrinking and reflowing the underlying tmux TUI.
 export const MAIN_AGENT_TERMINAL_MIN_WIDTH_PX = 680
 const MAIN_AGENT_TERMINAL_HISTORY_LINES = 1000
+const MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP = 3
 
 // Product raw view for the one main coding-agent terminal. This intentionally
 // reuses the mature xterm renderer/live tmux attach rather than maintaining a
@@ -37,6 +38,10 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
   const contentRef = useRef<HTMLDivElement | null>(null)
   const requestInFlight = useRef(false)
   const snapshotRef = useRef<TerminalSnapshot | null>(null)
+  // Consecutive "no main terminal" answers: a retained pane can be missing for
+  // one poll while the server rebinds it, so the view is dropped only when it
+  // stays gone.
+  const missesRef = useRef(0)
 
   useEffect(() => { snapshotRef.current = snapshot }, [snapshot])
 
@@ -79,17 +84,24 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
           setSnapshot(next)
         }
       }
+      missesRef.current = 0
       setError(null)
       setNotStarted(false)
     } catch (cause: any) {
+      const hadSnapshot = snapshotRef.current !== null
       if (cause?.response?.status === 404) {
-        snapshotRef.current = null
-        setSnapshot(null)
-        setError(null)
-        setNotStarted(true)
-      } else {
+        missesRef.current += 1
+        if (!hadSnapshot || missesRef.current >= MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP) {
+          snapshotRef.current = null
+          setSnapshot(null)
+          setError(null)
+          setNotStarted(true)
+        }
+      } else if (!hadSnapshot) {
         setError(cause?.message || 'Could not load the live view.')
       }
+      // With a terminal already on screen, a failed poll (a slow server while a
+      // message is being sent) must never replace it: the next poll retries.
     } finally {
       setLoading(false)
       requestInFlight.current = false
@@ -168,6 +180,8 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
   )
 }
 
+// A retained CLI keeps its tmux pane between turns (process_state "live"), so
+// the live view stays for the pane's whole life: not only while a turn runs.
 function paneIsLive(snapshot: { active?: boolean; tmux_session?: string; process_state?: string } | null | undefined): boolean {
   return Boolean(snapshot?.tmux_session && (snapshot.active || snapshot.process_state === 'live'))
 }
