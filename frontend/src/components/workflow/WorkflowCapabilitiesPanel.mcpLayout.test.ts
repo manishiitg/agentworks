@@ -62,7 +62,8 @@ describe('Workflow MCP panel layout', () => {
     expect(host).toContain('<KnowledgeView workspacePath={workspacePath} plan={plan} />')
     expect(host).toContain("getWorkspaceAskAIMessage('report')")
     expect(host).toContain("getWorkspaceAskAIMessage('flow')")
-    expect(host).toContain("getWorkspaceAskAIMessage('files')")
+    // The Files view has no Ask AI (it is a plain Explorer).
+    expect(host).not.toContain("getWorkspaceAskAIMessage('files')")
   })
 
   it('embeds workflow skills inside the Integrations section instead of a standalone view', () => {
