@@ -12,7 +12,9 @@ window.__APP_RUNTIME_CONFIG__ = {
   appName: "REAL Training Systems",
   faviconUrl: "/brand/icon.svg",
   markUrl: "/brand/icon.svg",
-  logoUrl: "/brand/logo.svg",
-  logoDarkUrl: "/brand/logo-white.svg",
+  // Top bar shows the RTS mark alone (user, 2026-09-29); the page title
+  // keeps the full name.
+  logoUrl: "/brand/icon.svg",
+  logoDarkUrl: "/brand/icon.svg",
   brandColor: "#3A7A91"
 };
