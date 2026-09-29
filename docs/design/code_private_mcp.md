@@ -277,6 +277,29 @@ the global secrets the Code selects.
 MCP calls are already recorded per session with the workspace path
 (`recordMCPBridgeCall`), so they land on the Code's cost row, split by person.
 
+### Catalog servers as your own; providers without registration (2026-09-29)
+
+- `GET /api/me/mcp/catalog` lists the platform catalog's remote servers a
+  person can add as their own: https, public, http/sse, no platform header
+  credentials. `POST /api/me/mcp/servers {"catalog": "<name>"}` copies the URL
+  and sign-in endpoints (scopes, `extra_auth_params`); the login is the
+  person's own. A client ID/secret in the catalog entry is copied into the
+  person's sealed client file, never into servers.json.
+- Google Workspace (Gmail, Drive, Docs, Sheets, Slides, Calendar, Chat,
+  People) and GitHub have no dynamic registration. Connect answers
+  `needs_client_id` with the callback URL. The person then enters their OAuth
+  app's client ID and secret. These are stored sealed in
+  `clients/<internal>.json` and are read back by `personalMCPServerConfig`, so
+  refreshes work as well as the first sign-in. The same file holds DCR
+  clients, and a DCR client made for another callback registers again.
+- Google issues a refresh token only with `access_type=offline` and
+  `prompt=consent`. mcpagent's `OAuthConfig.ExtraAuthParams` adds them to the
+  authorization URL, and flow-owned parameters cannot be overridden.
+- The platform connect (`/api/oauth/start`) also takes `client_secret`.
+- Later: an admin-provided shared OAuth app per deployment, so people skip
+  creating their own. Today that means putting `client_id`/`client_secret` in
+  the deployment catalog entry.
+
 ## Tests (end-to-end, not mocked)
 
 1. A adds a public no-auth remote server (e.g. DeepWiki), enables it in Code

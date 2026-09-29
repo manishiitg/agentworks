@@ -4,7 +4,7 @@ import { SettingsCard } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Checkbox } from '../../components/ui/checkbox'
-import { personalMcpApi, type PersonalMcpServer } from '../../api/personalMcp'
+import { personalMcpApi, type PersonalMcpCatalogServer, type PersonalMcpServer } from '../../api/personalMcp'
 
 const errorText = (cause: unknown, fallback: string) => {
   const response = (cause as { response?: { data?: { error?: string } } })?.response
@@ -28,6 +28,12 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
   const [headerSecret, setHeaderSecret] = useState('')
   const [secretName, setSecretName] = useState('')
   const [secretValue, setSecretValue] = useState('')
+  const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
+  const [catalogPick, setCatalogPick] = useState('')
+  // A sign-in that needs the person's own OAuth app (Google, GitHub).
+  const [clientPrompt, setClientPrompt] = useState<{ server: string; message?: string; redirectUri?: string } | null>(null)
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -43,6 +49,9 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
   }, [projectId])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    personalMcpApi.catalog().then(setCatalog).catch(() => setCatalog([]))
+  }, [])
   // After signing in in another window, show the new state on return.
   useEffect(() => {
     const onFocus = () => { void refresh() }
@@ -70,10 +79,22 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
     if (added.oauth) await connect(added.name)
   })
 
-  const connect = async (server: string) => {
-    const result = await personalMcpApi.connect(server)
-    if (result.auth_url) window.open(result.auth_url, '_blank', 'noopener')
-    else if (result.message) setError(result.message)
+  const addFromCatalog = () => run('catalog', async () => {
+    const entry = catalog.find(item => item.catalog === catalogPick)
+    if (!entry) return
+    const added = await personalMcpApi.add({ name: entry.name, catalog: entry.catalog })
+    setCatalogPick('')
+    if (added.oauth) await connect(added.name)
+  })
+
+  const connect = async (server: string, client?: { clientId: string; clientSecret?: string }) => {
+    const result = await personalMcpApi.connect(server, client)
+    if (result.auth_url) {
+      setClientPrompt(null); setClientId(''); setClientSecret('')
+      window.open(result.auth_url, '_blank', 'noopener')
+    } else if (result.status === 'needs_client_id') {
+      setClientPrompt({ server, message: result.message, redirectUri: result.redirect_uri })
+    } else if (result.message) setError(result.message)
   }
 
   const saveSecret = () => run('secret', async () => {
@@ -120,6 +141,47 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
                 </Button>
               </div>
             ))}
+          </div>
+        )}
+        {clientPrompt && (
+          <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm" data-testid="personal-mcp-client-prompt">
+            <p className="font-medium text-foreground">Sign in to {clientPrompt.server} with your own OAuth app</p>
+            <p className="text-xs text-muted-foreground">
+              This provider has no automatic app registration. Create an OAuth app (in Google Cloud or GitHub developer settings), then enter its client ID and secret. They are kept encrypted and used only for your sign-in.
+            </p>
+            {clientPrompt.redirectUri && (
+              <p className="text-xs text-muted-foreground">Callback URL to register: <code className="break-all text-foreground">{clientPrompt.redirectUri}</code></p>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input value={clientId} onChange={event => setClientId(event.target.value)} placeholder="Client ID" aria-label="OAuth client ID" />
+              <Input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="Client secret" aria-label="OAuth client secret" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => { setClientPrompt(null); setClientId(''); setClientSecret('') }}>Cancel</Button>
+              <Button size="sm" disabled={busy !== null || !clientId.trim()} onClick={() => { void run(`client:${clientPrompt.server}`, () => connect(clientPrompt.server, { clientId: clientId.trim(), clientSecret: clientSecret.trim() })) }}>
+                Sign in
+              </Button>
+            </div>
+          </div>
+        )}
+        {catalog.length > 0 && (
+          <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
+            <select
+              value={catalogPick}
+              onChange={event => setCatalogPick(event.target.value)}
+              className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+              aria-label="Add from the catalog"
+            >
+              <option value="">Add a known server (Gmail, Drive, GitHub…)</option>
+              {catalog.map(entry => (
+                <option key={entry.catalog} value={entry.catalog} disabled={servers.some(server => server.name === entry.name)}>
+                  {entry.catalog}{entry.description ? ` — ${entry.description}` : ''}
+                </option>
+              ))}
+            </select>
+            <Button disabled={busy !== null || !catalogPick} onClick={() => { void addFromCatalog() }}>
+              {busy === 'catalog' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}Add as mine
+            </Button>
           </div>
         )}
         <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-2">

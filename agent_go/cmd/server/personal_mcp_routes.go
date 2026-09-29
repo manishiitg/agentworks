@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -121,17 +123,50 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	var body personalMCPServer
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+	var request struct {
+		personalMCPServer
+		// Catalog adds one of the platform's remote servers as the person's
+		// own: same URL and sign-in endpoints, their own login.
+		Catalog string `json:"catalog"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request); err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
+	body := request.personalMCPServer
 	body.OAuth = nil
+	var catalogClient *registeredClient
+	if strings.TrimSpace(request.Catalog) != "" {
+		entry, ok := api.personalMCPCatalogEntry(request.Catalog)
+		if !ok {
+			writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("%q is not a remote server in the catalog", request.Catalog))
+			return
+		}
+		body.URL, body.Transport, body.Headers = entry.config.URL, string(entry.config.GetProtocol()), nil
+		if strings.TrimSpace(body.Name) == "" {
+			body.Name = entry.Name
+		}
+		if entry.config.OAuth != nil {
+			catalogOAuth := *entry.config.OAuth
+			if catalogOAuth.ClientID != "" {
+				catalogClient = &registeredClient{ClientID: catalogOAuth.ClientID, ClientSecret: catalogOAuth.ClientSecret}
+			}
+			catalogOAuth.ClientID, catalogOAuth.ClientSecret, catalogOAuth.RedirectURL, catalogOAuth.UsePKCE = "", "", "", true
+			body.OAuth = &catalogOAuth
+		}
+	}
 	if err := validatePersonalMCPServer(&body); err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(body.Headers) == 0 {
+	if body.OAuth != nil {
+		for _, endpoint := range []string{body.OAuth.AuthURL, body.OAuth.TokenURL} {
+			if err := netguard.CheckURL(endpoint, true); err != nil {
+				writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("the server's sign-in endpoint was refused: %v", err))
+				return
+			}
+		}
+	} else if len(body.Headers) == 0 && request.Catalog == "" {
 		probe, err := services.ProbeMCPServerAuthWith(r.Context(), netguard.Client(15*time.Second), body.URL)
 		if err != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, fmt.Sprintf("could not check %s: %v", redactedURL(body.URL), err))
@@ -155,6 +190,12 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if catalogClient != nil {
+		if err := writePersonalMCPClient(userID, saved.Name, *catalogClient); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	closePersonalMCPConnection(userID, saved.Name)
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "oauth": saved.OAuth != nil})
@@ -212,7 +253,8 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		return
 	}
 	var body struct {
-		ClientID string `json:"client_id"`
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
 	name := mux.Vars(r)["name"]
@@ -225,15 +267,28 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusBadRequest, "this server does not use sign-in")
 		return
 	}
-	if strings.TrimSpace(body.ClientID) != "" {
-		cfg.OAuth.ClientID = strings.TrimSpace(body.ClientID)
-	}
 	redirectURI := deriveOAuthRedirectURI(r)
 	cfg.OAuth.RedirectURL = redirectURI
 	dir, err := personalMCPDir(userID)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
+		// A client the person registered on the provider (Google, GitHub):
+		// kept sealed, so refreshes after this sign-in keep working.
+		client := registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret), RedirectURI: redirectURI}
+		if err := writePersonalMCPClient(userID, name, client); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = client.ClientID, client.ClientSecret
+	} else if cfg.OAuth.RegistrationEndpoint != "" {
+		// A dynamic registration is tied to its callback; one made for
+		// another address registers again.
+		if client, _ := readPersonalMCPClient(dir, userID, name); client != nil && client.RedirectURI != redirectURI {
+			cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = "", ""
+		}
 	}
 	start, discovery, err := api.runOAuthFlow("", redirectURI, oauthFlowTarget{
 		Name:       internal,
@@ -247,7 +302,7 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		return
 	}
 	if discovery != nil {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"status": discovery.Status, "message": discovery.Message})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"status": discovery.Status, "message": discovery.Message, "redirect_uri": discovery.RedirectURI})
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"auth_url": start.AuthURL})
@@ -306,4 +361,68 @@ func personalMCPClientFile(dir, userID, name string) string {
 // server, so the next call reconnects with its current config and login.
 func closePersonalMCPConnection(userID, name string) {
 	mcpclient.GetSessionRegistry().CloseSessionServer("global", personalMCPInternalName(userID, name))
+}
+
+// personalMCPCatalogServer is a platform catalog server a person can add as
+// their own: remote, public, and signed into per person (OAuth) or open. A
+// server whose credentials are platform headers is not offered.
+type personalMCPCatalogServer struct {
+	Name        string `json:"name"`
+	Catalog     string `json:"catalog"`
+	Description string `json:"description,omitempty"`
+	SignIn      bool   `json:"sign_in"`
+	// NeedsClient: the provider has no dynamic registration and the catalog
+	// carries no client, so the person enters their OAuth app's client.
+	NeedsClient bool `json:"needs_client"`
+	config      mcpclient.MCPServerConfig
+}
+
+func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
+	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
+	if err != nil {
+		return nil
+	}
+	out := []personalMCPCatalogServer{}
+	for name, cfg := range catalog.MCPServers {
+		protocol := cfg.GetProtocol()
+		if cfg.URL == "" || len(cfg.Headers) > 0 || (protocol != mcpclient.ProtocolHTTP && protocol != mcpclient.ProtocolSSE) {
+			continue
+		}
+		if netguard.CheckURL(cfg.URL, true) != nil {
+			continue
+		}
+		local := strings.Trim(personalMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(name), "_"), "_")
+		if len(local) > 40 {
+			local = local[:40]
+		}
+		if !personalMCPNamePattern.MatchString(local) {
+			continue
+		}
+		entry := personalMCPCatalogServer{Name: local, Catalog: name, Description: cfg.Description, SignIn: cfg.OAuth != nil, config: cfg}
+		if cfg.OAuth != nil {
+			entry.NeedsClient = cfg.OAuth.ClientID == "" && cfg.OAuth.RegistrationEndpoint == ""
+		}
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Catalog < out[j].Catalog })
+	return out
+}
+
+var personalMCPCatalogNameCleaner = regexp.MustCompile(`[^a-z0-9_]+`)
+
+func (api *StreamingAPI) personalMCPCatalogEntry(name string) (personalMCPCatalogServer, bool) {
+	for _, entry := range api.personalMCPCatalog() {
+		if entry.Catalog == strings.TrimSpace(name) {
+			return entry, true
+		}
+	}
+	return personalMCPCatalogServer{}, false
+}
+
+// GET /api/me/mcp/catalog: the catalog servers a person can add as their own.
+func (api *StreamingAPI) handlePersonalMCPCatalog(w http.ResponseWriter, r *http.Request) {
+	if _, ok := personalMCPUser(w, r); !ok {
+		return
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": api.personalMCPCatalog()})
 }

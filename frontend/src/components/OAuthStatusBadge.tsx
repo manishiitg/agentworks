@@ -70,6 +70,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   // DCR; 'api_key' collects an optional bearer key for open servers.
   const [dialogMode, setDialogMode] = useState<'client_id' | 'api_key' | null>(null);
   const [clientIdInput, setClientIdInput] = useState('');
+  const [clientSecretInput, setClientSecretInput] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [discoveryInfo, setDiscoveryInfo] = useState<OAuthDiscoveryResponse | null>(null);
   const showClientIdDialog = dialogMode === 'client_id';
@@ -123,7 +124,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     return () => clearInterval(interval);
   }, [serverName, requiresOAuth, connectionDriven, checkTokenStatus]);
 
-  const handleLogin = async (clientId?: string) => {
+  const handleLogin = async (clientId?: string, clientSecret?: string) => {
     if (!clientId && !window.confirm(
       `Connect ${serverName} as a shared AgentWorks connection? All users, Work projects, workflows, chats, and schedules will be able to use this authenticated account.`,
     )) return;
@@ -131,7 +132,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     console.log(`[OAuthStatusBadge] Starting OAuth login for ${serverName}${clientId ? ' with client_id' : ''}`);
     try {
       // Start OAuth flow and get authorization URL
-      const response = await oauthApi.startOAuthFlow(serverName, clientId);
+      const response = await oauthApi.startOAuthFlow(serverName, clientId, clientSecret);
       console.log(`[OAuthStatusBadge] OAuth flow response for ${serverName}:`, response);
 
       // Check if the server needs a client_id
@@ -195,13 +196,15 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
     if (!clientIdInput.trim()) return;
     setDialogMode(null);
     setDiscoveryInfo(null);
-    handleLogin(clientIdInput.trim());
+    handleLogin(clientIdInput.trim(), clientSecretInput.trim() || undefined);
     setClientIdInput('');
+    setClientSecretInput('');
   };
 
   const handleClientIdCancel = () => {
     setDialogMode(null);
     setClientIdInput('');
+    setClientSecretInput('');
     setDiscoveryInfo(null);
   };
 
@@ -356,6 +359,23 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             autoFocus
           />
+          <label htmlFor="client-secret-input" className="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Client secret <span className="font-normal text-gray-500">(if the provider issued one, as Google and GitHub do)</span>
+          </label>
+          <input
+            id="client-secret-input"
+            type="password"
+            autoComplete="off"
+            value={clientSecretInput}
+            onChange={(e) => setClientSecretInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleClientIdSubmit()}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          {discoveryInfo?.redirect_uri && (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Register this callback URL on the OAuth app: <code className="break-all">{discoveryInfo.redirect_uri}</code>
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end gap-2">

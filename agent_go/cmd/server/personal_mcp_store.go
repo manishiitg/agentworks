@@ -470,11 +470,54 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 			copied := *server.OAuth
 			copied.PublicOnly = true
 			copied.TokenFile = personalMCPTokenFile(dir, userID, name)
+			// The client (registered, entered by the person, or copied
+			// from the catalog) lives sealed beside the token; a refresh
+			// needs it as much as the first sign-in.
+			if copied.ClientID == "" {
+				client, err := readPersonalMCPClient(dir, userID, name)
+				if err != nil {
+					return "", mcpclient.MCPServerConfig{}, err
+				}
+				if client != nil {
+					copied.ClientID, copied.ClientSecret = client.ClientID, client.ClientSecret
+				}
+			}
 			cfg.OAuth = &copied
 		}
 		return personalMCPInternalName(userID, name), cfg, nil
 	}
 	return "", mcpclient.MCPServerConfig{}, fmt.Errorf("you have no MCP server named %q", name)
+}
+
+// readPersonalMCPClient returns the person's OAuth client for a server, or
+// nil when there is none yet.
+func readPersonalMCPClient(dir, userID, name string) (*registeredClient, error) {
+	data, err := oauth.ReadTokenFile(personalMCPClientFile(dir, userID, name))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read sign-in client: %w", err)
+	}
+	var client registeredClient
+	if err := json.Unmarshal(data, &client); err != nil || client.ClientID == "" {
+		return nil, fmt.Errorf("unreadable sign-in client")
+	}
+	return &client, nil
+}
+
+// writePersonalMCPClient stores a client ID and secret sealed in the
+// person's store.
+func writePersonalMCPClient(userID, name string, client registeredClient) error {
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(client)
+	if err != nil {
+		return err
+	}
+	return oauth.WriteTokenFile(personalMCPClientFile(dir, userID, name), data)
 }
 
 // ---- tokens at rest ----------------------------------------------------

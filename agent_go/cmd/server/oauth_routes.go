@@ -81,6 +81,9 @@ func deriveOAuthRedirectURIFromEnv() string {
 type OAuthLoginRequest struct {
 	ServerName string `json:"server_name"`
 	ClientID   string `json:"client_id,omitempty"` // User-provided client_id for servers without DCR
+	// ClientSecret goes with ClientID for providers whose OAuth apps are
+	// confidential clients (Google, GitHub).
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 // MCPConnectRequest represents a request to connect a server. APIKey is optional
@@ -99,6 +102,8 @@ type OAuthDiscoveryResponse struct {
 	Resource        string   `json:"resource,omitempty"`         // RFC 8707 resource indicator
 	ScopesSupported []string `json:"scopes_supported,omitempty"` // Discovered scopes
 	Message         string   `json:"message"`
+	// RedirectURI is the callback to register on the OAuth app.
+	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
 // OAuthStartResponse represents the response when starting OAuth flow
@@ -309,7 +314,7 @@ func (e *oauthStartError) Error() string { return e.message }
 // only to report completion/failure back into that conversation once the
 // background wait below resolves (empty when this was started from the
 // connector-directory UI instead of chat, which has no synthetic-turn target).
-func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectURI, clientID string, onInstalled func()) (*OAuthStartResponse, *OAuthDiscoveryResponse, error) {
+func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectURI, clientID, clientSecret string, onInstalled func()) (*OAuthStartResponse, *OAuthDiscoveryResponse, error) {
 	api.logger.Info(fmt.Sprintf("🔐 Platform OAuth start for server %s, initiated_by %s", serverName, userID))
 
 	if _, err := ensureUserTokenDir(platformMCPTokenUserID); err != nil {
@@ -339,6 +344,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 			return nil, nil, &oauthStartError{http.StatusBadRequest, fmt.Sprintf("Server '%s' has no oauth configuration; a client_id is not applicable", serverName)}
 		}
 		serverConfig.OAuth.ClientID = clientID
+		serverConfig.OAuth.ClientSecret = strings.TrimSpace(clientSecret)
 		api.logger.Info(fmt.Sprintf("Using user-provided client_id for %s: %s", serverName, clientID))
 	}
 
@@ -452,7 +458,8 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 			TokenURL:        serverConfig.OAuth.TokenURL,
 			Resource:        serverConfig.OAuth.Resource,
 			ScopesSupported: serverConfig.OAuth.Scopes,
-			Message:         fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client_id.", serverName),
+			Message:         fmt.Sprintf("Server '%s' does not support Dynamic Client Registration. Please provide your OAuth App client ID (and client secret, if the provider issued one).", serverName),
+			RedirectURI:     redirectURI,
 		}, nil
 	}
 
@@ -599,7 +606,7 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 
 	// No chat session behind a UI-driven connect — "" disables the
 	// synthetic-turn completion notification in beginOAuthFlow.
-	startResp, discoveryResp, err := api.beginOAuthFlow(userID, "", req.ServerName, redirectURI, req.ClientID, nil)
+	startResp, discoveryResp, err := api.beginOAuthFlow(userID, "", req.ServerName, redirectURI, req.ClientID, req.ClientSecret, nil)
 	if err != nil {
 		status := http.StatusInternalServerError
 		var se *oauthStartError

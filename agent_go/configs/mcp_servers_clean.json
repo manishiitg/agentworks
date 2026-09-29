@@ -482,6 +482,178 @@
         "registration_endpoint": "https://brightdata.com/users/auth/mcp/register",
         "token_file": "~/.config/mcpagent/tokens/default/BrightData.json"
       }
+    },
+    "GitHub": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "description": "GitHub: repositories, issues, pull requests and Actions (needs a GitHub OAuth app)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://github.com/login/oauth/authorize",
+        "token_url": "https://github.com/login/oauth/access_token",
+        "token_file": "~/.config/mcpagent/tokens/default/GitHub.json",
+        "scopes": [
+          "repo",
+          "read:org",
+          "read:user",
+          "user:email",
+          "notifications"
+        ]
+      }
+    },
+    "GoogleCalendar": {
+      "url": "https://calendarmcp.googleapis.com/mcp/v1",
+      "description": "Google Calendar: calendars, events and free/busy (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleCalendar.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+          "https://www.googleapis.com/auth/calendar.events.freebusy",
+          "https://www.googleapis.com/auth/calendar.events.readonly"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleChat": {
+      "url": "https://chatmcp.googleapis.com/mcp/v1",
+      "description": "Google Chat: spaces and messages (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleChat.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/chat.spaces.readonly",
+          "https://www.googleapis.com/auth/chat.memberships.readonly",
+          "https://www.googleapis.com/auth/chat.messages.readonly",
+          "https://www.googleapis.com/auth/chat.messages.create",
+          "https://www.googleapis.com/auth/chat.users.readstate"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleDocs": {
+      "url": "https://docsmcp.googleapis.com/mcp/v1",
+      "description": "Google Docs: read and edit documents (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleDocs.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.readonly",
+          "https://www.googleapis.com/auth/drive.file",
+          "https://www.googleapis.com/auth/documents.readonly",
+          "https://www.googleapis.com/auth/documents"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleDrive": {
+      "url": "https://drivemcp.googleapis.com/mcp/v1",
+      "description": "Google Drive: search and read files (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleDrive.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.readonly",
+          "https://www.googleapis.com/auth/drive.file"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleGmail": {
+      "url": "https://gmailmcp.googleapis.com/mcp/v1",
+      "description": "Gmail: search, read and draft email (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleGmail.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.compose"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GooglePeople": {
+      "url": "https://people.googleapis.com/mcp/v1",
+      "description": "Google People: directory and contacts (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GooglePeople.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/directory.readonly",
+          "https://www.googleapis.com/auth/userinfo.profile",
+          "https://www.googleapis.com/auth/contacts.readonly"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleSheets": {
+      "url": "https://sheetsmcp.googleapis.com/mcp/v1",
+      "description": "Google Sheets: read and edit spreadsheets (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleSheets.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.readonly",
+          "https://www.googleapis.com/auth/drive.file",
+          "https://www.googleapis.com/auth/spreadsheets.readonly",
+          "https://www.googleapis.com/auth/spreadsheets"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    "GoogleSlides": {
+      "url": "https://slidesmcp.googleapis.com/mcp/v1",
+      "description": "Google Slides: read and edit presentations (Google Workspace MCP, Developer Preview; needs a Google OAuth client)",
+      "protocol": "http",
+      "oauth": {
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "token_file": "~/.config/mcpagent/tokens/default/GoogleSlides.json",
+        "scopes": [
+          "https://www.googleapis.com/auth/drive.readonly",
+          "https://www.googleapis.com/auth/drive.file",
+          "https://www.googleapis.com/auth/presentations.readonly",
+          "https://www.googleapis.com/auth/presentations"
+        ],
+        "extra_auth_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
     }
   }
 }

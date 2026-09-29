@@ -2408,6 +2408,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// A person's own MCP servers and secrets (docs/design/code_private_mcp.md).
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
+	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
@@ -12895,7 +12896,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				return fmt.Sprintf("%q requires OAuth sign-in, and this server has no PUBLIC_URL configured to build a callback URL from chat. Ask the user to connect it from the connector directory in the UI instead.", name), nil
 			}
 
-			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, notifyMCPViewRefresh)
+			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, "", notifyMCPViewRefresh)
 			if err != nil {
 				return "", fmt.Errorf("failed to start OAuth for %q: %w", name, err)
 			}
