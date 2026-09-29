@@ -606,6 +606,12 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 // original-workspace copy (tempPath), and where it must end up in the
 // tmpfs-hidden workspace (absPath).
 func resolveTempAndAbsPath(path, baseDir, tempDir string) (tempPath, absPath string) {
+	// Only paths inside the workspace are available through the preserved
+	// workspace mount. External absolute grants (including the managed browser
+	// socket under /tmp) must use their real host path as the bind source.
+	if externalAbsolutePath(path, baseDir) {
+		return path, path
+	}
 	relPath := strings.TrimPrefix(path, baseDir+"/")
 	if relPath == path && !strings.HasPrefix(path, "/") {
 		relPath = path
@@ -616,6 +622,10 @@ func resolveTempAndAbsPath(path, baseDir, tempDir string) (tempPath, absPath str
 		absPath = filepath.Join(baseDir, path)
 	}
 	return tempPath, absPath
+}
+
+func externalAbsolutePath(path, baseDir string) bool {
+	return filepath.IsAbs(path) && !pathWithin(path, baseDir)
 }
 
 // writeCreatePlaceholder emits the shell lines that create an empty node at
@@ -731,6 +741,9 @@ func (iso *Isolator) generateMountScript(command string, args []string) string {
 	if len(iso.WritePaths) > 0 {
 		sb.WriteString("# Create write path dirs in original workspace (via temp bind mount)\n")
 		for _, path := range iso.WritePaths {
+			if externalAbsolutePath(path, baseDir) {
+				continue
+			}
 			relPath := strings.TrimPrefix(path, baseDir+"/")
 			if relPath == path && !strings.HasPrefix(path, "/") {
 				relPath = path
@@ -759,6 +772,9 @@ func (iso *Isolator) generateMountScript(command string, args []string) string {
 	if len(allConfiguredPaths) > 0 {
 		sb.WriteString("# Create placeholder nodes for every configured path before mounting any of them\n")
 		for _, path := range allConfiguredPaths {
+			if externalAbsolutePath(path, baseDir) {
+				continue // The target already exists outside the hidden workspace.
+			}
 			tempPath, absPath := resolveTempAndAbsPath(path, baseDir, tempDir)
 			writeCreatePlaceholder(&sb, tempPath, absPath)
 		}

@@ -51,6 +51,39 @@ func TestLandlockPolicySupportsExternalReadOnlyAndReadWriteFolders(t *testing.T)
 	}
 }
 
+func TestMountNamespaceFallbackSharesExternalBrowserSocketFolder(t *testing.T) {
+	if !mountNamespaceAvailable() {
+		t.Skip("mount namespaces are unavailable")
+	}
+	root := t.TempDir()
+	work := filepath.Join(root, "Workflow", "example")
+	if err := os.MkdirAll(work, 0755); err != nil {
+		t.Fatal(err)
+	}
+	socketDir := t.TempDir()
+	iso := &Isolator{
+		BaseDir:    root,
+		WorkDir:    work,
+		ReadPaths:  []string{work},
+		WritePaths: []string{work, socketDir},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	command := fmt.Sprintf(`printf live > %q/stream-metadata`, socketDir)
+	cmd, cleanup, err := iso.executeIsolatedMountNamespace(ctx, command, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("sandboxed browser failed: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(filepath.Join(socketDir, "stream-metadata"))
+	if err != nil || string(data) != "live" {
+		t.Fatalf("workspace service cannot see browser metadata: data=%q err=%v", data, err)
+	}
+}
+
 func TestLandlockEnforcesExternalFolderAccess(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	readOnlyRoot := t.TempDir()
