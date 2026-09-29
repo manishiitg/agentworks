@@ -370,6 +370,15 @@ export interface LLMDefaultsResponse {
   default_published_llms_locked?: boolean
   /** List of provider names that are locked (read-only) because they are fully configured via server env */
   locked_providers?: string[]
+  /** Each product's starting provider, model and account (agentworks, work, code). */
+  product_defaults?: Record<string, ProductDefault>
+}
+
+export interface ProductDefault {
+  provider: string
+  model_id: string
+  connection_id: string
+  pinned?: boolean
 }
 
 export interface LLMDiscoveryCandidate {
@@ -1928,7 +1937,41 @@ export interface CostOverview {
   by_user?: CostOverviewUser[]
   by_bot?: CostOverviewBot[]
   by_mcp?: CostOverviewMCP[]
+  /** Cost per provider and the account each turn ran on. */
+  by_account?: ProviderCostGroup[]
   includes_other: boolean
+}
+
+// Cost per provider account — mirror of provider_account_costs.go.
+export interface ProviderAccountCostSplit extends CostAggregate {
+  work_id: string
+  work_kind: string
+  work_name: string
+  user_id: string
+  user_name: string
+}
+
+export interface ProviderAccountCost {
+  account_id: string
+  name: string
+  kind: 'server' | 'user' | 'unrecorded'
+  owner_name?: string
+  /** False when the caller sees only their own share of this account. */
+  full_split: boolean
+  total: CostAggregate
+  split: ProviderAccountCostSplit[]
+}
+
+export interface ProviderCostGroup {
+  provider: string
+  total: CostAggregate
+  accounts: ProviderAccountCost[]
+}
+
+export interface ProviderAccountCosts {
+  from?: string
+  to?: string
+  providers: ProviderCostGroup[]
 }
 
 export interface WorkflowActivityTimingAggregate {
@@ -2889,6 +2932,8 @@ export interface PlanChangelogEntry {
     session_id?: string
     user_id?: string
     username?: string
+    operation_id?: string
+    via_token?: string
   }
   file?: string
 }

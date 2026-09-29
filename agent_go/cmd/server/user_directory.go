@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"sort"
 	"strings"
@@ -277,6 +278,46 @@ func (d *userDirectory) find(userID, username, email string) *UserRecord {
 	return d.byEmail(email)
 }
 
+// findForExternal resolves the account of an SSO sign-in by its provider
+// identity, then its email; never by display name. A Google display name is
+// chosen by the person, so matching on it let someone named like an admin
+// sign in as that admin, and two people with one name share an account.
+func (d *userDirectory) findForExternal(userID string, ext *ExternalUser) *UserRecord {
+	if ext.ExternalID != "" {
+		for i := range d.Users {
+			if sso := d.Users[i].SSO; sso != nil && sso.ExternalID == ext.ExternalID && (sso.Provider == "" || sso.Provider == ext.Provider) {
+				return &d.Users[i]
+			}
+		}
+	}
+	// A record whose id is the SSO id (created by an earlier sign-in), unless
+	// it is linked to a different identity.
+	if r := d.byID(userID); r != nil && (r.SSO == nil || r.SSO.ExternalID == "" || r.SSO.ExternalID == ext.ExternalID) {
+		return r
+	}
+	return d.byEmail(ext.Email)
+}
+
+// uniqueDirectoryUsername is name, or the email (then a numbered variant)
+// when another account already has it: usernames are unique, and SSO display
+// names are not.
+func (d *userDirectory) uniqueDirectoryUsername(name, email string) string {
+	for _, candidate := range []string{name, strings.ToLower(strings.TrimSpace(email))} {
+		if candidate != "" && d.byUsername(candidate) == nil {
+			return candidate
+		}
+	}
+	base := name
+	if base == "" {
+		base = email
+	}
+	for n := 2; ; n++ {
+		if candidate := fmt.Sprintf("%s (%d)", base, n); d.byUsername(candidate) == nil {
+			return candidate
+		}
+	}
+}
+
 // directoryUserFor is the lookup every permission check goes through. A
 // nil result means "no record" and callers fall back to legacy behavior.
 func directoryUserFor(userID, username, email string) *UserRecord {
@@ -292,6 +333,12 @@ func directoryUserForClaims(claims *UserClaims) *UserRecord {
 		return nil
 	}
 	return directoryUserFor(claims.UserID, claims.Username, claims.Email)
+}
+
+// userDirectoryHasUsers reports whether the directory lists anyone at all.
+func userDirectoryHasUsers() bool {
+	dir, err := loadUserDirectory()
+	return err == nil && dir != nil && len(dir.Users) > 0
 }
 
 // userDirectoryHasPasswordUsers reports whether password login has anyone
@@ -611,7 +658,7 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 	if err != nil {
 		return nil
 	}
-	if rec := dir.find(userID, ext.Username, ext.Email); rec != nil {
+	if rec := dir.findForExternal(userID, ext); rec != nil {
 		recordID := rec.ID
 		changed := false
 		if rec.Email == "" && strings.TrimSpace(ext.Email) != "" {
@@ -620,6 +667,9 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		}
 		if rec.SSO == nil {
 			rec.SSO = &UserSSO{Provider: ext.Provider, ExternalID: ext.ExternalID}
+			changed = true
+		} else if rec.SSO.ExternalID == "" && ext.ExternalID != "" {
+			rec.SSO.Provider, rec.SSO.ExternalID = ext.Provider, ext.ExternalID
 			changed = true
 		}
 		if changed {
@@ -634,8 +684,8 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 	now := time.Now().UTC().Format(time.RFC3339)
 	rec := UserRecord{
 		ID:        userID,
-		Username:  ext.Username,
-		Email:     ext.Email,
+		Username:  dir.uniqueDirectoryUsername(ext.Username, ext.Email),
+		Email:     strings.ToLower(strings.TrimSpace(ext.Email)),
 		SSO:       &UserSSO{Provider: ext.Provider, ExternalID: ext.ExternalID},
 		Products:  []string{},
 		CreatedAt: now,
@@ -670,8 +720,15 @@ type userAdminView struct {
 	Products     []string `json:"products"`
 	CodeReviewer bool     `json:"code_reviewer"`
 	Disabled     bool     `json:"disabled"`
-	CreatedAt    string   `json:"created_at,omitempty"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
+	// Invited: added by email, no password, not signed in with SSO yet.
+	Invited   bool   `json:"invited"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	// InviteEmail is what happened to the invitation email on creation
+	// (sent, not_configured, exists or failed); empty when none was asked for.
+	InviteEmail  string `json:"invite_email,omitempty"`
+	InviteDetail string `json:"invite_detail,omitempty"`
+	SignInURL    string `json:"sign_in_url,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -689,7 +746,26 @@ func viewOf(rec UserRecord) userAdminView {
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
 		Products: products, CodeReviewer: rec.CodeReviewer, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Invited: rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
 	}
+}
+
+// adminEmailError checks an email an admin sets on the account with ID
+// selfID ("" for a new account): a plain address, not already another
+// account's. SSO sign-in resolves the account by this address, so two
+// accounts sharing one would make the first silently win.
+func adminEmailError(dir *userDirectory, email, selfID string) string {
+	if email == "" {
+		return ""
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email || !strings.Contains(email, "@") {
+		return "enter a plain email address, like name@example.com"
+	}
+	if other := dir.byEmail(email); other != nil && other.ID != selfID {
+		return "another account already uses that email"
+	}
+	return ""
 }
 
 func writeUsersJSON(w http.ResponseWriter, status int, v any) {
@@ -730,6 +806,9 @@ type userWriteRequest struct {
 	Products     *[]string `json:"products"`
 	CodeReviewer *bool     `json:"code_reviewer"`
 	Disabled     *bool     `json:"disabled"`
+	// Invite: email the new person an invitation (create only; the person was
+	// added by email, without a password).
+	Invite bool `json:"invite,omitempty"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -815,7 +894,11 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	now := time.Now().UTC().Format(time.RFC3339)
 	rec := UserRecord{ID: userIDForUsername(username), Username: username, Products: []string{}, CreatedAt: now, UpdatedAt: now}
 	if req.Email != nil {
-		rec.Email = strings.TrimSpace(*req.Email)
+		rec.Email = strings.ToLower(strings.TrimSpace(*req.Email))
+	}
+	if msg := adminEmailError(dir, rec.Email, ""); msg != "" {
+		writeUsersError(w, http.StatusBadRequest, msg)
+		return
 	}
 	if req.Password != nil && *req.Password != "" {
 		if len(*req.Password) < 8 {
@@ -848,7 +931,15 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 		return
 	}
 	log.Printf("[USERS] %s created user %s (role=%s products=%v code_reviewer=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products, rec.CodeReviewer)
-	writeUsersJSON(w, http.StatusCreated, viewOf(rec))
+	view := viewOf(rec)
+	if req.Invite {
+		// Adding the person has already succeeded: an email problem is
+		// reported, never a reason to fail.
+		result := api.invitePerson(r.Context(), r, rec, GetUserIDFromContext(r.Context()))
+		view.InviteEmail, view.InviteDetail, view.SignInURL = result.Status, result.Detail, publicBaseURL(r)
+		log.Printf("[USERS] invitation email for %s: %s", rec.Username, result.Status)
+	}
+	writeUsersJSON(w, http.StatusCreated, view)
 }
 
 // PUT /api/admin/users/{id}
@@ -886,7 +977,12 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if req.Email != nil {
-		rec.Email = strings.TrimSpace(*req.Email)
+		email := strings.ToLower(strings.TrimSpace(*req.Email))
+		if msg := adminEmailError(dir, email, rec.ID); msg != "" {
+			writeUsersError(w, http.StatusBadRequest, msg)
+			return
+		}
+		rec.Email = email
 	}
 	if req.Password != nil && *req.Password != "" {
 		if len(*req.Password) < 8 {

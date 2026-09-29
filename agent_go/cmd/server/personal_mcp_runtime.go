@@ -21,8 +21,13 @@ import (
 // platform catalog by name.
 
 // personalMCPServersForTurn returns the internal names and overrides for the
-// person's servers switched on in codeRoot. A server that cannot be built
-// (a missing personal secret, say) is skipped and logged, not fatal.
+// person's servers switched on in codeRoot. The internal name u<id>__<name>
+// is the override, connection-pool and tool-cache key: turn-start
+// connections are pooled per server name under the shared "global" session,
+// so a plain name would let two people's "supabase" share one client and
+// login. Only what the model reads shows the plain name (the bridge maps it
+// back, resolveCodeMCPServer). A server that cannot be built (a missing
+// personal secret, say) is skipped and logged, not fatal.
 func personalMCPServersForTurn(person, codeRoot string) ([]string, mcpclient.RuntimeOverrides) {
 	enabled, err := personalMCPEnabled(person, codeRoot)
 	if err != nil || len(enabled) == 0 {
@@ -85,8 +90,9 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
-	// The person's own server, switched on for this Code.
-	if plain, ok := personalMCPPlainName(pin.Person, server); ok {
+	// The person's own server switched on for this Code; ok is false when
+	// plain is not one of them.
+	personal := func(plain string) (*executor.ResolvedMCPServer, bool, error) {
 		enabled, err := personalMCPEnabled(pin.Person, pin.CodeRoot)
 		if err != nil {
 			return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
@@ -101,17 +107,31 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 			}
 			return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: "global"}, true, nil
 		}
-		return nil, true, fmt.Errorf("MCP server %q is not switched on in this Code", plain)
+		return nil, false, nil
+	}
+	if plain, ok := personalMCPPlainName(pin.Person, server); ok {
+		resolved, found, err := personal(plain)
+		if !found && err == nil {
+			err = fmt.Errorf("MCP server %q is not switched on in this Code", plain)
+		}
+		return resolved, true, err
 	}
 	// Anyone else's personal server is never reachable.
 	if isPersonalMCPInternalName(server) {
 		return nil, true, fmt.Errorf("MCP server %q is not available in this chat", server)
 	}
-	// A global server the Code selected.
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
 	}
+	// The person's own server under its plain name, unless a global server
+	// the Code selected has that name (then the plain name is the global one).
+	if !serverListHasName(runtimeMCPServers(manifest.Capabilities.SelectedServers), server) {
+		if resolved, found, err := personal(server); found {
+			return resolved, true, err
+		}
+	}
+	// A global server the Code selected.
 	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
 	if err != nil {
 		return nil, true, fmt.Errorf("load current MCP configuration: %w", err)
@@ -132,4 +152,50 @@ func isPersonalMCPInternalName(name string) bool {
 		}
 	}
 	return true
+}
+
+// withPersonalSecrets adds the person's own secrets to a Code chat's
+// secrets; a personal secret wins over a Code secret of the same name.
+func withPersonalSecrets(person string, secrets []struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}) []struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+} {
+	names, err := listPersonalSecretNames(person)
+	if err != nil {
+		log.Printf("[PERSONAL_MCP] personal secrets unavailable for this turn: %v", err)
+		return secrets
+	}
+	for _, name := range names {
+		value, err := personalSecretValue(person, name)
+		if err != nil {
+			log.Printf("[PERSONAL_MCP] skipping personal secret %s: %v", name, err)
+			continue
+		}
+		replaced := false
+		for i := range secrets {
+			if secrets[i].Name == name {
+				secrets[i].Value, replaced = value, true
+			}
+		}
+		if !replaced {
+			secrets = append(secrets, struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			}{Name: name, Value: value})
+		}
+	}
+	return secrets
+}
+
+// serverListHasName reports whether names holds name, ignoring case.
+func serverListHasName(names []string, name string) bool {
+	for _, candidate := range names {
+		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(name)) {
+			return true
+		}
+	}
+	return false
 }

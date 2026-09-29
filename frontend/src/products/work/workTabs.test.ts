@@ -67,13 +67,13 @@ describe('persistent Work runtime', () => {
     const other = tab({ tabId: 'other', metadata: { mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'project-2' } })
     useChatStore.setState({ chatTabs: { current, other } })
     setWorkProjectRuntimeSelection('project-1', 'current', {
-      engine: 'claude-code', provider: 'claude-code', connectionId: 'personal', modelId: 'claude-sonnet-5',
+      engine: 'claude-code', provider: 'claude-code', connectionId: 'personal', modelId: 'claude-sonnet-5-5',
     })
     const tabs = useChatStore.getState().chatTabs
     expect(tabs.current.sessionId).toBe('persistent-session')
     expect(tabs.current.metadata).toMatchObject({
       agentProfileEngine: 'claude-code', agentProfileConnectionID: 'personal',
-      agentProfileModelID: 'claude-sonnet-5', agentProfileRuntimeDirty: true,
+      agentProfileModelID: 'claude-sonnet-5-5', agentProfileRuntimeDirty: true,
     })
     expect(tabs.other.metadata?.agentProfileEngine).toBeUndefined()
   })

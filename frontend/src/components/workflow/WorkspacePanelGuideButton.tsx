@@ -63,7 +63,7 @@ export function WorkspacePanelGuideButton({ topic, ask }: { topic: string; ask?:
           aria-label={`${guide.title} walkthrough`}
           className={`absolute right-0 top-full z-50 mt-2 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-xl ${howToTopic ? 'max-h-[min(42rem,calc(100vh-5rem))] w-[min(40rem,calc(100vw-1.5rem))] p-5' : 'max-h-[min(32rem,calc(100vh-5rem))] w-[min(20rem,calc(100vw-1.5rem))] p-4'}`}
         >
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{guide.surface === 'crew' ? 'Crew' : 'AgentWorks'} · {guide.group}</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{guide.surface === 'crew' ? 'Crew' : 'Goals'} · {guide.group}</p>
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-sm font-semibold">About {guide.title}</h3>
             <button type="button" onClick={close} aria-label="Close panel walkthrough" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>

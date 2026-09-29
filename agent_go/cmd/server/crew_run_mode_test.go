@@ -982,7 +982,7 @@ func TestRegisterWorkScheduleToolsReaderSplit(t *testing.T) {
 	api := &StreamingAPI{productSchedules: &ProductScheduleService{}}
 
 	reader := &recordingRegistrar{}
-	if err := api.registerWorkScheduleTools(reader, "reader", crewRunModeOwnerRoot, true); err != nil {
+	if err := api.registerWorkScheduleTools(reader, "work", "reader", crewRunModeOwnerRoot, true); err != nil {
 		t.Fatalf("reader register: %v", err)
 	}
 	for _, want := range []string{"list_project_schedules", "list_project_triggers"} {
@@ -997,7 +997,7 @@ func TestRegisterWorkScheduleToolsReaderSplit(t *testing.T) {
 	}
 
 	owner := &recordingRegistrar{}
-	if err := api.registerWorkScheduleTools(owner, "owner", crewRunModeOwnerRoot, false); err != nil {
+	if err := api.registerWorkScheduleTools(owner, "work", "owner", crewRunModeOwnerRoot, false); err != nil {
 		t.Fatalf("owner register: %v", err)
 	}
 	for _, want := range []string{"list_project_schedules", "create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule"} {

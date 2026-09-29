@@ -898,6 +898,10 @@ func (api *StreamingAPI) handleGetWorkflowStatus(w http.ResponseWriter, r *http.
 	}
 
 	state := getWorkflowRuntime(presetQueryID)
+	if state != nil && !workflowIDReadable(r.Context(), GetUserFromContext(r.Context()), presetQueryID) {
+		writeWorkflowPermissionDenied(w, "read")
+		return
+	}
 	if state == nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{

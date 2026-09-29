@@ -101,7 +101,7 @@ func (api *StreamingAPI) handleGetMCPConfig(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, "{\n  \"mcp_config_locked\": %v,\n  \"mcpServers\": {", isMCPConfigLocked())
 	for i, name := range names {
-		serverJSON, _ := json.Marshal(custom[name])
+		serverJSON, _ := json.Marshal(redactOAuthClientSecret(custom[name]))
 		if i > 0 {
 			fmt.Fprint(w, ",")
 		}
@@ -197,6 +197,25 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	for name, server := range req.Config.MCPServers {
+		if server.OAuth != nil {
+			copied := *server.OAuth
+			// A secret reference may only be this server's own sealed client
+			// file, and an unchanged client keeps it.
+			if !isPlatformClientSecretFile(name, copied.ClientSecretFile) {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("%s: client_secret_file is managed by the server", name))
+				return
+			}
+			if previous, ok := overlay.MCPServers[name]; ok && previous.OAuth != nil && copied.ClientSecret == "" &&
+				copied.ClientSecretFile == "" && copied.ClientID == previous.OAuth.ClientID {
+				copied.ClientSecretFile = previous.OAuth.ClientSecretFile
+			}
+			// A secret typed into the editor is sealed, never stored inline.
+			if err := sealPlatformClientSecret(name, &copied); err != nil {
+				writeJSONError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			server.OAuth = &copied
+		}
 		merged.MCPServers[name] = server
 	}
 
@@ -207,11 +226,12 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	if err := mcpclient.SaveConfig(api.getUserConfigPath(), merged); err != nil {
+	if err := savePrivateMCPOverlay(api.getUserConfigPath(), merged); err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to save user MCP config: %v", err), err)
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save user config: %v", err))
 		return
 	}
+	_ = os.Chmod(api.getUserConfigPath(), 0o600) // it can hold OAuth client secrets
 
 	for name := range req.Config.MCPServers {
 		api.appendServerLog(name, "info", "Configuration saved, triggering discovery...")
@@ -448,4 +468,15 @@ func (api *StreamingAPI) handleGetServerLogs(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs": result,
 	})
+}
+
+// redactOAuthClientSecret drops an OAuth client secret from a config the API
+// returns; the stored copy keeps it.
+func redactOAuthClientSecret(server mcpclient.MCPServerConfig) mcpclient.MCPServerConfig {
+	if server.OAuth != nil && server.OAuth.ClientSecret != "" {
+		copied := *server.OAuth
+		copied.ClientSecret = ""
+		server.OAuth = &copied
+	}
+	return server
 }

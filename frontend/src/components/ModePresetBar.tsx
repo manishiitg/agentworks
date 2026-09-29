@@ -24,6 +24,9 @@ import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
+import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
+import McpControl from './topbar/McpControl'
+import UsersControl from './topbar/UsersControl'
 import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { GlobalActivityButton } from './topbar/GlobalActivityButton'
@@ -161,12 +164,14 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const setShowWorkflowsOverview = useAppStore(s => s.setShowWorkflowsOverview)
   const showSchedulesOverview = useAppStore(s => s.showSchedulesOverview)
   const setShowSchedulesOverview = useAppStore(s => s.setShowSchedulesOverview)
+  const adminPage = useAppStore(s => s.adminPage)
+  const setAdminPage = useAppStore(s => s.setAdminPage)
   const setActivityWorkflowPath = useAppStore(s => s.setActivityWorkflowPath)
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const isOrganizationView = showWorkflowsOverview
-  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview
+  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage !== null
   const currentWalkthroughSurface: WalkthroughSurface = productWalkthroughSurface
     ?? (showWorkflowsOverview || showSchedulesOverview || selectedModeCategory !== 'workflow'
       ? 'overview'
@@ -275,7 +280,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     useLLMStore.getState().setShowLLMModal(false)
     setShowWorkflowsOverview(false)
     setShowSchedulesOverview(false)
-  }, [setShowWorkflowsOverview, setShowSchedulesOverview])
+    setAdminPage(null)
+  }, [setShowWorkflowsOverview, setShowSchedulesOverview, setAdminPage])
 
   // Handle ESC and Enter keys for shortcuts modal
   useEffect(() => {
@@ -587,6 +593,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
           {/* Product and current automation */}
           <div className="flex min-w-0 items-center gap-3">
+            <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
 
@@ -753,6 +760,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               <GlobalActivityMonitor />
 
               <ProvidersControl />
+
+              <McpControl />
+
+              <UsersControl />
 
               {!reduced && <GlobalActivityButton
                 workspacePaths={workflowActivityPaths}

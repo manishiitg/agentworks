@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
 // Workflow ask: free text for a workflow goes to its assistant — the
@@ -70,6 +72,7 @@ func (api *StreamingAPI) runWorkflowAsk(call *crewFunctionCall, target triggerTa
 	hardCap := crewFunctionHardCap(timeout)
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
 	defer cancel()
+	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
 	manifest := target.Manifest
 	sessionID := workflowAskSessionID(manifest.ID, caller.Stamp)
 	query := QueryRequest{

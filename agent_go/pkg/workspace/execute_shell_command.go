@@ -75,6 +75,11 @@ type ExecuteShellCommandParams struct {
 	// the workflow harness for read-only scripted steps and is not exposed in
 	// the execute_shell_command tool schema.
 	DBReadSnapshot bool `json:"db_read_snapshot,omitempty"`
+	// BridgeSessionID, set only by trusted Go callers (never decodable from
+	// tool arguments), is the session the command's tool calls act as when it
+	// differs from the shell's own session: a scripted step's script calls the
+	// bridge as its step session while the shell runs under the group session.
+	BridgeSessionID string `json:"-"`
 }
 
 var shellCommandSecretReplacements = []struct {
@@ -475,7 +480,11 @@ func (c *Client) ExecuteShellCommand(ctx context.Context, params ExecuteShellCom
 		sessionEnv,
 		params.ExtraEnv,
 	)
-	bindShellBridgeSession(params.ExtraEnv, sessionID)
+	bridgeSessionID := strings.TrimSpace(params.BridgeSessionID)
+	if bridgeSessionID == "" {
+		bridgeSessionID = sessionID
+	}
+	bindShellBridgeSession(params.ExtraEnv, bridgeSessionID)
 	// PLAT-280: a session granted direct database access (a scripted step)
 	// must reach its command with DB_PATH. Agentic steps are denied raw
 	// database access by design (the file is on their blocked list) and use

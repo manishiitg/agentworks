@@ -53,6 +53,19 @@ frontend through `utils/nativeAgentTools.ts`. Before this, unset meant off and
 turning the switch off deleted the key, so an earlier "off" was not recorded and
 those workflows and crews are now on.
 
+## Plain chats and Code (since 2026-09-29)
+
+- A plain AgentWorks chat (no workflow, no product profile) runs with native
+  agent tools for every turn type, except read-only principals
+  (`plainChatNativeAgentTools`, `workflow_chat_policy.go`).
+- Code has the same switch as a Crew (**Models → Agent tools → Native agent
+  tools**), on unless its owner turns it off; everyone who may chat with the
+  Code gets it.
+- Known exposure until the coding CLIs run under Landlock (PLAT-364 part 2):
+  native reads can reach files outside the workflow, Crew or Code, and a run
+  on someone else's shared provider account can read that account's login
+  files. Confining the CLIs is the follow-up that closes both.
+
 ## The crew switch
 
 Crew page → **Models** tab → **Native agent tools** toggle. This writes
@@ -65,12 +78,15 @@ runs the crew. Live-checked on and off through `/api/agent-profiles/work/query`.
 
 A workflow has the same switch: **Identity → Models → Agent tools → Native
 agent tools**, stored as `capabilities.native_agent_tools` in `workflow.json`.
-It applies only to the workflow's **interactive Builder and Run-mode chats**
-of owners and editors. The following always keep AgentWorks-only tools:
+Since 2026-09-29 (owner decision: "only off for workflow steps") it applies
+to **every turn type** of the workflow's conversation: interactive Builder and
+Run chats, schedules, webhooks and triggers, auto-notifications, Pulse turns,
+and Slack and WhatsApp turns (DMs and routes). Only these keep AgentWorks-only
+tools:
 
-- the plan's step agents;
-- schedules, webhooks, bots, auto-notifications and Pulse turns;
-- read-only users.
+- the plan's step agents (child sessions of a run, and the agents the
+  orchestrator builds with the structured transport);
+- read-only principals (viewers, read-grant bot routes).
 
 Step agents are limited to their own folders, and the CLI's native file
 reading is not bound by those limits. Flipping the switch starts a fresh CLI

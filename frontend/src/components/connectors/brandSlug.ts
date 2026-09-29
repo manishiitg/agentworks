@@ -10,6 +10,9 @@ const SLUG_ALIASES: Record<string, string> = {
   bitbucket: 'atlassian',
   awsknowledge: 'amazonaws',
   microsoftlearn: 'microsoft',
+  googlegmail: 'gmail',
+  googlepeople: 'google',
+  prismapostgres: 'prisma',
 }
 
 /**

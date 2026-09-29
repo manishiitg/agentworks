@@ -360,7 +360,7 @@ func (api *StreamingAPI) resolveEffectiveAPIKeys(ctx context.Context, userID, wo
 		base = MergedProviderAPIKeys(ctx)
 	}
 	keys, err := api.workflowProviderAPIKeys(ctx, userID, workspacePath, base)
-	return api.withConnectionResolver(keys, userID), err
+	return api.withConnectionResolver(keys, providerAccountScope{Principal: userID, WorkspacePath: workspacePath}), err
 }
 
 func normalizeWorkflowCredentialPath(workflowPath string) string {

@@ -6,7 +6,7 @@
 # build shape. Confida and SparkQuill share this parameterized version:
 # per-product
 # facts (ports, provider/model, CLI list, extra env, runtime-config.js,
-# mcp-servers.json) live under deploy/rootless-linux/products/$PRODUCT/ and
+# an optional mcp-servers.override.json) live under deploy/rootless-linux/products/$PRODUCT/ and
 # are read from the checkout on the deployed branch, never from the
 # triggering machine.
 set -euo pipefail
@@ -139,7 +139,36 @@ cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
 mkdir -p "$BUILD_DIR/static"
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$BUILD_DIR/static/"
 install -m 0644 "$PRODUCT_DIR/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
-install -m 0644 "$PRODUCT_DIR/mcp-servers.json" "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
+# A deployment's own branding assets (logo, mark, favicon), served at /brand/.
+if [[ -d "$PRODUCT_DIR/brand" ]]; then
+  install -d -m 0755 "$BUILD_DIR/frontend/brand"
+  install -m 0644 "$PRODUCT_DIR"/brand/* "$BUILD_DIR/frontend/brand/"
+fi
+# The page title and favicon in index.html follow runtime-config.js too, so the
+# tab, link previews and the first paint carry the deployment's name and icon
+# before any script runs (the app applies the same values at start).
+python3 - "$BUILD_DIR/frontend/index.html" "$PRODUCT_DIR/runtime-config.js" <<'PY'
+import html, re, sys
+index_path, config_path = sys.argv[1:3]
+config = open(config_path).read()
+def setting(key):
+    match = re.search(r'^\s*' + key + r':\s*"([^"]*)"', config, re.M)
+    return match.group(1).strip() if match else ""
+name, favicon = setting("appName"), setting("faviconUrl")
+page = open(index_path).read()
+if name and "\n" not in name:
+    page = re.sub(r"<title>[^<]*</title>", "<title>" + html.escape(name) + "</title>", page, count=1)
+if favicon.startswith("/") and not favicon.startswith("//"):
+    kind = "image/svg+xml" if favicon.lower().endswith(".svg") else "image/x-icon" if favicon.lower().endswith(".ico") else "image/png"
+    page = re.sub(r'<link rel="icon"[^>]*/>', '<link rel="icon" type="' + kind + '" href="' + html.escape(favicon) + '" />', page, count=1)
+open(index_path, "w").write(page)
+PY
+# One shared MCP catalog for every deployment; a product may add an
+# mcp-servers.override.json with only what it does differently.
+mcp_override=()
+[[ -f "$PRODUCT_DIR/mcp-servers.override.json" ]] && mcp_override=("$PRODUCT_DIR/mcp-servers.override.json")
+python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/configs/mcp_servers_clean.json" "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json" "${mcp_override[@]}"
+chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
 if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then

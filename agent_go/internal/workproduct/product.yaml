@@ -100,7 +100,7 @@ profile:
       - id: claude-code
         label: Claude Code
         provider: claude-code
-        model_id: claude-sonnet-5
+        model_id: claude-sonnet-5-5
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
@@ -143,7 +143,7 @@ profile:
     # The default option is also declared in the common runtime fields so the
     # shared composer can show the correct runtime before the first turn.
     provider: claude-code
-    model_id: claude-sonnet-5
+    model_id: claude-sonnet-5-5
     # Keep all project access on AgentWorks' governed MCP bridge. Coding CLIs
     # provide the model and conversation runtime without exposing their native
     # shell, file, search, or interactive-question tools.

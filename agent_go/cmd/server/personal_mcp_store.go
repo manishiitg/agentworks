@@ -51,6 +51,10 @@ type personalMCPServer struct {
 	OAuth     *oauth.OAuthConfig           `json:"oauth,omitempty"`
 	Headers   map[string]personalMCPHeader `json:"headers,omitempty"`
 	AddedAt   string                       `json:"added_at,omitempty"`
+	Catalog   string                       `json:"catalog,omitempty"` // set by the server, never by the request
+	// AppKey names the deployment's sign-in app this server signs in
+	// through (set by the server from the catalog, never by the request).
+	AppKey string `json:"app_key,omitempty"`
 }
 
 // personalMCPHeader is a credential header built from one personal secret:
@@ -180,7 +184,8 @@ func validatePersonalMCPServer(server *personalMCPServer) error {
 	}
 	if server.OAuth != nil {
 		copied := *server.OAuth
-		copied.TokenFile = "" // set per person at resolve time, never stored
+		copied.TokenFile = ""                                 // set per person at resolve time, never stored
+		copied.ClientSecret, copied.ClientSecretFile = "", "" // the sealed client file, or the deployment's app, holds the client
 		copied.PublicOnly = true
 		server.OAuth = &copied
 	}
@@ -470,11 +475,66 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 			copied := *server.OAuth
 			copied.PublicOnly = true
 			copied.TokenFile = personalMCPTokenFile(dir, userID, name)
+			copied.ClientSecretFile = "" // a personal server reads only its own client file
+			// The client (registered, entered by the person, or copied
+			// from the catalog) lives sealed beside the token; a refresh
+			// needs it as much as the first sign-in.
+			if copied.ClientID == "" {
+				client, err := readPersonalMCPClient(dir, userID, name)
+				if err != nil {
+					return "", mcpclient.MCPServerConfig{}, err
+				}
+				if client != nil {
+					copied.ClientID, copied.ClientSecret = client.ClientID, client.ClientSecret
+				} else if appKey := personalMCPAppKey(server); appKey != "" {
+					// The deployment's sign-in app, read live so a rotated
+					// app reaches everyone. A client the person entered
+					// (above) always wins.
+					app, err := readMCPApp(appKey)
+					if err != nil {
+						return "", mcpclient.MCPServerConfig{}, err
+					}
+					if app != nil {
+						copied.ClientID, copied.ClientSecret = app.ClientID, app.ClientSecret
+					}
+				}
+			}
 			cfg.OAuth = &copied
 		}
 		return personalMCPInternalName(userID, name), cfg, nil
 	}
 	return "", mcpclient.MCPServerConfig{}, fmt.Errorf("you have no MCP server named %q", name)
+}
+
+// readPersonalMCPClient returns the person's OAuth client for a server, or
+// nil when there is none yet.
+func readPersonalMCPClient(dir, userID, name string) (*registeredClient, error) {
+	data, err := oauth.ReadTokenFile(personalMCPClientFile(dir, userID, name))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read sign-in client: %w", err)
+	}
+	var client registeredClient
+	if err := json.Unmarshal(data, &client); err != nil || client.ClientID == "" {
+		return nil, fmt.Errorf("unreadable sign-in client")
+	}
+	return &client, nil
+}
+
+// writePersonalMCPClient stores a client ID and secret sealed in the
+// person's store.
+func writePersonalMCPClient(userID, name string, client registeredClient) error {
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(client)
+	if err != nil {
+		return err
+	}
+	return oauth.WriteTokenFile(personalMCPClientFile(dir, userID, name), data)
 }
 
 // ---- tokens at rest ----------------------------------------------------
@@ -509,4 +569,40 @@ func (personalMCPTokenSealer) Open(path string, sealed []byte) ([]byte, error) {
 	return []byte(plaintext), err
 }
 
-func init() { oauth.SetTokenSealer(personalMCPTokenSealer{}) }
+func init() { oauth.SetTokenSealer(credentialSealer{}) }
+
+// credentialSealer is the process-wide token sealer: personal MCP files and
+// platform OAuth client files (platform_client_sealing.go), each bound to its
+// own path.
+type credentialSealer struct{}
+
+func (credentialSealer) Handles(path string) bool {
+	return personalMCPTokenSealer{}.Handles(path) || platformClientSealer{}.Handles(path)
+}
+
+func (credentialSealer) Seal(path string, plaintext []byte) ([]byte, error) {
+	if (personalMCPTokenSealer{}).Handles(path) {
+		return personalMCPTokenSealer{}.Seal(path, plaintext)
+	}
+	return platformClientSealer{}.Seal(path, plaintext)
+}
+
+func (credentialSealer) Open(path string, sealed []byte) ([]byte, error) {
+	if (personalMCPTokenSealer{}).Handles(path) {
+		return personalMCPTokenSealer{}.Open(path, sealed)
+	}
+	return platformClientSealer{}.Open(path, sealed)
+}
+
+// personalMCPAppKey is the sign-in app a personal server uses: the key
+// recorded when it was added, or, for a catalog server added before apps
+// existed, the key its own sign-in endpoints imply.
+func personalMCPAppKey(server personalMCPServer) string {
+	if server.AppKey != "" {
+		return server.AppKey
+	}
+	if server.Catalog != "" && server.OAuth != nil && server.OAuth.RegistrationEndpoint == "" {
+		return mcpAppKeyFor(server.Catalog, server.OAuth)
+	}
+	return ""
+}

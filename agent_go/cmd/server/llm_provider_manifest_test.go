@@ -293,11 +293,11 @@ func TestFetchAvailablePiCLIModelsReturnsOnlyLiveConnectedInventory(t *testing.T
 
 func TestProviderModelMetadataIncludesClaudeCodeSonnet5(t *testing.T) {
 	ids := providerModelIDs("claude-code")
-	if !containsLLMCapabilityString(ids, "claude-sonnet-5") {
-		t.Fatalf("claude-code model ids = %v, want claude-sonnet-5", ids)
+	if !containsLLMCapabilityString(ids, "claude-sonnet-5-5") {
+		t.Fatalf("claude-code model ids = %v, want claude-sonnet-5-5", ids)
 	}
-	if got := inferCursorModelGroup("claude-sonnet-5", ""); got != "Claude Sonnet 5" {
-		t.Fatalf("inferCursorModelGroup(claude-sonnet-5) = %q, want Claude Sonnet 5", got)
+	if got := inferCursorModelGroup("claude-sonnet-5-5", ""); got != "Claude Sonnet 5.5" {
+		t.Fatalf("inferCursorModelGroup(claude-sonnet-5-5) = %q, want Claude Sonnet 5.5", got)
 	}
 }
 

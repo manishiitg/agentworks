@@ -184,6 +184,11 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	if req.ExecutionDefaults != nil {
 		manifest.ExecutionDefs = *req.ExecutionDefaults
 	}
+	// A new workflow copies the workflows product default into its own
+	// settings, so a later default change never switches it.
+	if manifest.Capabilities.LLMConfig == nil {
+		manifest.Capabilities.LLMConfig = productDefaultWorkflowLLMConfig(r.Context())
+	}
 	if err := validateWorkflowSlackConnectionID(manifest.Capabilities.SlackConnectionID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

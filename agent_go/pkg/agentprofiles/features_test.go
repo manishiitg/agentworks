@@ -168,7 +168,7 @@ func TestFeatureOptionsNarrowToolsForOutboundAndDirectMessageOnly(t *testing.T) 
 	if err := ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
+	for _, tool := range []string{"list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "list_accessible_workflows", "run_workflow_trigger", "get_slack_bot_settings"} {
 		if !containsString(profile.ToolPolicy.Enabled, tool) {
 			t.Fatalf("narrowed features dropped caller tool %s: %v", tool, profile.ToolPolicy.Enabled)
 		}
@@ -214,5 +214,30 @@ func TestBotsFeatureControlsSlackCredentialTools(t *testing.T) {
 				t.Fatalf("%s admission does not follow bots feature", name)
 			}
 		}
+	}
+}
+
+// The MCP feature's scope option: personal drops every platform-wide tool and
+// the shared skill and rewrites the guidance; shared (the default, a Crew's)
+// keeps them all; anything else is refused.
+func TestMCPFeatureScope(t *testing.T) {
+	resolve := func(scope string) (Profile, error) {
+		p := Profile{ID: "work", Name: "Crew", Features: []FeatureBinding{{ID: "mcp", Options: map[string]string{"scope": scope}}}}
+		return p, ResolveFeatures(&p)
+	}
+	shared, err := resolve("")
+	if err != nil || len(shared.ResolvedFeatures) == 0 || len(shared.ResolvedFeatures[0].Tools) == 0 || len(shared.ResolvedFeatures[0].Skills) == 0 {
+		t.Fatalf("shared MCP lost its tools or skill: %+v %v", shared.ResolvedFeatures, err)
+	}
+	personal, err := resolve("personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	feature := personal.ResolvedFeatures[0]
+	if len(feature.Tools) != 0 || len(feature.Skills) != 0 || !strings.Contains(feature.PromptExtension, "manage_my_mcp_servers") {
+		t.Fatalf("personal MCP = %+v", feature)
+	}
+	if _, err := resolve("everyone"); err == nil {
+		t.Fatal("an unknown scope was accepted")
 	}
 }

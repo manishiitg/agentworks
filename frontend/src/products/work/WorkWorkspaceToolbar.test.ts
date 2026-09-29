@@ -8,11 +8,12 @@ describe('WorkWorkspaceToolbar', () => {
 
     expect(source).not.toContain('label="Views"')
     expect(source).toContain('label="Ops"')
-    expect(source).toContain("open={openGroup === 'ops'}")
+    // Ops and Setup are always open and show icons only (no labels).
+    expect(source).toContain('label="Ops" open hideToggleWhenOpen')
+    expect(source).toContain('label="Setup" open hideToggleWhenOpen')
     expect(source).toContain('label="Setup" open')
-    expect(source).not.toContain("openGroup === 'setup'")
+
     expect(source).not.toContain("current === 'setup' ? null : 'setup'")
-    expect(source).toContain("OPS_BUTTONS.some(item => item.id === view) ? 'ops'")
     expect(source).toContain("visibleViews.filter(item => item.id !== 'dashboard').map")
     expect(source.indexOf("const OPS_BUTTONS")).toBeLessThan(source.indexOf("id: 'files', label: 'Files'"))
     expect(source.indexOf("const OPS_BUTTONS")).toBeLessThan(source.indexOf("id: 'database', label: 'Database'"))
@@ -24,7 +25,9 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("id: 'plan', label: 'Plan'")
     expect(source).toContain("id: 'identity', label: 'Identity'")
     expect(source).toContain("id: 'mcp', label: 'Integrations'")
-    expect(source).toContain('title="Setup: identity and integrations"')
+    expect(source).toContain("'Setup: identity and integrations'")
+    // A Code adds Share to Setup; its first group is omitted when empty.
+    expect(source).toContain("id: 'share', label: 'Share'")
     expect(source).toContain('<AutomationHubPanel')
     expect(source).not.toContain('botContent=')
     expect(source).toContain("productTriggerScope={enabledPanels?.has('triggers')")

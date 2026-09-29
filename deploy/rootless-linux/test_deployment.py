@@ -14,7 +14,8 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             with self.subTest(product=product):
                 self.assertTrue((directory / "product.env").is_file())
                 self.assertTrue((directory / "runtime-config.js").is_file())
-                self.assertTrue((directory / "mcp-servers.json").is_file())
+                # Every deployment builds from the shared catalog.
+                self.assertFalse((directory / "mcp-servers.json").exists())
                 self.assertFalse(any(directory.glob("*.sh")))
 
     def test_repository_root_deploy_is_the_only_entry_point(self):

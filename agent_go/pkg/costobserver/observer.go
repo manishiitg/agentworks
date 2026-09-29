@@ -56,6 +56,7 @@ type Observer struct {
 	agentMode      string
 	provider       string
 	modelID        string
+	accountID      string
 	workflowID     string
 	runID          string
 	executionID    string
@@ -82,6 +83,26 @@ func WithModel(provider, modelID string) Option {
 		o.provider = strings.TrimSpace(provider)
 		o.modelID = strings.TrimSpace(modelID)
 	}
+}
+
+// WithAccount records the provider account the agent runs on:
+// global:<provider> for the server account, else a user account ID.
+func WithAccount(accountID string) Option {
+	return func(o *Observer) {
+		o.accountID = strings.TrimSpace(accountID)
+	}
+}
+
+// AccountIDFor names the account a model config runs on, for WithAccount.
+func AccountIDFor(provider, connectionID string) string {
+	connectionID = strings.TrimSpace(connectionID)
+	if connectionID == "" || strings.HasPrefix(connectionID, "server-default:") {
+		if strings.TrimSpace(provider) == "" {
+			return ""
+		}
+		return "global:" + strings.TrimSpace(provider)
+	}
+	return connectionID
 }
 
 // WithAttribution names the cost scope and the workflow/run/execution this
@@ -413,6 +434,7 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 		ExecutionID:    o.executionID,
 		Scope:          o.scope,
 		SourcePlatform: o.sourcePlatform,
+		AccountID:      o.accountID,
 		Phase:          phase,
 		AgentMode:      o.agentMode,
 		Component:      event.Component,

@@ -42,7 +42,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	}
 	// Runtime choice reuses AgentWorks' complete coding-agent provider set and
 	// maps each choice to its globally installed CLI.
-	if manifest.Profile.Runtime.Provider != "claude-code" || manifest.Profile.Runtime.ModelID != "claude-sonnet-5" {
+	if manifest.Profile.Runtime.Provider != "claude-code" || manifest.Profile.Runtime.ModelID != "claude-sonnet-5-5" {
 		t.Fatalf("work must report its default provider/model to the shared composer, got provider=%q model_id=%q", manifest.Profile.Runtime.Provider, manifest.Profile.Runtime.ModelID)
 	}
 	options := manifest.Profile.Runtime.ProviderOptions
@@ -138,6 +138,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"list_functions":                         false,
 		"call_function":                          false,
 		"get_function_call":                      false,
+		"reply_function_call":                    false,
 		"ask_function_update":                    false,
 		"report_function_progress":               false,
 		"return_function_result":                 false,

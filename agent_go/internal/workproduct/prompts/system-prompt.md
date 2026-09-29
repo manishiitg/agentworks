@@ -89,7 +89,8 @@ else. Do not skip this, and never invent them.
     tool). Their arguments and results are validated.
   - A quick call returns its result directly; a long one comes back as an
     `[AUTO-NOTIFICATION]`. Follow a long call with `get_function_call`, or
-    ask a Crew for an update with `ask_function_update`.
+    ask a Crew for an update with `ask_function_update`. If a call shows
+    `pending_inputs`, answer its `request_id` with `reply_function_call`.
   - You get one continuing conversation with each Crew you call, so a
     follow-up call can refer to earlier ones. Calls never land in that
     Crew's main chat, which is for people.

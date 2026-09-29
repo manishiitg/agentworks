@@ -361,7 +361,9 @@ type ActiveSessionInfo struct {
 
 // StreamingAPI represents the streaming API server
 type StreamingAPI struct {
-	postSlackMessage func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
+	externalBuilderRuntime      externalBuilderRuntime
+	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
+	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
 
 	botExecutionSessions sync.Map // session -> trusted connector request context
 
@@ -400,6 +402,9 @@ type StreamingAPI struct {
 	// internalLiveInputDeliver replaces the synchronous live-input send in
 	// tests of the fast-response window.
 	internalLiveInputDeliver func(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string) bool
+	// internalAgentToolsModeDecided lets tests see the agent-tools mode a
+	// turn decided (after provider-account rules) and stop the turn there.
+	internalAgentToolsModeDecided func(sessionID, mode string) bool
 	// internalSteerTransportReady lets gate tests observe steer
 	// readiness without a real CLI registry. Production dispatch
 	// checks the provider's interactive-session registration.
@@ -741,17 +746,18 @@ func spaStaticFileHandler(root string) http.Handler {
 
 // QueryRequest represents an agent query request
 type QueryRequest struct {
-	ConnectionID    string   `json:"connection_id,omitempty"`
-	Query           string   `json:"query"`
-	Message         string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
-	SessionTitle    string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
-	ParentSessionID string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
-	SessionKind     string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
-	Servers         []string `json:"servers,omitempty"`
-	EnabledServers  []string `json:"enabled_servers,omitempty"`
-	SelectedTools   []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
-	Provider        string   `json:"provider,omitempty"`
-	ModelID         string   `json:"model_id,omitempty"`
+	ExternalBuilderOperationID string   `json:"-"` // Set from authenticated execution claims.
+	ConnectionID               string   `json:"connection_id,omitempty"`
+	Query                      string   `json:"query"`
+	Message                    string   `json:"message,omitempty"`           // Alias for Query (used by frontend)
+	SessionTitle               string   `json:"session_title,omitempty"`     // Short UI label for backend-started sessions; never use the full prompt here.
+	ParentSessionID            string   `json:"parent_session_id,omitempty"` // Internal child-session ownership used by refresh recovery.
+	SessionKind                string   `json:"session_kind,omitempty"`      // Stable runtime kind such as pulse_reviewer; never infer this from titles.
+	Servers                    []string `json:"servers,omitempty"`
+	EnabledServers             []string `json:"enabled_servers,omitempty"`
+	SelectedTools              []string `json:"selected_tools,omitempty"` // Array of "server:tool" strings
+	Provider                   string   `json:"provider,omitempty"`
+	ModelID                    string   `json:"model_id,omitempty"`
 	// ReasoningEffort overrides the "reasoning_effort" key of an agent
 	// profile's provider_options[].Options for this turn only; every other
 	// key stays as declared. Ignored outside the profile query path.
@@ -1485,9 +1491,13 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	if !shouldUseDurableConversationTurnQueue(req) || conversationTurnQueueExecution(r.Context()) ||
-		!api.conversationTurnOccupied(sessionID) {
+		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID)) {
 		return false
 	}
+	return api.queueConversationTurnResponse(w, r, userID, sessionID, req)
+}
+
+func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
 	if err != nil {
 		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
@@ -1698,6 +1708,7 @@ func init() {
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
+	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
 	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
@@ -1707,6 +1718,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// not accept a logger. Enforce stable username/workflow keys at the process
 	// boundary and enrich session-tagged lines from the request registry.
 	installDefaultServerLogContextWriter()
+	installProviderAccountConfigHook()
 
 	// Load configuration
 	config := ServerConfig{
@@ -1975,6 +1987,12 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Printf("[COST_LEDGER] Legacy migration imported=%d duplicates=%d quarantined=%d",
 			report.Imported, report.Duplicates, report.Quarantined)
 	}
+	// Cursor Auto calls recorded before Auto had an estimated price.
+	if n, repriceErr := costLedger.RepriceUnpriced(estimateCursorAutoCost); repriceErr != nil {
+		log.Printf("[COST_LEDGER] Repricing Cursor Auto calls skipped after error: %v", repriceErr)
+	} else if n > 0 {
+		log.Printf("[COST_LEDGER] Priced %d earlier Cursor Auto call(s) at the estimated average", n)
+	}
 	fmt.Printf("💾 Operator store: workspace API (%s)\n", getWorkspaceAPIURL())
 	fmt.Printf("💵 Cost events: SQLite (%s)\n", costDBPath)
 
@@ -2027,6 +2045,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	cliSecurityStore, err := clisecurity.NewStore(cliSecurityRoot)
 	if err != nil {
 		log.Fatalf("Failed to initialize AgentWorks CLI security store: %v", err)
+	}
+	// A broken AGENTWORKS_PROVIDER_POLICY, or a product default its
+	// provider's policy does not admit, stops the server here instead of
+	// failing runs later.
+	if err := validateProviderAccountInstallation(); err != nil {
+		log.Fatalf("Provider accounts: %v", err)
 	}
 	profileRegistry := agentprofiles.NewRegistry()
 	// Platform-owned tools first: any product's manifest may bind them.
@@ -2100,6 +2124,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		for _, profile := range workproduct.BuiltinAgentProfiles() {
 			profile.Product = "work"
+			applyInstallationProductDefault(&profile)
 			if err := profileRegistry.RegisterProfile(profile); err != nil {
 				log.Fatalf("Failed to register Work agent profile: %v", err)
 			}
@@ -2114,6 +2139,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		for _, profile := range codeproduct.BuiltinAgentProfiles() {
 			profile.Product = codeproduct.ProfileID
+			applyInstallationProductDefault(&profile)
 			if err := profileRegistry.RegisterProfile(profile); err != nil {
 				log.Fatalf("Failed to register Code agent profile: %v", err)
 			}
@@ -2350,6 +2376,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
+	apiRouter.HandleFunc("/admin/users/{id}/invite", requireAdmin(api.handleAdminInviteUser)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminUpdateUser)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminDeleteUser)).Methods("DELETE")
 	apiRouter.HandleFunc("/workflow/user-permissions", requireWorkflowOwnerAccess(api.handleListWorkflowUserPermissions)).Methods("GET", "OPTIONS")
@@ -2381,6 +2408,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// Platform OAuth client secrets written inline before they moved to
+	// sealed client files.
+	if err := api.migratePlatformClientSecrets(); err != nil {
+		log.Printf("[MCP] could not seal platform OAuth client secrets: %v", err)
+	}
+	// Platform tokens and client registrations written before sealing.
+	if n, err := sealPlainPlatformCredentials(); err != nil {
+		log.Printf("[MCP] could not seal platform MCP credentials: %v", err)
+	} else if n > 0 {
+		log.Printf("[MCP] sealed %d platform MCP credential file(s)", n)
+	}
 	// Pins of Code chats whose Code is gone, once the workspace is up.
 	go func() {
 		time.Sleep(3 * time.Minute)
@@ -2389,9 +2427,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	// A person's own MCP servers and secrets (docs/design/code_private_mcp.md).
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
+	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
+	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
+	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
+	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place/{name}", api.handleRemovePlaceMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/secrets/{name}", api.handlePutPersonalSecret).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
@@ -2416,6 +2462,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/llm-config/providers", api.handleGetProviderManifest).Methods("GET")
 	apiRouter.HandleFunc("/llm-config/providers/{provider}/models", api.handleGetProviderModels).Methods("GET")
 	apiRouter.HandleFunc("/provider-connections", api.handleProviderConnections).Methods("GET", "POST", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/share-targets", api.handleProviderShareTargets).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/status", api.handleProviderAccountStatus).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/provider-connections/{connectionID}/sign-out", api.handleProviderAccountSignOut).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/product-defaults", api.handleProductDefaults).Methods("GET", "PUT", "OPTIONS")
+	apiRouter.HandleFunc("/provider-accounts/costs", api.handleProviderAccountCosts).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/provider-connections/{connectionID}", api.handleProviderConnection).Methods("PATCH", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions", api.handleStartProviderSetup).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/provider-setup/sessions/{id}", api.handleProviderSetupSession).Methods("GET", "DELETE", "OPTIONS")
@@ -2654,16 +2705,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-module-state", api.handleGetPulseModuleState).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-findings", api.handleGetPulseFindings).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-reviews", api.handleGetPulseReviews).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-agent-metrics", api.handleGetPulseAgentMetrics).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-impact", api.handleGetPulseImpact).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-context", api.handleGetPulseContext).Methods("GET", "OPTIONS")
 
 	// Workflow running-session API (decoupled from chat session storage).
 	apiRouter.HandleFunc("/workflow/running", api.handleListRunningWorkflows).Methods("GET")
-	apiRouter.HandleFunc("/workflow/running/{session_id}", api.handleGetRunningWorkflow).Methods("GET")
 	apiRouter.HandleFunc("/workflow/running/{session_id}", api.handleUpdateRunningWorkflow).Methods("PATCH", "OPTIONS")
 
 	// Global cost ledger summary.
@@ -2813,6 +2857,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	go api.cleanupInactiveSessions()
 	go api.watchScheduleSummaryForLiveFeed()
 	go api.warmLLMConfigCaches()
+	go preloadProviderAccountSettings()
 
 	// Initialize and start the cron scheduler
 	// Set SCHEDULER_ENABLED=false in .env to disable on secondary machines sharing the same workspace files.
@@ -2846,16 +2891,12 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Workflow API routes
 	apiRouter.HandleFunc("/workflow/create", requireWorkflowCreateAccess(api.handleCreateWorkflow)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/status", api.handleGetWorkflowStatus).Methods("GET")
 	apiRouter.HandleFunc("/workflow/update", api.handleUpdateWorkflow).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/constants", orchtypes.HandleWorkflowConstants).Methods("GET")
-	apiRouter.HandleFunc("/workflow/active-executions", api.handleGetActiveExecutions).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
 	// Headless report preview data (preview_report tool). The only API paths a
 	// report-preview scoped token can reach; see report_preview_routes.go.
-	apiRouter.HandleFunc("/workflow/report-preview/file", api.handleReportPreviewFile).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")
-	apiRouter.HandleFunc("/workflow/report-preview/costs", api.handleReportPreviewMetrics).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/media-url", api.handleReportMediaURL).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-preview/run", api.handleReportRun).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-media", api.handleReportMediaStream).Methods("GET", "HEAD")
@@ -2866,30 +2907,20 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Workspace API reverse proxy (auth-protected) — frontend calls /api/wp/* instead of /workspace/*
 	apiRouter.PathPrefix("/wp/").Handler(workspaceProxyHandler())
 
-	// Consolidated workspace state endpoint (NEW - loads everything in one call)
-	apiRouter.HandleFunc("/workspace/state", api.handleLoadWorkspaceState).Methods("GET", "OPTIONS")
-
 	// Focused workflow endpoints used for mutations and incremental refreshes.
-	apiRouter.HandleFunc("/workflow/run-folders", api.handleGetRunFolders).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/run-folder", api.handleCreateRunFolder).Methods("POST", "OPTIONS")
 	// /workflow/progress endpoint removed — steps_done.json progress tracking no longer consumed by frontend
 	apiRouter.HandleFunc("/workflow/run-folder", requireWorkflowWriteAccess(api.handleDeleteRunFolder)).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/learnings", requireWorkflowWriteAccess(api.handleDeleteStepLearnings)).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/learnings/all", api.handleGetAllStepLearnings).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/variable-groups", api.handleGetVariableGroups).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/variable-groups", requireWorkflowWriteAccess(api.handleUpdateVariableGroups)).Methods("POST", "PUT", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/logs", api.handleGetExecutionLogs).Methods("GET", "OPTIONS")
+	// Workflow data reads, each behind a per-workflow read check.
+	registerWorkflowReadRoutes(apiRouter, api)
 	apiRouter.HandleFunc("/workflow/logs/webhook-payload", api.handleGetExecutionWebhookPayload).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/logs/file", api.handleGetLogFile).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/costs", api.handleGetCosts).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/review-data", api.handleGetWorkflowReviewData).Methods("GET", "OPTIONS")
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
-	apiRouter.HandleFunc("/workflow/builder-doc", api.handleGetBuilderDoc).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/plan-changelog", api.handleGetPlanChangelog).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/framework-health", api.handleGetFrameworkHealth).Methods("GET", "OPTIONS")
 
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
@@ -2907,13 +2938,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
-	apiRouter.HandleFunc("/workflow/backup", api.handleGetWorkflowBackup).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/publish", api.handleGetWorkflowPublish).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/notifications", api.handleGetWorkflowNotifications).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/publish/secret", requireWorkflowWriteAccess(api.handleGetWorkflowPublishSecret)).Methods("GET", "OPTIONS")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
-	apiRouter.HandleFunc("/workflows/summary", api.handleGetWorkflowsSummary).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflows/overview", api.handleGetWorkflowsOverview).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", api.handleGetWorkflowManifest).Methods("GET", "OPTIONS")
@@ -3699,6 +3725,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
 	}
+	// External Builder authority is carried only by authenticated dispatch/queue
+	// context. JSON cannot supply it, including when reusing a browser chat.
+	if claims := GetUserFromContext(r.Context()); claims != nil {
+		req.ExternalBuilderOperationID = claims.ExternalBuilderOperationID
+	}
+	if req.ExternalBuilderOperationID != "" {
+		claims, err := api.validateExternalBuilderTurn(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	}
 	principalContext, principalErr := api.revalidateExecutionPrincipal(r.Context(), req)
 	if principalErr != nil {
 		http.Error(w, principalErr.Error(), http.StatusForbidden)
@@ -3721,7 +3760,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A workflow may keep durable read-only links in workflow.json. Merge those
 	// with one-message # references before the common authorization boundary so
 	// both forms receive identical access checks and folder guards.
-	if contextErr := admitTurnContextPaths(r.Context(), &req); contextErr != nil {
+	if contextErr := admitWorkflowBuilderContextPaths(r.Context(), &req); contextErr != nil {
 		http.Error(w, contextErr.Error(), http.StatusForbidden)
 		return
 	}
@@ -3819,10 +3858,30 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	// Provider accounts: every turn re-checks that this principal may use the
+	// account the turn names here, before any retained CLI gets the message.
+	// A denied account fails the turn; it never falls back to another one.
+	accountScope := queryProviderAccountScope(req, currentUserID, resolvedProfile, false, "")
+	// The FINAL account of the turn: a workflow chat that does not override
+	// the manifest runs on the workflow's saved model and account.
+	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
+	if turnProvider != "" {
+		admitID := turnConnectionID
+		if admitID == "" {
+			// No account named: the turn runs on the server account. Checked
+			// here too, so a retained CLI relaunch or live input is covered.
+			admitID = serverDefaultConnectionID(turnProvider)
+		}
+		if _, accountErr := api.admitProviderAccount(r.Context(), accountScope, turnProvider, admitID); accountErr != nil {
+			http.Error(w, accountErr.Error(), http.StatusForbidden)
+			return
+		}
+	}
 	crewGuest := crewGuestCallerForTurn(req, currentUserID)
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
 	}
+	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -3831,6 +3890,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Session persistence classification conflict", http.StatusConflict)
 			return
 		}
+	}
+
+	// Do not let a browser follow-up reconfigure or steer an MCP operation.
+	// Its own claims are persisted by the queue and restored on its next turn.
+	if api.externalBuilderOwnsSession(sessionID) && !conversationTurnQueueExecution(r.Context()) {
+		// Preserve browser retry idempotency before the early queue return.
+		// Enqueue even if the MCP turn finishes during journal admission;
+		// kickConversationTurnQueue will then execute the idle chat's turn.
+		var finish func()
+		var accepted bool
+		w, r, finish, accepted = api.beginChatSubmission(w, r, sessionID, req.SelectedFolder, req.Query)
+		if !accepted {
+			return
+		}
+		defer finish()
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		return
 	}
 
 	var resolvedProfileSkills []*llmtypes.Skill
@@ -3850,11 +3926,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A workflow's Builder/Run chat takes the workflow's "Native agent tools"
 	// switch (a Crew's comes through its resolved profile).
 	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
+	// A plain chat (no workflow, no product) runs with native tools too.
+	if !workflowNativeAgentTools && resolvedProfile == nil && plainChatNativeAgentTools(req, currentUserIsReadOnly) {
+		workflowNativeAgentTools = true
+	}
 	if workflowNativeAgentTools {
 		agentToolsMode = "hybrid"
 	}
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
+	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	// Scheduled/Chief requests may already carry the configured secret name at
 	// this point. Resolve it for backend delivery and strip it from agent env.
 	api.resolveNotificationSecretForRequest(r.Context(), currentUserID, req.SelectedFolder, &req)
@@ -3924,7 +4008,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer finishSubmission()
 	}
-	preferRetainedDelivery := shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
+	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
 	}
@@ -4493,6 +4577,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, manifestWorkspacePath, caps.SelectedSecrets)
+				// A Code chat also gets its person's own secrets (never anyone
+				// else's; the chat is pinned to that person before it runs).
+				if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+					req.DecryptedSecrets = withPersonalSecrets(currentUserID, req.DecryptedSecrets)
+				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -5256,7 +5345,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		mergedAPIKeys = resolvedProfile.APIKeys
 	}
 
-	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, currentUserID)
+	mergedAPIKeys = api.withConnectionResolver(mergedAPIKeys, queryProviderAccountScope(req, currentUserID, resolvedProfile, isWorkflowPhase, workflowPhaseFolder))
 	queryInputLaneRelease := releaseInputLane
 	if queryInputLaneRelease != nil {
 		// Ownership moves to the background turn for its full lifetime. Normal
@@ -5283,6 +5372,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if !isWorkflowPhase {
 				api.setSyntheticTurn(sessionID, false)
 				api.setSessionBusy(sessionID, false)
+			}
+			// Live input the CLI accepted during this turn can still be
+			// running as a retained turn (see observeRetainedMainTurnEvent).
+			// Its own completion settles it; do not show the chat idle now.
+			if turnStatus == trackedExecutionStatusCompleted && api.retainedMainTurnTracked(sessionID) {
+				log.Printf("[RETAINED_TURN] Foreground turn ended with live input still being answered; keeping session=%s running", sessionID)
+				api.setSessionBusy(sessionID, true)
+				api.updateSessionStatus(sessionID, "running")
 			}
 			api.observeRuntimeSnapshot(sessionID)
 			if queryInputLaneRelease != nil {
@@ -5353,6 +5450,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Execution is stopped by explicit cancellation, not by a wall-clock timeout.
 		streamCtx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 		streamCtx = queryLogCtx.Context(streamCtx)
+		// Tools that start their own model (generate_text_llm, read_image)
+		// resolve and admit accounts with this turn's scope.
+		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
 		defer cancel()
 
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
@@ -5489,9 +5589,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[PI_CLI_CONFLICT] Cleared %d conflicting Pi CLI session(s) before starting chat session %s in %s", closed, sessionID, chatWorkingDir)
 			}
 		}
+		if req.ExternalBuilderOperationID != "" {
+			req.DecryptedSecrets = nil
+			noGlobalSecrets := []string{}
+			req.SelectedGlobalSecrets = &noGlobalSecrets
+		}
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
+		}
+		if req.ExternalBuilderOperationID != "" {
+			codingAgentSecretEnvironment = map[string]string{}
 		}
 		nativeShellAPITransport := false
 		if resolvedProfile != nil && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.APITransport.Mode), "native_shell") {
@@ -5530,6 +5638,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
+		if req.ExternalBuilderOperationID != "" {
+			claims := GetUserFromContext(r.Context())
+			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+		}
 		if currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			toolGate.DenyReaderTools(crewReaderDeniedTools()...)
 		}
@@ -5637,7 +5749,28 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					agentConfig.RuntimeOverrides[name] = override
 				}
 			}
+		} else {
+			// A workflow's or Crew's own connections (docs/design/
+			// personal_mcp_attach.md) join its selected servers like any other.
+			placeRoot := ""
+			if isWorkflowPhase {
+				placeRoot = workflowPhaseFolder
+			} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+				placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+			}
+			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
+				selectedServers = mergeServerLists(selectedServers, placeNames)
+				if agentConfig.RuntimeOverrides == nil {
+					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
+				}
+				for name, override := range placeOverrides {
+					agentConfig.RuntimeOverrides[name] = override
+				}
+			}
 		}
+		// Apply the external Builder boundary last, including after a Code
+		// profile has considered any personal server overrides.
+		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
 		} else {
@@ -5685,6 +5818,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// See conditional_grants.go for the registry. The result is reused across
 		// every folder guard and system prompt site below.
 		resolvedGrants := resolveConditionalGrants(req)
+		if req.ExternalBuilderOperationID != "" {
+			resolvedGrants = ResolvedGrants{}
+		}
 		// When skill-creator is selected, ensure it's installed (auto-fetch from GitHub
 		// if missing). This is the one piece of grant-specific logic that doesn't fit
 		// the registry — it's an install-on-demand side effect unique to skill-creator.
@@ -5712,6 +5848,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Extract #workflow read-only folders early — needed both inside isChatMode block
 		// (for folder guard setup) and in the workflow_phase block (for shell isolator).
 		_, workflowReadOnlyFolders := collectSplitFolderGuardFolders(req.Query, req.authorizedWorkflowContextReadPaths)
+		if req.ExternalBuilderOperationID != "" {
+			workflowReadOnlyFolders = nil
+		}
 
 		if isChatMode && llmAgent.GetUnderlyingAgent() != nil {
 			// Handle browser access: when enabled, add agent-browser skill
@@ -5780,12 +5919,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
 			}
+			if req.ExternalBuilderOperationID != "" {
+				chatAgentSecretEnv = map[string]string{}
+			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
 				WorkspaceAPIURL:      getWorkspaceAPIURL(),
 				UserID:               currentUserID,
 				SessionID:            sessionID,
 				ExtraEnvVars:         chatAgentSecretEnv,
 				GenerateTextLLMTiers: generateTextWorkflowTiers(presetLLMConfig),
+				APIKeys:              mergedAPIKeys,
 			})
 			if len(chatAgentSecretEnv) > 0 {
 				logfWithContext(queryLogCtx, "[SECRETS] Injected %d secret(s) into chat agent shell env (isWorkflowPhase=%v)", len(chatAgentSecretEnv), isWorkflowPhase)
@@ -5810,6 +5953,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Merge @context file paths into additional folder-guard write access.
 			// workflowReadOnlyFolders was computed above.
 			fileContextWriteFolders := extractFileContextWriteFolders(req.Query)
+			if req.ExternalBuilderOperationID != "" {
+				fileContextWriteFolders = nil
+			}
 			if len(fileContextWriteFolders) > 0 {
 				log.Printf("[FILE CONTEXT] Extracted write folder-guard paths from @context: %v", fileContextWriteFolders)
 			}
@@ -5826,6 +5972,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// workflow_layout.json must go through typed plan-mod tools that serialize
 			// full structs, not raw writes.
 			var fileContextBlockedWriteFolders []string
+			if req.ExternalBuilderOperationID != "" {
+				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/workflow.json")
+			}
 			if execution, ok := api.botExecutionForSession(sessionID); ok && execution.Request.PresetQueryID != "" {
 				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/runs/iteration-0/")
 			}
@@ -6017,6 +6166,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
+				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
+					readPaths, writePaths = externalBuilderFolderPaths(workflowPhaseFolder)
+					workspaceExecutors = wrapExecutorsWithFolderGuard(workspaceExecutors, "EXTERNAL BUILDER", "EXTERNAL BUILDER", folderGuardContextWorkflow, nil, fileContextBlockedWriteFolders, writePaths)
+				}
 				workspace.SetSessionFolderGuard(sessionID,
 					readPaths,
 					writePaths,
@@ -6040,11 +6193,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					!currentUserIsReadOnly,
 				)
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
-				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
+				if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
 				}
-				todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+				if req.ExternalBuilderOperationID == "" {
+					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+				}
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
+			}
+
+			if err := api.registerExternalBuilderWorkspaceTools(llmAgent, workflowPhaseFolder, GetUserFromContext(r.Context())); err != nil {
+				sendError(fmt.Sprintf("Failed to register external Builder file tools: %v", err), true)
+				return
 			}
 
 			// Coding-agent adapters project system instructions, selected skills,
@@ -6074,6 +6234,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				toolName := tool.Function.Name
+				if externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName) {
+					continue
+				}
 				if profileDisablesVirtualTool(resolvedProfile, toolName) {
 					log.Printf("[AGENT_PROFILE] Skipping disabled virtual tool %s for profile %s", toolName, resolvedProfile.Definition.ID)
 					continue
@@ -6205,7 +6368,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because AgentWorks product.yaml does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
-					if isWorkflowPhase && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) {
+					if isWorkflowPhase && (accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
 						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
 						continue
 					}
@@ -6275,6 +6438,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)
 				return
+			}
+			// A Code chat's agent connects the person's own MCP servers.
+			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
+				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+				if err := api.registerPersonalMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
+					sendError(fmt.Sprintf("Failed to register personal MCP tool: %v", err), true)
+					return
+				}
 			}
 			if err := api.registerAgentProfileWorkflowTools(
 				context.WithoutCancel(streamCtx),
@@ -6349,7 +6520,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[SKILL TOOLS] Registered multi-agent skill tools")
 			}
-			if isWorkflowBuilderPhase {
+			if isWorkflowBuilderPhase && req.ExternalBuilderOperationID == "" {
 				if err := api.registerAccessibleWorkflowListTool(llmAgent, currentUserID, nil); err != nil {
 					logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Failed to register accessible workflow listing: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow discovery tools: %v", err), true)
@@ -6357,7 +6528,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Registered list_accessible_workflows for Builder")
 			}
-			if isWorkflowPhase {
+			if isWorkflowPhase && req.ExternalBuilderOperationID == "" {
 				if err := api.registerWorkflowLLMDiscoveryTools(llmAgent); err != nil {
 					logfWithContext(queryLogCtx, "[LLM TOOLS] Failed to register workflow LLM discovery tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow LLM discovery tools: %v", err), true)
@@ -6666,15 +6837,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						sendError(fmt.Sprintf("Failed to configure coding-agent working directory: %v", err), true)
 						return
 					}
-					// Restrict shell commands to the workflow folder via Isolator
-					// Include #workflow read-only paths so the builder can read referenced workflows
-					phaseReadPaths := []string{phaseWorkspacePath, "Chats", "skills", "subagents", "Downloads"}
-					phaseReadPaths = append(phaseReadPaths, workflowReadOnlyFolders...)
-					workspace.SetSessionFolderGuard(sessionID,
-						phaseReadPaths,
-						[]string{phaseWorkspacePath, "Downloads"},
-					)
-					// The phase setup above rebuilds the long-lived Builder guard.
+					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					todo_creation_human.ConfigureManagedWorkflowDBSession(
@@ -6682,10 +6845,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						phaseWorkspacePath,
 						!currentUserIsReadOnly,
 					)
-					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
+					if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
-					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+					if req.ExternalBuilderOperationID == "" {
+						todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+					}
 					if len(workflowReadOnlyFolders) > 0 {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
 					}
@@ -6984,6 +7149,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// surface — there is no per-turn narrowing for one path to
 				// apply and the other to miss.
 				syntheticReq := QueryRequest{
+					ExternalBuilderOperationID:  req.ExternalBuilderOperationID,
 					TriggeredBy:                 req.TriggeredBy,
 					ParentSessionID:             req.ParentSessionID,
 					SessionKind:                 req.SessionKind,
@@ -6999,7 +7165,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					PresetQueryID:               req.PresetQueryID,
 				}
 				if err := api.installWorkflowPhaseTools(
-					setupCtx, llmAgent, sessionID, currentUserID,
+					setupCtx, externalBuilderRegistrar(llmAgent, GetUserFromContext(r.Context())), sessionID, currentUserID,
 					workflowPhaseID, phaseWorkspacePath, phaseRunFolder,
 					phaseTemplateVars, selectedServers, mergedAPIKeys,
 					phaseReadFile, phaseWriteFile, phaseMoveFile,
@@ -7052,6 +7218,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			currentUserID,
 			req.AgentMode,
 			withCostModel(finalProvider, finalModelID),
+			costobserver.WithAccount(costobserver.AccountIDFor(finalProvider, func() string { _, id := queryTurnConnection(req); return id }())),
 			withCostAttribution(
 				costScope,
 				costFirstNonEmpty(workflowPhaseFolder, req.SelectedFolder),
@@ -8972,6 +9139,31 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	api.observeRetainedMainTurnEvent(sessionID, event)
 }
 
+// completionMetadataFlag reports whether a unified completion carries a true
+// boolean metadata flag.
+func completionMetadataFlag(event events.Event, key string) bool {
+	if event.Data == nil {
+		return false
+	}
+	completion, ok := event.Data.Data.(*unifiedevents.UnifiedCompletionEvent)
+	if !ok || completion == nil || completion.Metadata == nil {
+		return false
+	}
+	flag, _ := completion.Metadata[key].(bool)
+	return flag
+}
+
+// retainedMainTurnTracked reports whether a retained main-agent turn is open.
+func (api *StreamingAPI) retainedMainTurnTracked(sessionID string) bool {
+	if api == nil {
+		return false
+	}
+	api.retainedMainTurnsMu.Lock()
+	defer api.retainedMainTurnsMu.Unlock()
+	_, tracked := api.retainedMainTurns[sessionID]
+	return tracked
+}
+
 func retainedMainTurnCompletionEvent(eventType string) bool {
 	switch strings.ToLower(strings.TrimSpace(eventType)) {
 	case "streaming_end", "agent_end", "conversation_end", "unified_completion":
@@ -9013,6 +9205,16 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	startedAt, tracked := api.retainedMainTurns[sessionID]
 	api.retainedMainTurnsMu.Unlock()
 	if !tracked || (!event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
+		return
+	}
+	// Live input reached the CLI while this completion's Session.Run was
+	// still running. The CLI may answer it only after this response, so the
+	// mcpagent Session owns a follow-up watch that emits the input's own
+	// completion (or closes it as answered by this response). Settling here
+	// took the older response as the input's answer and left the CLI's real
+	// reply with no stream (Excellence 2026-09-29 06:27).
+	if completionMetadataFlag(event, mcpagent.LiveInputFollowupMetadataKey) {
+		log.Printf("[RETAINED_TURN] Completion precedes a live-input follow-up; keeping the input's turn open session=%s", sessionID)
 		return
 	}
 
@@ -9131,7 +9333,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	// Persist an exact structured completion directly whenever it carries the
 	// final reply. Native transcript reconciliation is only the emergency path
 	// for missing structured output or a failed canonical append.
-	if !api.persistRetainedStructuredCompletion(sessionID, event) {
+	// A follow-up answered by the previous response carries no text of its own;
+	// that response is already persisted, so there is nothing to reconcile.
+	if !completionMetadataFlag(event, mcpagent.AnsweredByPreviousResponseMetadataKey) &&
+		!api.persistRetainedStructuredCompletion(sessionID, event) {
 		api.scheduleWorkflowBuilderNativeTranscriptSync(sessionID)
 	}
 	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s",
@@ -10417,9 +10622,32 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	api.lastQueryMu.RLock()
 	policyRequest, policyKnown := api.lastQueryRequests[sessionID]
 	api.lastQueryMu.RUnlock()
+	// Live input is a turn too: re-check the session's account for the
+	// person sending it (sharing changes apply from the next turn).
+	if policyKnown {
+		if provider, connectionID := queryTurnConnection(policyRequest); provider != "" && connectionID != "" {
+			sender := GetUserIDFromContext(r.Context())
+			scope := providerAccountScope{Principal: sender, WorkspacePath: policyRequest.SelectedFolder, Product: policyRequest.AgentProfileID}
+			if _, accountErr := api.admitProviderAccount(r.Context(), scope, provider, connectionID); accountErr != nil {
+				http.Error(w, accountErr.Error(), http.StatusForbidden)
+				return
+			}
+		}
+	}
 	if !policyKnown && strings.HasPrefix(submissionProject, "Workflow/") {
 		http.Error(w, "Workflow session configuration is unavailable; reopen the workflow chat", http.StatusConflict)
 		return
+	}
+	policyRequest.ExternalBuilderOperationID = ""
+	if policyKnown && api.externalBuilderOwnsSession(sessionID) {
+		policyRequest.Query = req.Message
+		policyRequest.Message = ""
+		policyRequest.TriggeredBy = "interactive"
+		policyRequest.IsAutoNotification = false
+		policyRequest.DisableLiveInputDelivery = true
+		if api.queueOccupiedConversationTurn(w, r, GetUserIDFromContext(r.Context()), sessionID, policyRequest) {
+			return
+		}
 	}
 	if policyKnown {
 		compatible, policyErr := api.workflowRetainedPolicyCompatible(r.Context(), sessionID, policyRequest)
@@ -12601,6 +12829,9 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
+				"client_secret": map[string]interface{}{
+					"type": "string", "description": "Required with client_id for registered GitHub and HubSpot OAuth apps. Prefer entering it in the connector directory so it does not enter chat history.",
+				},
 			},
 			"required": []string{"name"},
 		},
@@ -12619,6 +12850,8 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			apiKey = strings.TrimSpace(apiKey)
 			clientID, _ := args["client_id"].(string)
 			clientID = strings.TrimSpace(clientID)
+			clientSecret, _ := args["client_secret"].(string)
+			clientSecret = strings.TrimSpace(clientSecret)
 
 			// Chat has no other way to learn an install finished — the
 			// connector-directory UI refreshes itself on its own button
@@ -12736,7 +12969,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				return fmt.Sprintf("%q requires OAuth sign-in, and this server has no PUBLIC_URL configured to build a callback URL from chat. Ask the user to connect it from the connector directory in the UI instead.", name), nil
 			}
 
-			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, notifyMCPViewRefresh)
+			startResp, discoveryResp, err := api.beginOAuthFlow(GetUserIDFromContext(ctx), sessionID, name, redirectURI, clientID, clientSecret, notifyMCPViewRefresh)
 			if err != nil {
 				return "", fmt.Errorf("failed to start OAuth for %q: %w", name, err)
 			}
@@ -12834,7 +13067,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -12930,7 +13163,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			}
 
 			userConfig.MCPServers[name] = server
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 
@@ -12987,7 +13220,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			affectedWorkflows := workflowsReferencingMCPServer(ctx, name)
 
 			delete(userConfig.MCPServers, name)
-			if err := mcpclient.SaveConfig(userConfigPath, userConfig); err != nil {
+			if err := savePrivateMCPOverlay(userConfigPath, userConfig); err != nil {
 				return "", fmt.Errorf("failed to save user MCP config: %w", err)
 			}
 

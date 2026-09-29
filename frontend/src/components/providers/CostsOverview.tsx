@@ -6,6 +6,7 @@ import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
+import { AccountCostList } from './AccountCosts'
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -25,7 +26,7 @@ const overviewCurrency = (amount: number) => {
 
 const costLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'call_count' | 'unpriced_call_count'>) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0
-    ? 'Unknown'
+    ? 'Not priced'
     : overviewCurrency(usage.total_cost_usd)
 
 const unpricedLabel = (count?: number) =>
@@ -188,11 +189,19 @@ export default function CostsOverview() {
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
             <span className="font-medium text-gray-900 dark:text-gray-100">How to read this: </span>
             {costSources.length > 0 ? costSources.join(' · ') : (total?.total_cost_usd ?? 0) > 0 ? 'Recorded cost source unavailable' : 'No priced usage recorded'}.
-            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have unknown cost and are excluded from the tracked amount.`}
+            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have no price and are left out of the tracked amount: the provider did not report a cost and there is no rate for that model (for example Cursor Composer). Their tokens are still counted.`}
             {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription-equivalent estimates are not your subscription bill.'}
           </div>
 
           <CostExplorer data={data} days={days} itemLabel={itemLabel} />
+
+          {(data.by_account?.length ?? 0) > 0 && (
+            <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
+              <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">By account</summary>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">LLM costs in the work shown above, grouped by provider account. Shared accounts you do not own show only your usage, so these subtotals may be lower than the tracked total. Expand an account to see where it was used and by whom.</p>
+              <div className="mt-3"><AccountCostList providers={data.by_account ?? []} /></div>
+            </details>
+          )}
 
           {providerRows.length > 0 && (
             <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">

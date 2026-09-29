@@ -65,8 +65,8 @@ describe('Context walkthroughs', () => {
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
       expect(dialog.textContent).toContain('1 of 6')
-      expect(dialog.textContent).toContain('What is AgentWorks for?')
-      expect(dialog.textContent).toContain('repeatable goals with a measurable result')
+      expect(dialog.textContent).toContain('What are Goals for?')
+      expect(dialog.textContent).toContain('repeatable work with a measurable result')
       expect(dialog.textContent).toContain('Example:')
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
@@ -92,8 +92,92 @@ describe('Context walkthroughs', () => {
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Choose a workspace')
-      expect(dialog.textContent).toContain('repeatable goals with a success metric')
+      expect(dialog.textContent).toContain('repeatable work with a success metric')
       expect(dialog.textContent).toContain('specialist teammate that remembers an ongoing project')
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('remembers the Code guides on their own, apart from Crew', () => {
+    const originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
+    const values = new Map<string, string>()
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) } },
+    })
+    try {
+      dismissWorkflowWalkthrough('code')
+      expect(isWorkflowWalkthroughDismissed('code')).toBe(true)
+      for (const other of ['empty-code', 'crew', 'empty-crew', 'overview'] as const) {
+        expect(isWorkflowWalkthroughDismissed(other)).toBe(false)
+      }
+    } finally {
+      if (originalStorage) Object.defineProperty(window, 'localStorage', originalStorage)
+      else Reflect.deleteProperty(window, 'localStorage')
+    }
+  })
+
+  it('walks a first-time Code user through the controls they can see, skipping admin-only ones', async () => {
+    for (const tour of ['crew-empty-state', 'crew-create', 'global-providers']) addTarget(tour)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="empty-code" onClose={() => {}} />))
+      const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
+      expect(dialog.textContent).toContain('Code')
+      expect(dialog.textContent).toContain('What is Code for?')
+      expect(dialog.textContent).toContain('private workspace')
+      const titles = ['Your workspaces start here', 'Create a workspace', 'Providers']
+      for (const title of titles) {
+        await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
+        expect(dialog.textContent).toContain(title)
+      }
+      // No MCP or Users icon on this screen (not an admin), so the guide ends here.
+      expect(dialog.querySelector('[data-testid="workflow-walkthrough-done"]')).not.toBeNull()
+      expect(dialog.textContent).not.toContain('Add your team')
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('shows an admin the MCP and Users steps in the Code getting-started guide', async () => {
+    for (const tour of ['crew-empty-state', 'crew-create', 'global-providers', 'global-mcp', 'global-users']) addTarget(tour)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="empty-code" onClose={() => {}} />))
+      const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
+      for (const title of ['Your workspaces start here', 'Create a workspace', 'Providers', 'Connect an AI agent', 'Add your team']) {
+        await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
+        expect(dialog.textContent).toContain(title)
+      }
+      expect(dialog.querySelector('[data-testid="workflow-walkthrough-done"]')).not.toBeNull()
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('guides the open Code workspace with its own words, not Crew’s', async () => {
+    for (const tour of ['crew-chat', 'chat-input-box', 'chat-send-controls', 'work-tools', 'crew-workspace']) addTarget(tour)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="code" onClose={() => {}} />))
+      const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
+      expect(dialog.textContent).toContain('Your private workspace')
+      expect(dialog.textContent).not.toContain('Crew')
+      for (const title of ['Work together in chat', 'Describe the work', 'Attach and send', 'Workspace tools']) {
+        await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
+        expect(dialog.textContent).toContain(title)
+        expect(dialog.textContent).not.toContain('Crew')
+      }
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -107,7 +191,7 @@ describe('Context walkthroughs', () => {
     try {
       await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
-      expect(dialog.textContent).toContain('What is AgentWorks for?')
+      expect(dialog.textContent).toContain('What are Goals for?')
       expect(dialog.textContent).toContain('1 of 1')
       expect(dialog.querySelector('[data-testid="workflow-walkthrough-done"]')).not.toBeNull()
       expect(dialog.querySelector('[data-testid="workflow-walkthrough-next"]')).toBeNull()
@@ -170,7 +254,7 @@ describe('Context walkthroughs', () => {
   })
 
   it.each([
-    { surface: 'empty-automation' as const, target: 'automation-empty-state', intro: 'Choose a goal for AgentWorks', title: 'Start with an automation', label: 'Empty automation walkthrough' },
+    { surface: 'empty-automation' as const, target: 'automation-empty-state', intro: 'Choose a goal', title: 'Start with an automation', label: 'Empty automation walkthrough' },
     { surface: 'empty-crew' as const, target: 'crew-empty-state', intro: 'What is Crew for?', title: 'Your Crew starts here', label: 'Empty Crew walkthrough' },
     { surface: 'crew' as const, target: 'crew-selector', intro: 'A teammate that remembers this project', title: 'Current Crew member', label: 'Crew workspace walkthrough' },
   ])('explains $surface before showing its controls', async ({ surface, target, intro, title, label }) => {

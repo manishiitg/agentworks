@@ -13,13 +13,13 @@ type WalkthroughStep = {
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
   selector: '[aria-label="Switch product"]',
   title: 'Choose a workspace',
-  body: 'Use AgentWorks for repeatable goals with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
+  body: 'Use Goals for repeatable work with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
 }
 
 const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
-    title: 'What is AgentWorks for?',
-    body: 'AgentWorks is for repeatable goals with a measurable result. Tell agents the outcome and metric; they build and run an automation, show progress, and ask for decisions when needed.',
+    title: 'What are Goals for?',
+    body: 'Goals is for repeatable work with a measurable result. Tell agents the outcome and metric; they build and run an automation, show progress, and ask for decisions when needed.',
     example: 'Review new support requests daily and keep urgent response time under one hour.',
   },
   PRODUCT_SWITCHER_STEP,
@@ -31,7 +31,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-activity"]',
     title: 'Activity',
-    body: 'Use this button to get back to updates and pending decisions from anywhere in AgentWorks.',
+    body: 'Use this button to get back to updates and pending decisions from anywhere in Goals.',
   },
   {
     selector: '[data-tour="activity-feed"]',
@@ -58,7 +58,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
 const AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     title: 'From goal to running automation',
-    body: 'This workspace is where AgentWorks turns a measurable goal into work its agents can run. Describe the outcome in chat, review the plan, and use the dashboard to see the result.',
+    body: 'This workspace turns a measurable goal into work agents can run. Describe the outcome in chat, review the plan, and use the dashboard to see the result.',
     example: 'Check new support requests each morning and flag urgent ones within an hour.',
   },
   {
@@ -115,8 +115,8 @@ const AUTOMATION_STEPS: WalkthroughStep[] = [
 
 const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
   {
-    title: 'Choose a goal for AgentWorks',
-    body: 'AgentWorks uses automations to pursue repeatable, measurable goals. Open one to continue, or create one by describing the outcome you want and how you will measure success.',
+    title: 'Choose a goal',
+    body: 'Goals uses automations to pursue repeatable, measurable outcomes. Open one to continue, or create one by describing the outcome you want and how you will measure success.',
     example: 'Qualify incoming leads each day and report how many are ready for follow-up.',
   },
   PRODUCT_SWITCHER_STEP,
@@ -214,20 +214,95 @@ const CREW_STEPS: WalkthroughStep[] = [
   },
 ]
 
+const EMPTY_CODE_STEPS: WalkthroughStep[] = [
+  {
+    title: 'What is Code for?',
+    body: 'Code is your private workspace with an AI agent: write, research, analyse, build and automate, however you like. Your files, chats and connected apps stay yours, and you share a workspace only with people you choose.',
+    example: 'Ask it to clean up a spreadsheet, draft a report, or build and test a feature.',
+  },
+  {
+    selector: '[data-tour="crew-empty-state"]',
+    title: 'Your workspaces start here',
+    body: 'Create a workspace to keep a piece of work’s chat, files and connections together.',
+  },
+  {
+    selector: '[data-tour="crew-create"]',
+    title: 'Create a workspace',
+    body: 'Give it a name. Once it opens, a separate guide shows you around.',
+  },
+  {
+    selector: '[data-tour="global-providers"]',
+    title: 'Providers',
+    body: 'Connect a model or coding agent for your workspaces to use, or use one an admin shared with you.',
+  },
+  {
+    selector: '[data-tour="global-mcp"]',
+    title: 'Connect an AI agent',
+    body: 'Admins and reviewers: connect your own AI agent to this server, for example to review workspaces.',
+  },
+  {
+    selector: '[data-tour="global-users"]',
+    title: 'Add your team',
+    body: 'Admins: add people by email. They sign in with Google, and you choose what each person can open.',
+  },
+]
+
+const CODE_STEPS: WalkthroughStep[] = [
+  {
+    title: 'Your private workspace',
+    body: 'Chat with the agent, keep your files, and connect your own apps here. Only you and the people you share it with can open it; administrators and reviewers can view it read-only.',
+    example: 'Ask it to research a topic, then turn the notes into a document.',
+  },
+  {
+    selector: '[data-tour="crew-chat"]',
+    title: 'Work together in chat',
+    body: 'Ask for anything: write, analyse, research, build or automate. You can follow up while the agent is working.',
+  },
+  {
+    selector: '[data-tour="chat-input-box"]',
+    title: 'Describe the work',
+    body: 'Type your request here. Use @ to refer to files and / to browse commands; to add a command of your own, ask the agent to create it.',
+  },
+  {
+    selector: '[data-tour="chat-send-controls"]',
+    title: 'Attach and send',
+    body: 'Add files or context, then send your request.',
+  },
+  {
+    selector: '[data-tour="work-tools"]',
+    title: 'Workspace tools',
+    body: 'Open files, the browser and costs, and Setup for sharing, your connected apps (MCPs, each with your own sign-in), your secrets and models.',
+  },
+  {
+    selector: '[data-tour="crew-workspace"]',
+    title: 'Workspace pane',
+    body: 'The selected file, view or setup page appears here.',
+  },
+  {
+    selector: '[data-tour="global-providers"]',
+    title: 'Providers',
+    body: 'Choose which model or coding agent this workspace uses.',
+  },
+]
+
 const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
   overview: OVERVIEW_STEPS,
   'empty-automation': EMPTY_AUTOMATION_STEPS,
   automation: AUTOMATION_STEPS,
   'empty-crew': EMPTY_CREW_STEPS,
   crew: CREW_STEPS,
+  'empty-code': EMPTY_CODE_STEPS,
+  code: CODE_STEPS,
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
-  overview: { product: 'AgentWorks', section: 'Getting started', aria: 'AgentWorks getting started walkthrough' },
-  'empty-automation': { product: 'AgentWorks', section: 'Choose an automation', aria: 'Empty automation walkthrough' },
-  automation: { product: 'AgentWorks', section: 'Automation', aria: 'Automation workspace walkthrough' },
+  overview: { product: 'Goals', section: 'Getting started', aria: 'Goals getting started walkthrough' },
+  'empty-automation': { product: 'Goals', section: 'Choose an automation', aria: 'Empty automation walkthrough' },
+  automation: { product: 'Goals', section: 'Automation', aria: 'Automation workspace walkthrough' },
   'empty-crew': { product: 'Crew', section: 'Getting started', aria: 'Empty Crew walkthrough' },
   crew: { product: 'Crew', section: 'Workspace', aria: 'Crew workspace walkthrough' },
+  'empty-code': { product: 'Code', section: 'Getting started', aria: 'Empty Code walkthrough' },
+  code: { product: 'Code', section: 'Workspace', aria: 'Code workspace walkthrough' },
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
@@ -436,7 +511,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
             </button>
           </div>
           <div className="mt-2 flex items-center justify-between gap-3">
-            <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore AgentWorks'}</h3>
+            <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore Goals'}</h3>
             {stepTotal > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stepNumber} of {stepTotal}</span>}
           </div>
           <p id="workflow-walkthrough-description" className="mt-2 text-sm leading-5 text-muted-foreground">

@@ -646,10 +646,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 	api.emitDelegationStartEvent(sessionID, delegationID, currentDepth, instruction, reasoningLevel, modelID, serversList, backgroundAgentID, agentTemplateName)
 
 	// Get user ID from context for per-user OAuth token isolation
-	subAgentUserID := strings.TrimSpace(parentReq.userID)
-	if userID, ok := ctx.Value(common.UserIDKey).(string); ok {
-		subAgentUserID = userID
-	}
+	subAgentUserID := delegationPrincipal(ctx, parentReq)
 	log.Printf("[USER_ID_DEBUGGING] Sub-agent: subAgentUserID=%q (from parent context UserIDKey)", subAgentUserID)
 	projectScopedProfile := strings.TrimSpace(parentReq.AgentProfileID) != "" && strings.TrimSpace(parentReq.SelectedFolder) != ""
 	subAgentWorkspace := perUserChatsFolderFor(subAgentUserID)
@@ -660,7 +657,9 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 	// Load provider keys and add the private workflow credential only for
 	// workflow-owned delegations. Normal multi-agent chats must not inherit a
 	// credential merely because they reference a workflow folder.
-	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), subAgentUserID)
+	// A sub-agent runs in its parent's scope: the parent's workspace decides
+	// which shared accounts it may use.
+	apiKeys := api.withConnectionResolver(MergedProviderAPIKeys(ctx), delegationProviderAccountScope(subAgentUserID, parentReq))
 	workflowOwnedDelegation := parentReq.AgentMode == "workflow" || parentReq.AgentMode == "workflow_phase" || strings.TrimSpace(parentReq.PhaseID) != ""
 	workflowDecisionScope := strings.TrimSpace(parentReq.SelectedFolder)
 	if workflowOwnedDelegation {
@@ -820,6 +819,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			parentUserID,
 			parentReq.AgentMode,
 			withCostModel(string(provider), modelID),
+			withCostAccount(costAccountIDFor(string(provider), connectionID)),
 			withCostAttribution(
 				inferCostScope(parentReq.AgentMode, parentReq.PhaseID),
 				costWorkspace,
@@ -1327,4 +1327,14 @@ func (api *StreamingAPI) emitDelegationEndEvent(sessionID, delegationID string, 
 			ParentID: fmt.Sprintf("%s_delegation_start_%s", sessionID, delegationID), Data: eventData,
 		},
 	})
+}
+
+// delegationPrincipal is the person a sub-agent runs as: the parent turn's
+// principal from its context, else the parent request's user.
+func delegationPrincipal(ctx context.Context, parentReq QueryRequest) string {
+	principal := strings.TrimSpace(parentReq.userID)
+	if userID, ok := ctx.Value(common.UserIDKey).(string); ok {
+		principal = userID
+	}
+	return principal
 }

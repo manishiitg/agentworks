@@ -9,6 +9,7 @@ import {
 import ConnectionIcon from './ConnectionIcon'
 import { brandSlugFor } from './brandSlug'
 import { GROUP_ORDER, descriptionFor, groupFor, statusIndicator } from './catalog'
+import { ConnectorGroupSection } from './ConnectorGroupSection'
 import { useMCPStore } from '../../stores'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
@@ -271,14 +272,7 @@ export default function ConnectorsBrowser({
             {GROUP_ORDER.map(({ id, label }) => {
               const entries = otherVisible.filter(([name]) => groupFor(name) === id)
               if (entries.length === 0) return null
-              return (
-                <div key={id} className="mb-5 last:mb-0">
-                  <p className="mb-2 text-xs font-semibold text-muted-foreground">{label}</p>
-                  <div className={`grid grid-cols-1 ${gridGap} md:grid-cols-2`}>
-                    {entries.map(renderCard)}
-                  </div>
-                </div>
-              )
+              return <ConnectorGroupSection key={id} label={label} entries={entries} render={renderCard} expandAll={!!query.trim()} gridGap={gridGap} />
             })}
           </section>
         )}

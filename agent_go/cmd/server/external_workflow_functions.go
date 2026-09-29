@@ -22,7 +22,7 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			listed = append(listed, map[string]any{"name": fn.Name, "description": fn.Description, "input_schema": fn.InputSchema})
 		}
 		externalJSON(w, map[string]any{"workflow_id": manifest.ID, "functions": listed})
-	case "get_workflow_function_call":
+	case "get_workflow_function_call", "reply_workflow_function_call":
 		callID, _ := args["call_id"].(string)
 		call := lookupCrewFunctionCall(strings.TrimSpace(callID))
 		if call == nil {
@@ -34,6 +34,16 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		call.mu.Unlock()
 		if !owned {
 			externalError(w, 404, "not_found", "Function call not found.")
+			return
+		}
+		if name == "reply_workflow_function_call" {
+			if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+				externalError(w, 403, "forbidden", "Answering a workflow function needs owner or editor access.")
+				return
+			}
+			requestID, _ := args["request_id"].(string)
+			response, _ := args["response"].(string)
+			replyFunctionCallInput(w, call, strings.TrimSpace(requestID), response)
 			return
 		}
 		externalJSON(w, externalWorkflowCallResponse(ctx, call, 0))
@@ -50,7 +60,8 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 		}
 		callArgs, _ := args["args"].(map[string]interface{})
 		target := triggerTarget{Kind: triggerCallerWorkflow, Path: selected.WorkspacePath, Label: firstNonEmptyTrimmed(manifest.Label, manifest.ID), Manifest: manifest}
-		call, err := api.startCrewFunctionCall(context.WithoutCancel(ctx), claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout)
+		submissionID, _ := args["submission_id"].(string)
+		call, err := api.startCrewFunctionCall(context.WithoutCancel(ctx), claims.UserID, externalCrewCaller(claims), target, fn, callArgs, externalCrewCallTimeout, submissionID)
 		if err != nil {
 			externalError(w, 400, "call_refused", err.Error())
 			return

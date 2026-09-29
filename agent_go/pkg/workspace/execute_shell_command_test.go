@@ -706,3 +706,51 @@ func TestParseGitHubOwnerRepo(t *testing.T) {
 		}
 	}
 }
+
+// The 2026-09-28 regression: a scripted step's shell runs under the group
+// session, but its script saves through the bridge as the step session (the
+// one granted DB write). Binding the bridge token to the group session made
+// every save "mutation denied". A trusted caller names the bridge session.
+func TestExecuteShellCommandUsesTheTrustedBridgeSession(t *testing.T) {
+	common.SetBridgeTokenSecret("server-secret")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
+	const group, step = "session-group-usa-engineering-ops-1", "step-send-email-outreach-session"
+
+	var got ExecuteShellCommandParams
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"stdout": "ok", "exit_code": 0}})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, group)
+	if _, err := client.ExecuteShellCommand(ctx, ExecuteShellCommandParams{
+		Command:         "python3 main.py",
+		ExtraEnv:        map[string]string{"MCP_SESSION_ID": step, "MCP_API_URL": "http://h/s/" + step},
+		BridgeSessionID: step,
+	}); err != nil {
+		t.Fatalf("ExecuteShellCommand: %v", err)
+	}
+	if got.ExtraEnv["MCP_SESSION_ID"] != step || got.ExtraEnv["MCP_API_TOKEN"] != common.BridgeTokenForSession(step) {
+		t.Fatalf("the script must call the bridge as its step session: %#v", got.ExtraEnv)
+	}
+
+	// Without a trusted bridge session, a model-supplied session is still ignored.
+	if _, err := client.ExecuteShellCommand(ctx, ExecuteShellCommandParams{
+		Command:  "echo $MCP_API_TOKEN",
+		ExtraEnv: map[string]string{"MCP_SESSION_ID": "victim"},
+	}); err != nil {
+		t.Fatalf("ExecuteShellCommand: %v", err)
+	}
+	if got.ExtraEnv["MCP_SESSION_ID"] != group || got.ExtraEnv["MCP_API_TOKEN"] != common.BridgeTokenForSession(group) {
+		t.Fatalf("model extra_env must not choose the bridge session: %#v", got.ExtraEnv)
+	}
+	// BridgeSessionID is not settable from tool arguments.
+	var decoded ExecuteShellCommandParams
+	_ = json.Unmarshal([]byte(`{"command":"x","BridgeSessionID":"victim","bridge_session_id":"victim"}`), &decoded)
+	if decoded.BridgeSessionID != "" {
+		t.Fatal("BridgeSessionID must not decode from tool arguments")
+	}
+}

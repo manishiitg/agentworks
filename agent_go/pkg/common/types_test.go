@@ -328,6 +328,36 @@ func TestApplySessionWorkflowFolderAccessRefreshesAndRevokesCurrentGrant(t *test
 	}
 }
 
+func TestReadOnlyWorkflowSessionKeepsAttachedFolderGrantsReadOnly(t *testing.T) {
+	const sessionID = "readonly-workflow-folder-grant"
+	const workflow = "Workflow/demo"
+	const external = "/tmp/readonly-workflow-external"
+	defer ClearSessionShellConfig(sessionID)
+	SetSessionWorkflowReadOnly(sessionID, true)
+	SetSessionFolderGuard(sessionID, []string{workflow, "Downloads"}, []string{"Downloads"})
+	env := map[string]string{"WORKFLOW_FOLDER_EXTERNAL": external}
+
+	ApplySessionWorkflowFolderAccess(sessionID, workflow, []string{external}, []string{external}, nil, env)
+	config := GetSessionShellConfig(sessionID)
+	if slices.Contains(config.WritePaths, workflow) || slices.Contains(config.WritePaths, external) ||
+		!slices.Contains(config.ReadPaths, external) || !slices.Contains(config.BlockedWritePaths, external) {
+		t.Fatalf("read-only grant was widened during session refresh: %#v", config)
+	}
+
+	ReconcileSessionWorkflowFolderAccess(workflow, []string{external}, []string{external}, []string{external}, nil, env)
+	config = GetSessionShellConfig(sessionID)
+	if slices.Contains(config.WritePaths, external) || !slices.Contains(config.BlockedWritePaths, external) {
+		t.Fatalf("read-only grant was widened during live reconciliation: %#v", config)
+	}
+
+	SetSessionWorkflowReadOnly(sessionID, false)
+	ReconcileSessionWorkflowFolderAccess(workflow, []string{external}, []string{external}, []string{external}, nil, env)
+	config = GetSessionShellConfig(sessionID)
+	if !slices.Contains(config.WritePaths, external) || slices.Contains(config.BlockedWritePaths, external) {
+		t.Fatalf("writable workflow did not regain its approved grant: %#v", config)
+	}
+}
+
 func TestSessionShellConfigIsImmutableAcrossCallers(t *testing.T) {
 	sessionID := "immutable-shell-config"
 	defer ClearSessionShellConfig(sessionID)

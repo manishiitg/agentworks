@@ -72,9 +72,12 @@ type Config struct {
 	// Empty leaves the provider/model default. Plumbed through
 	// RuntimeConfig.Generation.LLM as the primary model's Options["reasoning_effort"].
 	ReasoningEffort string
-	WorkingDir      string // scope root (Family/parent). "" -> process cwd
-	SystemPrompt    string // agent persona / instructions
-	Tools           []Tool // app-specific custom tools
+	// APIKeys, when set, carry the server's provider-account resolver; the
+	// model then goes through the same server-account admission as a turn.
+	APIKeys      *llm.ProviderAPIKeys
+	WorkingDir   string // scope root (Family/parent). "" -> process cwd
+	SystemPrompt string // agent persona / instructions
+	Tools        []Tool // app-specific custom tools
 	// Skills are Anthropic-format skill bundles projected into the coding
 	// agent's native skill directory for this session.
 	Skills   []*llmtypes.Skill
@@ -244,12 +247,13 @@ func New(ctx context.Context, cfg Config) (*Session, error) {
 	if err := llmguard.RequireCodingAgentProvider(string(cfg.Provider)); err != nil {
 		return nil, err
 	}
-	model, err := llm.InitializeLLM(llm.Config{
+	model, err := llm.InitializeLLM(llmguard.WithServerAccountAdmission(llm.Config{
 		Provider: cfg.Provider,
 		ModelID:  modelID,
 		Logger:   logger,
 		Context:  ctx,
-	})
+		APIKeys:  cfg.APIKeys,
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("initialize LLM: %w", err)
 	}

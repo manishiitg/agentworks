@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
 // A person asking a Crew (MCP ask_crew, `agentworks crews ask`) talks in their
@@ -67,6 +68,7 @@ func (api *StreamingAPI) runCrewOwnChatAsk(call *crewFunctionCall, target trigge
 	hardCap := crewFunctionHardCap(timeout)
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: call.UserID}), hardCap)
 	defer cancel()
+	ctx = virtualtools.WithFeedbackOperation(ctx, call.ID)
 	reqMap, sessionID, err := api.crewOwnChatAskRequest(ctx, call.UserID, target, message)
 	if err != nil {
 		call.settle("failed", nil, err.Error())

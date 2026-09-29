@@ -16,9 +16,12 @@ same chat), with four differences:
   secondary.
 - **Just a name.** A Code has no identity, role or purpose. It is a
   workspace, not an agent persona.
-- **Closed to callers.** It isn't exposed over MCP: no functions, no
-  `ask_crew`, no Slack channels or group chats, and no Crew templates. The
-  owner can reach their own Code from a Slack DM or WhatsApp.
+- **Closed to outside callers.** Crews, workflows, MCP clients and Codes of
+  another owner cannot call it: it is not in the public Crew/MCP catalog, has
+  no `ask_crew`, no Slack channels or group chats, and no Crew templates. The
+  one exception is a Code with the same owner, called by a person who can
+  edit both (private peer calls, below). The owner can reach their own Code
+  from a Slack DM or WhatsApp.
 
 It is the concrete "sit down and code" surface for
 [Workbench](https://agentworkshq.com/workbench/). There, CLI subscriptions
@@ -44,8 +47,8 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
 | Exposed over MCP (`ask_crew`, functions) | Yes | No |
 | Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
-| Triggers | Yes | No |
-| Schedules | Message-only | No, for now |
+| Triggers | Yes | Message-only, owner-created, run as the owner (2026-09-29) |
+| Schedules | Message-only | Message-only, owner-created, run as the owner (2026-09-29) |
 | Chat UI | tmux terminal + chat area | Same |
 | Coding CLIs, models, secrets, skills, browser, terminal | Yes | Yes |
 
@@ -69,12 +72,12 @@ Proposed features for `code`:
   refused. Each DM or WhatsApp message continues the sender's own chat of
   the Code, the same one-person-one-chat rule as Crew (`senderProfileTurn`),
   and only people with access to that Code are answered.
-- **Keep, outbound only:** `workflow-references` and the Crew/workflow
+- **Keep, private peer calls:** `workflow-references` and the Crew/workflow
   calling tools (list and call Crew functions, ask a Crew, read and run
   workflows). A Code can use the Crews and workflows the person working in
-  it can access, with that person's permissions. Another Code is never a
-  valid target: calls, reads and attached folders pointing at a Code are
-  refused.
+  it can access, with that person's permissions. It can also call a Code
+  with the same owner when the person can edit both Codes. Other Codes remain
+  unavailable as targets, reads or attached folders.
 - **Keep, private:**
   - `mcp`: for now a Code selects from the shared platform MCP servers,
     exactly as a Crew does (admins add them). Private per-Code servers, with
@@ -84,15 +87,31 @@ Proposed features for `code`:
     Codes and Crews never load them.
   - Viewers and editors of a shared Code use its selected MCP servers and
     skills, but never see MCP credentials.
-- **Leave out:** `triggers`, `schedules`, `voice`, `database`.
+- **Leave out:** `voice`, `database`.
+- **Schedules and triggers (user, 2026-09-29: "required for sure"):**
+  - Message-only, as in a Crew. Only the Code's owner creates them: the
+    tools and routes resolve the manifest under the caller, so an editor gets
+    "unavailable".
+  - They run as the owner, in the owner's chat of the Code (or a schedule's
+    own isolated chat), pinned to the owner, with the owner's personal MCP
+    servers and secrets.
+  - The Automation panel is read-only for people the Code is shared with.
+  - Owner-created Automation triggers are webhooks only. The private
+    Code-to-Code function path uses hidden internal bindings that do not
+    appear in the Automation panel; Crews and workflows cannot invoke them.
+  - Anyone with a trigger's URL and secret starts a run as the owner, with
+    the owner's MCP servers, secrets and tools, on an untrusted payload. The
+    UI and the tool say so, and the turn frames the payload as untrusted
+    data, never instructions.
+  - Phase 2: creator-owned schedules for editors (a `created_by` field, run as
+    the creator, disabled when access is removed).
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.
 
 Other settings:
 
 - **Tools:** no `work.set-identity` tool, and no identity fields in
   create/rename; a Code has a name only.
-- **Prompt:** a plain coding-assistant system prompt with no Crew
-  vocabulary: no identity, functions or bots.
+- **Prompt:** a plain coding-assistant system prompt with no Crew identity.
 - **Workspace:** projects live under the owner's tree, e.g.
   `_users/<owner>/Chats/Code/projects/<slug>-<id8>`. It keeps the Crew rule
   that new source goes under `code/`.
@@ -101,11 +120,14 @@ Other settings:
 
 Code-specific work outside the definition:
 
-1. **Not callable, and Codes are sealed from each other.**
-   - Leave Code out of `list_crews`, the MCP Crew tools, Crew-to-Crew calls,
-     trigger links and Slack channel or group routes.
-   - Calls go one way: a Code may call Crews and workflows, but nothing may
-     call a Code, including another Code.
+1. **Private Code-to-Code functions.**
+   - Leave Code out of `list_crews`, the MCP Crew tools, public trigger links
+     and Slack channel or group routes.
+   - A Code may call another Code with the same owner when the actor has
+     editor access to both. The target runs in that actor's own chat. Code
+     calls and run history remain private to that actor.
+   - Crews, workflows, external connections and Codes with another owner
+     cannot call a Code.
    - Workflow and Crew references, attached folders and file grants never
      resolve to a Code's folder. The server should refuse
    them for profile `code`, not merely hide them.
@@ -143,9 +165,11 @@ everyone does in Code.**
 - **Read-only.** An admin can open any user's Code: chats, terminal
   transcripts, files and usage. They cannot send messages, resume a session,
   or edit files as that user.
-- **Visible to users.** Setup → General ("Access") and the Share dialog say
+- **Visible to users.** Setup → General ("Access") and Setup → Share say
   that admins and Code reviewers can view the workspace, read-only and
-  logged. It is not a strip above every chat (user, 2026-09-28). "Private"
+  logged. Sharing lives in Setup → Share, the same sharing UI as a workflow's
+  access list (owner and co-owners as Owners, editors, viewers as
+  read-only); there is no toolbar Share button or separate dialog. It is not a strip above every chat (user, 2026-09-28). "Private"
   means private from colleagues, not from admins.
 - **Audited.** Every admin view is logged: who, which Code, what, and when.
   An admin can see the log, so the audit trail covers admins too.
@@ -194,8 +218,16 @@ users has to hold:
   - They only read; writes and execution go through the sandbox.
   - Tracked in PLAT-364; the fix is to run the CLIs under the Landlock
     launcher with per-user CLI homes.
-  - Until then, Code should default to MCP-only tools, where native tools are
-    off.
+  - *(Decided 2026-09-28 by the owner: native tools on by default.)* Code
+    now runs with native agent tools through its "Native agent tools"
+    switch, like Crew, unless the Code turned it off. *(2026-09-29: the
+    switch is now shown in the Code UI, Models → Agent tools, and native
+    tools are on for every Code turn type, owner decision "only off for
+    workflow steps".)* Known exposure until
+    the CLIs are confined (PLAT-364 part 2): native reads in a Code can
+    reach files outside the Code, and a run on someone else's shared
+    provider account can read that account's login files. Confining the
+    CLIs closes both.
 - **Open.** The browser socket folder `/tmp/.agent-browser` is shared by all
   users, so one user's command could drive another user's browser daemon.
   It needs per-user socket folders before Code enables the browser for
@@ -209,8 +241,10 @@ users has to hold:
    - Register it and add it to the product switcher.
 2. **Private by default + sharing.** Owner-only visibility, viewer, editor
    and co-owner grants, and the one-chat-per-person rule for editors.
-3. **Not callable, no templates, DM-only bots.** Refuse MCP, function,
-   trigger and Slack channel or group access for profile `code`. Allow Slack
+3. **Closed to outside callers, no templates, DM-only bots.** Refuse MCP,
+   Crew/workflow function, internal-trigger and Slack channel or group access
+   for profile `code`; the only callers are same-owner Codes for a person who
+   can edit both, in that person's own chat. Allow Slack
    DM and WhatsApp for people with access, each in their own chat. Hide the template, playbook and role flows.
 4. **Files-first UI.** Land on files; editor and terminal alongside chat;
    dashboard as a tab.
@@ -245,8 +279,8 @@ users has to hold:
      deferred; a Code uses the shared platform ones.)
    - From a Code, calling a Crew function, asking a Crew and running a
      workflow the person can access all work.
-   - The same calls against another Code (by ID, path or attached folder)
-     are refused.
+   - Code-to-Code functions work for same-owner Codes when the actor can edit
+     both; other owners and viewers are refused.
 4. **Isolation.** From A's Code terminal and shell tool, B's files, `/tmp`,
    tmux and browser are unreachable (QA #236 checks, plus the browser socket
    check).
@@ -279,9 +313,13 @@ Code ships a basic setup first; integrations come later. In Code's
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
 - **MCP in Code: global + personal** (user, 2026-09-28). Everyone who chats in
   a Code uses MCP with their own servers and personal secrets; the global
-  platform servers and global secrets work too. Design, for review:
-  [code_private_mcp.md](code_private_mcp.md). Until it is built, Code has no
-  MCP servers.
+  platform servers and global secrets work too:
+  [code_private_mcp.md](code_private_mcp.md) (built). Since b55299660 the Code
+  agent manages only the person's own servers (`manage_my_mcp_servers`), and
+  deployment sign-in apps (Google, GitHub, ...) make Connect a one-click
+  sign-in. A Code's servers never appear in Crews or workflows. Those have
+  their own connections with the adder's login
+  ([personal_mcp_attach.md](personal_mcp_attach.md), 2026-09-29).
 - **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
   standalone shell panel (user, 2026-09-28; it was built and then removed):
   commands run through the agent's sandboxed shell tool, under the Code's
@@ -298,7 +336,7 @@ Code ships a basic setup first; integrations come later. In Code's
   sees the cost (the owner), revoking a share, and whether a shared login's
   CLI home is safe to use from several people's sessions at once.
 
-- [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built).
+- [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built, then switched off 2026-09-29: a Code uses MCP servers only, including Google's Workspace MCP servers; the plumbing stays for other products).
   Today a Gmail/Google account connected through gog sits in one
   server-wide registry: any workflow or Crew can use it by ID, or fall back to
   the default connection. A Gmail account added in a Code must instead be
@@ -332,3 +370,12 @@ Code ships a basic setup first; integrations come later. In Code's
   them see the running app. It is useful for UI work but exposes server ports,
   so it needs per-user lockdown. Not decided; not in the first version unless
   decided.
+
+## Native agent tools (2026-09-29)
+
+A Crew and a Code have no "Native agent tools" switch: they are always on and
+people cannot turn them off. The server ignores a `native_agent_tools: false`
+an older project stored (`ProjectNativeAgentTools` is always true for a
+project product). The separate per-workflow setting is unchanged. A Crew's
+native tools still apply to its owner's own turns only; readers keep
+AgentWorks-only tools.

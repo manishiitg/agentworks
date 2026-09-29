@@ -7,10 +7,26 @@ import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
 import { Label } from '../ui/label'
 
+/**
+ * Where the membership lives. The default is the workflow's own access list;
+ * a Code workspace passes its share list (products/work/codeShareSource.ts),
+ * so both use this one sharing UI.
+ */
+export interface ShareSource {
+  load: () => Promise<WorkflowAccessInfo>
+  save: (owners: string[], editors: string[], readers: string[]) => Promise<WorkflowAccessInfo>
+  /** People whose tier cannot change (a Code's owner). */
+  lockedIds?: (info: WorkflowAccessInfo) => string[]
+  /** Whether the viewer may change membership. */
+  canEdit?: (info: WorkflowAccessInfo) => boolean
+  description?: React.ReactNode
+}
+
 interface WorkflowSharePopupProps {
   workspacePath: string
   /** Readers may inspect membership but cannot change grants. */
   readOnly?: boolean
+  source?: ShareSource
 }
 
 /**
@@ -21,7 +37,7 @@ interface WorkflowSharePopupProps {
  * docs/design/user_accounts_and_workflow_sharing.md, phase 3.
  */
 type ShareTier = 'owner' | 'editor' | 'reader'
-const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false }) => {
+const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, readOnly = false, source }) => {
   const me = useAuthStore((s) => s.user)
   const refreshWorkflows = useWorkflowManifestStore((s) => s.refreshWorkflows)
   const [info, setInfo] = useState<WorkflowAccessInfo | null>(null)
@@ -34,14 +50,17 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
   // Owners and admins share freely. Write-level accounts may share only an
   // unclaimed (legacy) workflow — that save claims it. On a claimed
   // workflow the server refuses non-owner writes, so the UI locks too.
-  const canEdit = !readOnly && (!!me?.is_admin || info?.my_access === 'owner' || (info?.my_access === 'write' && !!info?.legacy))
+  const canEdit = !readOnly && (source?.canEdit
+    ? !!info && source.canEdit(info)
+    : (!!me?.is_admin || info?.my_access === 'owner' || (info?.my_access === 'write' && !!info?.legacy)))
+  const lockedIds = useMemo(() => (info && source?.lockedIds ? source.lockedIds(info) : []), [info, source])
   const locked = !canEdit
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [access, dir] = await Promise.all([authApi.getWorkflowAccess(workspacePath), authApi.listUserDirectory()])
+      const [access, dir] = await Promise.all([source ? source.load() : authApi.getWorkflowAccess(workspacePath), authApi.listUserDirectory()])
       setInfo(access)
       setDirectory(dir.users || [])
     } catch (err) {
@@ -49,7 +68,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
     } finally {
       setLoading(false)
     }
-  }, [workspacePath])
+  }, [workspacePath, source])
 
   useEffect(() => {
     void load()
@@ -60,15 +79,15 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
     setSaving(true)
     setError(null)
     try {
-      const next = await authApi.setWorkflowAccess(workspacePath, owners, editors, readers)
+      const next = source ? await source.save(owners, editors, readers) : await authApi.setWorkflowAccess(workspacePath, owners, editors, readers)
       setInfo(next)
-      void refreshWorkflows()
+      if (!source) void refreshWorkflows()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
     }
-  }, [locked, workspacePath, refreshWorkflows])
+  }, [locked, workspacePath, refreshWorkflows, source])
 
   const ownerIds = useMemo(() => (info?.owners ?? []).map((u) => u.id), [info])
   const editorIds = useMemo(() => (info?.editors ?? []).map((u) => u.id), [info])
@@ -108,7 +127,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
         count={info ? `${total} ${total === 1 ? 'person' : 'people'}` : undefined}
         description={
           <>
-            Owners edit, run, share and delete. Editors edit and run but cannot share. Read-only people can chat, run and watch, but change nothing.
+            {source?.description ?? 'Owners edit, run, share and delete. Editors edit and run but cannot share. Read-only people can chat, run and watch, but change nothing.'}
             {locked && <span className="mt-1 block font-medium text-amber-600 dark:text-amber-400">Read-only: membership is visible, but all changes are disabled.</span>}
             {info?.legacy && <span className="mt-1 block text-amber-600">Nothing recorded yet: every creator and editor can edit this workflow until you save a first grant.</span>}
           </>
@@ -158,7 +177,7 @@ const WorkflowSharePopup: React.FC<WorkflowSharePopupProps> = ({ workspacePath, 
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1">{section.title}</p>
                 {section.users.length === 0 && <SettingsEmpty>{section.empty}</SettingsEmpty>}
                 {section.users.map((u) => {
-                  const lastOwner = section.tier === 'owner' && info.owners.length < 2
+                  const lastOwner = (section.tier === 'owner' && info.owners.length < 2) || lockedIds.includes(u.id)
                   return (
                     <div key={u.id} className="flex items-center justify-between py-1.5 border-t border-border">
                       <span className="text-sm">{label(u)}{u.email && <span className="ml-1 text-xs text-muted-foreground">{u.email}</span>}</span>

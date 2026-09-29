@@ -18,12 +18,12 @@ describe('cost model rows', () => {
     const summary = {
       by_model: {
         'muse-spark-1.3-contributor': aggregate('muse-cli', 0.02),
-        'claude-sonnet-5': aggregate('claude-code', 0.15),
+        'claude-sonnet-5-5': aggregate('claude-code', 0.15),
       },
     } as Pick<CostSummary, 'by_model'>
 
     expect(buildModelCostRows(summary).map(row => [row.agentLabel, row.modelId])).toEqual([
-      ['Claude Code', 'claude-sonnet-5'],
+      ['Claude Code', 'claude-sonnet-5-5'],
       ['Muse', 'muse-spark-1.3-contributor'],
     ])
   })
@@ -38,7 +38,7 @@ describe('cost model rows', () => {
     const dateBucket = {
       by_model: {
         'muse-spark-1.3-contributor': aggregate('muse-cli', 0.08, 40),
-        'claude-sonnet-5': aggregate('claude-code', 0.12, 30),
+        'claude-sonnet-5-5': aggregate('claude-code', 0.12, 30),
       },
     } as Pick<CostSummary, 'by_model'>
 
@@ -47,7 +47,7 @@ describe('cost model rows', () => {
       model: row.modelId,
       provider: row.provider,
     }))).toEqual([
-      { agent: 'Claude Code', model: 'claude-sonnet-5', provider: 'claude-code' },
+      { agent: 'Claude Code', model: 'claude-sonnet-5-5', provider: 'claude-code' },
       { agent: 'Muse', model: 'muse-spark-1.3-contributor', provider: 'muse-cli' },
     ])
   })

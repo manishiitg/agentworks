@@ -59,7 +59,10 @@ send them its value, turning "usable, never seen" into readable.
 
 1. **Personal servers are per person, reusable across their Codes.** Connect
    once; switch each on per Code. Never usable in anyone else's chat, and
-   never in Crews or workflows (Code only, for now).
+   never in Crews or workflows. (Crews and workflows have their own,
+   separate connections with the adder's login, shared by everyone who uses
+   them: [personal_mcp_attach.md](personal_mcp_attach.md). A Code's servers
+   never show there.)
 2. **Remote only, public URLs only** for personal servers. No stdio. Refuse
    loopback, private, link-local and cloud-metadata addresses, checked on every
    connect after DNS resolution and on every redirect, including OAuth
@@ -277,6 +280,84 @@ the global secrets the Code selects.
 MCP calls are already recorded per session with the workspace path
 (`recordMCPBridgeCall`), so they land on the Code's cost row, split by person.
 
+### Catalog servers as your own; providers without registration (2026-09-29)
+
+- `GET /api/me/mcp/catalog` lists the platform catalog's remote servers a
+  person can add as their own: https, public, http/sse, no platform header
+  credentials. `POST /api/me/mcp/servers {"catalog": "<name>"}` copies the URL
+  and sign-in endpoints (scopes, `extra_auth_params`); the login is the
+  person's own. A client ID/secret in the catalog entry is copied into the
+  person's sealed client file, never into servers.json.
+- Google Workspace (Gmail, Drive, Docs, Sheets, Slides, Calendar, Chat,
+  People) and GitHub have no dynamic registration. Connect answers
+  `needs_client_id` with the callback URL. The person then enters their OAuth
+  app's client ID and secret. These are stored sealed in
+  `clients/<internal>.json` and are read back by `personalMCPServerConfig`, so
+  refreshes work as well as the first sign-in. The same file holds DCR
+  clients, and a DCR client made for another callback registers again.
+- Google issues a refresh token only with `access_type=offline` and
+  `prompt=consent`. mcpagent's `OAuthConfig.ExtraAuthParams` adds them to the
+  authorization URL, and flow-owned parameters cannot be overridden.
+- The platform connect (`/api/oauth/start`) also takes `client_secret`.
+- Later: an admin-provided shared OAuth app per deployment, so people skip
+  creating their own. Today that means putting `client_id`/`client_secret` in
+  the deployment catalog entry.
+
+### Code UI: the full list, yours only (2026-09-29)
+
+- **MCPs tab.** A Code's MCPs tab is the connector directory, with the same
+  cards and groups as a Crew, over the full catalog. Connect adds the server as
+  the person's own, switches it on in this Code, and starts the person's
+  sign-in. "Use in this Code" is the per-Code switch. A "not listed" form adds
+  a custom server.
+- **Global selection hidden.** A Code's global MCP selection is no longer shown
+  in its UI. The backend still honours an existing selection.
+- **Secrets tab.** Setup → Secrets is Crew's secrets UI
+  (`SecretSelectionSection` with a `store`) over the person's own secrets.
+  - Global secrets are hidden, and values are write-only.
+  - Personal secrets reach that person's Code chats as `$SECRET_<NAME>`
+    (`withPersonalSecrets`); a personal secret wins over a Code secret of the
+    same name. They also feed that person's MCP headers.
+- **Catalog link.** A personal server added from the catalog records `catalog`
+  (set by the server only), so the list can match it to its card.
+
+### Sign-in apps: one app per provider, set up once (2026-09-29)
+
+Providers without dynamic registration (Google, GitHub, Slack, Render,
+HubSpot, Box) need an OAuth app. Asking every person for a client ID and
+secret was too hard for most, so an admin sets up **one app per provider for
+the deployment**, and everyone else just clicks Connect.
+
+- **Storage:** `<tokens root>/_platform/apps/<provider>.json`, sealed like
+  every credential under the tokens root (path-bound). Never in git, never
+  returned by an API.
+- **Grouping:** `mcpAppKeyFor`: every Google server shares the `google` app;
+  GitHub and Slack likewise; anything else is its own app, named after the
+  catalog entry. Servers that register themselves (DCR) need none.
+- **API (admin only):** `GET /api/admin/mcp-apps` (providers, whether set up,
+  the client ID, the callback URL; never the secret), `PUT` and `DELETE`
+  `/api/admin/mcp-apps/{key}`.
+- **Resolution:** a personal server added from the catalog records `app_key`.
+  At connect and refresh, `personalMCPServerConfig` uses, in order: the client
+  the person entered for their own app (their sealed client file), then the
+  deployment's app for `app_key`, read live. So a rotated app reaches
+  everyone, and nothing shared is copied into a person's store. Saving or
+  removing an app drops the pooled connections that use it.
+- **UI:** an admin-only "Sign-in apps" card at the top of a Code's MCPs tab:
+  the setup steps, the callback URL to register with a copy button, "Upload
+  client_secret.json" (Google's download, parsed in the browser), and the two
+  fields. People who still have to bring their own app get the same upload
+  button on their prompt.
+- **Google setup (once, by a Workspace admin):** a Cloud project, the Google
+  Workspace MCP services turned on, the consent screen set to **Internal**
+  (no Google review, own Workspace only), a **Web** OAuth client with
+  `https://<host>/api/oauth/callback` as its redirect URI. A public app would
+  need Google's verification and a security assessment for Gmail and Drive
+  scopes; not planned.
+- **Not done:** shared platform connections (Crew) still take their own
+  client; the Code agent's `manage_my_mcp_servers` needs no change (Connect
+  just works once the app exists).
+
 ## Tests (end-to-end, not mocked)
 
 1. A adds a public no-auth remote server (e.g. DeepWiki), enables it in Code
@@ -324,5 +405,7 @@ MCP calls are already recorded per session with the workspace path
    for MCP credential headers for now?
 2. **Project (shared) secrets in Code:** keep them (shared by everyone with
    access to the Code, as today), or replace them with personal + global only?
-3. **Personal servers outside Code:** Code only for now (recommended), or
-   also in the person's own Crews later?
+3. **Personal servers outside Code:** decided 2026-09-29. A Code's personal
+   servers stay in Code only. Crews and workflows got their own connections
+   instead, with the adder's login and shared by everyone who uses them
+   ([personal_mcp_attach.md](personal_mcp_attach.md)).

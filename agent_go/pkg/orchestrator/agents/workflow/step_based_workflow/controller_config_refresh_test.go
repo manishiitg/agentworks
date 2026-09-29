@@ -20,7 +20,7 @@ import (
 // wrong boundary — "before the run started" was the one that mattered.
 // Confirmed live: confida-login pinned execute-browser-and-capture-apis to
 // pi-cli/gemini-3.7-flash 16 minutes before that step began; it ran three
-// times in that run and used claude-code/claude-sonnet-5 every time.
+// times in that run and used claude-code/claude-sonnet-5-5 every time.
 
 // fakeStepConfigServer serves step_config.json content from an in-memory
 // string the test can mutate between reads, simulating update_step_config

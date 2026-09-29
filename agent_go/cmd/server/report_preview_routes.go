@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -129,8 +130,42 @@ func reportPreviewWorkspace(r *http.Request, claims *UserClaims, requested strin
 	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace != "" && claims.ScopeWorkspace != workspacePath {
 		return "", fmt.Errorf("this preview token is bound to another workflow")
 	}
-	_ = r
 	return workspacePath, nil
+}
+
+// reportPreviewReadable authorizes a report-preview read of workspacePath.
+// Report runs and media URLs check access themselves.
+func reportPreviewReadable(r *http.Request, claims *UserClaims, workspacePath string) error {
+	// A preview token is minted server-side for one workflow's session and
+	// is bound to it by reportPreviewWorkspace; the binding is its authorization.
+	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace != "" {
+		return nil
+	}
+	// The preview reads with the caller's identity, so a logical per-user
+	// path is the caller's own tree. A Crew's dashboard is readable in Crew
+	// Run mode (crewAccessFor), the same rule report runs use.
+	if claims != nil {
+		if ref, ok := resolveCrewPath(r.Context(), claims.UserID, workspacePath); ok && ref.Rest == "" {
+			if crewAccessFor(claims, ref) == crewAccessNone {
+				return errWorkspaceReadDenied
+			}
+			return nil
+		}
+	}
+	if !workspaceReadAllowed(r.Context(), claims, workspacePath, logicalPathIsCaller, false) {
+		return errWorkspaceReadDenied
+	}
+	return nil
+}
+
+// errWorkspaceReadDenied is a named workspace the caller may not read.
+var errWorkspaceReadDenied = errors.New("you do not have access to this workflow")
+
+func reportPreviewWorkspaceErrorStatus(err error) int {
+	if errors.Is(err, errWorkspaceReadDenied) {
+		return http.StatusForbidden
+	}
+	return http.StatusBadRequest
 }
 
 func (api *StreamingAPI) reportPreviewWorkspaceClient(claims *UserClaims) *workspace.Client {
@@ -147,8 +182,11 @@ func (api *StreamingAPI) reportPreviewWorkspaceClient(claims *UserClaims) *works
 func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	workspacePath, err := reportPreviewWorkspace(r, claims, r.URL.Query().Get("workspace"))
+	if err == nil {
+		err = reportPreviewReadable(r, claims, workspacePath)
+	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), reportPreviewWorkspaceErrorStatus(err))
 		return
 	}
 	relative, ok := reportPreviewAllowedPath(r.URL.Query().Get("path"))
@@ -190,8 +228,11 @@ func (api *StreamingAPI) handleReportPreviewQuery(w http.ResponseWriter, r *http
 		return
 	}
 	workspacePath, err := reportPreviewWorkspace(r, claims, body.Workspace)
+	if err == nil {
+		err = reportPreviewReadable(r, claims, workspacePath)
+	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), reportPreviewWorkspaceErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -20,24 +20,34 @@ profile:
     - files
     - browser
     - secrets
-    # Global platform servers selected per Code (as in a Crew), plus each
-    # person's own servers in their own chats (docs/design/code_private_mcp.md).
-    - mcp
+    # Each person's own servers in their own chats
+    # (docs/design/code_private_mcp.md). scope personal: the agent gets only
+    # manage_my_mcp_servers, never the tools that create connections shared
+    # with everyone.
+    - id: mcp
+      options: {scope: personal}
     - skills
     - attached-folders
     - id: workflow-references
-      # A Code calls Crews and workflows the person can access, and is
-      # never callable itself: no define/answer function tools.
-      options: {direction: outbound}
+      # A Code calls accessible Crews/workflows and can exchange private
+      # functions with other Codes owned by the same account.
+      options: {direction: code_peers}
     - terminal
     - models
     - id: bots
       # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
       # editor access or more, each in their own chat); never the shared bot
       # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
-      # gmail: own -- Google accounts connected in this Code only, private to
-      # it and usable only in its owner's chats; never the shared accounts.
-      options: {channels: "slack,whatsapp", dm_only: "true", gmail: own}
+      # No built-in Gmail (user, 2026-09-29): a Code reaches Google through
+      # MCP servers only (Google's Workspace MCP servers, global or personal).
+      options: {channels: "slack,whatsapp", dm_only: "true"}
+    # A schedule or webhook trigger sends one message to the Code's chat. Only
+    # the Code's owner creates them, and they run as the owner (their own
+    # chat, MCP connections and secrets). docs/design/code_product.md.
+    - id: schedules
+      options: {mode: message_only}
+    - id: triggers
+      options: {mode: message_only}
     - dashboard
     # No project Memory (user, 2026-09-28): a Code keeps notes in its files.
     - costs
@@ -57,13 +67,15 @@ profile:
     enabled:
       - get_file_link
       - get_report_link
+      # The person's own MCP connections (registered for Code turns only).
+      - manage_my_mcp_servers
   runtime:
     transport: auto
     provider_options:
       - id: claude-code
         label: Claude Code
         provider: claude-code
-        model_id: claude-sonnet-5
+        model_id: claude-sonnet-5-5
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
@@ -104,9 +116,12 @@ profile:
         options:
           reasoning_effort: high
     provider: claude-code
-    model_id: claude-sonnet-5
-    # MCP-only until hybrid-mode native reads are sandboxed (PLAT-364): the
-    # CLIs' own read tools are not confined to the owner's tree.
+    model_id: claude-sonnet-5-5
+    # The profile's base mode, as for Crew. Every Code chat switches to
+    # native agent tools (hybrid) through the Code's "Native agent tools"
+    # switch, which is on unless the Code turned it off (owner decision
+    # 2026-09-28). Known exposure until the CLIs are confined (PLAT-364
+    # part 2): their own read tools can reach files outside the Code.
     agent_tools:
       mode: mcp_only
     approvals:
@@ -120,14 +135,8 @@ profile:
       # Private: under the owner's own tree, never the shared Crew/<id> root.
       mode: project
       projects_root: Chats/Code/projects
-      placement:
-        execute_shell_command:
-          - Put newly created application and source-code files under code/ by default.
-          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
-        diff_patch_workspace_file:
-          - Put newly created application and source-code files under code/ by default.
-          - Keep project metadata, documentation, and platform-managed folders at the project root when appropriate.
-          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
+      # No placement rules: the person organises their workspace however they
+      # want (user, 2026-09-29).
     conversation:
       mode: keyed
       key_type: project
@@ -156,7 +165,8 @@ workflows:
 
 instruction_sections:
   - workspace-map
-  - project-memory
+  # No project-memory: a Code has no platform MEMORY.md convention; the
+  # person decides how to keep notes.
   - product-features
   - llm-capability
   - workflow-context

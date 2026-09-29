@@ -9,8 +9,9 @@ Complete guide for OAuth authentication with MCP servers.
 3. [UI Integration](#ui-integration)
 4. [API Reference](#api-reference)
 5. [Testing](#testing)
-6. [Architecture](#architecture)
-7. [Troubleshooting](#troubleshooting)
+6. [Whose login: platform, Code and place connections](#whose-login-platform-code-and-place-connections)
+7. [Architecture](#architecture)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -288,6 +289,26 @@ curl -X POST http://localhost:8000/api/oauth/logout \
 ```
 
 ---
+
+## Whose login: platform, Code and place connections
+
+The same OAuth flow serves three kinds of connection. They differ in whose
+login is used and where it is stored:
+
+| Connection | Added by | Login used by | Token stored at |
+|---|---|---|---|
+| **Platform** (Connectors page) | an admin | every workflow, Crew and chat that selects it | `<tokens>/_platform/<server>.json` |
+| **Code personal** ([code_private_mcp.md](../design/code_private_mcp.md)) | any person, in a Code | only that person's own Code chats | their personal store, sealed |
+| **Place** ([personal_mcp_attach.md](../design/personal_mcp_attach.md)) | someone who can edit a workflow or Crew | everyone who uses that workflow or Crew, Slack channels included | the personal store under a (person, place) id, sealed |
+
+**Sign-in apps.** Providers without dynamic client registration (Google,
+GitHub, Slack, Asana, Box, ...) need an OAuth app. An admin sets one per
+provider under **Sign-in apps**, or with `server set-mcp-app --key <k> <
+client_secret.json`, run as the service user and never as root. Personal and
+place connections then sign in with one click. The app's redirect URI must
+include `<public URL>/api/oauth/callback`. Google's `human-feedback` callback
+is for the Gmail bot channel, not MCP. The app is stored sealed at
+`<tokens>/_platform/apps/<key>.json` and read live at every connect.
 
 ## Architecture
 

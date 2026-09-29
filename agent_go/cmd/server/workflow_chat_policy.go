@@ -5,16 +5,20 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 type workflowChatPolicy struct {
 	Mode         string
 	Origin       string
 	Capabilities map[string]bool
+	AuthorityKey string
 }
 
 // readOnlyForRequest decides whether a turn runs with read-only treatment.
@@ -35,6 +39,8 @@ func readOnlyForRequest(access WorkflowAccessLevel, req QueryRequest) bool {
 func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveSessionInfo, readOnly bool) workflowChatPolicy {
 	origin := "interactive"
 	switch {
+	case req.ExternalBuilderOperationID != "":
+		origin = "external_builder"
 	case req.ParentSessionID != "" || req.SessionKind != "" || active != nil && (active.ParentSessionID != "" || active.SessionKind != ""):
 		origin = "child"
 	case req.BotPlatform != "" || active != nil && active.BotPlatform != "":
@@ -53,7 +59,7 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	if readOnly || strings.TrimSpace(req.AgentMode) == "workflow" {
 		normalized = "run"
 	}
-	return workflowChatPolicy{Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly)}
+	return workflowChatPolicy{Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID}
 }
 
 func (p workflowChatPolicy) allows(capability string) bool { return p.Capabilities[capability] }
@@ -64,7 +70,11 @@ func (p workflowChatPolicy) sessionKey() string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	sum := sha256.Sum256([]byte(p.Mode + "|" + p.Origin + "|" + strings.Join(names, ",")))
+	identity := p.Mode + "|" + p.Origin + "|" + strings.Join(names, ",")
+	if p.AuthorityKey != "" {
+		identity += "|" + p.AuthorityKey
+	}
+	sum := sha256.Sum256([]byte(identity))
 	return fmt.Sprintf("%x", sum[:16])
 }
 
@@ -164,23 +174,101 @@ func normalizeWorkflowConversationMode(req *QueryRequest, readOnly bool) {
 }
 
 // workflowChatNativeAgentTools reports whether this workflow chat turn runs
-// with the coding CLI's native tools (agent_tools hybrid): the workflow's
-// "Native agent tools" switch is on (the default), the turn is an interactive Builder or
-// Run-mode chat (not a step agent, schedule, webhook, bot, notification or
-// Pulse turn) and the user may edit the workflow.
+// with the coding CLI's native tools (agent_tools hybrid). Owner decision
+// 2026-09-29: on for every turn type — interactive Builder and Run chats,
+// schedules, webhooks and triggers, Pulse, Slack and WhatsApp — unless the
+// workflow's "Native agent tools" switch is off. Read-only principals stay
+// off, and so do workflow step agents: child sessions of a run (a Pulse
+// reviewer child is a Pulse turn, not a step).
 func (api *StreamingAPI) workflowChatNativeAgentTools(ctx context.Context, req QueryRequest, sessionID string, readOnly bool) bool {
 	if readOnly || strings.TrimSpace(req.AgentMode) != "workflow_phase" || strings.TrimSpace(req.SelectedFolder) == "" {
 		return false
 	}
-	var active *ActiveSessionInfo
-	if api != nil {
-		if found, ok := api.getActiveSession(sessionID); ok {
-			active = found
-		}
-	}
-	if resolveWorkflowChatPolicy(sessionID, req, active, readOnly).Origin != "interactive" {
+	if api.isWorkflowStepTurn(req, sessionID) {
 		return false
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, req.SelectedFolder)
 	return err == nil && found && manifest != nil && manifest.Capabilities.NativeAgentToolsEnabled()
+}
+
+// plainChatNativeAgentTools reports whether an AgentWorks chat with no
+// workflow and no product profile runs with native agent tools: on for
+// every turn type (owner decision 2026-09-29), off for read-only principals.
+func plainChatNativeAgentTools(req QueryRequest, readOnly bool) bool {
+	mode := strings.TrimSpace(req.AgentMode)
+	if readOnly || mode == "workflow_phase" || mode == "workflow" || strings.TrimSpace(req.AgentProfileID) != "" {
+		return false
+	}
+	return !strings.HasPrefix(strings.Trim(strings.TrimSpace(req.SelectedFolder), "/"), "Workflow/")
+}
+
+// External Builder intentionally has no cross-workflow context or filesystem
+// grants. Its visible transcript stays in the same workflow's own builder tree.
+func admitWorkflowBuilderContextPaths(ctx context.Context, req *QueryRequest) error {
+	if req.ExternalBuilderOperationID == "" {
+		return admitTurnContextPaths(ctx, req)
+	}
+	req.WorkflowContextPaths = nil
+	req.authorizedWorkflowContextReadPaths = nil
+	return nil
+}
+
+func externalBuilderFolderPaths(workspace string) (read, write []string) {
+	root := path.Clean(strings.TrimSpace(workspace))
+	if !strings.HasPrefix(root, "Workflow/") || root == "Workflow/" {
+		return nil, nil
+	}
+	return []string{root + "/"}, []string{root + "/"}
+}
+
+func externalBuilderHostDownloads(req QueryRequest, session string) string {
+	if req.ExternalBuilderOperationID != "" {
+		return ""
+	}
+	return common.GrantSessionCDPHostDownloadsReadWrite(session, hostDownloadsBrowserMode(req))
+}
+
+// Phase tools are registered through the same source of truth as browser
+// Builder, intersected with this operation's explicit tool boundary.
+type externalBuilderDefinitionRegistrar struct {
+	definitionRegistrar
+	claims *UserClaims
+}
+
+func externalBuilderRegistrar(registrar definitionRegistrar, claims *UserClaims) definitionRegistrar {
+	if claims == nil || claims.ExternalBuilderOperationID == "" {
+		return registrar
+	}
+	return externalBuilderDefinitionRegistrar{registrar, claims}
+}
+
+func (r externalBuilderDefinitionRegistrar) RegisterCustomTool(name, description string, schema map[string]interface{}, run func(context.Context, map[string]interface{}) (string, error), category string) error {
+	if externalBuilderToolDenied(r.claims, name) {
+		return nil
+	}
+	return r.definitionRegistrar.RegisterCustomTool(name, description, schema, auditExternalBuilderPlanTool(name, run), category)
+}
+
+func (r externalBuilderDefinitionRegistrar) RegisterCustomToolWithTimeout(name, description string, schema map[string]interface{}, run func(context.Context, map[string]interface{}) (string, error), timeout time.Duration, category string) error {
+	if externalBuilderToolDenied(r.claims, name) {
+		return nil
+	}
+	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, auditExternalBuilderPlanTool(name, run), timeout, category)
+}
+
+// isWorkflowStepTurn reports a child session of a workflow run (a step
+// agent), which keeps AgentWorks-only tools. A Pulse child session is a
+// Pulse turn and is not a step.
+func (api *StreamingAPI) isWorkflowStepTurn(req QueryRequest, sessionID string) bool {
+	parent, kind := strings.TrimSpace(req.ParentSessionID), strings.TrimSpace(req.SessionKind)
+	if api != nil {
+		if active, ok := api.getActiveSession(sessionID); ok && active != nil {
+			parent = firstNonEmptyTrimmed(parent, active.ParentSessionID)
+			kind = firstNonEmptyTrimmed(kind, active.SessionKind)
+		}
+	}
+	if parent == "" && kind == "" {
+		return false
+	}
+	return !strings.HasPrefix(strings.ToLower(kind), "pulse")
 }

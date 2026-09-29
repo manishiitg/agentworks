@@ -9,7 +9,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
-	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
 func externalCrewRequest(t *testing.T, env triggerLinkEnv, claims *UserClaims, name string, args map[string]any) (int, map[string]any) {
@@ -172,11 +171,11 @@ func TestExternalAskCrewRunsInCallersOwnChatAndIsPollable(t *testing.T) {
 }
 
 func TestOAuthGrantCrewAccessFollowsApprovedScopes(t *testing.T) {
-	withCrews := mcpOAuthTokenForGrant(mcpoauth.Grant{UserID: "u", Scopes: []string{"workflows:read", "crews:run"}})
+	withCrews := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "u", Scopes: []string{"workflows:read", "crews:run"}})
 	if !withCrews.AllCrews || !withCrews.AllowsCrew("any") {
 		t.Fatal("an OAuth grant approving a Crew permission must reach the user's Crews")
 	}
-	legacy := mcpOAuthTokenForGrant(mcpoauth.Grant{UserID: "u", Scopes: []string{"workflows:read", "files:read", "runs:execute"}})
+	legacy := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "u", Scopes: []string{"workflows:read", "files:read", "runs:execute"}})
 	if legacy.AllCrews || legacy.AllowsCrew("any") {
 		t.Fatal("an OAuth grant without Crew permissions must not reach Crews")
 	}

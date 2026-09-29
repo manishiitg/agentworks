@@ -438,7 +438,7 @@ func (boa *BaseOrchestratorAgent) createLLM() (llmtypes.Model, error) {
 	if err := llmguard.RequireCodingAgentProvider(primaryProvider); err != nil {
 		return nil, err
 	}
-	llmInstance, err := llm.InitializeLLM(config)
+	llmInstance, err := llm.InitializeLLM(llmguard.WithServerAccountAdmission(config))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize LLM: %w", err)
 	}

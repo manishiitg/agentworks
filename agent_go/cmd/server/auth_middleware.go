@@ -26,13 +26,14 @@ const deprecatedDefaultAuthSecret = "dev-secret-change-in-production"
 
 // UserClaims represents the JWT claims for authenticated users
 type UserClaims struct {
-	SlackTrustedApp    bool                `json:"-"` // Set only by the validated server-owned event adapter.
-	ExecutionPrincipal *ExecutionPrincipal `json:"-"`
-	AccessToken        *accesstokens.Token `json:"-"` // Server-validated PAT restrictions; never read from JWT claims.
-	UserID             string              `json:"user_id"`
-	Username           string              `json:"username"`
-	Email              string              `json:"email,omitempty"`
-	Provider           string              `json:"provider,omitempty"` // Auth provider: "simple", "cognito", "supabase"
+	ExternalBuilderOperationID string              `json:"-"` // Trusted operation binding; never accepted from JWT/JSON.
+	SlackTrustedApp            bool                `json:"-"` // Set only by the validated server-owned event adapter.
+	ExecutionPrincipal         *ExecutionPrincipal `json:"-"`
+	AccessToken                *accesstokens.Token `json:"-"` // Server-validated PAT restrictions; never read from JWT claims.
+	UserID                     string              `json:"user_id"`
+	Username                   string              `json:"username"`
+	Email                      string              `json:"email,omitempty"`
+	Provider                   string              `json:"provider,omitempty"` // Auth provider: "simple", "cognito", "supabase"
 	// BotRouteGrant is set only by server-owned connector paths. It lets normal
 	// workflow access resolution treat a configured bot route as the executing
 	// principal while keeping the external sender as audit metadata.

@@ -46,7 +46,8 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   hasIdentity: true,
   hasTemplates: true,
   listsSharedProjects: true,
-  hasNativeAgentToolsSetting: true,
+  // No switch (owner decision 2026-09-29): native agent tools are always on.
+  hasNativeAgentToolsSetting: false,
   defaultView: 'identity',
   preferenceNamespace: 'work',
 }
@@ -62,7 +63,8 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   hasIdentity: false,
   hasTemplates: false,
   listsSharedProjects: true,
-  // Code stays on MCP-only agent tools until native reads are sandboxed.
+  // Native agent tools are always on in a Code (owner decision 2026-09-29):
+  // no switch, and the server ignores a stored "off".
   hasNativeAgentToolsSetting: false,
   defaultView: 'files',
   preferenceNamespace: 'code',

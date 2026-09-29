@@ -11,6 +11,8 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
   if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
+  // A Code's Share view (the toolbar offers it for Code only).
+  if (view === 'share') return true
   if (view === 'mcp') return enabledPanels.has('mcp') || enabledPanels.has('skills') || enabledPanels.has('bots')
   return enabledPanels.has(view)
 }

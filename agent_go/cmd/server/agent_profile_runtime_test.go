@@ -88,7 +88,7 @@ func TestResolveAgentProfileForQueryGlobalScopeDefersToRequestedModel(t *testing
 		ID: "global-assistant", Name: "Global Assistant", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "placeholder",
 		Scope:                agentprofiles.ProfileScopeGlobal,
-		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5"},
+		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 	}
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestResolveAgentProfileForQueryGlobalScopeFallsBackToPinnedModelWhenRequest
 		ID: "global-assistant", Name: "Global Assistant", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "placeholder",
 		Scope:                agentprofiles.ProfileScopeGlobal,
-		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5"},
+		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 	}
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestResolveAgentProfileForQueryGlobalScopeFallsBackToPinnedModelWhenRequest
 	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, "user-1", "session-1"); err != nil {
 		t.Fatalf("resolveAgentProfileForQuery() error = %v", err)
 	}
-	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5" {
+	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5-5" {
 		t.Fatalf("expected the declared default when the request had no selection, got provider=%q model=%q", req.Provider, req.ModelID)
 	}
 }
@@ -134,7 +134,7 @@ func TestResolveAgentProfileForQueryProjectScopeStaysAuthoritative(t *testing.T)
 	profile := agentprofiles.Profile{
 		ID: "video-studio", Name: "Video Studio", Version: 1, BuiltIn: true,
 		SystemPromptTemplate: "placeholder",
-		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5"},
+		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 	}
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestResolveAgentProfileForQueryProjectScopeStaysAuthoritative(t *testing.T)
 	if _, err := api.resolveAgentProfileForQuery(context.Background(), &req, "user-1", "session-1"); err != nil {
 		t.Fatalf("resolveAgentProfileForQuery() error = %v", err)
 	}
-	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5" {
+	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5-5" {
 		t.Fatalf("expected the project-scoped pin to stay authoritative, got provider=%q model=%q", req.Provider, req.ModelID)
 	}
 }
@@ -181,7 +181,7 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 		SystemPromptTemplate: "Project {{.ProjectTitle}} at {{.LocalDateTime}}",
 		Skills:               []string{"video-creation"},
 		Runtime: agentprofiles.RuntimePolicy{
-			Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5",
+			Transport: "auto", Provider: "claude-code", ModelID: "claude-sonnet-5-5",
 			Capabilities: agentprofiles.RuntimeCapabilities{Browser: agentprofiles.CapabilityRequired},
 		},
 	}
@@ -216,7 +216,7 @@ func TestResolveAgentProfileForQueryPinsVersionAndSkills(t *testing.T) {
 	if req.SelectedFolder != "Chats/Video Studio/projects/launch" {
 		t.Fatalf("selected folder = %q", req.SelectedFolder)
 	}
-	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5" || req.LLMConfig == nil || req.LLMConfig.Primary.Provider != "claude-code" || req.LLMConfig.Primary.ModelID != "claude-sonnet-5" {
+	if req.Provider != "claude-code" || req.ModelID != "claude-sonnet-5-5" || req.LLMConfig == nil || req.LLMConfig.Primary.Provider != "claude-code" || req.LLMConfig.Primary.ModelID != "claude-sonnet-5-5" {
 		t.Fatalf("profile model was not pinned over the global selection: provider=%q model=%q llm=%+v", req.Provider, req.ModelID, req.LLMConfig)
 	}
 	if req.LLMConfigSource != llmConfigSourceAgentProfile || !requestLLMConfigOverridesManifest(req) {
@@ -516,9 +516,9 @@ func TestProviderOptionRuntimeOptionsFollowTheResolvedBinding(t *testing.T) {
 
 func TestResolveProfileRuntimeModelUsesOnlyYAMLProviderOptions(t *testing.T) {
 	runtime := agentprofiles.RuntimePolicy{
-		Provider: "claude-code", ModelID: "claude-sonnet-5",
+		Provider: "claude-code", ModelID: "claude-sonnet-5-5",
 		ProviderOptions: []agentprofiles.ProviderOption{
-			{ID: "claude-code", Label: "Claude Code", Provider: "claude-code", ModelID: "claude-sonnet-5", Default: true},
+			{ID: "claude-code", Label: "Claude Code", Provider: "claude-code", ModelID: "claude-sonnet-5-5", Default: true},
 			{ID: "codex", Label: "Codex", Provider: "codex-cli", ModelID: "gpt-6-sol", Models: []string{"gpt-6-sol"}},
 			{ID: "cursor", Label: "Cursor", Provider: "cursor-cli", ModelID: "auto"},
 		},
@@ -526,14 +526,14 @@ func TestResolveProfileRuntimeModelUsesOnlyYAMLProviderOptions(t *testing.T) {
 	if provider, model := resolveProfileRuntimeModel(runtime, "codex-cli", "gpt-6-sol"); provider != "codex-cli" || model != "gpt-6-sol" {
 		t.Fatalf("approved YAML option was not selected: provider=%q model=%q", provider, model)
 	}
-	if provider, model := resolveProfileRuntimeModel(runtime, "codex-cli", "gpt-5.6-sol"); provider != "claude-code" || model != "claude-sonnet-5" {
+	if provider, model := resolveProfileRuntimeModel(runtime, "codex-cli", "gpt-5.6-sol"); provider != "claude-code" || model != "claude-sonnet-5-5" {
 		t.Fatalf("unapproved provider/model escaped profile allow-list: provider=%q model=%q", provider, model)
 	}
 }
 
 func TestResolveProfileRuntimeModelAcceptsCatalogModelsWhenUncurated(t *testing.T) {
 	runtime := agentprofiles.RuntimePolicy{
-		Provider: "claude-code", ModelID: "claude-sonnet-5",
+		Provider: "claude-code", ModelID: "claude-sonnet-5-5",
 		ProviderOptions: []agentprofiles.ProviderOption{
 			{ID: "codex", Label: "Codex", Provider: "codex-cli", ModelID: "gpt-6-luna"},
 		},

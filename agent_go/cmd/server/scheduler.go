@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -3820,6 +3821,9 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	sctx.ProducedRunEvidence = false
 
 	sessionID := s.newScheduleSessionID(sctx)
+	if sctx.WebhookInput != nil && sctx.Schedule.IsFunctionTrigger() && strings.HasPrefix(sctx.WebhookInput.DeliveryID, "fn-") {
+		ctx = virtualtools.WithFeedbackOperation(ctx, sctx.WebhookInput.DeliveryID)
+	}
 	// Mark the complete scheduled-session lifetime in server-owned state so a
 	// late contract migration cannot stamp the workflow after its owning
 	// scheduled session has ended.

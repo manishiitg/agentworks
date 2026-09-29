@@ -74,7 +74,7 @@ func TestReadRunAcrossDatesResolvesIterationAcrossGroupedShards(t *testing.T) {
 			Date:        "2026-08-04",
 			GroupFolder: group,
 			RunFolders: map[string]*TokenUsageFile{
-				run: {ByModel: map[string]*ModelTokenUsage{"claude-sonnet-5": {InputTokens: tokens}}},
+				run: {ByModel: map[string]*ModelTokenUsage{"claude-sonnet-5-5": {InputTokens: tokens}}},
 			},
 		})
 		if err != nil {
@@ -114,7 +114,7 @@ func TestReadRunAcrossDatesResolvesIterationAcrossGroupedShards(t *testing.T) {
 	}
 
 	got := store.readRunAcrossDates(context.Background(), "iteration-0")
-	if got.ByModel["claude-sonnet-5"].InputTokens != 350 {
-		t.Fatalf("grouped iteration input = %d, want 350", got.ByModel["claude-sonnet-5"].InputTokens)
+	if got.ByModel["claude-sonnet-5-5"].InputTokens != 350 {
+		t.Fatalf("grouped iteration input = %d, want 350", got.ByModel["claude-sonnet-5-5"].InputTokens)
 	}
 }

@@ -155,7 +155,7 @@ func TestLiveClaudeProductionAdapterUsesWorkflowCredential(t *testing.T) {
 
 	repositoryRoot := liveClaudeRepositoryRoot(t)
 	workflowToken := liveClaudeWorkflowToken(t, repositoryRoot, "Workflow/rtslatency")
-	adapter := claudecodeadapter.NewClaudeCodeInteractiveAdapterWithOAuthToken("claude-sonnet-5", workflowToken, &e2eMockLogger{})
+	adapter := claudecodeadapter.NewClaudeCodeInteractiveAdapterWithOAuthToken("claude-sonnet-5-5", workflowToken, &e2eMockLogger{})
 	t.Cleanup(func() { _ = claudecodeadapter.CleanupClaudeCodeTmuxSessions(context.Background()) })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

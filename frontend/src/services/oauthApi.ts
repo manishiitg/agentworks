@@ -18,6 +18,7 @@ function getAuthHeaders(): HeadersInit {
 export interface OAuthStartRequest {
   server_name: string;
   client_id?: string;
+  client_secret?: string;
 }
 
 export interface OAuthStartResponse {
@@ -35,6 +36,9 @@ export interface OAuthDiscoveryResponse {
   resource?: string;
   scopes_supported?: string[];
   message: string;
+  /** The callback URL to register on the OAuth app. */
+  redirect_uri?: string;
+  needs_client_secret?: boolean;
 }
 
 export interface OAuthStatusResponse {
@@ -61,10 +65,11 @@ export class OAuthApi {
    * Start OAuth flow for a server
    * Returns OAuthDiscoveryResponse if server needs a client_id, otherwise OAuthStartResponse
    */
-  async startOAuthFlow(serverName: string, clientId?: string): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
+  async startOAuthFlow(serverName: string, clientId?: string, clientSecret?: string): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
     const body: OAuthStartRequest = { server_name: serverName };
     if (clientId) {
       body.client_id = clientId;
+      if (clientSecret) body.client_secret = clientSecret;
     }
 
     const response = await fetch(`${this.baseUrl}/api/oauth/start`, {

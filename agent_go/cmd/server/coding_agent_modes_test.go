@@ -1554,7 +1554,7 @@ func TestTryDeliverQueryAsLiveInputSkipsNonCodingAgent(t *testing.T) {
 func TestRequestLLMConfigOverridesManifestOnlyForAgentProfileSource(t *testing.T) {
 	req := QueryRequest{
 		LLMConfig: &orchestrator.LLMConfig{
-			Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "claude-sonnet-5"},
+			Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 		},
 	}
 	if requestLLMConfigOverridesManifest(req) {

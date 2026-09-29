@@ -7,7 +7,34 @@ import type {
   DelegationTierConfig,
   SavedLLM,
   LLMDiscoveryResponse,
+  ProductDefault,
+  ProviderAccountCosts,
 } from './api-types'
+
+export type ProviderAccountSharingMode = 'private' | 'shared'
+
+export interface ProviderAccountSharing {
+  mode: ProviderAccountSharingMode
+  /** Workflow IDs. */
+  workflows?: string[]
+  /** Crew roots. */
+  crews?: string[]
+  /** User IDs. */
+  users?: string[]
+}
+
+/** Who may use a server account: everyone, admins, or products and people. */
+export type ProviderAvailableTo = 'all' | 'admins' | { admins?: boolean; products?: string[]; users?: string[] }
+
+export interface ServerAccountAvailability {
+  available_to: ProviderAvailableTo
+  text: string
+  source: 'default' | 'installation' | 'admin'
+  pinned: boolean
+}
+
+export type ProviderAccountKind = 'installed' | 'admin' | 'user'
+export type ProviderAccountRelation = 'server' | 'own' | 'shared_with_you' | 'shared_with_workflow' | 'shared_with_crew' | 'admin_view'
 
 export interface ProviderConnection {
   id: string
@@ -17,6 +44,47 @@ export interface ProviderConnection {
   personal_accounts_allowed?: boolean
   auth_method: string
   underlying_provider?: string
+  owner_user_id?: string
+  updated_at?: string
+  sharing?: ProviderAccountSharing
+  // Account view fields. Optional so an older server still reads.
+  kind?: ProviderAccountKind
+  relation?: ProviderAccountRelation
+  owner_name?: string
+  source?: string
+  availability?: ServerAccountAvailability
+  availability_editable?: boolean
+  /** Whether the caller may select it where the list was requested. */
+  usable?: boolean
+  /** Signed in or has a key. False: needs Set up. Absent: unknown (never blocks). */
+  configured?: boolean
+  can_manage?: boolean
+  can_view_usage?: boolean
+}
+
+/** A non-interactive account check. Never carries a credential. */
+export interface ProviderAccountStatus {
+  state: 'signed_in' | 'signed_out' | 'key_rejected' | 'unknown'
+  identity?: string
+  detail?: string
+  verified: boolean
+  checked_at: string
+}
+
+export interface ProviderShareTargets {
+  workflows: { id: string; name: string }[]
+  crews: { id: string; name: string; owner?: string }[]
+  users: { id: string; name: string; email?: string }[]
+}
+
+export type ProductDefaultChange = { provider: string; model: string } | null
+
+/** Server validation errors come back as plain text; show them as they are. */
+export function providerApiErrorText(error: unknown, fallback: string): string {
+  const data = (error as { response?: { data?: unknown } })?.response?.data
+  if (typeof data === 'string' && data.trim() && !data.trim().startsWith('<')) return data.trim()
+  if (data && typeof data === 'object' && typeof (data as { error?: unknown }).error === 'string') return (data as { error: string }).error
+  return fallback
 }
 
 export interface ModelMetadata {
@@ -206,18 +274,47 @@ export const llmConfigService = {
   },
 
   // Get comprehensive provider manifest (replaces hardcoded provider info)
-  getProviderConnections: async (): Promise<ProviderConnection[]> => {
-    const response = await llmConfigApi.get('/api/provider-connections')
+  // Accounts the caller can see. With a workspace path (workflow, Crew or
+  // Code) or product, `usable` says whether the caller may select it there.
+  getProviderConnections: async (scope?: { workspacePath?: string | null; product?: string }): Promise<ProviderConnection[]> => {
+    const params: Record<string, string> = {}
+    if (scope?.workspacePath) params.workspace_path = scope.workspacePath
+    if (scope?.product) params.product = scope.product
+    const response = await llmConfigApi.get('/api/provider-connections', Object.keys(params).length ? { params } : undefined)
     return response.data.connections
   },
-  addProviderConnection: async (connection: { provider: string; display_name: string; credential?: string; auth_method?: string; underlying_provider?: string }): Promise<ProviderConnection> => {
+  addProviderConnection: async (connection: { provider: string; display_name: string; credential?: string; auth_method?: string; underlying_provider?: string; sharing?: ProviderAccountSharing }): Promise<ProviderConnection> => {
     const response = await llmConfigApi.post('/api/provider-connections', connection)
     return response.data
   },
 
-  updateProviderConnection: async (id: string, changes: { display_name: string; credential?: string }): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, changes) },
+  updateProviderConnection: async (id: string, changes: { display_name?: string; credential?: string; sharing?: ProviderAccountSharing }): Promise<void> => { await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(id)}`, changes) },
+
+  // Admin: who may use a server account. null returns to the installation policy.
+  setServerAccountAvailability: async (provider: string, availableTo: ProviderAvailableTo | null): Promise<void> => {
+    await llmConfigApi.patch(`/api/provider-connections/${encodeURIComponent(`global:${provider}`)}`, { available_to: availableTo })
+  },
 
   deleteProviderConnection: async (id: string): Promise<void> => { await llmConfigApi.delete(`/api/provider-connections/${encodeURIComponent(id)}`) },
+
+  getProviderShareTargets: async (): Promise<ProviderShareTargets> => {
+    const response = await llmConfigApi.get('/api/provider-connections/share-targets')
+    return { workflows: response.data?.workflows || [], crews: response.data?.crews || [], users: response.data?.users || [] }
+  },
+
+  getProductDefaults: async (): Promise<Record<string, ProductDefault>> => {
+    const response = await llmConfigApi.get('/api/provider-accounts/product-defaults')
+    return response.data?.product_defaults || {}
+  },
+
+  setProductDefaults: async (changes: Record<string, ProductDefaultChange>): Promise<void> => {
+    await llmConfigApi.put('/api/provider-accounts/product-defaults', { product_defaults: changes })
+  },
+
+  getProviderAccountCosts: async (from: string, to: string, signal?: AbortSignal): Promise<ProviderAccountCosts> => {
+    const response = await llmConfigApi.get('/api/provider-accounts/costs', { params: { from, to }, signal })
+    return { ...response.data, providers: response.data?.providers || [] }
+  },
 
   getProviderManifest: async (): Promise<ProviderManifestResponse> => {
     const response = await llmConfigApi.get('/api/llm-config/providers')
@@ -255,6 +352,37 @@ export const llmConfigService = {
       replace_running: replaceRunning || undefined,
     })
     return response.data.session
+  },
+
+  // Usage for one account. The owner and admins get a terminal session;
+  // anyone else gets the text the server collected (never a terminal).
+  checkProviderUsage: async (
+    provider: string,
+    connectionId: string,
+  ): Promise<{ session?: ProviderSetupSession; usage_output?: string }> => {
+    const response = await llmConfigApi.post('/api/provider-setup/sessions', {
+      provider,
+      action: 'usage',
+      connection_id: connectionId,
+      cols: 100,
+      rows: 24,
+    })
+    return response.data
+  },
+
+  /** Status of one account; verify adds the real login check (Claude Code). */
+  getProviderAccountStatus: async (connectionId: string, verify = false, workspacePath?: string | null): Promise<ProviderAccountStatus> => {
+    const query = new URLSearchParams()
+    if (verify) query.set('verify', '1')
+    if (workspacePath) query.set('workspace_path', workspacePath)
+    const suffix = query.size > 0 ? `?${query.toString()}` : ''
+    const response = await llmConfigApi.get(`/api/provider-connections/${encodeURIComponent(connectionId)}/status${suffix}`)
+    return response.data
+  },
+
+  /** Runs the CLI's own logout in the account's HOME. The account stays. */
+  signOutProviderAccount: async (connectionId: string): Promise<void> => {
+    await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/sign-out`)
   },
 
   getProviderSetup: async (sessionId: string): Promise<ProviderSetupSession> => {

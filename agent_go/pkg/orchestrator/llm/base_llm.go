@@ -134,7 +134,7 @@ func CreateLLMInstance(
 	}
 
 	// Initialize LLM using the existing factory
-	llmInstance, err := llm.InitializeLLM(llmConfig)
+	llmInstance, err := llm.InitializeLLM(llmguard.WithServerAccountAdmission(llmConfig))
 	if err != nil {
 		logger.Error(fmt.Sprintf("❌ Failed to create %s LLM: %v", llmType, err), err)
 		return nil, fmt.Errorf("failed to create %s LLM: %w", llmType, err)

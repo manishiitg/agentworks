@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS cost_events (
     correlation_id TEXT NOT NULL DEFAULT '',
     requested_provider TEXT NOT NULL DEFAULT '',
     requested_model_id TEXT NOT NULL DEFAULT '',
+    account_id TEXT NOT NULL DEFAULT '',
     effective_provider TEXT NOT NULL DEFAULT '',
     effective_model_id TEXT NOT NULL DEFAULT '',
     turn_count INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +121,10 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 		db.Close()
 		return nil, fmt.Errorf("costledger: migrate source_platform column: %w", err)
 	}
+	if err := ensureCostEventColumn(db, "account_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: migrate account_id column: %w", err)
+	}
 	return &Ledger{db: &sqliteLedger{db: db}}, nil
 }
 
@@ -162,8 +167,8 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
 		e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
@@ -171,7 +176,7 @@ INSERT OR IGNORE INTO cost_events (
 		e.EffectiveProvider, e.EffectiveModelID, e.TurnCount, e.LLMCallCount, e.LLMGenerationDurationMS,
 		e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 		e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
-		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata),
+		e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID,
 	}
 	for attempt := 0; ; attempt++ {
 		_, err = s.db.Exec(insertEvent, args...)
@@ -313,7 +318,7 @@ SELECT event_id, idempotency_key, occurred_at, user_id, workflow_id, session_id,
        requested_provider, requested_model_id, effective_provider, effective_model_id,
        turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
        cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-       pricing_source, pricing_version, tool_name, operation_metadata_json
+       pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
 FROM cost_events`
 	where := make([]string, 0, 4)
 	args := make([]interface{}, 0, 4)
@@ -357,7 +362,7 @@ FROM cost_events`
 			&e.PromptTokens, &e.CompletionTokens, &e.ReasoningTokens,
 			&e.CacheReadTokens, &e.CacheWriteTokens, &e.TotalCostUSD, &e.Currency,
 			&e.BillingBasis, &e.PricingSource, &e.PricingVersion, &e.ToolName,
-			&metadataJSON,
+			&metadataJSON, &e.AccountID,
 		); err != nil {
 			return nil, fmt.Errorf("costledger: scan SQLite event: %w", err)
 		}
@@ -472,15 +477,15 @@ INSERT OR IGNORE INTO cost_events (
     requested_provider, requested_model_id, effective_provider, effective_model_id,
     turn_count, llm_call_count, llm_generation_duration_ms, prompt_tokens, completion_tokens, reasoning_tokens,
     cache_read_tokens, cache_write_tokens, total_cost_usd, currency, billing_basis,
-    pricing_source, pricing_version, tool_name, operation_metadata_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    pricing_source, pricing_version, tool_name, operation_metadata_json, account_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.EventID, e.IdempotencyKey, e.Timestamp.UTC().Format(time.RFC3339Nano),
 			e.UserID, e.WorkflowID, e.SessionID, e.RunID, e.ExecutionID, e.Scope, e.SourcePlatform, e.Phase,
 			e.AgentMode, e.Component, e.CorrelationID, e.Provider, e.ModelID,
 			e.EffectiveProvider, e.EffectiveModelID, e.TurnCount, e.LLMCallCount, e.LLMGenerationDurationMS,
 			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CacheReadTokens,
 			e.CacheWriteTokens, e.TotalCostUSD, e.Currency, e.BillingBasis,
-			e.PricingSource, e.PricingVersion, e.ToolName, string(metadata),
+			e.PricingSource, e.PricingVersion, e.ToolName, string(metadata), e.AccountID,
 		)
 		if err != nil {
 			return MigrationReport{}, fmt.Errorf("costledger: migrate legacy row %d: %w", lineNumber, err)
@@ -570,4 +575,58 @@ func sourcePlatformFromSessionID(sessionID string) string {
 		return ""
 	}
 	return normalizeSourcePlatform(platform)
+}
+
+func (s *sqliteLedger) repriceUnpriced(estimate UnpricedEstimator) (int, error) {
+	rows, err := s.db.Query(`SELECT event_id, requested_provider, requested_model_id, effective_provider, effective_model_id,
+       prompt_tokens, completion_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens
+FROM cost_events WHERE billing_basis = 'unpriced' AND llm_call_count > 0`)
+	if err != nil {
+		return 0, fmt.Errorf("costledger: list unpriced calls: %w", err)
+	}
+	type priced struct {
+		id     string
+		cost   float64
+		source string
+	}
+	var updates []priced
+	for rows.Next() {
+		var e Entry
+		if err := rows.Scan(&e.EventID, &e.Provider, &e.ModelID, &e.EffectiveProvider, &e.EffectiveModelID,
+			&e.PromptTokens, &e.CompletionTokens, &e.ReasoningTokens, &e.CacheReadTokens, &e.CacheWriteTokens); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("costledger: scan unpriced call: %w", err)
+		}
+		if cost, source := estimate(e); cost > 0 {
+			updates = append(updates, priced{e.EventID, cost, source})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("costledger: iterate unpriced calls: %w", err)
+	}
+	_ = rows.Close()
+	if len(updates) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("costledger: begin reprice: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	count := 0
+	for _, u := range updates {
+		res, err := tx.Exec(`UPDATE cost_events SET total_cost_usd = ?, billing_basis = 'subscription_shadow', pricing_source = ?
+WHERE event_id = ? AND billing_basis = 'unpriced'`, u.cost, u.source, u.id)
+		if err != nil {
+			return 0, fmt.Errorf("costledger: reprice call: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			count++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("costledger: commit reprice: %w", err)
+	}
+	return count, nil
 }

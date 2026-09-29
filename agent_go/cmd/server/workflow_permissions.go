@@ -183,6 +183,12 @@ func workflowAccessForIdentity(userID, username, email string) WorkflowAccessLev
 	}
 	cfg := loadWorkflowPermissionConfig()
 	if !cfg.configured {
+		// An identity the directory does not list is not the deployment's
+		// owner just because no legacy tiers are configured: once a directory
+		// exists, admin is something a record grants.
+		if userDirectoryHasUsers() {
+			return WorkflowAccessWrite
+		}
 		return WorkflowAccessOwner
 	}
 

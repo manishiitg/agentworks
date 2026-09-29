@@ -78,7 +78,8 @@ func (api *StreamingAPI) handleGetRunningWorkflow(w http.ResponseWriter, r *http
 	}
 	api.trackedWorkflowExecutionsMux.RUnlock()
 
-	if !found {
+	// Another user's run answers as missing, exactly like an unknown id.
+	if !found || !runningExecutionVisible(r.Context(), GetUserFromContext(r.Context()), out) {
 		http.Error(w, `{"error":"running workflow not found"}`, http.StatusNotFound)
 		return
 	}
@@ -122,9 +123,23 @@ func (api *StreamingAPI) handleUpdateRunningWorkflow(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Same visibility as GET: another user's run answers as missing. Checked
+	// outside the write lock because the access check reads workflow records.
+	api.trackedWorkflowExecutionsMux.RLock()
+	visibleExec := api.runningWorkflowListExecutionBySessionLocked(sessionID)
+	var current ActiveWorkflowExecution
+	if visibleExec != nil {
+		current = trackedExecutionToActive(visibleExec)
+	}
+	api.trackedWorkflowExecutionsMux.RUnlock()
+	if visibleExec == nil || !runningExecutionVisible(r.Context(), GetUserFromContext(r.Context()), current) {
+		http.Error(w, `{"error":"running workflow not found"}`, http.StatusNotFound)
+		return
+	}
+
 	api.trackedWorkflowExecutionsMux.Lock()
 	exec := api.runningWorkflowListExecutionBySessionLocked(sessionID)
-	if exec == nil {
+	if exec == nil || exec != visibleExec {
 		api.trackedWorkflowExecutionsMux.Unlock()
 		http.Error(w, `{"error":"running workflow not found"}`, http.StatusNotFound)
 		return

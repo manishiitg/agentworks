@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -125,6 +126,21 @@ type providerSetupSession struct {
 	output      []byte
 	subscribers map[chan []byte]struct{}
 	done        chan struct{}
+	// readOnly sessions belong to someone who does not manage the account:
+	// the server drives the usage command and every input is dropped.
+	readOnly       bool
+	usageSubmitted time.Time
+}
+
+// userInput forwards browser input, except to a read-only session.
+func (s *providerSetupSession) userInput(data string) error {
+	s.mu.Lock()
+	readOnly := s.readOnly
+	s.mu.Unlock()
+	if readOnly {
+		return nil
+	}
+	return s.write(data)
 }
 
 func (s *providerSetupSession) snapshot() providerSetupSnapshot {
@@ -479,6 +495,9 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 			}
 			if providerUsagePromptReady(session.provider, visible) {
 				_ = session.write(usageCommand + "\r")
+				session.mu.Lock()
+				session.usageSubmitted = time.Now()
+				session.mu.Unlock()
 				return
 			}
 		}
@@ -641,16 +660,31 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	request.WorkspacePath = strings.TrimSpace(request.WorkspacePath)
 	var environment []string
 	var cleanup func()
+	caller := GetUserIDFromContext(r.Context())
+	admin := currentUserIsAdmin(r)
+	accountOwner := ""
 	if request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") {
-		keys, err := api.connectionAPIKeys(r.Context(), GetUserIDFromContext(r.Context()), request.Provider, request.ConnectionID)
+		// A user account: its owner and admins sign it in and inspect it;
+		// someone it is shared with may only see usage, run by the server.
+		record, err := api.providerSetupAccount(r.Context(), request, caller, admin)
 		if err != nil {
-			http.Error(w, "connection unavailable or unauthorized", 403)
+			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
 			return
 		}
+		keys, err := providerConnectionRuntimeKeys(*record)
+		if err != nil {
+			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
+			return
+		}
+		accountOwner = record.OwnerUserID
 		environment = providerConnectionSetupEnvironment(keys)
-	} else if !currentUserIsAdmin(r) {
-		writeWorkflowPermissionDenied(w, "admin")
-		return
+	} else if !admin {
+		// The server account: signing it in or inspecting it is admin-only.
+		// Anyone it is available to may see its usage, run by the server.
+		if request.Action != "usage" || !api.serverAccountAvailableToCaller(r.Context(), caller, request.Provider) {
+			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
 	}
 	if request.WorkspacePath != "" && request.ConnectionID == "" {
 		if request.Action != "inspect" {
@@ -674,6 +708,21 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			return
 		}
 	}
+	// Which login a setup session touches: the server's own, or a private
+	// account's (paths only, never credentials).
+	target, home := "server account", "service HOME"
+	if request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") {
+		target = "user account " + request.ConnectionID + " (owner " + accountOwner + ")"
+		for _, entry := range environment {
+			if value, ok := strings.CutPrefix(entry, "HOME="); ok {
+				home = value
+			}
+		}
+	}
+	log.Printf("[PROVIDER_SETUP] %s %s for %s (HOME %s) by %s", request.Provider, request.Action, target, home, caller)
+	// Someone who does not manage the account never gets an interactive
+	// terminal: the server runs the usage command and returns its text.
+	manages := admin || (request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") && accountOwner == caller)
 	session, err := api.providerSetupManager().start(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, request.ConnectionID)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -686,9 +735,52 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+	if !manages {
+		session.mu.Lock()
+		session.readOnly = true
+		session.mu.Unlock()
+		text := collectProviderUsageOutput(session, providerUsageCollectTimeout)
+		api.providerSetupManager().remove(session.id, true)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"usage_output": text})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"session": session.snapshot()})
+}
+
+var (
+	providerUsageCollectTimeout = 45 * time.Second
+	providerUsageSettle         = 2 * time.Second
+)
+
+// collectProviderUsageOutput waits for a server-driven usage command to print
+// its answer (output settles after the command was sent, or the CLI exits)
+// and returns the text without terminal escapes.
+func collectProviderUsageOutput(session *providerSetupSession, timeout time.Duration) string {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-session.done:
+			return cleanProviderUsageText(session.outputText())
+		default:
+		}
+		session.mu.Lock()
+		submitted, updated := session.usageSubmitted, session.updatedAt
+		session.mu.Unlock()
+		if !submitted.IsZero() && time.Since(submitted) > providerUsageSettle && time.Since(updated) > providerUsageSettle {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return cleanProviderUsageText(session.outputText())
+}
+
+func cleanProviderUsageText(raw string) string {
+	text := providerSetupANSI.ReplaceAllString(raw, "")
+	text = strings.ReplaceAll(text, "\r", "")
+	return strings.TrimSpace(text)
 }
 
 func (api *StreamingAPI) resolveProviderSetup(w http.ResponseWriter, r *http.Request) (*providerSetupSession, bool) {
@@ -765,7 +857,7 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 			switch message.Type {
 			case "input":
 				if len(message.Data) <= 16*1024 {
-					_ = session.write(message.Data)
+					_ = session.userInput(message.Data)
 				}
 			case "resize":
 				_ = session.resize(message.Cols, message.Rows)
@@ -787,4 +879,49 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 			return
 		}
 	}
+}
+
+// providerSetupAccount finds the user account a setup session targets and
+// checks the caller may open it for request.Action.
+func (api *StreamingAPI) providerSetupAccount(ctx context.Context, request startProviderSetupRequest, caller string, admin bool) (*storedProviderConnection, error) {
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	for i := range records {
+		record := records[i]
+		if record.ID != request.ConnectionID {
+			continue
+		}
+		if record.Provider != request.Provider || !providerEnabled(record.Provider) || personalProviderConnectionsLocked(record.Provider) {
+			return nil, fmt.Errorf("connection unavailable")
+		}
+		if record.OwnerUserID == caller || admin {
+			return &record, nil
+		}
+		if request.Action == "usage" {
+			if _, err := api.admitProviderAccount(ctx, providerAccountScope{Principal: caller, WorkspacePath: request.WorkspacePath}, record.Provider, record.ID); err == nil {
+				return &record, nil
+			}
+		}
+		return nil, fmt.Errorf("connection unavailable")
+	}
+	return nil, fmt.Errorf("connection unavailable")
+}
+
+// serverAccountAvailableToCaller reports whether the server account of
+// provider is available to caller for any product.
+func (api *StreamingAPI) serverAccountAvailableToCaller(ctx context.Context, caller, provider string) bool {
+	availability, err := effectiveServerAccountAvailability(ctx, provider)
+	if err != nil {
+		return false
+	}
+	for _, product := range []string{productWorkflows, productCrews, productCode} {
+		if availability.AvailableTo.admits(caller, product) {
+			return true
+		}
+	}
+	return false
 }

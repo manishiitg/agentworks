@@ -243,6 +243,9 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		req.Provider = option.Provider
 		req.ModelID = option.ModelID
 		if modelID := strings.TrimSpace(input.ModelID); modelID != "" {
+			// A saved retired model (claude-sonnet-5) means its replacement:
+			// the project keeps working instead of failing validation.
+			modelID = currentCodingAgentModel(option.Provider, modelID)
 			if !providerOptionOffersModel(option, modelID) {
 				return QueryRequest{}, fmt.Errorf("model %q is not offered for engine %q", modelID, engine)
 			}
@@ -836,6 +839,7 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 // Product manifests include AGY for local alpha runs. Keep the option out of
 // public profile responses whenever the runtime gate refuses it.
 func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.Profile {
+	profile = profileWithProductDefault(context.Background(), profile)
 	if llmguard.AgyAlphaEnabled() {
 		return profile
 	}

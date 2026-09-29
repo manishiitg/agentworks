@@ -50,20 +50,20 @@ func TestUnknownPiModelsRemainExplicitlyUnpriced(t *testing.T) {
 	}
 }
 
-// A model with a real rate card (claude-code/claude-sonnet-5) must not carry
+// A model with a real rate card (claude-code/claude-sonnet-5-5) must not carry
 // the unpriced marker, and its JSON must not regress by suddenly gaining an
 // unpriced key that didn't exist before this change.
 func TestPricedProviderCallsAreNotMarkedUnpriced(t *testing.T) {
 	modelData := &ModelTokenData{
 		Provider:     "claude-code",
-		ModelID:      "claude-sonnet-5",
+		ModelID:      "claude-sonnet-5-5",
 		InputTokens:  10_000,
 		OutputTokens: 2_000,
 		LLMCallCount: 4,
 	}
 	_, _, _, _, _, _, pricingFound := calculatePricingFromModelData(modelData)
 	if !pricingFound {
-		t.Fatal("claude-sonnet-5 has a real rate card; pricingFound should be true")
+		t.Fatal("claude-sonnet-5-5 has a real rate card; pricingFound should be true")
 	}
 
 	usage := buildModelTokenUsage(modelData)

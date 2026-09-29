@@ -37,11 +37,13 @@ type planChangelogEntry struct {
 }
 
 type planChangelogOrigin struct {
-	Type      string `json:"type,omitempty"`
-	AgentName string `json:"agent_name,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	UserID    string `json:"user_id,omitempty"`
-	Username  string `json:"username,omitempty"`
+	Type        string `json:"type,omitempty"`
+	AgentName   string `json:"agent_name,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	OperationID string `json:"operation_id,omitempty"`
+	ViaToken    string `json:"via_token,omitempty"`
 }
 
 type planChangelogArtifactReview struct {

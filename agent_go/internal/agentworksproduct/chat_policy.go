@@ -49,7 +49,7 @@ func validateChatPolicy(m ProductManifest) error {
 		names  []string
 	}{
 		{m.ChatPolicy.Modes, []string{"builder", "run"}},
-		{m.ChatPolicy.Origins, []string{"interactive", "scheduled", "pulse", "child", "bot", "notification"}},
+		{m.ChatPolicy.Origins, []string{"interactive", "scheduled", "pulse", "child", "bot", "notification", "external_builder"}},
 	} {
 		if len(group.values) != len(group.names) {
 			return fmt.Errorf("unexpected chat policy mode/origin")

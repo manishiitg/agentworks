@@ -7,6 +7,7 @@ import type { CostAggregate, CostOverview } from '../../services/api-types'
 import CostsOverview from './CostsOverview'
 
 vi.mock('../../services/api', () => ({ agentApi: { getCostOverview: vi.fn() } }))
+vi.mock('../../services/llm-config-api', () => ({ llmConfigService: {} }))
 vi.mock('../../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: vi.fn().mockResolvedValue([]) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
@@ -51,7 +52,7 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
   await click(button(container, 'Bots'))
   expect(container.textContent).toContain('External channel delivery fees are not included')
   await click(button(container, 'MCP'))
-  expect(container.textContent).toContain('Known service chargeUnknown')
+  expect(container.textContent).toContain('Known service chargeNone recorded')
   await click(button(container, 'Other'))
   expect(container.textContent).toContain('Unattributed activity')
 })
@@ -64,7 +65,27 @@ it('labels unpriced workflow cost as unknown instead of zero', async () => {
   } as CostOverview)
   const container = await render()
   await click(button(container, 'Workflows'))
-  expect(container.textContent).toContain('Tracked costUnknown')
-  expect(container.textContent).toContain('472 LLM calls have unknown cost')
-  expect(button(container, 'rts')?.textContent).toContain('Unknown')
+  expect(container.textContent).toContain('Tracked costNot priced')
+  expect(container.textContent).toContain('472 LLM calls have no price')
+  expect(button(container, 'rts')?.textContent).toContain('Not priced')
+})
+
+it('shows cost by account with the split by work and person', async () => {
+  vi.mocked(agentApi.getCostOverview).mockResolvedValue({
+    total: usage({ total_cost_usd: 5, call_count: 2 }), by_provider: {}, by_model: {}, items: [], by_user: [], includes_other: false,
+    by_account: [{ provider: 'claude-code', total: usage({ total_cost_usd: 5, call_count: 2 }), accounts: [
+      { account_id: 'acct-1', name: 'Alice Max', kind: 'user', owner_name: 'Alice', full_split: false, total: usage({ total_cost_usd: 5, call_count: 2, prompt_tokens: 1000 }),
+        split: [{ work_id: 'wf-1', work_kind: 'workflow', work_name: 'Research', user_id: 'bob', user_name: 'Bob', ...usage({ total_cost_usd: 5, call_count: 2 }) }] },
+    ] }],
+  } as CostOverview)
+  const container = await render()
+  const byAccount = [...container.querySelectorAll('details')].find(details => details.textContent?.includes('By account'))
+  expect(byAccount).toBeTruthy()
+  expect(byAccount?.textContent).toContain('Claude Code')
+  expect(byAccount?.textContent).toContain('Alice Max')
+  expect(byAccount?.textContent).toContain('Owner: Alice')
+  expect(byAccount?.textContent).toContain('Your share only')
+  await click(byAccount?.querySelector<HTMLButtonElement>('[aria-label="Show where Alice Max was used"]') ?? undefined)
+  expect(byAccount?.textContent).toContain('Research')
+  expect(byAccount?.textContent).toContain('Bob')
 })

@@ -33,7 +33,7 @@ func TestHandleEventSurfacesOrchestratorAgentErrorText(t *testing.T) {
 		BridgeName: "test_bridge",
 	}
 
-	const wantError = "all LLMs failed (primary + 0 fallbacks): claude-code/claude-sonnet-5 [quota_exhausted]: claude code usage limit reached"
+	const wantError = "all LLMs failed (primary + 0 fallbacks): claude-code/claude-sonnet-5-5 [quota_exhausted]: claude code usage limit reached"
 
 	agentEvent := &pkgevents.AgentEvent{
 		Type: orchestratorevents.OrchestratorAgentError,

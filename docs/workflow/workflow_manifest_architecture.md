@@ -55,7 +55,7 @@ The backend struct lives in [workflow_manifest.go](../../agent_go/cmd/server/wor
       },
       "pulse_llm": {
         "provider": "anthropic",
-        "model_id": "claude-sonnet-5"
+        "model_id": "claude-sonnet-5-5"
       },
       "tiered_config": {
         "tier_1": {

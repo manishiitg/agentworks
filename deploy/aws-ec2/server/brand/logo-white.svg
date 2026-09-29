@@ -1,0 +1,12 @@
+<svg width="330" height="56" viewBox="0 0 330 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="rts-logo-mark" x1="0" y1="4" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#215668"/>
+      <stop offset="0.55" stop-color="#102A4A"/>
+      <stop offset="1" stop-color="#080E1F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="4.5" width="47" height="47" rx="11" fill="url(#rts-logo-mark)" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <text x="24" y="35" text-anchor="middle" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="0.4" fill="#FFFFFF">RTS</text>
+  <text x="60" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="23" fill="#FFFFFF"><tspan font-weight="700">REAL</tspan><tspan font-weight="500"> Training Systems</tspan></text>
+</svg>

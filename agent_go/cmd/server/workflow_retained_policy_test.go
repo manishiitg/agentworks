@@ -125,16 +125,16 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 	ws, docs := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", Provider: "claude-code", ModelID: "claude-sonnet-5", ConnectionID: "account-a"}
+	req := QueryRequest{SelectedFolder: "Workflow/test", Provider: "claude-code", ModelID: "claude-sonnet-5-5", ConnectionID: "account-a"}
 	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{"chat": req}, lastChatPolicyBySession: map[string]string{}}
 	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false))
 	for _, tc := range []struct {
 		name, provider, model, account string
 		want                           bool
 	}{
-		{"unchanged", "claude-code", "claude-sonnet-5", "account-a", true},
-		{"account switch", "claude-code", "claude-sonnet-5", "account-b", false},
-		{"deleted private back to server", "claude-code", "claude-sonnet-5", "", false},
+		{"unchanged", "claude-code", "claude-sonnet-5-5", "account-a", true},
+		{"account switch", "claude-code", "claude-sonnet-5-5", "account-b", false},
+		{"deleted private back to server", "claude-code", "claude-sonnet-5-5", "", false},
 		{"back to gemini", "pi-cli", "google/gemini-3.8-flash", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -144,5 +144,15 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 				t.Fatalf("compatible=%v err=%v want=%v", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestWorkflowBrowserFollowupCannotInterruptActiveExternalBuilder(t *testing.T) {
+	canceled := false
+	api := &StreamingAPI{agentCancelFuncs: map[string]context.CancelFunc{"chat": func() { canceled = true }}}
+	api.externalBuilderRuntime.sessions = map[string]*externalBuilderActive{"chat": {id: "external-operation"}}
+	compatible, err := api.prepareWorkflowRetainedDelivery(context.Background(), "chat", QueryRequest{SelectedFolder: "Workflow/test"}, true)
+	if err != nil || compatible || canceled {
+		t.Fatal("browser request could reconfigure MCP operation", compatible, err, canceled)
 	}
 }

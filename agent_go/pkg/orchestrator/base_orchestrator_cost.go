@@ -64,6 +64,7 @@ func (bo *BaseOrchestrator) attachCostObserver(
 		strings.TrimSpace(userID),
 		bo.GetAgentMode(),
 		costobserver.WithModel(config.LLMConfig.Primary.Provider, config.LLMConfig.Primary.ModelID),
+		costobserver.WithAccount(costobserver.AccountIDFor(config.LLMConfig.Primary.Provider, config.LLMConfig.Primary.ConnectionID)),
 		costobserver.WithAttribution(
 			// Scope signals are deliberately limited to identifiers the runtime
 			// generates — the phase, the agent name, and the run folder. Step

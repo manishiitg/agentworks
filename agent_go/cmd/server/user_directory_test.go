@@ -374,3 +374,107 @@ func TestApplyRoleWriteStampsAndDualWrites(t *testing.T) {
 		t.Fatalf("legacy write should clear role and map from booleans: %+v", rec)
 	}
 }
+
+func TestAdminAddUserByEmail(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"a1","username":"alice","email":"alice@example.com","admin":true,"can_create":true,"products":[]}]}`)
+	api := &StreamingAPI{}
+	alice := &UserClaims{UserID: "a1", Username: "alice"}
+	create := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		requireAdmin(api.handleAdminCreateUser)(rec, adminRequest(http.MethodPost, "/api/admin/users", body, alice, nil))
+		return rec
+	}
+
+	rec := create(`{"username":"bob@example.com","email":"bob@example.com","role":"viewer","products":["code"]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add by email: %d %s", rec.Code, rec.Body.String())
+	}
+	var bob userAdminView
+	_ = json.Unmarshal(rec.Body.Bytes(), &bob)
+	if !bob.Invited || bob.HasPassword || bob.Role != "viewer" || len(bob.Products) != 1 {
+		t.Fatalf("invited view: %+v", bob)
+	}
+
+	// SSO resolves the account by email, so an address belongs to one account.
+	if rec := create(`{"username":"bob2","email":"BOB@example.com"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate email: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := create(`{"username":"carol","email":"Carol <carol@example.com>"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("display-name email: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	requireAdmin(api.handleAdminUpdateUser)(rec, adminRequest(http.MethodPut, "/api/admin/users/"+bob.ID, `{"email":"alice@example.com"}`, alice, map[string]string{"id": bob.ID}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("update to another account's email: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// First SSO sign-in links the invited account: same id, no longer invited.
+	linked := ensureDirectoryUserForExternal("google-sub", &ExternalUser{ExternalID: "google-sub", Email: "bob@example.com", Username: "bob@example.com", Provider: "supabase-google"})
+	if linked == nil || linked.ID != bob.ID {
+		t.Fatalf("SSO did not resolve the invited account: %+v", linked)
+	}
+	if viewOf(*linked).Invited {
+		t.Fatal("a signed-in account must not show as invited")
+	}
+}
+
+// First SSO sign-in links an account by its provider identity or its verified
+// email, never by display name: a Google display name is chosen by the user,
+// so matching on it let an invited person named like an admin sign in as that
+// admin, and two people with the same name share one account.
+func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[
+		{"id":"adm","username":"Boss","email":"boss@corp.example.com","admin":true,"can_create":true,"products":[],"sso":{"provider":"supabase-google","external_id":"g-boss"}},
+		{"id":"inv1","username":"evil@gmail.com","email":"evil@gmail.com","products":["code"]}]}`)
+
+	// An invited person whose Google name equals the admin's username.
+	rec := ensureDirectoryUserForExternal("g-evil", &ExternalUser{ExternalID: "g-evil", Email: "evil@gmail.com", Username: "Boss", Provider: "supabase-google"})
+	if rec == nil || rec.ID != "inv1" || rec.Admin || rec.SSO == nil || rec.SSO.ExternalID != "g-evil" {
+		t.Fatalf("the invited account was not the one linked: %+v", rec)
+	}
+
+	// Someone else with the same display name and no account gets their own,
+	// under a username that is not the admin's.
+	other := ensureDirectoryUserForExternal("g-other", &ExternalUser{ExternalID: "g-other", Email: "other@gmail.com", Username: "Boss", Provider: "supabase-google"})
+	if other == nil || other.ID != "g-other" || other.Admin || strings.EqualFold(other.Username, "Boss") {
+		t.Fatalf("a same-name person was merged into an existing account: %+v", other)
+	}
+	dir, err := readUserDirectoryFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if boss := dir.byID("adm"); boss == nil || !boss.Admin || boss.SSO == nil || boss.SSO.ExternalID != "g-boss" {
+		t.Fatalf("the admin's account changed: %+v", boss)
+	}
+	seen := map[string]bool{}
+	for _, u := range dir.Users {
+		key := strings.ToLower(u.Username)
+		if seen[key] {
+			t.Fatalf("duplicate username %q in the directory", u.Username)
+		}
+		seen[key] = true
+	}
+}
+
+// The token an SSO sign-in issues names the directory account, not the
+// user-chosen display name.
+func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[]}`)
+	api := &StreamingAPI{}
+	rec := httptest.NewRecorder()
+	api.handleAdminCreateUser(rec, adminRequest(http.MethodPost, "/x", `{"username":"Ana@Gmail.com","email":"Ana@Gmail.com","products":["code"]}`, &UserClaims{UserID: "adm"}, nil))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body.String())
+	}
+	dir, _ := readUserDirectoryFile()
+	if len(dir.Users) != 1 || dir.Users[0].Email != "ana@gmail.com" {
+		t.Fatalf("stored email = %+v", dir.Users)
+	}
+	// A second add differing only in case is a duplicate.
+	dup := httptest.NewRecorder()
+	api.handleAdminCreateUser(dup, adminRequest(http.MethodPost, "/x", `{"username":"ana2","email":"ANA@gmail.com"}`, &UserClaims{UserID: "adm"}, nil))
+	if dup.Code != http.StatusBadRequest {
+		t.Fatalf("case-different duplicate = %d", dup.Code)
+	}
+}

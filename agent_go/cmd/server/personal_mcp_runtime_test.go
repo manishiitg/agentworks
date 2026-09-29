@@ -52,17 +52,54 @@ func TestCodeSessionsResolveOnlyTheirPersonsServers(t *testing.T) {
 		t.Fatalf("a non-Code session was claimed: %v %v", isCode, err)
 	}
 
+	// The internal name is the override and connection key: two people's
+	// servers of the same plain name never share a pooled connection.
 	names, overrides := personalMCPServersForTurn("alice", code)
 	if len(names) != 1 || names[0] != aliceServer || overrides[aliceServer].Server == nil || !overrides[aliceServer].Server.PublicOnly {
 		t.Fatalf("turn servers = %v %+v", names, overrides)
 	}
-	if names, _ := personalMCPServersForTurn("bob", code); len(names) != 0 {
-		t.Fatalf("bob got servers in alice's Code: %v", names)
+	if err := setPersonalMCPEnabled("bob", code, "deepwiki", true); err != nil {
+		t.Fatal(err)
+	}
+	bobNames, _ := personalMCPServersForTurn("bob", code)
+	if len(bobNames) != 1 || bobNames[0] != bobServer || bobNames[0] == names[0] {
+		t.Fatalf("bob's turn servers = %v (alice %v): same plain name must not share a key", bobNames, names)
+	}
+	if err := setPersonalMCPEnabled("bob", code, "deepwiki", false); err != nil {
+		t.Fatal(err)
 	}
 	if got := mergeServerLists([]string{"NO_SERVERS"}, names); len(got) != 1 || got[0] != aliceServer {
 		t.Fatalf("merge = %v", got)
 	}
 	if got := mergeServerLists([]string{"NO_SERVERS"}, nil); len(got) != 1 || got[0] != "NO_SERVERS" {
 		t.Fatalf("merge with nothing personal = %v", got)
+	}
+}
+
+// The bridge resolves a personal server by its plain name for the pinned
+// person only, and a global server the Code selected keeps that name.
+func TestCodeBridgeResolvesPlainPersonalNames(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	withPersonalMCPRoot(t)
+	ctx := context.Background()
+	if _, err := addPersonalMCPServer("owner", personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setPersonalMCPEnabled("owner", codePrivacyOwnerRoot, "deepwiki", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := pinCodeSession("owner-chat", "owner", codePrivacyOwnerRoot); err != nil {
+		t.Fatal(err)
+	}
+	resolved, isCode, err := api.resolveCodeMCPServer(ctx, "owner-chat", "deepwiki", "ask")
+	if err != nil || !isCode || resolved == nil || resolved.Name != personalMCPInternalName("owner", "deepwiki") || !resolved.Config.PublicOnly {
+		t.Fatalf("plain personal name = %+v %v %v", resolved, isCode, err)
+	}
+	// Another person's plain name in their own chat is never the owner's.
+	if err := pinCodeSession("other-chat", "other", codePrivacyOwnerRoot); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, _, _ := api.resolveCodeMCPServer(ctx, "other-chat", "deepwiki", "ask"); resolved != nil && resolved.Name == personalMCPInternalName("owner", "deepwiki") {
+		t.Fatalf("other reached the owner's server: %+v", resolved)
 	}
 }

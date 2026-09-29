@@ -52,6 +52,10 @@ type Entry struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
 	Provider      string `json:"provider,omitempty"`
 	ModelID       string `json:"model_id,omitempty"`
+	// AccountID is the provider account the turn ran on: global:<provider>
+	// for the server account, else a user account ID. Empty on entries
+	// written before accounts were recorded ("unrecorded account").
+	AccountID string `json:"account_id,omitempty"`
 	// EffectiveModelID is the model the CLI/provider ACTUALLY served
 	// the turn with — may drift from ModelID when the user picked an
 	// alias like "auto" or "cursor-cli", or when a /model swap happened
@@ -211,7 +215,19 @@ type Summary struct {
 	// caller's workflow access rules.
 	ByWorkflowBot map[string]map[string]*BotAggregate `json:"-"`
 	ByWorkflowMCP map[string]map[string]*MCPAggregate `json:"-"`
-	Coverage      Coverage                            `json:"coverage"`
+	// ByAccountSplit is LLM spend per provider account, split by raw
+	// workflow_id and user. Internal until the account view applies its
+	// visibility rules.
+	ByAccountSplit map[AccountSplitKey]*Aggregate `json:"-"`
+	Coverage       Coverage                       `json:"coverage"`
+}
+
+// AccountSplitKey is one cell of the per-account split.
+type AccountSplitKey struct {
+	Provider   string
+	AccountID  string
+	WorkflowID string
+	UserID     string
 }
 
 // UserAggregate is one actor's spend within one raw workflow ID.
@@ -297,7 +313,24 @@ type sqliteStore interface {
 	summarizeWindow(fromInclusive, toExclusive, executionID, workflowID, scope string) (*Summary, error)
 	summarizeWorkflowOverview(from, to, workflowID string) (*Summary, bool, error)
 	migrateLegacyJSONL(path string) (MigrationReport, error)
+	repriceUnpriced(estimate UnpricedEstimator) (int, error)
 	close() error
+}
+
+// UnpricedEstimator prices one recorded LLM call that had no cost, from its
+// provider, model and tokens. It returns a cost of zero (or less) to leave the
+// row as it is, else the estimated cost and where the estimate comes from.
+type UnpricedEstimator func(Entry) (costUSD float64, pricingSource string)
+
+// RepriceUnpriced applies an estimator to LLM calls recorded as unpriced (for
+// example before a model had an estimated price) and returns how many it
+// priced. Priced rows become plan-equivalent estimates ("subscription_shadow");
+// a row already priced is never touched, so this is safe to run at every start.
+func (l *Ledger) RepriceUnpriced(estimate UnpricedEstimator) (int, error) {
+	if l == nil || l.db == nil || estimate == nil {
+		return 0, nil
+	}
+	return l.db.repriceUnpriced(estimate)
 }
 
 // NewLedger creates a ledger that persists to _system/costs.jsonl via the
@@ -676,6 +709,7 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 	addEntryToWorkflowBucket(summary, scope, e)
 	addEntryToWorkflowUserBucket(summary, scope, e)
 	addEntryToBotAndMCPBuckets(summary, e)
+	addEntryToAccountSplit(summary, e)
 	executionID := strings.TrimSpace(e.ExecutionID)
 	if executionID == "" && strings.TrimSpace(e.SessionID) != "" {
 		executionID = "session:" + strings.TrimSpace(e.SessionID)
@@ -894,4 +928,24 @@ func (s *Summary) SortedModels() []string {
 		return s.ByModel[out[i]].TotalCostUSD > s.ByModel[out[j]].TotalCostUSD
 	})
 	return out
+}
+
+func addEntryToAccountSplit(summary *Summary, e Entry) {
+	provider := strings.TrimSpace(e.EffectiveProvider)
+	if provider == "" {
+		provider = strings.TrimSpace(e.Provider)
+	}
+	if provider == "" || strings.HasPrefix(e.Component, "tool:") {
+		return
+	}
+	if summary.ByAccountSplit == nil {
+		summary.ByAccountSplit = make(map[AccountSplitKey]*Aggregate)
+	}
+	key := AccountSplitKey{Provider: provider, AccountID: strings.TrimSpace(e.AccountID), WorkflowID: strings.TrimSpace(e.WorkflowID), UserID: strings.TrimSpace(e.UserID)}
+	bucket := summary.ByAccountSplit[key]
+	if bucket == nil {
+		bucket = &Aggregate{}
+		summary.ByAccountSplit[key] = bucket
+	}
+	bucket.add(e)
 }

@@ -1038,6 +1038,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 		FolderGuard:      guard,
 		ExtraEnv:         extraEnv,
 		DBReadSnapshot:   dbAccess == DBAccessRead,
+		// The script calls the bridge as its step session (the one granted DB
+		// access), which the orchestrator's own env names; the shell itself
+		// keeps running under the context's session.
+		BridgeSessionID: strings.TrimSpace(extraEnv["MCP_SESSION_ID"]),
 	}
 
 	// Dispatch through the same client the agent's own execute_shell_command uses.
@@ -1052,14 +1056,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Keeping one door means a test run and a real run cannot disagree again.
 	if hcpo.WorkspaceClient == nil {
 		return "", -1, fmt.Errorf("%w: no workspace client configured", ErrScriptedHarnessRejection)
-	}
-	// The script's bridge session comes from the orchestrator's own workspace
-	// env (trusted), so pass it as the context session: the shell binds its
-	// bridge token only to that, never to a session named in ExtraEnv.
-	if sid := strings.TrimSpace(extraEnv["MCP_SESSION_ID"]); sid != "" {
-		if existing, _ := ctx.Value(common.ChatSessionIDKey).(string); strings.TrimSpace(existing) == "" {
-			ctx = context.WithValue(ctx, common.ChatSessionIDKey, sid)
-		}
 	}
 	result, err := hcpo.WorkspaceClient.ExecuteShellCommand(ctx, reqParams)
 	if err != nil {

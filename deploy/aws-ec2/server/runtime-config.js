@@ -6,6 +6,15 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: false,
   defaultProductSurface: "video-studio",
   enabledProductSurfaces: ["agentworks", "video-studio", "work", "code"],
-  appName: "Video Studio",
-  faviconUrl: "/video-studio-favicon.svg"
+  // REAL Training Systems branding (brand/: name and colors from
+  // realtrainingsys.com, which has a text wordmark and no logo file). The
+  // brand color is their teal #305b6e lightened so it reads on dark screens.
+  appName: "REAL Training Systems",
+  faviconUrl: "/brand/icon.svg",
+  markUrl: "/brand/icon.svg",
+  // Top bar shows the RTS mark alone (user, 2026-09-29); the page title
+  // keeps the full name.
+  logoUrl: "/brand/icon.svg",
+  logoDarkUrl: "/brand/icon.svg",
+  brandColor: "#3A7A91"
 };
