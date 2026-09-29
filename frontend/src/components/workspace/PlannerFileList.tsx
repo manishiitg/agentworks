@@ -1,11 +1,12 @@
 import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { FileText, Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, Image, MoreHorizontal, Move, Download, Archive, CheckSquare, Edit2, Link, Check } from 'lucide-react'
+import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, Archive, CheckSquare, Edit2, Link, Check } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { copyToClipboard } from '../../utils/textUtils'
+import { FileTypeIcon } from './fileTypeIcon'
 import {
   flattenVisiblePlannerFiles,
   WORKSPACE_SCROLL_TO_FILE_EVENT,
@@ -49,7 +50,7 @@ interface PlannerFileListProps {
 }
 
 const VIRTUALIZE_FILE_COUNT = 200
-const FILE_ROW_HEIGHT = 40
+const FILE_ROW_HEIGHT = 28
 const FILE_ROW_OVERSCAN = 8
 
 export default function PlannerFileList({
@@ -88,6 +89,7 @@ export default function PlannerFileList({
   scrollContainerRef,
 }: PlannerFileListProps) {
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
+  const openFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -194,18 +196,21 @@ export default function PlannerFileList({
     const isActionMenuOpen = openActionsPath === actionMenuPath
     
     const isSelected = selectedFiles.has(file.filepath)
+    const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
 
     return (
-      <div key={file.filepath} className="h-10 select-none">
+      <div key={file.filepath} className="group h-7 select-none">
         <div
           className={`
-            flex h-9 items-center gap-2 p-2 rounded-md transition-colors
+            flex h-7 items-center gap-1.5 rounded-sm px-2 transition-colors
             ${isSelectionMode ? 'cursor-default' : isClickable ? 'cursor-pointer hover:bg-muted' : 'cursor-default'}
-            ${isHighlighted ? 'bg-primary/10 border border-primary/40' : ''}
+            ${isOpenFile ? 'bg-primary/15 hover:bg-primary/20' : ''}
+            ${isHighlighted ? 'bg-primary/10 ring-1 ring-inset ring-primary/40' : ''}
             ${isInContext ? 'bg-emerald-500/10 border-l-2 border-emerald-500' : ''}
             ${isSelected && isSelectionMode ? 'bg-primary/10' : ''}
           `}
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          style={{ paddingLeft: `${depth * 12 + 6}px` }}
+          aria-current={isOpenFile ? 'true' : undefined}
           data-filepath={file.filepath}
           data-original-filepath={file.originalFilepath || undefined}
           data-highlighted={isHighlighted ? 'true' : 'false'}
@@ -234,23 +239,16 @@ export default function PlannerFileList({
           )}
           
           {/* File/Folder Icon with expansion indicator */}
-          <div className="flex-shrink-0">
-            {file.type === 'folder' ? (
-              isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )
-            ) : file.is_image ? (
-              <Image className="w-4 h-4 text-muted-foreground" />
-            ) : (
-              <FileText className="w-4 h-4 text-muted-foreground" />
-            )}
+          <div className="flex w-4 flex-shrink-0 justify-center">
+            {file.type === 'folder' && (isExpanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />)}
           </div>
+          <FileTypeIcon name={fileName} folder={file.type === 'folder'} open={isExpanded} image={file.is_image} />
 
           {/* File Name - with reserved space for icons */}
-          <div className="flex-1 min-w-0 max-w-[calc(100%-80px)]">
-            <span className="text-sm font-medium truncate block text-foreground">
+          <div className="flex-1 min-w-0">
+            <span className={`block truncate text-[13px] ${isOpenFile ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
               {fileName}
             </span>
           </div>
@@ -595,7 +593,7 @@ export default function PlannerFileList({
     )
   }
 
-  if (loading) {
+  if (loading && files.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />

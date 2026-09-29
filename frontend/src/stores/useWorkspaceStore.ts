@@ -252,6 +252,10 @@ function setFileTreeCacheEntry(key: string, entry: FileTreeCacheEntry) {
 // Tracks in-flight fetchFiles requests to deduplicate concurrent calls for the same folder/depth
 let inflightFetch: { key: string; promise: Promise<void> } | null = null
 let fetchAttemptSequence = 0
+// The tree request whose result is on screen. A refresh of that same tree
+// (or a lazy subfolder load inside it) keeps the rows visible instead of
+// swapping them for a spinner; only a different tree shows loading.
+let shownTreeKey: string | null = null
 const latestFetchAttemptByKey = new Map<string, number>()
 
 function describeWorkspaceFetchError(err: unknown): { message: string; details: Record<string, unknown> } {
@@ -633,6 +637,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
 
           const index = buildFileIndex(processedFiles)
+          shownTreeKey = requestKey
           set({ files: processedFiles, fileIndex: index, needsRefresh: false, error: null })
         }
 
@@ -661,7 +666,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         const promise = (async () => {
           try {
-            set({ loading: true, error: null })
+            const activeNow = get().activeFolder
+            const isSubfolderLoad = !!(effectiveFolder && activeNow && effectiveFolder !== activeNow && effectiveFolder.startsWith(activeNow + '/'))
+            const quiet = get().files.length > 0 && (shownTreeKey === requestKey || isSubfolderLoad)
+            set(quiet ? { error: null } : { loading: true, error: null })
             const response = await agentApi.getPlannerFiles(effectiveFolder, -1, options?.maxDepth)
             if (response.success && response.data) {
               const allFiles = response.data
@@ -912,6 +920,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       
       // Reset all state
       resetWorkspaceState: () => {
+        shownTreeKey = null
         clearFileTreeCache()
         if (scheduledRefreshTimeout) {
           clearTimeout(scheduledRefreshTimeout)

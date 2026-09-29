@@ -1,8 +1,23 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT } from '../utils/workspacePathUtils'
+
+// Side by side (tree left, file right) once the pane is wide enough; a narrow
+// pane keeps the single-pane swap.
+const SPLIT_MIN_WIDTH = 720
+const TREE_WIDTH_KEY = 'agentworks.files.treeWidth'
+const TREE_MIN = 180
+const TREE_MAX = 520
+
+function readTreeWidth(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(TREE_WIDTH_KEY))
+    if (Number.isFinite(stored) && stored >= TREE_MIN && stored <= TREE_MAX) return stored
+  } catch { /* optional */ }
+  return 260
+}
 
 type FileWorkspacePaneProps = {
   workspacePath?: string
@@ -34,10 +49,51 @@ export function FileWorkspacePane({
   headerAction,
 }: FileWorkspacePaneProps) {
   const showFileContent = useWorkspaceStore(state => state.showFileContent)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  const [treeWidth, setTreeWidth] = useState(readTreeWidth)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(entries => setWidth(entries[0]?.contentRect.width ?? 0))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const split = showFileContent && width >= SPLIT_MIN_WIDTH
+  const saveTreeWidth = (next: number) => {
+    const clamped = Math.min(TREE_MAX, Math.max(TREE_MIN, Math.round(next)))
+    setTreeWidth(clamped)
+    try { window.localStorage.setItem(TREE_WIDTH_KEY, String(clamped)) } catch { /* optional */ }
+  }
+  const startResize = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const left = containerRef.current?.getBoundingClientRect().left ?? 0
+    const move = (e: globalThis.PointerEvent) => saveTreeWidth(e.clientX - left)
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  const stepResize = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    saveTreeWidth(treeWidth + (event.key === 'ArrowLeft' ? -16 : 16))
+  }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-background" data-testid={testId}>
-      <div className="min-h-0 flex-1" hidden={showFileContent}>
+    <div ref={containerRef} className="relative flex h-full min-h-0 flex-row bg-background" data-testid={testId} data-layout={split ? 'split' : 'single'}>
+      {/* One tree element in both layouts, so opening a file never remounts it. */}
+      <div
+        className={split ? 'min-h-0 shrink-0 overflow-hidden border-r border-border' : 'min-h-0 min-w-0 flex-1'}
+        style={split ? { width: treeWidth } : undefined}
+        hidden={showFileContent && !split}
+      >
         <Workspace
           scopedWorkspacePath={workspacePath}
           hiddenRootFolders={hiddenRootFolders}
@@ -46,11 +102,25 @@ export function FileWorkspacePane({
           expandFirstLevelFolders={expandFirstLevelFolders}
           hideManagedEntriesByDefault={hideManagedEntriesByDefault}
           title={title}
-          headerAction={headerAction}
+          headerAction={split ? undefined : headerAction}
         />
       </div>
+      {split && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file tree"
+          aria-valuemin={TREE_MIN}
+          aria-valuemax={TREE_MAX}
+          aria-valuenow={treeWidth}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={stepResize}
+          className="relative z-10 -ml-1 w-2 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary focus-visible:after:bg-primary"
+        />
+      )}
       {showFileContent && (
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1">
           <FileContentViewerBody headerAction={headerAction} />
         </div>
       )}

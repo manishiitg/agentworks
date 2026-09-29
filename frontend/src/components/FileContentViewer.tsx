@@ -23,7 +23,6 @@ import {
   AUDIO_MIME_TYPES,
   VIDEO_MIME_TYPES,
   isAudioPath,
-  isOfficeOrPdfPath,
   isTallSurfacePath,
   isVideoPath,
   mimeForExtension,
@@ -227,9 +226,8 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const [failedImagePath, setFailedImagePath] = useState<string | null>(null)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
-  const isOfficeOrPdf = isOfficeOrPdfPath(selectedFilePathLower)
-  // Edit is hidden for binary documents and for code files (code is written by the agent).
-  const canEdit = !isOfficeOrPdf && !isCodeFile(selectedFile?.path || '')
+  // The file view is a viewer: people ask the agent to change files.
+  const canEdit = false
   // Parsed once per render: the dispatch below used to re-parse the whole
   // file up to four times (search gate, conversation check, JSON check).
   const parsedJsonContent: unknown = useMemo(() => {
