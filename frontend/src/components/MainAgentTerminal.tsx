@@ -50,7 +50,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
       // starve the socket/browser until Axios hit its 15s read timeout.
       const metadata = await agentApi.getMainTerminal(sessionId, { content: 'none' })
       const previous = snapshotRef.current
-      if (metadata.active && metadata.tmux_session) {
+      if (paneIsLive(metadata)) {
         const next = {
           ...metadata,
           content: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.content : '',
@@ -106,7 +106,11 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
     return () => window.clearInterval(timer)
   }, [refresh])
 
-  const isLive = Boolean(snapshot?.active && snapshot.tmux_session)
+  // A retained CLI keeps its tmux pane between turns (process_state "live"),
+  // so the live view stays mounted across turns. Keying it on the turn
+  // (active) swapped it for a static snapshot at every turn end and back to a
+  // fresh, blank live view on every send: a ~1s flash (RTS 2026-09-29).
+  const isLive = paneIsLive(snapshot)
 
   return (
     <section
@@ -162,4 +166,8 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
       </div>
     </section>
   )
+}
+
+function paneIsLive(snapshot: { active?: boolean; tmux_session?: string; process_state?: string } | null | undefined): boolean {
+  return Boolean(snapshot?.tmux_session && (snapshot.active || snapshot.process_state === 'live'))
 }

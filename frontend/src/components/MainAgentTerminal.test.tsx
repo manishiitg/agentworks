@@ -176,4 +176,26 @@ describe('MainAgentTerminal sizing', () => {
       vi.useRealTimers()
     }
   })
+
+  it('keeps the live view mounted when a turn ends but the retained pane is still live', async () => {
+    const base = {
+      terminal_id: 'terminal-1', session_id: 'session-1', tmux_session: 'tmux-1', content: '', rows: [], chunk_index: 1,
+      state: 'running', status: {}, created_at: '2026-09-29T00:00:00Z', updated_at: '2026-09-29T00:00:00Z',
+    }
+    getMainTerminal.mockResolvedValue({ ...base, active: false, process_state: 'live' })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="session-1" />))
+      await act(async () => Promise.resolve())
+      expect(host.querySelector('[data-testid="live-terminal"]')).not.toBeNull()
+      expect(host.querySelector('[data-testid="static-terminal"]')).toBeNull()
+      // Only the settled history of a pane that is gone may use the static view.
+      expect(getMainTerminal).not.toHaveBeenCalledWith('session-1', expect.objectContaining({ content: 'history' }))
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
 })
