@@ -338,22 +338,6 @@ func applyCrewGuestCaller(reqMap map[string]interface{}, guestID string) {
 	reqMap["crew_guest_caller"] = strings.TrimSpace(guestID)
 }
 
-// crewGuestSystemPrompt is the operating mode for a turn that works for
-// someone other than the Crew's owner. It runs in the owner's namespace, so
-// without it the Crew could be talked into changing itself for them.
-func crewGuestSystemPrompt(guestID string) string {
-	return "This turn works for " + crewOwnerDisplayName(sanitizeUserIDForPath(guestID)) + `, who uses this Crew but does not own it. It is read-only:
-
-- Do the work asked (answer, research, run the Crew's own functions and
-  workflows) and return the result as usual with return_function_result.
-- Change nothing about the Crew itself: no file, memory, database,
-  schedule, trigger, skill, function, identity, or setting changes. Those
-  tools are not available; do not work around their absence.
-- If they ask for a change to how the Crew works, record it for the owner
-  with ` + "`" + crewSuggestionToolName + "`" + ` (their request in their words) and tell them it was sent.
-- Secret values are never printed or passed on.`
-}
-
 // crewOwnerDisplayName resolves a crew owner's path segment to a username
 // for prompts and listings, falling back to the segment itself.
 func crewOwnerDisplayName(ownerID string) string {

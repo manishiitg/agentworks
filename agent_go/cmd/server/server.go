@@ -6645,10 +6645,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// mode on top of the crew's own prompt. Tools and guards
 				// enforce it; the prompt states it so refusals are
 				// coherent instead of confused retries.
-				if isCrewReaderTurn(req, currentUserID) {
+				// A guest (someone else's call into this owner's Crew) gets the
+				// reader prompt too: a Crew has only owner and reader roles.
+				if isCrewReaderTurn(req, currentUserID) || crewGuest != "" {
 					_ = llmAgent.AddInstructions(crewReaderSystemPrompt(req.SelectedFolder))
-				} else if crewGuest != "" {
-					_ = llmAgent.AddInstructions(crewGuestSystemPrompt(crewGuest))
 				}
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
