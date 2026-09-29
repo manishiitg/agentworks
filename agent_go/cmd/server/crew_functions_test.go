@@ -170,7 +170,9 @@ func TestInternalFunctionCallPendingInputAndReplyAcrossCallerKinds(t *testing.T)
 			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
 				t.Fatal("invalid choice accepted")
 			}
-			args["response"] = "main"
+			// A stray space or newline around an exact choice does not matter,
+			// whichever tool answers.
+			args["response"] = " main\n"
 			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err != nil {
 				t.Fatalf("valid answer refused: %v", err)
 			}

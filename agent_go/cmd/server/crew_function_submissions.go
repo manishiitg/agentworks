@@ -7,11 +7,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type crewFunctionSubmissionIndex struct {
 	CallID      string `json:"call_id"`
 	Fingerprint string `json:"fingerprint"`
+	// SavedAt lets an old submission_id be reused: a record older than
+	// crewFunctionSubmissionTTL no longer binds its ID (records saved before
+	// this field existed keep binding).
+	SavedAt string `json:"saved_at,omitempty"`
+}
+
+// crewFunctionSubmissionTTL is how long a submission_id keeps returning its
+// original call. Long enough to cover any retry of an uncertain call, short
+// enough that a recurring ID ("daily-status") starts fresh work each week.
+const crewFunctionSubmissionTTL = 7 * 24 * time.Hour
+
+func crewFunctionSubmissionExpired(index crewFunctionSubmissionIndex, now time.Time) bool {
+	saved, err := time.Parse(time.RFC3339, index.SavedAt)
+	return err == nil && now.Sub(saved) > crewFunctionSubmissionTTL
 }
 
 func crewFunctionSubmissionPath(userID string, caller triggerCaller, submissionID, callerPath string) string {
@@ -66,6 +81,9 @@ func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller tri
 	if json.Unmarshal([]byte(raw), &index) != nil || !strings.HasPrefix(index.CallID, "fn-") {
 		return nil, true, fmt.Errorf("submission_id has an invalid saved call; inspect before retrying")
 	}
+	if crewFunctionSubmissionExpired(index, time.Now()) {
+		return nil, false, nil // expired: the ID starts a new call, and saving it replaces this record
+	}
 	if index.Fingerprint != crewFunctionSubmissionFingerprint(target, function, argsKey) {
 		return nil, true, fmt.Errorf("submission_id already belongs to a different function call")
 	}
@@ -78,7 +96,7 @@ func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller tri
 }
 
 func saveCrewFunctionSubmission(ctx context.Context, call *crewFunctionCall, caller triggerCaller) error {
-	index := crewFunctionSubmissionIndex{CallID: call.ID, Fingerprint: crewFunctionSubmissionFingerprint(call.target, call.Function, call.argsKey)}
+	index := crewFunctionSubmissionIndex{CallID: call.ID, Fingerprint: crewFunctionSubmissionFingerprint(call.target, call.Function, call.argsKey), SavedAt: time.Now().UTC().Format(time.RFC3339)}
 	encoded, err := json.Marshal(index)
 	if err != nil {
 		return err

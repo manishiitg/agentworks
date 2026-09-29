@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -32,6 +33,9 @@ func addFunctionCallPending(out map[string]interface{}, call *crewFunctionCall) 
 }
 
 func submitFunctionCallInput(call *crewFunctionCall, requestID, response string) error {
+	// Every reply path (Crew and workflow, MCP and internal) normalizes here,
+	// so an exact choice matches the same way whichever tool answered.
+	requestID, response = strings.TrimSpace(requestID), strings.TrimSpace(response)
 	call.mu.Lock()
 	defer call.mu.Unlock()
 	active := !call.closed || call.acceptsLateLocked()
