@@ -132,14 +132,8 @@ profile:
       # Private: under the owner's own tree, never the shared Crew/<id> root.
       mode: project
       projects_root: Chats/Code/projects
-      placement:
-        execute_shell_command:
-          - Put newly created application and source-code files under code/ by default.
-          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
-        diff_patch_workspace_file:
-          - Put newly created application and source-code files under code/ by default.
-          - Keep project metadata, documentation, and platform-managed folders at the project root when appropriate.
-          - Preserve an existing repository layout; do not move established files merely to satisfy the default.
+      # No placement rules: the person organises their workspace however they
+      # want (user, 2026-09-29).
     conversation:
       mode: keyed
       key_type: project
@@ -168,7 +162,8 @@ workflows:
 
 instruction_sections:
   - workspace-map
-  - project-memory
+  # No project-memory: a Code has no platform MEMORY.md convention; the
+  # person decides how to keep notes.
   - product-features
   - llm-capability
   - workflow-context
