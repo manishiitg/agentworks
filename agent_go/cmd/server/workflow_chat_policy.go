@@ -174,25 +174,32 @@ func normalizeWorkflowConversationMode(req *QueryRequest, readOnly bool) {
 }
 
 // workflowChatNativeAgentTools reports whether this workflow chat turn runs
-// with the coding CLI's native tools (agent_tools hybrid): the workflow's
-// "Native agent tools" switch is on (the default), the turn is an interactive Builder or
-// Run-mode chat (not a step agent, schedule, webhook, bot, notification or
-// Pulse turn) and the user may edit the workflow.
+// with the coding CLI's native tools (agent_tools hybrid). Owner decision
+// 2026-09-29: on for every turn type — interactive Builder and Run chats,
+// schedules, webhooks and triggers, Pulse, Slack and WhatsApp — unless the
+// workflow's "Native agent tools" switch is off. Read-only principals stay
+// off, and so do workflow step agents: child sessions of a run (a Pulse
+// reviewer child is a Pulse turn, not a step).
 func (api *StreamingAPI) workflowChatNativeAgentTools(ctx context.Context, req QueryRequest, sessionID string, readOnly bool) bool {
 	if readOnly || strings.TrimSpace(req.AgentMode) != "workflow_phase" || strings.TrimSpace(req.SelectedFolder) == "" {
 		return false
 	}
-	var active *ActiveSessionInfo
-	if api != nil {
-		if found, ok := api.getActiveSession(sessionID); ok {
-			active = found
-		}
-	}
-	if resolveWorkflowChatPolicy(sessionID, req, active, readOnly).Origin != "interactive" {
+	if api.isWorkflowStepTurn(req, sessionID) {
 		return false
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, req.SelectedFolder)
 	return err == nil && found && manifest != nil && manifest.Capabilities.NativeAgentToolsEnabled()
+}
+
+// plainChatNativeAgentTools reports whether an AgentWorks chat with no
+// workflow and no product profile runs with native agent tools: on for
+// every turn type (owner decision 2026-09-29), off for read-only principals.
+func plainChatNativeAgentTools(req QueryRequest, readOnly bool) bool {
+	mode := strings.TrimSpace(req.AgentMode)
+	if readOnly || mode == "workflow_phase" || mode == "workflow" || strings.TrimSpace(req.AgentProfileID) != "" {
+		return false
+	}
+	return !strings.HasPrefix(strings.Trim(strings.TrimSpace(req.SelectedFolder), "/"), "Workflow/")
 }
 
 // External Builder intentionally has no cross-workflow context or filesystem
@@ -247,4 +254,21 @@ func (r externalBuilderDefinitionRegistrar) RegisterCustomToolWithTimeout(name, 
 		return nil
 	}
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(name, description, schema, auditExternalBuilderPlanTool(name, run), timeout, category)
+}
+
+// isWorkflowStepTurn reports a child session of a workflow run (a step
+// agent), which keeps AgentWorks-only tools. A Pulse child session is a
+// Pulse turn and is not a step.
+func (api *StreamingAPI) isWorkflowStepTurn(req QueryRequest, sessionID string) bool {
+	parent, kind := strings.TrimSpace(req.ParentSessionID), strings.TrimSpace(req.SessionKind)
+	if api != nil {
+		if active, ok := api.getActiveSession(sessionID); ok && active != nil {
+			parent = firstNonEmptyTrimmed(parent, active.ParentSessionID)
+			kind = firstNonEmptyTrimmed(kind, active.SessionKind)
+		}
+	}
+	if parent == "" && kind == "" {
+		return false
+	}
+	return !strings.HasPrefix(strings.ToLower(kind), "pulse")
 }

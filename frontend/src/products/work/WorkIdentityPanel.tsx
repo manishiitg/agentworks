@@ -451,7 +451,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
 }
 
 /**
- * Crew "Native agent tools" switch (workflow.json capabilities.native_agent_tools).
+ * Crew and Code "Native agent tools" switch (workflow.json capabilities.native_agent_tools).
  * On: supported coding agents may use native read and search tools. The
  * exact native set varies by CLI; file changes stay on AgentWorks tools.
  */

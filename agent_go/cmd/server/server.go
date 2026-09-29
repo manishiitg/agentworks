@@ -3925,6 +3925,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A workflow's Builder/Run chat takes the workflow's "Native agent tools"
 	// switch (a Crew's comes through its resolved profile).
 	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
+	// A plain chat (no workflow, no product) runs with native tools too.
+	if !workflowNativeAgentTools && resolvedProfile == nil && plainChatNativeAgentTools(req, currentUserIsReadOnly) {
+		workflowNativeAgentTools = true
+	}
 	if workflowNativeAgentTools {
 		agentToolsMode = "hybrid"
 	}

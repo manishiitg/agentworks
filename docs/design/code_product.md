@@ -198,7 +198,10 @@ users has to hold:
     launcher with per-user CLI homes.
   - *(Decided 2026-09-28 by the owner: native tools on by default.)* Code
     now runs with native agent tools through its "Native agent tools"
-    switch, like Crew, unless the Code turned it off. Known exposure until
+    switch, like Crew, unless the Code turned it off. *(2026-09-29: the
+    switch is now shown in the Code UI, Models → Agent tools, and native
+    tools are on for every Code turn type, owner decision "only off for
+    workflow steps".)* Known exposure until
     the CLIs are confined (PLAT-364 part 2): native reads in a Code can
     reach files outside the Code, and a run on someone else's shared
     provider account can read that account's login files. Confining the

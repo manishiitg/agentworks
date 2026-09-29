@@ -315,13 +315,26 @@ func TestWorkflowChatNativeAgentToolsScope(t *testing.T) {
 	}{
 		"read-only user":    {chat, true},
 		"step agent":        {func() QueryRequest { r := chat; r.ParentSessionID = "parent"; return r }(), false},
-		"scheduled run":     {func() QueryRequest { r := chat; r.TriggeredBy = "cron"; return r }(), false},
-		"bot":               {func() QueryRequest { r := chat; r.BotPlatform = "slack"; return r }(), false},
-		"notification":      {func() QueryRequest { r := chat; r.IsAutoNotification = true; return r }(), false},
 		"headless workflow": {func() QueryRequest { r := chat; r.AgentMode = "workflow"; return r }(), false},
 	} {
 		if env.api.workflowChatNativeAgentTools(ctx, tc.req, "sess-"+name, tc.readOnly) {
 			t.Fatalf("%s must keep AgentWorks-only tools", name)
+		}
+	}
+	// Owner decision 2026-09-29: every other turn type uses native tools.
+	for name, req := range map[string]QueryRequest{
+		"scheduled run": func() QueryRequest { r := chat; r.TriggeredBy = "cron"; return r }(),
+		"bot":           func() QueryRequest { r := chat; r.BotPlatform = "slack"; return r }(),
+		"notification":  func() QueryRequest { r := chat; r.IsAutoNotification = true; return r }(),
+		"Pulse reviewer child": func() QueryRequest {
+			r := chat
+			r.ParentSessionID = "parent"
+			r.SessionKind = "pulse_reviewer"
+			return r
+		}(),
+	} {
+		if !env.api.workflowChatNativeAgentTools(ctx, req, "sess-"+name, false) {
+			t.Fatalf("%s must use native tools", name)
 		}
 	}
 }
