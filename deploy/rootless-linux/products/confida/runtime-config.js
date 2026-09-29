@@ -11,8 +11,13 @@ window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "",
   workspaceApiBaseUrl: "/api/wp",
   cdpEnabled: false,
-  appName: "AgentWorks",
-  faviconUrl: "/logo.svg",
+  // Confida branding (brand/: symbol and wordmark from confida.ai, which
+  // is monochrome, so no brandColor: the AgentWorks primary stays).
+  appName: "Confida",
+  faviconUrl: "/brand/icon.svg",
+  markUrl: "/brand/icon.svg",
+  logoUrl: "/brand/logo.svg",
+  logoDarkUrl: "/brand/logo-white.svg",
   enabledProductSurfaces: ["agentworks", "work", "code"],
   defaultProductSurface: "agentworks"
 };
