@@ -324,7 +324,7 @@ func claudeCodeCapabilityModels() []string {
 			"claude-code",
 			"claude-fable-5-1",
 			"claude-opus-5-5",
-			"claude-sonnet-5",
+			"claude-sonnet-5-5",
 			"claude-haiku-4-5-20251001",
 		}
 	}
@@ -700,6 +700,8 @@ func inferCursorModelGroup(modelID, _ string) string {
 		return "Claude Opus 4.6"
 	case strings.Contains(id, "claude-4.5-opus"):
 		return "Claude Opus 4.5"
+	case strings.Contains(id, "claude-sonnet-5-5"):
+		return "Claude Sonnet 5.5"
 	case strings.Contains(id, "claude-sonnet-5") || strings.Contains(id, "claude-5-sonnet"):
 		return "Claude Sonnet 5"
 	case strings.Contains(id, "claude-4.6-sonnet"):

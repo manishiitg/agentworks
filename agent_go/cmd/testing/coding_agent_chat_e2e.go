@@ -339,7 +339,7 @@ func defaultCodingAgentE2EModel(provider string) string {
 	case "cursor-cli":
 		return "auto"
 	case "claude-code":
-		return "claude-sonnet-5"
+		return "claude-sonnet-5-5"
 	case "pi-cli":
 		return "google/gemini-3.8-flash"
 	case "muse-cli":

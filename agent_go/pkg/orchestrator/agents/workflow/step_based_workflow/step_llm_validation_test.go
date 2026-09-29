@@ -27,7 +27,7 @@ func TestValidateStepLLMConfigRejectsProviderNameAsModel(t *testing.T) {
 func TestValidateStepLLMConfigRejectsHalfConfigured(t *testing.T) {
 	for name, tc := range map[string]struct{ provider, model, want string }{
 		"provider only": {"anthropic", "", "no model_id"},
-		"model only":    {"", "claude-sonnet-5", "no provider"},
+		"model only":    {"", "claude-sonnet-5-5", "no provider"},
 		"both empty":    {"", "", "set but empty"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -49,8 +49,8 @@ func TestValidateStepLLMConfigAcceptsPublishedIDAlone(t *testing.T) {
 
 func TestValidateStepLLMConfigAcceptsRealPairings(t *testing.T) {
 	for _, tc := range [][2]string{
-		{"anthropic", "claude-sonnet-5"},
-		{"claude-code", "claude-sonnet-5"},
+		{"anthropic", "claude-sonnet-5-5"},
+		{"claude-code", "claude-sonnet-5-5"},
 		{"openai", "gpt-4o"},
 	} {
 		if got := validateStepLLMConfig("execution_llm", "", tc[0], tc[1]); got != "" {
@@ -76,7 +76,7 @@ func TestValidateStepLLMConfigEnforcesAgyAlphaGate(t *testing.T) {
 }
 
 func TestCollectStepLLMConfigsUsesSelectedModel(t *testing.T) {
-	cfg := &AgentLLMConfig{Provider: "anthropic", ModelID: "claude-sonnet-5"}
+	cfg := &AgentLLMConfig{Provider: "anthropic", ModelID: "claude-sonnet-5-5"}
 	got := collectStepLLMConfigsForValidation(cfg)
 	if len(got) != 1 || got[0].label != "execution_llm" || got[0].provider != cfg.Provider || got[0].modelID != cfg.ModelID {
 		t.Fatalf("expected only the selected model, got %+v", got)

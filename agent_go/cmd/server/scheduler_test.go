@@ -1809,7 +1809,7 @@ func TestEveryRunFinalizerRequiresRichGmailWhenConfigured(t *testing.T) {
 // workflow's Builder llm_config. pulse_llm is applied by the workshop to the
 // background review agents the tagged turn launches.
 func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
-	builder := &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5", Options: map[string]interface{}{"reasoning_effort": "high"}}
+	builder := &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5", Options: map[string]interface{}{"reasoning_effort": "high"}}
 	sctx := &ScheduleContext{
 		WorkflowID:    "wf_test",
 		WorkspacePath: "Workflow/test",
@@ -1851,7 +1851,7 @@ func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
 	if !ok {
 		t.Fatalf("llm_config.primary missing or wrong type: %#v", llmConfig["primary"])
 	}
-	if primary["provider"] != "claude-code" || primary["model_id"] != "claude-sonnet-5" {
+	if primary["provider"] != "claude-code" || primary["model_id"] != "claude-sonnet-5-5" {
 		t.Fatalf("Pulse turn llm_config = %#v, want the workflow Builder model, never pulse_llm", primary)
 	}
 	markPulseLifecycleTurn(nil) // nil-safe

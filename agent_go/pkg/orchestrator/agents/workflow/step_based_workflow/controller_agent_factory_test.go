@@ -1387,7 +1387,7 @@ func TestSelectBackgroundTaskLLMRoutesGoalWorkToPulseModelAndUpkeepToMediumTier(
 	hcpo.presetPhaseLLM = &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-opus-5-5"}
 	hcpo.presetPulseLLM = &AgentLLMConfig{Provider: "codex-cli", ModelID: "gpt-5.5"}
 	hcpo.tierResolver = NewTierResolver(&TieredLLMConfig{
-		Tier1: &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5"},
+		Tier1: &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 		Tier2: &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-haiku-4-5-20251001"},
 	}, nil)
 

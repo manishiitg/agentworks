@@ -117,8 +117,8 @@ profile:
       - id: claude-code
         label: Claude Code
         provider: claude-code
-        model_id: claude-sonnet-5
-        models: [claude-sonnet-5, claude-opus-5-5]
+        model_id: claude-sonnet-5-5
+        models: [claude-sonnet-5-5, claude-opus-5-5]
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
@@ -250,8 +250,8 @@ profiles:
         - id: claude-code
           label: Claude Code
           provider: claude-code
-          model_id: claude-sonnet-5
-          models: [claude-sonnet-5, claude-opus-5-5]
+          model_id: claude-sonnet-5-5
+          models: [claude-sonnet-5-5, claude-opus-5-5]
           reasoning_efforts: [low, medium, high]
           options:
             reasoning_effort: medium

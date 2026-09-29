@@ -123,7 +123,7 @@ func TestPulseAgentMetricsPricesCapturedClaudeUsageWithCanonicalRateCard(t *test
 		Scope:             "pulse",
 		Provider:          "claude-code",
 		EffectiveProvider: "claude-code",
-		EffectiveModelID:  "claude-sonnet-5",
+		EffectiveModelID:  "claude-sonnet-5-5",
 		LLMCallCount:      1,
 		PromptTokens:      1_000_000,
 		CompletionTokens:  1_000_000,
@@ -141,7 +141,7 @@ func TestPulseAgentMetricsPricesCapturedClaudeUsageWithCanonicalRateCard(t *test
 		t.Fatalf("metrics=%#v err=%v", metrics, err)
 	}
 	metric := metrics[0]
-	if metric.UsageStatus != "captured" || metric.TotalCostUSD <= 0 || metric.Models["claude-sonnet-5"].PricingVersion == "" {
+	if metric.UsageStatus != "captured" || metric.TotalCostUSD <= 0 || metric.Models["claude-sonnet-5-5"].PricingVersion == "" {
 		t.Fatalf("Claude usage was not canonically priced: %#v", metric)
 	}
 }

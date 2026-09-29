@@ -12,7 +12,7 @@ func TestPhasePricingUsesImmutableClaudeModelRateCards(t *testing.T) {
 		input, output, read, write, totalCost float64
 	}{
 		{"2026-08-02", "claude-opus-5", 0.5, 10, 0.1, 1.875, 12.475},
-		{"2026-08-03", "claude-sonnet-5", 0.3, 6, 0.06, 1.125, 7.485},
+		{"2026-09-29", "claude-sonnet-5-5", 0.2, 4, 0.04, 0.75, 4.99},
 	} {
 		t.Run(tc.date+"/"+tc.model, func(t *testing.T) {
 			usage := &ModelTokenUsage{

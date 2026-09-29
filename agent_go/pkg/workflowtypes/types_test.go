@@ -3,7 +3,7 @@ package workflowtypes
 import "testing"
 
 func testExplicitConfig() *PresetLLMConfig {
-	builder := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5"}
+	builder := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"}
 	high := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-opus-4-8"}
 	return &PresetLLMConfig{
 		SchemaVersion: LLMConfigSchemaVersion,
@@ -34,11 +34,11 @@ func TestValidatePresetLLMConfigRequiresBuilder(t *testing.T) {
 }
 
 func TestNormalizePresetLLMConfigMigratesLegacyExplicitShape(t *testing.T) {
-	legacyBuilder := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5"}
+	legacyBuilder := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"}
 	legacyMaintenance := &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-opus-4-8"}
 	cfg := &PresetLLMConfig{
 		Provider:                "claude-code",
-		LegacyModelID:           "claude-sonnet-5",
+		LegacyModelID:           "claude-sonnet-5-5",
 		LegacyPhaseLLM:          legacyBuilder,
 		LegacyAutoImproveLLM:    legacyMaintenance,
 		LegacyLLMAllocationMode: "tiered",
@@ -101,8 +101,8 @@ func TestNormalizePresetLLMConfigRemovesRetiredWorkflowKBLock(t *testing.T) {
 // multi-llm-provider-go's GetCodingAgentDefaultTierModels for
 // ProviderClaudeCode. Fixed 2026-09-11: this test still expected
 // claude-fable-5-1/claude-opus-5 after multi-llm-provider-go's 3fc07b8
-// ("Revert Claude Code Builder tier back to Sonnet 5 / high") reverted
-// Builder/High/Pulse to claude-sonnet-5 -- a cross-repo staleness (the
+// ("Revert Claude Code Builder tier back to Sonnet 5.5 / high") reverted
+// Builder/High/Pulse to claude-sonnet-5-5 -- a cross-repo staleness (the
 // replace directive always builds against whatever's checked out at
 // ../../multi-llm-provider-go), not something wrong with the model choice
 // itself; verify against that package before changing these expectations
@@ -113,7 +113,7 @@ func TestResolveProviderProfileConfigUsesBuilderDefaults(t *testing.T) {
 		model    string
 		effort   string
 	}{
-		{provider: "claude-code", model: "claude-sonnet-5", effort: "high"},
+		{provider: "claude-code", model: "claude-sonnet-5-5", effort: "high"},
 		{provider: "codex-cli", model: "gpt-6-astra", effort: "medium"},
 	}
 	for _, tt := range tests {
@@ -134,14 +134,14 @@ func TestResolveProviderProfileConfigUsesBuilderDefaults(t *testing.T) {
 
 func TestResolveProviderProfilePulseConfigUsesProviderDefault(t *testing.T) {
 	got, ok := ResolveProviderProfilePulseConfig(providerProfile("claude-code"))
-	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5" || got.Options["reasoning_effort"] != "high" {
+	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5-5" || got.Options["reasoning_effort"] != "high" {
 		t.Fatalf("ResolveProviderProfilePulseConfig() = %+v, %v", got, ok)
 	}
 }
 
 func TestResolveCodingAgentMemoryConfigUsesPulseDefault(t *testing.T) {
 	got, ok := ResolveCodingAgentMemoryConfig(providerProfile("claude-code"))
-	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5" || got.Options["reasoning_effort"] != "high" {
+	if !ok || got.Provider != "claude-code" || got.ModelID != "claude-sonnet-5-5" || got.Options["reasoning_effort"] != "high" {
 		t.Fatalf("ResolveCodingAgentMemoryConfig() = %+v, %v", got, ok)
 	}
 }

@@ -68,7 +68,7 @@ profile:
       - id: claude-code
         label: Claude Code
         provider: claude-code
-        model_id: claude-sonnet-5
+        model_id: claude-sonnet-5-5
         default: true
     agent_tools:
       mode: mcp_only
@@ -82,7 +82,7 @@ profile:
       # identity stable across browser tabs, backend restarts, and CLI reaping.
       mode: singleton
     provider: claude-code
-    model_id: claude-sonnet-5
+    model_id: claude-sonnet-5-5
   built_in: true
 
 branding:

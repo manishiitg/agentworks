@@ -61,7 +61,9 @@ type DailyPhaseTokenUsageFile struct {
 	TokenUsage *PhaseTokenUsageFile `json:"token_usage"`
 }
 
-const modelPricingVersion = "2026-08-03"
+// 2026-09-29: Claude Sonnet 5.5 replaces Sonnet 5 at $2/$10 per MTok
+// (Sonnet 5 had been priced at $3/$15).
+const modelPricingVersion = "2026-09-29"
 
 func NormalizeCostScopeAndRunFolder(iterationFolder string) (CostScope, string) {
 	cleaned := filepath.ToSlash(filepath.Clean(strings.TrimSpace(iterationFolder)))

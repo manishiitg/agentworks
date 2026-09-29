@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-const DefaultClaudeModel = "claude-sonnet-5"
+const DefaultClaudeModel = "claude-sonnet-5-5"
 
 var videoExtensions = map[string]bool{".mp4": true, ".mov": true, ".webm": true, ".m4v": true}
 

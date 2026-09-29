@@ -63,7 +63,7 @@ profile:
       - id: claude-code
         label: Claude Code
         provider: claude-code
-        model_id: claude-sonnet-5
+        model_id: claude-sonnet-5-5
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
@@ -104,7 +104,7 @@ profile:
         options:
           reasoning_effort: high
     provider: claude-code
-    model_id: claude-sonnet-5
+    model_id: claude-sonnet-5-5
     # The profile's base mode, as for Crew. Every Code chat switches to
     # native agent tools (hybrid) through the Code's "Native agent tools"
     # switch, which is on unless the Code turned it off (owner decision

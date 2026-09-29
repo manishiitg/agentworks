@@ -133,7 +133,7 @@ Studio's), `auto`.
 
 ### `runtime.provider_options`: curate, don't assume "any provider is safe"
 
-Finance curates to exactly `claude-code`/`claude-sonnet-5`, and its own test
+Finance curates to exactly `claude-code`/`claude-sonnet-5-5`, and its own test
 suite (`TestFinanceManifestDeclaresProjectScopeAndNarrowAllowlist`) pins that
 to exactly one entry, with a comment explaining why: a second tool was
 reached live on `codex-cli` even under `mcp_only` — a developer's personal

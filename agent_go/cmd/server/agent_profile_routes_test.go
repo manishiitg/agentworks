@@ -94,7 +94,7 @@ func sparkQuillTestProfile() agentprofiles.Profile {
 	profile := routeTestProfile("sparkquill", true, "")
 	profile.Name = "SparkQuill"
 	profile.Runtime.ProviderOptions = []agentprofiles.ProviderOption{
-		{ID: "claude-code", Label: "Claude Code", Provider: "claude-code", ModelID: "claude-sonnet-5", Default: true},
+		{ID: "claude-code", Label: "Claude Code", Provider: "claude-code", ModelID: "claude-sonnet-5-5", Default: true},
 		{ID: "codex-cli", Label: "Codex", Provider: "codex-cli", ModelID: "gpt-5.4"},
 	}
 	return profile

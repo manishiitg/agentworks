@@ -49,7 +49,7 @@ func TestDefaultCodingAgentE2EModelIncludesCodingCLIProviders(st *stdtesting.T) 
 	tests := map[string]string{
 		"codex-cli":   "gpt-6-luna",
 		"cursor-cli":  "auto",
-		"claude-code": "claude-sonnet-5",
+		"claude-code": "claude-sonnet-5-5",
 		"muse-cli":    "muse-spark-1.3-contributor",
 		"agy-cli":     "gemini-3.8-flash-high",
 	}

@@ -21,8 +21,8 @@ func TestDominionManifestDeclaresProjectScopeAndNarrowAllowlist(t *testing.T) {
 	if manifest.Profile.Scope != agentprofiles.ProfileScopeProject {
 		t.Fatalf("dominion must declare scope: project, got %q", manifest.Profile.Scope)
 	}
-	if manifest.Profile.Runtime.Provider != "claude-code" || manifest.Profile.Runtime.ModelID != "claude-sonnet-5" {
-		t.Fatalf("expected provider=claude-code model_id=claude-sonnet-5, got provider=%q model_id=%q", manifest.Profile.Runtime.Provider, manifest.Profile.Runtime.ModelID)
+	if manifest.Profile.Runtime.Provider != "claude-code" || manifest.Profile.Runtime.ModelID != "claude-sonnet-5-5" {
+		t.Fatalf("expected provider=claude-code model_id=claude-sonnet-5-5, got provider=%q model_id=%q", manifest.Profile.Runtime.Provider, manifest.Profile.Runtime.ModelID)
 	}
 	// Dominion shares Video Studio's persistent Claude session shape. Its
 	// mcp_only tool policy remains the containment boundary.

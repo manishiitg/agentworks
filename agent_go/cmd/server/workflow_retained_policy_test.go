@@ -125,16 +125,16 @@ func TestWorkflowRetainedProviderAndAccountChangesRequireReconnect(t *testing.T)
 	ws, docs := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	req := QueryRequest{SelectedFolder: "Workflow/test", Provider: "claude-code", ModelID: "claude-sonnet-5", ConnectionID: "account-a"}
+	req := QueryRequest{SelectedFolder: "Workflow/test", Provider: "claude-code", ModelID: "claude-sonnet-5-5", ConnectionID: "account-a"}
 	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{"chat": req}, lastChatPolicyBySession: map[string]string{}}
 	api.lastChatPolicyBySession["chat"] = api.chatPolicySessionKey(resolveWorkflowChatPolicy("chat", req, nil, false))
 	for _, tc := range []struct {
 		name, provider, model, account string
 		want                           bool
 	}{
-		{"unchanged", "claude-code", "claude-sonnet-5", "account-a", true},
-		{"account switch", "claude-code", "claude-sonnet-5", "account-b", false},
-		{"deleted private back to server", "claude-code", "claude-sonnet-5", "", false},
+		{"unchanged", "claude-code", "claude-sonnet-5-5", "account-a", true},
+		{"account switch", "claude-code", "claude-sonnet-5-5", "account-b", false},
+		{"deleted private back to server", "claude-code", "claude-sonnet-5-5", "", false},
 		{"back to gemini", "pi-cli", "google/gemini-3.8-flash", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

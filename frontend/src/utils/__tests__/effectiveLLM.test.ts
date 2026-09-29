@@ -21,12 +21,12 @@ describe('effectiveProviderUnderLock', () => {
     expect(effectiveProviderUnderLock(null, true, published)).toBe('cursor-cli')
   })
   it('agrees with the full provider+model rule', () => {
-    const full = effectiveLLMUnderLock({ provider: 'claude-code', model_id: 'claude-sonnet-5' }, true, published)
+    const full = effectiveLLMUnderLock({ provider: 'claude-code', model_id: 'claude-sonnet-5-5' }, true, published)
     expect(full?.provider).toBe(effectiveProviderUnderLock('claude-code', true, published))
   })
 
   it('keeps a product profile binding under a Cursor-only deployment lock', () => {
-    const choice = { provider: 'claude-code', model_id: 'claude-sonnet-5' }
+    const choice = { provider: 'claude-code', model_id: 'claude-sonnet-5-5' }
     expect(effectiveLLMUnderLock(choice, true, published, 'agent_profile')).toEqual({
       ...choice,
       forcedByLock: false,
@@ -56,7 +56,7 @@ describe('effectiveProviderUnderLock', () => {
 })
 
 describe('runtimeStatusLLMChoice', () => {
-  const selected = { provider: 'claude-code', model_id: 'claude-sonnet-5' }
+  const selected = { provider: 'claude-code', model_id: 'claude-sonnet-5-5' }
   const retainedRuntime = { provider: 'muse-cli', model_id: 'muse-spark-1.3-contributor' }
 
   it('shows an authoritative project or workflow selection instead of a retained stale runtime', () => {

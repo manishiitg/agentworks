@@ -5,23 +5,23 @@ describe('LLM option matching', () => {
   it('keeps reasoning effort when provider and model are identical', () => {
     const high = {
       provider: 'claude-code',
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-5-5',
       options: { reasoning_effort: 'high' },
     }
     const low = {
       provider: 'claude-code',
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-5-5',
       options: { reasoning_effort: 'low' },
     }
 
     expect(llmOptionMatchesRef(high, {
       provider: 'claude-code',
-      model_id: 'claude-sonnet-5',
+      model_id: 'claude-sonnet-5-5',
       options: { reasoning_effort: 'high' },
     })).toBe(true)
     expect(llmOptionMatchesRef(low, {
       provider: 'claude-code',
-      model_id: 'claude-sonnet-5',
+      model_id: 'claude-sonnet-5-5',
       options: { reasoning_effort: 'high' },
     })).toBe(false)
   })

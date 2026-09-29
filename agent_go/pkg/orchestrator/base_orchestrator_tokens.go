@@ -162,7 +162,7 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 	case "opus", "claude-opus":
 		return "claude-opus-5"
 	case "sonnet", "claude-sonnet":
-		return "claude-sonnet-5"
+		return "claude-sonnet-5-5"
 	case "fable", "claude-fable":
 		return "claude-fable-5-1"
 	}
@@ -171,6 +171,8 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 	switch {
 	case strings.Contains(modelKey, "fable-5"):
 		return "claude-fable-5-1"
+	case strings.Contains(modelKey, "opus-5-5") || strings.Contains(modelKey, "5-5-opus"):
+		return "claude-opus-5-5"
 	case strings.Contains(modelKey, "opus-5") || strings.Contains(modelKey, "5-opus"):
 		return "claude-opus-5"
 	case strings.Contains(modelKey, "opus-4-8") || strings.Contains(modelKey, "4-8-opus"):
@@ -179,8 +181,9 @@ func normalizeClaudeCodePricingModel(modelLower, originalModelID string) string 
 		return "claude-opus-4-7"
 	case strings.Contains(modelKey, "opus-4-6") || strings.Contains(modelKey, "4-6-opus"):
 		return "claude-opus-4-6"
+	// Sonnet 5 is retired and runs as Sonnet 5.5 (same price).
 	case strings.Contains(modelKey, "sonnet-5") || strings.Contains(modelKey, "5-sonnet"):
-		return "claude-sonnet-5"
+		return "claude-sonnet-5-5"
 	case strings.Contains(modelKey, "sonnet-4-6") || strings.Contains(modelKey, "4-6-sonnet"):
 		return "claude-sonnet-4-6"
 	default:

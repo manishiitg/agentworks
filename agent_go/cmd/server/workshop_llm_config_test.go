@@ -60,13 +60,13 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 		t.Fatal("expected Claude Code coding-agent defaults")
 	}
 	// multi-llm-provider-go coding_agent_tier_defaults.go (2026-09-23):
-	// Opus 5.5 builds; Sonnet 5 backs High, Medium, Low and Pulse (= High).
+	// Opus 5.5 builds; Sonnet 5.5 backs High, Medium, Low and Pulse (= High).
 	if defaults.Builder.ModelID != "claude-opus-5-5" ||
-		defaults.High.ModelID != "claude-sonnet-5" ||
-		defaults.Medium.ModelID != "claude-sonnet-5" ||
-		defaults.Low.ModelID != "claude-sonnet-5" ||
+		defaults.High.ModelID != "claude-sonnet-5-5" ||
+		defaults.Medium.ModelID != "claude-sonnet-5-5" ||
+		defaults.Low.ModelID != "claude-sonnet-5-5" ||
 		defaults.Pulse.ModelID != defaults.High.ModelID {
-		t.Fatalf("Opus 5.5 should back Claude Builder and Sonnet 5 High/Medium/Low/Pulse, got defaults: %+v", defaults)
+		t.Fatalf("Opus 5.5 should back Claude Builder and Sonnet 5.5 High/Medium/Low/Pulse, got defaults: %+v", defaults)
 	}
 
 	builder, tiered := workshopResolveLLMConfig(&workflowtypes.PresetLLMConfig{

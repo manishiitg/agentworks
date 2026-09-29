@@ -109,7 +109,7 @@ func TestResolvePricingProviderAndModelUsesClaudeCodeAliases(t *testing.T) {
 		{model: "claude-4.8-opus", want: "claude-opus-4-8"},
 		{model: "claude-opus-4-7", want: "claude-opus-4-7"},
 		{model: "Claude Sonnet 4.6", want: "claude-sonnet-4-6"},
-		{model: "sonnet", want: "claude-sonnet-5"},
+		{model: "sonnet", want: "claude-sonnet-5-5"},
 		{model: "fable", want: "claude-fable-5-1"},
 	}
 	for _, tc := range cases {

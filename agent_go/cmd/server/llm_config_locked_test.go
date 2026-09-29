@@ -48,8 +48,8 @@ func TestResolveLockedLLMHonoursProfileBindingsAndFallsBackOtherwise(t *testing.
 	t.Setenv("DEFAULT_PUBLISHED_LLMS", cursorOnlyPublishedList)
 	t.Setenv("DEFAULT_PUBLISHED_LLMS_PATH", "")
 
-	profileBound := &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "claude-sonnet-5"}}
-	if p, m := resolveLockedLLM(profileBound, llmConfigSourceAgentProfile); p != "claude-code" || m != "claude-sonnet-5" {
+	profileBound := &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "claude-code", ModelID: "claude-sonnet-5-5"}}
+	if p, m := resolveLockedLLM(profileBound, llmConfigSourceAgentProfile); p != "claude-code" || m != "claude-sonnet-5-5" {
 		t.Fatalf("profile binding must win under the lock, got %s/%s", p, m)
 	}
 
@@ -84,7 +84,7 @@ func TestLockedPresetLLMConfigLocksToThePublishedProvidersProfile(t *testing.T) 
 	saved := &workflowtypes.PresetLLMConfig{
 		SchemaVersion: 2,
 		Mode:          workflowtypes.LLMConfigModeExplicit,
-		BuilderLLM:    &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5"},
+		BuilderLLM:    &workflowtypes.AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
 		TieredConfig:  &workflowtypes.TieredLLMConfig{Tier1: &workflowtypes.AgentLLMConfig{Provider: "openai", ModelID: "gpt-5.2"}},
 	}
 	got := lockedPresetLLMConfig(saved)

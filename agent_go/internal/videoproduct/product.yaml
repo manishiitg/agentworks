@@ -232,7 +232,7 @@ profile:
     # See product_api_transport_for_coding_agents.md, "tmux vs structured".
     transport: auto
     provider: claude-code
-    model_id: claude-sonnet-5
+    model_id: claude-sonnet-5-5
     # Video Studio currently uses the shared server Claude login. Project-level
     # coding-agent token overrides and their UI are deliberately disabled.
     credential_scope: global

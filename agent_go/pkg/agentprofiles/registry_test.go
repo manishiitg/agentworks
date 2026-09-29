@@ -75,7 +75,7 @@ func TestValidateRequiresCompleteRuntimeModelBinding(t *testing.T) {
 	if err := Validate(profile); err == nil || !strings.Contains(err.Error(), "model_id") {
 		t.Fatalf("expected incomplete runtime model binding to fail, got %v", err)
 	}
-	profile.Runtime.ModelID = "claude-sonnet-5"
+	profile.Runtime.ModelID = "claude-sonnet-5-5"
 	if err := Validate(profile); err != nil {
 		t.Fatalf("complete runtime model binding failed: %v", err)
 	}

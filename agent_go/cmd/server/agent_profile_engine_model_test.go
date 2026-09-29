@@ -202,7 +202,7 @@ func TestConversationRuntimeChangeReportsRestartNeeded(t *testing.T) {
 	if _, restart, err := store.bindRuntime(ctx, "u", profile, "main", "codex-cli", "gpt-5.6-sol", "high"); err != nil || restart {
 		t.Fatalf("the now-current model/effort should not need another restart: restart=%v err=%v", restart, err)
 	}
-	if bound, restart, err := store.bindRuntime(ctx, "u", profile, "main", "claude-code", "claude-sonnet-5", "high"); err != nil || !restart || bound != "claude-code" {
+	if bound, restart, err := store.bindRuntime(ctx, "u", profile, "main", "claude-code", "claude-sonnet-5-5", "high"); err != nil || !restart || bound != "claude-code" {
 		t.Fatalf("a provider change should be recorded and need a restart: bound=%q restart=%v err=%v", bound, restart, err)
 	}
 }

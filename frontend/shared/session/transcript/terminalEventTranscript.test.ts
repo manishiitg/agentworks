@@ -1347,7 +1347,7 @@ describe('main agent start card', () => {
       id: `${type}-${Math.random()}`, type, session_id: 's1', execution_kind: 'main_agent', execution_id: 'main:s1',
       data: { type, data: { agent_type: 'simple', ...extra } },
     }) as unknown as PollingEvent
-    const start = mk('agent_start', { model: 'claude-sonnet-5', provider: 'claude-code' })
+    const start = mk('agent_start', { model: 'claude-sonnet-5-5', provider: 'claude-code' })
     const sub = { ...mk('agent_start', { agent_name: 'reviewer' }), execution_kind: 'delegation', execution_id: 'delegation-1' } as PollingEvent
     const kept = collapseCompletedLifecycleStarts([start, sub, mk('unified_completion', { final_result: 'done' })])
     expect(kept).not.toContain(start)

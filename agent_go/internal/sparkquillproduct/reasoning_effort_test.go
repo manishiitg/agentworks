@@ -38,7 +38,7 @@ func TestEveryProviderOptionDeclaresAnOwnReasoningEffort(t *testing.T) {
 }
 
 // Both profiles default to Codex with GPT-6 Luna. Claude Code remains a
-// selectable engine with Sonnet 5 as its default and Opus 5.5 as an option.
+// selectable engine with Sonnet 5.5 as its default and Opus 5.5 as an option.
 func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 	profiles := BuiltinAgentProfiles()
 	find := func(profileID, optionID string) (modelID, effort string) {
@@ -59,10 +59,10 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 	cases := []struct {
 		profileID, optionID, wantModel, wantEffort string
 	}{
-		{"sparkquill", "claude-code", "claude-sonnet-5", "high"},
+		{"sparkquill", "claude-code", "claude-sonnet-5-5", "high"},
 		{"sparkquill", "codex-cli", "gpt-6-luna", "medium"},
 		{"sparkquill", "agy-cli", "gemini-3.8-flash-high", "high"},
-		{"sparkquill-child", "claude-code", "claude-sonnet-5", "medium"},
+		{"sparkquill-child", "claude-code", "claude-sonnet-5-5", "medium"},
 		{"sparkquill-child", "codex-cli", "gpt-6-luna", "high"},
 		{"sparkquill-child", "agy-cli", "gemini-3.8-flash-high", "high"},
 	}
@@ -79,7 +79,7 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 			}
 			wantModels := []string{"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"}
 			if o.ID == "claude-code" {
-				wantModels = []string{"claude-sonnet-5", "claude-opus-5-5"}
+				wantModels = []string{"claude-sonnet-5-5", "claude-opus-5-5"}
 			} else if o.ID == "agy-cli" {
 				wantModels = []string{"gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"}
 			}
