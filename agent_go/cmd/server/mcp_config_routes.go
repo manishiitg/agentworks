@@ -101,7 +101,7 @@ func (api *StreamingAPI) handleGetMCPConfig(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, "{\n  \"mcp_config_locked\": %v,\n  \"mcpServers\": {", isMCPConfigLocked())
 	for i, name := range names {
-		serverJSON, _ := json.Marshal(custom[name])
+		serverJSON, _ := json.Marshal(redactOAuthClientSecret(custom[name]))
 		if i > 0 {
 			fmt.Fprint(w, ",")
 		}
@@ -197,6 +197,14 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	for name, server := range req.Config.MCPServers {
+		// The editor never sees a client secret (redacted on read), so an
+		// unchanged client keeps the stored one.
+		if previous, ok := overlay.MCPServers[name]; ok && server.OAuth != nil && previous.OAuth != nil &&
+			server.OAuth.ClientSecret == "" && server.OAuth.ClientID == previous.OAuth.ClientID {
+			copied := *server.OAuth
+			copied.ClientSecret = previous.OAuth.ClientSecret
+			server.OAuth = &copied
+		}
 		merged.MCPServers[name] = server
 	}
 
@@ -212,6 +220,7 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save user config: %v", err))
 		return
 	}
+	_ = os.Chmod(api.getUserConfigPath(), 0o600) // it can hold OAuth client secrets
 
 	for name := range req.Config.MCPServers {
 		api.appendServerLog(name, "info", "Configuration saved, triggering discovery...")
@@ -448,4 +457,15 @@ func (api *StreamingAPI) handleGetServerLogs(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs": result,
 	})
+}
+
+// redactOAuthClientSecret drops an OAuth client secret from a config the API
+// returns; the stored copy keeps it.
+func redactOAuthClientSecret(server mcpclient.MCPServerConfig) mcpclient.MCPServerConfig {
+	if server.OAuth != nil && server.OAuth.ClientSecret != "" {
+		copied := *server.OAuth
+		copied.ClientSecret = ""
+		server.OAuth = &copied
+	}
+	return server
 }

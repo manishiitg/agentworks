@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -148,7 +150,9 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 		}
 		if entry.config.OAuth != nil {
 			catalogOAuth := *entry.config.OAuth
-			if catalogOAuth.ClientID != "" {
+			// The catalog's OAuth app (an admin's Google or GitHub app) is
+			// shared; a server with dynamic registration registers per person.
+			if catalogOAuth.ClientID != "" && catalogOAuth.RegistrationEndpoint == "" {
 				catalogClient = &registeredClient{ClientID: catalogOAuth.ClientID, ClientSecret: catalogOAuth.ClientSecret}
 			}
 			catalogOAuth.ClientID, catalogOAuth.ClientSecret, catalogOAuth.RedirectURL, catalogOAuth.UsePKCE = "", "", "", true
@@ -186,6 +190,12 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	// Adding over an existing name starts clean: the old sign-in client and
+	// login belong to whatever that name pointed at before.
+	if err := forgetPersonalMCPLogin(userID, body.Name); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	saved, err := addPersonalMCPServer(userID, body)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
@@ -213,9 +223,7 @@ func (api *StreamingAPI) handleRemovePersonalMCP(w http.ResponseWriter, r *http.
 		return
 	}
 	closePersonalMCPConnection(userID, name)
-	if dir, err := personalMCPDir(userID); err == nil {
-		_ = os.Remove(personalMCPClientFile(dir, userID, name))
-	}
+	_ = forgetPersonalMCPLogin(userID, name)
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
 }
 
@@ -274,15 +282,13 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// A client the person registered on the provider (Google, GitHub) is
+	// kept sealed once the sign-in succeeds, so refreshes keep working and a
+	// mistyped one never replaces a client that works.
+	var enteredClient *registeredClient
 	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
-		// A client the person registered on the provider (Google, GitHub):
-		// kept sealed, so refreshes after this sign-in keep working.
-		client := registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret), RedirectURI: redirectURI}
-		if err := writePersonalMCPClient(userID, name, client); err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = client.ClientID, client.ClientSecret
+		enteredClient = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret), RedirectURI: redirectURI}
+		cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = enteredClient.ClientID, enteredClient.ClientSecret
 	} else if cfg.OAuth.RegistrationEndpoint != "" {
 		// A dynamic registration is tied to its callback; one made for
 		// another address registers again.
@@ -295,7 +301,14 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 		Config:     cfg,
 		ClientFile: personalMCPClientFile(dir, userID, name),
 		Discoverer: oauth.Discoverer{Client: netguard.Client(30 * time.Second)},
-		OnSuccess:  func(*OAuthFlowState) { closePersonalMCPConnection(userID, name) },
+		OnSuccess: func(*OAuthFlowState) {
+			if enteredClient != nil {
+				if err := writePersonalMCPClient(userID, name, *enteredClient); err != nil {
+					log.Printf("[PERSONAL_MCP] keep sign-in client for %s: %v", name, err)
+				}
+			}
+			closePersonalMCPConnection(userID, name)
+		},
 	})
 	if err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
@@ -425,4 +438,18 @@ func (api *StreamingAPI) handlePersonalMCPCatalog(w http.ResponseWriter, r *http
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": api.personalMCPCatalog()})
+}
+
+// forgetPersonalMCPLogin removes a server's sign-in client and login.
+func forgetPersonalMCPLogin(userID, name string) error {
+	dir, err := personalMCPDir(userID)
+	if err != nil {
+		return err
+	}
+	for _, file := range []string{personalMCPClientFile(dir, userID, name), personalMCPTokenFile(dir, userID, name)} {
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }

@@ -123,6 +123,13 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 		t.Fatalf("connect with a client = %s", rec.Body.String())
 	}
 
+	// The entered client is kept only once the sign-in succeeds.
+	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+		t.Fatalf("client kept before sign-in: %+v, %v", cfg.OAuth, err)
+	}
+	if err := writePersonalMCPClient("owner", "gmail", registeredClient{ClientID: "cid.apps.googleusercontent.com", ClientSecret: "shh-owner"}); err != nil {
+		t.Fatal(err)
+	}
 	_, cfg, err := personalMCPServerConfig("owner", "gmail")
 	if err != nil || cfg.OAuth == nil || cfg.OAuth.ClientID != "cid.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "shh-owner" || cfg.OAuth.ExtraAuthParams["access_type"] != "offline" {
 		t.Fatalf("runtime config = %+v, %v", cfg.OAuth, err)
@@ -135,5 +142,13 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	}
 	if _, other, err := personalMCPServerConfig("other", "gmail"); err == nil {
 		t.Fatalf("other resolved owner's server: %+v", other)
+	}
+	// Adding the name again starts clean: the old client never reaches
+	// whatever the name points at now.
+	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil); rec.Code != http.StatusOK {
+		t.Fatalf("re-add = %d %s", rec.Code, rec.Body.String())
+	}
+	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+		t.Fatalf("old client survived a re-add: %+v, %v", cfg.OAuth, err)
 	}
 }

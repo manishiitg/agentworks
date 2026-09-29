@@ -93,6 +93,7 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
       setClientPrompt(null); setClientId(''); setClientSecret('')
       window.open(result.auth_url, '_blank', 'noopener')
     } else if (result.status === 'needs_client_id') {
+      if (clientPrompt?.server !== server) { setClientId(''); setClientSecret('') }
       setClientPrompt({ server, message: result.message, redirectUri: result.redirect_uri })
     } else if (result.message) setError(result.message)
   }

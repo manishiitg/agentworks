@@ -978,8 +978,11 @@ func (api *StreamingAPI) persistOAuthConfig(serverName string, serverConfig mcpc
 	// Update or add the server with OAuth config
 	userConfig.MCPServers[serverName] = serverConfig
 
-	// Save back to user config file
+	// Save back to user config file, owner-only: it can hold a client secret.
 	err = mcpclient.SaveConfig(userConfigPath, userConfig)
+	if err == nil {
+		err = os.Chmod(userConfigPath, 0o600)
+	}
 	if err != nil {
 		api.logger.Error(fmt.Sprintf("💾 Failed to save config: %v", err), err)
 	} else {
