@@ -8,6 +8,7 @@ import (
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // Proves the actual write path install_mcp_server relies on: persistOAuthConfig
@@ -23,7 +24,7 @@ func TestPersistOAuthConfigWritesServerToUserConfigFile(t *testing.T) {
 
 	api := &StreamingAPI{logger: loggerv2.NewNoop(), mcpConfigPath: basePath}
 
-	wantConfig := mcpclient.MCPServerConfig{URL: "https://example.com/mcp"}
+	wantConfig := mcpclient.MCPServerConfig{URL: "https://example.com/mcp", OAuth: &oauth.OAuthConfig{ClientID: "app", ClientSecret: "private-client-secret"}}
 	if err := api.persistOAuthConfig("acme-test-server", wantConfig); err != nil {
 		t.Fatalf("persistOAuthConfig failed: %v", err)
 	}
@@ -32,8 +33,12 @@ func TestPersistOAuthConfigWritesServerToUserConfigFile(t *testing.T) {
 	if userConfigPath != filepath.Join(baseDir, "mcp_servers_clean_user.json") {
 		t.Fatalf("getUserConfigPath() = %q, want the _user.json sibling of the base path", userConfigPath)
 	}
-	if _, err := os.Stat(userConfigPath); err != nil {
+	info, err := os.Stat(userConfigPath)
+	if err != nil {
 		t.Fatalf("expected %s to exist on disk after persistOAuthConfig, got: %v", userConfigPath, err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("OAuth overlay permissions = %o, want 600", info.Mode().Perm())
 	}
 
 	// Read back via a fresh load, the same way loadMergedConfig/loadOverlay
@@ -49,6 +54,9 @@ func TestPersistOAuthConfigWritesServerToUserConfigFile(t *testing.T) {
 	}
 	if got.URL != wantConfig.URL {
 		t.Fatalf("reloaded server URL = %q, want %q", got.URL, wantConfig.URL)
+	}
+	if got.OAuth == nil || got.OAuth.ClientSecret != wantConfig.OAuth.ClientSecret {
+		t.Fatal("OAuth credentials did not survive the private overlay save")
 	}
 }
 

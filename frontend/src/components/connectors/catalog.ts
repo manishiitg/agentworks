@@ -63,6 +63,8 @@ const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
   Mixpanel: 'Query product analytics events and funnels',
   Stripe: 'Review payments, customers, and subscriptions',
   Zapier: 'Trigger and run automations across your apps',
+  GitHub: 'Work with repositories, pull requests, and issues',
+  HubSpot: 'Search and update CRM records and marketing data',
   Square: 'Manage payments, orders, and catalog items',
   PayPal: 'Review transactions, invoices, and payouts',
   Webflow: 'Manage sites, CMS collections, and publishing',
@@ -164,7 +166,8 @@ const CONNECTOR_GROUPS: Record<string, ConnectorGroup> = {
   Square: 'payments',
   PayPal: 'payments',
   // Accounting: intentionally empty until QuickBooks/Xero land.
-  // Customers: support desks today, CRM (HubSpot) tomorrow.
+  // Customer data and support.
+  HubSpot: 'customers',
   Intercom: 'customers',
   Zendesk: 'customers',
   Plain: 'customers',

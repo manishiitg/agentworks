@@ -374,6 +374,7 @@ chat:
       - list_workflow_functions
       - call_workflow_function
       - get_workflow_function_call
+      - reply_workflow_function_call
       # Suggestions for the owner (reviewed in the decisions panel; change nothing).
       - suggest_workflow_change
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
@@ -386,6 +387,7 @@ chat:
       - call_crew_function
       - ask_crew
       - get_crew_function_call
+      - reply_crew_function_call
       - suggest_crew_change
       # Crew authoring (crews:write; only the owner edits; export is crews:read).
       - create_crew

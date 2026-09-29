@@ -88,6 +88,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 		}
 		copy := *bound
+		if operationID := virtualtools.FeedbackOperationFromContext(requestCtx); operationID != "" {
+			ctx = virtualtools.WithFeedbackOperation(ctx, operationID)
+		}
 		if copy.ExternalBuilderOperationID != "" {
 			// Resolve the persisted grant for every tool, including delegated tools.
 			// The operation is bound to the durable parent, never the child ID.

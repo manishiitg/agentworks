@@ -280,7 +280,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	t := c.AccessToken
 	if isExternalCrewTool(tool.Name) {
 		switch tool.Name {
-		case "call_crew_function", "ask_crew", "suggest_crew_change":
+		case "call_crew_function", "ask_crew", "reply_crew_function_call", "suggest_crew_change":
 			return t.Allows("crews:run")
 		case "get_crew_function_call":
 			return t.Allows("crews:read") || t.Allows("crews:run")

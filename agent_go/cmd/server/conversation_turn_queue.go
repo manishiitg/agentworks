@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -52,6 +53,7 @@ func sanitizedQueuedConversationRequest(req QueryRequest) QueryRequest {
 // stores a bearer token or an execution principal.
 type queuedConversationPrincipal struct {
 	ExternalBuilderOperationID string `json:"external_builder_operation_id,omitempty"`
+	FeedbackOperationID        string `json:"feedback_operation_id,omitempty"`
 	Provider                   string `json:"provider,omitempty"`
 	AccessTokenID              string `json:"access_token_id,omitempty"`
 	SlackTrustedApp            bool   `json:"slack_trusted_app,omitempty"`
@@ -94,6 +96,7 @@ func queuedPrincipalFromContext(ctx context.Context) queuedConversationPrincipal
 	}
 	principal := queuedConversationPrincipal{
 		ExternalBuilderOperationID: claims.ExternalBuilderOperationID,
+		FeedbackOperationID:        virtualtools.FeedbackOperationFromContext(ctx),
 		Provider:                   claims.Provider, SlackTrustedApp: claims.SlackTrustedApp,
 		BotRouteGrant: claims.BotRouteGrant, BotRouteWorkflowID: claims.BotRouteWorkflowID,
 		BotRouteProfileID: claims.BotRouteProfileID, BotRouteConversationKey: claims.BotRouteConversationKey,
@@ -352,6 +355,9 @@ func (api *StreamingAPI) queuedConversationTurnContext(turn queuedConversationTu
 	}
 	copy.ExternalBuilderOperationID = turn.Principal.ExternalBuilderOperationID
 	ctx = context.WithValue(ctx, UserContextKey, &copy)
+	if turn.Principal.FeedbackOperationID != "" {
+		ctx = virtualtools.WithFeedbackOperation(ctx, turn.Principal.FeedbackOperationID)
+	}
 	if turn.SubmissionID != "" {
 		ctx = context.WithValue(ctx, chatSubmissionContextKey{}, chatSubmissionContext{
 			ID: turn.SubmissionID, Owner: turn.UserID, Session: turn.SessionID, Message: turn.Request.Query,

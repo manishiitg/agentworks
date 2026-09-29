@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -930,8 +931,9 @@ func (s *ProductScheduleService) Run(ctx context.Context, job productScheduleJob
 }
 
 type productScheduleRunOptions struct {
-	RunID   string
-	Webhook *WebhookRunMetadata
+	RunID          string
+	Webhook        *WebhookRunMetadata
+	FunctionCallID string
 	// Detach claims the conversation and runs the turn in the background,
 	// returning before it completes. Webhook deliveries use it; schedulers
 	// run inline.
@@ -1109,6 +1111,9 @@ func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, 
 // executeAutomationRun runs one claimed automation turn to completion, then
 // releases the conversation and starts the next queued delivery, if any.
 func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, cancel context.CancelFunc, job productScheduleJob, triggerSource string, scheduledFor time.Time, options productScheduleRunOptions, run *productScheduleRun, jobKey, convKey string, onStarted []func(sessionID string)) (string, error) {
+	if options.FunctionCallID != "" {
+		runCtx = virtualtools.WithFeedbackOperation(runCtx, options.FunctionCallID)
+	}
 	defer func() {
 		s.finishAutomationRun(jobKey, convKey)
 		cancel()

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -349,7 +350,9 @@ type crewFunctionCall struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Joined counts identical calls made while this one was in flight and
 	// answered with it instead of starting another run.
-	Joined int `json:"joined,omitempty"`
+	Joined       int    `json:"joined,omitempty"`
+	SubmissionID string `json:"submission_id,omitempty"`
+	ArgumentsKey string `json:"arguments_key,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
 	argsKey string
@@ -481,6 +484,7 @@ func (c *crewFunctionCall) settleLate(status string, result interface{}, errText
 	onLate := c.onLate
 	c.mu.Unlock()
 	c.persist()
+	virtualtools.GetHumanFeedbackStore().WithdrawOperation(c.ID)
 	if onLate != nil {
 		go onLate()
 	}
@@ -513,10 +517,14 @@ func (c *crewFunctionCall) finish(status string, result interface{}, errText str
 		return false
 	}
 	c.Status, c.Result, c.Error, c.UpdatedAt = status, result, errText, time.Now().UTC()
+	withdraw := !c.TimedOut
 	c.closed = true
 	close(c.done)
 	c.mu.Unlock()
 	c.persist()
+	if withdraw {
+		virtualtools.GetHumanFeedbackStore().WithdrawOperation(c.ID)
+	}
 	return true
 }
 
@@ -728,7 +736,7 @@ When you are done you MUST call return_function_result(call_id=%[1]q, result=<%[
 
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
-func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration) (*crewFunctionCall, error) {
+func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
 	if caller.isTarget(target) {
 		return nil, fmt.Errorf("a %s cannot call its own function", target.Kind)
 	}
@@ -745,8 +753,32 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	// encoding/json sorts map keys, so equal arguments give equal keys.
 	argsJSON, _ := json.Marshal(args)
 	argsKey := string(argsJSON)
+	if isWorkflowAsk(target, fn) || isPersonCrewAsk(target, caller, fn) {
+		message, _ := args["message"].(string)
+		if strings.TrimSpace(message) == "" {
+			return nil, fmt.Errorf("ask needs a message")
+		}
+	}
+	submissionID := ""
+	if len(submissionIDs) > 0 {
+		submissionID = strings.TrimSpace(submissionIDs[0])
+		if submissionIDs[0] != "" && submissionID == "" {
+			return nil, fmt.Errorf("submission_id cannot be blank")
+		}
+	}
+	if submissionID != "" {
+		if len(submissionID) > 128 {
+			return nil, fmt.Errorf("submission_id must be at most 128 characters")
+		}
+		if existing, found, err := lookupCrewFunctionSubmission(ctx, userID, caller.Stamp, submissionID, target, fn.Name, argsKey); err != nil || found {
+			return existing, err
+		}
+	}
 	crewFunctionCalls.Lock()
-	joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey)
+	var joined *crewFunctionCall
+	if submissionID == "" {
+		joined = joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey)
+	}
 	crewFunctionCalls.Unlock()
 	if joined != nil {
 		return joined, nil
@@ -792,8 +824,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		TargetKind: target.Kind, TargetID: target.stampID(), TargetLabel: target.Label, TargetPath: crewFunctionRoot(ctx, target),
 		Chain: append(chain, targetKey), Root: root, TriggerID: triggerID, Status: "queued",
 		ResultSchema: fn.ResultSchema, CreatedAt: now, UpdatedAt: now,
-		FreeText: fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
-		target:   target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
+		FreeText:     fn.Name == crewFunctionAskName && fn.CreatedBy == defaultAskCrewFunction().CreatedBy,
+		SubmissionID: submissionID, ArgumentsKey: crewFunctionArgumentsFingerprint(argsKey),
+		target: target, caller: caller, done: make(chan struct{}), poll: triggerTargetPollInterval,
 		argsKey: argsKey,
 	}
 	body := map[string]interface{}{
@@ -802,22 +835,34 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
 	}
 	crewFunctionCalls.Lock()
+	if submissionID != "" {
+		if existing, found, err := inMemoryCrewFunctionSubmissionLocked(userID, caller.Stamp, submissionID, target, fn.Name, argsKey); err != nil || found {
+			crewFunctionCalls.Unlock()
+			return existing, err
+		}
+	}
 	// Re-check under the same lock as the insert: two identical calls racing
 	// past the early check must still start one run.
-	if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey); joined != nil {
-		crewFunctionCalls.Unlock()
-		return joined, nil
+	if submissionID == "" {
+		if joined := joinInFlightCrewFunctionCallLocked(userID, caller.Stamp.Type, caller.Stamp.ID, target.Kind, target.stampID(), fn.Name, argsKey); joined != nil {
+			crewFunctionCalls.Unlock()
+			return joined, nil
+		}
 	}
 	crewFunctionCalls.m[id] = call
 	crewFunctionCalls.Unlock()
-	if isWorkflowAsk(target, fn) {
-		message, _ := args["message"].(string)
-		if strings.TrimSpace(message) == "" {
+	if submissionID != "" {
+		if err := saveCrewFunctionSubmission(ctx, call, caller.Stamp); err != nil {
 			crewFunctionCalls.Lock()
 			delete(crewFunctionCalls.m, id)
 			crewFunctionCalls.Unlock()
-			return nil, fmt.Errorf("ask needs a message")
+			return nil, fmt.Errorf("cannot record submission_id: %w", err)
 		}
+		call.saveIndex()
+		call.persist()
+	}
+	if isWorkflowAsk(target, fn) {
+		message, _ := args["message"].(string)
 		call.saveIndex()
 		call.persist()
 		go api.runWorkflowAsk(call, target, caller, message, timeout)
@@ -825,12 +870,6 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if isPersonCrewAsk(target, caller, fn) {
 		message, _ := args["message"].(string)
-		if strings.TrimSpace(message) == "" {
-			crewFunctionCalls.Lock()
-			delete(crewFunctionCalls.m, id)
-			crewFunctionCalls.Unlock()
-			return nil, fmt.Errorf("ask needs a message")
-		}
 		call.saveIndex()
 		call.persist()
 		go api.runCrewOwnChatAsk(call, target, strings.TrimSpace(message), timeout)
@@ -852,6 +891,10 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		delivery, err = api.dispatchTargetTrigger(ctx, userID, caller, target, triggerID, id, crewFunctionEvent, body)
 	}
 	if err != nil {
+		if submissionID != "" {
+			call.finish("failed", nil, err.Error())
+			return call, nil
+		}
 		crewFunctionCalls.Lock()
 		delete(crewFunctionCalls.m, id)
 		crewFunctionCalls.Unlock()

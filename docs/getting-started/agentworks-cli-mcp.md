@@ -17,11 +17,14 @@ URL; a hosted AI app needs a public HTTPS URL. AgentWorks must have `PUBLIC_URL`
 configured to that same origin. Remote MCP OAuth accepts HTTP only for a
 configured loopback address.
 
-The MCP tools read and run like the Slack and WhatsApp run-mode channels:
-read tools inspect data, and run-mode tools
-execute in pinned Run-mode sessions. Nothing creates, edits, or authors. File
-writes, plan mutations, and Builder execution are not exposed; the dispatch
-paths stay in the server for a future write-enabled API version.
+Run-mode MCP tools inspect data and execute workflows or Crew functions. A
+connection with the explicit Builder grant can also use the Builder tools to
+author workflows it owns or may edit; see [Workflow Builder MCP](../mcp/workflow-builder.md)
+for the grant and operation flow. Function calls that pause for a question
+expose it through `get_crew_function_call` or `get_workflow_function_call` and
+accept an answer through the matching `reply_*_function_call` tool.
+Pass a unique `submission_id` for each new function call or Crew ask; reuse it
+when retrying an uncertain request to recover the same call ID.
 
 ## Legacy CLI for existing installations
 

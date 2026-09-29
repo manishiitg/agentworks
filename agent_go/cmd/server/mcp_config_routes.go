@@ -226,7 +226,7 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	if err := mcpclient.SaveConfig(api.getUserConfigPath(), merged); err != nil {
+	if err := savePrivateMCPOverlay(api.getUserConfigPath(), merged); err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to save user MCP config: %v", err), err)
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save user config: %v", err))
 		return

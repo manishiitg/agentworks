@@ -18,7 +18,7 @@ func TestConsumerCatalogsStayInSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	added := []string{"Todoist", "Asana", "ClickUp", "Atlassian", "Dropbox", "Miro", "Figma", "GitHub", "GoogleGmail", "GitLab"}
+	added := []string{"Todoist", "Asana", "ClickUp", "Atlassian", "Dropbox", "Miro", "Figma", "GitHub", "GoogleGmail", "GitLab", "HubSpot", "Stripe", "Supabase", "Zapier"}
 	for _, path := range []string{"", "../../../deploy/aws-ec2/server/mcp-servers.override.json", "../../../deploy/rootless-linux/products/confida/mcp-servers.override.json"} {
 		catalog := map[string]mcpclient.MCPServerConfig{}
 		for name, server := range base.MCPServers {
@@ -57,5 +57,10 @@ func TestConsumerCatalogsStayInSync(t *testing.T) {
 	}
 	if base.MCPServers["Asana"].OAuth.RegistrationEndpoint != "" {
 		t.Fatal("Asana v2 must not advertise an invented DCR endpoint")
+	}
+	for _, name := range []string{"GitHub", "HubSpot"} {
+		if base.MCPServers[name].OAuth.RegistrationEndpoint != "" {
+			t.Fatalf("%s requires a registered OAuth app; do not advertise DCR", name)
+		}
 	}
 }
