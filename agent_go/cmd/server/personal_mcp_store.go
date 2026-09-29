@@ -76,8 +76,55 @@ func personalMCPRoot() (string, error) {
 
 // personalMCPStoreID names a person's store without putting the user id in a
 // path or a connection name.
+// placeStoreOwner is the person a place's store belongs to (place:<owner>:
+// <root>); ok is false for a person's own store id.
+func placeStoreOwner(storeID string) (string, bool) {
+	rest, ok := strings.CutPrefix(storeID, "place:")
+	if !ok {
+		return "", false
+	}
+	owner, _, found := strings.Cut(rest, ":")
+	return owner, found && owner != ""
+}
+
+// placeStoreRoot is the workflow, Crew or Code root a place's store belongs to.
+func placeStoreRoot(storeID string) (string, bool) {
+	rest, ok := strings.CutPrefix(storeID, "place:")
+	if !ok {
+		return "", false
+	}
+	_, root, found := strings.Cut(rest, ":")
+	return root, found && root != ""
+}
+
+// projectSecretReader reads one secret of a project (workflow, Crew or Code)
+// from the shared project secret store. Set when the server starts.
+var projectSecretReader func(root, name string) (string, error)
+
+// headerSecretValue is the value of a header server's secret. A place's
+// connection uses the place's own project secrets (Setup > Secrets), exactly
+// like the rest of that Crew, Code or workflow; only a person's own store
+// (legacy, migrated away) uses their personal secrets.
+func headerSecretValue(storeID, name string) (string, error) {
+	if root, ok := placeStoreRoot(storeID); ok {
+		if projectSecretReader == nil {
+			return "", fmt.Errorf("project secrets are unavailable")
+		}
+		return projectSecretReader(root, name)
+	}
+	return personalSecretValue(storeID, name)
+}
+
 func personalMCPStoreID(userID string) string {
-	sum := sha256.Sum256([]byte("personal-mcp\x00" + sanitizeUserIDForPath(strings.TrimSpace(userID))))
+	id := strings.TrimSpace(userID)
+	// A place's id (place:<owner>:<root>) carries colons and slashes, which
+	// sanitizeUserIDForPath maps to "default": every place would then share
+	// one store, and two places' same-named connections (each Crew's gmail)
+	// would overwrite each other's login. Hash the whole id instead.
+	if _, isPlace := placeStoreOwner(id); !isPlace {
+		id = sanitizeUserIDForPath(id)
+	}
+	sum := sha256.Sum256([]byte("personal-mcp\x00" + id))
 	return hex.EncodeToString(sum[:16])
 }
 
@@ -104,15 +151,6 @@ func personalMCPDir(userID string) (string, error) {
 // people collide on one connection (and its login). The UI shows the plain name.
 func personalMCPInternalName(userID, name string) string {
 	return "u" + personalMCPStoreID(userID) + "__" + name
-}
-
-// personalMCPPlainName reverses personalMCPInternalName for this person.
-func personalMCPPlainName(userID, internal string) (string, bool) {
-	prefix := "u" + personalMCPStoreID(userID) + "__"
-	if !strings.HasPrefix(internal, prefix) {
-		return "", false
-	}
-	return strings.TrimPrefix(internal, prefix), true
 }
 
 func readPersonalMCPJSON(path string, into any) error {
@@ -277,79 +315,32 @@ func personalMCPTokenFile(dir, userID, name string) string {
 	return filepath.Join(dir, "tokens", personalMCPInternalName(userID, name)+".json")
 }
 
-// personalMCPEnabled lists the person's servers switched on in one Code.
-func personalMCPEnabled(userID, codeRoot string) ([]string, error) {
+// setPersonalMCPEnabledNames replaces the names switched on in one Code (the
+// migration records what it has not moved yet).
+func setPersonalMCPEnabledNames(userID, codeRoot string, names []string) error {
 	personalMCPMu.Lock()
 	defer personalMCPMu.Unlock()
 	dir, err := personalMCPDir(userID)
 	if err != nil {
-		return nil, err
-	}
-	enabled := map[string][]string{}
-	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
-		return nil, err
-	}
-	return append([]string(nil), enabled[cleanCodeRoot(codeRoot)]...), nil
-}
-
-// setPersonalMCPEnabled switches one of the person's servers on or off in a
-// Code. Only the person's own store changes: nobody else, and nothing written
-// into the Code, can switch their servers on.
-func setPersonalMCPEnabled(userID, codeRoot, name string, on bool) error {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	servers, err := listPersonalMCPServersLocked(userID)
-	if err != nil {
 		return err
 	}
-	known := false
-	for _, server := range servers {
-		known = known || server.Name == name
-	}
-	if on && !known {
-		return fmt.Errorf("you have no MCP server named %q", name)
-	}
-	dir, _ := personalMCPDir(userID)
 	enabled := map[string][]string{}
 	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
 		return err
 	}
 	root := cleanCodeRoot(codeRoot)
-	names := removeString(enabled[root], name)
-	if on {
-		names = append(names, name)
-		sort.Strings(names)
-	}
 	if len(names) == 0 {
 		delete(enabled, root)
 	} else {
-		enabled[root] = names
+		enabled[root] = append([]string(nil), names...)
 	}
 	return writePersonalMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
 }
 
-// forgetPersonalMCPCode drops one Code from a person's switches (they lost
-// access, or the Code was deleted).
-func forgetPersonalMCPCode(userID, codeRoot string) error {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	dir, err := personalMCPDir(userID)
-	if err != nil {
-		return err
-	}
-	enabled := map[string][]string{}
-	if err := readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled); err != nil {
-		return err
-	}
-	root := cleanCodeRoot(codeRoot)
-	if _, ok := enabled[root]; !ok {
-		return nil
-	}
-	delete(enabled, root)
-	return writePersonalMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
-}
-
-// ---- personal secrets --------------------------------------------------
+// ---- legacy personal secrets -------------------------------------------
+// Header servers now use their project's secrets (headerSecretValue). A
+// person's own secrets remain only so the migration can copy them into the
+// Code that used them (personal_mcp_migrate.go).
 
 var personalSecretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
@@ -382,44 +373,7 @@ func setPersonalSecret(userID, name, value string) error {
 	return writePersonalMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
 }
 
-func deletePersonalSecret(userID, name string) error {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	dir, err := personalMCPDir(userID)
-	if err != nil {
-		return err
-	}
-	secrets := map[string]string{}
-	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
-		return err
-	}
-	delete(secrets, name)
-	return writePersonalMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
-}
-
-// listPersonalSecretNames lists names only; values are write-only.
-func listPersonalSecretNames(userID string) ([]string, error) {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	dir, err := personalMCPDir(userID)
-	if err != nil {
-		return nil, err
-	}
-	secrets := map[string]string{}
-	if err := readPersonalMCPJSON(filepath.Join(dir, "secrets.json"), &secrets); err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(secrets))
-	for name := range secrets {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// personalSecretValue resolves one of the person's own secrets. There is no
-// fallback to global or project secrets: a personal server naming one of
-// those would otherwise receive its value.
+// personalSecretValue resolves one of the person's own legacy secrets.
 func personalSecretValue(userID, name string) (string, error) {
 	personalMCPMu.Lock()
 	defer personalMCPMu.Unlock()
@@ -440,10 +394,10 @@ func personalSecretValue(userID, name string) (string, error) {
 
 // ---- resolution ---------------------------------------------------------
 
-// personalMCPServerConfig builds the connection config for one of the
-// person's servers: public-only (mcpagent refuses anything but a public https
-// remote), credential headers from their own secrets, OAuth tokens in their
-// own sealed token file.
+// personalMCPServerConfig builds the connection config for one server of a
+// store (a place's, e.g. place:<owner>:<root>): public-only (mcpagent refuses
+// anything but a public https remote), credential headers from the project's
+// secrets, OAuth tokens in the store's own sealed token file.
 func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerConfig, error) {
 	return personalMCPServerConfigFor(userID, name, false)
 }
@@ -464,7 +418,7 @@ func personalMCPServerConfigFor(userID, name string, forSignIn bool) (string, mc
 		if len(server.Headers) > 0 {
 			cfg.Headers = map[string]string{}
 			for header, ref := range server.Headers {
-				value, err := personalSecretValue(userID, ref.Secret)
+				value, err := headerSecretValue(userID, ref.Secret)
 				if err != nil {
 					return "", mcpclient.MCPServerConfig{}, err
 				}

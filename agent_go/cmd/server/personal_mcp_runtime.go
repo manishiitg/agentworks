@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -11,45 +10,12 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
-// Personal MCP servers at run time (docs/design/code_private_mcp.md).
-//
-// A Code chat's MCP set is the Code's global selection (platform servers, as
-// in a Crew) plus the pinned person's own servers switched on for this Code.
-// Personal servers reach the agent as runtime overrides carrying their whole
-// config under a per-person internal name; every bridge call from a Code
-// session is decided by resolveCodeMCPServer, which never falls back to the
-// platform catalog by name.
-
-// personalMCPServersForTurn returns the internal names and overrides for the
-// person's servers switched on in codeRoot. The internal name u<id>__<name>
-// is the override, connection-pool and tool-cache key: turn-start
-// connections are pooled per server name under the shared "global" session,
-// so a plain name would let two people's "supabase" share one client and
-// login. Only what the model reads shows the plain name (the bridge maps it
-// back, resolveCodeMCPServer). A server that cannot be built (a missing
-// personal secret, say) is skipped and logged, not fatal.
-func personalMCPServersForTurn(person, codeRoot string) ([]string, mcpclient.RuntimeOverrides) {
-	enabled, err := personalMCPEnabled(person, codeRoot)
-	if err != nil || len(enabled) == 0 {
-		if err != nil {
-			log.Printf("[PERSONAL_MCP] enabled servers for %s: %v", codeRoot, err)
-		}
-		return nil, nil
-	}
-	names := make([]string, 0, len(enabled))
-	overrides := mcpclient.RuntimeOverrides{}
-	for _, name := range enabled {
-		internal, cfg, err := personalMCPServerConfig(person, name)
-		if err != nil {
-			log.Printf("[PERSONAL_MCP] skipping %s for this turn: %v", name, err)
-			continue
-		}
-		config := cfg
-		names = append(names, internal)
-		overrides[internal] = mcpclient.RuntimeConfigOverride{Server: &config}
-	}
-	return names, overrides
-}
+// MCP connections at run time in a Code (docs/design/personal_mcp_attach.md):
+// a Code is a place like a Crew, so its connections are place connections
+// (attachedMCPServersForRoot) that reach the agent as runtime overrides
+// carrying their whole config under an internal name u<id>__<name>. Every
+// bridge call from a Code session is decided by resolveCodeMCPServer, which
+// never falls back to the platform catalog by name.
 
 // mergeServerLists appends extra names, dropping the "no servers" marker.
 func mergeServerLists(selected, extra []string) []string {
@@ -90,45 +56,37 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
-	// The person's own server switched on for this Code; ok is false when
-	// plain is not one of them.
-	personal := func(plain string) (*executor.ResolvedMCPServer, bool, error) {
-		enabled, err := personalMCPEnabled(pin.Person, pin.CodeRoot)
-		if err != nil {
-			return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
-		}
-		for _, name := range enabled {
-			if name != plain {
+	// One of this Code's own connections, by its internal name or by its
+	// plain name (what the person sees); found is false when it is not one.
+	place := func(name string) (*executor.ResolvedMCPServer, bool) {
+		names, overrides := attachedMCPServersForRoot(ctx, pin.CodeRoot)
+		for _, internal := range names {
+			plain := placeMCPPlainName(internal)
+			if internal != name && !strings.EqualFold(plain, name) {
 				continue
 			}
-			internal, cfg, err := personalMCPServerConfig(pin.Person, plain)
-			if err != nil {
-				return nil, true, err
+			if override, ok := overrides[internal]; ok && override.Server != nil {
+				return &executor.ResolvedMCPServer{Name: internal, Config: *override.Server, ConnectionSessionID: "global"}, true
 			}
-			return &executor.ResolvedMCPServer{Name: internal, Config: cfg, ConnectionSessionID: "global"}, true, nil
 		}
-		return nil, false, nil
+		return nil, false
 	}
-	if plain, ok := personalMCPPlainName(pin.Person, server); ok {
-		resolved, found, err := personal(plain)
-		if !found && err == nil {
-			err = fmt.Errorf("MCP server %q is not switched on in this Code", plain)
-		}
-		return resolved, true, err
-	}
-	// Anyone else's personal server is never reachable.
 	if isPersonalMCPInternalName(server) {
+		if resolved, found := place(server); found {
+			return resolved, true, nil
+		}
+		// Anyone else's connection, or one that is no longer here.
 		return nil, true, fmt.Errorf("MCP server %q is not available in this chat", server)
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
 		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
 	}
-	// The person's own server under its plain name, unless a global server
+	// The Code's own connection under its plain name, unless a global server
 	// the Code selected has that name (then the plain name is the global one).
 	if !serverListHasName(runtimeMCPServers(manifest.Capabilities.SelectedServers), server) {
-		if resolved, found, err := personal(server); found {
-			return resolved, true, err
+		if resolved, found := place(server); found {
+			return resolved, true, nil
 		}
 	}
 	// A global server the Code selected.
@@ -138,6 +96,15 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	}
 	resolved, err := resolveSelectedMCPServer(catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, pin.Person, server, tool)
 	return resolved, true, err
+}
+
+// placeMCPPlainName is the name a connection has without its store prefix
+// (u<32 hex>__<name> -> <name>).
+func placeMCPPlainName(internal string) string {
+	if isPersonalMCPInternalName(internal) {
+		return internal[35:]
+	}
+	return internal
 }
 
 // isPersonalMCPInternalName reports whether name has the personal-server
@@ -152,42 +119,6 @@ func isPersonalMCPInternalName(name string) bool {
 		}
 	}
 	return true
-}
-
-// withPersonalSecrets adds the person's own secrets to a Code chat's
-// secrets; a personal secret wins over a Code secret of the same name.
-func withPersonalSecrets(person string, secrets []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}) []struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-} {
-	names, err := listPersonalSecretNames(person)
-	if err != nil {
-		log.Printf("[PERSONAL_MCP] personal secrets unavailable for this turn: %v", err)
-		return secrets
-	}
-	for _, name := range names {
-		value, err := personalSecretValue(person, name)
-		if err != nil {
-			log.Printf("[PERSONAL_MCP] skipping personal secret %s: %v", name, err)
-			continue
-		}
-		replaced := false
-		for i := range secrets {
-			if secrets[i].Name == name {
-				secrets[i].Value, replaced = value, true
-			}
-		}
-		if !replaced {
-			secrets = append(secrets, struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			}{Name: name, Value: value})
-		}
-	}
-	return secrets
 }
 
 // serverListHasName reports whether names holds name, ignoring case.

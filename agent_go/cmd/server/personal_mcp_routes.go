@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -15,9 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/netguard"
 	"github.com/manishiitg/mcpagent/oauth"
@@ -27,17 +24,6 @@ import (
 // servers, their per-Code switches and their personal secrets
 // (docs/design/code_private_mcp.md). Every route acts on the caller's own
 // store only; nothing here can read or change another person's.
-
-type personalMCPServerView struct {
-	Name      string   `json:"name"`
-	URL       string   `json:"url"`
-	Transport string   `json:"transport"`
-	OAuth     bool     `json:"oauth"`
-	Connected bool     `json:"connected"`
-	Headers   []string `json:"headers,omitempty"` // header names only
-	Enabled   bool     `json:"enabled"`           // in the requested Code
-	Catalog   string   `json:"catalog,omitempty"` // the catalog server it was added from
-}
 
 func personalMCPUser(w http.ResponseWriter, r *http.Request) (string, bool) {
 	userID := strings.TrimSpace(GetUserIDFromContext(r.Context()))
@@ -50,22 +36,6 @@ func personalMCPUser(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // personalMCPCodeRoot resolves a Code the caller can chat in (any role) to
 // its root.
-func (api *StreamingAPI) personalMCPCodeRoot(r *http.Request, userID, projectID string) (string, error) {
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" || api.agentProfiles == nil {
-		return "", fmt.Errorf("Code workspace not found")
-	}
-	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, userID)
-	if err != nil {
-		return "", fmt.Errorf("Code workspace not found")
-	}
-	project, err := resolveCrewProjectBinding(r.Context(), userID, profile, projectID, "")
-	if err != nil || !codeRoleFor(r.Context(), userID, project.OwnerID, project.Binding.ResourceID).atLeast(codeRoleViewer) {
-		return "", fmt.Errorf("Code workspace not found")
-	}
-	return cleanCodeRoot(agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath)), nil
-}
-
 // redactedURL drops the query string and fragment, which can carry tokens.
 func redactedURL(raw string) string {
 	u, err := url.Parse(raw)
@@ -74,69 +44,6 @@ func redactedURL(raw string) string {
 	}
 	u.RawQuery, u.Fragment, u.User = "", "", nil
 	return u.String()
-}
-
-// GET /api/me/mcp/servers?code=<project id>
-func (api *StreamingAPI) handleListPersonalMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	servers, err := listPersonalMCPServers(userID)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	enabled := map[string]bool{}
-	if project := r.URL.Query().Get("code"); project != "" {
-		root, err := api.personalMCPCodeRoot(r, userID, project)
-		if err != nil {
-			writeAgentProfileError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		names, _ := personalMCPEnabled(userID, root)
-		for _, name := range names {
-			enabled[name] = true
-		}
-	}
-	dir, _ := personalMCPDir(userID)
-	views := make([]personalMCPServerView, 0, len(servers))
-	for _, server := range servers {
-		view := personalMCPServerView{Name: server.Name, URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Enabled: enabled[server.Name], Catalog: server.Catalog}
-		for header := range server.Headers {
-			view.Headers = append(view.Headers, header)
-		}
-		view.Connected = personalMCPServerConnected(dir, userID, server)
-		views = append(views, view)
-	}
-	secrets, _ := listPersonalSecretNames(userID)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": views, "secrets": secrets})
-}
-
-// POST /api/me/mcp/servers {name, url, transport, headers}
-// The server is probed (public-only) for OAuth; a server that needs sign-in
-// keeps its discovered endpoints, and is connected with .../connect.
-func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	var request struct {
-		personalMCPServer
-		// Catalog adds one of the platform's remote servers as the person's
-		// own: same URL and sign-in endpoints, their own login.
-		Catalog string `json:"catalog"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	saved, status, err := api.addPersonalMCP(r.Context(), userID, request.personalMCPServer, request.Catalog)
-	if err != nil {
-		writeAgentProfileError(w, status, err.Error())
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"name": saved.Name, "oauth": saved.OAuth != nil})
 }
 
 // addPersonalMCP adds (or replaces) one of the person's servers: a catalog
@@ -220,76 +127,6 @@ func (api *StreamingAPI) addPersonalMCP(ctx context.Context, userID string, body
 	return saved, http.StatusOK, nil
 }
 
-// DELETE /api/me/mcp/servers/{name}
-func (api *StreamingAPI) handleRemovePersonalMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	name := mux.Vars(r)["name"]
-	if err := removePersonalMCPServer(userID, name); err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	closePersonalMCPConnection(userID, name)
-	_ = forgetPersonalMCPLogin(userID, name)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
-}
-
-// PUT /api/me/mcp/servers/{name}/codes/{project_id} {enabled}
-func (api *StreamingAPI) handleSwitchPersonalMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Enabled bool `json:"enabled"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	root, err := api.personalMCPCodeRoot(r, userID, mux.Vars(r)["project_id"])
-	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	if err := setPersonalMCPEnabled(userID, root, mux.Vars(r)["name"], body.Enabled); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"enabled": body.Enabled, "applies": "from your next message"})
-}
-
-// POST /api/me/mcp/servers/{name}/connect {client_id?}: the OAuth sign-in,
-// through the shared flow with public-only discovery, registration and token
-// requests, the token sealed in the person's own store.
-func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		ClientID     string `json:"client_id"`
-		ClientSecret string `json:"client_secret"`
-	}
-	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
-	var entered *registeredClient
-	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
-		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
-	}
-	authURL, discovery, status, err := api.startPersonalMCPSignIn(userID, mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
-	if err != nil {
-		writeAgentProfileError(w, status, err.Error())
-		return
-	}
-	if discovery != nil {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"status": discovery.Status, "message": discovery.Message, "redirect_uri": discovery.RedirectURI})
-		return
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"auth_url": authURL})
-}
-
 // startPersonalMCPSignIn starts the person's OAuth sign-in to one of their
 // servers: through the shared flow with public-only discovery, registration
 // and token requests, the token sealed in their own store. It returns the
@@ -369,51 +206,6 @@ func (api *StreamingAPI) startPersonalMCPSignIn(userID, name, redirectURI string
 		return "", discovery, http.StatusOK, nil
 	}
 	return start.AuthURL, nil, http.StatusOK, nil
-}
-
-// PUT /api/me/secrets/{name} {encrypted_value} (from /api/secrets/encrypt,
-// bound to the caller); DELETE removes it. Values are never returned.
-func (api *StreamingAPI) handlePutPersonalSecret(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
-	if !ok {
-		return
-	}
-	name := mux.Vars(r)["name"]
-	if r.Method == http.MethodDelete {
-		if err := deletePersonalSecret(userID, name); err != nil {
-			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
-		return
-	}
-	var body struct {
-		EncryptedValue string `json:"encrypted_value"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-	value, err := decryptSecretValue(body.EncryptedValue, userID)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "invalid secret value")
-		return
-	}
-	if err := setPersonalSecret(userID, name, value); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	// Servers whose headers use it reconnect with the new value.
-	if servers, err := listPersonalMCPServers(userID); err == nil {
-		for _, server := range servers {
-			for _, ref := range server.Headers {
-				if ref.Secret == name {
-					closePersonalMCPConnection(userID, server.Name)
-				}
-			}
-		}
-	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"saved": name})
 }
 
 func personalMCPClientFile(dir, userID, name string) string {

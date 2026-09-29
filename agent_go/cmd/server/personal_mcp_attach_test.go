@@ -13,16 +13,18 @@ import (
 
 func TestPlaceRootOfAndCleanAttachRoot(t *testing.T) {
 	cases := map[string]string{
-		"Workflow/w":                            "Workflow/w",
-		"Workflow/w/runs/iteration-3/logs":      "Workflow/w",
-		"/Workflow/w/":                          "Workflow/w",
-		"Workflow/.relay_releases/x":            "",
-		"Crew/abc/files/x":                      "Crew/abc",
-		"_users/alice/Chats/Work/projects/p/db": "_users/alice/Chats/Work/projects/p",
-		"_users/alice/Chats/Code/projects/p":    "",
-		"Chats/Work/projects/p":                 "",
-		"Workflow/../Workflow/w":                "",
-		"Downloads/x":                           "",
+		"Workflow/w":                                      "Workflow/w",
+		"Workflow/w/runs/iteration-3/logs":                "Workflow/w",
+		"/Workflow/w/":                                    "Workflow/w",
+		"Workflow/.relay_releases/x":                      "",
+		"Crew/abc/files/x":                                "Crew/abc",
+		"_users/alice/Chats/Work/projects/p/db":           "_users/alice/Chats/Work/projects/p",
+		"_users/alice/Chats/Code/projects/p":              "_users/alice/Chats/Code/projects/p",
+		"_users/alice/Chats/Code/projects/p/code/main.go": "_users/alice/Chats/Code/projects/p",
+		"_users/alice/Chats/Other/projects/p":             "",
+		"Chats/Work/projects/p":                           "",
+		"Workflow/../Workflow/w":                          "",
+		"Downloads/x":                                     "",
 	}
 	for in, want := range cases {
 		if got := placeRootOf(in); got != want {
@@ -31,6 +33,9 @@ func TestPlaceRootOfAndCleanAttachRoot(t *testing.T) {
 	}
 	if got := attachRootForCaller("alice", "Chats/Work/projects/p"); got != "_users/alice/Chats/Work/projects/p" {
 		t.Errorf("own Crew logical path = %q", got)
+	}
+	if got := attachRootForCaller("alice", "Chats/Code/projects/p"); got != "_users/alice/Chats/Code/projects/p" {
+		t.Errorf("own Code logical path = %q", got)
 	}
 }
 
@@ -79,15 +84,15 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 		t.Fatalf("workflow connections = %v %+v", names, overrides)
 	}
 	if names[0] == personalMCPInternalName("alice", "gmail") {
-		t.Fatal("a place connection must not share alice's Code server name")
+		t.Fatal("a place connection must not share the name of alice's own store")
 	}
 	if other, _ := attachedMCPServersForRoot(ctx, "Workflow/shared"); len(other) != 0 {
 		t.Fatalf("connection leaked to another workflow: %v", other)
 	}
 
-	// It never shows among alice's own (Code) servers.
+	// It is stored under the place, never in alice's own store.
 	if own, _ := listPersonalMCPServers("alice"); len(own) != 0 {
-		t.Fatalf("place connection listed in alice's Code servers: %+v", own)
+		t.Fatalf("place connection listed in alice's own store: %+v", own)
 	}
 
 	// Anyone who can read the workflow sees it listed, with its owner.

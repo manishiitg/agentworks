@@ -584,19 +584,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 }
 
 // chatMCPConnections are the chat's own connections, resolved exactly as the
-// query path adds them to the turn: a Code's personal servers switched on
-// for it, else the Crew's attached servers.
+// query path adds them to the turn: the Crew's or Code's attached servers.
 func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
-	root := agentProfileRuntimeWorkspace(userID, selectedFolder)
-	if strings.EqualFold(profileID, codeproduct.ProfileID) {
-		names, _ := personalMCPServersForTurn(userID, root)
-		return names
+	if !isProjectProfileID(profileID) {
+		return nil
 	}
-	if isProjectProfileID(profileID) {
-		names, _ := attachedMCPServersForRoot(ctx, root)
-		return names
-	}
-	return nil
+	names, _ := attachedMCPServersForRoot(ctx, agentProfileRuntimeWorkspace(userID, selectedFolder))
+	return names
 }
 
 func profileRuntimeEventType(event any) string {

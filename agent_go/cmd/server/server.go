@@ -2230,6 +2230,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	// Pulse Goal Work reaches other workflows and Crews through the external API.
 	pulsePlatformAPI = api
+	// An MCP connection's header secrets are its Crew's, Code's or workflow's
+	// own project secrets (Setup > Secrets).
+	projectSecretReader = api.projectSecretValue
+	// Connections switched on for a Code under the old "personal" model become
+	// that Code's own connections (idempotent; see personal_mcp_migrate.go).
+	go api.migrateCodePersonalMCP()
 	// Terminal Center's Formatted view and the runtime coordinator now consume
 	// the same accepted structured events. The terminal observer updates the
 	// durable pane snapshot first; retained-turn reconciliation then uses that
@@ -2424,21 +2430,15 @@ func runServer(cmd *cobra.Command, args []string) {
 		time.Sleep(3 * time.Minute)
 		api.sweepOrphanCodeSessionPins(context.Background())
 	}()
-	// A person's own MCP servers and secrets (docs/design/code_private_mcp.md).
-	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
+	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
 	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place/{name}", api.handleRemovePlaceMCP).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/me/secrets/{name}", api.handlePutPersonalSecret).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/presentations/{presentationID}", api.handleAgentProfilePresentationDelete).Methods("DELETE", "OPTIONS")
@@ -4579,11 +4579,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
 				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, manifestWorkspacePath, caps.SelectedSecrets)
-				// A Code chat also gets its person's own secrets (never anyone
-				// else's; the chat is pinned to that person before it runs).
-				if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
-					req.DecryptedSecrets = withPersonalSecrets(currentUserID, req.DecryptedSecrets)
-				}
 				// A bot session already carries its arrival connection, which
 				// wins over the manifest selection for that conversation.
 				if strings.TrimSpace(req.BotConnectionID) == "" {
@@ -5727,9 +5722,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// SelectedServers. Keep those categories for direct tool registration,
 		// but never attempt to connect to them as MCP servers.
 		selectedServers = runtimeMCPServers(selectedServers)
-		// A Code chat: pin its person before anything connects, then add that
-		// person's own servers switched on for this Code (never anyone
-		// else's), carried as complete configs (docs/design/code_private_mcp.md).
+		// A Code chat: pin its person before anything connects. The Code's own
+		// connections join below, exactly as a Crew's do.
 		if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 			codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
 			// A channel-route turn acts for arbitrary channel members: a
@@ -5746,33 +5740,23 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			personalNames, personalOverrides := personalMCPServersForTurn(currentUserID, codeRoot)
-			selectedServers = mergeServerLists(selectedServers, personalNames)
-			if len(personalOverrides) > 0 {
-				if agentConfig.RuntimeOverrides == nil {
-					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
-				}
-				for name, override := range personalOverrides {
-					agentConfig.RuntimeOverrides[name] = override
-				}
+		}
+		// A workflow's, Crew's or Code's own connections (docs/design/
+		// personal_mcp_attach.md) join its selected servers like any other:
+		// one mechanism for all three.
+		placeRoot := ""
+		if isWorkflowPhase {
+			placeRoot = workflowPhaseFolder
+		} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+			placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+		}
+		if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
+			selectedServers = mergeServerLists(selectedServers, placeNames)
+			if agentConfig.RuntimeOverrides == nil {
+				agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
 			}
-		} else {
-			// A workflow's or Crew's own connections (docs/design/
-			// personal_mcp_attach.md) join its selected servers like any other.
-			placeRoot := ""
-			if isWorkflowPhase {
-				placeRoot = workflowPhaseFolder
-			} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-				placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-			}
-			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
-				selectedServers = mergeServerLists(selectedServers, placeNames)
-				if agentConfig.RuntimeOverrides == nil {
-					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
-				}
-				for name, override := range placeOverrides {
-					agentConfig.RuntimeOverrides[name] = override
-				}
+			for name, override := range placeOverrides {
+				agentConfig.RuntimeOverrides[name] = override
 			}
 		}
 		// Apply the external Builder boundary last, including after a Code

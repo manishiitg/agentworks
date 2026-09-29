@@ -20,69 +20,12 @@ func personalRoute(api *StreamingAPI, handler func(*StreamingAPI, http.ResponseW
 	return rec
 }
 
-// A person manages only their own servers and secrets; switching one on
-// needs access to the Code; listed URLs drop their query string.
-func TestPersonalMCPRoutesActOnTheCallerOnly(t *testing.T) {
-	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
-	project := "c0de0001-0000"
-
-	sealed, err := encryptSecretValueWithAAD("sk-owner", []byte("owner"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handlePutPersonalSecret, http.MethodPut, "/x", `{"encrypted_value":"`+sealed+`"}`, "owner", map[string]string{"name": "SVC_KEY"}); rec.Code != http.StatusOK {
-		t.Fatalf("set secret = %d %s", rec.Code, rec.Body.String())
-	}
-	// A value sealed for someone else does not decrypt for this caller.
-	if rec := personalRoute(api, (*StreamingAPI).handlePutPersonalSecret, http.MethodPut, "/x", `{"encrypted_value":"`+sealed+`"}`, "other", map[string]string{"name": "SVC_KEY"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("other stored owner's sealed value: %d", rec.Code)
-	}
-	add := `{"name":"svc","url":"https://mcp.example.com/mcp?token=abc","headers":{"Authorization":{"secret":"SVC_KEY","format":"Bearer {}"}}}`
-	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", add, "owner", nil); rec.Code != http.StatusOK {
-		t.Fatalf("add = %d %s", rec.Code, rec.Body.String())
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"name":"bad","url":"https://10.0.0.5/mcp"}`, "owner", nil); rec.Code != http.StatusBadRequest {
-		t.Fatalf("private address accepted: %d", rec.Code)
-	}
-
-	switchOn := `{"enabled":true}`
-	if rec := personalRoute(api, (*StreamingAPI).handleSwitchPersonalMCP, http.MethodPut, "/x", switchOn, "owner", map[string]string{"name": "svc", "project_id": project}); rec.Code != http.StatusOK {
-		t.Fatalf("switch on = %d %s", rec.Code, rec.Body.String())
-	}
-	// "other" has no access to the owner's Code, and no server named svc.
-	if rec := personalRoute(api, (*StreamingAPI).handleSwitchPersonalMCP, http.MethodPut, "/x", switchOn, "other", map[string]string{"name": "svc", "project_id": project}); rec.Code != http.StatusNotFound {
-		t.Fatalf("other switched a server on in owner's Code: %d", rec.Code)
-	}
-
-	rec := personalRoute(api, (*StreamingAPI).handleListPersonalMCP, http.MethodGet, "/x?code="+project, "", "owner", nil)
-	var listed struct {
-		Servers []personalMCPServerView `json:"servers"`
-		Secrets []string                `json:"secrets"`
-	}
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 {
-		t.Fatalf("list = %d %s", rec.Code, rec.Body.String())
-	}
-	got := listed.Servers[0]
-	if !got.Enabled || strings.Contains(got.URL, "token") || strings.Contains(rec.Body.String(), "sk-owner") || len(listed.Secrets) != 1 {
-		t.Fatalf("listed = %+v %s", got, rec.Body.String())
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handleListPersonalMCP, http.MethodGet, "/x", "", "other", nil); !strings.Contains(rec.Body.String(), `"servers":[]`) {
-		t.Fatalf("other sees servers: %s", rec.Body.String())
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handleRemovePersonalMCP, http.MethodDelete, "/x", "", "other", map[string]string{"name": "svc"}); rec.Code != http.StatusNotFound {
-		t.Fatalf("other removed owner's server: %d", rec.Code)
-	}
-	if rec := personalRoute(api, (*StreamingAPI).handleRemovePersonalMCP, http.MethodDelete, "/x", "", "owner", map[string]string{"name": "svc"}); rec.Code != http.StatusOK {
-		t.Fatalf("remove = %d", rec.Code)
-	}
-}
-
-// A catalog server without dynamic registration (Google, GitHub) is added as
-// the person's own; the client they enter is kept sealed and used for the
-// sign-in and every later refresh, and Google's offline-access parameters
-// reach the authorization URL.
-func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
+// A catalog server without dynamic registration (Google, GitHub) is added to
+// a Code as its owner's own connection; the client they enter is kept sealed
+// and used for the sign-in and every later refresh, and Google's
+// offline-access parameters reach the authorization URL. Someone else cannot
+// add to, or resolve, that Code's connection.
+func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	withPersonalMCPRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
@@ -95,6 +38,9 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	}
 	api.mcpConfigPath = catalogPath
 	api.logger = loggerv2.NewNoop()
+	const logical = "Chats/Code/projects/app-c0de0001"
+	root := codePrivacyOwnerRoot
+	store := placeMCPStoreID("owner", root)
 
 	rec := personalRoute(api, (*StreamingAPI).handlePersonalMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
 	var listed struct {
@@ -103,22 +49,34 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 || listed.Servers[0].Name != "googlegmail" || !listed.Servers[0].NeedsClient {
 		t.Fatalf("catalog = %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"Keyed"}`, "owner", nil); rec.Code != http.StatusBadRequest {
+	add := func(user, body string) *httptest.ResponseRecorder {
+		return personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", body, user, nil)
+	}
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"Keyed"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("header-credential catalog server added: %d", rec.Code)
 	}
-	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil); rec.Code != http.StatusOK {
+	// Only the Code's owner connects to it (a logical path is always the
+	// caller's own tree, so the owner's Code is named by its physical path).
+	if rec := add("other", `{"workspace_path":"`+root+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("another person added to the owner's Code: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("add from catalog = %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := personalRoute(api, (*StreamingAPI).handleListPersonalMCP, http.MethodGet, "/x", "", "owner", nil); !strings.Contains(rec.Body.String(), `"catalog":"GoogleGmail"`) {
-		t.Fatalf("list lacks the catalog origin: %s", rec.Body.String())
+	if servers, _ := listPersonalMCPServers(store); len(servers) != 1 || servers[0].Catalog != "GoogleGmail" {
+		t.Fatalf("stored servers = %+v", servers)
+	}
+	if attached, _ := personalMCPAttachmentsFor(root); len(attached) != 1 || attached[0].Owner != "owner" || attached[0].Server != "gmail" {
+		t.Fatalf("attachments = %+v", attached)
 	}
 
-	vars := map[string]string{"name": "gmail"}
-	rec = personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", vars)
-	if !strings.Contains(rec.Body.String(), "needs_client_id") || !strings.Contains(rec.Body.String(), "/api/oauth/callback") {
+	connect := func(body string) *httptest.ResponseRecorder {
+		return personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path="+logical, body, "owner", map[string]string{"name": "gmail"})
+	}
+	if rec := connect(`{}`); !strings.Contains(rec.Body.String(), "needs_client_id") || !strings.Contains(rec.Body.String(), "/api/oauth/callback") {
 		t.Fatalf("connect without a client = %s", rec.Body.String())
 	}
-	rec = personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{"client_id":"cid.apps.googleusercontent.com","client_secret":"shh-owner"}`, "owner", vars)
+	rec = connect(`{"client_id":"cid.apps.googleusercontent.com","client_secret":"shh-owner"}`)
 	var started struct {
 		AuthURL string `json:"auth_url"`
 	}
@@ -127,57 +85,31 @@ func TestPersonalMCPFromCatalogWithOwnClient(t *testing.T) {
 	}
 
 	// The entered client is kept only once the sign-in succeeds.
-	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+	if _, cfg, err := personalMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
 		t.Fatalf("client kept before sign-in: %+v, %v", cfg.OAuth, err)
 	}
-	if err := writePersonalMCPClient("owner", "gmail", registeredClient{ClientID: "cid.apps.googleusercontent.com", ClientSecret: "shh-owner"}); err != nil {
+	if err := writePersonalMCPClient(store, "gmail", registeredClient{ClientID: "cid.apps.googleusercontent.com", ClientSecret: "shh-owner"}); err != nil {
 		t.Fatal(err)
 	}
-	_, cfg, err := personalMCPServerConfig("owner", "gmail")
+	_, cfg, err := personalMCPServerConfig(store, "gmail")
 	if err != nil || cfg.OAuth == nil || cfg.OAuth.ClientID != "cid.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "shh-owner" || cfg.OAuth.ExtraAuthParams["access_type"] != "offline" {
 		t.Fatalf("runtime config = %+v, %v", cfg.OAuth, err)
 	}
-	dir, _ := personalMCPDir("owner")
+	dir, _ := personalMCPDir(store)
 	stored, _ := os.ReadFile(filepath.Join(dir, "servers.json"))
-	clientFile, _ := os.ReadFile(personalMCPClientFile(dir, "owner", "gmail"))
+	clientFile, _ := os.ReadFile(personalMCPClientFile(dir, store, "gmail"))
 	if strings.Contains(string(stored), "shh-owner") || strings.Contains(string(clientFile), "shh-owner") {
 		t.Fatalf("client secret stored in the clear")
 	}
-	if _, other, err := personalMCPServerConfig("other", "gmail"); err == nil {
-		t.Fatalf("other resolved owner's server: %+v", other)
+	if _, other, err := personalMCPServerConfig(placeMCPStoreID("other", root), "gmail"); err == nil {
+		t.Fatalf("another store resolved the Code's connection: %+v", other)
 	}
 	// Adding the name again starts clean: the old client never reaches
 	// whatever the name points at now.
-	if rec := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil); rec.Code != http.StatusOK {
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("re-add = %d %s", rec.Code, rec.Body.String())
 	}
-	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+	if _, cfg, err := personalMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
 		t.Fatalf("old client survived a re-add: %+v, %v", cfg.OAuth, err)
-	}
-}
-
-// A Code chat gets its person's own secrets, and a personal secret wins over a
-// Code secret of the same name; another person's secrets never appear.
-func TestWithPersonalSecretsAddsOnlyThePersonsOwn(t *testing.T) {
-	withPersonalMCPRoot(t)
-	if err := setPersonalSecret("owner", "API_KEY", "mine"); err != nil {
-		t.Fatal(err)
-	}
-	if err := setPersonalSecret("owner", "EXTRA", "extra"); err != nil {
-		t.Fatal(err)
-	}
-	if err := setPersonalSecret("other", "OTHER_KEY", "theirs"); err != nil {
-		t.Fatal(err)
-	}
-	code := []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{{Name: "API_KEY", Value: "code"}, {Name: "CODE_ONLY", Value: "c"}}
-	got := map[string]string{}
-	for _, secret := range withPersonalSecrets("owner", code) {
-		got[secret.Name] = secret.Value
-	}
-	if got["API_KEY"] != "mine" || got["EXTRA"] != "extra" || got["CODE_ONLY"] != "c" || got["OTHER_KEY"] != "" || len(got) != 3 {
-		t.Fatalf("secrets = %v", got)
 	}
 }
