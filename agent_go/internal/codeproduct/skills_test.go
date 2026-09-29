@@ -41,6 +41,10 @@ func TestCodeFeatureSkillsAreRenderedForCode(t *testing.T) {
 			}
 		}
 	}
+	mcp := skills.LoadAttachable("", []string{"code-mcp"})[0].Content
+	if !strings.Contains(mcp, "manage_my_mcp_servers") || strings.Contains(mcp, "install_mcp_server") || strings.Contains(mcp, "platform administrator") {
+		t.Fatalf("Code's MCP skill is not the connections one: %s", mcp)
+	}
 	bots := skills.LoadAttachable("", []string{"code-schedules-and-bots"})[0].Content
 	if !strings.Contains(bots, "profile_id=code") || strings.Contains(bots, "profile_id=work") {
 		t.Fatal("Code's bots skill does not name profile_id=code")

@@ -404,8 +404,9 @@ func (api *StreamingAPI) handleAdminCodeAudit(w http.ResponseWriter, r *http.Req
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"month": month.Format("2006-01"), "entries": entries})
 }
 
-// codeAdminPersonalServer is one person's server switched on in a Code, as
-// inspection shows it: never a token, a secret or a URL query string.
+// codeAdminPersonalServer is one of a Code's MCP connections and the person
+// who added it, as inspection shows it: never a token, a secret or a URL
+// query string.
 type codeAdminPersonalServer struct {
 	UserID    string `json:"user_id"`
 	Username  string `json:"username,omitempty"`
@@ -416,8 +417,8 @@ type codeAdminPersonalServer struct {
 	Connected bool   `json:"connected"`
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/mcp — every person's
-// own MCP servers switched on in this Code (docs/design/code_private_mcp.md).
+// GET /api/admin/code/workspaces/{owner}/{project_id}/mcp — this Code's MCP
+// connections (docs/design/personal_mcp_attach.md).
 func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -431,30 +432,25 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 		writeAgentProfileError(w, http.StatusServiceUnavailable, "the admin audit log is unavailable")
 		return
 	}
-	root = cleanCodeRoot(root)
 	rows := []codeAdminPersonalServer{}
-	for _, person := range codeChatParticipants(r.Context(), ownerID, projectID) {
-		enabled, err := personalMCPEnabled(person, root)
-		if err != nil || len(enabled) == 0 {
-			continue
-		}
-		servers, err := listPersonalMCPServers(person)
+	place := cleanAttachRoot(root)
+	attachments, _ := personalMCPAttachmentsFor(place)
+	for _, a := range attachments {
+		store := placeMCPStoreID(a.Owner, place)
+		servers, err := listPersonalMCPServers(store)
 		if err != nil {
 			continue
 		}
-		dir, _ := personalMCPDir(person)
-		on := map[string]bool{}
-		for _, name := range enabled {
-			on[name] = true
-		}
+		dir, _ := personalMCPDir(store)
 		for _, server := range servers {
-			if !on[server.Name] {
+			if server.Name != a.Server {
 				continue
 			}
-			row := codeAdminPersonalServer{UserID: person, Username: crewOwnerDisplayName(sanitizeUserIDForPath(person)), Name: server.Name,
-				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Connected: server.OAuth == nil}
-			row.Connected = personalMCPServerConnected(dir, person, server)
-			rows = append(rows, row)
+			rows = append(rows, codeAdminPersonalServer{
+				UserID: a.Owner, Username: crewOwnerDisplayName(sanitizeUserIDForPath(a.Owner)), Name: server.Name,
+				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil,
+				Connected: personalMCPServerConnected(dir, store, server),
+			})
 		}
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})

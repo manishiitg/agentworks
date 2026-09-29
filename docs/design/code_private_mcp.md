@@ -1,5 +1,12 @@
 # MCP servers in Code: global and personal
 
+> **Superseded (2026-09-29).** A Code is now a place like a Crew: its MCP
+> connections are place connections, added with the owner's login and used by
+> every chat in it, and its secrets are project secrets. See
+> [personal_mcp_attach.md](personal_mcp_attach.md#code). The per-person model
+> below (per-person servers, per-Code switches, personal secrets) is kept for
+> history; its data is migrated on server start.
+
 Status: built (2026-09-28), implementation reviewed by ai-work-7e; design reviewed twice. Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
 [code_product.md](code_product.md).
 

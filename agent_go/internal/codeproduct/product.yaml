@@ -20,10 +20,10 @@ profile:
     - files
     - browser
     - secrets
-    # Each person's own servers in their own chats
-    # (docs/design/code_private_mcp.md). scope personal: the agent gets only
-    # manage_my_mcp_servers, never the tools that create connections shared
-    # with everyone.
+    # This Code's own connections, added with its owner's login
+    # (docs/design/personal_mcp_attach.md): a Code is a place like a Crew.
+    # scope personal: the agent gets only manage_my_mcp_servers, never the tools
+    # that create connections shared with everyone.
     - id: mcp
       options: {scope: personal}
     - skills

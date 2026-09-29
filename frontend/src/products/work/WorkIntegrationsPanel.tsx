@@ -8,7 +8,6 @@ import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
-import { PersonalMcpSection } from './PersonalMcpSection'
 import { PlaceMcpSection } from './PlaceMcpSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -41,8 +40,9 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 }
 
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
-// the person's own connections only (PersonalMcpSection); the always-on MCP
-// "Connect" tab is hidden, and Google is reached through MCP servers only.
+// the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
+// the always-on MCP "Connect" tab is hidden, and Google is reached through MCP
+// servers only.
 const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'gmail'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
@@ -120,7 +120,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
     <div className="flex flex-col gap-3">
       {/* A Crew's own connections with someone's login. A shared Crew
           arrives under its owner's _users/ path: viewers see, never add. */}
-      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} />
+      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
       {needsConnecting.length > 0 && (
         <div data-testid="work-mcp-needs-connecting" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
           <div className="flex items-center gap-2 font-medium">
@@ -295,7 +295,11 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'apps' && product.profileId === 'code' && <PersonalMcpSection projectId={projectId} onAsk={onAsk} />}
+        {activeTab === 'apps' && product.profileId === 'code' && (
+          // A Code is a place like a Crew: its connections are its own, added
+          // by its owner (a shared Code arrives under the owner's _users/ path).
+          <PlaceMcpSection workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
+        )}
         {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody
           tabId={tabId}
           projectId={projectId}

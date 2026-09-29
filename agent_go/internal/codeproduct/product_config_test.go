@@ -101,13 +101,18 @@ func TestCodeMCPIsPersonalOnly(t *testing.T) {
 			t.Fatalf("Code can use the shared-connection tool %s", tool)
 		}
 	}
+	hasSkill := false
 	for _, skill := range profile.Skills {
-		if strings.HasSuffix(skill, "-mcp") {
-			t.Fatalf("Code attaches the shared MCP skill %s", skill)
+		hasSkill = hasSkill || skill == "code-mcp"
+		if skill == "work-mcp" {
+			t.Fatalf("Code attaches Crew's MCP skill %s", skill)
 		}
 	}
+	if !hasSkill {
+		t.Fatalf("Code has no MCP skill: %v", profile.Skills)
+	}
 	guidance := strings.Join(agentprofiles.FeaturePromptExtensions(profile), "\n")
-	if !strings.Contains(guidance, "manage_my_mcp_servers") || strings.Contains(guidance, "code-mcp") || strings.Contains(guidance, "platform connection setup") {
+	if !strings.Contains(guidance, "manage_my_mcp_servers") || !strings.Contains(guidance, "`code-mcp`") || strings.Contains(guidance, "platform connection setup") {
 		t.Fatalf("Code's MCP guidance is not the personal one: %s", guidance)
 	}
 }

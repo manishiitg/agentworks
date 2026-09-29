@@ -268,7 +268,7 @@ func ResolveFeatures(profile *Profile) error {
 		}
 		resolved = append(resolved, ResolvedFeature{
 			ID: id, Dependencies: cloneStrings(definition.Dependencies), Tools: tools,
-			Skills:          featureSkillNames(profile.ID, featureSkills(id, definition.Skills, binding.Options)),
+			Skills:          featureSkillNames(profile.ID, definition.Skills),
 			PromptExtension: RenderFeatureText(profile.ID, profile.Name, featurePromptExtension(id, definition.PromptExtension, binding.Options)),
 			UIPanels:        cloneStrings(definition.UIPanels), Capabilities: cloneCapabilities(definition.Capabilities),
 			Options: cloneStringMap(binding.Options),
@@ -314,16 +314,6 @@ func FeatureSkillName(profileID, name string) string {
 		return name
 	}
 	return profileID + "-" + strings.TrimPrefix(name, "work-")
-}
-
-// featureSkills drops the skill an option makes wrong: the shared MCP skill
-// describes platform-wide connections, which a personal-scope MCP feature
-// does not have.
-func featureSkills(id string, names []string, options map[string]string) []string {
-	if id == "mcp" && strings.TrimSpace(options["scope"]) == "personal" {
-		return nil
-	}
-	return names
 }
 
 func featureSkillNames(profileID string, names []string) []string {
@@ -442,7 +432,7 @@ func featurePromptExtension(id, extension string, options map[string]string) str
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "code_peers":
 		return "This private Code can call accessible Crews and workflows, and other Codes owned by the same account, with list_functions and call_function. It may define functions for its own Code and answer calls from same-owner Codes with report_function_progress and return_function_result. Poll with get_function_call; answer pending_inputs using reply_function_call. Codes never appear in the public Crew/MCP catalog, and Crews, workflows, external connections and other owners cannot call a Code."
 	case id == "mcp" && strings.TrimSpace(options["scope"]) == "personal":
-		return "MCP connections here are personal: each person connects their own servers with their own sign-in, used only in their own chats. Use manage_my_mcp_servers to list the catalog and their servers, and to connect one; never install, add or authenticate a connection shared with other people."
+		return "MCP connections here belong to this {{product}}: they are added with its owner's own sign-in and used by every chat in it. Read the attached `work-mcp` skill before connecting or using one. Use manage_my_mcp_servers to list the catalog and this {{product}}'s connections, and to connect or remove one (only the owner connects); never install, add or authenticate a platform-wide connection."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
 		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update and answer its pending_inputs with reply_function_call. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":

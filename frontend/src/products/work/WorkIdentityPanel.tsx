@@ -21,7 +21,6 @@ import { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
-import { personalSecretStore } from './personalSecretStore'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import type { CrewTemplateId } from './crewTemplates'
@@ -402,16 +401,7 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'secrets' && product.profileId === 'code' && <SecretSelectionSection
-          selectedSecrets={[]}
-          onSecretChange={() => {}}
-          store={personalSecretStore}
-          workspaceNoun="personal"
-          workspaceSecretHeading="Your secrets"
-          showGlobalSecrets={false}
-          allowGlobalPromotion={false}
-        />}
-        {activeTab === 'secrets' && product.profileId !== 'code' && <SecretSelectionSection
+        {activeTab === 'secrets' && <SecretSelectionSection
           selectedSecrets={selectedSecrets}
           onSecretChange={secrets => { void onSelectedSecretsChange(secrets) }}
           selectedGlobalSecrets={selectedGlobalSecrets}

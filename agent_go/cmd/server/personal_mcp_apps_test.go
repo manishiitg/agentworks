@@ -81,11 +81,13 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	}
 
 	// Before the app exists, Connect still asks for a client.
-	before := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
+	ownerStore := placeMCPStoreID("owner", codePrivacyOwnerRoot)
+	otherStore := placeMCPStoreID("other", "_users/other/Chats/Code/projects/theirs")
+	before := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/app-c0de0001","catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
 	if before.Code != http.StatusOK {
 		t.Fatalf("add = %d %s", before.Code, before.Body.String())
 	}
-	if rec := personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", map[string]string{"name": "gmail"}); !strings.Contains(rec.Body.String(), "needs_client_id") {
+	if rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"}); !strings.Contains(rec.Body.String(), "needs_client_id") {
 		t.Fatalf("connect without an app = %s", rec.Body.String())
 	}
 
@@ -108,15 +110,15 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 
 	// The server added before the app existed now connects with no client
 	// entered: it reads the app live.
-	rec := personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", map[string]string{"name": "gmail"})
+	rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"})
 	if !strings.Contains(rec.Body.String(), "client_id=965.apps.googleusercontent.com") || !strings.Contains(rec.Body.String(), "access_type=offline") {
 		t.Fatalf("connect with the app = %s", rec.Body.String())
 	}
 	// A new server records the app, and another person's Connect works too.
-	if r := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
+	if r := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/theirs","catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
 		t.Fatalf("other add = %d %s", r.Code, r.Body.String())
 	}
-	if _, cfg, err := personalMCPServerConfig("other", "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
+	if _, cfg, err := personalMCPServerConfig(otherStore, "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
 		t.Fatalf("other's config = %+v %v", cfg.OAuth, err)
 	}
 
@@ -124,14 +126,14 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := put("google", `{"client_id":"new.apps.googleusercontent.com","client_secret":"GOCSPX-rotated"}`); code != http.StatusOK {
 		t.Fatalf("rotate = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig("other", "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
+	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
 		t.Fatalf("rotation did not reach the person: %+v", cfg.OAuth)
 	}
 	// A client the person entered for their own app wins.
-	if err := writePersonalMCPClient("owner", "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
+	if err := writePersonalMCPClient(ownerStore, "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, cfg, _ := personalMCPServerConfig("owner", "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
+	if _, cfg, _ := personalMCPServerConfig(ownerStore, "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
 		t.Fatalf("own client lost to the deployment app: %+v", cfg.OAuth)
 	}
 
@@ -139,7 +141,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "google"}).Code; code != http.StatusOK {
 		t.Fatalf("delete = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig("other", "drive"); cfg.OAuth.ClientID != "" {
+	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "" {
 		t.Fatalf("removed app still resolves: %+v", cfg.OAuth)
 	}
 }
