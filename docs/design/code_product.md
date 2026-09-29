@@ -305,9 +305,13 @@ Code ships a basic setup first; integrations come later. In Code's
 - **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
 - **MCP in Code: global + personal** (user, 2026-09-28). Everyone who chats in
   a Code uses MCP with their own servers and personal secrets; the global
-  platform servers and global secrets work too. Design, for review:
-  [code_private_mcp.md](code_private_mcp.md). Until it is built, Code has no
-  MCP servers.
+  platform servers and global secrets work too:
+  [code_private_mcp.md](code_private_mcp.md) (built). Since b55299660 the Code
+  agent manages only the person's own servers (`manage_my_mcp_servers`), and
+  deployment sign-in apps (Google, GitHub, ...) make Connect a one-click
+  sign-in. A Code's servers never appear in Crews or workflows. Those have
+  their own connections with the adder's login
+  ([personal_mcp_attach.md](personal_mcp_attach.md), 2026-09-29).
 - **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
   standalone shell panel (user, 2026-09-28; it was built and then removed):
   commands run through the agent's sandboxed shell tool, under the Code's

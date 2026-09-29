@@ -59,7 +59,10 @@ send them its value, turning "usable, never seen" into readable.
 
 1. **Personal servers are per person, reusable across their Codes.** Connect
    once; switch each on per Code. Never usable in anyone else's chat, and
-   never in Crews or workflows (Code only, for now).
+   never in Crews or workflows. (Crews and workflows have their own,
+   separate connections with the adder's login, shared by everyone who uses
+   them: [personal_mcp_attach.md](personal_mcp_attach.md). A Code's servers
+   never show there.)
 2. **Remote only, public URLs only** for personal servers. No stdio. Refuse
    loopback, private, link-local and cloud-metadata addresses, checked on every
    connect after DNS resolution and on every redirect, including OAuth
@@ -402,5 +405,7 @@ the deployment**, and everyone else just clicks Connect.
    for MCP credential headers for now?
 2. **Project (shared) secrets in Code:** keep them (shared by everyone with
    access to the Code, as today), or replace them with personal + global only?
-3. **Personal servers outside Code:** Code only for now (recommended), or
-   also in the person's own Crews later?
+3. **Personal servers outside Code:** decided 2026-09-29. A Code's personal
+   servers stay in Code only. Crews and workflows got their own connections
+   instead, with the adder's login and shared by everyone who uses them
+   ([personal_mcp_attach.md](personal_mcp_attach.md)).

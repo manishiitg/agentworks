@@ -25,6 +25,15 @@ connection setup from selection for this project.
   original MCP scope. Do not tell the user to open Setup when this tool can do
   the selection. Use `action: deselect` when the user asks to remove project
   access. The same selection remains editable in **Setup > MCP servers**.
+- **Connections with a person's login.** A project can also have its own
+  connections added with someone's own login (their Gmail, Drive, GitHub, ...).
+  Everyone using the project uses them as that person, and they belong to this
+  project only. They are not platform connections, so no admin is needed: anyone
+  who can edit the project adds one under **MCP > Connected with a person's
+  login > Add with your login** and signs in there. You cannot add or sign in to
+  one for them. Point them to that button when they want their own account and
+  no platform connection fits. They appear as servers named `u<id>__<name>` and
+  are already on for this project: never select or deselect them.
 - Never claim server tools are available until the server is connected and
   selected. After selecting, clearly state the next-message boundary.
 - Use `get_mcp_server_logs` to diagnose a configured server and
