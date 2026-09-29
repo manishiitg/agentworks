@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
-import { GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
+import { DEVELOPER_FIRST_GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
+import { ConnectorGroupSection } from '../../components/connectors/ConnectorGroupSection'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -240,15 +241,10 @@ export function PersonalMcpSection({ projectId }: { projectId: string }) {
         {!loading && others.length > 0 && (
           <section>
             <h4 className="mb-3 border-b border-gray-200 pb-2 text-sm font-semibold text-gray-900 dark:border-gray-800 dark:text-gray-100">Others</h4>
-            {GROUP_ORDER.map(({ id, label }) => {
+            {DEVELOPER_FIRST_GROUP_ORDER.map(({ id, label }) => {
               const entries = others.filter(card => groupFor(card.title) === id)
               if (entries.length === 0) return null
-              return (
-                <div key={id} className="mb-5 last:mb-0">
-                  <p className="mb-2 text-xs font-semibold text-muted-foreground">{label}</p>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{entries.map(renderCard)}</div>
-                </div>
-              )
+              return <ConnectorGroupSection key={id} label={label} entries={entries} render={renderCard} expandAll={!!query.trim()} />
             })}
           </section>
         )}

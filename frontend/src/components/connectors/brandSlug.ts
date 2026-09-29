@@ -11,12 +11,6 @@ const SLUG_ALIASES: Record<string, string> = {
   awsknowledge: 'amazonaws',
   microsoftlearn: 'microsoft',
   googlegmail: 'gmail',
-  googledrive: 'googledrive',
-  googledocs: 'googledocs',
-  googlesheets: 'googlesheets',
-  googleslides: 'googleslides',
-  googlecalendar: 'googlecalendar',
-  googlechat: 'googlechat',
   googlepeople: 'google',
   prismapostgres: 'prisma',
 }

@@ -260,6 +260,16 @@ export const GROUP_ORDER: { id: ConnectorGroup; label: string }[] = [
   { id: 'developer', label: 'Developer tools' },
 ]
 
+/**
+ * GROUP_ORDER for a coding workspace (Code): developer, data, release and
+ * productivity shelves first, then the business ones.
+ */
+export const DEVELOPER_FIRST_GROUP_ORDER: { id: ConnectorGroup; label: string }[] = [
+  ...(['developer', 'data', 'releases', 'productivity', 'search', 'advanced', 'automation'] as ConnectorGroup[])
+    .map(id => GROUP_ORDER.find(group => group.id === id)!),
+  ...GROUP_ORDER.filter(group => !['developer', 'data', 'releases', 'productivity', 'search', 'advanced', 'automation'].includes(group.id)),
+]
+
 /** The shelf a connector belongs to. */
 export function groupFor(serverName: string): ConnectorGroup {
   return CONNECTOR_GROUPS[serverName] ?? 'developer'
