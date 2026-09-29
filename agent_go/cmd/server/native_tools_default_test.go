@@ -69,8 +69,6 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 		{"webhook turn", "alice", "hook-1", workflowTurn(QueryRequest{TriggeredBy: "webhook"}), "hybrid"},
 		{"Pulse turn", "alice", "pulse-1", workflowTurn(QueryRequest{PulseLifecycleTurn: true}), "hybrid"},
 		{"Slack turn", "alice", "bot-slack--1", workflowTurn(QueryRequest{BotPlatform: "slack"}), "hybrid"},
-		{"plain chat", "bob", "plain-1", QueryRequest{Query: "hi", AgentMode: "multi-agent"}, "hybrid"},
-		{"plain scheduled chat", "bob", "schedule-plain-1", QueryRequest{Query: "hi", AgentMode: "multi-agent", TriggeredBy: "cron"}, "hybrid"},
 		{"read-only viewer", "carol", "viewer-1", workflowTurn(QueryRequest{}), "mcp_only"},
 		{"workflow step (child session of a run)", "alice", "step-1", workflowTurn(QueryRequest{ParentSessionID: "run-1"}), "mcp_only"},
 		{"Pulse reviewer child", "alice", "pulse-child-1", workflowTurn(QueryRequest{ParentSessionID: "run-1", SessionKind: "pulse_reviewer"}), "hybrid"},
@@ -91,11 +89,7 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 	}
 
 	// Step agents are built by the orchestrator and never take this path; the
-	// headless workflow executor ("workflow" mode) and read-only principals
-	// stay off in both policy functions.
-	if plainChatNativeAgentTools(QueryRequest{AgentMode: "workflow"}, false) || plainChatNativeAgentTools(QueryRequest{AgentMode: "multi-agent"}, true) {
-		t.Error("headless workflow executor or read-only plain chat got native tools")
-	}
+	// headless workflow executor ("workflow" mode) stays off.
 	if env.api.workflowChatNativeAgentTools(context.Background(), QueryRequest{AgentMode: "workflow", SelectedFolder: "Workflow/w"}, "s", false) {
 		t.Error("headless workflow executor got native tools")
 	}

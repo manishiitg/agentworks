@@ -43,3 +43,32 @@ func TestCodingProviderReloadsInstructionsOnResume(t *testing.T) {
 		t.Fatal("muse-cli cannot take new instructions into a resumed session")
 	}
 }
+
+// There is no general-purpose chat: an interactive multi-agent request with no
+// workflow, Crew or Code is refused, while bots, schedules, triggers, child
+// sessions and profiled chats are not.
+func TestRetiredGeneralChatIsRefusedOnlyForInteractiveProfilelessChat(t *testing.T) {
+	profile := &resolvedAgentProfile{}
+	cases := []struct {
+		name    string
+		req     QueryRequest
+		profile *resolvedAgentProfile
+		session string
+		want    bool
+	}{
+		{"plain chat", QueryRequest{AgentMode: "multi-agent"}, nil, "chat-1", true},
+		{"crew or code chat", QueryRequest{AgentMode: "multi-agent"}, profile, "chat-1", false},
+		{"workflow builder", QueryRequest{AgentMode: "workflow_phase"}, nil, "chat-1", false},
+		{"bot", QueryRequest{AgentMode: "multi-agent", BotPlatform: "slack"}, nil, "chat-1", false},
+		{"cron", QueryRequest{AgentMode: "multi-agent", TriggeredBy: "cron"}, nil, "chat-1", false},
+		{"schedule session", QueryRequest{AgentMode: "multi-agent"}, nil, "schedule-x", false},
+		{"child session", QueryRequest{AgentMode: "multi-agent", ParentSessionID: "p"}, nil, "chat-1", false},
+		{"auto notification", QueryRequest{AgentMode: "multi-agent", IsAutoNotification: true}, nil, "chat-1", false},
+	}
+	for _, c := range cases {
+		req := c.req
+		if got := isRetiredGeneralChat(&req, c.profile, c.session); got != c.want {
+			t.Errorf("%s: refused=%v, want %v", c.name, got, c.want)
+		}
+	}
+}

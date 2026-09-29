@@ -1316,38 +1316,6 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 	}
 }
 
-func (api *StreamingAPI) applySavedMultiAgentChatConfig(ctx context.Context, req *QueryRequest, userID string) {
-	if req == nil || !isToolBackedChatMode(req.AgentMode) || strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "cron") {
-		return
-	}
-	if userID == "" {
-		userID = "default"
-	}
-	cfg, found, err := ReadMultiAgentChatConfig(ctx, userID)
-	if err != nil {
-		log.Printf("[MULTIAGENT_CONFIG] Failed to load saved chat capabilities for user %s: %v", userID, err)
-		return
-	}
-	if !found || cfg == nil {
-		return
-	}
-
-	applyMultiAgentCapabilitiesToRequest(req, cfg.Capabilities)
-	if len(cfg.Capabilities.SelectedSecrets) > 0 {
-		req.DecryptedSecrets = api.loadSelectedSecrets(ctx, userID, "", cfg.Capabilities.SelectedSecrets)
-	}
-	log.Printf("[MULTIAGENT_CONFIG] Applied saved chat capabilities for user %s: servers=%d tools=%d skills=%d secrets=%d browser_mode=%q code_execution=%v llm=%t",
-		userID,
-		len(req.EnabledServers),
-		len(req.SelectedTools),
-		len(req.SelectedSkills),
-		len(req.DecryptedSecrets),
-		req.BrowserMode,
-		req.UseCodeExecutionMode,
-		req.LLMConfig != nil,
-	)
-}
-
 func queryLLMConfigFromPreset(preset *workflowtypes.PresetLLMConfig) *orchestrator.LLMConfig {
 	if preset == nil {
 		return nil
@@ -3928,10 +3896,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A workflow's Builder/Run chat takes the workflow's "Native agent tools"
 	// switch (a Crew's comes through its resolved profile).
 	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
-	// A plain chat (no workflow, no product) runs with native tools too.
-	if !workflowNativeAgentTools && resolvedProfile == nil && plainChatNativeAgentTools(req, currentUserIsReadOnly) {
-		workflowNativeAgentTools = true
-	}
 	if workflowNativeAgentTools {
 		agentToolsMode = "hybrid"
 	}
@@ -4156,33 +4120,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// AgentWorks has one interactive root-chat lane per user. Product-profile,
-	// bot, and scheduled sessions use separate lanes, but a second ordinary root
-	// chat must not race through from another browser/tab.
-	claimedAgentWorksChat := false
-	if req.AgentMode == "multi-agent" &&
-		resolvedProfile == nil &&
-		!req.IsAutoNotification &&
-		!isScheduledSessionIdentity(sessionID, req.TriggeredBy) &&
-		strings.TrimSpace(req.BotPlatform) == "" {
-		if blocking := api.claimAgentWorksChatSession(sessionID, currentUserID, req.Query, req.TriggeredBy); blocking != nil {
-			logfWithContext(queryLogCtx, "[AGENTWORKS_CHAT_BUSY] Rejected second interactive chat: running session %s", blocking.SessionID)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":   "agentworks_chat_busy",
-				"message": "An AgentWorks chat is already active. Stop it or use New Chat before starting another.",
-				"running": map[string]interface{}{
-					"session_id":    blocking.SessionID,
-					"status":        blocking.Status,
-					"last_activity": blocking.LastActivity,
-				},
-			})
-			return
-		}
-		claimedAgentWorksChat = true
-	}
-
 	// Chat sessions are in-memory only — tracked via activeSessions map
 	// below. No persistent session metadata.
 
@@ -4199,9 +4136,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track active session for page refresh recovery (no observer needed)
-	if !claimedAgentWorksChat {
-		api.trackActiveSession(sessionID, req.AgentMode, req.Query, currentUserID, req.BotPlatform, req.TriggeredBy, req.SessionTitle, req.ParentSessionID, req.SessionKind)
-	}
+	api.trackActiveSession(sessionID, req.AgentMode, req.Query, currentUserID, req.BotPlatform, req.TriggeredBy, req.SessionTitle, req.ParentSessionID, req.SessionKind)
 	api.activeSessionsMux.Lock()
 	if sess, ok := api.activeSessions[sessionID]; ok {
 		sess.Username = queryLogCtx.Username
@@ -8265,61 +8200,6 @@ func isScheduledSessionIdentity(sessionID, triggeredBy string) bool {
 		strings.Contains(trigger, "schedule") ||
 		strings.HasPrefix(id, "schedule-") ||
 		strings.Contains(id, "-schedule-")
-}
-
-func agentWorksSessionBlocksNewChat(session *ActiveSessionInfo, userID string) bool {
-	if session == nil || session.UserID != userID || normalizeAgentMode(session.AgentMode) != "multi-agent" {
-		return false
-	}
-	if isScheduledSessionIdentity(session.SessionID, session.TriggeredBy) || strings.TrimSpace(session.BotPlatform) != "" {
-		return false
-	}
-	return normalizeSessionLifecycleStatus(session.Status) == sessionLifecycleRunning ||
-		session.HasRetainedTmuxSession ||
-		session.HasRunningBackgroundAgents ||
-		session.NeedsUserInput
-}
-
-// claimAgentWorksChatSession atomically checks and reserves the user's one
-// interactive AgentWorks root-chat lane. The same session may continue sending
-// follow-up messages; a different session is rejected while the lane is live.
-func (api *StreamingAPI) claimAgentWorksChatSession(sessionID, userID, query, triggeredBy string) *ActiveSessionInfo {
-	if api.eventStore != nil {
-		api.eventStore.SetSessionOwner(sessionID, userID)
-	}
-
-	defer publishSessionsChanged() // runs after the unlock below
-	api.activeSessionsMux.Lock()
-	defer api.activeSessionsMux.Unlock()
-
-	for existingID, existing := range api.activeSessions {
-		if existingID == sessionID {
-			continue
-		}
-		if agentWorksSessionBlocksNewChat(existing, userID) {
-			return cloneActiveSessionInfo(existing)
-		}
-	}
-
-	now := time.Now()
-	createdAt := now
-	if existing := api.activeSessions[sessionID]; existing != nil && !existing.CreatedAt.IsZero() {
-		createdAt = existing.CreatedAt
-		if strings.TrimSpace(triggeredBy) == "" {
-			triggeredBy = existing.TriggeredBy
-		}
-	}
-	api.activeSessions[sessionID] = &ActiveSessionInfo{
-		SessionID:    sessionID,
-		AgentMode:    "multi-agent",
-		Status:       "running",
-		LastActivity: now,
-		CreatedAt:    createdAt,
-		Query:        query,
-		UserID:       userID,
-		TriggeredBy:  triggeredBy,
-	}
-	return nil
 }
 
 // trackActiveSession tracks a new active session
@@ -13676,15 +13556,17 @@ func (e *queryAdmissionError) Error() string {
 func (e *queryAdmissionError) Unwrap() error { return e.err }
 
 // admitQueryTarget resolves a turn's target and the caller's access to it:
-// saved chat config, the agent profile, the workflow-phase folder, then
+// the agent profile, the workflow-phase folder, then
 // conversationTargetAccess. handleQuery and the bot dry run
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
 func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest, currentUserID, sessionID string) (*resolvedAgentProfile, WorkflowAccessLevel, *queryAdmissionError) {
-	api.applySavedMultiAgentChatConfig(ctx, req, currentUserID)
 	resolvedProfile, err := api.resolveAgentProfileForQuery(ctx, req, currentUserID, sessionID)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
+	}
+	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
 	// Workflow-phase payloads identify the workspace through their preset,
 	// not selected_folder (the client never sends it for these chats).
