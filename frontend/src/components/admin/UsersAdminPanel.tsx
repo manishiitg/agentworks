@@ -52,6 +52,8 @@ const UsersAdminPanel: React.FC = () => {
   const me = useAuthStore((s) => s.user)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [products, setProducts] = useState<string[]>([])
+  // Whether this server emails invitations (off on deployments that don't).
+  const [inviteEmails, setInviteEmails] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -82,6 +84,7 @@ const UsersAdminPanel: React.FC = () => {
       const resp = await authApi.listAdminUsers()
       setUsers(resp.users || [])
       setProducts(selectableProducts(resp.products || [], enabledProductSurfaces()))
+      setInviteEmails(resp.invite_emails !== false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -308,10 +311,10 @@ const UsersAdminPanel: React.FC = () => {
                         {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                         {u.invited && u.email && (
                           <>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Send the invitation email again" aria-label={`Resend the invitation to ${u.email}`} disabled={busy}
+                            {inviteEmails && <Button variant="ghost" size="icon" className="h-7 w-7" title="Send the invitation email again" aria-label={`Resend the invitation to ${u.email}`} disabled={busy}
                               onClick={() => { void run(u.id, async () => { const result = await authApi.inviteAdminUser(u.id); showInviteResult(result.invite_email, u.email!, result.invite_detail, result.sign_in_url) }) }}>
                               <Send className="h-3.5 w-3.5" />
-                            </Button>
+                            </Button>}
                             <Button variant="ghost" size="icon" className="h-7 w-7" title="Copy the invitation to send yourself" aria-label={`Copy the invitation for ${u.email}`} disabled={busy}
                               onClick={() => copyInvitation(u.email!)}>
                               <Copy className="h-3.5 w-3.5" />

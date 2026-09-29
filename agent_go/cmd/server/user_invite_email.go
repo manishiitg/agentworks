@@ -29,7 +29,30 @@ const (
 	inviteEmailNotConfigured = "not_configured"
 	inviteEmailExists        = "exists"
 	inviteEmailFailed        = "failed"
+	// inviteEmailDisabled: this deployment never emails invitations
+	// (USER_INVITE_EMAILS=off), whatever keys it has.
+	inviteEmailDisabled = "disabled"
 )
+
+// userInviteEmailsEnabled reports whether this deployment sends invitation
+// emails at all. On unless USER_INVITE_EMAILS is off/false/0/no: a deployment
+// that shares the Supabase project but should not email people (RTS, Confida)
+// switches it off, and stays off even if the key is added for another reason.
+func userInviteEmailsEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("USER_INVITE_EMAILS"))) {
+	case "off", "false", "0", "no", "disabled":
+		return false
+	}
+	return true
+}
+
+// userInviteEmailsAvailable reports whether adding a person here can email
+// them: enabled, and the Supabase admin invite is configured.
+func userInviteEmailsAvailable() bool {
+	return userInviteEmailsEnabled() &&
+		strings.TrimSpace(os.Getenv("SUPABASE_URL")) != "" &&
+		strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY")) != ""
+}
 
 type inviteEmailResult struct {
 	Status string `json:"status"`
@@ -49,6 +72,9 @@ func publicBaseURL(r *http.Request) string {
 // person continues with Google using the invited address. The result never
 // includes the key or Supabase's raw response.
 func sendSupabaseInvite(ctx context.Context, email, redirectTo, invitedBy, appName string) inviteEmailResult {
+	if !userInviteEmailsEnabled() {
+		return inviteEmailResult{Status: inviteEmailDisabled}
+	}
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("SUPABASE_URL")), "/")
 	key := strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY"))
 	if base == "" || key == "" {
