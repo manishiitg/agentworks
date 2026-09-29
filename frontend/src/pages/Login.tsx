@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '../components/ui/alert'
 import { Loader2, KeyRound, Mail, User, Lock, AlertCircle } from 'lucide-react'
 import type { AuthProvider } from '../services/api'
 import { RunloopMark } from '../components/branding/RunloopLogo'
-import { getRuntimeAppName } from '../runtime-branding'
+import { getRuntimeAppName, runtimeBrandAsset } from '../runtime-branding'
 
 const runtimeAppName =
   getRuntimeAppName(
@@ -214,7 +214,9 @@ export function Login() {
         <CardHeader className="text-center pb-2">
           {/* Logo / Branding */}
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-slate-950/95 shadow-[0_24px_60px_-30px_rgba(15,23,42,0.95)] ring-1 ring-slate-700/40">
-            <RunloopMark className="h-14 w-14" />
+            {runtimeBrandAsset('markUrl')
+              ? <img src={runtimeBrandAsset('markUrl') ?? ''} alt={runtimeAppName} className="h-12 w-12" />
+              : <RunloopMark className="h-14 w-14" />}
           </div>
           <CardTitle className="text-2xl">Welcome Back</CardTitle>
           <CardDescription className="text-base">

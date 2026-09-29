@@ -139,6 +139,11 @@ cp "$SCRIPT_DIR/deployment_checks.py" "$BUILD_DIR/deployment_checks.py"
 mkdir -p "$BUILD_DIR/static"
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$BUILD_DIR/static/"
 install -m 0644 "$PRODUCT_DIR/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
+# A deployment's own branding assets (logo, mark, favicon), served at /brand/.
+if [[ -d "$PRODUCT_DIR/brand" ]]; then
+  install -d -m 0755 "$BUILD_DIR/frontend/brand"
+  install -m 0644 "$PRODUCT_DIR"/brand/* "$BUILD_DIR/frontend/brand/"
+fi
 # One shared MCP catalog for every deployment; a product may add an
 # mcp-servers.override.json with only what it does differently.
 mcp_override=()

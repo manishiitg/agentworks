@@ -46,6 +46,10 @@ Copy `products/sparkquill/` as a starting point:
   for what each field means and which ones are safe to leave at their
   defaults.
 - `runtime-config.js` — the frontend's `window.__APP_RUNTIME_CONFIG__`.
+- `brand/` (optional) — the deployment's own logo, mark and favicon, served at
+  `/brand/`. Point `runtime-config.js` at them: `appName`, `faviconUrl`,
+  `markUrl` (sign-in card), `logoUrl` / `logoDarkUrl` (top bar) and
+  `brandColor` (#rrggbb, the primary colour in every theme).
 - `mcp-servers.override.json` (optional) — the MCP catalog is the shared
   `agent_go/configs/mcp_servers_clean.json` for every deployment; this file
   holds only what the product does differently (an entry replaces the shared

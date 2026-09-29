@@ -24,6 +24,7 @@ import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
+import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
 import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { GlobalActivityButton } from './topbar/GlobalActivityButton'
@@ -585,6 +586,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
           {/* Product and current automation */}
           <div className="flex min-w-0 items-center gap-3">
+            <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
 

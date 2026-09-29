@@ -5,8 +5,13 @@ window.__APP_RUNTIME_CONFIG__ = {
   apiBaseUrl: "",
   workspaceApiBaseUrl: "/api/wp",
   cdpEnabled: false,
-  appName: "AgentWorks",
-  faviconUrl: "/logo.svg",
+  // Excellence Technologies branding (brand/: from excellencetechnologies.in).
+  appName: "Excellence Technologies",
+  faviconUrl: "/brand/icon.svg",
+  markUrl: "/brand/icon.svg",
+  logoUrl: "/brand/logo.svg",
+  logoDarkUrl: "/brand/logo-white.svg",
+  brandColor: "#109AAA",
   enabledProductSurfaces: ["code"],
   defaultProductSurface: "code"
 };
