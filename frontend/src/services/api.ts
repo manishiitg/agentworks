@@ -2962,7 +2962,7 @@ export const authApi = {
   },
 
   // --- account management (config/users.json; admins only) ---
-  listAdminUsers: async (): Promise<{ users: AdminUser[]; products: string[] }> => {
+  listAdminUsers: async (): Promise<{ users: AdminUser[]; products: string[]; invite_emails?: boolean }> => {
     const response = await api.get('/api/admin/users')
     return response.data
   },

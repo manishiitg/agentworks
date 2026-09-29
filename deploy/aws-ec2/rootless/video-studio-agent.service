@@ -19,6 +19,8 @@ Environment=STATIC_DIR=%h/video-studio/current/frontend
 # connector OAuth redirect (deriveOAuthRedirectURI) and login redirects.
 # Without it the agent guesses from X-Forwarded-* headers two proxies deep.
 Environment=PUBLIC_URL=https://video.realtrainingsys.com
+# RTS never emails invitations (it shares the Supabase project); admins copy them.
+Environment=USER_INVITE_EMAILS=off
 # %h/.config is root-owned on this host (the bootstrap wrote the systemd user
 # units there), so tools that keep state under XDG config -- cursor-agent
 # does -- get a writable location instead of EACCES.

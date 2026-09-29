@@ -259,6 +259,11 @@ account keeps the role and products the admin set.
      ("You have been added … sign in with Google using this address").
   4. Put `SUPABASE_SERVICE_ROLE_KEY` in the server's private env file
      (`/srv/<product>/.env`), never in git or in chat, and restart.
+- **Per-deployment switch:** `USER_INVITE_EMAILS=off` turns invitation emails
+  off for a deployment even when it has the key (status `disabled`; the panel
+  hides Resend and offers Copy invitation). Excellence sends; RTS
+  (`video-studio-agent.service`) and Confida (`product.env` EXTRA_ENV) are off
+  (user, 2026-09-29).
 - **Shared project.** Excellence signs in through Confida's Supabase project,
   so SMTP settings and templates apply to Confida's own auth emails too, and
   an invited address becomes a user of that project. A dedicated project

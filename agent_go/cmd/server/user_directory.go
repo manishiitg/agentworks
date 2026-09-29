@@ -790,7 +790,7 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 		out = append(out, viewOf(u))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
-	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs()})
+	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs(), "invite_emails": userInviteEmailsAvailable()})
 }
 
 // userWriteRequest is the body for create and update. Pointer fields are

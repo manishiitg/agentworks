@@ -21,6 +21,7 @@ var providerAccountConfiguredWait = 6 * time.Second
 
 type providerAccountConfiguredEntry struct {
 	configured *bool
+	identity   string
 	at         time.Time
 }
 
@@ -43,18 +44,23 @@ func rememberProviderAccountStatus(id string, status providerAccountStatus) {
 		configured = &no
 	}
 	providerAccountConfiguredCache.Lock()
-	providerAccountConfiguredCache.entries[id] = providerAccountConfiguredEntry{configured: configured, at: time.Now()}
+	providerAccountConfiguredCache.entries[id] = providerAccountConfiguredEntry{configured: configured, identity: status.Identity, at: time.Now()}
 	providerAccountConfiguredCache.Unlock()
 }
 
 func cachedProviderAccountConfigured(id string) (*bool, bool) {
+	entry, ok := cachedProviderAccountEntry(id)
+	return entry.configured, ok
+}
+
+func cachedProviderAccountEntry(id string) (providerAccountConfiguredEntry, bool) {
 	providerAccountConfiguredCache.Lock()
 	defer providerAccountConfiguredCache.Unlock()
 	entry, ok := providerAccountConfiguredCache.entries[id]
 	if !ok || time.Since(entry.at) > providerAccountConfiguredTTL {
-		return nil, false
+		return providerAccountConfiguredEntry{}, false
 	}
-	return entry.configured, true
+	return entry, true
 }
 
 // providerAccountStatusProbe runs one account's status check; swappable in
@@ -81,6 +87,15 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 		if view.Relation == "server" {
 			configured, _ := providerAuthConfigured(view.Provider, keys)
 			view.Configured = &configured
+			// Whose login it is, from the same status check as the
+			// Status button (a key has no identity to show).
+			if configured {
+				if entry, ok := cachedProviderAccountEntry(view.ID); ok {
+					view.Identity = entry.identity
+				} else {
+					pending[i] = view.ID
+				}
+			}
 			continue
 		}
 		record := byID[view.ID]
@@ -92,8 +107,8 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 			view.Configured = &configured
 			continue
 		}
-		if configured, ok := cachedProviderAccountConfigured(view.ID); ok {
-			view.Configured = configured
+		if entry, ok := cachedProviderAccountEntry(view.ID); ok {
+			view.Configured, view.Identity = entry.configured, entry.identity
 			continue
 		}
 		pending[i] = view.ID
@@ -132,8 +147,14 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 	case <-ctx.Done():
 	}
 	for i, id := range pending {
-		if configured, ok := cachedProviderAccountConfigured(id); ok {
-			views[i].Configured = configured
+		entry, ok := cachedProviderAccountEntry(id)
+		if !ok {
+			continue
+		}
+		views[i].Identity = entry.identity
+		// A server account keeps the configured state from its probe above.
+		if views[i].Relation != "server" {
+			views[i].Configured = entry.configured
 		}
 	}
 }

@@ -58,6 +58,8 @@ export interface ProviderConnection {
   usable?: boolean
   /** Signed in or has a key. False: needs Set up. Absent: unknown (never blocks). */
   configured?: boolean
+  /** Who the account is signed in as, when the CLI reports it. */
+  identity?: string
   can_manage?: boolean
   can_view_usage?: boolean
 }
@@ -74,7 +76,8 @@ export interface ProviderAccountStatus {
 export interface ProviderShareTargets {
   workflows: { id: string; name: string }[]
   crews: { id: string; name: string; owner?: string }[]
-  users: { id: string; name: string; email?: string }[]
+  /** self: the caller (shown only where picking yourself makes sense). */
+  users: { id: string; name: string; email?: string; self?: boolean }[]
 }
 
 export type ProductDefaultChange = { provider: string; model: string } | null

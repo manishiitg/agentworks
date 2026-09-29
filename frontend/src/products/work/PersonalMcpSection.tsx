@@ -11,6 +11,7 @@ import { McpAppsSection } from './McpAppsSection'
 import { parseOAuthClientJson } from './oauthClientJson'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { personalMcpApi, type PersonalMcpCatalogServer, type PersonalMcpServer } from '../../api/personalMcp'
+import { groupServiceLabel, providerGroupLabel, providerGroups } from './mcpGroups'
 
 const errorText = (cause: unknown, fallback: string) => {
   const response = (cause as { response?: { data?: { error?: string } } })?.response
@@ -114,6 +115,28 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
     if (server?.oauth) await signIn(server.name)
   })
 
+  // One card per sign-in group (Google Workspace): tick services, connect
+  // once. The server signs the group in with the union of their scopes.
+  const groups = useMemo(() => providerGroups(catalog), [catalog])
+  const [groupPicks, setGroupPicks] = useState<Record<string, string[]>>({})
+  const connectGroup = (group: string) => run(`group:${group}`, async () => {
+    const entries = groups.get(group) ?? []
+    const byCatalog = new Map(servers.filter(server => server.catalog).map(server => [server.catalog as string, server]))
+    const picks = groupPicks[group] ?? []
+    let first: string | null = null
+    for (const entry of entries) {
+      const existing = byCatalog.get(entry.catalog)
+      if (existing) { if (!first && existing.oauth && !existing.connected) first = existing.name; continue }
+      if (!picks.includes(entry.catalog)) continue
+      const added = await personalMcpApi.add({ name: entry.name, catalog: entry.catalog })
+      await personalMcpApi.setEnabled(added.name, projectId, true)
+      if (added.oauth) first = first ?? added.name
+    }
+    setGroupPicks(current => ({ ...current, [group]: [] }))
+    // One sign-in covers every service in the group.
+    if (first) await signIn(first)
+  })
+
   const addCustom = () => run('custom', async () => {
     const headers = header.trim() && headerSecret ? { [header.trim()]: { secret: headerSecret, format: header.trim().toLowerCase() === 'authorization' ? 'Bearer {}' : '{}' } } : undefined
     const added = await personalMcpApi.add({ name: name.trim(), url: url.trim(), headers })
@@ -124,7 +147,8 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
 
   const cards = useMemo<Card[]>(() => {
     const byCatalog = new Map(servers.filter(server => server.catalog).map(server => [server.catalog as string, server]))
-    const fromCatalog = catalog.map(entry => ({
+    const grouped = providerGroups(catalog)
+    const fromCatalog = catalog.filter(entry => !entry.group || !grouped.has(entry.group)).map(entry => ({
       key: `catalog:${entry.catalog}`,
       title: entry.catalog,
       description: descriptionFor(entry.catalog) !== 'Custom MCP server' ? descriptionFor(entry.catalog) : entry.description || 'MCP server',
@@ -260,6 +284,63 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
       )}
 
       <div className="pt-5">
+        {!loading && [...groups.keys()].filter(group => !query.trim() || providerGroupLabel(group).toLowerCase().includes(query.trim().toLowerCase()) || (groups.get(group) ?? []).some(entry => entry.catalog.toLowerCase().includes(query.trim().toLowerCase()))).map(group => {
+          const entries = groups.get(group) ?? []
+          const byCatalog = new Map(servers.filter(server => server.catalog).map(server => [server.catalog as string, server]))
+          const picks = groupPicks[group] ?? []
+          const needsSignIn = entries.some(entry => { const server = byCatalog.get(entry.catalog); return !!server && server.oauth && !server.connected })
+          const canConnect = picks.length > 0 || needsSignIn
+          const label = providerGroupLabel(group)
+          return (
+            <section key={group} data-testid={`mcp-group-${group}`} className="mb-5 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900/60">
+              <div className="flex items-start gap-3">
+                <ConnectionIcon icon={brandSlugFor(label)} name={label} size="lg" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</div>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Tick the services you want and connect once: one {label.split(' ')[0]} sign-in covers them all. Adding one later asks {label.split(' ')[0]} for just its extra permission.</p>
+                </div>
+                <Button size="sm" disabled={busy !== null || !canConnect} onClick={() => { void connectGroup(group) }}>
+                  {busy === `group:${group}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}{picks.length > 0 ? 'Connect' : 'Sign in'}
+                </Button>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {entries.map(entry => {
+                  const server = byCatalog.get(entry.catalog)
+                  const ready = isConnected(server)
+                  const service = groupServiceLabel(entry.catalog, group)
+                  return (
+                    <div key={entry.catalog} className="flex items-center gap-2 rounded-md border border-gray-100 px-2 py-1.5 text-sm dark:border-gray-800">
+                      {server ? (
+                        <>
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-green-500' : 'bg-amber-500'}`} title={ready ? 'Connected (your account)' : 'Needs sign-in'} />
+                          <span className="min-w-0 flex-1 truncate">{service}</span>
+                          <label className="flex items-center gap-1 text-[11px] text-muted-foreground" title="Use in this Code">
+                            <Checkbox checked={server.enabled} disabled={busy !== null} onCheckedChange={() => { void run(`on:${server.name}`, () => personalMcpApi.setEnabled(server.name, projectId, !server.enabled)) }} aria-label={`Use ${service} in this Code`} />
+                            In this Code
+                          </label>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title={`Disconnect ${service}`} aria-label={`Disconnect ${service}`} disabled={busy !== null}
+                            onClick={() => { void run(`rm:${server.name}`, () => personalMcpApi.remove(server.name)) }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      ) : (
+                        <label className="flex flex-1 items-center gap-2">
+                          <Checkbox checked={picks.includes(entry.catalog)} disabled={busy !== null}
+                            onCheckedChange={() => setGroupPicks(current => {
+                              const list = current[group] ?? []
+                              return { ...current, [group]: list.includes(entry.catalog) ? list.filter(item => item !== entry.catalog) : [...list, entry.catalog] }
+                            })}
+                            aria-label={`Add ${service}`} />
+                          <span className="truncate text-muted-foreground">{service}</span>
+                        </label>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })}
         {loading && (
           <div className="flex items-center gap-2 py-8 text-sm text-gray-500 dark:text-gray-400">
             <Loader2 className="h-4 w-4 animate-spin" /><span>Loading connectors...</span>

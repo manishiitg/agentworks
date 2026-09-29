@@ -25,6 +25,7 @@ import {
 } from '../../services/llm-config-api'
 import { CODING_PROVIDER_GUIDES, DEFAULT_CODING_PROVIDER_GUIDE } from './codingProviderGuides'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
+import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { ProviderSetupAction, ProviderSetupSession } from '../../services/llm-config-api'
 
@@ -50,7 +51,7 @@ const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
 
 // Signing in here replaces the login everyone on the server uses; say so.
 const serverSignInLabel = (_provider: ProviderManifestEntry) =>
-  'Sign in the shared server login (used by everyone allowed)'
+  'Sign in the shared login'
 
 type ProviderStatus = 'ready' | 'auth' | 'missing' | 'deprecated'
 
@@ -265,6 +266,13 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const selectedProvider = orderedProviders.find(provider => provider.id === selectedId) ?? orderedProviders[0]
   const guide = selectedProvider ? (CODING_PROVIDER_GUIDES[selectedProvider.id] ?? DEFAULT_CODING_PROVIDER_GUIDE) : undefined
 
+  // The shared server login is everyone's: confirm before signing it in, and
+  // point to Add my account (Provider accounts above) for a private one.
+  const [confirmSharedSetup, setConfirmSharedSetup] = useState(false)
+  const signInShared = (provider: ProviderManifestEntry) => {
+    if (provider.id === 'pi-cli') { void startGuidedSetup('authenticate'); return }
+    setConfirmSharedSetup(true)
+  }
   const startGuidedSetup = async (action: ProviderSetupAction, replaceRunning = false) => {
     if (!selectedProvider || !GUIDED_SETUP_PROVIDERS.has(selectedProvider.id)) return
     setGuidedStarting(action)
@@ -410,6 +418,15 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
               {view === 'costs' && <CostsOverview />}
+              {selectedProvider && <ConfirmationDialog
+                isOpen={confirmSharedSetup}
+                onClose={() => setConfirmSharedSetup(false)}
+                onConfirm={() => { setConfirmSharedSetup(false); void startGuidedSetup('authenticate') }}
+                title={`Sign in the shared ${selectedProvider.display_name} login?`}
+                message="This is the shared account, not yours. Everyone it is available to will run on the login you sign in with, and on its plan. To add a login only you use, cancel and choose \u201cAdd my account\u201d under Provider accounts."
+                confirmText="Sign in shared login"
+                type="warning"
+              />}
               {view === 'defaults' && <ProductDefaults providers={orderedProviders} isAdmin={!isMultiUserMode || isAdmin} />}
 
               {view === 'provider' && !loading && orderedProviders.length === 0 && !error && (
@@ -538,7 +555,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                             <div className="mt-3 flex flex-wrap gap-2">
                               <button
                                 type="button"
-                                onClick={() => void startGuidedSetup('authenticate')}
+                                onClick={() => signInShared(selectedProvider)}
                                 disabled={guidedStarting !== null || guidedSession?.status === 'running'}
                                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                               >
@@ -599,17 +616,20 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                     <p className="text-sm leading-6 text-gray-600 dark:text-gray-300">{guide.authenticateNote}</p>
                     {GUIDED_SETUP_PROVIDERS.has(selectedProvider.id) && selectedProvider.runtime_available === true && (
                       canRunGuidedSetup ? (
+                        <>
+                        {selectedProvider.id !== 'pi-cli' && <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">This signs in the <strong>shared</strong> login that everyone allowed uses. For your own login, use <strong>Add my account</strong> under Provider accounts above.</p>}
                         <button
                           type="button"
-                          onClick={() => void startGuidedSetup('authenticate')}
+                          onClick={() => signInShared(selectedProvider)}
                           disabled={guidedStarting !== null || guidedSession?.status === 'running'}
-                          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                         >
                           {guidedStarting === 'authenticate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
                           {selectedProvider.id === 'pi-cli'
                             ? (selectedProvider.auth_configured ? 'Manage connections' : 'Connect a provider')
                             : serverSignInLabel(selectedProvider)}
                         </button>
+                        </>
                       ) : (
                         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">An administrator must authenticate providers on this server.</p>
                       )

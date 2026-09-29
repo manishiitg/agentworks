@@ -445,6 +445,13 @@ func personalSecretValue(userID, name string) (string, error) {
 // remote), credential headers from their own secrets, OAuth tokens in their
 // own sealed token file.
 func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerConfig, error) {
+	return personalMCPServerConfigFor(userID, name, false)
+}
+
+// personalMCPServerConfigFor builds the connect config. forSignIn points a
+// grouped server at its group's login even if it still has its own, so the
+// sign-in moves it to the shared login.
+func personalMCPServerConfigFor(userID, name string, forSignIn bool) (string, mcpclient.MCPServerConfig, error) {
 	servers, err := listPersonalMCPServers(userID)
 	if err != nil {
 		return "", mcpclient.MCPServerConfig{}, err
@@ -475,6 +482,15 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 			copied := *server.OAuth
 			copied.PublicOnly = true
 			copied.TokenFile = personalMCPTokenFile(dir, userID, name)
+			if group := personalMCPGroupOf(dir, userID, server); group != "" {
+				groupFile := personalMCPGroupTokenFile(dir, group)
+				// A server with its own login keeps it until the next
+				// sign-in moves it to the group's.
+				if forSignIn || !fileExists(copied.TokenFile) || fileExists(groupFile) {
+					copied.TokenFile = groupFile
+					copied.Scopes = personalMCPGroupScopes(dir, userID, group, servers)
+				}
+			}
 			copied.ClientSecretFile = "" // a personal server reads only its own client file
 			// The client (registered, entered by the person, or copied
 			// from the catalog) lives sealed beside the token; a refresh

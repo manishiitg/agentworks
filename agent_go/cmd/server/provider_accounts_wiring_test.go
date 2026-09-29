@@ -209,12 +209,22 @@ func TestProviderAccountsShareTargetsHideReadOnlyPeople(t *testing.T) {
 	names := func(user string) string {
 		w := env.do(t, env.api.handleProviderShareTargets, http.MethodGet, "/", user, nil, nil)
 		var body struct {
-			Users []struct{ ID string } `json:"users"`
+			Users []struct {
+				ID   string
+				Self bool
+			} `json:"users"`
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &body)
 		ids := []string{}
 		for _, u := range body.Users {
-			ids = append(ids, u.ID)
+			// The caller is listed as self (for the server account's
+			// availability); sharing pickers leave it out.
+			if u.Self != (u.ID == user) {
+				t.Fatalf("%s listed with self=%v for caller %s", u.ID, u.Self, user)
+			}
+			if !u.Self {
+				ids = append(ids, u.ID)
+			}
 		}
 		return strings.Join(ids, ",")
 	}

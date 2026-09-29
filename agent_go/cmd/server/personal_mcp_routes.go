@@ -106,13 +106,7 @@ func (api *StreamingAPI) handleListPersonalMCP(w http.ResponseWriter, r *http.Re
 		for header := range server.Headers {
 			view.Headers = append(view.Headers, header)
 		}
-		if server.OAuth != nil {
-			store := oauth.NewTokenStore(personalMCPTokenFile(dir, userID, server.Name))
-			_, loadErr := store.Load()
-			view.Connected = loadErr == nil
-		} else {
-			view.Connected = true
-		}
+		view.Connected = personalMCPServerConnected(dir, userID, server)
 		views = append(views, view)
 	}
 	secrets, _ := listPersonalSecretNames(userID)
@@ -302,9 +296,25 @@ func (api *StreamingAPI) handleConnectPersonalMCP(w http.ResponseWriter, r *http
 // URL to open, or a discovery answer when the provider needs the person's own
 // OAuth app (entered then carries its client ID and secret).
 func (api *StreamingAPI) startPersonalMCPSignIn(userID, name, redirectURI string, entered *registeredClient) (string, *OAuthDiscoveryResponse, int, error) {
-	internal, cfg, err := personalMCPServerConfig(userID, name)
+	internal, cfg, err := personalMCPServerConfigFor(userID, name, true)
 	if err != nil {
 		return "", nil, http.StatusNotFound, err
+	}
+	// A grouped server signs in once for its whole group (the union of
+	// scopes); the success handler moves every member onto that login.
+	var group string
+	var members []string
+	if servers, listErr := listPersonalMCPServers(userID); listErr == nil {
+		if storeDir, dirErr := personalMCPDir(userID); dirErr == nil {
+			for _, server := range servers {
+				if server.Name == name {
+					group = personalMCPGroupOf(storeDir, userID, server)
+				}
+			}
+			if group != "" {
+				members = personalMCPGroupMembers(storeDir, userID, group, servers)
+			}
+		}
 	}
 	if cfg.OAuth == nil {
 		return "", nil, http.StatusBadRequest, fmt.Errorf("this server does not use sign-in")
@@ -336,6 +346,17 @@ func (api *StreamingAPI) startPersonalMCPSignIn(userID, name, redirectURI string
 			if entered != nil {
 				if err := writePersonalMCPClient(userID, name, *entered); err != nil {
 					log.Printf("[PERSONAL_MCP] keep sign-in client for %s: %v", name, err)
+				}
+			}
+			if group != "" && entered == nil {
+				if err := recordPersonalMCPGroupConsent(dir, group, cfg.OAuth.Scopes); err != nil {
+					log.Printf("[PERSONAL_MCP] record %s sign-in: %v", group, err)
+				}
+				// Every member now uses the group's login; their old
+				// separate logins go.
+				for _, member := range members {
+					_ = os.Remove(personalMCPTokenFile(dir, userID, member))
+					closePersonalMCPConnection(userID, member)
 				}
 			}
 			closePersonalMCPConnection(userID, name)
@@ -416,7 +437,10 @@ type personalMCPCatalogServer struct {
 	// NeedsClient: the provider has no dynamic registration and the catalog
 	// carries no client, so the person enters their OAuth app's client.
 	NeedsClient bool `json:"needs_client"`
-	config      mcpclient.MCPServerConfig
+	// Group is the sign-in app key the server shares (google, github, ...):
+	// servers with the same group are offered together and share one login.
+	Group  string `json:"group,omitempty"`
+	config mcpclient.MCPServerConfig
 }
 
 func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
@@ -441,7 +465,7 @@ func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
 		if !personalMCPNamePattern.MatchString(local) {
 			continue
 		}
-		entry := personalMCPCatalogServer{Name: local, Catalog: name, Description: cfg.Description, SignIn: cfg.OAuth != nil, config: cfg}
+		entry := personalMCPCatalogServer{Name: local, Catalog: name, Description: cfg.Description, SignIn: cfg.OAuth != nil, Group: keys[name], config: cfg}
 		if cfg.OAuth != nil {
 			entry.NeedsClient = cfg.OAuth.ClientID == "" && cfg.OAuth.RegistrationEndpoint == ""
 			if entry.NeedsClient {
@@ -489,5 +513,6 @@ func forgetPersonalMCPLogin(userID, name string) error {
 			return err
 		}
 	}
-	return nil
+	// A group login nobody else uses goes with its last server.
+	return forgetUnusedPersonalMCPGroups(dir, userID, name)
 }

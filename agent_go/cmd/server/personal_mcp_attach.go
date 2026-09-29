@@ -15,7 +15,6 @@ import (
 	"github.com/gorilla/mux"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/mcpclient"
-	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // Place connections (docs/design/personal_mcp_attach.md): someone who can
@@ -310,12 +309,8 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 		if server == nil {
 			continue
 		}
-		connected := true
-		if server.OAuth != nil {
-			storeDir, _ := personalMCPDir(store)
-			_, loadErr := oauth.NewTokenStore(personalMCPTokenFile(storeDir, store, server.Name)).Load()
-			connected = loadErr == nil
-		}
+		storeDir, _ := personalMCPDir(store)
+		connected := personalMCPServerConnected(storeDir, store, *server)
 		ownerName := a.Owner
 		if dir != nil {
 			if rec := dir.byID(a.Owner); rec != nil && rec.Username != "" {

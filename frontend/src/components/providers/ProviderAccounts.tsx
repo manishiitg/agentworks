@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Users, Plus, ShieldCheck, UserRound, Pencil, Trash2, LogIn, LogOut, Loader2, X, Gauge, Share2, Lock, Terminal, RefreshCw } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
+import ConfirmationDialog from '../ui/ConfirmationDialog'
 import ProviderAccountCostsSection from './AccountCosts'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import {
@@ -96,6 +97,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [sharingDraft, setSharingDraft] = useState<ProviderAccountSharing>({ mode: 'private' })
   const [availabilityDraft, setAvailabilityDraft] = useState<ProviderAvailableTo | null>(null)
+  // Signing in the shared login changes the account everyone allowed uses:
+  // confirm, and point to Add my account for a private one.
+  const [confirmSharedLogin, setConfirmSharedLogin] = useState<ProviderConnection | null>(null)
   const [authMethod, setAuthMethod] = useState('api_key')
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
@@ -322,13 +326,15 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name || 'Server account'}</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Shared account</span>
+                <span className={`${badgeClass} bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300`} title="One login on the server, used by everyone it is available to">Everyone allowed uses it</span>
                 {record.kind && record.kind !== 'user' && <span className={`${badgeClass} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300`}>{record.kind === 'admin' ? 'Admin-configured' : 'Installed'}</span>}
                 {record.usable === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`}>Not available to you</span>}
                 {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="The server has no login or key for this CLI yet">Not set up</span>}
               </div>
+              {record.identity && <p className="mt-0.5 break-words text-xs font-medium text-gray-700 dark:text-gray-200">Signed in as {record.identity}</p>}
               {record.source && <p className="mt-0.5 break-words text-xs text-gray-500 dark:text-gray-400">{record.source}</p>}
-              {availability && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Available to: {availability.text}</p>}
+              {availability && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Used by: {availability.text}</p>}
               {availability?.pinned && <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><Lock className="h-3 w-3" /> Set by the installation</p>}
               {statusLine(record)}
             </div>
@@ -338,7 +344,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               {statusButton(record)}
               {usageButton(record)}
               {terminalButton(record)}
-              {record.can_manage && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in the shared server login (used by everyone allowed)</button>}
+              {record.can_manage && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setConfirmSharedLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in the shared login</button>}
               {signOutButton(record)}
               {record.availability_editable && availabilityDraft === null && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(availability?.available_to ?? 'all')}>Edit who can use it</button>}
             </div>
@@ -397,7 +403,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     </form>
   )
   const addButton = !disabled && personalAllowed && !adding && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> Add account</button>
+    <button disabled={busy} type="button" className={secondaryButtonClass} onClick={openAdd}><Plus className="h-3.5 w-3.5" /> Add my account</button>
   )
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
@@ -410,14 +416,26 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Provider accounts</h3>
           </div>
           <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Which {providerLabel || 'provider'} login or key a workflow, Crew or Code runs as.</p>
-          {server && <div className="mt-4">{serverBlock(server)}</div>}
           {group('Your accounts', own, addButton)}
           {!personalAllowed && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">The installation does not allow personal accounts for this provider.</p>}
-          {personalAllowed && own.length === 0 && !adding && <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts for this provider.</p>}
+          {personalAllowed && own.length === 0 && !adding && <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>}
           {addForm}
+          {server && <div className="mt-5">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Shared account</div>
+            {serverBlock(server)}
+          </div>}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
           {errorLine}
+          <ConfirmationDialog
+            isOpen={confirmSharedLogin !== null}
+            onClose={() => setConfirmSharedLogin(null)}
+            onConfirm={() => { const record = confirmSharedLogin; setConfirmSharedLogin(null); if (record) void login(record) }}
+            title={`Sign in the shared ${providerLabel || 'provider'} login?`}
+            message={`This is the shared account, not yours. Everyone it is available to will run on the login you sign in with, and on its plan. To add a login only you use, cancel and choose "Add my account" under Your accounts.`}
+            confirmText="Sign in shared login"
+            type="warning"
+          />
         </section>
         <ProviderAccountCostsSection provider={provider} />
       </>

@@ -16,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
-	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // Admin inspection of Code workspaces (docs/design/code_product.md, "Admin
@@ -454,10 +453,7 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 			}
 			row := codeAdminPersonalServer{UserID: person, Username: crewOwnerDisplayName(sanitizeUserIDForPath(person)), Name: server.Name,
 				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil, Connected: server.OAuth == nil}
-			if server.OAuth != nil {
-				_, loadErr := oauth.NewTokenStore(personalMCPTokenFile(dir, person, server.Name)).Load()
-				row.Connected = loadErr == nil
-			}
+			row.Connected = personalMCPServerConnected(dir, person, server)
 			rows = append(rows, row)
 		}
 	}

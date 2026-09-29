@@ -110,3 +110,21 @@ func TestAddingAPersonInvitesThemButEmailNeverBlocksAdding(t *testing.T) {
 		t.Fatalf("invited someone who already has a password: %+v", got)
 	}
 }
+
+func TestUserInviteEmailsSwitchOff(t *testing.T) {
+	t.Setenv("SUPABASE_URL", "https://example.supabase.co")
+	t.Setenv("SUPABASE_SERVICE_ROLE_KEY", "k")
+	for _, off := range []string{"off", "false", "0", "no", "OFF"} {
+		t.Setenv("USER_INVITE_EMAILS", off)
+		if userInviteEmailsAvailable() {
+			t.Fatalf("USER_INVITE_EMAILS=%s still available", off)
+		}
+		if got := sendSupabaseInvite(context.Background(), "a@example.com", "", "admin", "X"); got.Status != inviteEmailDisabled {
+			t.Fatalf("USER_INVITE_EMAILS=%s sent: %+v", off, got)
+		}
+	}
+	t.Setenv("USER_INVITE_EMAILS", "")
+	if !userInviteEmailsAvailable() {
+		t.Fatal("default must stay on where the key is configured")
+	}
+}
