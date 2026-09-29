@@ -340,6 +340,10 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 	if strings.TrimSpace(req.Kind) != "" || index < 0 {
 		trigger.Kind = normalizeTriggerKind(req.Kind)
 	}
+	// A kept kind counts too: a Code trigger is never internal.
+	if strings.EqualFold(profile.ID, "code") && trigger.IsInternal() {
+		return productWebhookResponse{}, false, fmt.Errorf("a Code takes webhook triggers only; other workflows and Crews cannot call a Code")
+	}
 	if trigger.IsInternal() {
 		trigger.RunDestination = runDestinationIsolated
 	}
