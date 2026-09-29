@@ -154,8 +154,13 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 			// The catalog's OAuth app (an admin's Google or GitHub app) is
 			// shared; a server with dynamic registration registers per person.
 			if catalogOAuth.ClientID != "" && catalogOAuth.RegistrationEndpoint == "" {
-				catalogClient = &registeredClient{ClientID: catalogOAuth.ClientID, ClientSecret: catalogOAuth.ClientSecret}
+				secret := catalogOAuth.ClientSecret
+				if secret == "" && catalogOAuth.ClientSecretFile != "" {
+					secret, _ = oauth.ReadClientSecretFile(catalogOAuth.ClientSecretFile)
+				}
+				catalogClient = &registeredClient{ClientID: catalogOAuth.ClientID, ClientSecret: secret}
 			}
+			catalogOAuth.ClientSecretFile = ""
 			catalogOAuth.ClientID, catalogOAuth.ClientSecret, catalogOAuth.RedirectURL, catalogOAuth.UsePKCE = "", "", "", true
 			body.OAuth = &catalogOAuth
 		}

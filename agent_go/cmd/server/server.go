@@ -2400,6 +2400,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// Platform OAuth client secrets written inline before they moved to
+	// sealed client files.
+	if err := api.migratePlatformClientSecrets(); err != nil {
+		log.Printf("[MCP] could not seal platform OAuth client secrets: %v", err)
+	}
 	// Pins of Code chats whose Code is gone, once the workspace is up.
 	go func() {
 		time.Sleep(3 * time.Minute)

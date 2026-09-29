@@ -181,7 +181,8 @@ func validatePersonalMCPServer(server *personalMCPServer) error {
 	}
 	if server.OAuth != nil {
 		copied := *server.OAuth
-		copied.TokenFile = "" // set per person at resolve time, never stored
+		copied.TokenFile = ""                                 // set per person at resolve time, never stored
+		copied.ClientSecret, copied.ClientSecretFile = "", "" // the sealed client file holds the client
 		copied.PublicOnly = true
 		server.OAuth = &copied
 	}
@@ -471,6 +472,7 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 			copied := *server.OAuth
 			copied.PublicOnly = true
 			copied.TokenFile = personalMCPTokenFile(dir, userID, name)
+			copied.ClientSecretFile = "" // a personal server reads only its own client file
 			// The client (registered, entered by the person, or copied
 			// from the catalog) lives sealed beside the token; a refresh
 			// needs it as much as the first sign-in.
@@ -553,4 +555,27 @@ func (personalMCPTokenSealer) Open(path string, sealed []byte) ([]byte, error) {
 	return []byte(plaintext), err
 }
 
-func init() { oauth.SetTokenSealer(personalMCPTokenSealer{}) }
+func init() { oauth.SetTokenSealer(credentialSealer{}) }
+
+// credentialSealer is the process-wide token sealer: personal MCP files and
+// platform OAuth client files (platform_client_secrets.go), each bound to its
+// own path.
+type credentialSealer struct{}
+
+func (credentialSealer) Handles(path string) bool {
+	return personalMCPTokenSealer{}.Handles(path) || platformClientSealer{}.Handles(path)
+}
+
+func (credentialSealer) Seal(path string, plaintext []byte) ([]byte, error) {
+	if (personalMCPTokenSealer{}).Handles(path) {
+		return personalMCPTokenSealer{}.Seal(path, plaintext)
+	}
+	return platformClientSealer{}.Seal(path, plaintext)
+}
+
+func (credentialSealer) Open(path string, sealed []byte) ([]byte, error) {
+	if (personalMCPTokenSealer{}).Handles(path) {
+		return personalMCPTokenSealer{}.Open(path, sealed)
+	}
+	return platformClientSealer{}.Open(path, sealed)
+}

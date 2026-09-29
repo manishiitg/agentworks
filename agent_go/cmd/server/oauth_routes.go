@@ -975,6 +975,14 @@ func (api *StreamingAPI) persistOAuthConfig(serverName string, serverConfig mcpc
 		api.logger.Info(fmt.Sprintf("💾 Loaded existing user config with %d servers", len(userConfig.MCPServers)))
 	}
 
+	// The client secret goes to its sealed file; the overlay keeps a reference.
+	if serverConfig.OAuth != nil {
+		copied := *serverConfig.OAuth
+		if err := sealPlatformClientSecret(serverName, &copied); err != nil {
+			return err
+		}
+		serverConfig.OAuth = &copied
+	}
 	// Update or add the server with OAuth config
 	userConfig.MCPServers[serverName] = serverConfig
 

@@ -197,12 +197,23 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	for name, server := range req.Config.MCPServers {
-		// The editor never sees a client secret (redacted on read), so an
-		// unchanged client keeps the stored one.
-		if previous, ok := overlay.MCPServers[name]; ok && server.OAuth != nil && previous.OAuth != nil &&
-			server.OAuth.ClientSecret == "" && server.OAuth.ClientID == previous.OAuth.ClientID {
+		if server.OAuth != nil {
 			copied := *server.OAuth
-			copied.ClientSecret = previous.OAuth.ClientSecret
+			// A secret reference may only be this server's own sealed client
+			// file, and an unchanged client keeps it.
+			if !isPlatformClientSecretFile(name, copied.ClientSecretFile) {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("%s: client_secret_file is managed by the server", name))
+				return
+			}
+			if previous, ok := overlay.MCPServers[name]; ok && previous.OAuth != nil && copied.ClientSecret == "" &&
+				copied.ClientSecretFile == "" && copied.ClientID == previous.OAuth.ClientID {
+				copied.ClientSecretFile = previous.OAuth.ClientSecretFile
+			}
+			// A secret typed into the editor is sealed, never stored inline.
+			if err := sealPlatformClientSecret(name, &copied); err != nil {
+				writeJSONError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 			server.OAuth = &copied
 		}
 		merged.MCPServers[name] = server
