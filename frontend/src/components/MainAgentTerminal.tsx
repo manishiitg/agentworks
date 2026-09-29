@@ -30,6 +30,10 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
   const [snapshot, setSnapshot] = useState<TerminalSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // No live view yet (the agent has not started one: before the first
+  // message, or between runs for a CLI without a retained terminal). Say so
+  // and keep checking, instead of silently switching back to the chat.
+  const [notStarted, setNotStarted] = useState(false)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const requestInFlight = useRef(false)
   const snapshotRef = useRef<TerminalSnapshot | null>(null)
@@ -76,11 +80,13 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
         }
       }
       setError(null)
+      setNotStarted(false)
     } catch (cause: any) {
       if (cause?.response?.status === 404) {
+        snapshotRef.current = null
         setSnapshot(null)
         setError(null)
-        onUnavailableRef.current?.()
+        setNotStarted(true)
       } else {
         setError(cause?.message || 'Could not load the live view.')
       }
@@ -114,6 +120,15 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
       >
         {error ? (
           <div className="p-4 text-sm text-red-300">{error}</div>
+        ) : !snapshot && notStarted ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-neutral-400" data-testid="main-agent-terminal-not-started">
+            <p>The live view appears once the agent starts working.<br />Send a message and it will show up here.</p>
+            {onUnavailable && (
+              <button type="button" className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800" onClick={() => onUnavailableRef.current?.()}>
+                Back to chat
+              </button>
+            )}
+          </div>
         ) : !snapshot ? (
           <div className="flex h-full items-center justify-center text-sm text-neutral-500">
             {/* Users are not told about terminals or tmux: while the live session has

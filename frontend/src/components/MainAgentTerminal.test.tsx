@@ -30,6 +30,26 @@ afterEach(() => {
 })
 
 describe('MainAgentTerminal sizing', () => {
+  it('says the live view has not started instead of switching back to the chat', async () => {
+    getMainTerminal.mockRejectedValue({ response: { status: 404 } })
+    const onUnavailable = vi.fn()
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="session-1" onUnavailable={onUnavailable} />))
+      await act(async () => Promise.resolve())
+      const notice = host.querySelector('[data-testid="main-agent-terminal-not-started"]')
+      expect(notice?.textContent).toContain('appears once the agent starts working')
+      expect(onUnavailable).not.toHaveBeenCalled()
+      await act(async () => (notice!.querySelector('button') as HTMLButtonElement).click())
+      expect(onUnavailable).toHaveBeenCalledTimes(1)
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
   it('keeps the debug terminal near 80 columns and scrolls when the chat pane is narrower', async () => {
     getMainTerminal.mockResolvedValue({
       terminal_id: 'terminal-1',
