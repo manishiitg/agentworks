@@ -50,6 +50,11 @@ func TestEveryPulsePlatformTicketIsLinkedFromTheRegister(t *testing.T) {
 	register := string(registerBytes)
 
 	var onDisk []string
+	// A PLAT number identifies one issue even when files live in different
+	// categories. The former chat-reliability/plat-339.md pointer collided
+	// with an unrelated security-sandbox ticket and made references ambiguous.
+	byID := map[string]string{}
+	issueName := regexp.MustCompile(`^plat-(\d+)(?:-[A-Za-z0-9._-]+)?\.md$`)
 	err = filepath.WalkDir(ticketsDir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -61,7 +66,15 @@ func TestEveryPulsePlatformTicketIsLinkedFromTheRegister(t *testing.T) {
 		if relErr != nil {
 			return relErr
 		}
-		onDisk = append(onDisk, filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		if match := issueName.FindStringSubmatch(entry.Name()); match != nil {
+			if previous, exists := byID[match[1]]; exists {
+				t.Errorf("PLAT-%s has two ticket files: %s and %s", match[1], previous, rel)
+			} else {
+				byID[match[1]] = rel
+			}
+		}
+		onDisk = append(onDisk, rel)
 		return nil
 	})
 	if err != nil {

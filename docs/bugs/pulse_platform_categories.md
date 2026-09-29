@@ -10,12 +10,18 @@ The full filename → category mapping is
 
 ## Filing rule for new tickets
 
-File a new `plat-NNN.md` in exactly one category directory — the subsystem
-that owns the defect. When a ticket genuinely spans two subsystems, pick the
-owner of the fix and name the runner-up in the ticket body. Then:
+First search the [workstream register](pulse_platform_issue_register.md) and
+existing tickets. Add evidence or follow-up acceptance to an existing ticket
+when the root cause and outcome are the same. File a new `plat-NNN.md` only
+for an independently actionable defect with its own fix boundary and
+acceptance. Put it in exactly one category directory — the subsystem that owns
+the defect. When a ticket genuinely spans two subsystems, pick the owner of
+the fix and name the runner-up in the ticket body. Then:
 
-1. Link it from [pulse_platform_issue_register.md](pulse_platform_issue_register.md)
-   as `pulse_platform/<category>/plat-NNN.md`.
+1. Link it from the complete ticket index in
+   [pulse_platform_issue_register.md](pulse_platform_issue_register.md) as
+   `pulse_platform/<category>/plat-NNN.md`; add it to the relevant workstream's
+   recent anchors only if it changes the current focus.
 2. Start the file with the index header:
    `[← Pulse platform issue index](../../pulse_platform_issue_register.md)`.
 3. Link other tickets relatively: `(plat-MMM.md)` for the same category,
@@ -25,24 +31,25 @@ owner of the fix and name the runner-up in the ticket body. Then:
 (`agent_go/cmd/server/pulse_register_integrity_test.go`) enforces the
 register ↔ file invariant in both directions.
 
-## Categories (319 tickets, 2026-09-16)
+## Categories (365 unique tickets, 2026-09-29)
 
 | Directory | Tickets | What belongs here |
 |---|---|---|
-| `pulse-governance/` | 49 | Pulse reviews, Gate, Fixer, finding identity/lifecycle/dedup, Review+Fix dispatch, verification, review modules, finalizer, focus rotation, goal metrics |
-| `coding-agent-bridge/` | 48 | CLI adapters (Claude/Codex/Pi/Cursor), retained turns, tmux sessions, tool-call event identity, transcripts, live-input, live-attach, MCP bridge behavior |
-| `step-execution/` | 40 | Step execution models (message_sequence/scripted/todo/routing/branch), step_config, step tool surface and DB/filesystem grants, workspace tools, schema migration |
-| `frontend-chat/` | 31 | Chat UI presentation, activity monitor, report pane and reports, execution logs, decision cards, plan/goal views, deploy chunk issues |
-| `chat-reliability/` | 2 | Durable chat history, user ownership and storage, resume/restore continuity, native transcript reconciliation, chat migration |
-| `scheduler-runs/` | 29 | Scheduling, cron, occurrences, fire decisions, leases, terminal-state reconciliation, run-folder identity, retention, schedule history |
-| `security-sandbox/` | 22 | Landlock/sandbox, Folder Guard, secrets, read-only tier, session isolation, MCP management boundaries, access control |
-| `learnings-knowledge/` | 19 | Reflection turn, learnings/KB contracts and locks, skill and prompt guidance, guidance tests |
+| `pulse-governance/` | 50 | Pulse reviews, Gate, Fixer, finding identity/lifecycle/dedup, Review+Fix dispatch, verification, review modules, finalizer, focus rotation, goal metrics |
+| `coding-agent-bridge/` | 52 | CLI adapters (Claude/Codex/Pi/Cursor), retained turns, tmux sessions, tool-call event identity, transcripts, live-input, live-attach, MCP bridge behavior |
+| `step-execution/` | 43 | Step execution models (message_sequence/scripted/todo/routing/branch), step_config, step tool surface and DB/filesystem grants, workspace tools, schema migration |
+| `frontend-chat/` | 35 | Chat UI presentation, activity monitor, report pane and reports, execution logs, decision cards, plan/goal views, deploy chunk issues |
+| `chat-reliability/` | 6 | Durable chat history, user ownership and storage, resume/restore continuity, native transcript reconciliation, chat migration |
+| `scheduler-runs/` | 33 | Scheduling, cron, occurrences, fire decisions, leases, terminal-state reconciliation, run-folder identity, retention, schedule history |
+| `security-sandbox/` | 29 | Landlock/sandbox, Folder Guard, secrets, read-only tier, session isolation, MCP management boundaries, access control |
+| `learnings-knowledge/` | 21 | Reflection turn, learnings/KB contracts and locks, skill and prompt guidance, guidance tests |
 | `cost-telemetry/` | 17 | Cost ledger, attribution, rate cards, usage telemetry, Pulse-vs-workflow cost |
+| `evaluation/` | 16 | Eval harness, pre-validation, validation schemas, evaluation plans |
+| `plans-contracts/` | 17 | Plan mutations, changelog coverage, contract upgrades, upgrade preflight |
+| `integrations/` | 13 | Webhooks, Slack/email/WhatsApp notifications, Gmail/GWS, MCP catalog, media tools, voice/STT |
+| `human-decisions/` | 14 | Human input, operator decisions, approvals, attribution, human-decided branches |
+| `performance/` | 5 | Latency, contention, and runtime resource use |
 | `browser-automation/` | 14 | agent_browser, CDP tabs, snapshots, managed browser |
-| `evaluation/` | 14 | Eval harness, pre-validation, validation schemas, evaluation plans |
-| `plans-contracts/` | 13 | Plan mutations, changelog coverage, contract upgrades, upgrade preflight |
-| `integrations/` | 11 | Webhooks, Slack/email/WhatsApp notifications, Gmail/GWS, MCP catalog, media tools, voice/STT |
-| `human-decisions/` | 10 | Human input, operator decisions, approvals, attribution, human-decided branches |
 
 Non-ticket files staying at the top of `pulse_platform/`: the two
 `baseline-*.json` snapshots.
@@ -155,3 +162,6 @@ ambiguity is documented rather than lost. Format: ticket → chosen (runner-up).
 - PLAT-285 and PLAT-290 have near-identical titles and bodies (see the
   renumbering note in PLAT-285); both are kept as-is, pending an owner
   decision to merge or differentiate.
+- The duplicate chat-reliability PLAT-339 pointer was removed on 2026-09-29.
+  PLAT-339 belongs to the security-sandbox Crew-invocation ticket; the chat
+  Stop/resume work is PLAT-340.

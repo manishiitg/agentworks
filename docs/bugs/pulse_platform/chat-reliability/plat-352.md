@@ -16,7 +16,7 @@ PLAT-352 is the single home for chat-reliability work: every chat turn
 must execute exactly once, journal durably, and restore identically. It
 consolidates the formerly separate turn-delivery ticket (PLAT-359,
 folded in 2026-09-25 and deleted) and the duplicate Stop/resume record
-(chat-reliability PLAT-339, now a pointer to PLAT-340 — the number
+(the chat-reliability PLAT-339 pointer was removed on 2026-09-29; the number
 belongs to the security-sandbox Crew-invocation ticket). Member tickets
 with their own files stay linked, not duplicated: PLAT-324
 (continuity), PLAT-178 (delivery/transcript recovery), PLAT-340
