@@ -318,6 +318,43 @@ MCP calls are already recorded per session with the workspace path
 - **Catalog link.** A personal server added from the catalog records `catalog`
   (set by the server only), so the list can match it to its card.
 
+### Sign-in apps: one app per provider, set up once (2026-09-29)
+
+Providers without dynamic registration (Google, GitHub, Slack, Render,
+HubSpot, Box) need an OAuth app. Asking every person for a client ID and
+secret was too hard for most, so an admin sets up **one app per provider for
+the deployment**, and everyone else just clicks Connect.
+
+- **Storage:** `<tokens root>/_platform/apps/<provider>.json`, sealed like
+  every credential under the tokens root (path-bound). Never in git, never
+  returned by an API.
+- **Grouping:** `mcpAppKeyFor`: every Google server shares the `google` app;
+  GitHub and Slack likewise; anything else is its own app, named after the
+  catalog entry. Servers that register themselves (DCR) need none.
+- **API (admin only):** `GET /api/admin/mcp-apps` (providers, whether set up,
+  the client ID, the callback URL; never the secret), `PUT` and `DELETE`
+  `/api/admin/mcp-apps/{key}`.
+- **Resolution:** a personal server added from the catalog records `app_key`.
+  At connect and refresh, `personalMCPServerConfig` uses, in order: the client
+  the person entered for their own app (their sealed client file), then the
+  deployment's app for `app_key`, read live. So a rotated app reaches
+  everyone, and nothing shared is copied into a person's store. Saving or
+  removing an app drops the pooled connections that use it.
+- **UI:** an admin-only "Sign-in apps" card at the top of a Code's MCPs tab:
+  the setup steps, the callback URL to register with a copy button, "Upload
+  client_secret.json" (Google's download, parsed in the browser), and the two
+  fields. People who still have to bring their own app get the same upload
+  button on their prompt.
+- **Google setup (once, by a Workspace admin):** a Cloud project, the Google
+  Workspace MCP services turned on, the consent screen set to **Internal**
+  (no Google review, own Workspace only), a **Web** OAuth client with
+  `https://<host>/api/oauth/callback` as its redirect URI. A public app would
+  need Google's verification and a security assessment for Gmail and Drive
+  scopes; not planned.
+- **Not done:** shared platform connections (Crew) still take their own
+  client; the Code agent's `manage_my_mcp_servers` needs no change (Connect
+  just works once the app exists).
+
 ## Tests (end-to-end, not mocked)
 
 1. A adds a public no-auth remote server (e.g. DeepWiki), enables it in Code

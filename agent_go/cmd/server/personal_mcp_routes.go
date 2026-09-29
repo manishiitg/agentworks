@@ -149,7 +149,7 @@ func (api *StreamingAPI) handleAddPersonalMCP(w http.ResponseWriter, r *http.Req
 // server by name, or their own URL. The HTTP route and the Code agent's
 // manage_my_mcp_servers tool both use it. The int is the HTTP status of an error.
 func (api *StreamingAPI) addPersonalMCP(ctx context.Context, userID string, body personalMCPServer, catalog string) (personalMCPServer, int, error) {
-	body.OAuth, body.Catalog = nil, ""
+	body.OAuth, body.Catalog, body.AppKey = nil, "", ""
 	var catalogClient *registeredClient
 	if strings.TrimSpace(catalog) != "" {
 		entry, ok := api.personalMCPCatalogEntry(catalog)
@@ -172,6 +172,11 @@ func (api *StreamingAPI) addPersonalMCP(ctx context.Context, userID string, body
 				catalogClient = &registeredClient{ClientID: catalogOAuth.ClientID, ClientSecret: secret}
 			}
 			catalogOAuth.ClientSecretFile = ""
+			// A provider without registration signs in through the
+			// deployment's app, when an admin has set one up.
+			if catalogClient == nil && catalogOAuth.ClientID == "" && catalogOAuth.RegistrationEndpoint == "" {
+				body.AppKey = mcpAppKeyFor(entry.Catalog, &catalogOAuth)
+			}
 			catalogOAuth.ClientID, catalogOAuth.ClientSecret, catalogOAuth.RedirectURL, catalogOAuth.UsePKCE = "", "", "", true
 			body.OAuth = &catalogOAuth
 		}
@@ -438,6 +443,12 @@ func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
 		entry := personalMCPCatalogServer{Name: local, Catalog: name, Description: cfg.Description, SignIn: cfg.OAuth != nil, config: cfg}
 		if cfg.OAuth != nil {
 			entry.NeedsClient = cfg.OAuth.ClientID == "" && cfg.OAuth.RegistrationEndpoint == ""
+			if entry.NeedsClient {
+				// An app the admin set up for the provider is enough.
+				if app, err := readMCPApp(mcpAppKeyFor(name, cfg.OAuth)); err == nil && app != nil {
+					entry.NeedsClient = false
+				}
+			}
 		}
 		out = append(out, entry)
 	}

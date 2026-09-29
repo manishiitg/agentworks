@@ -52,6 +52,9 @@ type personalMCPServer struct {
 	Headers   map[string]personalMCPHeader `json:"headers,omitempty"`
 	AddedAt   string                       `json:"added_at,omitempty"`
 	Catalog   string                       `json:"catalog,omitempty"` // set by the server, never by the request
+	// AppKey names the deployment's sign-in app this server signs in
+	// through (set by the server from the catalog, never by the request).
+	AppKey string `json:"app_key,omitempty"`
 }
 
 // personalMCPHeader is a credential header built from one personal secret:
@@ -182,7 +185,7 @@ func validatePersonalMCPServer(server *personalMCPServer) error {
 	if server.OAuth != nil {
 		copied := *server.OAuth
 		copied.TokenFile = ""                                 // set per person at resolve time, never stored
-		copied.ClientSecret, copied.ClientSecretFile = "", "" // the sealed client file holds the client
+		copied.ClientSecret, copied.ClientSecretFile = "", "" // the sealed client file, or the deployment's app, holds the client
 		copied.PublicOnly = true
 		server.OAuth = &copied
 	}
@@ -483,6 +486,17 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 				}
 				if client != nil {
 					copied.ClientID, copied.ClientSecret = client.ClientID, client.ClientSecret
+				} else if server.AppKey != "" {
+					// The deployment's sign-in app, read live so a rotated
+					// app reaches everyone. A client the person entered
+					// (above) always wins.
+					app, err := readMCPApp(server.AppKey)
+					if err != nil {
+						return "", mcpclient.MCPServerConfig{}, err
+					}
+					if app != nil {
+						copied.ClientID, copied.ClientSecret = app.ClientID, app.ClientSecret
+					}
 				}
 			}
 			cfg.OAuth = &copied

@@ -2420,6 +2420,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
 	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
+	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
+	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
