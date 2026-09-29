@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileText, GitBranch, GitCommit, GitCompare, Loader2, Minus, Plus, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowLeft, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileText, Files, GitBranch, GitCommit, Loader2, Minus, Plus, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
 import DiffRenderer from '../ui/DiffRenderer'
 import { gitActionError, workspaceGitApi, type GitAction, type GitChangedFile, type GitCommit as GitCommitInfo, type GitRepo } from '../../services/workspaceGit'
 import { gitFullPath, useWorkspaceGitStore, type GitPanel } from '../../stores/useWorkspaceGitStore'
@@ -31,36 +31,46 @@ function BranchChip({ repo, showName }: { repo: GitRepo; showName: boolean }) {
   )
 }
 
-/** Branch and a Source Control toggle above the tree (like VS Code's status bar and SCM badge). */
-export function GitBar({ workspacePath, changesOpen, onToggleChanges }: {
-  workspacePath: string
-  changesOpen: boolean
-  onToggleChanges: () => void
-}) {
+/** Branch strip above the tree (VS Code's status-bar branch); the rail switches to Source Control. */
+export function GitBar({ workspacePath }: { workspacePath: string }) {
   const repos = useWorkspaceGitStore(state => state.repos)
   const refresh = useWorkspaceGitStore(state => state.refresh)
   if (repos.length === 0) return null
-  const changed = repos.reduce((sum, repo) => sum + repo.files.length, 0)
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2 text-xs">
+    <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2 text-xs">
       <div className="flex min-w-0 flex-1 items-center gap-x-3 overflow-hidden">
         {repos.slice(0, 2).map(repo => <BranchChip key={repo.root} repo={repo} showName={repos.length > 1} />)}
         {repos.length > 2 && <span className="text-muted-foreground">+{repos.length - 2}</span>}
       </div>
-      <button
-        type="button"
-        onClick={onToggleChanges}
-        aria-pressed={changesOpen}
-        title="Source control: stage, commit, discard"
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 font-medium ${changesOpen ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-      >
-        <GitCompare aria-hidden="true" className="h-3.5 w-3.5" />
-        {changesOpen ? 'Files' : 'Source Control'}
-        {changed > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground">{changed}</span>}
-      </button>
       <button type="button" aria-label="Refresh git status" title="Refresh git status" onClick={() => { void refresh(workspacePath) }} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
         <RefreshCw className="h-3.5 w-3.5" />
       </button>
+    </div>
+  )
+}
+
+/** VS Code-style activity rail: Explorer and Source Control (with a change-count badge). */
+export function ActivityRail({ view, onChange }: { view: 'files' | 'scm'; onChange: (view: 'files' | 'scm') => void }) {
+  const changed = useWorkspaceGitStore(state => state.repos.reduce((sum, repo) => sum + repo.files.length, 0))
+  const item = (id: 'files' | 'scm', label: string, icon: ReactNode, badge?: number) => (
+    <button
+      key={id}
+      type="button"
+      role="tab"
+      aria-selected={view === id}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(id)}
+      className={`relative flex h-10 w-full items-center justify-center border-l-2 ${view === id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+    >
+      {icon}
+      {badge ? <span className="absolute bottom-1 right-1 min-w-4 rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground">{badge > 99 ? '99+' : badge}</span> : null}
+    </button>
+  )
+  return (
+    <div role="tablist" aria-label="Views" aria-orientation="vertical" className="flex w-10 shrink-0 flex-col border-r border-border bg-muted/30">
+      {item('files', 'Explorer', <Files className="h-5 w-5" />)}
+      {item('scm', 'Source Control', <GitBranch className="h-5 w-5" />, changed)}
     </div>
   )
 }
@@ -150,6 +160,41 @@ function Section({ title, count, action, children }: { title: string; count: num
   )
 }
 
+function refBadge(ref: string): { label: string; className: string } | null {
+  const name = ref.replace(/^HEAD -> /, '')
+  if (ref.startsWith('tag: ')) return { label: ref.slice(5), className: 'bg-amber-500/15 text-amber-600 dark:text-amber-300' }
+  if (name.startsWith('origin/') || name.includes('/')) return { label: name, className: 'bg-violet-500/20 text-violet-600 dark:text-violet-300' }
+  return { label: name, className: ref.startsWith('HEAD -> ') ? 'bg-primary/20 text-primary' : 'bg-muted text-foreground' }
+}
+
+/** Recent commits of the repo, newest first, with branch and tag badges. */
+function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; repo: GitRepo; reloadKey: number }) {
+  const commits = useAsync(() => workspaceGitApi.log(workspacePath, repo.root), [workspacePath, repo.root, repo.branch, repo.ahead, repo.behind, reloadKey])
+  const list = commits.value ?? []
+  return (
+    <Section title="Graph" count={list.length}>
+      {commits.loading && list.length === 0 ? <Loading />
+        : commits.error ? <p className="px-3 py-1 text-xs text-destructive">{commits.error}</p>
+          : list.length === 0 ? <p className="px-3 py-1 text-xs text-muted-foreground">No commits yet.</p>
+            : (
+              <ol className="pb-1">
+                {list.map((entry, index) => {
+                  const badges = (entry.refs ?? []).map(refBadge).filter((badge): badge is NonNullable<typeof badge> => badge !== null).slice(0, 3)
+                  return (
+                    <li key={entry.hash} title={`${entry.subject}\n${entry.author} · ${new Date(entry.date).toLocaleString()} · ${entry.hash.slice(0, 7)}`} className="relative flex min-h-7 items-center gap-2 py-0.5 pl-4 pr-2 hover:bg-muted">
+                      <span aria-hidden="true" className={`absolute left-[1.05rem] w-px bg-border ${index === 0 ? 'top-1/2' : 'top-0'} ${index === list.length - 1 ? 'bottom-1/2' : 'bottom-0'}`} />
+                      <span aria-hidden="true" className={`relative z-10 h-2.5 w-2.5 shrink-0 rounded-full border-2 ${index === 0 ? 'border-primary bg-primary' : 'border-violet-400 bg-background'}`} />
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{entry.subject}</span>
+                      {badges.map(badge => <span key={badge.label} className={`shrink-0 truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>{badge.label}</span>)}
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+    </Section>
+  )
+}
+
 function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }: {
   repo: GitRepo
   workspacePath: string
@@ -160,45 +205,89 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }:
   error: string | null
 }) {
   const [message, setMessage] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [graphKey, setGraphKey] = useState(0)
   const staged = repo.files.filter(file => file.index_status)
   const unstaged = repo.files.filter(file => file.worktree_status)
   const where = repo.root ? `the \`${repo.root}\` repo` : 'this repo'
   const canCommit = message.trim() !== '' && (staged.length > 0 || unstaged.length > 0) && !busy
-  const commit = async () => {
+  const commit = async (options: { all?: boolean; push?: boolean } = {}) => {
     if (!canCommit) return
-    if (await run(repo, { op: 'commit', message, all: staged.length === 0 })) setMessage('')
+    setMenuOpen(false)
+    const all = options.all ?? staged.length === 0
+    if (await run(repo, { op: 'commit', message, all })) {
+      setMessage('')
+      setGraphKey(key => key + 1)
+      if (options.push && onAsk) void onAsk(`Push ${where}'s commits to its remote.`)
+    }
   }
-  const headerButton = 'inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50'
+  const headerButton = 'inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground'
+  const menuItem = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-foreground hover:bg-muted disabled:opacity-50'
   return (
-    <section className="border-b border-border pb-2">
-      <div className="flex items-center gap-2 px-2 py-2 text-xs">
+    <section className="border-b border-border pb-1">
+      <div className="flex h-9 items-center gap-1 px-2 text-xs">
         <div className="min-w-0 flex-1"><BranchChip repo={repo} showName={showName} /></div>
         {onAsk && (
           <>
-            <button type="button" title="Ask the agent to pull" onClick={() => { void onAsk(`Pull the latest changes for ${where} and tell me what changed.`) }} className={headerButton}><ArrowDown className="h-3 w-3" />Pull</button>
-            <button type="button" title="Ask the agent to push" onClick={() => { void onAsk(`Push ${where}'s commits to its remote.`) }} className={headerButton}><ArrowUp className="h-3 w-3" />Push</button>
+            <button type="button" title="Ask the agent to pull" aria-label="Pull" onClick={() => { void onAsk(`Pull the latest changes for ${where} and tell me what changed.`) }} className={headerButton}><ArrowDown className="h-3.5 w-3.5" />{repo.behind > 0 ? repo.behind : ''}</button>
+            <button type="button" title="Ask the agent to push" aria-label="Push" onClick={() => { void onAsk(`Push ${where}'s commits to its remote.`) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
           </>
         )}
+        <button type="button" title="Refresh graph" aria-label="Refresh graph" onClick={() => setGraphKey(key => key + 1)} className={headerButton}><RefreshCw className="h-3.5 w-3.5" /></button>
       </div>
       <div className="px-2 pb-2">
-        <textarea
-          value={message}
-          onChange={event => setMessage(event.target.value)}
-          onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void commit() } }}
-          placeholder="Message (Ctrl+Enter to commit)"
-          aria-label="Commit message"
-          rows={2}
-          className="block w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        />
-        <button
-          type="button"
-          disabled={!canCommit}
-          onClick={() => { void commit() }}
-          className="mt-1.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-          {staged.length > 0 ? `Commit ${staged.length} staged` : unstaged.length > 0 ? `Commit all ${unstaged.length} changes` : 'Commit'}
-        </button>
+        <div className="relative">
+          <textarea
+            value={message}
+            onChange={event => setMessage(event.target.value)}
+            onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void commit() } }}
+            placeholder="Message (Ctrl+Enter to commit)"
+            aria-label="Commit message"
+            rows={2}
+            className={`block w-full resize-y rounded-md border border-input bg-muted/40 py-1.5 pl-2 text-[13px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${onAsk ? 'pr-8' : 'pr-2'}`}
+          />
+          {onAsk && (
+            <button
+              type="button"
+              title="Ask the agent to write the message and commit"
+              aria-label="Ask the agent to write the commit message"
+              disabled={repo.files.length === 0}
+              onClick={() => { void onAsk(`Review the ${staged.length > 0 ? 'staged' : 'current'} changes in ${where}, write a clear commit message and commit them. Tell me the message you used.`) }}
+              className="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-40"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="relative mt-1.5 flex">
+          <button
+            type="button"
+            disabled={!canCommit}
+            onClick={() => { void commit() }}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-l-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {staged.length > 0 ? `Commit ${staged.length} staged` : unstaged.length > 0 ? `Commit all ${unstaged.length}` : 'Commit'}
+          </button>
+          <button
+            type="button"
+            disabled={!canCommit}
+            aria-label="More commit actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(open => !open)}
+            className="rounded-r-md border-l border-primary-foreground/30 bg-primary px-2 text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          {menuOpen && (
+            <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-popover shadow-md">
+              <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0 }) }}>Commit</button>
+              {staged.length > 0 && unstaged.length > 0 && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: true }) }}>Commit All (stage everything)</button>}
+              {onAsk && <button role="menuitem" type="button" className={menuItem} onClick={() => { void commit({ all: staged.length === 0, push: true }) }}>Commit &amp; Push (agent)</button>}
+            </div>
+          )}
+        </div>
         {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
       </div>
       {repo.files.length === 0 && (
@@ -219,6 +308,7 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }:
         {unstaged.map(file => <FileRow key={`u:${file.path}`} repo={repo} file={file} staged={false} workspacePath={workspacePath} busy={busy} run={run} />)}
       </Section>
       {repo.truncated && <p className="px-3 py-1 text-xs text-muted-foreground">Showing the first changes only.</p>}
+      <GitGraph workspacePath={workspacePath} repo={repo} reloadKey={graphKey} />
     </section>
   )
 }
@@ -247,7 +337,12 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
   }
 
   return (
-    <div className="h-full overflow-y-auto text-[13px]" aria-label="Source control">
+    <div className="flex h-full min-h-0 flex-col text-[13px]" aria-label="Source control">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source Control</h3>
+        <button type="button" aria-label="Refresh source control" title="Refresh" onClick={() => { void refresh(workspacePath) }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {repos.map(repo => (
         <RepoSection
           key={repo.root}
@@ -260,6 +355,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
           error={errors[repo.root] ?? null}
         />
       ))}
+      </div>
     </div>
   )
 }

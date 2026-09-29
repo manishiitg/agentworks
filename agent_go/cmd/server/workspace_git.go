@@ -76,6 +76,9 @@ type workspaceGitCommit struct {
 	Author  string `json:"author"`
 	Date    string `json:"date"`
 	Subject string `json:"subject"`
+	// Refs are the branches and tags pointing at the commit ("HEAD -> main",
+	// "origin/main", "tag: v1").
+	Refs []string `json:"refs"`
 }
 
 // workspaceGitDocsRoot is the workspace docs directory on this host.
@@ -469,7 +472,7 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		}
 		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"diff": string(out), "truncated": truncated})
 	case "log":
-		args := []string{"log", "--no-color", "-n", strconv.Itoa(workspaceGitMaxCommits), "--date=iso-strict", "--format=%H%x1f%an%x1f%ad%x1f%s%x1e"}
+		args := []string{"log", "--no-color", "-n", strconv.Itoa(workspaceGitMaxCommits), "--date=iso-strict", "--format=%H%x1f%an%x1f%ad%x1f%s%x1f%D%x1e"}
 		if file != "" {
 			args = append(args, "--", file)
 		}
@@ -478,8 +481,16 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 		if err == nil {
 			for _, record := range strings.Split(string(out), "\x1e") {
 				parts := strings.Split(strings.TrimSpace(record), "\x1f")
-				if len(parts) == 4 {
-					commits = append(commits, workspaceGitCommit{Hash: parts[0], Author: parts[1], Date: parts[2], Subject: parts[3]})
+				if len(parts) >= 4 {
+					commit := workspaceGitCommit{Hash: parts[0], Author: parts[1], Date: parts[2], Subject: parts[3], Refs: []string{}}
+					if len(parts) >= 5 && strings.TrimSpace(parts[4]) != "" {
+						for _, ref := range strings.Split(parts[4], ", ") {
+							if ref = strings.TrimSpace(ref); ref != "" {
+								commit.Refs = append(commit.Refs, ref)
+							}
+						}
+					}
+					commits = append(commits, commit)
 				}
 			}
 		}

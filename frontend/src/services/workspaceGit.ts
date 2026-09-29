@@ -30,6 +30,8 @@ export interface GitCommit {
   author: string
   date: string
   subject: string
+  /** Branches and tags at this commit, e.g. "HEAD -> main", "origin/main". */
+  refs?: string[]
 }
 
 const ENDPOINT = '/api/workspace-git'

@@ -18,7 +18,10 @@ vi.mock('../services/workspaceGit', () => ({
     ] }]),
     act: vi.fn(async () => null),
     diff: vi.fn(async () => ({ diff: '', truncated: false })),
-    log: vi.fn(async () => []),
+    log: vi.fn(async () => [
+      { hash: 'aaaaaaa1', author: 'A', date: '2026-09-29T10:00:00Z', subject: 'newest commit', refs: ['HEAD -> main', 'origin/main'] },
+      { hash: 'bbbbbbb2', author: 'A', date: '2026-09-28T10:00:00Z', subject: 'older commit', refs: [] },
+    ]),
     show: vi.fn(async () => ({ diff: '', truncated: false })),
   },
 }))
@@ -38,15 +41,18 @@ describe('FileWorkspacePane git bar', () => {
       await act(async () => root.render(<FileWorkspacePane workspacePath="Chats/Code/projects/p1" />))
       await act(async () => { await Promise.resolve() })
       expect(host.textContent).toContain('main')
-      expect(host.textContent).toContain('Source Control')
+      expect(host.querySelector('[aria-label="Source Control"]')).not.toBeNull()
       // The Changes toggle swaps the tree for the changed-file list.
-      const button = Array.from(host.querySelectorAll('button')).find(item => item.textContent?.startsWith('Source Control'))!
+      const button = Array.from(host.querySelectorAll('button')).find(item => item.getAttribute('aria-label') === 'Source Control')!
       await act(async () => button.click())
       const view = host.querySelector('[aria-label="Source control"]')!
       expect(view.textContent).toContain('Staged Changes')
       expect(view.textContent).toContain('staged.ts')
       expect(view.textContent).toContain('a.ts')
       expect(view.textContent).toContain('Commit 1 staged')
+      // The Graph lists recent commits with their branch badges.
+      expect(view.textContent).toContain('newest commit')
+      expect(view.textContent).toContain('origin/main')
 
       // Commit needs a message; then it sends the commit action and refreshes.
       const { workspaceGitApi } = await import('../services/workspaceGit')

@@ -3,7 +3,7 @@ import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
-import { GitBar, GitChangesList, GitFilePanel } from './workspace/GitPanels'
+import { ActivityRail, GitBar, GitChangesList, GitFilePanel } from './workspace/GitPanels'
 import { EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT } from '../utils/workspacePathUtils'
 
 // Side by side (tree left, file right) once the pane is wide enough; a narrow
@@ -126,22 +126,25 @@ export function FileWorkspacePane({
         style={split ? { width: treeWidth } : undefined}
         hidden={rightOpen && !split}
       >
-        <div className="flex h-full min-h-0 flex-col">
-          {workspacePath && <GitBar workspacePath={workspacePath} changesOpen={changesOpen} onToggleChanges={() => setChangesOpen(open => !open)} />}
-          {workspacePath && changesOpen && hasRepos && (
-            <div className="min-h-0 flex-1"><GitChangesList workspacePath={workspacePath} onAsk={onAsk} /></div>
-          )}
-          <div className="min-h-0 flex-1" hidden={changesOpen && hasRepos}>
-        <Workspace
-          scopedWorkspacePath={workspacePath}
-          hiddenRootFolders={hiddenRootFolders}
-          hideAddToChat={hideAddToChat}
-          hideRootActions={hideRootActions}
-          expandFirstLevelFolders={expandFirstLevelFolders}
-          hideManagedEntriesByDefault={hideManagedEntriesByDefault}
-          title={title}
-          headerAction={split ? undefined : headerAction}
-        />
+        <div className="flex h-full min-h-0 flex-row">
+          {workspacePath && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {workspacePath && !changesOpen && <GitBar workspacePath={workspacePath} />}
+            {workspacePath && changesOpen && hasRepos && (
+              <div className="min-h-0 flex-1"><GitChangesList workspacePath={workspacePath} onAsk={onAsk} /></div>
+            )}
+            <div className="min-h-0 flex-1" hidden={changesOpen && hasRepos}>
+              <Workspace
+                scopedWorkspacePath={workspacePath}
+                hiddenRootFolders={hiddenRootFolders}
+                hideAddToChat={hideAddToChat}
+                hideRootActions={hideRootActions}
+                expandFirstLevelFolders={expandFirstLevelFolders}
+                hideManagedEntriesByDefault={hideManagedEntriesByDefault}
+                title={title}
+                headerAction={split ? undefined : headerAction}
+              />
+            </div>
           </div>
         </div>
       </div>

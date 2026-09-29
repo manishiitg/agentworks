@@ -113,6 +113,9 @@ func TestWorkspaceGitDiffAndLog(t *testing.T) {
 	if code != http.StatusOK || len(commits) != 1 || commits[0].(map[string]any)["subject"] != "first commit" {
 		t.Fatalf("log: %d %v", code, body)
 	}
+	if refs := commits[0].(map[string]any)["refs"].([]any); len(refs) == 0 || !strings.Contains(refs[0].(string), "main") {
+		t.Fatalf("refs: %v", refs)
+	}
 	hash := commits[0].(map[string]any)["hash"].(string)
 	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"show"}, "repo": {"app"}, "file": {"a.txt"}, "commit": {hash}})
 	if code != http.StatusOK || !strings.Contains(body["diff"].(string), "+one") {
