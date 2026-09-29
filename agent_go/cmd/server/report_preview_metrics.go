@@ -29,6 +29,10 @@ func (api *StreamingAPI) handleReportPreviewMetrics(w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := reportPreviewReadable(r, claims, workspacePath); err != nil {
+		http.Error(w, err.Error(), reportPreviewWorkspaceErrorStatus(err))
+		return
+	}
 	cloned := r.Clone(r.Context())
 	copiedURL := *r.URL
 	cloned.URL = &copiedURL

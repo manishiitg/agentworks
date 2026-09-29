@@ -2690,16 +2690,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/answer", requireReportHumanInputAccess(true, api.handleAnswerReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-module-state", api.handleGetPulseModuleState).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-findings", api.handleGetPulseFindings).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-reviews", api.handleGetPulseReviews).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-agent-metrics", api.handleGetPulseAgentMetrics).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-impact", api.handleGetPulseImpact).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/pulse-context", api.handleGetPulseContext).Methods("GET", "OPTIONS")
 
 	// Workflow running-session API (decoupled from chat session storage).
 	apiRouter.HandleFunc("/workflow/running", api.handleListRunningWorkflows).Methods("GET")
-	apiRouter.HandleFunc("/workflow/running/{session_id}", api.handleGetRunningWorkflow).Methods("GET")
 	apiRouter.HandleFunc("/workflow/running/{session_id}", api.handleUpdateRunningWorkflow).Methods("PATCH", "OPTIONS")
 
 	// Global cost ledger summary.
@@ -2883,16 +2876,12 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Workflow API routes
 	apiRouter.HandleFunc("/workflow/create", requireWorkflowCreateAccess(api.handleCreateWorkflow)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/status", api.handleGetWorkflowStatus).Methods("GET")
 	apiRouter.HandleFunc("/workflow/update", api.handleUpdateWorkflow).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/constants", orchtypes.HandleWorkflowConstants).Methods("GET")
-	apiRouter.HandleFunc("/workflow/active-executions", api.handleGetActiveExecutions).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
 	// Headless report preview data (preview_report tool). The only API paths a
 	// report-preview scoped token can reach; see report_preview_routes.go.
-	apiRouter.HandleFunc("/workflow/report-preview/file", api.handleReportPreviewFile).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/query", api.handleReportPreviewQuery).Methods("POST")
-	apiRouter.HandleFunc("/workflow/report-preview/costs", api.handleReportPreviewMetrics).Methods("GET")
 	apiRouter.HandleFunc("/workflow/report-preview/media-url", api.handleReportMediaURL).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-preview/run", api.handleReportRun).Methods("POST")
 	apiRouter.HandleFunc("/workflow/report-media", api.handleReportMediaStream).Methods("GET", "HEAD")
@@ -2903,30 +2892,20 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Workspace API reverse proxy (auth-protected) — frontend calls /api/wp/* instead of /workspace/*
 	apiRouter.PathPrefix("/wp/").Handler(workspaceProxyHandler())
 
-	// Consolidated workspace state endpoint (NEW - loads everything in one call)
-	apiRouter.HandleFunc("/workspace/state", api.handleLoadWorkspaceState).Methods("GET", "OPTIONS")
-
 	// Focused workflow endpoints used for mutations and incremental refreshes.
-	apiRouter.HandleFunc("/workflow/run-folders", api.handleGetRunFolders).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/run-folder", api.handleCreateRunFolder).Methods("POST", "OPTIONS")
 	// /workflow/progress endpoint removed — steps_done.json progress tracking no longer consumed by frontend
 	apiRouter.HandleFunc("/workflow/run-folder", requireWorkflowWriteAccess(api.handleDeleteRunFolder)).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/learnings", requireWorkflowWriteAccess(api.handleDeleteStepLearnings)).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/learnings/all", api.handleGetAllStepLearnings).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/variable-groups", api.handleGetVariableGroups).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/variable-groups", requireWorkflowWriteAccess(api.handleUpdateVariableGroups)).Methods("POST", "PUT", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/logs", api.handleGetExecutionLogs).Methods("GET", "OPTIONS")
+	// Workflow data reads, each behind a per-workflow read check.
+	registerWorkflowReadRoutes(apiRouter, api)
 	apiRouter.HandleFunc("/workflow/logs/webhook-payload", api.handleGetExecutionWebhookPayload).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/logs/file", api.handleGetLogFile).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/costs", api.handleGetCosts).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/review-data", api.handleGetWorkflowReviewData).Methods("GET", "OPTIONS")
 
 	// Auto-improvement framework — see docs/workflow/auto_improvement_framework.md
-	apiRouter.HandleFunc("/workflow/builder-doc", api.handleGetBuilderDoc).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/org-dashboard/notifications", api.handleGetOrgDashboardNotifications).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/plan-changelog", api.handleGetPlanChangelog).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/plan-changelog/prune", requireWorkflowWriteAccess(api.handlePrunePlanChangelog)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/framework-health", api.handleGetFrameworkHealth).Methods("GET", "OPTIONS")
 
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
@@ -2944,13 +2923,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Dynamic report system. The frontend ReportViewer loads db/reports/index.html
 	// directly; HTML pages read durable data through window.report.
 
-	apiRouter.HandleFunc("/workflow/backup", api.handleGetWorkflowBackup).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/publish", api.handleGetWorkflowPublish).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/notifications", api.handleGetWorkflowNotifications).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/publish/secret", requireWorkflowWriteAccess(api.handleGetWorkflowPublishSecret)).Methods("GET", "OPTIONS")
 	// Manifest-backed workflow API routes (file-backed workflow definitions)
-	apiRouter.HandleFunc("/workflows/summary", api.handleGetWorkflowsSummary).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/workflows/overview", api.handleGetWorkflowsOverview).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifests", api.handleListWorkflowManifests).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/knowledgebase-sources", api.handleWorkflowKnowledgebaseSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflows/manifest", api.handleGetWorkflowManifest).Methods("GET", "OPTIONS")

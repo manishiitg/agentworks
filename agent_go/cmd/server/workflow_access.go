@@ -216,7 +216,9 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 // requireWorkflowVisible writes a 403 and returns false unless the caller
 // may at least see the workflow at workspacePath.
 func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
-	if currentUserWorkflowAccess(r, workspacePath) != WorkflowAccessNone {
+	claims := GetUserFromContext(r.Context())
+	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspacePath)
+	if level != WorkflowAccessNone && (manifest == nil || userAllowedWorkflowID(claims, manifest.ID)) {
 		return true
 	}
 	writeWorkflowPermissionDenied(w, "read")
