@@ -358,3 +358,10 @@ Code ships a basic setup first; integrations come later. In Code's
   them see the running app. It is useful for UI work but exposes server ports,
   so it needs per-user lockdown. Not decided; not in the first version unless
   decided.
+
+## Native agent tools (2026-09-29)
+
+A Code has no "Native agent tools" switch: they are always on. The switch
+stays in a Crew. The server ignores a `native_agent_tools: false` an older
+Code stored, so no Code is left off with no way back
+(`ProjectNativeAgentTools` is always true for profile `code`).

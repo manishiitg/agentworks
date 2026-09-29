@@ -62,9 +62,9 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   hasIdentity: false,
   hasTemplates: false,
   listsSharedProjects: true,
-  // Native agent tools are on by default (owner decision 2026-09-28/29);
-  // the owner turns them off with the same switch as a Crew.
-  hasNativeAgentToolsSetting: true,
+  // Native agent tools are always on in a Code (owner decision 2026-09-29):
+  // no switch, and the server ignores a stored "off".
+  hasNativeAgentToolsSetting: false,
   defaultView: 'files',
   preferenceNamespace: 'code',
 }

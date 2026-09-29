@@ -895,7 +895,9 @@ func resolveProductProjectBindingWithStore(
 			ProjectSelectedServers:      append([]string(nil), manifest.Capabilities.SelectedServers...),
 			ProjectSelectedSkills:       append([]string(nil), manifest.Capabilities.SelectedSkills...),
 			ProjectWorkflowContextPaths: append([]string(nil), firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)...),
-			ProjectNativeAgentTools:     nativeAgentToolsEnabled(manifest.Capabilities.NativeAgentTools),
+			// A Code has no switch (user, 2026-09-29): native agent tools are
+			// always on, even where an older Code stored "off".
+			ProjectNativeAgentTools: strings.EqualFold(profile.ID, "code") || nativeAgentToolsEnabled(manifest.Capabilities.NativeAgentTools),
 		}
 		// Only the legacy/default project chat is tied to product.json's one
 		// session_id. Additional tabs are independent and live solely in the

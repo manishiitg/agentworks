@@ -560,3 +560,31 @@ func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 		}
 	}
 }
+
+// A Code has no "Native agent tools" switch: they are always on, even for a
+// Code whose workflow.json still says off from before the switch was removed.
+func TestCodeProjectBindingAlwaysHasNativeAgentTools(t *testing.T) {
+	profile := routeTestProfile("code", true, "")
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Code/projects"}
+	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
+	manifestPath := "_users/user-1/Chats/Code/projects/app/product.json"
+	runtimePath := "_users/user-1/Chats/Code/projects/app/workflow.json"
+	for _, capabilities := range []string{`{}`, `{"native_agent_tools":true}`, `{"native_agent_tools":false}`} {
+		store := productProjectStore{
+			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
+			read: func(_ context.Context, path string) (string, bool, error) {
+				if path == runtimePath {
+					return `{"schema_version":1,"id":"task-1","capabilities":` + capabilities + `}`, true, nil
+				}
+				return `{"schema_version":1,"product":"code","id":"task-1","title":"App","session_id":"code:project:task-1"}`, true, nil
+			},
+		}
+		binding, err := resolveProductProjectBindingWithStore(context.Background(), "user-1", profile, "task-1", store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !binding.ProjectNativeAgentTools {
+			t.Fatalf("capabilities %s: a Code lost native agent tools", capabilities)
+		}
+	}
+}
