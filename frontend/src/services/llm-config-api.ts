@@ -56,6 +56,8 @@ export interface ProviderConnection {
   availability_editable?: boolean
   /** Whether the caller may select it where the list was requested. */
   usable?: boolean
+  /** Signed in or has a key. False: needs Set up. Absent: unknown (never blocks). */
+  configured?: boolean
   can_manage?: boolean
   can_view_usage?: boolean
 }

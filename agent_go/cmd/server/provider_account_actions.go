@@ -345,7 +345,9 @@ func (api *StreamingAPI) handleProviderAccountStatus(w http.ResponseWriter, r *h
 	// The real check sends one model request on the account: only its
 	// managers may spend that; everyone else gets the free status command.
 	verify := r.URL.Query().Get("verify") == "1" && manager
-	_ = json.NewEncoder(w).Encode(checkProviderAccountStatus(r.Context(), target, verify))
+	status := checkProviderAccountStatus(r.Context(), target, verify)
+	rememberProviderAccountStatus(target.ID, status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 // POST /api/provider-connections/{id}/sign-out — runs the CLI's own logout in
@@ -392,5 +394,7 @@ func (api *StreamingAPI) handleProviderAccountSignOut(w http.ResponseWriter, r *
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "sign-out failed: " + firstNonEmptyTrimmed(safeProviderText(output), runErr.Error())})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"signed_out": true, "status": checkProviderAccountStatus(r.Context(), target, false)})
+	status := checkProviderAccountStatus(r.Context(), target, false)
+	rememberProviderAccountStatus(target.ID, status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"signed_out": true, "status": status})
 }

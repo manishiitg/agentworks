@@ -1,4 +1,4 @@
-import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountRelation, accountUsable } from '../providers/ProviderAccounts'
+import ProviderAccounts, { ACCOUNT_GROUPS, NO_LONGER_AVAILABLE, accountConfigured, accountRelation, accountUsable } from '../providers/ProviderAccounts'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
@@ -257,7 +257,7 @@ export default function WorkflowLLMConfigurationPanel({
       if (!cancelled) {
         const userAccounts = records.filter(record => record.scope === 'user' && accountRelation(record) !== 'admin_view')
         setAccountRecords(records)
-        setPrivateProviderIds(userAccounts.filter(accountUsable).map(record => record.provider))
+        setPrivateProviderIds(userAccounts.filter(record => accountUsable(record) && accountConfigured(record)).map(record => record.provider))
         setPrivateConnections(userAccounts)
       }
     }).catch(() => undefined) }
@@ -658,7 +658,8 @@ export default function WorkflowLLMConfigurationPanel({
     const missingSelected = selectedProvider && !listed.some(account => account.id === activeID)
     const renderAccount = (account: typeof server | import('../../services/llm-config-api').ProviderConnection, unavailable: boolean) => {
       const inUse = selectedProvider && activeID === account.id
-      const available = !unavailable && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
+      const needsSetup = 'configured' in account && account.configured === false
+      const available = !unavailable && !needsSetup && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
       const relation = accountRelation(account)
       const note = relation === 'own' ? ('sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private')
         : relation === 'server' ? 'Server'
@@ -670,7 +671,9 @@ export default function WorkflowLLMConfigurationPanel({
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}
         <span className="min-w-0 flex-1" />
-        <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={unavailable ? NO_LONGER_AVAILABLE : !available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use account'}</Button>
+        {needsSetup && !inUse
+          ? <Button type="button" variant="outline" size="xs" disabled={readOnly} onClick={() => useLLMStore.getState().setShowLLMModal(true)} title={`${account.display_name} is not signed in yet: set it up on the Providers page`} aria-label={`Set up ${row.name} account ${account.display_name}`}>Set up</Button>
+          : <Button type="button" variant="outline" size="xs" disabled={readOnly || !available || inUse || rowUsing === row.id} onClick={() => void applyAccountToWorkflow(row, account.id)} title={unavailable ? NO_LONGER_AVAILABLE : !available ? 'Account needs setup or CLI is unavailable' : `Use ${account.display_name}`} aria-label={`Use ${row.name} account ${account.display_name}`}>{inUse ? 'Selected' : 'Use account'}</Button>}
       </div>
     }
     const showHeadings = listed.some(account => accountRelation(account) !== 'server' && accountRelation(account) !== 'own')

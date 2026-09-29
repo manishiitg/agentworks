@@ -37,6 +37,9 @@ type providerAccountView struct {
 	// Usable reports whether the caller may select the account for the
 	// requested workflow, Crew, Code or product.
 	Usable       bool `json:"usable"`
+	// Configured reports whether the account is set up: signed in, or has
+	// a key. Absent when a check could not tell; that never blocks use.
+	Configured *bool `json:"configured,omitempty"`
 	CanManage    bool `json:"can_manage"`
 	CanViewUsage bool `json:"can_view_usage"`
 }
@@ -218,6 +221,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		}
 		views = append(views, view)
 	}
+	api.fillProviderAccountConfigured(ctx, views, records)
 	return views, nil
 }
 

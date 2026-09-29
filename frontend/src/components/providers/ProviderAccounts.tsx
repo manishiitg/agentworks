@@ -54,6 +54,9 @@ export const accountRelation = (record: ProviderConnection): ProviderAccountRela
 export const accountUsable = (record: ProviderConnection) =>
   record.usable !== false && accountRelation(record) !== 'admin_view'
 
+/** Whether the account is set up (signed in or has a key). Unknown counts as set up. */
+export const accountConfigured = (record: ProviderConnection) => record.configured !== false
+
 export const ACCOUNT_GROUPS: { label: string; relations: ProviderAccountRelation[] }[] = [
   { label: 'Server account', relations: ['server'] },
   { label: 'Your accounts', relations: ['own'] },
@@ -285,6 +288,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <div className="flex flex-wrap items-center gap-2">
               <span className="break-words text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name}</span>
               {own && <span className={`${badgeClass} bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300`}>{record.sharing?.mode === 'shared' ? 'Shared' : 'Private'}</span>}
+              {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="Not signed in and no key yet: use Sign in to set it up">Not set up</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
             {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
@@ -321,6 +325,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name || 'Server account'}</span>
                 {record.kind && record.kind !== 'user' && <span className={`${badgeClass} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300`}>{record.kind === 'admin' ? 'Admin-configured' : 'Installed'}</span>}
                 {record.usable === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`}>Not available to you</span>}
+                {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="The server has no login or key for this CLI yet">Not set up</span>}
               </div>
               {record.source && <p className="mt-0.5 break-words text-xs text-gray-500 dark:text-gray-400">{record.source}</p>}
               {availability && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Available to: {availability.text}</p>}
