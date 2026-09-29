@@ -786,3 +786,17 @@ func captureLogs(t *testing.T) *lockedLogBuffer {
 	t.Cleanup(func() { log.SetOutput(previous) })
 	return buffer
 }
+
+// A signed-in identity the directory does not list (an SSO address that
+// differs from the invited one) must not be treated as an admin and so must
+// not see anyone's private account.
+func TestProviderAccountsUnlistedIdentityIsNotAdmin(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "cursor-cli", "display_name": "Alice Cursor", "auth_method": "cli_login"})
+	if _, ok := findAccountView(env.list(t, "stranger", ""), account.ID); ok {
+		t.Fatal("an identity missing from the directory sees a private account")
+	}
+	if _, ok := findAccountView(env.list(t, "admin", ""), account.ID); !ok {
+		t.Fatal("admin lost its view")
+	}
+}

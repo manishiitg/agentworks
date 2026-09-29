@@ -335,6 +335,12 @@ func directoryUserForClaims(claims *UserClaims) *UserRecord {
 	return directoryUserFor(claims.UserID, claims.Username, claims.Email)
 }
 
+// userDirectoryHasUsers reports whether the directory lists anyone at all.
+func userDirectoryHasUsers() bool {
+	dir, err := loadUserDirectory()
+	return err == nil && dir != nil && len(dir.Users) > 0
+}
+
 // userDirectoryHasPasswordUsers reports whether password login has anyone
 // to authenticate — what makes the "simple" provider configured once
 // AUTH_USERS is gone from the environment.
