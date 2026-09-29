@@ -1,4 +1,5 @@
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
+import { rememberPlaceViewMode } from '../utils/placeViewMode'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
@@ -128,6 +129,14 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { terminalSessionUsageLines, terminalUsageLines } from './terminalUsage'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
+
+// The person's own chat/terminal choice: applied to this tab and remembered
+// for its Crew, Code or workflow.
+function chooseViewMode(tabId: string, mode: 'formatted' | 'terminal') {
+  const store = useChatStore.getState()
+  store.setTabViewMode(tabId, mode)
+  rememberPlaceViewMode(store.chatTabs[tabId], mode)
+}
 
 // A dismissed picker stays closed while the user keeps typing the same token
 // (same trigger kind and start, query extended), e.g. "#1764" after the
@@ -2951,10 +2960,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 type="button"
                 variant={terminalViewSelected ? 'secondary' : 'ghost'}
                 size="icon"
-                onClick={() => useChatStore.getState().setTabViewMode(
-                  activeTabId,
-                  terminalViewSelected ? 'formatted' : 'terminal',
-                )}
+                onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
                 className="h-7 w-7 p-0"
                 aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
                 title={terminalTitle}
@@ -3313,10 +3319,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         type="button"
                         variant={terminalViewSelected ? 'secondary' : 'outline'}
                         size="icon"
-                        onClick={() => useChatStore.getState().setTabViewMode(
-                          activeTabId,
-                          terminalViewSelected ? 'formatted' : 'terminal',
-                        )}
+                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
                         className="h-7 w-7 p-0"
                         aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
                       >

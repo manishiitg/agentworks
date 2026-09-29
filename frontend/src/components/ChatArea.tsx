@@ -23,6 +23,7 @@ import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest } from './useTranscriptScroll'
 import { MainAgentTerminal } from './MainAgentTerminal'
+import { placeViewKey, rememberedPlaceViewMode } from '../utils/placeViewMode'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetStore } from '../stores'
@@ -655,6 +656,22 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeTab = useChatStore(state =>
     targetTabId ? state.chatTabs[targetTabId] : undefined
   )
+  // Open each tab in the view (chat or terminal) the person last chose for
+  // its Crew, Code or workflow. Applied once per tab and place, so an
+  // automatic fallback to chat (terminal unavailable) is never fought.
+  const activePlaceViewKey = placeViewKey(activeTab)
+  const appliedPlaceViewRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!activeTab || !activePlaceViewKey) return
+    const appliedKey = `${activeTab.tabId}|${activePlaceViewKey}`
+    if (appliedPlaceViewRef.current.has(appliedKey)) return
+    appliedPlaceViewRef.current.add(appliedKey)
+    const remembered = rememberedPlaceViewMode(activeTab)
+    if (remembered && remembered !== normalizeEventViewMode(activeTab.viewMode)) {
+      useChatStore.getState().setTabViewMode(activeTab.tabId, remembered)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per tab and place
+  }, [activeTab?.tabId, activePlaceViewKey])
   // PERF FIX: Stable tab-session key to avoid phantom re-renders.
   //
   // PROBLEM: Previously `const chatTabs = useChatStore(state => state.chatTabs)` subscribed
