@@ -402,8 +402,8 @@ export default function PlannerFileList({
                         Rename
                       </button>
                     )}
-                    {/* Export/Import Backup - Show for any folder */}
-                    {file.type === 'folder' && onExportBackup && onImportBackup && (
+                    {/* Export/Import Backup - top-level folder only */}
+                    {file.type === 'folder' && depth === 0 && onExportBackup && onImportBackup && (
                       <>
                         <div className="border-t border-border my-1"></div>
                         <button

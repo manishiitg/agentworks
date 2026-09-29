@@ -34,6 +34,8 @@ const (
 	workspaceGitMaxDiffBytes = 1 << 20
 	workspaceGitMaxCommits   = 30
 	workspaceGitMaxRepos     = 20
+	workspaceGitSearchDepth  = 3
+	workspaceGitMaxScan      = 400
 )
 
 var workspaceGitCommitRe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
@@ -158,27 +160,43 @@ func workspaceGitIsRepo(dir string) bool {
 	return true
 }
 
-// workspaceGitFindRepos lists repo folders under base: base itself, else its
-// direct subfolders (one level, skipping dependency folders).
+// workspaceGitFindRepos lists repo folders under base: base itself, else the
+// repos found up to workspaceGitSearchDepth folders down (dependency and dot
+// folders skipped, a found repo's own subfolders not searched, bounded scan).
 func workspaceGitFindRepos(base string) []string {
 	if workspaceGitIsRepo(base) {
 		return []string{base}
 	}
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return nil
+	type level struct {
+		dir   string
+		depth int
 	}
 	var repos []string
-	for _, entry := range entries {
-		name := entry.Name()
-		if !entry.IsDir() || strings.HasPrefix(name, ".") || workspaceGitSkipDirs[name] {
+	queue := []level{{base, 0}}
+	visited := 0
+	for len(queue) > 0 && len(repos) < workspaceGitMaxRepos && visited < workspaceGitMaxScan {
+		current := queue[0]
+		queue = queue[1:]
+		entries, err := os.ReadDir(current.dir)
+		if err != nil {
 			continue
 		}
-		dir := filepath.Join(base, name)
-		if workspaceGitIsRepo(dir) {
-			repos = append(repos, dir)
-			if len(repos) >= workspaceGitMaxRepos {
-				break
+		for _, entry := range entries {
+			name := entry.Name()
+			if !entry.IsDir() || strings.HasPrefix(name, ".") || workspaceGitSkipDirs[name] {
+				continue
+			}
+			visited++
+			dir := filepath.Join(current.dir, name)
+			if workspaceGitIsRepo(dir) {
+				repos = append(repos, dir)
+				if len(repos) >= workspaceGitMaxRepos {
+					break
+				}
+				continue
+			}
+			if current.depth+1 < workspaceGitSearchDepth {
+				queue = append(queue, level{dir, current.depth + 1})
 			}
 		}
 	}

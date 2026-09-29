@@ -192,3 +192,46 @@ func TestWorkspaceGitNoRepoIsEmpty(t *testing.T) {
 		t.Fatalf("no repo: %d %v", code, body)
 	}
 }
+
+// The Files pane sends the Code's path as the browser knows it: the logical
+// "Chats/Code/projects/<id>" form resolves under the caller's own tree.
+func TestWorkspaceGitLogicalPathResolvesUnderCaller(t *testing.T) {
+	gitTestEnv(t)
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {"Chats/Code/projects/p1"}})
+	if code != http.StatusOK || len(body["repos"].([]any)) != 1 {
+		t.Fatalf("logical path: %d %v", code, body)
+	}
+	// A leading slash (some callers send one) still works.
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {"/Chats/Code/projects/p1"}})
+	if code != http.StatusOK || len(body["repos"].([]any)) != 1 {
+		t.Fatalf("leading slash: %d %v", code, body)
+	}
+	// Bob's logical path is Bob's own tree, which holds nothing.
+	code, body = gitGet(t, "bob", url.Values{"workspace_path": {"Chats/Code/projects/p1"}})
+	if code != http.StatusOK || len(body["repos"].([]any)) != 0 {
+		t.Fatalf("bob's own tree: %d %v", code, body)
+	}
+}
+
+func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) {
+	docs, _ := gitTestEnv(t)
+	project := filepath.Join(docs, filepath.FromSlash(gitTestProject))
+	deep := filepath.Join(project, "code", "service")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, deep, "init", "-q")
+	hidden := filepath.Join(project, "node_modules", "pkg")
+	if err := os.MkdirAll(hidden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, hidden, "init", "-q")
+	_, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	roots := map[string]bool{}
+	for _, r := range body["repos"].([]any) {
+		roots[r.(map[string]any)["root"].(string)] = true
+	}
+	if !roots["app"] || !roots["code/service"] || roots["node_modules/pkg"] {
+		t.Fatalf("repos: %v", roots)
+	}
+}
