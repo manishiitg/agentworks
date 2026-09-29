@@ -300,7 +300,7 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
           return (
             <section key={group} data-testid={`mcp-group-${group}`} className="mb-5 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900/60">
               <div className="flex items-center gap-3">
-                <ConnectionIcon icon={brandSlugFor(label)} name={label} size="lg" />
+                <ConnectionIcon icon={brandSlugFor(group) ?? brandSlugFor(label)} name={label} size="lg" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</div>
                   <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">One {provider} sign-in covers every service you connect.</p>
@@ -315,6 +315,7 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
                     const service = groupServiceLabel(entry.catalog, group)
                     return (
                       <div key={entry.catalog} className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <ConnectionIcon icon={brandSlugFor(entry.catalog) ?? brandSlugFor(group)} name={service} size="sm" />
                         <span className="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100">{service}</span>
                         {ready ? (
                           <span className="text-xs text-green-600 dark:text-green-400">Connected</span>
@@ -348,10 +349,12 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
                       return (
                         <button key={entry.catalog} type="button" aria-pressed={picked} aria-label={`Add ${service}`} disabled={busy !== null}
                           onClick={() => togglePick(entry.catalog)}
-                          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-50 ${picked
+                          className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-2.5 text-xs transition-colors disabled:opacity-50 ${picked
                             ? 'border-primary bg-primary/10 text-primary'
                             : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100'}`}>
-                          {picked ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}{service}
+                          <ConnectionIcon icon={brandSlugFor(entry.catalog) ?? brandSlugFor(group)} name={service} size="xs" />
+                          {service}
+                          {picked ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3 opacity-60" />}
                         </button>
                       )
                     })}
