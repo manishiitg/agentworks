@@ -104,7 +104,7 @@ describe('PlannerFileList git marks', () => {
   it('shows a status letter on changed files and a dot on folders that contain changes', async () => {
     useWorkspaceGitStore.setState({
       fileStatus: new Map([['app/a.ts', { status: 'modified' }], ['app/new.ts', { status: 'untracked' }]]),
-      changedDirs: new Set(['app']),
+      changedDirs: new Map([['app', 'modified' as const]]),
     })
     const files = [file('app', 'folder', [file('app/a.ts'), file('app/clean.ts'), file('app/new.ts')])]
     const host = document.createElement('div')

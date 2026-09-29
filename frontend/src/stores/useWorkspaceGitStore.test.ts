@@ -22,9 +22,10 @@ describe('workspace git store', () => {
     const state = useWorkspaceGitStore.getState()
     expect(state.fileStatus.get('Chats/Code/projects/p1/app/src/a.ts')?.status).toBe('modified')
     expect(state.fileStatus.get('Chats/Code/projects/p1/app/new.txt')?.status).toBe('untracked')
-    for (const dir of ['Chats', 'Chats/Code/projects/p1', 'Chats/Code/projects/p1/app', 'Chats/Code/projects/p1/app/src']) {
-      expect(state.changedDirs.has(dir)).toBe(true)
+    for (const dir of ['Chats', 'Chats/Code/projects/p1', 'Chats/Code/projects/p1/app']) {
+      expect(state.changedDirs.get(dir)).toBe('modified') // amber beats the green untracked file
     }
+    expect(state.changedDirs.get('Chats/Code/projects/p1/app/src')).toBe('modified')
     expect(state.changedDirs.has('Chats/Code/projects/p1/app/src/a.ts')).toBe(false)
   })
 

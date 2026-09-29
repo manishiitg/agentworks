@@ -69,3 +69,15 @@ export async function openWorkspaceFile(fullFilePath: string): Promise<void> {
     useWorkspaceStore.getState().setLoadingFileContent(false)
   }
 }
+
+/** Close a tab; closing the active one opens its neighbour (or leaves the viewer). */
+export function closeOpenTab(path: string, activePath: string) {
+  const store = useWorkspaceStore.getState()
+  const index = store.openTabs.findIndex(tab => tab.path === path)
+  store.closeTab(path)
+  if (path !== activePath) return
+  const remaining = useWorkspaceStore.getState().openTabs
+  const next = remaining[Math.min(index, remaining.length - 1)]
+  if (next) void openWorkspaceFile(next.path)
+  else store.setShowFileContent(false)
+}

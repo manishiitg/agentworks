@@ -215,8 +215,8 @@ export default function PlannerFileList({
     const isFocused = focusedPath === file.filepath
     const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
     const gitMark = file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
-    const gitFolderChanged = file.type === 'folder' && gitChangedDirs.has(gitKey)
-    const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : undefined
+    const gitFolderStatus = file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
+    const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : gitFolderStatus ? GIT_MARKS[gitFolderStatus] : undefined
     const hasActionMenu = file.type === 'folder'
       ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)
       : !!(onFileMove || onFileDownload)
@@ -283,11 +283,11 @@ export default function PlannerFileList({
               {fileName}
             </span>
           </div>
-          {gitStyle && (
+          {gitMark && gitStyle && (
             <span title={`${gitStyle.title}${gitMark?.staged ? ' (staged)' : ''}`} className={`w-3 shrink-0 text-center text-[11px] font-semibold ${gitStyle.text}`}>{gitStyle.letter}</span>
           )}
-          {gitFolderChanged && (
-            <span title="Contains changes" aria-label="Contains changes" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/80" />
+          {gitFolderStatus && (
+            <span title="Contains changes" aria-label="Contains changes" className={`h-1.5 w-1.5 shrink-0 rounded-full bg-current ${GIT_MARKS[gitFolderStatus].text}`} />
           )}
 
           {/* Action buttons container - compact space */}

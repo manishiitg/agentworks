@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Plus, Upload, FolderPlus, ChevronDown, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Files, Search, RefreshCw } from 'lucide-react'
+import { Upload, FolderPlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
@@ -11,8 +11,7 @@ import RenameFileDialog from './workspace/RenameFileDialog'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import ImportProgressDialog from './ui/ImportProgressDialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
-import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
-import { WorkspaceViewIconButton } from './workflow/WorkspaceViewIconButton'
+import { ExplorerHeader } from './workspace/ExplorerHeader'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
@@ -1822,72 +1821,73 @@ export default function Workspace({
   return (
     <TooltipProvider>
       <div data-tour="workspace-open" data-testid="workspace-panel" className="flex flex-col h-full bg-background">
-      {/* Header */}
-        <WorkspaceViewHeader
-          icon={Files}
+      {/* Header: VS Code-style Explorer */}
+        <ExplorerHeader
           title={title}
-          showWalkthrough={false}
-          context={isSelectionMode && (
+          titleAction={headerAction}
+          leading={isSelectionMode ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <label className="flex items-center cursor-pointer relative">
-                  <input
-                    type="checkbox"
-                    checked={areAllFilesSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  {selectedFiles.size > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                      {selectedFiles.size}
-                    </span>
-                  )}
+                <label className="relative flex cursor-pointer items-center px-1">
+                  <input type="checkbox" checked={areAllFilesSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-primary" />
                 </label>
               </TooltipTrigger>
-              <TooltipContent>
-                <p>Select All</p>
-              </TooltipContent>
+              <TooltipContent><p>Select All</p></TooltipContent>
             </Tooltip>
-          )}
-          actions={<>
-            {isSelectionMode && (
-              <>
-                {selectedFiles.size > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={handleBulkDelete}
-                        disabled={loading || bulkDeleteDialog.isLoading}
-                        className="p-2 text-destructive hover:text-destructive disabled:opacity-50 relative"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                          {selectedFiles.size}
-                        </span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Delete {selectedFiles.size} selected file{selectedFiles.size !== 1 ? 's' : ''}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+          ) : undefined}
+          toolbar={isSelectionMode ? (
+            <>
+              {selectedFiles.size > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
-                      onClick={toggleSelectionMode}
-                      className="p-2 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="w-4 h-4" />
+                    <button onClick={handleBulkDelete} disabled={loading || bulkDeleteDialog.isLoading} aria-label="Delete selected files" className="relative rounded p-1 text-destructive hover:bg-muted disabled:opacity-50">
+                      <Trash2 className="h-4 w-4" />
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-4 text-destructive-foreground">{selectedFiles.size}</span>
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Exit selection mode</p>
-                  </TooltipContent>
+                  <TooltipContent><p>Delete {selectedFiles.size} selected file{selectedFiles.size !== 1 ? 's' : ''}</p></TooltipContent>
                 </Tooltip>
-              </>
-            )}
-
-              {hideManagedEntriesByDefault && canShowManagedFiles && !isSelectionMode && (
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={toggleSelectionMode} aria-label="Exit selection mode" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Exit selection mode</p></TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={handleUploadClick} disabled={loading} aria-label="Upload file" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><Upload className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Upload file</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => handleCreateFolder()} disabled={loading} aria-label="New folder" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><FolderPlus className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>New folder</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => fetchFiles(activeFolder, { force: true })} disabled={loading} aria-label="Refresh files" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Refresh</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => setExpandedFolders(new Set())} aria-label="Collapse all folders" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><ChevronsDownUp className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Collapse all</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={toggleSelectionMode} aria-label="Select files" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><CheckSquare className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Select files</p></TooltipContent>
+              </Tooltip>
+              {hideManagedEntriesByDefault && canShowManagedFiles && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -1895,86 +1895,16 @@ export default function Workspace({
                       onClick={() => setShowHiddenFiles(current => !current)}
                       aria-pressed={showHiddenFiles}
                       aria-label={showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}
-                      className={`p-2 transition-colors ${showHiddenFiles
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`rounded p-1 transition-colors hover:bg-muted ${showHiddenFiles ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {showHiddenFiles ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}</p>
-                  </TooltipContent>
+                  <TooltipContent><p>{showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}</p></TooltipContent>
                 </Tooltip>
               )}
-
-              {/* Combined Actions Dropdown - Hidden in selection mode */}
-              {!isSelectionMode && (
-                <div className="relative actions-dropdown">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => setShowActionsDropdown(!showActionsDropdown)}
-                        disabled={loading}
-                        className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Add files or folders</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  {/* Dropdown Menu */}
-                  {showActionsDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-card border border-border rounded-md shadow-md z-50">
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          handleUploadClick()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <Upload className="w-4 h-4" />
-                        Upload File
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleCreateFolder()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <FolderPlus className="w-4 h-4" />
-                        Create Folder
-                      </button>
-                      <div className="border-t border-border my-1"></div>
-                      <button
-                        onClick={() => {
-                          toggleSelectionMode()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                        Select Files
-                      </button>
-                    </div>
-                  </div>
-                  )}
-                </div>
-              )}
-
-              {headerAction}
-              {!isSelectionMode && (
-                <WorkspaceViewIconButton label="Refresh files" onClick={() => fetchFiles(activeFolder, { force: true })} disabled={loading} spinning={loading} />
-              )}
-
             </>
-          }
+          )}
         />
 
       {/* Content */}
@@ -1998,15 +1928,15 @@ export default function Workspace({
           {/* Search sits in the content, below the header line */}
           <div className="shrink-0 px-2 pt-2">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-muted-foreground" />
+              <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
               <input
                 type="text"
-                placeholder="Search files and folders..."
+                placeholder="Filter files"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full rounded-md border border-input bg-transparent py-1.5 pl-10 pr-10 text-sm leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="block w-full rounded-md border border-input bg-transparent py-1 pl-8 pr-8 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
               {searchQuery && (
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">

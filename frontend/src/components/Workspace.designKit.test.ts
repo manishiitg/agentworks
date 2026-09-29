@@ -31,20 +31,26 @@ const BANNED_PALETTE = [
 ]
 
 describe('Files design kit', () => {
-  it('keeps the Files header on the shared standard with Ask AI left of refresh', () => {
+  it('keeps the Explorer header VS Code-style: title, Open Editors, then the folder toolbar', () => {
     const workspace = readFileSync('src/components/Workspace.tsx', 'utf8')
+    const header = readFileSync('src/components/workspace/ExplorerHeader.tsx', 'utf8')
 
-    expect(workspace).toContain('<WorkspaceViewHeader')
-    expect(workspace).toContain('label="Refresh files"')
-    expect(workspace.indexOf('{headerAction}')).toBeLessThan(workspace.indexOf('label="Refresh files"'))
+    expect(workspace).toContain('<ExplorerHeader')
+    for (const label of ['Upload file', 'New folder', 'Refresh files', 'Collapse all folders', 'Select files']) {
+      expect(workspace).toContain(`aria-label="${label}"`)
+    }
+    // The agent action sits with the title, the toolbar icons on the folder row.
+    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('<OpenEditors />'))
+    expect(header.indexOf('<OpenEditors />')).toBeLessThan(header.indexOf('{toolbar}'))
+    expect(header).toContain('Open Editors')
   })
 
-  it('keeps search in the content below the header line, not inside the header', () => {
+  it('keeps the filter in the content below the header, not inside it', () => {
     const workspace = readFileSync('src/components/Workspace.tsx', 'utf8')
 
     expect(workspace).not.toContain('below={')
     expect(workspace).toContain('Search sits in the content, below the header line')
-    expect(workspace).toContain('placeholder="Search files and folders..."')
+    expect(workspace).toContain('placeholder="Filter files"')
   })
 
   it('routes feedback through kit toasts and dialogs, never hand-rolled fixed popups', () => {

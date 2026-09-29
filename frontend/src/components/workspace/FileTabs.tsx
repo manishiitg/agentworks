@@ -1,6 +1,6 @@
 import { ChevronRight, X } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
-import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { closeOpenTab, openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { FileTypeIcon } from './fileTypeIcon'
 
 /** VS Code-style tabs for recently opened files in the shared viewer. */
@@ -9,16 +9,7 @@ export function FileTabs() {
   const activePath = useWorkspaceStore(state => state.selectedFile?.path ?? '')
   if (openTabs.length === 0) return null
 
-  const close = (path: string) => {
-    const store = useWorkspaceStore.getState()
-    const index = store.openTabs.findIndex(tab => tab.path === path)
-    store.closeTab(path)
-    if (path !== activePath) return
-    const remaining = useWorkspaceStore.getState().openTabs
-    const next = remaining[Math.min(index, remaining.length - 1)]
-    if (next) void openWorkspaceFile(next.path)
-    else store.setShowFileContent(false)
-  }
+  const close = (path: string) => closeOpenTab(path, activePath)
 
   return (
     <div role="tablist" aria-label="Open files" className="flex shrink-0 overflow-x-auto border-b border-border bg-muted/30 [scrollbar-width:thin]">
