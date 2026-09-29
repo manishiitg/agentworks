@@ -478,24 +478,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                 )}
                 {activeMcpTab === 'skills' && (
                   <div className="mt-3 border-t border-border pt-3">
-                    <div className="relative mb-3 shrink-0">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search skills"
-                        aria-label="Search skills"
-                        className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                      />
-                    </div>
                     <SkillsManagerPanel
                       compact
                       manageOwnScroll={false}
-                      hideSearch
-                      hideSelectionChips
-                      hideRefresh
-                      splitSelectionGroups
+                      selectedOnly
+                      emptySelectionText="No skills are used in this workflow yet. Ask the agent to add or create one."
                       headerAction={(
                         <AskAIButton
                           workspacePath={canWriteWorkflow ? workspacePath ?? null : null}
@@ -504,7 +491,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                           message="Help me install a specific skill for this workflow. Ask which skill I want, then find it: search the local skills library first, then the web. Import it into the library, add it to this workflow, verify it works, and confirm briefly."
                         />
                       )}
-                      query={searchQuery}
                       workspacePath={workspacePath}
                       selectedSkills={capabilities.selected_skills}
                       onToggleSkill={(folderName) => {

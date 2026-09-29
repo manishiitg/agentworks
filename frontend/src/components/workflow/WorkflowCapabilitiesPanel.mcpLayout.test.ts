@@ -76,9 +76,9 @@ describe('Workflow MCP panel layout', () => {
     expect(views).not.toMatch(/id: 'skills'/)
     expect(host).not.toContain("case 'skills':")
     expect(skillsPanel).toContain('manageOwnScroll')
-    // One refresh (the header remounts the tab) plus an Ask AI install button.
-    expect(skillsPanel).toContain('hideRefresh')
-    expect(panel).toContain('hideRefresh')
+    // Only the skills this workflow uses (no library), plus an Ask AI install button.
+    expect(skillsPanel).toContain('selectedOnly')
+    expect(panel).toContain('selectedOnly')
     expect(panel).toContain('Install a skill')
   })
 
@@ -94,10 +94,7 @@ describe('Workflow MCP panel layout', () => {
     expect(panel).toContain('Platform connected')
     expect(panel).toContain('selectedAvailableServers')
     expect(panel).toContain('unselectedAvailableServers')
-    expect(panel).toContain('splitSelectionGroups')
-    expect(skillsPanel).toContain('splitSelectionGroups')
     expect(panel).toContain('Search apps')
-    expect(panel).toContain('Search skills')
     expect(panel).toContain('query={searchQuery}')
     expect(panel).toMatch(/onToggleSkill=\{\(folderName\)[\s\S]*?void persist\(next\)/)
     // The directory's Connected shelf would duplicate the Apps checklist.
@@ -105,8 +102,6 @@ describe('Workflow MCP panel layout', () => {
     // No selected-only checklist anymore: every connected server ticks inline.
     expect(selection).not.toContain('showSelectedOnly')
     expect(selection).toContain('manageOwnScroll')
-    expect(skillsPanel).toContain('hideSearch')
-    expect(skillsPanel).toContain('hideSelectionChips')
     expect(connectors).toContain('hideSearch')
     expect(connectors).toContain('hideConnectedSection')
   })

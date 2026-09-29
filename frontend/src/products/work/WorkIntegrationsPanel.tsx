@@ -17,7 +17,6 @@ import { useMCPStore } from '../../stores/useMCPStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
-import { crewTemplates } from './crewTemplates'
 
 export type WorkIntegrationTab = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -236,7 +235,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, projectTemplates, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
+export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
   workspacePath: string
   projectId: string
   projectTitle: string
@@ -258,7 +257,6 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
-  const templates = crewTemplates.filter(item => projectTemplates.some(installed => installed.id === item.id && installed.version === item.version))
 
   const toggleSkill = async (folderName: string) => {
     const next = selectedSkills.includes(folderName)
@@ -305,31 +303,16 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
         />}
-        {activeTab === 'skills' && <div className="space-y-3">
-          {templates.map(template => <div key={template.id} className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <p className="text-xs font-semibold text-foreground">Included with {template.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">These skills live in this {product.noun}’s files and are selected only for this {product.noun}.</p>
-            {template.selectedSkills.map(skill => <div key={skill} className="mt-2 flex items-center justify-between gap-2 text-xs">
-              <span className="font-medium text-foreground">{skill}</span>
-              <button type="button" onClick={() => { void toggleSkill(skill) }} className="rounded-md border border-border px-2 py-1 font-semibold text-primary hover:bg-primary/10">
-                {selectedSkills.includes(skill) ? 'Selected · remove' : 'Select skill'}
-              </button>
-            </div>)}
-          </div>)}
-          <SkillsManagerPanel
-            compact
-            manageOwnScroll={false}
-            workspacePath={workspacePath}
-            selectedSkills={selectedSkills}
-            onToggleSkill={folderName => { void toggleSkill(folderName) }}
-            selectionLabel="Skills for this project"
-            emptySelectionText="No project skills yet — pick one below."
-            selectionScopeLabel="project"
-            libraryReadOnly={product.profileId === 'code'}
-            libraryReadOnlyHint="Ask the agent to install or create a skill; it stays private to this workspace."
-          />
-          {product.profileId === 'code' ? <p className="text-xs text-muted-foreground">Skills you add here stay in this workspace’s skills/ folder: ask the agent to install or create one. The shared library above is read-only from a Code.</p> : null}
-        </div>}
+        {activeTab === 'skills' && <SkillsManagerPanel
+          compact
+          selectedOnly
+          manageOwnScroll={false}
+          workspacePath={workspacePath}
+          selectedSkills={selectedSkills}
+          onToggleSkill={folderName => { void toggleSkill(folderName) }}
+          selectionScopeLabel="project"
+          emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
+        />}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
           fixedChannel="slack"

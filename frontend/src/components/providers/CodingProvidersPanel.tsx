@@ -16,6 +16,7 @@ import {
   Settings2,
   ShieldCheck,
   Terminal,
+  UserPlus,
   X,
 } from 'lucide-react'
 import ModalPortal from '../ui/ModalPortal'
@@ -435,6 +436,19 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
 
               {view === 'provider' && selectedProvider && guide && (
                 <div className="mx-auto max-w-3xl">
+                  {isMultiUserMode && !isAdmin && (
+                    <section role="note" className="mb-6 rounded-xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-500/30 dark:bg-violet-500/10">
+                      <div className="flex items-start gap-3">
+                        <UserPlus className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
+                        <div>
+                          <p className="text-sm font-medium text-violet-950 dark:text-violet-100">Set up your own account</p>
+                          <p className="mt-1 text-sm leading-6 text-violet-800/80 dark:text-violet-200/80">
+                            An administrator manages the shared account, and it may not be available to you. Choose <strong>Add my account</strong> under Provider accounts below to sign in with your own login or key. Only you can use it unless you share it.
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  )}
                   <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
