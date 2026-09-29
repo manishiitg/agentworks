@@ -10,7 +10,6 @@ const FILES_SURFACE = [
   'src/components/workspace/RenameFileDialog.tsx',
   'src/components/workspace/CreateFolderDialog.tsx',
   'src/components/workspace/PushToGistDialog.tsx',
-  'src/components/workspace/FileRevisionsModal.tsx',
   'src/components/ui/ImportProgressDialog.tsx',
   'src/components/ui/ConfirmationDialog.tsx',
   'src/components/FileContextDisplay.tsx',

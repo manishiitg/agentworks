@@ -13,8 +13,6 @@ import LazyModalFallback from './ui/LazyModalFallback'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import { useWorkspaceStore, useChatStore } from '../stores'
 import { useAuthStore } from '../stores/useAuthStore'
-import { agentApi } from '../services/api'
-import type { FileVersion } from '../services/api-types'
 import { isValidJSON } from '../utils/event-helpers'
 import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
@@ -32,7 +30,6 @@ import {
 } from '../utils/fileTypes'
 
 const FileEditor = lazy(() => import('./workspace/FileEditor'))
-const FileRevisionsModal = lazy(() => import('./workspace/FileRevisionsModal'))
 const PushToGistDialog = lazy(() => import('./workspace/PushToGistDialog'))
 const XlsxRenderer = lazy(() => import('./ui/XlsxRenderer').then(module => ({ default: module.XlsxRenderer })))
 const DocxRenderer = lazy(() => import('./ui/DocxRenderer').then(module => ({ default: module.DocxRenderer })))
@@ -86,12 +83,6 @@ const CopyIcon = () => (
 const SlackIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.163 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.163 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.163 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1-2.52-2.523 2.527 2.527 0 0 1 2.52-2.52h6.315A2.528 2.528 0 0 1 24 15.163a2.528 2.528 0 0 1-2.522 2.523h-6.315z"/>
-  </svg>
-)
-
-const HistoryIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 )
 
@@ -172,7 +163,7 @@ function PaneActionsMenu({ actions }: { actions: PaneAction[] }) {
 /**
  * File viewer/editor body: images, video, audio, PDF/XLSX/DOCX, CSV, HTML,
  * Mermaid, conversation logs, JSON, diffs, and markdown (with inline editing,
- * save+commit, revision history, PDF export, and Gist push). Reads everything
+ * save+commit, PDF export, and Gist push). Reads everything
  * from `useWorkspaceStore` (selectedFile, fileContent, showFileContent, ...).
  *
  * It fills whatever box it's given. The workspace pane's Files view swaps
@@ -190,10 +181,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent,
     showFileContent,
     setShowFileContent,
-    setFileContent,
-    setLoadingFileContent,
-    showRevisionsModal,
-    setShowRevisionsModal,
     isEditMode,
     setIsEditMode,
     editedContent,
@@ -208,10 +195,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent: state.loadingFileContent,
     showFileContent: state.showFileContent,
     setShowFileContent: state.setShowFileContent,
-    setFileContent: state.setFileContent,
-    setLoadingFileContent: state.setLoadingFileContent,
-    showRevisionsModal: state.showRevisionsModal,
-    setShowRevisionsModal: state.setShowRevisionsModal,
     isEditMode: state.isEditMode,
     setIsEditMode: state.setIsEditMode,
     editedContent: state.editedContent,
@@ -234,7 +217,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const [commitMessage, setCommitMessage] = useState('')
   const [showCommitDialog, setShowCommitDialog] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [isRestoring, setIsRestoring] = useState(false)
   const addToast = useChatStore(state => state.addToast)
   const [pendingConfirm, setPendingConfirm] = useState<'discard-changes' | 'save-large-file' | 'close-viewer' | null>(null)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -378,77 +360,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     }
   }
 
-  // Handle restore version
-  const handleRestoreVersion = useCallback(async (version: FileVersion) => {
-    if (!selectedFile) {
-      addToast('No file selected', 'error')
-      return
-    }
-
-    setIsRestoring(true)
-
-    try {
-      // Call restore API
-      const response = await agentApi.restoreFileVersion(
-        selectedFile.path,
-        version.commit_hash,
-        `Restore to version ${version.commit_hash.substring(0, 8)}: ${version.commit_message}`
-      )
-
-      if (response.success) {
-        // Reload file content after successful restore
-        setLoadingFileContent(true)
-        try {
-          const contentResponse = await agentApi.getPlannerFileContent(selectedFile.path)
-          if (contentResponse.success && contentResponse.data) {
-            let processedContent = contentResponse.data.content
-
-            // Process the content to convert escaped newlines to actual newlines
-            processedContent = processedContent
-              .replace(/\\n/g, '\n')
-              .replace(/\\t/g, '\t')
-              .replace(/\\r/g, '\r')
-
-            // Check if this is a JSON file
-            const extensionIsJson = selectedFile.path.toLowerCase().endsWith('.json')
-            const contentIsJson = isValidJSON(processedContent)
-
-            if (extensionIsJson || contentIsJson) {
-              try {
-                const parsed = JSON.parse(processedContent)
-                processedContent = JSON.stringify(parsed, null, 2)
-              } catch {
-                // Keep original content if JSON parsing fails
-              }
-            }
-
-            setFileContent(processedContent)
-
-            // Exit edit mode if we were in it
-            if (isEditMode) {
-              setIsEditMode(false)
-              setEditedContent('')
-            }
-          }
-        } catch (err) {
-          console.error('Failed to reload file content after restore:', err)
-          // Still close modal even if reload fails
-        } finally {
-          setLoadingFileContent(false)
-        }
-
-        // Close modal on success
-        setShowRevisionsModal(false)
-      } else {
-        addToast(response.message || 'Failed to restore file version', 'error')
-      }
-    } catch (error) {
-      console.error('Failed to restore file version:', error)
-      addToast(error instanceof Error ? error.message : 'Failed to restore file version', 'error')
-    } finally {
-      setIsRestoring(false)
-    }
-  }, [selectedFile, isEditMode, setIsEditMode, setEditedContent, setFileContent, setLoadingFileContent, setShowRevisionsModal, addToast])
 
   // Handle export to PDF
   const handleExportPdf = useCallback(async () => {
@@ -573,7 +484,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     })
   }, [selectedFile?.path])
 
-  const canShowRevisions = !isOfficeOrPdf
   const isMarkdownFile = selectedFilePathLower.endsWith('.md') || selectedFilePathLower.endsWith('.markdown')
   // PDF, video, and HTML surfaces fill the pane.
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
@@ -583,7 +493,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     { key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink },
-    ...(canShowRevisions ? [{ key: 'revisions', label: 'File revisions', icon: <HistoryIcon />, onSelect: () => setShowRevisionsModal(true) }] : []),
     ...(isMarkdownFile ? [
       { key: 'pdf', label: isExportingPdf ? 'Exporting…' : 'Export as PDF', icon: isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <PdfIcon />, onSelect: () => { void handleExportPdf() }, disabled: isExportingPdf },
       { key: 'gist', label: 'Push to GitHub Gist', icon: <Github className="w-4 h-4" />, onSelect: () => setShowPushToGistDialog(true) },
@@ -971,29 +880,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         </Suspense>
       )}
 
-      {/* File Revisions Modal */}
-      {showRevisionsModal && (
-        <Suspense fallback={<LazyModalFallback label="Loading file history..." />}>
-          <FileRevisionsModal
-            isOpen
-            onClose={() => {
-              setShowRevisionsModal(false)
-            }}
-            filepath={selectedFile?.path || ''}
-            onRestoreVersion={handleRestoreVersion}
-          />
-        </Suspense>
-      )}
-
-      {/* Restore Loading Overlay */}
-      {isRestoring && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-md shadow-md border border-border p-6 flex flex-col items-center gap-4">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-foreground">Restoring file version...</p>
-          </div>
-        </div>
-      )}
     </>
   )
 }

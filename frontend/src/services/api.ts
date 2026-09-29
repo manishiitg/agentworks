@@ -2179,22 +2179,6 @@ export const agentApi = {
     return response.data
   },
 
-  // File Version History API
-  getFileVersions: async (filepath: string, limit: number = 10) => {
-    const response = await workspaceApi.get(`/api/versions/${encodeURIComponent(filepath)}`, {
-      params: { limit }
-    })
-    return response.data
-  },
-
-  restoreFileVersion: async (filepath: string, commitHash: string, commitMessage?: string) => {
-    const response = await workspaceApi.post(`/api/restore/${encodeURIComponent(filepath)}`, {
-      commit_hash: commitHash,
-      commit_message: commitMessage
-    })
-    return response.data
-  },
-
   // Workflow running-session API (decoupled from chat session storage).
   getRunningWorkflow: async (sessionId: string): Promise<RunningWorkflowInfo> => {
     const response = await api.get(`/api/workflow/running/${sessionId}`)

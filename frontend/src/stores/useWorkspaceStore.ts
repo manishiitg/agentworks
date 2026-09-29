@@ -30,8 +30,6 @@ interface WorkspaceState {
   setLoadingFileContent: (loading: boolean) => void
   showFileContent: boolean
   setShowFileContent: (show: boolean) => void
-  showRevisionsModal: boolean
-  setShowRevisionsModal: (show: boolean) => void
   binaryFileData: ArrayBuffer | null
   setBinaryFileData: (data: ArrayBuffer | null) => void
   
@@ -176,7 +174,6 @@ const initialState = {
   fileContent: '',
   loadingFileContent: false,
   showFileContent: false,
-  showRevisionsModal: false,
   binaryFileData: null,
   isEditMode: false,
   editedContent: '',
@@ -319,7 +316,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setFileContent: (content) => set({ fileContent: content }),
       setLoadingFileContent: (loading) => set({ loadingFileContent: loading }),
       setShowFileContent: (show) => set({ showFileContent: show }),
-      setShowRevisionsModal: (show) => set({ showRevisionsModal: show }),
       setBinaryFileData: (data) => set({ binaryFileData: data }),
       
       // Edit mode state
