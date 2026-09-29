@@ -95,7 +95,9 @@ install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/m
 mkdir -p "$BUILD_DIR/static"
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$BUILD_DIR/static/"
 install -m 0644 "$SCRIPT_DIR/server/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
-install -m 0644 "$SCRIPT_DIR/server/mcp_servers_video_studio.json" "$BUILD_DIR/configs/mcp_servers_video_studio.json"
+# One shared MCP catalog for every deployment, plus this one's differences.
+python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/configs/mcp_servers_clean.json" "$BUILD_DIR/configs/mcp_servers_video_studio.json" "$SCRIPT_DIR/server/mcp-servers.override.json"
+chmod 0644 "$BUILD_DIR/configs/mcp_servers_video_studio.json"
 install -m 0755 "$SCRIPT_DIR/server/chrome-headless-wrapper.sh" "$BUILD_DIR/browser/agentworks-chrome-headless"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-workspace.service" "$BUILD_DIR/systemd/video-studio-workspace.service"
 install -m 0644 "$SCRIPT_DIR/rootless/video-studio-agent.service" "$BUILD_DIR/systemd/video-studio-agent.service"

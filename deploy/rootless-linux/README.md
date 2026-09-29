@@ -46,7 +46,11 @@ Copy `products/sparkquill/` as a starting point:
   for what each field means and which ones are safe to leave at their
   defaults.
 - `runtime-config.js` — the frontend's `window.__APP_RUNTIME_CONFIG__`.
-- `mcp-servers.json` — installed as `configs/mcp_servers_<product>.json`.
+- `mcp-servers.override.json` (optional) — the MCP catalog is the shared
+  `agent_go/configs/mcp_servers_clean.json` for every deployment; this file
+  holds only what the product does differently (an entry replaces the shared
+  one, `null` removes one). Built by `deploy/common/build-mcp-catalog.py` into
+  `configs/mcp_servers_<product>.json`.
 
 Requirements this template assumes:
 

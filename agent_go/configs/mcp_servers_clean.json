@@ -903,6 +903,15 @@
         ],
         "token_file": "~/.config/mcpagent/tokens/default/Jam.json"
       }
+    },
+    "ParallelSearch": {
+      "url": "https://search.parallel.ai/mcp"
+    },
+    "Wolfram": {
+      "url": "https://agenttools.wolfram.com/mcp"
+    },
+    "Cortex": {
+      "url": "https://mcp.cortex.io/mcp"
     }
   }
 }
