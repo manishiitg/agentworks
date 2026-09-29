@@ -271,3 +271,32 @@ func TestWorkflowReadHandlersCheckInside(t *testing.T) {
 		t.Fatalf("preview costs for alice: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestUpdateRunningWorkflowRequiresVisibility(t *testing.T) {
+	_, api := readAccessRouterWithAPI(t)
+	now := time.Now()
+	api.trackedWorkflowExecutions = map[string]*TrackedWorkflowExecution{
+		"e1": {ExecutionID: "e1", SessionID: "s-alice", Source: trackedExecutionSourceWorkflowRun, Status: trackedExecutionStatusRunning, WorkspacePath: "Workflow/w", UserID: "alice", StartedAt: now},
+	}
+	patch := func(user string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPatch, "/api/workflow/running/s-alice", strings.NewReader(`{"status":"completed","is_minimized":true}`))
+		req = mux.SetURLVars(req, map[string]string{"session_id": "s-alice"})
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		rec := httptest.NewRecorder()
+		api.handleUpdateRunningWorkflow(rec, req)
+		return rec
+	}
+
+	if rec := patch("bob"); rec.Code != http.StatusNotFound {
+		t.Fatalf("bob patching alice's run: got %d, want 404", rec.Code)
+	}
+	if exec := api.trackedWorkflowExecutions["e1"]; exec.Status != trackedExecutionStatusRunning || exec.IsMinimized {
+		t.Fatalf("a refused patch must not change the run: %+v", exec)
+	}
+	if rec := patch("alice"); rec.Code != http.StatusOK {
+		t.Fatalf("alice patching her run: got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !api.trackedWorkflowExecutions["e1"].IsMinimized {
+		t.Fatal("owner's patch was not applied")
+	}
+}
