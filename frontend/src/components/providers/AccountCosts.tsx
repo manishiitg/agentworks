@@ -15,7 +15,7 @@ const currency = (amount: number) => {
 }
 
 const costText = (usage: CostAggregate) =>
-  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Unknown' : currency(usage.total_cost_usd ?? 0)
+  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd ?? 0)
 
 const tokenText = (usage: CostAggregate) =>
   formatTokens((usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0) + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0))

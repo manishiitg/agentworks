@@ -313,7 +313,24 @@ type sqliteStore interface {
 	summarizeWindow(fromInclusive, toExclusive, executionID, workflowID, scope string) (*Summary, error)
 	summarizeWorkflowOverview(from, to, workflowID string) (*Summary, bool, error)
 	migrateLegacyJSONL(path string) (MigrationReport, error)
+	repriceUnpriced(estimate UnpricedEstimator) (int, error)
 	close() error
+}
+
+// UnpricedEstimator prices one recorded LLM call that had no cost, from its
+// provider, model and tokens. It returns a cost of zero (or less) to leave the
+// row as it is, else the estimated cost and where the estimate comes from.
+type UnpricedEstimator func(Entry) (costUSD float64, pricingSource string)
+
+// RepriceUnpriced applies an estimator to LLM calls recorded as unpriced (for
+// example before a model had an estimated price) and returns how many it
+// priced. Priced rows become plan-equivalent estimates ("subscription_shadow");
+// a row already priced is never touched, so this is safe to run at every start.
+func (l *Ledger) RepriceUnpriced(estimate UnpricedEstimator) (int, error) {
+	if l == nil || l.db == nil || estimate == nil {
+		return 0, nil
+	}
+	return l.db.repriceUnpriced(estimate)
 }
 
 // NewLedger creates a ledger that persists to _system/costs.jsonl via the

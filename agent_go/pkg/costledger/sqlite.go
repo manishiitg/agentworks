@@ -576,3 +576,57 @@ func sourcePlatformFromSessionID(sessionID string) string {
 	}
 	return normalizeSourcePlatform(platform)
 }
+
+func (s *sqliteLedger) repriceUnpriced(estimate UnpricedEstimator) (int, error) {
+	rows, err := s.db.Query(`SELECT event_id, requested_provider, requested_model_id, effective_provider, effective_model_id,
+       prompt_tokens, completion_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens
+FROM cost_events WHERE billing_basis = 'unpriced' AND llm_call_count > 0`)
+	if err != nil {
+		return 0, fmt.Errorf("costledger: list unpriced calls: %w", err)
+	}
+	type priced struct {
+		id     string
+		cost   float64
+		source string
+	}
+	var updates []priced
+	for rows.Next() {
+		var e Entry
+		if err := rows.Scan(&e.EventID, &e.Provider, &e.ModelID, &e.EffectiveProvider, &e.EffectiveModelID,
+			&e.PromptTokens, &e.CompletionTokens, &e.ReasoningTokens, &e.CacheReadTokens, &e.CacheWriteTokens); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("costledger: scan unpriced call: %w", err)
+		}
+		if cost, source := estimate(e); cost > 0 {
+			updates = append(updates, priced{e.EventID, cost, source})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("costledger: iterate unpriced calls: %w", err)
+	}
+	_ = rows.Close()
+	if len(updates) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("costledger: begin reprice: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	count := 0
+	for _, u := range updates {
+		res, err := tx.Exec(`UPDATE cost_events SET total_cost_usd = ?, billing_basis = 'subscription_shadow', pricing_source = ?
+WHERE event_id = ? AND billing_basis = 'unpriced'`, u.cost, u.source, u.id)
+		if err != nil {
+			return 0, fmt.Errorf("costledger: reprice call: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			count++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("costledger: commit reprice: %w", err)
+	}
+	return count, nil
+}

@@ -1987,6 +1987,12 @@ func runServer(cmd *cobra.Command, args []string) {
 		log.Printf("[COST_LEDGER] Legacy migration imported=%d duplicates=%d quarantined=%d",
 			report.Imported, report.Duplicates, report.Quarantined)
 	}
+	// Cursor Auto calls recorded before Auto had an estimated price.
+	if n, repriceErr := costLedger.RepriceUnpriced(estimateCursorAutoCost); repriceErr != nil {
+		log.Printf("[COST_LEDGER] Repricing Cursor Auto calls skipped after error: %v", repriceErr)
+	} else if n > 0 {
+		log.Printf("[COST_LEDGER] Priced %d earlier Cursor Auto call(s) at the estimated average", n)
+	}
 	fmt.Printf("💾 Operator store: workspace API (%s)\n", getWorkspaceAPIURL())
 	fmt.Printf("💵 Cost events: SQLite (%s)\n", costDBPath)
 
