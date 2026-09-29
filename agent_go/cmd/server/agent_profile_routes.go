@@ -243,6 +243,9 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		req.Provider = option.Provider
 		req.ModelID = option.ModelID
 		if modelID := strings.TrimSpace(input.ModelID); modelID != "" {
+			// A saved retired model (claude-sonnet-5) means its replacement:
+			// the project keeps working instead of failing validation.
+			modelID = currentCodingAgentModel(option.Provider, modelID)
 			if !providerOptionOffersModel(option, modelID) {
 				return QueryRequest{}, fmt.Errorf("model %q is not offered for engine %q", modelID, engine)
 			}
