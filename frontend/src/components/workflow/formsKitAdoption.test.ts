@@ -126,8 +126,9 @@ describe('settings form kit adoption', () => {
     expect(users).not.toContain('<input')
     expect(users).not.toContain('<button')
     expect(users).not.toContain('window.confirm')
-    // The role dropdown stays a native select: same behavior, themed classes.
-    expect(rawCount(users)).toBe(1)
+    // The role dropdowns (each user's, and the Add a user form's) stay native
+    // selects: same behavior, themed classes.
+    expect(rawCount(users)).toBe(2)
 
     const share = read('src/components/workflow/WorkflowSharePopup.tsx')
     expect(share).toContain("from '../ui/SettingsCard'")
