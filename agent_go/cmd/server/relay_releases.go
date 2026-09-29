@@ -43,6 +43,29 @@ func relayReleaseRoot(workspace string) string {
 	return path.Join("Workflow", relayReleasesFolder, hex.EncodeToString(sum[:8]))
 }
 
+// relayDraftWorkspaceForRelease maps a release's execution workspace back to
+// its live Relay identity. Credentials and grants belong to that identity,
+// while plan/code and run artifacts remain in the frozen release workspace.
+func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (string, error) {
+	clean := path.Clean(workspace)
+	parts := strings.Split(clean, "/")
+	if len(parts) < 2 || parts[0] != "Workflow" || parts[1] != relayReleasesFolder {
+		return workspace, nil
+	}
+	if len(parts) != 4 || !relayVersionPattern.MatchString(parts[3]) {
+		return "", errors.New("invalid Relay release workspace")
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, clean)
+	if err != nil || !found || manifest.Kind != "relay" {
+		return "", errors.New("published Relay manifest unavailable")
+	}
+	draft, live, err := findWorkflowManifestByID(ctx, manifest.ID)
+	if err != nil || live == nil || live.Kind != "relay" || relayReleaseWorkspace(draft, parts[3]) != clean {
+		return "", errors.New("published Relay has no matching live identity")
+	}
+	return draft, nil
+}
+
 func readRelayRelease(ctx context.Context, workspace, version string) (*relayRelease, string, error) {
 	if !relayVersionPattern.MatchString(version) {
 		return nil, "", fmt.Errorf("invalid Relay version %q", version)
@@ -90,8 +113,11 @@ func verifyRelayRelease(ctx context.Context, release *relayRelease, workspace st
 	}
 	for _, file := range paths {
 		relative := strings.TrimPrefix(file, workspace+"/")
-		if relative == file || (!known[relative] && !relaySnapshotFile(relative)) {
+		if relative == file || (!known[relative] && (relative == "release.json" || relayRuntimeFile(relative))) {
 			continue
+		}
+		if !known[relative] {
+			return fmt.Errorf("published Relay contains unexpected file %q", relative)
 		}
 		raw, exists, err := readFileFromWorkspace(ctx, file)
 		if err != nil || !exists {
@@ -151,7 +177,7 @@ func listRelayReleases(ctx context.Context, workspace string) ([]relayRelease, e
 }
 
 func relaySnapshotFile(relative string) bool {
-	if relative == "" || relative == "release.json" || relative == "schedule-runs.json" || strings.HasPrefix(relative, ".") {
+	if relative == "" || relative == "release.json" || relayRuntimeFile(relative) || strings.HasPrefix(relative, ".") {
 		return false
 	}
 	for _, part := range strings.Split(relative, "/") {
@@ -159,12 +185,19 @@ func relaySnapshotFile(relative string) bool {
 			return false
 		}
 	}
+	return true
+}
+
+func relayRuntimeFile(relative string) bool {
+	if relative == "schedule-runs.json" {
+		return true
+	}
 	for _, prefix := range []string{"runs/", "relay_releases/", "chat/", "chats/", "chat_history/", "backup/", "publish/", "planning/revisions/", "planning/changelog/", "variables/changelog/", "knowledgebase/notes/", ".sandbox-cache/", "costs/", "db/", "config/", "webhooks/", "builder/", "session/", "sessions/", "logs/"} {
 		if strings.HasPrefix(relative, prefix) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // publishRelayRelease freezes a Relay in a nested workspace. The ordinary

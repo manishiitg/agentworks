@@ -47,6 +47,18 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 		t.Fatalf("unchanged republish = %+v, %v", republish, err)
 	}
 	root := relayReleaseWorkspace(workspace, "v1")
+	if identity, err := relayDraftWorkspaceForRelease(ctx, root); err != nil || identity != workspace {
+		t.Fatalf("release credential identity = %q, %v", identity, err)
+	}
+	mock.mu.Lock()
+	mock.files[root+"/.pi/APPEND_SYSTEM.md"] = "injected prompt"
+	mock.mu.Unlock()
+	if err := verifyRelayRelease(ctx, v1, root); err == nil {
+		t.Fatal("hidden file added after publishing was accepted")
+	}
+	mock.mu.Lock()
+	delete(mock.files, root+"/.pi/APPEND_SYSTEM.md")
+	mock.mu.Unlock()
 	if !mock.hasFolder(root) {
 		t.Fatalf("release workspace %q was not created", root)
 	}
@@ -75,5 +87,36 @@ func TestRelayPublishKeepsRunningVersionSeparateFromDraft(t *testing.T) {
 	selected, selectedWorkspace, err := resolveRelayRelease(ctx, workspace, "v1")
 	if err != nil || selected.Version != "v1" || selectedWorkspace != root {
 		t.Fatalf("selected = %+v %q %v", selected, selectedWorkspace, err)
+	}
+}
+
+func TestRelayReleaseLogAccessFollowsLiveManifest(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator"},{"id":"bob","username":"bob","role":"editor","products":["agentworks"]}]}`)
+	draft := "Workflow/relay-access-test"
+	release := relayReleaseWorkspace(draft, "v1")
+	manifest := NewWorkflowManifest("Access test")
+	manifest.Kind = "relay"
+	manifest.Access = &WorkflowAccess{Owners: []string{"alice"}}
+	raw, _ := json.Marshal(manifest)
+	mock := &mockWorkspaceAPI{files: map[string]string{
+		manifestPath(draft):   string(raw),
+		manifestPath(release): string(raw),
+	}}
+	server := httptest.NewServer(mock)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	for _, tc := range []struct {
+		user string
+		want int
+	}{{"bob", 403}, {"alice", 200}} {
+		req := httptest.NewRequest("GET", "/api/workflow/logs?workspace_path="+release+"&run_folder=iteration-0/default", nil)
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user, Username: tc.user}))
+		response := httptest.NewRecorder()
+		(&StreamingAPI{}).handleGetExecutionLogs(response, req)
+		if response.Code != tc.want {
+			t.Errorf("%s release logs: got %d, want %d: %s", tc.user, response.Code, tc.want, response.Body.String())
+		}
 	}
 }

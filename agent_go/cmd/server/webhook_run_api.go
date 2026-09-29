@@ -499,14 +499,45 @@ func (s *SchedulerService) readInternalWorkflowTriggerRun(ctx context.Context, w
 		return webhookRunResult{}, ErrInternalCallerMismatch
 	}
 	run, err := s.existingWebhookRun(ctx, runID)
-	if err != nil || !webhookRunMatchesSchedule(run, workspacePath, manifest, *sched) {
+	if err != nil {
 		return webhookRunResult{}, ErrInternalTriggerRunGone
 	}
-	result, err := readWebhookRunResult(workspacePath, run)
+	runWorkspace := workspacePath
+	runManifest := manifest
+	version := ""
+	if manifest.Kind == "relay" && sched.IsFunctionTrigger() {
+		content, exists, readErr := readFileFromWorkspace(ctx, webhookInputPath(run.ScopeID, runID))
+		if readErr != nil || !exists {
+			return webhookRunResult{}, ErrInternalTriggerRunGone
+		}
+		var delivery WorkflowWebhookDelivery
+		var payload struct {
+			Version string `json:"relay_version"`
+		}
+		if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil || payload.Version == "" {
+			return webhookRunResult{}, ErrInternalTriggerRunGone
+		}
+		_, releaseWorkspace, releaseErr := readRelayRelease(ctx, workspacePath, payload.Version)
+		if releaseErr != nil || run.ScopeID != releaseWorkspace {
+			return webhookRunResult{}, ErrInternalTriggerRunGone
+		}
+		runWorkspace = releaseWorkspace
+		runManifest, _, err = ReadWorkflowManifest(ctx, runWorkspace)
+		if err != nil || runManifest == nil {
+			return webhookRunResult{}, ErrInternalTriggerRunGone
+		}
+		version = payload.Version
+	}
+	runSched, err := findInternalWorkflowTrigger(runManifest, triggerID)
+	if err != nil || !webhookRunMatchesSchedule(run, runWorkspace, runManifest, *runSched) {
+		return webhookRunResult{}, ErrInternalTriggerRunGone
+	}
+	result, err := readWebhookRunResult(runWorkspace, run)
 	if err != nil {
 		return webhookRunResult{}, err
 	}
-	applyRelayResult(manifest, &result, workspacePath, run)
+	applyRelayResult(runManifest, &result, runWorkspace, run)
+	result.Version = version
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		return webhookRunResult{}, err
 	}
