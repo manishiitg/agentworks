@@ -434,7 +434,9 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'schedules' && <AutomationHubPanel
             entityType="product"
             workspacePath={workspacePath}
-            canManage
+            // A Code's schedules and triggers are its owner's: they run as the
+            // owner, so someone the Code is shared with only sees them.
+            canManage={!(product.profileId === 'code' && shared)}
             scopeNoun="project"
             productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
             chatContent={<PreviousChatHistoryPanel

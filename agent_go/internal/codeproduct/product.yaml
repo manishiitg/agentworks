@@ -38,6 +38,13 @@ profile:
       # No built-in Gmail (user, 2026-09-29): a Code reaches Google through
       # MCP servers only (Google's Workspace MCP servers, global or personal).
       options: {channels: "slack,whatsapp", dm_only: "true"}
+    # A schedule or webhook trigger sends one message to the Code's chat. Only
+    # the Code's owner creates them, and they run as the owner (their own
+    # chat, MCP connections and secrets). docs/design/code_product.md.
+    - id: schedules
+      options: {mode: message_only}
+    - id: triggers
+      options: {mode: message_only}
     - dashboard
     # No project Memory (user, 2026-09-28): a Code keeps notes in its files.
     - costs

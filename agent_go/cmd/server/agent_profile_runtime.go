@@ -761,7 +761,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 	}
 	if activeWorkProject && agentprofiles.HasFeature(resolved.Definition, "schedules") {
-		if err := api.registerWorkScheduleTools(registrar, userID, workspacePath, readOnly); err != nil {
+		if err := api.registerWorkScheduleTools(registrar, resolved.Definition.ID, userID, workspacePath, readOnly); err != nil {
 			return err
 		}
 	}

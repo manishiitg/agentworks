@@ -511,7 +511,7 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 					continue
 				}
 				runtimePath := candidate
-				if strings.EqualFold(profile.ID, "work") {
+				if isProjectProfileID(profile.ID) {
 					runtimePath = projectRuntimeManifestPath(profile.ID, filepath.ToSlash(filepath.Dir(candidate)))
 					runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath)
 					if runtimeErr != nil {

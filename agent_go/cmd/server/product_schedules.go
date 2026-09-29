@@ -380,7 +380,7 @@ func (s *ProductScheduleService) projectJobsForUser(ctx context.Context, userID 
 			manifestActivatedAt = parseRFC3339OrZero(manifest.CreatedAt)
 		}
 		runtimePath := candidate
-		if strings.EqualFold(profile.ID, "work") {
+		if isProjectProfileID(profile.ID) {
 			runtimePath = projectRuntimeManifestPath(profile.ID, filepath.ToSlash(filepath.Dir(candidate)))
 			if runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath); runtimeErr != nil {
 				return nil, runtimeErr
@@ -601,7 +601,7 @@ func (s *ProductScheduleService) projectManifest(ctx context.Context, userID, pr
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, err
 	}
 	manifest := metadata
-	if strings.EqualFold(profileID, "work") {
+	if isProjectProfileID(profileID) {
 		runtimePath := projectRuntimeManifestPath(profileID, binding.WorkspacePath)
 		runtimeRaw, runtimeFound, runtimeErr := s.readFile(ctx, runtimePath)
 		if runtimeErr != nil {

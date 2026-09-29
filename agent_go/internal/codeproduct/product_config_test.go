@@ -12,13 +12,14 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	if err := agentprofiles.ResolveFeatures(&profile); err != nil {
 		t.Fatal(err)
 	}
-	// No schedules, triggers, voice or project Memory; chat apps are 1:1 bots only.
-	for _, feature := range []string{"triggers", "schedules", "voice", "memory"} {
+	// No voice or project Memory; chat apps are 1:1 bots only. Schedules and
+	// triggers are message-only, owner-created (user, 2026-09-29).
+	for _, feature := range []string{"voice", "memory"} {
 		if agentprofiles.HasFeature(profile, feature) {
 			t.Fatalf("Code must not enable %s", feature)
 		}
 	}
-	for _, feature := range []string{"live-chat", "coding", "files", "terminal", "skills", "secrets", "attached-folders", "browser", "workflow-references", "dashboard", "database", "costs", "mcp", "background-work", "models", "bots"} {
+	for _, feature := range []string{"live-chat", "coding", "files", "terminal", "skills", "secrets", "attached-folders", "browser", "workflow-references", "dashboard", "database", "costs", "mcp", "background-work", "models", "bots", "schedules", "triggers"} {
 		if !agentprofiles.HasFeature(profile, feature) {
 			t.Fatalf("Code must enable %s", feature)
 		}
@@ -26,7 +27,7 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 	for _, tool := range profile.ToolPolicy.Enabled {
 		switch tool {
 		case "set_work_identity", "define_function", "return_function_result", "report_function_progress",
-			"create_project_trigger", "create_project_schedule", "create_slack_bot_route", "update_gmail_connection_grants_shared":
+			"create_slack_bot_route", "update_gmail_connection_grants_shared":
 			t.Fatalf("Code enables forbidden tool %s", tool)
 		}
 	}

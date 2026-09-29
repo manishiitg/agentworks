@@ -44,8 +44,8 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
 | Exposed over MCP (`ask_crew`, functions) | Yes | No |
 | Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
-| Triggers | Yes | No |
-| Schedules | Message-only | No, for now |
+| Triggers | Yes | Message-only, owner-created, run as the owner (2026-09-29) |
+| Schedules | Message-only | Message-only, owner-created, run as the owner (2026-09-29) |
 | Chat UI | tmux terminal + chat area | Same |
 | Coding CLIs, models, secrets, skills, browser, terminal | Yes | Yes |
 
@@ -84,7 +84,17 @@ Proposed features for `code`:
     Codes and Crews never load them.
   - Viewers and editors of a shared Code use its selected MCP servers and
     skills, but never see MCP credentials.
-- **Leave out:** `triggers`, `schedules`, `voice`, `database`.
+- **Leave out:** `voice`, `database`.
+- **Schedules and triggers (user, 2026-09-29: "required for sure"):**
+  - Message-only, as in a Crew. Only the Code's owner creates them: the
+    tools and routes resolve the manifest under the caller, so an editor gets
+    "unavailable".
+  - They run as the owner, in the owner's chat of the Code (or a schedule's
+    own isolated chat), pinned to the owner, with the owner's personal MCP
+    servers and secrets.
+  - The Automation panel is read-only for people the Code is shared with.
+  - Phase 2: creator-owned schedules for editors (a `created_by` field, run as
+    the creator, disabled when access is removed).
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.
 
 Other settings:
