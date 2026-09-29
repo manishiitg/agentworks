@@ -163,12 +163,14 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const setShowWorkflowsOverview = useAppStore(s => s.setShowWorkflowsOverview)
   const showSchedulesOverview = useAppStore(s => s.showSchedulesOverview)
   const setShowSchedulesOverview = useAppStore(s => s.setShowSchedulesOverview)
+  const adminPage = useAppStore(s => s.adminPage)
+  const setAdminPage = useAppStore(s => s.setAdminPage)
   const setActivityWorkflowPath = useAppStore(s => s.setActivityWorkflowPath)
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const isOrganizationView = showWorkflowsOverview
-  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview
+  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage !== null
   const currentWalkthroughSurface: WalkthroughSurface = productWalkthroughSurface
     ?? (showWorkflowsOverview || showSchedulesOverview || selectedModeCategory !== 'workflow'
       ? 'overview'
@@ -277,7 +279,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     useLLMStore.getState().setShowLLMModal(false)
     setShowWorkflowsOverview(false)
     setShowSchedulesOverview(false)
-  }, [setShowWorkflowsOverview, setShowSchedulesOverview])
+    setAdminPage(null)
+  }, [setShowWorkflowsOverview, setShowSchedulesOverview, setAdminPage])
 
   // Handle ESC and Enter keys for shortcuts modal
   useEffect(() => {

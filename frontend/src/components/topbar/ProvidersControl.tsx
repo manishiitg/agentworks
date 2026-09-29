@@ -1,5 +1,6 @@
 import { Cpu } from 'lucide-react'
 import { useLLMStore } from '../../stores'
+import { useAppStore } from '../../stores/useAppStore'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 export default function ProvidersControl() {
@@ -11,7 +12,7 @@ export default function ProvidersControl() {
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={() => open(true)}
+          onClick={() => { useAppStore.getState().setAdminPage(null); open(true) }}
           data-tour="global-providers"
           aria-label="Providers"
           aria-pressed={isOpen}
