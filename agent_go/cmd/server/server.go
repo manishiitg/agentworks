@@ -5584,7 +5584,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if piPersistentInteractive {
-			closed := api.cleanupConflictingPiCLIInteractiveSessions(sessionID, chatWorkingDir, "starting chat agent")
+			// Another conversation's Pi turn in this folder finishes first:
+			// Pi runs one session per folder, and closing it would cancel
+			// that turn (issue #213, C7).
+			stuck := api.waitForBusyPiCLISessions(r.Context(), sessionID, chatWorkingDir)
+			closed := api.cleanupConflictingPiCLIInteractiveSessions(sessionID, chatWorkingDir, "starting chat agent", stuck)
 			if closed > 0 {
 				log.Printf("[PI_CLI_CONFLICT] Cleared %d conflicting Pi CLI session(s) before starting chat session %s in %s", closed, sessionID, chatWorkingDir)
 			}
