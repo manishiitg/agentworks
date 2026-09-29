@@ -1,6 +1,6 @@
 # MCP servers in Code: global and personal
 
-Status: built (2026-09-28), implementation reviewed by ai-work-7e; design reviewed twice. Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Not built. Parent design:
+Status: built (2026-09-28), implementation reviewed by ai-work-7e; design reviewed twice. Folded in: fail-closed from durable facts, report-run resolver (global only), unique internal names, tokens encrypted at rest, SSRF client, no shell exposure of MCP keys, personal headers from personal secrets only, pinned session person, protected workflow.json, enablement in the personal store. Parent design:
 [code_product.md](code_product.md).
 
 Owner decisions (2026-09-28):

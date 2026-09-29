@@ -1,7 +1,10 @@
 ## External crew/workflow interaction follow-ups — PLAT-365–370
 
-The 2026-09-28 bidirectional MCP review found these. Three are fixed on
-`main` and not yet deployed to RTS; three are open.
+The 2026-09-28 bidirectional MCP review found these. PLAT-365, 366 and 368
+were fixed first. [PR #246](https://github.com/manishiitg/agentworks/pull/246)
+then merged call-scoped question/reply support on 2026-09-29. Live external
+Ask verification and durable question continuation are still open; this
+register does not assert deployment to RTS.
 
 - [PLAT-365](pulse_platform/human-decisions/plat-365.md), P1, **fixed**
   (`ca65b9886`): workflow questions were stored without their session, so
@@ -10,17 +13,21 @@ The 2026-09-28 bidirectional MCP review found these. Three are fixed on
 - [PLAT-366](pulse_platform/security-sandbox/plat-366.md), P1, **fixed**
   (`39b468a8b`): a Crew-only token could read a known workflow call's result.
   Crew polling now requires a Crew target and re-checks current access.
-- [PLAT-367](pulse_platform/human-decisions/plat-367.md), P1, open: workflow
-  Ask's `wfask-` session fails the external reply API's `pat-` ownership
-  check, even for its own caller.
+- [PLAT-367](pulse_platform/human-decisions/plat-367.md), P1, mitigated:
+  workflow Ask's `wfask-` session still fails the `pat-` session API, but
+  callers now use the function-call poll/reply route. Live Ask verification
+  remains.
 - [PLAT-368](pulse_platform/human-decisions/plat-368.md), P2, **fixed**
   (`b616789cd`): stopping a run did not release its question wait. Now a
   cancellation withdraws the question at once and refuses late answers.
-- [PLAT-369](pulse_platform/integrations/plat-369.md), P2, open: external
-  function-call polling shows no pending questions and has no call-scoped
-  reply tool.
-- [PLAT-370](pulse_platform/human-decisions/plat-370.md), P2, open: questions
-  and function-call lookup live in process memory, so a restart loses them.
+- [PLAT-369](pulse_platform/integrations/plat-369.md), P2, implemented on
+  main: external function-call polling shows `pending_inputs` and provides
+  call-scoped reply tools. A real suspended Ask through REST/MCP is still
+  unverified.
+- [PLAT-370](pulse_platform/human-decisions/plat-370.md), P2, partly
+  addressed: saved function calls can be found after restart and open ones
+  are marked interrupted. Blocking questions and their continuations remain
+  process-local.
 
 ## Coding CLIs and the tmux socket are outside the sandbox — PLAT-364
 

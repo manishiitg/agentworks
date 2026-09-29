@@ -1,16 +1,18 @@
-# Code — a private coding workspace on the shared server
+# Code — a private workspace on the shared server
 
-Status: proposal (2026-09-28). Not built.
+Status: built in phases; this file retains the original 2026-09-28 build plan,
+later decisions and open acceptance items. Private same-owner Code function calls merged in
+[PR #246](https://github.com/manishiitg/agentworks/pull/246) on 2026-09-29.
 
 ## Summary
 
-**Code** is where a person sits down and codes on the team's AgentWorks
-server. It works like a Crew project (files, coding CLIs in a terminal, the
-same chat), with four differences:
+**Code** is a person's private workspace on the team's AgentWorks server.
+They can use it for coding, writing, research and other work. It has files,
+coding CLIs and chat like a Crew project, with four differences:
 
 - **Private by default.** Only the owner sees a Code until they share it.
-  Skills added in a Code are private to it too. MCP servers are, for now,
-  the shared platform ones, as in Crew (private MCP comes later).
+  Skills added in a Code are private to it too. Code chats can use selected
+  global MCP servers and the chatting person's personal MCP servers.
   Admins can inspect every Code (see [Admin inspection](#admin-inspection)).
 - **Files first.** The files view opens by default. The dashboard is
   secondary.
@@ -42,8 +44,8 @@ nobody looks for a "Workbench" button that doesn't exist.
 | Default view | Chat and dashboard | Files, with editor and terminal |
 | Identity / purpose / role | Yes | No, just a name |
 | Templates (Crew catalog, playbooks) | Yes | No |
-| Reaching others | Crews and workflows (as caller) | Crews and workflows the person can access (as caller); never another Code |
-| MCP servers used inside | Yes, shared per server/Crew | Yes, the shared platform ones (as Crew); private per-Code servers later |
+| Reaching others | Crews and workflows (as caller) | Crews and workflows the person can access; a same-owner Code when the person can edit both |
+| MCP servers used inside | Shared platform and attached personal servers | Selected global servers and the chatting person's personal servers |
 | Skills | Yes, shared | Yes, but private: ones added or created in a Code stay in it |
 | Exposed over MCP (`ask_crew`, functions) | Yes | No |
 | Bots | Slack channels and DMs, WhatsApp, Gmail | Slack DMs and WhatsApp only, 1:1 with a person; no Slack channels or group chats, no Gmail |
@@ -241,10 +243,11 @@ users has to hold:
    - Register it and add it to the product switcher.
 2. **Private by default + sharing.** Owner-only visibility, viewer, editor
    and co-owner grants, and the one-chat-per-person rule for editors.
-3. **Closed to outside callers, no templates, DM-only bots.** Refuse MCP,
-   Crew/workflow function, internal-trigger and Slack channel or group access
-   for profile `code`; the only callers are same-owner Codes for a person who
-   can edit both, in that person's own chat. Allow Slack
+3. **Closed to outside callers, no templates, DM-only bots.** Refuse public
+   MCP/Crew/workflow function calls, arbitrary internal triggers, and Slack
+   channel or group access for profile `code`. The only function callers are
+   same-owner Codes for a person who can edit both, in that person's own chat.
+   Allow Slack
    DM and WhatsApp for people with access, each in their own chat. Hide the template, playbook and role flows.
 4. **Files-first UI.** Land on files; editor and terminal alongside chat;
    dashboard as a tab.
@@ -267,8 +270,9 @@ users has to hold:
    - The view appears in the audit log, and A sees the "admins can view"
      note.
 3. **Closed.**
-   - `list_crews`, `ask_crew`, functions and triggers never reach a Code,
-     and there are no templates anywhere.
+   - Public `list_crews`, `ask_crew`, MCP functions and Crew/workflow triggers
+     never reach a Code; private same-owner Code peer functions can. There
+     are no Code templates.
    - A Slack channel or group route to a Code can't be created, and a
      channel message is refused.
    - The owner's Slack DM and WhatsApp messages continue the owner's own
@@ -286,7 +290,7 @@ users has to hold:
    check).
 5. **Regression.** Crews work exactly as before.
 
-## Basic setup first (2026-09-28)
+## Basic setup first (historical rollout, 2026-09-28)
 
 Code ships a basic setup first; integrations come later. In Code's
 `product.yaml` today:
@@ -305,12 +309,15 @@ Code ships a basic setup first; integrations come later. In Code's
     offered on WhatsApp to its **owner only**; people it is shared with use
     its Slack bot or the web.
   - Gmail / Google Workspace: the Code's own private accounts only (below).
-- **Later:** `mcp` (MCP servers).
+- **Added later:** `mcp` now provides selected global servers and the
+  chatting person's private connections; see
+  [code_private_mcp.md](code_private_mcp.md).
 
 ## Decisions (2026-09-28)
 
-- **Code to Crew:** not supported. A Code does not become a Crew.
-- **Admin-wide MCP servers and skills in Codes:** deferred; not in scope now.
+- **Code as a Crew target:** not supported. A Code may call a Crew, but does
+  not become one or appear in the public Crew catalog.
+- **Admin-wide skills in Codes:** deferred. Global MCP servers are supported.
 - **MCP in Code: global + personal** (user, 2026-09-28). Everyone who chats in
   a Code uses MCP with their own servers and personal secrets; the global
   platform servers and global secrets work too:
