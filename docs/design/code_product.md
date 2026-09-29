@@ -93,6 +93,12 @@ Proposed features for `code`:
     own isolated chat), pinned to the owner, with the owner's personal MCP
     servers and secrets.
   - The Automation panel is read-only for people the Code is shared with.
+  - Webhook triggers only: internal triggers (the ones another workflow or
+    Crew calls) are refused for a Code, so nothing calls a Code.
+  - Anyone with a trigger's URL and secret starts a run as the owner, with
+    the owner's MCP servers, secrets and tools, on an untrusted payload. The
+    UI and the tool say so, and the turn frames the payload as untrusted
+    data, never instructions.
   - Phase 2: creator-owned schedules for editors (a `created_by` field, run as
     the creator, disabled when access is removed).
 - **`dashboard`:** keep it, but as a secondary tab, not the landing view.

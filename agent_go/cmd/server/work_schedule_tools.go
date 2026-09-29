@@ -189,7 +189,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_trigger", "Create an authenticated webhook trigger for this project. Choose crew_chat to queue work in the main project conversation, or isolated for this webhook's own continuing conversation. Return the one-time secret immediately."+crewFunctionsHint, map[string]interface{}{
+		if err := register("create_project_trigger", "Create an authenticated webhook trigger for this project. Choose crew_chat to queue work in the main project conversation, or isolated for this webhook's own continuing conversation. Return the one-time secret immediately, and tell the user that anyone holding the URL and secret can start a run as them, with their connections and secrets."+crewFunctionsHint, map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
 				"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"},

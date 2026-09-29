@@ -78,7 +78,7 @@ export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHist
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <h3 className="text-sm font-medium">New secret for {issued.name}</h3>
-      <p className="text-xs text-muted-foreground">Copy it now. It is only shown when created or rotated.</p>
+      <p className="text-xs text-muted-foreground">Copy it now. It is only shown when created or rotated. Anyone holding this URL and secret can start a run as the owner, with the owner&apos;s connections and secrets: keep it private, and rotate it if it leaks.</p>
       <code className="block break-all rounded bg-background p-2 text-xs select-all">{issued.secret}</code>
       <button type="button" className={buttonClass} onClick={() => void copy(issued.secret!, 'Secret copied')}>Copy secret</button>
     </section>}
