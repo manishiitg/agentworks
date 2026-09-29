@@ -997,3 +997,37 @@ func TestRecentCallsHidePrivateCodePeerCallsFromOthers(t *testing.T) {
 		t.Fatalf("Crew calls list: %+v", got)
 	}
 }
+
+// Crew-to-Crew calls follow the owners (issue #213 C1): a Crew calling a
+// Crew is routed by owner; Code peers and workflow callers keep their own
+// routing; a cross-owner call gets one conversation per calling person.
+func TestCrewCallConversationRouting(t *testing.T) {
+	crew := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}}}
+	if !crewCallsCrewConversation(crew) {
+		t.Fatal("a Crew calling a Crew must be routed by owner")
+	}
+	workflow := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: "wf"}}}
+	if crewCallsCrewConversation(workflow) {
+		t.Fatal("a workflow caller keeps its own conversation")
+	}
+	codeTarget := &productWebhookMatch{Profile: agentprofiles.Profile{ID: codeproduct.ProfileID}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "x", ProfileID: codeproduct.ProfileID}}}
+	if crewCallsCrewConversation(codeTarget) {
+		t.Fatal("Code peer calls keep their private routing")
+	}
+	if got := crewCallIsolatedKey("trig-1", ""); got != "trig-1" {
+		t.Fatalf("same-owner key = %q", got)
+	}
+	if a, b := crewCallIsolatedKey("trig-1", "bob"), crewCallIsolatedKey("trig-1", "carol"); a == b || a == "trig-1" {
+		t.Fatalf("each calling person needs their own conversation: %q %q", a, b)
+	}
+}
+
+func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
+	stored := crewTargetMessage(triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "a"}, Label: "Alpha"})
+	if got := crewCallMessage(stored, true); !strings.Contains(got, "runs in your main chat") || strings.Contains(got, "does not see it") {
+		t.Fatalf("same-owner message: %s", got)
+	}
+	if got := crewCallMessage(stored, false); !strings.Contains(got, "only for this person's calls") {
+		t.Fatalf("cross-owner message: %s", got)
+	}
+}

@@ -179,7 +179,22 @@ func crewTargetMessage(caller triggerLinkCaller) string {
 	case triggerCallerUser:
 		kind = "external connection"
 	}
-	return fmt.Sprintf("The %s %q called you. This conversation is yours and that caller's alone (earlier calls from it are above); your main chat is for people and does not see it. The task is in the payload's `task` field; any extra input is under `payload`. Do the task, then end with a clear, self-contained final answer: it is returned to the caller.", kind, caller.Label)
+	return fmt.Sprintf("The %s %q called you. %s The task is in the payload's `task` field; any extra input is under `payload`. Do the task, then end with a clear, self-contained final answer: it is returned to the caller.", kind, caller.Label, crewCallPrivateConversationNote)
+}
+
+// The conversation sentence of a call's instructions. Crew-to-Crew calls
+// swap it at delivery for where the turn really runs (crewCallMessage).
+const crewCallPrivateConversationNote = "This conversation is yours and that caller's alone (earlier calls from it are above); your main chat is for people and does not see it."
+
+// crewCallMessage fits a Crew-to-Crew call's stored instructions to where
+// it runs: the called Crew's own chat (same owner) or a conversation for the
+// calling person (another owner).
+func crewCallMessage(stored string, sameOwner bool) string {
+	note := "This conversation is only for this person's calls to you (earlier ones are above); your main chat does not see it."
+	if sameOwner {
+		note = "This call runs in your main chat, so the people here see it too."
+	}
+	return strings.Replace(stored, crewCallPrivateConversationNote, note, 1)
 }
 
 // connectTriggerTarget reuses the internal binding on target that names this
@@ -327,6 +342,14 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	if profile.ID == codeproduct.ProfileID {
 		ownerID = userID
 		conversationBinding, err = codePeerRunBinding(ctx, userID, profile, target.CrewID, binding.WorkspacePath, trigger.ID, manifest.displayTitle()+" · "+trigger.Name)
+	} else if strings.EqualFold(caller.Stamp.Type, triggerCallerCrew) {
+		// Same routing as the call itself: the owner's own call is in the
+		// Crew's chat, another person's in their own conversation.
+		if guest := crewGuestCaller(userID, ownerID); guest != "" {
+			conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "trigger", crewCallIsolatedKey(trigger.ID, guest), manifest.displayTitle()+" · "+trigger.Name)
+		} else {
+			conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, target.CrewID)
+		}
 	} else if trigger.ownConversation() {
 		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "trigger", trigger.ID, manifest.displayTitle()+" · "+trigger.Name)
 	} else {

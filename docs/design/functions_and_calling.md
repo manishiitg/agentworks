@@ -159,8 +159,13 @@ Rules:
   target's signatures.
 - **Callers** need run access, plus the function's own `allowed_callers` if
   it has one.
-- **Crew calls** run in the caller's continuing conversation with the Crew,
-  the same one `ask` uses. **Workflow functions** start a run.
+- **Crew calls** run where the owners say (user decision 2026-09-29, issue
+  #213 C1). When a Crew calls a Crew with the **same owner**, the turn runs in
+  the called Crew's own chat, queued behind anything running there. When the
+  owners **differ**, it runs in a conversation of its own for the calling
+  person (one per caller and person), never in the owner's chat. Workflow and
+  external callers keep their continuing per-caller conversation, the same
+  one `ask` uses. **Workflow functions** start a run.
 - **No fallback to `ask`**: a typed call runs exactly as given or is
   refused.
 

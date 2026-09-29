@@ -93,6 +93,9 @@ type productScheduleJob struct {
 	ProjectID      string
 	ProjectTitle   string
 	PeerSourceID   string // private Code caller, rechecked before a queued turn
+	// ConversationKey narrows an isolated run's conversation to one calling
+	// person (a cross-owner Crew call); empty keeps one per schedule/trigger.
+	ConversationKey string
 	WorkspacePath  string
 	ManifestPath   string
 	AutomationKind string
@@ -1145,7 +1148,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 				binding, bindErr = codePeerRunBinding(runCtx, job.UserID, job.Profile, job.ProjectID, job.WorkspacePath, job.Schedule.ID, title)
 			}
 		} else {
-			binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, job.Schedule.ID, title)
+			binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, job.ConversationKey), title)
 		}
 	} else if job.ProjectID != "" {
 		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, job.ProjectID)
