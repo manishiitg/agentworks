@@ -35,7 +35,8 @@ their permissions: `list_accessible_workflows` shows what exists,
 a generated `<crew>__<function>` tool) calls it. Every Crew and workflow has
 `ask(message)` for free-form questions and tasks. A long call comes back as an
 `[AUTO-NOTIFICATION]`; follow it with `get_function_call` or
-`ask_function_update`.
+`ask_function_update`. If `get_function_call` shows `pending_inputs`, answer
+one with `reply_function_call(call_id, request_id, response)`.
 
 Nothing calls into this workspace, and you cannot define or answer functions.
 Another person's workspace is never a valid target, attachment, or reference.

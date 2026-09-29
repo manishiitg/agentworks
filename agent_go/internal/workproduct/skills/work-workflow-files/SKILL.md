@@ -130,9 +130,12 @@ schemas, and instructions, stored in its `functions.json`.
   only for a function you expect to finish quickly. Never call again for the
   same work: an identical call while one runs returns that same call. Write
   `ask` messages and arguments self-contained, because the target does not see
-  this chat.
+  this chat. For a call you may need to retry after an uncertain result, pass
+  a stable `submission_id` to `call_function` and reuse it on the retry.
 - **Follow** — `get_function_call(call_id)` shows status, the target's progress
-  reports and what it is doing right now, without interrupting it.
+  reports, pending input requests, and what it is doing right now, without
+  interrupting it. Use `reply_function_call(call_id, request_id, response)`
+  to answer a pending request; choose an exact listed option when required.
   `ask_function_update(call_id, question)` sends a question or extra details
   into a running Crew call (Crew targets only); it answers with a progress
   report.

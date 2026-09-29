@@ -1251,7 +1251,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return resolveTriggerTarget(ctx, claims, name)
 	}
 	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow: its name, a #crew:<name> / #workflow:<name> tag, or its exact workspace_path."}
-	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, notify bool, timeout, wait time.Duration) (string, error) {
+	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1263,7 +1263,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}
-		call, err := api.startCrewFunctionCall(ctx, userID, caller, target, fn, args, timeout)
+		call, err := api.startCrewFunctionCall(ctx, userID, caller, target, fn, args, timeout, submissionID)
 		if err != nil {
 			return "", err
 		}
@@ -1272,18 +1272,23 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			defer timer.Stop()
 			select {
 			case <-call.done:
-				return jsonOut(call.snapshot())
+				out := call.snapshot()
+				addFunctionCallPending(out, call)
+				return jsonOut(out)
 			case <-timer.C:
 			case <-ctx.Done():
 			}
 		} else {
 			select {
 			case <-call.done: // already settled (e.g. a joined call that finished)
-				return jsonOut(call.snapshot())
+				out := call.snapshot()
+				addFunctionCallPending(out, call)
+				return jsonOut(out)
 			default:
 			}
 		}
 		response := call.snapshot()
+		addFunctionCallPending(response, call)
 		response["status"] = "running"
 		if _, joined := response["joined"]; !joined {
 			response["note"] = "Started; the target is working on it. Poll with get_function_call, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
@@ -1413,11 +1418,12 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. It returns at once with status=running and a call_id (functions are agentic and usually take minutes); the result arrives later as an [AUTO-NOTIFICATION] in this chat (unless notify=false). Pass wait_seconds (up to 120) only for a function you expect to finish quickly, to get its result inline. Never call again for the same work: an identical call while one is running returns that same call. Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target does the work in its own chat (queued if busy) and returns a result validated against its result schema. It returns at once with status=running and a call_id (functions are agentic and usually take minutes); the result arrives later as an [AUTO-NOTIFICATION] in this chat (unless notify=false). Pass wait_seconds (up to 120) only for a function you expect to finish quickly, to get its result inline. Reuse submission_id when retrying an uncertain call to receive its original call_id, even after completion or restart. Follow a long call with get_function_call; ask a Crew target for an update with ask_function_update.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
 			"args":            map[string]interface{}{"type": "object", "description": "Arguments matching the function's input schema."},
+			"submission_id":   map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable ID for this intended call; reuse it after an uncertain retry to get the original call_id."},
 			"notify":          map[string]interface{}{"type": "boolean", "description": "Resume this chat with the result when it arrives (default true)."},
 			"wait_seconds":    map[string]interface{}{"type": "integer", "minimum": 0, "maximum": int(crewFunctionFastWait / time.Second), "description": "Wait up to this long for the result before returning status=running (default 0: return at once)."},
 			"timeout_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": int(triggerTargetMaxTimeout / time.Minute), "description": "How long the call may take before it fails (default 60)."},
@@ -1446,7 +1452,8 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if err != nil {
 			return "", err
 		}
-		return callFunction(ctx, caller, target, function, callArgs, notify, timeout, crewFunctionWait(args["wait_seconds"]))
+		submissionID, _ := args["submission_id"].(string)
+		return callFunction(ctx, caller, target, function, callArgs, submissionID, notify, timeout, crewFunctionWait(args["wait_seconds"]))
 	}); err != nil {
 		return err
 	}
@@ -1471,7 +1478,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from call_function, or from the [Function call ...] task you received."}
 
-	if err := register("get_function_call", "Check a function call you made: status, result or error, the target's latest progress reports, and a short tail of what the target is doing right now. Does not interrupt the target.", map[string]interface{}{
+	if err := register("get_function_call", "Check a function call you made: status, result or error, pending_inputs, the target's latest progress reports, and a short tail of what the target is doing right now. Answer a pending request with reply_function_call. Does not interrupt the target.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id"}, "properties": map[string]interface{}{"call_id": callIDSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1483,6 +1490,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			return "", fmt.Errorf("function call %s belongs to another caller", call.ID)
 		}
 		out := call.snapshot()
+		addFunctionCallPending(out, call)
 		call.mu.Lock()
 		terminal, runID := call.terminalLocked(), call.RunID
 		call.mu.Unlock()
@@ -1495,6 +1503,31 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			}
 		}
 		return jsonOut(out)
+	}); err != nil {
+		return err
+	}
+
+	if err := register("reply_function_call", "Answer a pending input request on a function call you made. Use the request_id in get_function_call.pending_inputs; a listed choice must match exactly. Works for Crew and workflow targets.", map[string]interface{}{
+		"type": "object", "required": []string{"call_id", "request_id", "response"}, "properties": map[string]interface{}{
+			"call_id":    callIDSchema,
+			"request_id": map[string]interface{}{"type": "string", "description": "Pending request ID from get_function_call."},
+			"response":   map[string]interface{}{"type": "string", "description": "Answer or exact listed choice."},
+		},
+	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		ctx = withClaims(ctx)
+		call, caller, err := callRecord(ctx, args)
+		if err != nil {
+			return "", err
+		}
+		if !isCaller(call, caller) || call.UserID != userID {
+			return "", fmt.Errorf("only the caller of function call %s can answer its pending input", call.ID)
+		}
+		requestID, _ := args["request_id"].(string)
+		response, _ := args["response"].(string)
+		if err := submitFunctionCallInput(call, strings.TrimSpace(requestID), response); err != nil {
+			return "", err
+		}
+		return jsonOut(map[string]interface{}{"call_id": call.ID, "request_id": requestID, "status": "submitted"})
 	}); err != nil {
 		return err
 	}
@@ -1680,7 +1713,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 				if err != nil {
 					return "", err
 				}
-				return callFunction(ctx, caller, fnTarget, fnName, args, true, triggerTargetDefaultTimeout, 0)
+				return callFunction(ctx, caller, fnTarget, fnName, args, "", true, triggerTargetDefaultTimeout, 0)
 			}); err != nil {
 				return err
 			}

@@ -82,3 +82,32 @@ func TestCrewFunctionSubmissionIDSurvivesCompletionAndRestart(t *testing.T) {
 		t.Fatal("conflicting reuse of submission_id was accepted")
 	}
 }
+
+func TestInternalCallFunctionPassesSubmissionID(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	if _, err := env.alpha["define_function"].exec(context.Background(), loginFlowArgs); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "7"}, "submission_id": "crew-retry-7", "notify": false}
+	firstRaw, err := env.alpha["call_function"].exec(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstID, _ := decodeToolJSON(t, firstRaw)["call_id"].(string)
+	if firstID == "" {
+		t.Fatalf("call_function omitted call_id: %s", firstRaw)
+	}
+	call := lookupCrewFunctionCall(firstID)
+	call.finish("completed", map[string]interface{}{"passed": true}, "")
+	secondRaw, err := env.alpha["call_function"].exec(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondID, _ := decodeToolJSON(t, secondRaw)["call_id"].(string); secondID != firstID {
+		t.Fatalf("completed retry started a new call: %s vs %s", secondID, firstID)
+	}
+	args["args"] = map[string]interface{}{"build": "8"}
+	if _, err := env.alpha["call_function"].exec(context.Background(), args); err == nil {
+		t.Fatal("conflicting reuse of submission_id was accepted")
+	}
+}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -30,20 +31,21 @@ func addFunctionCallPending(out map[string]interface{}, call *crewFunctionCall) 
 	out["pending_inputs"] = pending
 }
 
-func replyFunctionCallInput(w http.ResponseWriter, call *crewFunctionCall, requestID, response string) {
+func submitFunctionCallInput(call *crewFunctionCall, requestID, response string) error {
 	call.mu.Lock()
+	defer call.mu.Unlock()
 	active := !call.closed || call.acceptsLateLocked()
-	id := call.ID
 	if !active {
-		call.mu.Unlock()
-		externalError(w, http.StatusConflict, "input_not_pending", "Function call is no longer active.")
-		return
+		return fmt.Errorf("function call is no longer active")
 	}
-	err := virtualtools.GetHumanFeedbackStore().SubmitResponseForOperationID(id, requestID, response, time.Now())
-	call.mu.Unlock()
+	return virtualtools.GetHumanFeedbackStore().SubmitResponseForOperationID(call.ID, requestID, response, time.Now())
+}
+
+func replyFunctionCallInput(w http.ResponseWriter, call *crewFunctionCall, requestID, response string) {
+	err := submitFunctionCallInput(call, requestID, response)
 	if err != nil {
 		externalError(w, http.StatusConflict, "input_not_pending", err.Error())
 		return
 	}
-	externalJSON(w, map[string]string{"call_id": id, "request_id": requestID, "status": "submitted"})
+	externalJSON(w, map[string]string{"call_id": call.ID, "request_id": requestID, "status": "submitted"})
 }

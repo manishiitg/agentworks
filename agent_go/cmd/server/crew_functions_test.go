@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
 
 func muxRouterForCrewFunctions(svc *ProductScheduleService) *mux.Router {
@@ -96,6 +97,84 @@ func (env crewFunctionEnv) functionTools(t *testing.T, crewPath, sessionID strin
 		t.Fatal(err)
 	}
 	return reg.tools
+}
+
+func TestInternalFunctionCallPendingInputAndReplyAcrossCallerKinds(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	workflowCaller, err := workflowTriggerLinkCaller("Workflow/reports")(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowTarget, err := workflowTriggerLinkCaller("Workflow/pipeline")(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := &recordingRegistrar{}
+	if err := env.api.registerCrewFunctionTools(reg, "owner", "workflow-caller", QueryRequest{SelectedFolder: "Workflow/reports"}, workflowTriggerLinkCaller("Workflow/reports"), nil); err != nil {
+		t.Fatal(err)
+	}
+	store := virtualtools.GetHumanFeedbackStore()
+	for _, tc := range []struct {
+		name       string
+		callID     string
+		requestID  string
+		callerKind string
+		callerID   string
+		targetKind string
+		targetID   string
+		tools      map[string]recordedTool
+	}{
+		{"crew-to-crew", "fn-internal-crew-crew", "request-internal-crew-crew", triggerCallerCrew, "alpha", triggerCallerCrew, "beta", env.alpha},
+		{"crew-to-workflow", "fn-internal-crew-workflow", "request-internal-crew-workflow", triggerCallerCrew, "alpha", triggerCallerWorkflow, workflowCaller.Stamp.ID, env.alpha},
+		{"workflow-to-crew", "fn-internal-workflow-crew", "request-internal-workflow-crew", triggerCallerWorkflow, workflowCaller.Stamp.ID, triggerCallerCrew, "beta", reg.tools},
+		{"workflow-to-workflow", "fn-internal-workflow-workflow", "request-internal-workflow-workflow", triggerCallerWorkflow, workflowCaller.Stamp.ID, triggerCallerWorkflow, workflowTarget.Stamp.ID, reg.tools},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			call := &crewFunctionCall{ID: tc.callID, UserID: "owner", CallerKind: tc.callerKind, CallerID: tc.callerID, TargetKind: tc.targetKind, TargetID: tc.targetID, Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+			crewFunctionCalls.Lock()
+			crewFunctionCalls.m[call.ID] = call
+			crewFunctionCalls.Unlock()
+			t.Cleanup(func() {
+				crewFunctionCalls.Lock()
+				delete(crewFunctionCalls.m, call.ID)
+				crewFunctionCalls.Unlock()
+				store.WithdrawOperation(call.ID)
+			})
+			if err := store.CreatePendingRequest(tc.requestID, "Which branch?", "", "shared-chat", []string{"main", "release"}, false, time.Minute, tc.callID); err != nil {
+				t.Fatal(err)
+			}
+			foreignRequestID := tc.requestID + "-foreign"
+			if err := store.CreatePendingRequest(foreignRequestID, "Unrelated question", "", "shared-chat", nil, true, time.Minute, "fn-other-call"); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { store.WithdrawOperation("fn-other-call") })
+			polled, err := tc.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": call.ID})
+			if err != nil || !strings.Contains(polled, tc.requestID) || strings.Contains(polled, foreignRequestID) {
+				t.Fatalf("pending input missing: %s, %v", polled, err)
+			}
+			args := map[string]interface{}{"call_id": call.ID, "request_id": tc.requestID, "response": "main"}
+			if _, err := env.beta["reply_function_call"].exec(ctx, args); err == nil {
+				t.Fatal("target Crew answered the caller's pending input")
+			}
+			args["request_id"] = foreignRequestID
+			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+				t.Fatal("another call's question was answered")
+			}
+			args["request_id"] = tc.requestID
+			args["response"] = "wrong"
+			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+				t.Fatal("invalid choice accepted")
+			}
+			args["response"] = "main"
+			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err != nil {
+				t.Fatalf("valid answer refused: %v", err)
+			}
+			if _, err := tc.tools["reply_function_call"].exec(ctx, args); err == nil {
+				t.Fatal("duplicate answer accepted")
+			}
+		})
+	}
 }
 
 var loginFlowArgs = map[string]interface{}{
