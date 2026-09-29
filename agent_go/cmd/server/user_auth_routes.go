@@ -439,6 +439,9 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		// A pre-provisioned password account keeps its stable id, projects,
 		// history, and permissions when the same email first signs in with SSO.
 		userID = rec.ID
+		// The token names the directory account, not the display name the
+		// person chose at the provider.
+		extUser.Username = rec.Username
 	}
 	// Generate JWT token with provider information
 	token, err := GenerateJWTWithProvider(userID, extUser.Username, extUser.Email, extUser.Provider)

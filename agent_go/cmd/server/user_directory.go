@@ -278,6 +278,46 @@ func (d *userDirectory) find(userID, username, email string) *UserRecord {
 	return d.byEmail(email)
 }
 
+// findForExternal resolves the account of an SSO sign-in by its provider
+// identity, then its email; never by display name. A Google display name is
+// chosen by the person, so matching on it let someone named like an admin
+// sign in as that admin, and two people with one name share an account.
+func (d *userDirectory) findForExternal(userID string, ext *ExternalUser) *UserRecord {
+	if ext.ExternalID != "" {
+		for i := range d.Users {
+			if sso := d.Users[i].SSO; sso != nil && sso.ExternalID == ext.ExternalID && (sso.Provider == "" || sso.Provider == ext.Provider) {
+				return &d.Users[i]
+			}
+		}
+	}
+	// A record whose id is the SSO id (created by an earlier sign-in), unless
+	// it is linked to a different identity.
+	if r := d.byID(userID); r != nil && (r.SSO == nil || r.SSO.ExternalID == "" || r.SSO.ExternalID == ext.ExternalID) {
+		return r
+	}
+	return d.byEmail(ext.Email)
+}
+
+// uniqueDirectoryUsername is name, or the email (then a numbered variant)
+// when another account already has it: usernames are unique, and SSO display
+// names are not.
+func (d *userDirectory) uniqueDirectoryUsername(name, email string) string {
+	for _, candidate := range []string{name, strings.ToLower(strings.TrimSpace(email))} {
+		if candidate != "" && d.byUsername(candidate) == nil {
+			return candidate
+		}
+	}
+	base := name
+	if base == "" {
+		base = email
+	}
+	for n := 2; ; n++ {
+		if candidate := fmt.Sprintf("%s (%d)", base, n); d.byUsername(candidate) == nil {
+			return candidate
+		}
+	}
+}
+
 // directoryUserFor is the lookup every permission check goes through. A
 // nil result means "no record" and callers fall back to legacy behavior.
 func directoryUserFor(userID, username, email string) *UserRecord {
@@ -612,7 +652,7 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 	if err != nil {
 		return nil
 	}
-	if rec := dir.find(userID, ext.Username, ext.Email); rec != nil {
+	if rec := dir.findForExternal(userID, ext); rec != nil {
 		recordID := rec.ID
 		changed := false
 		if rec.Email == "" && strings.TrimSpace(ext.Email) != "" {
@@ -621,6 +661,9 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		}
 		if rec.SSO == nil {
 			rec.SSO = &UserSSO{Provider: ext.Provider, ExternalID: ext.ExternalID}
+			changed = true
+		} else if rec.SSO.ExternalID == "" && ext.ExternalID != "" {
+			rec.SSO.Provider, rec.SSO.ExternalID = ext.Provider, ext.ExternalID
 			changed = true
 		}
 		if changed {
@@ -635,8 +678,8 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 	now := time.Now().UTC().Format(time.RFC3339)
 	rec := UserRecord{
 		ID:        userID,
-		Username:  ext.Username,
-		Email:     ext.Email,
+		Username:  dir.uniqueDirectoryUsername(ext.Username, ext.Email),
+		Email:     strings.ToLower(strings.TrimSpace(ext.Email)),
 		SSO:       &UserSSO{Provider: ext.Provider, ExternalID: ext.ExternalID},
 		Products:  []string{},
 		CreatedAt: now,
@@ -837,7 +880,7 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 	now := time.Now().UTC().Format(time.RFC3339)
 	rec := UserRecord{ID: userIDForUsername(username), Username: username, Products: []string{}, CreatedAt: now, UpdatedAt: now}
 	if req.Email != nil {
-		rec.Email = strings.TrimSpace(*req.Email)
+		rec.Email = strings.ToLower(strings.TrimSpace(*req.Email))
 	}
 	if msg := adminEmailError(dir, rec.Email, ""); msg != "" {
 		writeUsersError(w, http.StatusBadRequest, msg)
@@ -912,7 +955,7 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if req.Email != nil {
-		email := strings.TrimSpace(*req.Email)
+		email := strings.ToLower(strings.TrimSpace(*req.Email))
 		if msg := adminEmailError(dir, email, rec.ID); msg != "" {
 			writeUsersError(w, http.StatusBadRequest, msg)
 			return
