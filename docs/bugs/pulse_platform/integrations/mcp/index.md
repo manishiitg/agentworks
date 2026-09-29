@@ -4,6 +4,7 @@
 
 | Ticket | Title | State | Priority |
 |---|---|---|---|
+| [PLAT-652](plat-652.md) | MCP elicitation for function-call questions | fixed on main | P2 |
 | [PLAT-536](plat-536.md) | a finished function call returns every step's full output, 400 KB | fixed on main | P3 |
 | [PLAT-535](plat-535.md) | a workflow function call reports `queued` for its whole run | fixed on main | P3 |
 | [PLAT-533](plat-533.md) | the external MCP returns stored webhook secrets in workflow manifests | fixed on main | P3 |

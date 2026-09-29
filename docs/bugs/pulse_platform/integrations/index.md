@@ -6,5 +6,5 @@
 |---|---|---|
 | [google](google/index.md) | 1 | 1 |
 | [integrations](integrations/index.md) | 23 | 5 |
-| [mcp](mcp/index.md) | 4 | 0 |
+| [mcp](mcp/index.md) | 5 | 0 |
 | [skills](skills/index.md) | 1 | 0 |

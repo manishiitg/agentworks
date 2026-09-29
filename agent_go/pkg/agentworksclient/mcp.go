@@ -54,7 +54,11 @@ func NewMCPServer(ctx context.Context, client ToolCaller) (*server.MCPServer, er
 			break
 		}
 	}
-	s := server.NewMCPServer("AgentWorks", "1.0.0", server.WithToolCapabilities(false), server.WithInstructions(instructions))
+	s := server.NewMCPServer("AgentWorks", "1.0.0", server.WithToolCapabilities(false), server.WithElicitation(), server.WithInstructions(instructions))
+	available := make(map[string]bool, len(definitions))
+	for _, definition := range definitions {
+		available[definition.Name] = true
+	}
 	for _, definition := range definitions {
 		name := definition.Name
 		s.AddTool(mcp.NewToolWithRawSchema(name, definition.Description, definition.InputSchema), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -68,11 +72,7 @@ func NewMCPServer(ctx context.Context, client ToolCaller) (*server.MCPServer, er
 					return mcp.NewToolResultError("tool arguments must be a JSON object"), nil
 				}
 			}
-			result, err := client.Call(ctx, name, arguments)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultStructured(json.RawMessage(result), string(result)), nil
+			return callMCPBridgeTool(ctx, client, name, arguments, available, request), nil
 		})
 	}
 	return s, nil

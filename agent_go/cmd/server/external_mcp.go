@@ -147,6 +147,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	}
 	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
 		server.WithToolCapabilities(false),
+		server.WithElicitation(),
 		server.WithInstructions(instructions),
 	)
 	for _, name := range []string{externalMCPToolSpec, externalMCPToolCall} {
@@ -207,16 +208,38 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 	if callArgs == nil {
 		callArgs = map[string]any{}
 	}
-	body, err := json.Marshal(map[string]any{"name": target, "arguments": callArgs})
+	// A function call with a pending question may come back as an MCP form
+	// for clients that declare elicitation (docs/design/mcp_elicitation.md).
+	elicitation := api.externalMCPElicitation(r, byName)
+	if request.Params.RequestState != "" {
+		return elicitation.Resume(ctx, target, callArgs, request)
+	}
+	if len(request.Params.InputResponses) > 0 {
+		return mcp.NewToolResultError("invalid_request_state: input responses need the matching requestState")
+	}
+	rec, err := api.externalMCPInvoke(ctx, r, target, callArgs)
 	if err != nil {
 		return mcp.NewToolResultError("failed to encode tool arguments: " + err.Error())
+	}
+	if rec.status >= 200 && rec.status < 300 {
+		if result := elicitation.MaybeElicit(ctx, target, callArgs, rec.body.Bytes()); result != nil {
+			return result
+		}
+	}
+	return externalMCPDispatchResult(rec)
+}
+
+func (api *StreamingAPI) externalMCPInvoke(ctx context.Context, r *http.Request, target string, callArgs map[string]any) (*externalMCPRecorder, error) {
+	body, err := json.Marshal(map[string]any{"name": target, "arguments": callArgs})
+	if err != nil {
+		return nil, err
 	}
 	sub := r.Clone(ctx)
 	sub.Body = io.NopCloser(bytes.NewReader(body))
 	sub.ContentLength = int64(len(body))
 	rec := &externalMCPRecorder{header: http.Header{}}
 	api.handleExternalCall(rec, sub)
-	return externalMCPDispatchResult(rec)
+	return rec, nil
 }
 
 func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
