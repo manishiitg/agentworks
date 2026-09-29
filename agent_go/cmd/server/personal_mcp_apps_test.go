@@ -11,6 +11,8 @@ import (
 
 	"github.com/gorilla/mux"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // An admin sets up the deployment's Google app once. People then connect any
@@ -182,5 +184,125 @@ func TestSetMCPAppCommandReadsGoogleClientJSONFromStdin(t *testing.T) {
 	path, _ := mcpAppFile("google")
 	if raw, _ := os.ReadFile(path); strings.Contains(string(raw), "GOCSPX") {
 		t.Fatalf("stored in the clear: %s", raw)
+	}
+}
+
+// Review follow-ups (ai-work-38): the provider match is on the parsed host,
+// keys shared with a different token URL are refused, older catalog servers
+// find the app, a stored app can always be removed, writes are atomic, and the
+// operator command refuses root and unknown keys.
+func TestSignInAppKeysMatchHostsAndRefuseSharedKeys(t *testing.T) {
+	for authURL, want := range map[string]string{
+		"https://accounts.google.com/o/oauth2/v2/auth":          "google",
+		"https://github.com/login/oauth/authorize":              "github",
+		"https://slack.com/oauth/v2_user/authorize":             "slack",
+		"https://acme.slack.com/oauth":                          "slack",
+		"https://notslack.com/oauth":                            "notslack", // a substring is not the provider
+		"https://evil.example/?next=accounts.google.com":        "notslack",
+		"http://accounts.google.com/o/oauth2/v2/auth":           "notslack", // not https
+		"https://github.com.evil.example/login/oauth/authorize": "notslack",
+	} {
+		if got := mcpAppKeyFor("NotSlack", &oauth.OAuthConfig{AuthURL: authURL}); got != want {
+			t.Fatalf("%s = %q, want %q", authURL, got, want)
+		}
+	}
+
+	servers := map[string]mcpclient.MCPServerConfig{
+		"a-b": {URL: "https://a.example.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://a.example.com/auth", TokenURL: "https://a.example.com/token"}},
+		"a_b": {URL: "https://b.example.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://b.example.com/auth", TokenURL: "https://b.example.com/token"}},
+		"ok":  {URL: "https://c.example.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://c.example.com/auth", TokenURL: "https://c.example.com/token"}},
+	}
+	keys := mcpAppKeyIndex(servers)
+	if keys["a-b"] != "" || keys["a_b"] != "" || keys["ok"] != "ok" {
+		t.Fatalf("two names cleaning to one key at different token URLs kept it: %v", keys)
+	}
+}
+
+func TestOlderCatalogServersAndRemovalAndAtomicWrite(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	// A catalog server added before apps existed has no app key yet.
+	if _, err := addPersonalMCPServer("owner", personalMCPServer{Name: "gmail", URL: "https://gmailmcp.googleapis.com/mcp/v1", Catalog: "GoogleGmail",
+		OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMCPApp("google", mcpApp{ClientID: "id.apps.googleusercontent.com", ClientSecret: "GOCSPX-old"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "id.apps.googleusercontent.com" {
+		t.Fatalf("an older catalog server did not find the app: %+v %v", cfg.OAuth, err)
+	}
+	// Overwrites leave no temp files and never a partial app.
+	path, _ := mcpAppFile("google")
+	for _, secret := range []string{"GOCSPX-one", "GOCSPX-two"} {
+		if err := writeMCPApp("google", mcpApp{ClientID: "id", ClientSecret: secret}); err != nil {
+			t.Fatal(err)
+		}
+		if app, err := readMCPApp("google"); err != nil || app.ClientSecret != secret {
+			t.Fatalf("read after write = %+v %v", app, err)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Fatalf("temp files left behind: %v", entries)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Fatalf("app file mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestStoredAppCanBeRemovedAfterItsProviderLeavesTheCatalog(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	api, _ := newCodePrivacyFixture(t)
+	withPersonalMCPRoot(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api.mcpConfigPath = catalogPath
+	api.logger = loggerv2.NewNoop()
+	if err := writeMCPApp("google", mcpApp{ClientID: "id", ClientSecret: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodPut, "/x", `{"client_id":"a","client_secret":"b"}`, "owner", map[string]string{"key": "google"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("setting an app nobody needs = %d", rec.Code)
+	}
+	if rec := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "google"}); rec.Code != http.StatusOK {
+		t.Fatalf("removing the stored app = %d", rec.Code)
+	}
+	if app, _ := readMCPApp("google"); app != nil {
+		t.Fatal("the app is still on disk")
+	}
+	if rec := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "../evil"}); rec.Code == http.StatusOK {
+		t.Fatal("an invalid key was accepted")
+	}
+}
+
+func TestSetMCPAppCommandRefusesRootAndUnknownKeys(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(key string, euid int) error {
+		prev := processEuid
+		processEuid = func() int { return euid }
+		defer func() { processEuid = prev }()
+		setMCPAppCmd.SetIn(strings.NewReader(`{"client_id":"1","client_secret":"s"}`))
+		setMCPAppCmd.SetOut(&strings.Builder{})
+		_ = setMCPAppCmd.Flags().Set("key", key)
+		_ = setMCPAppCmd.Flags().Set("mcp-config", catalogPath)
+		return setMCPAppCmd.RunE(setMCPAppCmd, nil)
+	}
+	if err := run("google", 0); err == nil || !strings.Contains(err.Error(), "not root") {
+		t.Fatalf("root allowed: %v", err)
+	}
+	if err := run("gogle", 1000); err == nil || !strings.Contains(err.Error(), "google") {
+		t.Fatalf("a typo saved: %v", err)
+	}
+	if err := run("google", 1000); err != nil {
+		t.Fatalf("the right key failed: %v", err)
 	}
 }

@@ -175,7 +175,7 @@ func (api *StreamingAPI) addPersonalMCP(ctx context.Context, userID string, body
 			// A provider without registration signs in through the
 			// deployment's app, when an admin has set one up.
 			if catalogClient == nil && catalogOAuth.ClientID == "" && catalogOAuth.RegistrationEndpoint == "" {
-				body.AppKey = mcpAppKeyFor(entry.Catalog, &catalogOAuth)
+				body.AppKey = api.mcpAppKeyOf(entry.Catalog)
 			}
 			catalogOAuth.ClientID, catalogOAuth.ClientSecret, catalogOAuth.RedirectURL, catalogOAuth.UsePKCE = "", "", "", true
 			body.OAuth = &catalogOAuth
@@ -425,6 +425,7 @@ func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
 		return nil
 	}
 	out := []personalMCPCatalogServer{}
+	keys := mcpAppKeyIndex(catalog.MCPServers)
 	for name, cfg := range catalog.MCPServers {
 		protocol := cfg.GetProtocol()
 		if cfg.URL == "" || len(cfg.Headers) > 0 || (protocol != mcpclient.ProtocolHTTP && protocol != mcpclient.ProtocolSSE) {
@@ -445,8 +446,10 @@ func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
 			entry.NeedsClient = cfg.OAuth.ClientID == "" && cfg.OAuth.RegistrationEndpoint == ""
 			if entry.NeedsClient {
 				// An app the admin set up for the provider is enough.
-				if app, err := readMCPApp(mcpAppKeyFor(name, cfg.OAuth)); err == nil && app != nil {
-					entry.NeedsClient = false
+				if key := keys[name]; key != "" {
+					if app, err := readMCPApp(key); err == nil && app != nil {
+						entry.NeedsClient = false
+					}
 				}
 			}
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,13 +37,17 @@ var mcpAppKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 // Anything else is its own app, named after the catalog entry.
 func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 	if cfg != nil {
-		switch {
-		case strings.Contains(cfg.AuthURL, "accounts.google.com"):
-			return "google"
-		case strings.HasPrefix(cfg.AuthURL, "https://github.com/login/oauth"):
-			return "github"
-		case strings.Contains(cfg.AuthURL, "slack.com/"):
-			return "slack"
+		// The parsed host, never a substring: "notslack.com" is not Slack.
+		if u, err := url.Parse(cfg.AuthURL); err == nil && u.Scheme == "https" {
+			host := strings.ToLower(u.Hostname())
+			switch {
+			case host == "accounts.google.com":
+				return "google"
+			case host == "github.com" && strings.HasPrefix(u.Path, "/login/oauth"):
+				return "github"
+			case host == "slack.com" || strings.HasSuffix(host, ".slack.com"):
+				return "slack"
+			}
 		}
 	}
 	key := strings.Trim(personalMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
@@ -90,6 +95,9 @@ func readMCPApp(key string) (*mcpApp, error) {
 	return &app, nil
 }
 
+// writeMCPApp seals the app for its own path and replaces the file
+// atomically (temp file in the same folder, then rename), so a read during a
+// save sees the old app or the new one, never a torn file.
 func writeMCPApp(key string, app mcpApp) error {
 	path, err := mcpAppFile(key)
 	if err != nil {
@@ -99,7 +107,56 @@ func writeMCPApp(key string, app mcpApp) error {
 	if err != nil {
 		return err
 	}
-	return oauth.WriteTokenFile(path, data)
+	sealed, err := (platformClientSealer{}).Seal(path, data)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".app-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }() // gone after the rename; cleans up on failure
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(sealed); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// mcpAppKeyIndex maps each catalog server to its sign-in app key, leaving out
+// a server whose key is shared with another server that signs in at a
+// different token URL (two catalog names can clean to one key): one app's
+// secret must never go to another provider's token endpoint.
+func mcpAppKeyIndex(servers map[string]mcpclient.MCPServerConfig) map[string]string {
+	tokenURLs := map[string]map[string]bool{}
+	keys := map[string]string{}
+	for name, cfg := range servers {
+		if cfg.OAuth == nil {
+			continue
+		}
+		key := mcpAppKeyFor(name, cfg.OAuth)
+		keys[name] = key
+		if tokenURLs[key] == nil {
+			tokenURLs[key] = map[string]bool{}
+		}
+		tokenURLs[key][cfg.OAuth.TokenURL] = true
+	}
+	for name, key := range keys {
+		if len(tokenURLs[key]) > 1 {
+			keys[name] = ""
+		}
+	}
+	return keys
 }
 
 // mcpAppGroup is one provider's servers as the admin card lists them.
@@ -122,15 +179,25 @@ func (api *StreamingAPI) mcpAppGroups() []mcpAppGroup {
 	if err != nil {
 		return nil
 	}
+	return mcpAppGroupsFor(catalog.MCPServers)
+}
+
+// mcpAppGroupsFor groups a catalog's sign-in servers by the app they need and
+// marks which of those apps the deployment has set up.
+func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup {
 	byKey := map[string]*mcpAppGroup{}
-	for name, cfg := range catalog.MCPServers {
+	keys := mcpAppKeyIndex(servers)
+	for name, cfg := range servers {
 		if cfg.OAuth == nil || cfg.URL == "" || len(cfg.Headers) > 0 {
 			continue
 		}
 		if cfg.OAuth.RegistrationEndpoint != "" || cfg.OAuth.ClientID != "" {
 			continue // registers itself, or carries its own app
 		}
-		key := mcpAppKeyFor(name, cfg.OAuth)
+		key := keys[name]
+		if key == "" {
+			continue // its key is shared with a server that signs in elsewhere
+		}
 		group := byKey[key]
 		if group == nil {
 			label := mcpAppLabels[key]
@@ -172,7 +239,9 @@ func (api *StreamingAPI) handlePutMCPApp(w http.ResponseWriter, r *http.Request)
 			known = true
 		}
 	}
-	if !known {
+	// Removing is allowed for any valid key, so a stored app can always be
+	// cleared even after its provider leaves the catalog.
+	if !known && r.Method != http.MethodDelete {
 		writeAgentProfileError(w, http.StatusNotFound, "no sign-in app is needed for that provider")
 		return
 	}
@@ -242,4 +311,14 @@ func (api *StreamingAPI) closePersonalConnectionsForApp(key string) {
 			}
 		}
 	}
+}
+
+// mcpAppKeyOf is a catalog server's sign-in app key, or "" when it has none
+// or its key is shared with a server at another token URL.
+func (api *StreamingAPI) mcpAppKeyOf(catalogName string) string {
+	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
+	if err != nil {
+		return ""
+	}
+	return mcpAppKeyIndex(catalog.MCPServers)[catalogName]
 }

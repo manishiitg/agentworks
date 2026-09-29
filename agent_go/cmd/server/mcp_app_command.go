@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +18,9 @@ import (
 // server (docs/design/code_private_mcp.md, "Sign-in apps"). The file is read
 // from stdin, so the secret is never written to disk on the host, and is
 // stored sealed exactly as the admin card stores it.
+// processEuid is os.Geteuid, swappable in tests.
+var processEuid = os.Geteuid
+
 var setMCPAppCmd = &cobra.Command{
 	Use:   "set-mcp-app --key google < client_secret.json",
 	Short: "Set a sign-in app (Google, GitHub, ...) from a client JSON on stdin",
@@ -24,6 +30,29 @@ Needs AUTH_SECRET and HOME (the tokens root) from the environment, like the serv
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		key, _ := cmd.Flags().GetString("key")
+		// The service account must own the file: a root-owned one would be
+		// unreadable to the service, which then sees no app.
+		if processEuid() == 0 {
+			return fmt.Errorf("run this as the service account, not root: the file it writes must be readable by the server")
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		if configPath, _ := cmd.Flags().GetString("mcp-config"); configPath != "" {
+			catalog, err := mcpclient.LoadMergedConfig(configPath, loggerv2.NewNoop())
+			if err != nil {
+				return fmt.Errorf("read the MCP catalog: %w", err)
+			}
+			known := []string{}
+			for _, group := range mcpAppGroupsFor(catalog.MCPServers) {
+				if group.Key == key {
+					known = nil
+					break
+				}
+				known = append(known, group.Key)
+			}
+			if known != nil {
+				return fmt.Errorf("no sign-in app is needed for %q; providers that need one: %s", key, strings.Join(known, ", "))
+			}
+		}
 		raw, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), 64<<10))
 		if err != nil {
 			return err
@@ -36,17 +65,18 @@ Needs AUTH_SECRET and HOME (the tokens root) from the environment, like the serv
 			return err
 		}
 		app.UpdatedAt, app.UpdatedBy = time.Now().UTC().Format(time.RFC3339), "operator"
-		key = strings.ToLower(strings.TrimSpace(key))
 		if err := writeMCPApp(key, *app); err != nil {
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "saved sign-in app %q (client ID %s)\n", key, app.ClientID)
+		fmt.Fprintln(cmd.OutOrStdout(), "new connections use it; a connection already open keeps its client until it reconnects")
 		return nil
 	},
 }
 
 func init() {
 	setMCPAppCmd.Flags().String("key", "", "Provider key: google, github, slack, ... (required)")
+	setMCPAppCmd.Flags().String("mcp-config", "", "The deployment's MCP catalog file: refuses a key no server needs (recommended)")
 	_ = setMCPAppCmd.MarkFlagRequired("key")
 }
 

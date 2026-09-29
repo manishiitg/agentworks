@@ -486,11 +486,11 @@ func personalMCPServerConfig(userID, name string) (string, mcpclient.MCPServerCo
 				}
 				if client != nil {
 					copied.ClientID, copied.ClientSecret = client.ClientID, client.ClientSecret
-				} else if server.AppKey != "" {
+				} else if appKey := personalMCPAppKey(server); appKey != "" {
 					// The deployment's sign-in app, read live so a rotated
 					// app reaches everyone. A client the person entered
 					// (above) always wins.
-					app, err := readMCPApp(server.AppKey)
+					app, err := readMCPApp(appKey)
 					if err != nil {
 						return "", mcpclient.MCPServerConfig{}, err
 					}
@@ -592,4 +592,17 @@ func (credentialSealer) Open(path string, sealed []byte) ([]byte, error) {
 		return personalMCPTokenSealer{}.Open(path, sealed)
 	}
 	return platformClientSealer{}.Open(path, sealed)
+}
+
+// personalMCPAppKey is the sign-in app a personal server uses: the key
+// recorded when it was added, or, for a catalog server added before apps
+// existed, the key its own sign-in endpoints imply.
+func personalMCPAppKey(server personalMCPServer) string {
+	if server.AppKey != "" {
+		return server.AppKey
+	}
+	if server.Catalog != "" && server.OAuth != nil && server.OAuth.RegistrationEndpoint == "" {
+		return mcpAppKeyFor(server.Catalog, server.OAuth)
+	}
+	return ""
 }
