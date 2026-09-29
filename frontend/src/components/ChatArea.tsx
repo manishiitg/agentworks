@@ -28,11 +28,9 @@ import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetStore } from '../stores'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
-import { useModeStore, type ModeCategory } from '../stores/useModeStore'
+import { useModeStore } from '../stores/useModeStore'
 import { PreviousChatHistoryPanel } from './PreviousChatHistoryPanel'
 import { resolveChatSurface, resolveWorkflowChatSurface } from './resolveChatSurface'
-import { PresetSelectionOverlay } from './PresetSelectionOverlay'
-import { ModeSwitchDialog } from './ui/ModeSwitchDialog'
 import type { ChatTab } from '../stores/useChatStore'
 
 import { appendTimelineAndApplyConfirmations, hydrateTabEvents, restoreSession } from '../utils/sessionRestore'
@@ -1088,10 +1086,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Use currentPresetServers from props (passed from App.tsx when preset is selected)
 
-  // State for preset selection overlay
-  const [showPresetSelection, setShowPresetSelection] = useState(false)
-  const [pendingModeCategory, setPendingModeCategory] = useState<Exclude<ModeCategory, null> | null>(null)
-
   // State for session restoration loading
   const [isRestoringChatSessions, setIsRestoringChatSessions] = useState(false)
   // Only the active session can put this pane into a restoring state. Other
@@ -1222,96 +1216,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Resume a previous chat from the landing "Previous chats" panel. The same
   // resume path is used anywhere else that needs to restore a multi-agent chat.
   const handleResumePreviousChat = useResumePreviousChat()
-
-  // State for mode switch dialog
-  const [showModeSwitchDialog, setShowModeSwitchDialog] = useState(false)
-  const [pendingModeSwitch, setPendingModeSwitch] = useState<Exclude<ModeCategory, null> | null>(null)
-
-
-  // Handle mode selection from dropdown
-  // Handle mode switching with preset selection for Workflow
-  const handleModeSwitchWithPreset = (category: Exclude<ModeCategory, null>) => {
-    if (category === 'multi-agent') {
-      // Multi-agent mode doesn't need preset selection
-      // Clear any active presets when switching to multi-agent mode
-      clearActivePreset('workflow')
-      switchMode(category)
-    } else {
-      // Workflow mode - always show preset selection when switching between modes
-      // Clear the current mode's preset first
-      if (selectedModeCategory === 'workflow') {
-        clearActivePreset('workflow')
-      }
-
-      // Check if target mode already has a preset
-      const activePreset = getActivePreset(category)
-
-      if (activePreset) {
-        // Preset already selected, switch mode directly
-        switchMode(category)
-      } else {
-        // No preset selected, show preset selection overlay
-        setPendingModeCategory(category)
-        setShowPresetSelection(true)
-      }
-    }
-  }
-
-  // Switch mode function
-  const switchMode = (category: Exclude<ModeCategory, null>) => {
-    const { setModeCategory, getAgentModeFromCategory } = useModeStore.getState()
-    const { setAgentMode } = useAppStore.getState()
-
-    setModeCategory(category)
-
-    // Set the corresponding agent mode using centralized mapping
-    const agentModeToSet = getAgentModeFromCategory(category) as AgentMode
-    setAgentMode(agentModeToSet)
-  }
-
-  // Handle preset selection from overlay
-  const handlePresetSelected = (presetId: string) => {
-    if (pendingModeCategory) {
-      // Now switch to the mode
-      switchMode(pendingModeCategory)
-
-      // Apply the preset after mode switch (this will also set the active preset ID)
-      setTimeout(() => {
-        const result = applyPreset(presetId, pendingModeCategory)
-        if (!result.success) {
-          logger.error('ChatArea', 'Failed to apply preset:', result.error)
-        }
-      }, 100)
-
-      // Close overlay
-      setShowPresetSelection(false)
-      setPendingModeCategory(null)
-    }
-  }
-
-  // Handle preset selection overlay close
-  const handlePresetSelectionClose = () => {
-    setShowPresetSelection(false)
-    setPendingModeCategory(null)
-  }
-
-
-  // Handle mode switch dialog confirmation
-  const handleModeSwitchConfirm = () => {
-    if (pendingModeSwitch) {
-      handleModeSwitchWithPreset(pendingModeSwitch)
-      // Clear backend session and reset UI after mode switch
-      handleNewChat()
-    }
-    setShowModeSwitchDialog(false)
-    setPendingModeSwitch(null)
-  }
-
-  // Handle mode switch dialog cancellation
-  const handleModeSwitchCancel = () => {
-    setShowModeSwitchDialog(false)
-    setPendingModeSwitch(null)
-  }
 
   // Add ref for auto-scrolling
   const chatContentRef = useRef<HTMLDivElement>(null)
@@ -3730,30 +3634,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   return (
     <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container">
-      {/* Preset Selection Overlay */}
-      {showPresetSelection && pendingModeCategory && (
-        <PresetSelectionOverlay
-          isOpen={showPresetSelection}
-          onClose={handlePresetSelectionClose}
-          onPresetSelected={handlePresetSelected}
-          modeCategory={pendingModeCategory}
-          setCurrentQuery={setCurrentQuery}
-        />
-      )}
-
-      {/* Mode Switch Dialog */}
-      {showModeSwitchDialog && pendingModeSwitch && (
-        <ModeSwitchDialog
-          isOpen={showModeSwitchDialog}
-          onCancel={handleModeSwitchCancel}
-          onConfirm={handleModeSwitchConfirm}
-          currentModeCategory={selectedModeCategory}
-          newModeCategory={pendingModeSwitch}
-        />
-      )}
-
-
-
       {/* Chat Content - Separated to prevent input re-renders.
           In terminal mode the inner pane owns its own scrolling
           (the rail + log scroll independently), so this wrapper
