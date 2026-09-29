@@ -203,6 +203,7 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 // agent can read plan.json but not raw-write it.
 type SessionShellConfig struct {
 	WorkflowPath      string   // Owning workflow for live capability reconciliation
+	WorkflowReadOnly  bool     // Current workflow turn cannot receive attached-folder write grants
 	WorkingDir        string   // Default working directory (relative to workspace-docs)
 	FolderGuardSet    bool     // An explicit guard exists; empty capabilities must fail closed
 	ReadPaths         []string // Folder guard read paths for Isolator
@@ -233,6 +234,14 @@ type SessionShellConfig struct {
 func SetSessionWorkflowPath(sessionID, workflowPath string) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.WorkflowPath = strings.Trim(strings.TrimSpace(workflowPath), "/")
+	})
+}
+
+// SetSessionWorkflowReadOnly keeps live folder-grant refreshes within the
+// authenticated workflow access of the current turn.
+func SetSessionWorkflowReadOnly(sessionID string, readOnly bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.WorkflowReadOnly = readOnly
 	})
 }
 
@@ -281,9 +290,15 @@ func ReconcileSessionWorkflowFolderAccess(workflowPath string, previousRoots, re
 			continue
 		}
 		cfg := cloneSessionShellConfig(existing)
+		effectiveWriteRoots := writeRoots
+		effectiveReadOnlyRoots := readOnlyRoots
+		if cfg.WorkflowReadOnly {
+			effectiveWriteRoots = nil
+			effectiveReadOnlyRoots = append(append([]string{}, readOnlyRoots...), readRoots...)
+		}
 		cfg.ReadPaths = appendUnique(removePrevious(cfg.ReadPaths), readRoots)
-		cfg.WritePaths = appendUnique(removePrevious(cfg.WritePaths), writeRoots)
-		cfg.BlockedWritePaths = appendUnique(removePrevious(cfg.BlockedWritePaths), readOnlyRoots)
+		cfg.WritePaths = appendUnique(removePrevious(cfg.WritePaths), effectiveWriteRoots)
+		cfg.BlockedWritePaths = appendUnique(removePrevious(cfg.BlockedWritePaths), effectiveReadOnlyRoots)
 		if cfg.Env == nil {
 			cfg.Env = make(map[string]string)
 		}
@@ -375,6 +390,10 @@ func ApplySessionWorkflowFolderAccess(sessionID, workflowPath string, readRoots,
 		return
 	}
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		if cfg.WorkflowReadOnly {
+			readOnlyRoots = append(append([]string{}, readOnlyRoots...), readRoots...)
+			writeRoots = nil
+		}
 		previous := make(map[string]struct{})
 		for key, value := range cfg.Env {
 			if workflowCapabilityEnv(key) && key != "WORKFLOW_KB_ACCESS" {
