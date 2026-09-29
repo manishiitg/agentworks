@@ -2730,6 +2730,7 @@ var restoredConversationContextMarkers = []string{
 }
 
 func cleanChatHistoryQuery(text string) string {
+	text = stripSessionMode(text)
 	for _, marker := range restoredConversationContextMarkers {
 		if idx := strings.Index(text, marker); idx >= 0 {
 			return strings.TrimSpace(text[:idx])

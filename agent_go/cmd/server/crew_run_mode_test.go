@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -107,13 +109,32 @@ func TestIsActiveWorkProjectWorkspaceAnyOwner(t *testing.T) {
 	}
 }
 
-func TestCrewReaderSystemPrompt(t *testing.T) {
+func TestCrewSessionModeNotice(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
-	prompt := crewReaderSystemPrompt("_users/owner/Chats/Work/projects/alpha")
-	for _, marker := range []string{"read-only", "aman", "Mutate nothing", "belongs to the current user alone", "never to be printed"} {
-		if !strings.Contains(prompt, marker) {
-			t.Fatalf("reader prompt missing %q:\n%s", marker, prompt)
+	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha")
+	for _, marker := range []string{"read-only", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
+		if !strings.Contains(notice, marker) {
+			t.Fatalf("session notice missing %q:\n%s", marker, notice)
 		}
+	}
+	// The notice goes in front of the message, once, and comes off again for
+	// history and transcripts.
+	sent := withSessionMode(notice, "what changed?")
+	if withSessionMode(notice, sent) != sent {
+		t.Fatal("notice added twice")
+	}
+	if got := stripSessionMode(sent); got != "what changed?" {
+		t.Fatalf("stripped = %q", got)
+	}
+	if got := cleanChatHistoryQuery(sent); got != "what changed?" {
+		t.Fatalf("history text = %q", got)
+	}
+	if withSessionMode("", "hi") != "hi" {
+		t.Fatal("an owner's message must not change")
+	}
+	msg := stripSessionModeFromMessage(builderConversationMessage{Role: "human", Parts: []builderConversationPart{{Text: sent}}})
+	if msg.Parts[0].Text != "what changed?" {
+		t.Fatalf("transcript text = %q", msg.Parts[0].Text)
 	}
 }
 
@@ -1143,4 +1164,23 @@ func TestListAttachedWorkflowsReaderFiltersInvisible(t *testing.T) {
 		t.Fatalf("owner refs = %v", ownerPaths)
 	}
 	_ = fx
+}
+
+// A refused write in a read-only session tells the model to offer the change
+// to the owner; an owner's refusal is unchanged.
+func TestReadOnlyRefusalHint(t *testing.T) {
+	const sid = "readonly-hint-session"
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
+	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
+	if hint := readOnlyRefusalHint(ctx); hint != "" {
+		t.Fatalf("owner session got a hint: %q", hint)
+	}
+	common.SetSessionWorkflowReadOnly(sid, true)
+	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, crewSuggestionToolName) || !strings.Contains(hint, "read-only") {
+		t.Fatalf("Crew reader hint = %q", hint)
+	}
+	common.SetSessionWorkflowPath(sid, "Workflow/x")
+	if hint := readOnlyRefusalHint(ctx); !strings.Contains(hint, "submit_workflow_suggestion") {
+		t.Fatalf("workflow run hint = %q", hint)
+	}
 }

@@ -549,6 +549,7 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 func filterNativeContinuityMessages(messages []builderConversationMessage) []builderConversationMessage {
 	filtered := make([]builderConversationMessage, 0, len(messages))
 	for _, message := range messages {
+		message = stripSessionModeFromMessage(message)
 		text := strings.TrimSpace(builderConversationMessageText(message))
 		if strings.HasPrefix(text, "[AGENTWORKS CONVERSATION CONTINUITY]") || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") {
 			continue

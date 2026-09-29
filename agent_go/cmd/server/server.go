@@ -4056,6 +4056,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, policyErr.Error(), http.StatusForbidden)
 		return
 	}
+	if retainedWorkflowCompatible {
+		r = r.WithContext(contextWithSessionMode(r.Context(), crewSessionModeForTurn(req, currentUserID, resolvedProfile)))
+	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
 	}
@@ -6645,11 +6648,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// mode on top of the crew's own prompt. Tools and guards
 				// enforce it; the prompt states it so refusals are
 				// coherent instead of confused retries.
-				// A guest (someone else's call into this owner's Crew) gets the
-				// reader prompt too: a Crew has only owner and reader roles.
-				if isCrewReaderTurn(req, currentUserID) || crewGuest != "" {
-					_ = llmAgent.AddInstructions(crewReaderSystemPrompt(req.SelectedFolder))
-				}
+				// A reader's role is not added here: every session in a Crew
+				// folder shares one prompt, and the role reaches the CLI as a
+				// block at the front of each message (crew_session_mode.go).
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
 				logfWithContext(queryLogCtx, "[CHAT] Added direct-chat instructions to system prompt")
@@ -7753,6 +7754,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
+		chatQuery = withSessionMode(crewSessionModeForTurn(req, currentUserID, resolvedProfile), chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)
@@ -10407,7 +10409,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			// new-turn path. No send was attempted, so delivery is not uncertain.
 		} else {
 			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
-			delivery, err := retainedSession.Send(sessionInputCtx, message)
+			delivery, err := retainedSession.Send(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message))
 			sessionInputCancel()
 			if err != nil {
 				if liveInputErrorProvesNoTarget(err) {
@@ -10450,7 +10452,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		// also recovers a stale/closed warm Session without paying for full Agent
 		// reconstruction, preserving PLAT-102's latency guarantee.
 		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
-		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, message)
+		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, withSessionMode(sessionModeFromContext(r.Context()), message))
 		fallbackCancel()
 		if handled {
 			if err != nil {

@@ -267,38 +267,6 @@ func crewReaderWorkspaceRoots(profileRoot string, reader bool) (readRoots, write
 	return []string{root}, nil, []string{root}
 }
 
-// crewReaderSystemPrompt is the read-only operating mode appended to a
-// reader turn's system prompt, after the crew's own prompt. It mirrors
-// the workflow Run contract: inspect and run freely, mutate nothing.
-func crewReaderSystemPrompt(crewRoot string) string {
-	owner := ""
-	if ownerID, ok := crewProjectOwnerID(crewRoot); ok {
-		owner = crewOwnerDisplayName(ownerID)
-	}
-	header := "You are chatting inside a Crew owned by someone else."
-	if owner != "" {
-		header = "You are chatting inside " + owner + "'s Crew."
-	}
-	return header + ` This is a read-only Run session:
-
-- Inspect freely: read files, briefs, configuration, schedules, triggers,
-  and run history; explain how the Crew works and answer questions about it.
-- Mutate nothing: no file, shell, or database writes; no schedule, trigger,
-  selection, identity, folder, or bot changes. Mutation tools are not
-  available — do not work around their absence, and do not ask the user to
-  run edits on your behalf. If they want something changed, offer to send
-  it to the owner with ` + "`" + crewSuggestionToolName + "`" + ` (their request in their words);
-  the owner reviews it in the Crew's Suggestions view.
-- Run operations are allowed: you may invoke the Crew's attached workflow
-  triggers when asked. Those execute under their own bindings, and the
-  workflow re-checks the user's access before anything runs.
-- This conversation belongs to the current user alone. It is stored under
-  their account, separate from the owner's chats; the owner's transcripts
-  are not visible to you. Never claim otherwise.
-- Secret names may be visible; secret values are never to be printed,
-  repeated, or exfiltrated.`
-}
-
 // crewGuestCallerForTurn is the user a Crew turn works for as a guest: set
 // on the owner's own Crew turn when a function call or ask came from someone
 // else (product_webhooks.go). Empty on every other turn, so the field can
