@@ -31,7 +31,7 @@ the fix and name the runner-up in the ticket body. Then:
 (`agent_go/cmd/server/pulse_register_integrity_test.go`) enforces the
 register ↔ file invariant in both directions.
 
-## Categories (365 unique tickets, 2026-09-29)
+## Categories (364 unique tickets, 2026-09-29)
 
 | Directory | Tickets | What belongs here |
 |---|---|---|
@@ -45,7 +45,7 @@ register ↔ file invariant in both directions.
 | `learnings-knowledge/` | 21 | Reflection turn, learnings/KB contracts and locks, skill and prompt guidance, guidance tests |
 | `cost-telemetry/` | 17 | Cost ledger, attribution, rate cards, usage telemetry, Pulse-vs-workflow cost |
 | `evaluation/` | 16 | Eval harness, pre-validation, validation schemas, evaluation plans |
-| `plans-contracts/` | 17 | Plan mutations, changelog coverage, contract upgrades, upgrade preflight |
+| `plans-contracts/` | 16 | Plan mutations, changelog coverage, contract upgrades, upgrade preflight |
 | `integrations/` | 13 | Webhooks, Slack/email/WhatsApp notifications, Gmail/GWS, MCP catalog, media tools, voice/STT |
 | `human-decisions/` | 14 | Human input, operator decisions, approvals, attribution, human-decided branches |
 | `performance/` | 5 | Latency, contention, and runtime resource use |
@@ -136,7 +136,7 @@ ambiguity is documented rather than lost. Format: ticket → chosen (runner-up).
 - PLAT-279 → frontend-chat (learnings-knowledge)
 - PLAT-283 → security-sandbox (step-execution)
 - PLAT-284 → security-sandbox (scheduler-runs)
-- PLAT-285, PLAT-290 → plans-contracts (learnings-knowledge)
+- PLAT-285 → plans-contracts (learnings-knowledge)
 - PLAT-292 → frontend-chat (security-sandbox)
 - PLAT-294 → step-execution (evaluation)
 - PLAT-295 → human-decisions (step-execution)
@@ -159,9 +159,8 @@ ambiguity is documented rather than lost. Format: ticket → chosen (runner-up).
 - Numbers 079, 157, 181 and 302 have no files. PLAT-157/181/302 were
   browser-ownership tickets consolidated into PLAT-322, which is now the
   canonical browser contract.
-- PLAT-285 and PLAT-290 have near-identical titles and bodies (see the
-  renumbering note in PLAT-285); both are kept as-is, pending an owner
-  decision to merge or differentiate.
+- PLAT-290 was an exact duplicate of PLAT-285 except for the ID and a short
+  identity note. It was folded into PLAT-285 on 2026-09-29.
 - The duplicate chat-reliability PLAT-339 pointer was removed on 2026-09-29.
   PLAT-339 belongs to the security-sandbox Crew-invocation ticket; the chat
   Stop/resume work is PLAT-340.

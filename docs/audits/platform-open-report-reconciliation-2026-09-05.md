@@ -9,7 +9,7 @@ LinkedIn invite-flow failure, so it is not closed and no backlog count changes.
 
 ## Subsequent prompt-health fix — latest status
 
-[PLAT-290](../bugs/pulse_platform/plans-contracts/plat-290.md) reproduces and fixes G26's
+[PLAT-285](../bugs/pulse_platform/plans-contracts/plat-285.md) reproduces and fixes G26's
 PUL-07504731 through the registered tool: every probe now reads the current
 workspace plan instead of a stale controller cache. The exact SQLite report is
 resolved with prior records preserved; local tests pass, deployment unverified.

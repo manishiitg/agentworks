@@ -27,7 +27,7 @@ These anchors are a starting point for each workstream, not an exhaustive open-t
 
 ## Complete ticket index
 
-365 unique ticket files across 15 categories as of 2026-09-29. Each link below resolves to the canonical ticket file.
+364 unique ticket files across 15 categories as of 2026-09-29. Each link below resolves to the canonical ticket file.
 
 ### human-decisions (14)
 
@@ -101,13 +101,12 @@ These anchors are a starting point for each workstream, not an exhaustive open-t
 [PLAT-287](pulse_platform/step-execution/plat-287.md) · [PLAT-288](pulse_platform/step-execution/plat-288.md) · [PLAT-294](pulse_platform/step-execution/plat-294.md) · [PLAT-298](pulse_platform/step-execution/plat-298.md)
 [PLAT-328](pulse_platform/step-execution/plat-328.md) · [PLAT-331](pulse_platform/step-execution/plat-331.md) · [PLAT-356](pulse_platform/step-execution/plat-356.md)
 
-### plans-contracts (17)
+### plans-contracts (16)
 
 [PLAT-012](pulse_platform/plans-contracts/plat-012.md) · [PLAT-033](pulse_platform/plans-contracts/plat-033.md) · [PLAT-049](pulse_platform/plans-contracts/plat-049.md) · [PLAT-051](pulse_platform/plans-contracts/plat-051.md)
 [PLAT-074](pulse_platform/plans-contracts/plat-074.md) · [PLAT-096](pulse_platform/plans-contracts/plat-096.md) · [PLAT-098](pulse_platform/plans-contracts/plat-098.md) · [PLAT-197](pulse_platform/plans-contracts/plat-197.md)
 [PLAT-205](pulse_platform/plans-contracts/plat-205.md) · [PLAT-212](pulse_platform/plans-contracts/plat-212.md) · [PLAT-230](pulse_platform/plans-contracts/plat-230.md) · [PLAT-285](pulse_platform/plans-contracts/plat-285.md)
-[PLAT-290](pulse_platform/plans-contracts/plat-290.md) · [PLAT-329](pulse_platform/plans-contracts/plat-329.md) · [PLAT-332](pulse_platform/plans-contracts/plat-332.md) · [PLAT-358](pulse_platform/plans-contracts/plat-358.md)
-[PLAT-359](pulse_platform/plans-contracts/plat-359.md)
+[PLAT-329](pulse_platform/plans-contracts/plat-329.md) · [PLAT-332](pulse_platform/plans-contracts/plat-332.md) · [PLAT-358](pulse_platform/plans-contracts/plat-358.md) · [PLAT-359](pulse_platform/plans-contracts/plat-359.md)
 
 ### learnings-knowledge (21)
 

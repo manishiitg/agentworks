@@ -790,12 +790,12 @@ PUL-2F70A97F stays open, so the remaining report count is unchanged.
 
 ## Prompt-health stale snapshot — 2026-09-05 (latest)
 
-Owner-requested follow-up in PLAT-290 removes the session plan cache entirely:
+Owner-requested follow-up in PLAT-285 (formerly duplicated as PLAT-290) removes the session plan cache entirely:
 current tools read fresh workspace plans, execution uses context-scoped
 snapshots, and historical prompt/recovery lookups use retained run revisions.
 No additional SQLite issues are closed by this architectural follow-up.
 
-[PLAT-290](pulse_platform/plans-contracts/plat-290.md) fixes Upwork PUL-07504731: the actual
+[PLAT-285](pulse_platform/plans-contracts/plat-285.md) fixes Upwork PUL-07504731: the actual
 registered `get_plan_prompt_health` tool reused `approvedPlan` after persisted
 descriptions changed. It now reads a fresh workspace snapshot on every call,
 leaves the execution cache untouched, and fails explicitly on read/parse errors.

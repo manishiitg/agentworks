@@ -101,7 +101,7 @@ Dependency paths above refer to sibling repositories selected by
    meets this contract and avoid breaking provider session coordination.
 
 Concurrent workflow edits remain a separate concern: verify compatibility
-with [PLAT-290](../plans-contracts/plat-290.md))'s execution snapshots and retained run revisions.
+with [PLAT-285](../plans-contracts/plat-285.md))'s execution snapshots and retained run revisions.
 Private instruction folders must not change which plan revision an active
 run executes or widen workflow mutation permissions.
 
