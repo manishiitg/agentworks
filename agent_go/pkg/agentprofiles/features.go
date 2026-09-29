@@ -373,11 +373,11 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 	switch id {
 	case "workflow-references":
 		switch direction := strings.TrimSpace(options["direction"]); direction {
-		case "", "both":
+		case "", "both", "code_peers":
 		case "outbound":
 			drop = workflowReferenceCalleeTools
 		default:
-			return nil, fmt.Errorf("feature %q: invalid direction %q (want both or outbound)", id, direction)
+			return nil, fmt.Errorf("feature %q: invalid direction %q (want both, outbound or code_peers)", id, direction)
 		}
 	case "bots":
 		switch dmOnly := strings.TrimSpace(options["dm_only"]); dmOnly {
@@ -416,6 +416,8 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 // the tools the default extension describes.
 func featurePromptExtension(id, extension string, options map[string]string) string {
 	switch {
+	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "code_peers":
+		return "This private Code can call accessible Crews and workflows, and other Codes owned by the same account, with list_functions and call_function. It may define functions for its own Code and answer calls from same-owner Codes with report_function_progress and return_function_result. Poll with get_function_call; answer pending_inputs using reply_function_call. Codes never appear in the public Crew/MCP catalog, and Crews, workflows, external connections and other owners cannot call a Code."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
 		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update and answer its pending_inputs with reply_function_call. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":

@@ -11,6 +11,8 @@ import (
 
 	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func muxRouterForCrewFunctions(svc *ProductScheduleService) *mux.Router {
@@ -174,6 +176,181 @@ func TestInternalFunctionCallPendingInputAndReplyAcrossCallerKinds(t *testing.T)
 				t.Fatal("duplicate answer accepted")
 			}
 		})
+	}
+}
+
+func TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	const codePath = "_users/owner/Chats/Code/projects/private-alpha"
+	env.mock.mu.Lock()
+	env.mock.files[codePath+"/product.json"] = `{"schema_version":1,"product":"code","id":"alpha","title":"Private acquisition project","session_id":"code-alpha"}`
+	env.mock.mu.Unlock()
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	codeCaller, err := crewTriggerLinkCaller(codePath)(ctx)
+	if err != nil || codeCaller.Stamp.ProfileID != "code" || codeCaller.Label != "private Code workspace" {
+		t.Fatalf("private Code caller = %+v, %v", codeCaller, err)
+	}
+	if codeCaller.isTarget(triggerTarget{Kind: triggerCallerCrew, CrewID: "alpha", CrewProfile: "work"}) {
+		t.Fatal("Code was mistaken for a Crew with the same project ID")
+	}
+	if target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, codePath); err == nil {
+		t.Fatalf("private Code became a callable target: %+v", target)
+	}
+	codeReg := &recordingRegistrar{}
+	if err := env.api.registerCrewFunctionTools(codeReg, "owner", "code-caller", QueryRequest{SelectedFolder: codePath}, crewTriggerLinkCaller(codePath), nil); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err := codeReg.tools["list_functions"].exec(ctx, map[string]interface{}{}); err != nil || !strings.Contains(listed, `"ask"`) {
+		t.Fatalf("Code could not list its own callable functions: %s, %v", listed, err)
+	}
+	store := virtualtools.GetHumanFeedbackStore()
+	for _, profileID := range []string{"work", "code"} {
+		id := "fn-same-project-" + profileID
+		call := &crewFunctionCall{ID: id, UserID: "owner", CallerKind: triggerCallerCrew, CallerID: "alpha", CallerProfileID: profileID,
+			CallerPath: map[string]string{"work": linkAlphaPath, "code": codePath}[profileID],
+			TargetKind: triggerCallerWorkflow, TargetID: "wf", Function: "ask", ArgumentsKey: crewFunctionArgumentsFingerprint("{}"),
+			Status: "running", SubmissionID: "retry-same-id", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+		crewFunctionCalls.Lock()
+		crewFunctionCalls.m[id] = call
+		crewFunctionCalls.Unlock()
+		t.Cleanup(func() {
+			crewFunctionCalls.Lock()
+			delete(crewFunctionCalls.m, id)
+			crewFunctionCalls.Unlock()
+			store.WithdrawOperation(id)
+		})
+	}
+	if _, err := codeReg.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-work"}); err == nil {
+		t.Fatal("Code read the Crew's call with the same project ID")
+	}
+	if _, err := env.alpha["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code"}); err == nil {
+		t.Fatal("Crew read the private Code's call with the same project ID")
+	}
+	if err := store.CreatePendingRequest("private-code-question", "Which branch?", "", "private-code-chat", nil, true, time.Minute, "fn-same-project-code"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := codeReg.tools["get_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code"}); err != nil || !strings.Contains(out, "private-code-question") {
+		t.Fatalf("Code cannot read its own pending input: %s, %v", out, err)
+	}
+	if _, err := codeReg.tools["reply_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-work", "request_id": "private-code-question", "response": "main"}); err == nil {
+		t.Fatal("Code replied to the Crew's call")
+	}
+	if _, err := codeReg.tools["reply_function_call"].exec(ctx, map[string]interface{}{"call_id": "fn-same-project-code", "request_id": "private-code-question", "response": "main"}); err != nil {
+		t.Fatalf("Code could not reply to its own call: %v", err)
+	}
+	targetCall := &crewFunctionCall{ID: "fn-target-work-alpha", UserID: "owner", CallerKind: triggerCallerCrew, CallerID: "beta", TargetKind: triggerCallerCrew, TargetID: "alpha", Status: "running", done: make(chan struct{})}
+	crewFunctionCalls.Lock()
+	crewFunctionCalls.m[targetCall.ID] = targetCall
+	crewFunctionCalls.Unlock()
+	t.Cleanup(func() {
+		crewFunctionCalls.Lock()
+		delete(crewFunctionCalls.m, targetCall.ID)
+		crewFunctionCalls.Unlock()
+	})
+	if _, err := codeReg.tools["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": targetCall.ID, "message": "done"}); err == nil {
+		t.Fatal("private Code impersonated a Crew target with the same ID")
+	}
+	crewFunctionCalls.Lock()
+	retried, found, err := inMemoryCrewFunctionSubmissionLocked("owner", codeCaller.Stamp, codePath, "retry-same-id", triggerTarget{Kind: triggerCallerWorkflow, Manifest: &WorkflowManifest{ID: "wf"}}, "ask", "{}")
+	crewFunctionCalls.Unlock()
+	if err != nil || !found || retried.ID != "fn-same-project-code" {
+		t.Fatalf("Code's submission ID crossed into Crew: call=%+v found=%v err=%v", retried, found, err)
+	}
+	if crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", codePath) == crewFunctionSubmissionPath("owner", codeCaller.Stamp, "retry-same-id", "_users/another/Chats/Code/projects/private-alpha") {
+		t.Fatal("same-ID Codes under different owners shared a submission index")
+	}
+}
+
+func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	profile := agentprofiles.Profile{ID: codeproduct.ProfileID, Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
+		Runtime: agentprofiles.RuntimePolicy{Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
+			Workspace: agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: codeproduct.ProjectsRoot}}}
+	if err := env.svc.registry.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	const source = "_users/owner/Chats/Code/projects/source"
+	const targetPath = "_users/owner/Chats/Code/projects/target"
+	env.mock.mu.Lock()
+	env.mock.files[source+"/product.json"] = `{"schema_version":1,"product":"code","id":"source","title":"Private source","session_id":"code-source"}`
+	env.mock.files[targetPath+"/product.json"] = `{"schema_version":1,"product":"code","id":"target","title":"Private target","session_id":"code-target"}`
+	env.mock.files["_users/other/Chats/Code/projects/foreign/product.json"] = `{"schema_version":1,"product":"code","id":"foreign","title":"Foreign","session_id":"code-foreign"}`
+	env.mock.files[codeSharesFilePath()] = `{"projects":{"owner/source":{"owner_id":"owner","project_id":"source","grants":{"other":"editor"}},"owner/target":{"owner_id":"owner","project_id":"target","grants":{"other":"editor"}}}}`
+	env.mock.mu.Unlock()
+	var editorBindingID, editorRunID string
+	for _, actor := range []string{"owner", "other"} {
+		t.Run(actor, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: actor})
+			caller, err := crewTriggerLinkCaller(source)(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := resolveFunctionTarget(ctx, &UserClaims{UserID: actor}, caller, "#code:target")
+			if err != nil || target.CrewOwner != "owner" || target.CrewProfile != "code" {
+				t.Fatalf("target = %+v, %v", target, err)
+			}
+			if _, err := resolveFunctionTarget(ctx, &UserClaims{UserID: actor}, caller, "#code:foreign"); err == nil {
+				t.Fatal("cross-owner Code was callable")
+			}
+			bindingID, created, err := env.api.connectTriggerTarget(ctx, actor, caller, target)
+			if err != nil || bindingID == "" {
+				t.Fatalf("connect = %q, %v, %v", bindingID, created, err)
+			}
+			if actor == "owner" && !created {
+				t.Fatal("owner binding was not created")
+			}
+			if actor == "other" && created {
+				t.Fatal("editor did not reuse the binding")
+			}
+			delivery, err := env.api.dispatchTargetTrigger(ctx, actor, caller, target, bindingID, "code-test-"+actor, crewFunctionEvent, map[string]interface{}{"task": "Check the project"})
+			if err != nil || delivery.RunID == "" {
+				t.Fatalf("dispatch = %+v, %v", delivery, err)
+			}
+			if actor == "other" {
+				editorBindingID, editorRunID = bindingID, delivery.RunID
+			}
+			if got := codePeerPrivateRunsWorkspace(actor, targetPath, "target"); !strings.HasPrefix(got, "_users/"+actor+"/chat_history/") {
+				t.Fatalf("Code run history is not private to %s: %s", actor, got)
+			}
+			if actor == "other" {
+				binding, err := codePeerRunBinding(ctx, actor, profile, "target", targetPath, bindingID, "Peer call")
+				if err != nil || binding.ManifestPath != "" || binding.WorkspacePath != targetPath {
+					t.Fatalf("editor chat binding = %+v, %v", binding, err)
+				}
+			}
+			if _, err := env.svc.getInternalProductTriggerRun(ctx, actor, "code", "target", bindingID, delivery.RunID, caller.Stamp, "owner"); err != nil {
+				t.Fatalf("poll = %v", err)
+			}
+		})
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	caller, _ := crewTriggerLinkCaller(source)(ctx)
+	target, _ := resolveFunctionTarget(ctx, &UserClaims{UserID: "other"}, caller, "#code:target")
+	env.mock.mu.Lock()
+	env.mock.files[codeSharesFilePath()] = `{"projects":{"owner/source":{"owner_id":"owner","project_id":"source","grants":{"other":"editor"}}}}`
+	env.mock.mu.Unlock()
+	if _, err := resolveFunctionTarget(ctx, &UserClaims{UserID: "other"}, caller, "#code:target"); err == nil {
+		t.Fatal("editor without target grant could resolve target")
+	}
+	if _, err := env.svc.getInternalProductTriggerRun(ctx, "other", "code", "target", editorBindingID, editorRunID, caller.Stamp, "owner"); err == nil {
+		t.Fatal("revoked editor read a private Code run")
+	}
+	if _, _, err := env.api.connectTriggerTarget(ctx, "other", caller, target); err == nil {
+		t.Fatal("revoked editor reconnected")
+	}
+	if _, err := env.api.dispatchTargetTrigger(ctx, "other", caller, target, "existing", "revoked", crewFunctionEvent, map[string]interface{}{"task": "No"}); err == nil {
+		t.Fatal("revoked editor dispatched")
+	}
+	crewCaller, _ := crewTriggerLinkCaller(linkAlphaPath)(ctx)
+	if _, err := resolveFunctionTarget(ctx, &UserClaims{UserID: "other"}, crewCaller, "#code:target"); err == nil {
+		t.Fatal("Crew resolved private Code")
+	}
+	if _, _, err := env.svc.saveProductWebhookConfig(ctx, "owner", productWebhookRequest{ProfileID: "code", ProjectID: "target", Kind: triggerKindInternal, Caller: &caller.Stamp}, ""); err == nil {
+		t.Fatal("public trigger API enabled for Code")
+	}
+	call := &crewFunctionCall{ID: "fn-private-code-record", UserID: "other", TargetProfileID: "code", TargetPath: targetPath}
+	if got := call.recordPath(); strings.HasPrefix(got, targetPath) || !strings.HasPrefix(got, "_users/other/chat_history/") {
+		t.Fatalf("Code call record was shared: %s", got)
 	}
 }
 
@@ -407,7 +584,7 @@ func TestCrewFunctionGuardsAndGeneratedTools(t *testing.T) {
 	// Alpha is currently running a call that Beta made: Alpha calling Beta
 	// back would loop.
 	inflight := &crewFunctionCall{ID: "fn-inflight", Function: "x", TargetKind: triggerCallerCrew, TargetID: "alpha", CallerKind: triggerCallerCrew, CallerID: "beta",
-		Chain: []string{"crew:beta", "crew:alpha"}, Root: "fn-inflight", Status: "running", done: make(chan struct{})}
+		Chain: []string{"crew:work:beta", "crew:work:alpha"}, Root: "fn-inflight", Status: "running", done: make(chan struct{})}
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m[inflight.ID] = inflight
 	crewFunctionCalls.Unlock()
@@ -420,7 +597,7 @@ func TestCrewFunctionGuardsAndGeneratedTools(t *testing.T) {
 		t.Fatalf("cycle: err = %v", err)
 	}
 	inflight.mu.Lock()
-	inflight.Chain = []string{"crew:x1", "crew:x2", "crew:x3", "crew:alpha"}
+	inflight.Chain = []string{"crew:work:x1", "crew:work:x2", "crew:work:x3", "crew:work:alpha"}
 	inflight.mu.Unlock()
 	if _, err := env.alpha["call_function"].exec(ctx, map[string]interface{}{"target": "Beta", "function": "run_login_flow", "args": map[string]interface{}{"build": "1"}}); err == nil || !strings.Contains(err.Error(), "depth limit") {
 		t.Fatalf("depth: err = %v", err)

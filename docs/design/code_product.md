@@ -69,12 +69,12 @@ Proposed features for `code`:
   refused. Each DM or WhatsApp message continues the sender's own chat of
   the Code, the same one-person-one-chat rule as Crew (`senderProfileTurn`),
   and only people with access to that Code are answered.
-- **Keep, outbound only:** `workflow-references` and the Crew/workflow
+- **Keep, private peer calls:** `workflow-references` and the Crew/workflow
   calling tools (list and call Crew functions, ask a Crew, read and run
   workflows). A Code can use the Crews and workflows the person working in
-  it can access, with that person's permissions. Another Code is never a
-  valid target: calls, reads and attached folders pointing at a Code are
-  refused.
+  it can access, with that person's permissions. It can also call a Code
+  with the same owner when the person can edit both Codes. Other Codes remain
+  unavailable as targets, reads or attached folders.
 - **Keep, private:**
   - `mcp`: for now a Code selects from the shared platform MCP servers,
     exactly as a Crew does (admins add them). Private per-Code servers, with
@@ -107,8 +107,7 @@ Other settings:
 
 - **Tools:** no `work.set-identity` tool, and no identity fields in
   create/rename; a Code has a name only.
-- **Prompt:** a plain coding-assistant system prompt with no Crew
-  vocabulary: no identity, functions or bots.
+- **Prompt:** a plain coding-assistant system prompt with no Crew identity.
 - **Workspace:** projects live under the owner's tree, e.g.
   `_users/<owner>/Chats/Code/projects/<slug>-<id8>`. It keeps the Crew rule
   that new source goes under `code/`.
@@ -117,11 +116,14 @@ Other settings:
 
 Code-specific work outside the definition:
 
-1. **Not callable, and Codes are sealed from each other.**
-   - Leave Code out of `list_crews`, the MCP Crew tools, Crew-to-Crew calls,
-     trigger links and Slack channel or group routes.
-   - Calls go one way: a Code may call Crews and workflows, but nothing may
-     call a Code, including another Code.
+1. **Private Code-to-Code functions.**
+   - Leave Code out of `list_crews`, the MCP Crew tools, public trigger links
+     and Slack channel or group routes.
+   - A Code may call another Code with the same owner when the actor has
+     editor access to both. The target runs in that actor's own chat. Code
+     calls and run history remain private to that actor.
+   - Crews, workflows, external connections and Codes with another owner
+     cannot call a Code.
    - Workflow and Crew references, attached folders and file grants never
      resolve to a Code's folder. The server should refuse
    them for profile `code`, not merely hide them.
@@ -271,8 +273,8 @@ users has to hold:
      deferred; a Code uses the shared platform ones.)
    - From a Code, calling a Crew function, asking a Crew and running a
      workflow the person can access all work.
-   - The same calls against another Code (by ID, path or attached folder)
-     are refused.
+   - Code-to-Code functions work for same-owner Codes when the actor can edit
+     both; other owners and viewers are refused.
 4. **Isolation.** From A's Code terminal and shell tool, B's files, `/tmp`,
    tmux and browser are unreachable (QA #236 checks, plus the browser socket
    check).

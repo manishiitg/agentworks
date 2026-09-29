@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
 // Crews, workflows and external connections call a Crew or workflow through
@@ -162,7 +163,8 @@ func (c triggerLinkCaller) isTarget(target triggerTarget) bool {
 		return false
 	}
 	if target.Kind == triggerCallerCrew {
-		return strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.CrewID)
+		return strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.CrewID) &&
+			strings.EqualFold(normalizeInternalProfileID(c.Stamp.ProfileID), normalizeInternalProfileID(target.CrewProfile))
 	}
 	return target.Manifest != nil && strings.TrimSpace(c.Stamp.ID) == strings.TrimSpace(target.Manifest.ID)
 }
@@ -192,6 +194,9 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 	case triggerCallerCrew:
 		if api.productSchedules == nil {
 			return "", false, fmt.Errorf("Crew calls are unavailable")
+		}
+		if target.CrewProfile == codeproduct.ProfileID {
+			return api.connectCodePeerTarget(ctx, userID, caller, target)
 		}
 		triggers, err := api.productSchedules.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
 		if err != nil {
@@ -231,7 +236,7 @@ type triggerTargetRunState struct {
 func (api *StreamingAPI) readTriggerTargetRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID string) (triggerTargetRunState, error) {
 	switch target.Kind {
 	case triggerCallerCrew:
-		status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
+		status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp, target.CrewOwner)
 		if err != nil {
 			return triggerTargetRunState{}, crewWorkflowRunError(err)
 		}
@@ -300,7 +305,7 @@ func triggerTargetTimeout(value interface{}) (time.Duration, error) {
 // takes it as steering input, otherwise it waits in the durable turn queue and
 // runs right after the current turn. Only while the run is still running.
 func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID, message string) (map[string]interface{}, error) {
-	status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
+	status, err := api.productSchedules.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp, target.CrewOwner)
 	if err != nil {
 		return nil, crewWorkflowRunError(err)
 	}
@@ -310,7 +315,7 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	if strings.TrimSpace(status.SessionID) == "" || !strings.EqualFold(status.Status, "running") {
 		return nil, fmt.Errorf("run %s has not started yet (%s); wait for it to start or put the details in a new call", runID, status.Status)
 	}
-	profile, binding, manifest, trigger, err := api.productSchedules.findInternalProductTrigger(ctx, userID, target.CrewProfile, target.CrewID, triggerID)
+	profile, binding, manifest, trigger, err := api.productSchedules.findInternalProductTrigger(ctx, userID, target.CrewProfile, target.CrewID, triggerID, codePeerTriggerAccess{target.CrewOwner, caller.Stamp})
 	if err != nil {
 		return nil, crewWorkflowRunError(err)
 	}
@@ -319,7 +324,10 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		ownerID = owner
 	}
 	var conversationBinding productConversationBinding
-	if trigger.ownConversation() {
+	if profile.ID == codeproduct.ProfileID {
+		ownerID = userID
+		conversationBinding, err = codePeerRunBinding(ctx, userID, profile, target.CrewID, binding.WorkspacePath, trigger.ID, manifest.displayTitle()+" · "+trigger.Name)
+	} else if trigger.ownConversation() {
 		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "trigger", trigger.ID, manifest.displayTitle()+" · "+trigger.Name)
 	} else {
 		conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, target.CrewID)
@@ -378,6 +386,11 @@ func crewTriggerLinkCaller(workspacePath string) func(context.Context) (triggerL
 		stamp, err := crewWorkflowRunCaller(ctx, workspacePath)
 		if err != nil {
 			return triggerLinkCaller{}, err
+		}
+		if strings.EqualFold(stamp.ProfileID, codeproduct.ProfileID) {
+			// The target sees the call, but a private Code's title is not
+			// disclosed just because it asked a Crew or workflow for help.
+			return triggerLinkCaller{Stamp: stamp, Label: "private Code workspace", Path: workspacePath}, nil
 		}
 		label := path.Base(strings.TrimSuffix(strings.TrimSpace(workspacePath), "/"))
 		if raw, exists, readErr := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/")+"/product.json"); readErr == nil && exists {

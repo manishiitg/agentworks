@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -618,8 +619,14 @@ func (s *ProductScheduleService) receiveProductWebhook(w http.ResponseWriter, r 
 // workflow step behind an internal delivery for cost attribution; it is nil
 // for public deliveries.
 func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, match *productWebhookMatch, deliveryID, event string, body []byte, sourceNote string, caller *workflowtypes.CrewRunCaller) (internalTriggerDeliveryResult, error) {
+	if match.Profile.ID == codeproduct.ProfileID && len(body) > 64*1024 {
+		return internalTriggerDeliveryResult{}, ErrInternalTriggerPayload
+	}
 	runID := webhookDeliveryRunID(match.Manifest.ID, match.Trigger.ID, deliveryID)
 	runsWorkspace := agentProfileRuntimeWorkspace(match.UserID, match.Binding.WorkspacePath)
+	if match.Profile.ID == codeproduct.ProfileID {
+		runsWorkspace = codePeerPrivateRunsWorkspace(match.UserID, match.Binding.WorkspacePath, match.Manifest.ID)
+	}
 	jobID := projectScheduleJobID(match.Profile.ID, match.Manifest.ID, match.Trigger.ID)
 	receivedAt := time.Now().UTC()
 	metadata := &WebhookRunMetadata{TriggerName: match.Trigger.Name, DeliveryID: deliveryID, Event: event, ReceivedAt: receivedAt}
@@ -633,14 +640,24 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	if !claimed {
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Duplicate: true, Status: existing.Status}, nil
 	}
-	relativePayloadPath := "triggers/deliveries/" + runID + ".json"
-	payloadPath := filepath.ToSlash(filepath.Join(match.Binding.WorkspacePath, relativePayloadPath))
-	if err := s.writeFile(ctx, payloadPath, string(body)+"\n"); err != nil {
-		_ = UpdateScheduleRun(context.Background(), runsWorkspace, runID, "error", "cannot persist trigger payload", nil, "", "")
-		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
+	message := ""
+	if match.Profile.ID == codeproduct.ProfileID {
+		// Different editors share the Code's files, but have private chats.
+		// Keep a caller's input in the actor's turn, not in shared files.
+		message = strings.TrimSpace(match.Trigger.Message) + "\n\n" + sourceNote + " " + triggerAutonomyNote + "\n\nPayload:\n```json\n" + string(body) + "\n```"
+	} else {
+		relativePayloadPath := "triggers/deliveries/" + runID + ".json"
+		payloadPath := filepath.ToSlash(filepath.Join(match.Binding.WorkspacePath, relativePayloadPath))
+		if err := s.writeFile(ctx, payloadPath, string(body)+"\n"); err != nil {
+			_ = UpdateScheduleRun(context.Background(), runsWorkspace, runID, "error", "cannot persist trigger payload", nil, "", "")
+			return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrProductTriggerNotPersist, err)
+		}
+		message = triggerTurnMessage(match.Trigger.Message, sourceNote, relativePayloadPath)
 	}
-	message := triggerTurnMessage(match.Trigger.Message, sourceNote, relativePayloadPath)
 	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
+	if match.Profile.ID == codeproduct.ProfileID && match.Trigger.Caller != nil {
+		job.PeerSourceID = match.Trigger.Caller.ID
+	}
 	functionCallID := ""
 	if match.Trigger.IsInternal() && strings.HasPrefix(deliveryID, "fn-") {
 		functionCallID = deliveryID
@@ -684,7 +701,13 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 	if err := checkInternalPayload(call.Payload); err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
-	profile, binding, manifest, trigger, err := s.findInternalProductTrigger(ctx, call.UserID, call.ProfileID, call.ProjectID, call.TriggerID)
+	if call.ProfileID == codeproduct.ProfileID {
+		_, sourceBinding, _, err := s.codePeerProject(ctx, call.TargetOwnerID, call.Caller.ID)
+		if err != nil || canonicalCrewWorkspaceRoot(sourceBinding.WorkspacePath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(call.UserID, call.CallerPath)) {
+			return internalTriggerDeliveryResult{}, ErrInternalTriggerNotFound
+		}
+	}
+	profile, binding, manifest, trigger, err := s.findInternalProductTrigger(ctx, call.UserID, call.ProfileID, call.ProjectID, call.TriggerID, codePeerTriggerAccess{call.TargetOwnerID, call.Caller})
 	if err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
@@ -703,10 +726,17 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 	if ownerID, ok := crewProjectOwnerID(binding.WorkspacePath); ok {
 		matchUserID = ownerID
 	}
+	if profile.ID == codeproduct.ProfileID {
+		// A shared Code runs as the editor in their own chat, never with the
+		// owner's credentials or an owner-scoped guest shortcut.
+		matchUserID = call.UserID
+	}
 	match := &productWebhookMatch{UserID: matchUserID, Profile: profile, Binding: binding, Manifest: manifest, Trigger: *trigger}
 	// Someone other than the owner is calling: the turn runs in the owner's
 	// namespace but as their guest, so it cannot change the Crew for them.
-	match.GuestCallerID = crewGuestCaller(call.UserID, matchUserID)
+	if profile.ID != codeproduct.ProfileID {
+		match.GuestCallerID = crewGuestCaller(call.UserID, matchUserID)
+	}
 	if strings.EqualFold(strings.TrimSpace(call.Caller.Type), triggerCallerUser) {
 		label := firstNonEmptyTrimmed(call.CallerLabel, "an external connection")
 		sourceNote := "This turn was started by " + label + " through an external connection (MCP or the agentworks CLI); your result is returned to that connection."
@@ -714,6 +744,10 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 	}
 	if strings.EqualFold(strings.TrimSpace(call.Caller.Type), triggerCallerCrew) {
 		label := firstNonEmptyTrimmed(call.CallerLabel, call.Caller.ID)
+		if call.Caller.ProfileID == codeproduct.ProfileID {
+			sourceNote := "This turn was started by another private Code workspace through an internal trigger; your final answer is returned to that caller."
+			return s.deliverProductTrigger(ctx, match, deliveryID, strings.TrimSpace(call.Event), call.Payload, sourceNote, nil)
+		}
 		sourceNote := "This turn was started by Crew \"" + label + "\" through an internal trigger; your final answer is returned to that Crew."
 		return s.deliverProductTrigger(ctx, match, deliveryID, strings.TrimSpace(call.Event), call.Payload, sourceNote, nil)
 	}
@@ -729,8 +763,12 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 // getInternalProductTriggerRun serves one Crew trigger run to the bound
 // workflow caller so a plan step can poll a delivery to terminal state.
 // Disabling the trigger revokes reads, mirroring the public endpoint.
-func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Context, userID, profileID, projectID, triggerID, runID string, caller triggerCaller) (productWebhookRunStatus, error) {
-	profile, binding, manifest, trigger, err := s.findInternalProductTrigger(ctx, userID, profileID, projectID, triggerID)
+func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Context, userID, profileID, projectID, triggerID, runID string, caller triggerCaller, ownerIDs ...string) (productWebhookRunStatus, error) {
+	ownerID := ""
+	if len(ownerIDs) > 0 {
+		ownerID = ownerIDs[0]
+	}
+	profile, binding, manifest, trigger, err := s.findInternalProductTrigger(ctx, userID, profileID, projectID, triggerID, codePeerTriggerAccess{ownerID, caller})
 	if err != nil {
 		return productWebhookRunStatus{}, err
 	}
@@ -738,6 +776,9 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 		return productWebhookRunStatus{}, ErrInternalCallerMismatch
 	}
 	runsWorkspace := agentProfileRuntimeWorkspace(userID, binding.WorkspacePath)
+	if profile.ID == codeproduct.ProfileID {
+		runsWorkspace = codePeerPrivateRunsWorkspace(userID, binding.WorkspacePath, manifest.ID)
+	}
 	entry, err := FindScheduleRun(ctx, runsWorkspace, runID)
 	if err != nil || entry.ScheduleID != projectScheduleJobID(profile.ID, manifest.ID, triggerID) {
 		return productWebhookRunStatus{}, ErrInternalTriggerRunGone
@@ -751,7 +792,31 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 // crew resolves under whichever owner holds it (Crew Run mode): a
 // reader's workflow run invokes the owner's crew through the same bound
 // trigger, and delivery below runs in the crew owner's namespace.
-func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
+type codePeerTriggerAccess struct {
+	ownerID string
+	caller  triggerCaller
+}
+
+func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string, codePeer ...codePeerTriggerAccess) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
+	if profileID == codeproduct.ProfileID {
+		access := codePeerTriggerAccess{}
+		if len(codePeer) > 0 {
+			access = codePeer[0]
+		}
+		ownerID, caller := access.ownerID, access.caller
+		if caller.Type != triggerCallerCrew || caller.ProfileID != codeproduct.ProfileID || authorizeCodePeerIDs(ctx, userID, ownerID, caller.ID, projectID) != nil {
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
+		}
+		if _, _, _, err := s.codePeerProject(ctx, ownerID, caller.ID); err != nil {
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
+		}
+		profile, binding, manifest, err := s.codePeerProject(ctx, ownerID, projectID)
+		if err != nil {
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
+		}
+		trigger, err := selectInternalProductTrigger(manifest.Triggers, triggerID)
+		return profile, binding, manifest, trigger, err
+	}
 	profile, binding, manifest, _, err := s.projectManifestAnyOwner(ctx, userID, normalizeInternalProfileID(profileID), projectID)
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)

@@ -26,9 +26,9 @@ profile:
     - skills
     - attached-folders
     - id: workflow-references
-      # A Code calls Crews and workflows the person can access, and is
-      # never callable itself: no define/answer function tools.
-      options: {direction: outbound}
+      # A Code calls accessible Crews/workflows and can exchange private
+      # functions with other Codes owned by the same account.
+      options: {direction: code_peers}
     - terminal
     - models
     - id: bots

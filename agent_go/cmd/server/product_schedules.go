@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -91,6 +92,7 @@ type productScheduleJob struct {
 	State          productScheduleUserState
 	ProjectID      string
 	ProjectTitle   string
+	PeerSourceID   string // private Code caller, rechecked before a queued turn
 	WorkspacePath  string
 	ManifestPath   string
 	AutomationKind string
@@ -1089,6 +1091,9 @@ func (s *ProductScheduleService) failAutomationSetupRun(job productScheduleJob, 
 		return
 	}
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
+	if job.Profile.ID == codeproduct.ProfileID && job.AutomationKind == "trigger" {
+		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
+	}
 	duration := int64(0)
 	completion := ScheduleRunCompletion{Status: "error", Error: setupErr.Error(), DurationMs: &duration}
 	if uerr := UpdateScheduleRunResult(context.Background(), runsWorkspace, runID, completion); uerr == nil {
@@ -1126,7 +1131,22 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
-		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, job.Schedule.ID, title)
+		if job.Profile.ID == codeproduct.ProfileID && kind == "trigger" {
+			ownerID, ok := crewProjectOwnerID(job.WorkspacePath)
+			if !ok {
+				bindErr = fmt.Errorf("private Code target is unavailable or access denied")
+			} else {
+				bindErr = authorizeCodePeerIDs(runCtx, job.UserID, ownerID, job.PeerSourceID, job.ProjectID)
+			}
+			if bindErr == nil {
+				_, _, _, bindErr = s.codePeerProject(runCtx, ownerID, job.PeerSourceID)
+			}
+			if bindErr == nil {
+				binding, bindErr = codePeerRunBinding(runCtx, job.UserID, job.Profile, job.ProjectID, job.WorkspacePath, job.Schedule.ID, title)
+			}
+		} else {
+			binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, job.Schedule.ID, title)
+		}
 	} else if job.ProjectID != "" {
 		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, job.ProjectID)
 	} else if job.Schedule.Isolated {
@@ -1156,6 +1176,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	}
 
 	runsWorkspace := agentProfileRuntimeWorkspace(job.UserID, conversation.WorkspacePath)
+	if job.Profile.ID == codeproduct.ProfileID && job.AutomationKind == "trigger" {
+		runsWorkspace = codePeerPrivateRunsWorkspace(job.UserID, job.WorkspacePath, job.ProjectID)
+	}
 	startedAt := time.Now().UTC()
 	entry := &ScheduleRunEntry{
 		ID:            runID,
