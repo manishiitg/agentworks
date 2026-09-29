@@ -558,7 +558,7 @@ func (personalMCPTokenSealer) Open(path string, sealed []byte) ([]byte, error) {
 func init() { oauth.SetTokenSealer(credentialSealer{}) }
 
 // credentialSealer is the process-wide token sealer: personal MCP files and
-// platform OAuth client files (platform_client_secrets.go), each bound to its
+// platform OAuth client files (platform_client_sealing.go), each bound to its
 // own path.
 type credentialSealer struct{}
 
