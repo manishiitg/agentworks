@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PlannerFile } from '../../services/api-types'
 import { TooltipProvider } from '../ui/tooltip'
 import PlannerFileList from './PlannerFileList'
+import { useWorkspaceGitStore } from '../../stores/useWorkspaceGitStore'
 
 vi.mock('../../stores/useWorkspaceStore', () => ({
   useWorkspaceStore: Object.assign(
@@ -12,6 +13,7 @@ vi.mock('../../stores/useWorkspaceStore', () => ({
     { getState: () => ({ scrollToFile: () => undefined }) },
   ),
 }))
+vi.mock('../../services/workspaceGit', () => ({ workspaceGitApi: {} }))
 vi.mock('../../stores/useAuthStore', () => ({
   useAuthStore: { getState: () => ({ user: { id: 'test-user' } }) },
 }))
@@ -94,6 +96,48 @@ describe('PlannerFileList Work controls', () => {
     } finally {
       await act(async () => root.unmount())
       host.remove()
+    }
+  })
+})
+
+describe('PlannerFileList git marks', () => {
+  it('shows a status letter on changed files and a dot on folders that contain changes', async () => {
+    useWorkspaceGitStore.setState({
+      fileStatus: new Map([['app/a.ts', { status: 'modified' }], ['app/new.ts', { status: 'untracked' }]]),
+      changedDirs: new Set(['app']),
+    })
+    const files = [file('app', 'folder', [file('app/a.ts'), file('app/clean.ts'), file('app/new.ts')])]
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(
+        <TooltipProvider>
+          <PlannerFileList
+            files={files}
+            loading={false}
+            error={null}
+            onFolderClick={() => undefined}
+            onFileClick={() => undefined}
+            onFileDelete={() => undefined}
+            onFolderDelete={() => undefined}
+            onRetry={() => undefined}
+            expandedFolders={new Set(['app'])}
+            chatFileContext={[]}
+            addFileToContext={() => undefined}
+            hideAddToChat
+          />
+        </TooltipProvider>,
+      ))
+      const rowFor = (path: string) => host.querySelector(`[data-filepath="${path}"]`) as HTMLElement
+      expect(rowFor('app/a.ts').querySelector('[title="Modified"]')?.textContent).toBe('M')
+      expect(rowFor('app/new.ts').querySelector('[title="Untracked"]')?.textContent).toBe('U')
+      expect(rowFor('app/clean.ts').querySelector('[title="Modified"], [title="Untracked"]')).toBeNull()
+      expect(rowFor('app').querySelector('[aria-label="Contains changes"]')).not.toBeNull()
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+      useWorkspaceGitStore.getState().clear()
     }
   })
 })

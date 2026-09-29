@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { copyToClipboard } from '../../utils/textUtils'
 import { FileTypeIcon } from './fileTypeIcon'
+import { useWorkspaceGitStore, type GitDecoration } from '../../stores/useWorkspaceGitStore'
 import {
   flattenVisiblePlannerFiles,
   WORKSPACE_SCROLL_TO_FILE_EVENT,
@@ -50,6 +51,16 @@ interface PlannerFileListProps {
 }
 
 const VIRTUALIZE_FILE_COUNT = 200
+
+// VS Code-style source-control marks: a letter and a colour per status.
+const GIT_MARKS: Record<GitDecoration['status'], { letter: string; text: string; title: string }> = {
+  modified: { letter: 'M', text: 'text-amber-500', title: 'Modified' },
+  added: { letter: 'A', text: 'text-emerald-500', title: 'Added' },
+  untracked: { letter: 'U', text: 'text-emerald-500', title: 'Untracked' },
+  deleted: { letter: 'D', text: 'text-destructive', title: 'Deleted' },
+  renamed: { letter: 'R', text: 'text-sky-500', title: 'Renamed' },
+  conflict: { letter: '!', text: 'text-destructive', title: 'Merge conflict' },
+}
 const FILE_ROW_HEIGHT = 28
 const FILE_ROW_OVERSCAN = 8
 
@@ -94,6 +105,8 @@ export default function PlannerFileList({
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
   // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
+  const gitFileStatus = useWorkspaceGitStore(state => state.fileStatus)
+  const gitChangedDirs = useWorkspaceGitStore(state => state.changedDirs)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0, listTop: 0 })
   const visibleRows = useMemo(
@@ -200,6 +213,10 @@ export default function PlannerFileList({
     const isSelected = selectedFiles.has(file.filepath)
     const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
     const isFocused = focusedPath === file.filepath
+    const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
+    const gitMark = file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
+    const gitFolderChanged = file.type === 'folder' && gitChangedDirs.has(gitKey)
+    const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : undefined
     const hasActionMenu = file.type === 'folder'
       ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)
       : !!(onFileMove || onFileDownload)
@@ -262,10 +279,16 @@ export default function PlannerFileList({
 
           {/* File Name - with reserved space for icons */}
           <div className="flex-1 min-w-0">
-            <span className={`block truncate text-[13px] ${isOpenFile ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
+            <span className={`block truncate text-[13px] ${gitStyle ? gitStyle.text : isOpenFile ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
               {fileName}
             </span>
           </div>
+          {gitStyle && (
+            <span title={`${gitStyle.title}${gitMark?.staged ? ' (staged)' : ''}`} className={`w-3 shrink-0 text-center text-[11px] font-semibold ${gitStyle.text}`}>{gitStyle.letter}</span>
+          )}
+          {gitFolderChanged && (
+            <span title="Contains changes" aria-label="Contains changes" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/80" />
+          )}
 
           {/* Action buttons container - compact space */}
           <div className="flex items-center gap-1 flex-shrink-0">

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, typ
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
+import { GitBar, GitChangesList, GitFilePanel } from './workspace/GitPanels'
 import { EXPAND_FIRST_LEVEL_FOLDERS_BY_DEFAULT } from '../utils/workspacePathUtils'
 
 // Side by side (tree left, file right) once the pane is wide enough; a narrow
@@ -29,6 +31,8 @@ type FileWorkspacePaneProps = {
   hideManagedEntriesByDefault?: boolean
   testId?: string
   headerAction?: ReactNode
+  /** Sends a request to the project's agent (commit, pull and push go through it). */
+  onAsk?: (message: string) => void | Promise<unknown>
 }
 
 /**
@@ -47,8 +51,36 @@ export function FileWorkspacePane({
   hideManagedEntriesByDefault = false,
   testId,
   headerAction,
+  onAsk,
 }: FileWorkspacePaneProps) {
   const showFileContent = useWorkspaceStore(state => state.showFileContent)
+  const files = useWorkspaceStore(state => state.files)
+  const selectedPath = useWorkspaceStore(state => state.selectedFile?.path ?? null)
+  const gitPanel = useWorkspaceGitStore(state => state.panel)
+  const hasRepos = useWorkspaceGitStore(state => state.repos.length > 0)
+  const [changesOpen, setChangesOpen] = useState(false)
+
+  // Git status for the folder this pane shows: on mount, whenever the tree
+  // reloads (debounced), and when the window regains focus.
+  useEffect(() => {
+    if (!workspacePath) return
+    const git = useWorkspaceGitStore.getState()
+    if (git.workspacePath !== workspacePath) git.clear()
+    void git.refresh(workspacePath)
+    const onFocus = () => { void useWorkspaceGitStore.getState().refresh(workspacePath) }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [workspacePath])
+  useEffect(() => {
+    if (!workspacePath) return
+    const timer = window.setTimeout(() => { void useWorkspaceGitStore.getState().refresh(workspacePath) }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [files, workspacePath])
+  // Opening a file from the tree replaces any diff or history panel.
+  useEffect(() => { useWorkspaceGitStore.getState().openPanel(null) }, [selectedPath])
+  useEffect(() => { if (!hasRepos) setChangesOpen(false) }, [hasRepos])
+
+  const rightOpen = showFileContent || (!!gitPanel && !!workspacePath)
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [treeWidth, setTreeWidth] = useState(readTreeWidth)
@@ -61,7 +93,7 @@ export function FileWorkspacePane({
     return () => observer.disconnect()
   }, [])
 
-  const split = showFileContent && width >= SPLIT_MIN_WIDTH
+  const split = rightOpen && width >= SPLIT_MIN_WIDTH
   const saveTreeWidth = (next: number) => {
     const clamped = Math.min(TREE_MAX, Math.max(TREE_MIN, Math.round(next)))
     setTreeWidth(clamped)
@@ -92,8 +124,14 @@ export function FileWorkspacePane({
       <div
         className={split ? 'min-h-0 shrink-0 overflow-hidden border-r border-border' : 'min-h-0 min-w-0 flex-1'}
         style={split ? { width: treeWidth } : undefined}
-        hidden={showFileContent && !split}
+        hidden={rightOpen && !split}
       >
+        <div className="flex h-full min-h-0 flex-col">
+          {workspacePath && <GitBar workspacePath={workspacePath} changesOpen={changesOpen} onToggleChanges={() => setChangesOpen(open => !open)} />}
+          {workspacePath && changesOpen && hasRepos && (
+            <div className="min-h-0 flex-1"><GitChangesList workspacePath={workspacePath} onAsk={onAsk} /></div>
+          )}
+          <div className="min-h-0 flex-1" hidden={changesOpen && hasRepos}>
         <Workspace
           scopedWorkspacePath={workspacePath}
           hiddenRootFolders={hiddenRootFolders}
@@ -104,6 +142,8 @@ export function FileWorkspacePane({
           title={title}
           headerAction={split ? undefined : headerAction}
         />
+          </div>
+        </div>
       </div>
       {split && (
         <div
@@ -119,7 +159,11 @@ export function FileWorkspacePane({
           className="relative z-10 -ml-1 w-2 shrink-0 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary focus-visible:after:bg-primary"
         />
       )}
-      {showFileContent && (
+      {gitPanel && workspacePath ? (
+        <div className="min-h-0 min-w-0 flex-1">
+          <GitFilePanel workspacePath={workspacePath} panel={gitPanel} onClose={() => useWorkspaceGitStore.getState().openPanel(null)} />
+        </div>
+      ) : showFileContent && (
         <div className="min-h-0 min-w-0 flex-1">
           <FileContentViewerBody headerAction={headerAction} />
         </div>

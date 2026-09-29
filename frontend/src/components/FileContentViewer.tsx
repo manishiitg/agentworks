@@ -1,9 +1,10 @@
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, FileText, Github, Link, Loader2, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, Download, FileText, GitCompare, Github, History, Link, Loader2, MoreHorizontal } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
 import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
+import { repoForPath, useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
 import { CsvRenderer } from './ui/CsvRenderer'
 import { HtmlRenderer } from './ui/HtmlRenderer'
@@ -347,10 +348,19 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
   const tallSurfaceClass = 'h-full min-h-0'
 
+  const gitWorkspacePath = useWorkspaceGitStore(state => state.workspacePath)
+  const gitRepos = useWorkspaceGitStore(state => state.repos)
+  const gitFile = selectedFile?.path && gitWorkspacePath ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
+  const gitFileChanged = !!gitFile && gitFile.repo.files.some(entry => entry.path === gitFile.file)
+
   const paneActions: PaneAction[] = [
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     { key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink },
+    ...(gitFile ? [
+      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
+      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
+    ] : []),
     ...(isMarkdownFile ? [
       { key: 'pdf', label: isExportingPdf ? 'Exporting…' : 'Export as PDF', icon: isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <PdfIcon />, onSelect: () => { void handleExportPdf() }, disabled: isExportingPdf },
       { key: 'gist', label: 'Push to GitHub Gist', icon: <Github className="w-4 h-4" />, onSelect: () => setShowPushToGistDialog(true) },

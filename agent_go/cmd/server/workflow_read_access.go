@@ -225,6 +225,8 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read("/workflow/notifications", api.handleGetWorkflowNotifications)
 	read("/workflow/active-executions", api.handleGetActiveExecutions)
 	apiRouter.HandleFunc("/workflow/costs", requireWorkflowReadAccessCallerRelative(api.handleGetCosts)).Methods("GET", "OPTIONS")
+	// Read-only git view of a workspace folder (Files pane).
+	apiRouter.HandleFunc("/workspace-git", requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/logs/file", requireLogFileReadAccess(api.handleGetLogFile)).Methods("GET", "OPTIONS")
 	// These check inside the handler: they name a workflow by ID, by session,
 	// by a list of paths, or through a report-preview token.
