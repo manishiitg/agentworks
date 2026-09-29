@@ -202,17 +202,15 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			case "crew":
 				view.Relation = "shared_with_crew"
 			}
-			if view.Relation == "" && !admin {
-				continue
-			}
+			// A private account is private to its owner, admins included.
 			if view.Relation == "" {
-				view.Relation = "admin_view"
+				continue
 			}
 			view.OwnerName = logUsernameForUserID(record.OwnerUserID)
 		}
-		view.Usable = view.Relation != "admin_view" && !personalProviderConnectionsLocked(record.Provider)
-		view.CanManage = own || admin
-		view.CanViewUsage = providerHasUsageCommand(record.Provider) && (own || admin || view.Usable)
+		view.Usable = !personalProviderConnectionsLocked(record.Provider)
+		view.CanManage = own
+		view.CanViewUsage = providerHasUsageCommand(record.Provider) && (own || view.Usable)
 		if !view.CanManage {
 			view.Sharing = nil
 			view.OwnerUserID = ""
@@ -346,7 +344,7 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 	}
 	index := -1
 	for i := range records {
-		if records[i].ID == id && (records[i].OwnerUserID == userID || admin) {
+		if records[i].ID == id && records[i].OwnerUserID == userID {
 			index = i
 		}
 	}

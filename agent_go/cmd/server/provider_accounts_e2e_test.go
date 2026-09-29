@@ -247,10 +247,12 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 	if _, err := env.resolveForRun("alice", "Workflow/w", "claude-code", account.ID); err != nil {
 		t.Fatalf("owner lost her own account: %v", err)
 	}
-	// An admin sees it but cannot run on it.
-	adminView, ok := findAccountView(env.list(t, "admin", ""), account.ID)
-	if !ok || adminView.Relation != "admin_view" || adminView.Usable || !adminView.CanManage || adminView.Sharing == nil {
-		t.Fatalf("admin view: %+v", adminView)
+	// A private account is private: an admin neither sees, edits nor deletes it.
+	if _, ok := findAccountView(env.list(t, "admin", ""), account.ID); ok {
+		t.Fatal("admin sees someone's private account")
+	}
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodDelete, "/", "admin", nil, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNotFound {
+		t.Fatalf("admin deleted someone's private account: %d", w.Code)
 	}
 	if _, err := env.resolveForRun("admin", "Workflow/w", "claude-code", account.ID); err == nil {
 		t.Fatal("admin ran on someone's private account")
@@ -796,7 +798,7 @@ func TestProviderAccountsUnlistedIdentityIsNotAdmin(t *testing.T) {
 	if _, ok := findAccountView(env.list(t, "stranger", ""), account.ID); ok {
 		t.Fatal("an identity missing from the directory sees a private account")
 	}
-	if _, ok := findAccountView(env.list(t, "admin", ""), account.ID); !ok {
-		t.Fatal("admin lost its view")
+	if _, ok := findAccountView(env.list(t, "alice", ""), account.ID); !ok {
+		t.Fatal("owner lost the account")
 	}
 }
