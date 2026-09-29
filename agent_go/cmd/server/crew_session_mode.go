@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -108,4 +111,92 @@ func readOnlyRefusalHint(ctx context.Context) string {
 		tool = "submit_workflow_suggestion"
 	}
 	return ". This session is read-only, so this change is not possible: do not work around it. Offer it to the owner with `" + tool + "` (the user's request in their words)"
+}
+
+var readerDeniedToolNames = func() map[string]struct{} {
+	names := map[string]struct{}{}
+	for _, name := range crewReaderDeniedTools() {
+		names[name] = struct{}{}
+	}
+	return names
+}()
+
+// readerDeniedToolRefusal answers a call to a mutating tool that a read-only
+// session was never given (it is not registered, so the bridge would only say
+// "not found"). It returns "" when the tool is not one of those or the session
+// is not read-only. The message names the mode and where to send the change.
+func readerDeniedToolRefusal(ctx context.Context, tool string) string {
+	if _, denied := readerDeniedToolNames[strings.TrimSpace(tool)]; !denied {
+		return ""
+	}
+	hint := readOnlyRefusalHint(ctx)
+	if hint == "" {
+		return ""
+	}
+	return "The tool `" + strings.TrimSpace(tool) + "` is not available: it changes the project" + hint
+}
+
+// refuseReaderDeniedTool writes the refusal in the bridge's error shape and
+// reports whether it did.
+func refuseReaderDeniedTool(w http.ResponseWriter, ctx context.Context, tool string) bool {
+	message := readerDeniedToolRefusal(ctx, tool)
+	if message == "" {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": message})
+	return true
+}
+
+var readOnlyShellDenials = []string{"Operation not permitted", "Permission denied", "Read-only file system"}
+
+// withReadOnlyShellHint runs a shell tool call and, when it fails in a
+// read-only session because a write was blocked, adds the mode and where to send
+// the change to the command's stderr (the sandbox itself only says "Operation
+// not permitted"). Other calls, and other failures, pass through untouched.
+func withReadOnlyShellHint(w http.ResponseWriter, ctx context.Context, tool string, serve func(http.ResponseWriter)) {
+	hint := strings.TrimPrefix(readOnlyRefusalHint(ctx), ". ")
+	if strings.TrimSpace(tool) != "execute_shell_command" || hint == "" {
+		serve(w)
+		return
+	}
+	rec := &internalResponseCapture{header: http.Header{}}
+	serve(rec)
+	rec.body = *bytes.NewBuffer(annotateReadOnlyShellResult(rec.body.Bytes(), hint))
+	copyInternalResponse(w, rec)
+}
+
+func annotateReadOnlyShellResult(body []byte, hint string) []byte {
+	var outer map[string]interface{}
+	if err := json.Unmarshal(body, &outer); err != nil {
+		return body
+	}
+	resultText, _ := outer["result"].(string)
+	var result map[string]interface{}
+	if json.Unmarshal([]byte(resultText), &result) != nil {
+		return body
+	}
+	stderr, _ := result["stderr"].(string)
+	denied := false
+	for _, marker := range readOnlyShellDenials {
+		if strings.Contains(stderr, marker) {
+			denied = true
+			break
+		}
+	}
+	if !denied {
+		return body
+	}
+	result["stderr"] = strings.TrimRight(stderr, "\n") + "\n" + hint
+	encodedResult, err := json.Marshal(result)
+	if err != nil {
+		return body
+	}
+	outer["result"] = string(encodedResult)
+	encoded, err := json.Marshal(outer)
+	if err != nil {
+		return body
+	}
+	return encoded
 }

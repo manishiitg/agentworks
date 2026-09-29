@@ -1184,3 +1184,71 @@ func TestReadOnlyRefusalHint(t *testing.T) {
 		t.Fatalf("workflow run hint = %q", hint)
 	}
 }
+
+// A call to a mutating tool a read-only session was never given is refused with
+// the mode named and the owner suggestion offered; owners and other tools are
+// untouched, and the refusal reaches the caller in the bridge's error shape.
+func TestReaderDeniedToolRefusal(t *testing.T) {
+	const sid = "reader-denied-tool-session"
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
+	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
+	if msg := readerDeniedToolRefusal(ctx, "create_project_schedule"); msg != "" {
+		t.Fatalf("owner got a refusal: %q", msg)
+	}
+	common.SetSessionWorkflowReadOnly(sid, true)
+	msg := readerDeniedToolRefusal(ctx, "create_project_schedule")
+	for _, want := range []string{"create_project_schedule", "read-only", crewSuggestionToolName} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("refusal missing %q: %q", want, msg)
+		}
+	}
+	if msg := readerDeniedToolRefusal(ctx, "list_project_schedules"); msg != "" {
+		t.Fatalf("a read tool was refused: %q", msg)
+	}
+	rec := httptest.NewRecorder()
+	if !refuseReaderDeniedTool(rec, ctx, "set_workflow_secret") {
+		t.Fatal("no refusal written")
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Success || !strings.Contains(body.Error, "read-only") {
+		t.Fatalf("response = %s (%v)", rec.Body.String(), err)
+	}
+}
+
+// A blocked shell write in a read-only session gets the mode added to stderr;
+// other failures, other tools and owners are untouched.
+func TestReadOnlyShellHint(t *testing.T) {
+	const sid = "readonly-shell-hint-session"
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
+	t.Cleanup(func() { common.ClearSessionShellConfig(sid) })
+	serve := func(stderr string) func(http.ResponseWriter) {
+		return func(out http.ResponseWriter) {
+			result, _ := json.Marshal(map[string]interface{}{"stdout": "", "stderr": stderr, "exit_code": 1})
+			out.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(out).Encode(map[string]interface{}{"success": false, "result": string(result), "error": "tool execution failed: exit_code=1"})
+		}
+	}
+	run := func(tool, stderr string) string {
+		rec := httptest.NewRecorder()
+		withReadOnlyShellHint(rec, ctx, tool, serve(stderr))
+		var outer struct{ Result string }
+		_ = json.Unmarshal(rec.Body.Bytes(), &outer)
+		return outer.Result
+	}
+	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); strings.Contains(got, "read-only") {
+		t.Fatalf("owner got a hint: %s", got)
+	}
+	common.SetSessionWorkflowReadOnly(sid, true)
+	if got := run("execute_shell_command", "sh: notes.md: Operation not permitted\n"); !strings.Contains(got, "Operation not permitted") || !strings.Contains(got, "read-only") || !strings.Contains(got, crewSuggestionToolName) {
+		t.Fatalf("blocked write not explained: %s", got)
+	}
+	if got := run("execute_shell_command", "cat: nope: No such file or directory\n"); strings.Contains(got, "read-only") {
+		t.Fatalf("an unrelated failure was annotated: %s", got)
+	}
+	if got := run("read_image", "sh: x: Operation not permitted\n"); strings.Contains(got, "read-only") {
+		t.Fatalf("another tool was annotated: %s", got)
+	}
+}

@@ -62,9 +62,12 @@ non-owner chatting in the Crew, or a guest call into the owner's Crew) is read-o
   user typed. An owner's message is unchanged.
 - **Tools and guards enforce it** (reader-denied tools are not registered; folder
   guards block writes).
-- **Refusals repeat it.** A refused write in a read-only session says the session is
-  read-only and to offer the change to the owner with `submit_crew_suggestion` (a
-  workflow run: `submit_workflow_suggestion`).
+- **Refusals repeat it.** In a read-only session a refused write, a call to a mutating
+  tool the reader was never given, and a shell command blocked by the sandbox all say
+  the session is read-only and to offer the change to the owner with
+  `submit_crew_suggestion` (a workflow run: `submit_workflow_suggestion`). Hidden tools
+  stay out of the catalog; the bridge answers a call to one with the message instead of
+  "not found".
 - The owner does not need a way to chat in Run mode.
 - Code has no reader prompt; its shared participants are governed by the Code share
   rules.

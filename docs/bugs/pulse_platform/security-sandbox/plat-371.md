@@ -59,6 +59,12 @@ shared instruction file could not hold both.
   history, submissions and native transcripts), the reader/guest prompt removed from
   the system prompt, a short shared-prompt paragraph, and write refusals in a
   read-only session that name `submit_crew_suggestion` / `submit_workflow_suggestion`.
+- Bridge refusals (2026-09-30): a call to a mutating tool a reader was never given
+  (`crewReaderDeniedTools`) now returns the read-only message instead of "not found"
+  (`refuseReaderDeniedTool`, both `/tools/custom` routes), and a shell command that
+  fails in a read-only session with "Operation not permitted" / "Permission denied" /
+  "Read-only file system" gets the same message appended to stderr
+  (`withReadOnlyShellHint`). Hidden tools stay hidden from the catalog.
 
 ## Evidence
 
@@ -70,6 +76,11 @@ local instances (real Claude and Codex through `/api/agent-profiles/*/query`):
   `.claude/commands/deploy.md`, `.cursor/rules/team.mdc`, `.pi/settings.json` intact
   during and after; two Claude chats plus a Codex chat overlapping; one shared block;
   after the last session ended `AGENTS.md` was byte-for-byte the original.
+- Bridge refusals, live, using the reader session's own credentials: `create_project_schedule`
+  and `set_workflow_secret` returned the read-only message with `submit_crew_suggestion`;
+  `list_project_schedules` still worked; `echo hello > notes.md` was blocked by the
+  sandbox and now says why; `ls` was unaffected; `notes.md` was not created. (The model
+  itself refuses before trying, so the messages are what a CLI sees if it does try.)
 - Crew, multi-user (owner + reader in one Crew): owner answered from the Crew's own
   `AGENTS.md`; reader was refused a file write and offered a suggestion; the mode
   block reached only the reader's CLI, on both the first message and a live-input
@@ -81,9 +92,6 @@ local instances (real Claude and Codex through `/api/agent-profiles/*/query`):
 
 ## Not done
 
-- Server-side refusal messages are proven by unit test only; the model refused
-  before attempting the write, so the live message was not observed.
-- Reader-denied tools are still silently unregistered (no stub that explains).
 - Cursor still removes a project's `.cursor/cli.json` at startup and rewrites
   `hooks.json` without restoring.
 - agy refuses a second session with a different tool mode in one folder.
