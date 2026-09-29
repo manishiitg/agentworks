@@ -65,6 +65,9 @@ those workflows and crews are now on.
   native reads can reach files outside the workflow, Crew or Code, and a run
   on someone else's shared provider account can read that account's login
   files. Confining the CLIs is the follow-up that closes both.
+  The plan (lock every CLI, CLI-login accounts, login proxy, then **Full CLI**
+  on Code) is in [PLAT-364](../bugs/pulse_platform/security-sandbox/plat-364.md#plan-2026-09-29-lock-every-cli-then-full-cli-on-code).
+  The leak and the lock were both shown live on RTS on 2026-09-29.
 
 ## The crew switch
 
