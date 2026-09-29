@@ -2,6 +2,8 @@
 
 # PLAT-364 — Coding CLIs and the tmux socket are outside the sandbox
 
+> **See also [PLAT-371](plat-371.md):** the instruction files and cleanup the CLIs write into a shared project folder (and the destructive startup cleanup) are a separate data-loss fix; it does not change the confinement plan here.
+
 | Coordination | Value |
 |---|---|
 | State | tmux socket fixed and deployed on RTS (ab6bb0b4f); CLI confinement planned (see Plan, 2026-09-29): lock proven on RTS |

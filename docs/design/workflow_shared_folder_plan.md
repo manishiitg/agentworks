@@ -6,6 +6,8 @@ sent as an `[AGENTWORKS SESSION]` block in front of each message, and a project'
 own AGENTS.md / .claude / .cursor / .pi never overwritten or deleted). Workflows
 follow only after that has run for a while.
 
+Consolidated behavior: [project instruction files](project_instruction_files.md); ticket [PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
+
 ## Why
 
 Workflow Builder and Run chats run in a private per-session runtime folder

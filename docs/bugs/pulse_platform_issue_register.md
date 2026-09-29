@@ -22,6 +22,19 @@ The 2026-09-28 bidirectional MCP review found these. Three are fixed on
 - [PLAT-370](pulse_platform/human-decisions/plat-370.md), P2, open: questions
   and function-call lookup live in process memory, so a restart loses them.
 
+## Project instruction files overwritten and deleted — PLAT-371
+
+[PLAT-371](pulse_platform/security-sandbox/plat-371.md), P1, built on branches,
+not merged or deployed. CLI adapters overwrote and deleted a project's own
+`AGENTS.md` / `CLAUDE.md`, and `mcpagent`'s startup cleanup removed the whole
+`.claude`, `.cursor`, `.pi`, `.codex` and `.agents` folders of the project (reproduced).
+Overlapping Crew/Code sessions also collided on one file. Fix: a marked,
+session-counted block, marker-only cleanup, `AGENTS.md` as the single file, one shared
+Crew prompt with the reader role sent per message. Verified with real Claude and Codex
+on isolated single- and multi-user instances. Design:
+[project instruction files](../design/project_instruction_files.md); workflows follow
+later ([plan](../design/workflow_shared_folder_plan.md)).
+
 ## Coding CLIs and the tmux socket are outside the sandbox — PLAT-364
 
 [PLAT-364](pulse_platform/security-sandbox/plat-364.md) covers what the

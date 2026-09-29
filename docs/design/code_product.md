@@ -1,5 +1,7 @@
 # Code — a private coding workspace on the shared server
 
+> **Update 2026-09-30:** a Code project's own `AGENTS.md`, `.claude/`, `.cursor/`, `.pi/`, `.codex/` and `.agents/` are never overwritten or deleted by a chat; the session prompt is a marked, session-counted block in `AGENTS.md`, and projected skills carry an ownership marker. Verified with real Claude and Codex chats overlapping in one Code project. See [project instruction files](project_instruction_files.md), [PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
+
 Status: proposal (2026-09-28). Not built.
 
 ## Summary

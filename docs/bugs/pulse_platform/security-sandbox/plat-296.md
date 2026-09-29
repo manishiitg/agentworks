@@ -2,6 +2,8 @@
 
 # PLAT-296 — Isolate workflow chat CLI prompts and skills across concurrent Owner and Run sessions
 
+> **Update 2026-09-30 ([PLAT-371](plat-371.md)):** the private per-session runtime folder stays for workflow Builder/Run chats. Crew and Code run in the project folder and no longer overwrite or delete a project's instruction files: adapters add a marked, session-counted block and `mcpagent`'s cleanup removes only what a session projected. The collisions and "restore or remove" behavior described below for a *shared* folder are superseded there. Moving workflows to the shared folder too is planned: [plan](../../../design/workflow_shared_folder_plan.md), [design](../../../design/project_instruction_files.md).
+
 | Coordination | Value |
 |---|---|
 | Assigned agent | Codex |
