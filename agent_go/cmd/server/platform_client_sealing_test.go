@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
+	"golang.org/x/oauth2"
 )
 
 // A platform OAuth client secret never stays in the MCP config overlay:
@@ -64,5 +66,55 @@ func TestPlatformClientSecretsLiveSealedOutsideTheOverlay(t *testing.T) {
 	// The editor may not point a server at another file.
 	if isPlatformClientSecretFile("Old", "/etc/passwd") || !isPlatformClientSecretFile("Old", loaded.MCPServers["Old"].OAuth.ClientSecretFile) {
 		t.Fatal("client_secret_file reference check")
+	}
+}
+
+// Platform OAuth tokens and client registrations are never plain JSON on
+// disk: new writes are sealed, files written before sealing are sealed at
+// start, and both still read back through the token store.
+func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	tokenPath := getUserTokenFilePath(platformMCPTokenUserID, "Linear")
+	store := oauth.NewTokenStore(tokenPath)
+	if err := store.Save(&oauth2.Token{AccessToken: "at-plain-secret", RefreshToken: "rt-plain-secret", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	onDisk, _ := os.ReadFile(tokenPath)
+	if strings.Contains(string(onDisk), "plain-secret") || strings.HasPrefix(strings.TrimSpace(string(onDisk)), "{") {
+		t.Fatalf("platform token stored in the clear: %s", onDisk)
+	}
+	if loaded, err := store.Load(); err != nil || loaded.AccessToken != "at-plain-secret" {
+		t.Fatalf("load = %+v %v", loaded, err)
+	}
+
+	// A legacy plain token (older catalog path) and a plain DCR client file.
+	legacy := filepath.Join(mcpagentTokensRoot(), "default", "Notion.json")
+	client := expandPath(getUserClientFilePath(platformMCPTokenUserID, "Notion"))
+	for path, body := range map[string]string{
+		legacy: `{"access_token":"legacy-secret","token_type":"Bearer"}`,
+		client: `{"client_id":"cid","client_secret":"dcr-secret","redirect_uri":"https://x/cb"}`,
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := sealPlainPlatformCredentials(); err != nil || n != 2 {
+		t.Fatalf("sealed %d, %v", n, err)
+	}
+	for _, path := range []string{legacy, client, tokenPath} {
+		raw, _ := os.ReadFile(path)
+		if strings.Contains(string(raw), "secret") {
+			t.Fatalf("%s still plain: %s", path, raw)
+		}
+	}
+	if secret, err := oauth.ReadClientSecretFile(client); err != nil || secret != "dcr-secret" {
+		t.Fatalf("client after sealing = %q %v", secret, err)
+	}
+	if n, _ := sealPlainPlatformCredentials(); n != 0 {
+		t.Fatalf("second pass sealed %d", n)
 	}
 }

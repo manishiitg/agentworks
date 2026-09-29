@@ -2405,6 +2405,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := api.migratePlatformClientSecrets(); err != nil {
 		log.Printf("[MCP] could not seal platform OAuth client secrets: %v", err)
 	}
+	// Platform tokens and client registrations written before sealing.
+	if n, err := sealPlainPlatformCredentials(); err != nil {
+		log.Printf("[MCP] could not seal platform MCP credentials: %v", err)
+	} else if n > 0 {
+		log.Printf("[MCP] sealed %d platform MCP credential file(s)", n)
+	}
 	// Pins of Code chats whose Code is gone, once the workspace is up.
 	go func() {
 		time.Sleep(3 * time.Minute)
