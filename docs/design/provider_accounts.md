@@ -180,6 +180,11 @@ Installed accounts are not stored; they are derived at start from the
 environment, the admin key store and the CLI login check. The policy is
 read from `AGENTWORKS_PROVIDER_POLICY` (installer writes it; absent = all).
 
+On deletion, `config/provider-connection-history.json` keeps an encrypted
+record of the account ID, provider, display name and owner ID. Credentials,
+sharing rules and login files are removed. This lets former owners see their
+account's recorded costs without making the account usable again.
+
 ## UI
 
 Providers page, per provider:
@@ -217,6 +222,9 @@ provider and account.
   - Admins see everything.
   - Entries written before this change have no account; they show as
     "unrecorded account" under their provider.
+  - The embedded Costs overview limits account rows to the work included in
+    that overview. The standalone Providers account report remains account-wide
+    and masks work names the viewer cannot open.
 
 ## Tests (end-to-end)
 

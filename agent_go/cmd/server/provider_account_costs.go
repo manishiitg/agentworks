@@ -54,8 +54,9 @@ type providerAccountCostsResponse struct {
 }
 
 // buildProviderAccountCosts folds a ledger summary into provider → account
-// → (work, person) rows the viewer may see.
-func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin bool, accounts map[string]storedProviderConnection, workVisible func(id, kind string) bool) *providerAccountCostsResponse {
+// → (work, person) rows the viewer may see. includedWork optionally limits
+// rows to the scope of an enclosing report; workVisible only masks names.
+func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin bool, accounts map[string]storedProviderConnection, workVisible, includedWork func(id, kind string) bool) *providerAccountCostsResponse {
 	resp := &providerAccountCostsResponse{Providers: []*providerCost{}}
 	if summary == nil {
 		return resp
@@ -67,6 +68,10 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 	splits := map[accountKey]map[string]*providerAccountCostSplit{}
 	for key, aggregate := range summary.ByAccountSplit {
 		if aggregate == nil {
+			continue
+		}
+		workID, workKind, workName, _ := costOverviewRoot(key.WorkflowID)
+		if includedWork != nil && !includedWork(workID, workKind) {
 			continue
 		}
 		record, isUserAccount := accounts[key.AccountID]
@@ -86,6 +91,13 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 				row.Kind, row.Name = "server", "Server account"
 			case isUserAccount:
 				row.Kind, row.Name, row.OwnerName = "user", record.DisplayName, logUsernameForUserID(record.OwnerUserID)
+				if record.Removed {
+					if fullSplit {
+						row.Name += " (removed)"
+					} else {
+						row.Name = "Removed account"
+					}
+				}
 			default:
 				row.Kind, row.Name = "user", "Removed account"
 			}
@@ -93,7 +105,6 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 			splits[pk] = map[string]*providerAccountCostSplit{}
 		}
 		row.Total.Merge(*aggregate)
-		workID, workKind, workName, _ := costOverviewRoot(key.WorkflowID)
 		// An account owner sees who used the account, but never the name of
 		// a workflow, Crew or Code they cannot open themselves.
 		if !admin && workKind != costOverviewKindOther && (workVisible == nil || !workVisible(workID, workKind)) {
@@ -168,16 +179,29 @@ func costWorkVisibleTo(r *http.Request) func(id, kind string) bool {
 	}
 }
 
-func providerAccountsByID(ctx context.Context) map[string]storedProviderConnection {
+func providerAccountsByID(ctx context.Context) (map[string]storedProviderConnection, error) {
 	providerConnectionsMu.Lock()
-	records, _ := loadProviderConnections(ctx)
-	providerConnectionsMu.Unlock()
-	byID := make(map[string]storedProviderConnection, len(records))
+	defer providerConnectionsMu.Unlock()
+	records, err := loadProviderConnections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	history, err := loadProviderConnectionHistory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]storedProviderConnection, len(records)+len(history))
+	for _, record := range history {
+		byID[record.ID] = storedProviderConnection{ProviderConnection: ProviderConnection{
+			ID: record.ID, Provider: record.Provider, DisplayName: record.DisplayName,
+			OwnerUserID: record.OwnerUserID,
+		}, Removed: true}
+	}
 	for _, record := range records {
 		record.Credential = ""
 		byID[record.ID] = record
 	}
-	return byID
+	return byID, nil
 }
 
 // GET /api/provider-accounts/costs?from=&to= — cost and tokens per provider
@@ -200,6 +224,11 @@ func (api *StreamingAPI) handleProviderAccountCosts(w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	accounts, err := providerAccountsByID(r.Context())
+	if err != nil {
+		http.Error(w, "cannot load provider accounts", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(buildProviderAccountCosts(summary, userID, currentUserIsAdmin(r), providerAccountsByID(r.Context()), costWorkVisibleTo(r)))
+	_ = json.NewEncoder(w).Encode(buildProviderAccountCosts(summary, userID, currentUserIsAdmin(r), accounts, costWorkVisibleTo(r), nil))
 }

@@ -16,7 +16,10 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-const providerConnectionsPath = "config/provider-connections.json"
+const (
+	providerConnectionsPath       = "config/provider-connections.json"
+	providerConnectionHistoryPath = "config/provider-connection-history.json"
+)
 
 var providerConnectionsMu sync.Mutex
 
@@ -39,6 +42,48 @@ type ProviderConnection struct {
 type storedProviderConnection struct {
 	ProviderConnection
 	Credential string `json:"credential"`
+	Removed    bool   `json:"-"`
+}
+
+// Keep only the metadata needed to attribute historical costs after an
+// account's credential and runtime files have been deleted.
+type providerConnectionHistory struct {
+	ID          string `json:"id"`
+	Provider    string `json:"provider"`
+	DisplayName string `json:"display_name"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+func loadProviderConnectionHistory(ctx context.Context) ([]providerConnectionHistory, error) {
+	raw, exists, err := readFileFromWorkspace(ctx, providerConnectionHistoryPath)
+	if err != nil || !exists {
+		return nil, err
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid provider connection history storage")
+	}
+	plain, err := decryptProviderKeys(ciphertext)
+	if err != nil {
+		return nil, fmt.Errorf("cannot decrypt provider connection history")
+	}
+	var records []providerConnectionHistory
+	if err := json.Unmarshal(plain, &records); err != nil {
+		return nil, fmt.Errorf("invalid provider connection history records")
+	}
+	return records, nil
+}
+
+func saveProviderConnectionHistory(ctx context.Context, records []providerConnectionHistory) error {
+	plain, err := json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	ciphertext, err := encryptProviderKeys(plain)
+	if err != nil {
+		return err
+	}
+	return writeFileToWorkspace(ctx, providerConnectionHistoryPath, base64.StdEncoding.EncodeToString(ciphertext))
 }
 
 // The registry is cached in memory: this server is its only writer, so it is

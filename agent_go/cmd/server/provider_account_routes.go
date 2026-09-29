@@ -380,6 +380,28 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 			continue
 		}
 		if r.Method == http.MethodDelete {
+			history, err := loadProviderConnectionHistory(r.Context())
+			if err != nil {
+				http.Error(w, "cannot load account history", http.StatusInternalServerError)
+				return
+			}
+			// A prior attempt may have saved history before the active registry
+			// write failed. Replace that entry when the deletion is retried.
+			replaced := false
+			for j := range history {
+				if history[j].ID == record.ID {
+					history[j] = providerConnectionHistory{ID: record.ID, Provider: record.Provider, DisplayName: record.DisplayName, OwnerUserID: record.OwnerUserID}
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				history = append(history, providerConnectionHistory{ID: record.ID, Provider: record.Provider, DisplayName: record.DisplayName, OwnerUserID: record.OwnerUserID})
+			}
+			if err := saveProviderConnectionHistory(r.Context(), history); err != nil {
+				http.Error(w, "cannot save account history", http.StatusInternalServerError)
+				return
+			}
 			records = append(records[:i], records[i+1:]...)
 		} else {
 			if request.DisplayName != nil {

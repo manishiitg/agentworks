@@ -198,7 +198,7 @@ export default function CostsOverview() {
           {(data.by_account?.length ?? 0) > 0 && (
             <details className="mt-6 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700">
               <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">By account</summary>
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Cost per provider and the account each turn ran on. Expand an account to see where it was used and by whom.</p>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">LLM costs in the work shown above, grouped by provider account. Shared accounts you do not own show only your usage, so these subtotals may be lower than the tracked total. Expand an account to see where it was used and by whom.</p>
               <div className="mt-3"><AccountCostList providers={data.by_account ?? []} /></div>
             </details>
           )}

@@ -565,6 +565,52 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	if accountRow(bob, "global:claude-code") != nil {
 		t.Fatal("bob sees carol's server-account spend")
 	}
+	// The account-wide report still includes historical use in work the
+	// account owner can no longer open. The Costs overview only includes
+	// work in its own visible total.
+	turn("bob", "Workflow/v", account.ID, "bob-v", 2)
+	if row := accountRow(costs("alice"), account.ID); row == nil || row.Total.TotalCostUSD < 2.74 || !hasSplit(row, "hidden:workflow", "bob") {
+		t.Fatalf("owner's account-wide history should include masked work: %+v", row)
+	}
+	overviewResponse := env.do(t, env.api.handleCostOverview, http.MethodGet, "/api/cost/overview", "alice", nil, nil)
+	if overviewResponse.Code != http.StatusOK {
+		t.Fatalf("cost overview: %d %s", overviewResponse.Code, overviewResponse.Body.String())
+	}
+	var overview costOverviewResponse
+	if err := json.Unmarshal(overviewResponse.Body.Bytes(), &overview); err != nil {
+		t.Fatal(err)
+	}
+	visibleAccount := accountRow(providerAccountCostsResponse{Providers: overview.ByAccount}, account.ID)
+	if visibleAccount == nil || visibleAccount.Total.TotalCostUSD < 0.74 || visibleAccount.Total.TotalCostUSD > 0.76 ||
+		visibleAccount.Total.TotalCostUSD > overview.Total.TotalCostUSD || hasSplit(visibleAccount, "hidden:workflow", "bob") {
+		t.Fatalf("overview account costs escaped visible work: total %+v, account %+v", overview.Total, visibleAccount)
+	}
+	if strings.Contains(overviewResponse.Body.String(), "Workflow/v") || strings.Contains(overviewResponse.Body.String(), "hidden:workflow") {
+		t.Fatalf("overview exposed hidden work: %s", overviewResponse.Body.String())
+	}
+
+	if w := env.do(t, env.api.handleProviderConnection, http.MethodDelete, "/", "alice", nil, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
+		t.Fatalf("delete account: %d %s", w.Code, w.Body.String())
+	}
+	if _, found := findAccountView(env.list(t, "alice", ""), account.ID); found {
+		t.Fatal("deleted account is still usable")
+	}
+	env.mock.mu.Lock()
+	history := env.mock.files[providerConnectionHistoryPath]
+	env.mock.mu.Unlock()
+	if history == "" || strings.Contains(history, account.ID) || strings.Contains(history, account.DisplayName) {
+		t.Fatal("account history is missing or stored without encryption")
+	}
+	if row := accountRow(costs("alice"), account.ID); row == nil || !row.FullSplit || row.Name != "Alice Claude (removed)" ||
+		row.Total.TotalCostUSD < 2.74 || !hasSplit(row, "Workflow/w", "bob") || !hasSplit(row, "hidden:workflow", "bob") {
+		t.Fatalf("former owner lost account-wide history: %+v", row)
+	}
+	if row := accountRow(costs("bob"), account.ID); row == nil || row.FullSplit || row.Name != "Removed account" || len(row.Split) != 2 {
+		t.Fatalf("former account user gained another person's history: %+v", row)
+	}
+	if row := accountRow(costs("carol"), account.ID); row != nil {
+		t.Fatalf("unrelated user sees deleted account: %+v", row)
+	}
 }
 
 // Product defaults: validated at start, served to the UI, admin-editable.
