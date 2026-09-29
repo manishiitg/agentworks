@@ -987,6 +987,18 @@ func (api *StreamingAPI) executeBackgroundDelegatedTask(
 		bgCtx = context.WithValue(bgCtx, common.UserIDKey, userID)
 		log.Printf("[USER_ID_DEBUGGING] Background agent: copied UserIDKey=%q to bgCtx", userID)
 	}
+	// The background agent acts for the same authenticated principal as the
+	// tool call that started it. Without the claims, the delegated access
+	// check (conversationTargetAccess) saw no user and refused every
+	// background agent in a Crew: "Crew access denied" (RTS 2026-09-29).
+	if claims := GetUserFromContext(ctx); claims != nil {
+		copied := *claims
+		if claims.ExecutionPrincipal != nil {
+			principal := *claims.ExecutionPrincipal
+			copied.ExecutionPrincipal = &principal
+		}
+		bgCtx = context.WithValue(bgCtx, UserContextKey, &copied)
+	}
 	if dest, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && dest != nil {
 		bgCtx = context.WithValue(bgCtx, virtualtools.BotNotificationDestinationKey, dest)
 	}
