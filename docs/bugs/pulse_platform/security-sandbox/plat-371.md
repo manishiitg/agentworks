@@ -81,6 +81,14 @@ local instances (real Claude and Codex through `/api/agent-profiles/*/query`):
   `list_project_schedules` still worked; `echo hello > notes.md` was blocked by the
   sandbox and now says why; `ls` was unaffected; `notes.md` was not created. (The model
   itself refuses before trying, so the messages are what a CLI sees if it does try.)
+- Guest call, multi-user, real Claude: reader1's Crew ("Caller") used `call_function` to
+  ask owner1's Crew ("Support") `ask`. The Support turn ran as a guest with the reader
+  role (its CLI pane got the `[AGENTWORKS SESSION]` block; its tool gate registered 30
+  tools; the caller's pane got no block), answered from its own `AGENTS.md`, and the
+  answer came back to the caller as an `[AUTO-NOTIFICATION]` result
+  (`{"answer": "... OSPREY-3 ..."}`). The guest did not call `return_function_result`;
+  its final answer is what is returned (the turn's own instruction says so), so the
+  removed guest prompt was not needed for that path.
 - Crew, multi-user (owner + reader in one Crew): owner answered from the Crew's own
   `AGENTS.md`; reader was refused a file write and offered a suggestion; the mode
   block reached only the reader's CLI, on both the first message and a live-input
@@ -95,8 +103,6 @@ local instances (real Claude and Codex through `/api/agent-profiles/*/query`):
 - Cursor still removes a project's `.cursor/cli.json` at startup and rewrites
   `hooks.json` without restoring.
 - agy refuses a second session with a different tool mode in one folder.
-- A real guest call (function call from another user) with the reader wording;
-  the old guest prompt told the agent to call `return_function_result`.
 - Skill cleanup is not session-counted (needed before workflows share a folder).
 - Old unmarked skill folders of a provider not in use stay as clutter.
 - Merge order: provider, then bump the `mcpagent` pin, then this repo.
