@@ -145,15 +145,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     ? SETUP_BUTTONS.filter(item => isCode && item.id === 'share')
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
     .filter(item => item.id !== 'share' || isCode)
-  // Setup stays permanently expanded (no toggle); only Ops collapses.
-  // A Code's Ops never collapses.
-  const [openGroup, setOpenGroup] = useState<'ops' | null>(() =>
-    isCode || OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null,
-  )
-
-  useEffect(() => {
-    setOpenGroup(isCode || OPS_BUTTONS.some(item => item.id === view) ? 'ops' : null)
-  }, [isCode, view])
+  // Ops and Setup are always open and show icons only.
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
@@ -164,10 +156,11 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           {visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
             {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
           </div>}
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open={openGroup === 'ops'} onToggle={isCode ? undefined : () => setOpenGroup(current => current === 'ops' ? null : 'ops')} title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
+          {/* Ops and Setup show their icons only: always open, no label. */}
+          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
-          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open title={isCode ? 'Setup: name, integrations and sharing' : 'Setup: identity and integrations'}>
+          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name, integrations and sharing' : 'Setup: identity and integrations'}>
             <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
         </div>
