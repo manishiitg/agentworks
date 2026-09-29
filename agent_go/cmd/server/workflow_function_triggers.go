@@ -357,6 +357,16 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		return "", internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
 	if manifest.Kind == "relay" {
+		// Revoking a function or caller on the live Relay takes effect at once.
+		// The published copy still supplies the versioned input contract and
+		// executable graph, but never grants authority on its own.
+		liveSchedule, liveErr := findWorkflowFunctionTrigger(manifest, call.Function)
+		if liveErr != nil {
+			return "", internalTriggerDeliveryResult{}, liveErr
+		}
+		if !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
+			return liveSchedule.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, call.Function)
+		}
 		release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
 		if releaseErr != nil {
 			return "", internalTriggerDeliveryResult{}, releaseErr
@@ -378,7 +388,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, err
 	}
-	if !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
+	if manifest.Kind != "relay" && !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, sched.Function.Name)
 	}
 	variables, group, err := workflowFunctionArgs(*sched, call.Args)

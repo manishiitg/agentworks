@@ -46,6 +46,12 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"bob", http.MethodPost, "/api/wp/api/query", map[string]any{"db_path": "Workflow/private/db/db.sqlite", "sql": "select 1"}, false},
 		{"bob", http.MethodPost, "/api/wp/api/query", map[string]any{"db_path": "Workflow/shared/db/db.sqlite", "sql": "select 1"}, true},
 		{"bob", http.MethodPost, "/api/wp/api/workspace/export", map[string]any{"workspace_path": "Workflow/private"}, false},
+		// Release snapshots have no manifest at Workflow/.relay_releases.
+		{"bob", http.MethodGet, "/api/wp/api/documents/Workflow/.relay_releases/hash/v1/runs/input.json", nil, false},
+		{"alice", http.MethodGet, "/api/wp/api/documents/Workflow/.relay_releases/hash/v1/planning/plan.json", nil, false},
+		{"root", http.MethodGet, "/api/wp/api/documents/Workflow/.relay_releases/hash/v1/planning/plan.json", nil, true},
+		{"bob", http.MethodPut, "/api/wp/api/documents/Workflow/.relay_releases/hash/v1/.pi/APPEND_SYSTEM.md", map[string]any{"content": "x"}, false},
+		{"root", http.MethodPut, "/api/wp/api/documents/Workflow/.relay_releases/hash/v1/.pi/APPEND_SYSTEM.md", map[string]any{"content": "x"}, false},
 		// Writes need write access; body-path routes count too.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Workflow/shared/notes.md", map[string]any{"content": "x"}, true},
 		{"bob", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "Workflow/private/a"}, false},

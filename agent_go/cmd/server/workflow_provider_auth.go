@@ -356,6 +356,11 @@ func (api *StreamingAPI) workflowProviderAPIKeys(ctx context.Context, userID, wo
 // folder, which delegation.go documents and depends on) — but it means a
 // provider added to workflowProviderAPIKeys only has to be handled once.
 func (api *StreamingAPI) resolveEffectiveAPIKeys(ctx context.Context, userID, workspacePath string, base *llm.ProviderAPIKeys) (*llm.ProviderAPIKeys, error) {
+	var err error
+	workspacePath, err = relayDraftWorkspaceForRelease(ctx, workspacePath)
+	if err != nil {
+		return nil, err
+	}
 	if base == nil {
 		base = MergedProviderAPIKeys(ctx)
 	}

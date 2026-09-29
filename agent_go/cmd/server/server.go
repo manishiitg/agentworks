@@ -3363,6 +3363,12 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 	if userID == "" || len(selectedNames) == 0 {
 		return nil
 	}
+	var identityErr error
+	workflowPath, identityErr = relayDraftWorkspaceForRelease(ctx, workflowPath)
+	if identityErr != nil {
+		log.Printf("[SECRETS] Relay release identity unavailable: %v", identityErr)
+		return nil
+	}
 
 	selectedSet := make(map[string]bool, len(selectedNames))
 	for _, name := range selectedNames {

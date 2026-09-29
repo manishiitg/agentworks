@@ -1025,6 +1025,9 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
 		return
 	}
+	if !requireRelayReleaseVisible(w, r, workspacePath) {
+		return
+	}
 
 	// Build path to runs folder
 	runsPath := workspacePath + "/runs"
@@ -3155,6 +3158,9 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
 		return
 	}
+	if !requireRelayReleaseVisible(w, r, workspacePath) {
+		return
+	}
 
 	// Validate workspace path to prevent path traversal attacks
 	cleanedWorkspacePath := filepath.Clean(workspacePath)
@@ -4246,6 +4252,9 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workspace_path parameter is required", http.StatusBadRequest)
 		return
 	}
+	if !requireRelayReleaseVisible(w, r, workspacePath) {
+		return
+	}
 
 	// Validate workspace path to prevent path traversal attacks
 	cleanedWorkspacePath := filepath.Clean(workspacePath)
@@ -4309,6 +4318,9 @@ func (api *StreamingAPI) handleGetLogFile(w http.ResponseWriter, r *http.Request
 	filePath := r.URL.Query().Get("file_path")
 	if filePath == "" {
 		http.Error(w, "file_path parameter is required", http.StatusBadRequest)
+		return
+	}
+	if !requireRelayReleaseVisible(w, r, filePath) {
 		return
 	}
 
