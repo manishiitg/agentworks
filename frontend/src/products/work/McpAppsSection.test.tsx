@@ -25,6 +25,10 @@ describe('Sign-in apps card (admin)', () => {
     try {
       await act(async () => root.render(<McpAppsSection />))
       await flush()
+      // Minimized by default, with what needs setup in the summary line.
+      expect(host.textContent).toContain('Google not set up')
+      expect(host.textContent).not.toContain('Create credentials')
+      await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Manage')!).click())
       expect(host.textContent).toContain('Not set up')
       await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Google'))!).click())
       expect(host.textContent).toContain(REDIRECT)
@@ -40,6 +44,25 @@ describe('Sign-in apps card (admin)', () => {
       await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Save app'))!).click())
       await flush()
       expect(api.save).toHaveBeenCalledWith('google', '1.apps.googleusercontent.com', 'GOCSPX-test')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+  it('stays one line once every provider is set up, and shows the steps only to replace', async () => {
+    api.list.mockResolvedValue({ apps: [{ key: 'google', label: 'Google', servers: ['GoogleGmail'], configured: true, client_id: '1.apps.googleusercontent.com', required: true }], redirectUri: REDIRECT })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<McpAppsSection />))
+      await flush()
+      expect(host.textContent).toContain('Google set up')
+      expect(host.textContent).not.toContain('Create credentials')
+      expect(host.textContent).not.toContain(REDIRECT)
+      const click = async (label: string) => act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim().startsWith(label))!).click())
+      await click('Manage')
+      await click('Google')
+      expect(host.textContent).toContain('1.apps.googleusercontent.com')
+      expect(host.textContent).not.toContain('Create credentials')
+      await click('Replace')
+      expect(host.textContent).toContain('Create credentials')
+      expect(host.textContent).toContain(REDIRECT)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('renders nothing when no provider needs an app', async () => {

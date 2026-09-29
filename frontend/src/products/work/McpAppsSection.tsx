@@ -22,6 +22,10 @@ export function McpAppsSection() {
   const [redirectUri, setRedirectUri] = useState('')
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
+  // One line by default (admins open it with Manage); the steps and the form
+  // only show for a provider that still needs an app, or when replacing.
+  const [expanded, setExpanded] = useState(false)
+  const [replacing, setReplacing] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -45,6 +49,7 @@ export function McpAppsSection() {
 
   const openGroup = (key: string) => {
     setOpen(current => (current === key ? null : key))
+    setReplacing(null)
     setClientId(''); setClientSecret(''); setNotice(null); setError(null)
   }
 
@@ -67,7 +72,7 @@ export function McpAppsSection() {
     setBusy(key); setError(null)
     try {
       await mcpAppsApi.save(key, clientId.trim(), clientSecret.trim())
-      setClientId(''); setClientSecret(''); setOpen(null)
+      setClientId(''); setClientSecret(''); setOpen(null); setReplacing(null)
       await refresh()
     } catch (cause) {
       setError(errorText(cause, 'Could not save the app.'))
@@ -86,6 +91,21 @@ export function McpAppsSection() {
 
   if (loading) return null
   if (apps.length === 0) return null
+
+  if (!expanded) {
+    const ready = apps.filter(app => app.configured).map(app => app.label)
+    const missing = apps.filter(app => !app.configured).map(app => app.label)
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs" data-testid="mcp-apps-section">
+        <KeyRound className="h-3.5 w-3.5 text-primary" />
+        <span className="font-medium text-foreground">Sign-in apps</span>
+        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span>
+        {ready.length > 0 && <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{ready.join(', ')} set up</span>}
+        {missing.length > 0 && <span className="text-amber-600">{missing.join(', ')} not set up</span>}
+        <Button variant="ghost" size="sm" className="ml-auto h-6 px-2 text-xs" onClick={() => setExpanded(true)}>Manage</Button>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3" data-testid="mcp-apps-section">
@@ -108,9 +128,18 @@ export function McpAppsSection() {
                 ? <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />Set up</span>
                 : <span className="text-xs text-amber-600">Not set up</span>}
             </button>
-            {open === app.key && (
+            {open === app.key && app.configured && replacing !== app.key && (
+              <div className="flex flex-wrap items-center gap-2 border-t border-border p-3 text-xs text-muted-foreground">
+                <span>Client ID: <code className="break-all text-foreground">{app.client_id}</code></span>
+                <span className="ml-auto flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setReplacing(app.key)}>Replace</Button>
+                  <Button variant="ghost" size="sm" className="text-destructive" disabled={busy !== null} onClick={() => { void remove(app.key) }}>Remove</Button>
+                </span>
+              </div>
+            )}
+            {open === app.key && (!app.configured || replacing === app.key) && (
               <div className="space-y-2 border-t border-border p-3">
-                {app.configured && <p className="text-xs text-muted-foreground">Current client ID: <code className="break-all text-foreground">{app.client_id}</code>. Saving replaces it for everyone.</p>}
+                {app.configured && <p className="text-xs text-muted-foreground">Saving replaces the app for everyone.</p>}
                 <div className="rounded-md bg-muted/50 p-2 text-xs leading-5 text-muted-foreground">
                   {app.key === 'google' ? (
                     <ol className="list-decimal space-y-0.5 pl-4">
@@ -137,7 +166,7 @@ export function McpAppsSection() {
                 </div>
                 {notice && <p className="text-xs text-amber-600">{notice}</p>}
                 <div className="flex justify-end gap-2">
-                  {app.configured && <Button variant="ghost" size="sm" className="text-destructive" disabled={busy !== null} onClick={() => { void remove(app.key) }}>Remove</Button>}
+                  {app.configured && <Button variant="ghost" size="sm" onClick={() => setReplacing(null)}>Cancel</Button>}
                   <Button size="sm" disabled={busy !== null || !clientId.trim() || !clientSecret.trim()} onClick={() => { void save(app.key) }}>
                     {busy === app.key ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Save app
                   </Button>
