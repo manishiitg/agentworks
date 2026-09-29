@@ -34,9 +34,8 @@ function BranchChip({ repo, showName }: { repo: GitRepo; showName: boolean }) {
 }
 
 /** Branch strip above the tree (VS Code's status-bar branch); the rail switches to Source Control. */
-export function GitBar({ workspacePath }: { workspacePath: string }) {
+export function GitBar() {
   const repos = useWorkspaceGitStore(state => state.repos)
-  const refresh = useWorkspaceGitStore(state => state.refresh)
   if (repos.length === 0) return null
   return (
     <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-2 text-xs">
@@ -44,9 +43,6 @@ export function GitBar({ workspacePath }: { workspacePath: string }) {
         {repos.slice(0, 2).map(repo => <BranchChip key={repo.root} repo={repo} showName={repos.length > 1} />)}
         {repos.length > 2 && <span className="text-muted-foreground">+{repos.length - 2}</span>}
       </div>
-      <button type="button" aria-label="Refresh git status" title="Refresh git status" onClick={() => { void refresh(workspacePath) }} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-        <RefreshCw className="h-3.5 w-3.5" />
-      </button>
     </div>
   )
 }
@@ -195,7 +191,7 @@ function GitGraph({ workspacePath, repo, reloadKey }: { workspacePath: string; r
   )
 }
 
-function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }: {
+function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error, reloadKey }: {
   repo: GitRepo
   workspacePath: string
   showName: boolean
@@ -203,6 +199,8 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }:
   run: RunAction
   busy: boolean
   error: string | null
+  /** Bumped by the view's refresh so the graph and stashes reload with the status. */
+  reloadKey: number
 }) {
   const [message, setMessage] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -237,7 +235,6 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }:
             <button type="button" title="Ask the agent to push" aria-label="Push" onClick={() => { void onAsk(gitAgentPrompts.push(repo.root)) }} className={headerButton}><ArrowUp className="h-3.5 w-3.5" />{repo.ahead > 0 ? repo.ahead : ''}</button>
           </>
         )}
-        <button type="button" title="Refresh graph" aria-label="Refresh graph" onClick={() => setGraphKey(key => key + 1)} className={headerButton}><RefreshCw className="h-3.5 w-3.5" /></button>
       </div>
       <div className="px-2 pb-2">
         <div className="relative">
@@ -313,8 +310,8 @@ function RepoSection({ repo, workspacePath, showName, onAsk, run, busy, error }:
         {unstaged.map(file => <FileRow key={`u:${file.path}`} repo={repo} file={file} staged={false} workspacePath={workspacePath} busy={busy} run={run} />)}
       </Section>
       {repo.truncated && <p className="px-3 py-1 text-xs text-muted-foreground">Showing the first changes only.</p>}
-      <StashSection workspacePath={workspacePath} repo={repo} run={run} busy={busy} reloadKey={graphKey} />
-      <GitGraph workspacePath={workspacePath} repo={repo} reloadKey={graphKey} />
+      <StashSection workspacePath={workspacePath} repo={repo} run={run} busy={busy} reloadKey={graphKey + reloadKey} />
+      <GitGraph workspacePath={workspacePath} repo={repo} reloadKey={graphKey + reloadKey} />
     </section>
   )
 }
@@ -324,6 +321,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
   const repos = useWorkspaceGitStore(state => state.repos)
   const refresh = useWorkspaceGitStore(state => state.refresh)
   const [busyRepo, setBusyRepo] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
 
   const run: RunAction = async (repo, action) => {
@@ -346,7 +344,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
     <div className="flex h-full min-h-0 flex-col text-[13px]" aria-label="Source control">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source Control</h3>
-        <button type="button" aria-label="Refresh source control" title="Refresh" onClick={() => { void refresh(workspacePath) }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>
+        <button type="button" aria-label="Refresh source control" title="Refresh" onClick={() => { void refresh(workspacePath); setReloadKey(key => key + 1) }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
       {repos.map(repo => (
@@ -359,6 +357,7 @@ export function GitChangesList({ workspacePath, onAsk }: { workspacePath: string
           run={run}
           busy={busyRepo === repo.root}
           error={errors[repo.root] ?? null}
+          reloadKey={reloadKey}
         />
       ))}
       </div>

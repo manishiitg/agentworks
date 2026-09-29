@@ -135,7 +135,7 @@ export function FileWorkspacePane({
         <div className="flex h-full min-h-0 flex-row">
           {workspacePath && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {workspacePath && !changesOpen && <GitBar workspacePath={workspacePath} />}
+            {workspacePath && !changesOpen && <GitBar />}
             {workspacePath && changesOpen && hasRepos && (
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={workspacePath} onAsk={onAsk} /></div>
             )}
