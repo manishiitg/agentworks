@@ -718,6 +718,11 @@ type userAdminView struct {
 	Invited   bool   `json:"invited"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+	// InviteEmail is what happened to the invitation email on creation
+	// (sent, not_configured, exists or failed); empty when none was asked for.
+	InviteEmail  string `json:"invite_email,omitempty"`
+	InviteDetail string `json:"invite_detail,omitempty"`
+	SignInURL    string `json:"sign_in_url,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -795,6 +800,9 @@ type userWriteRequest struct {
 	Products     *[]string `json:"products"`
 	CodeReviewer *bool     `json:"code_reviewer"`
 	Disabled     *bool     `json:"disabled"`
+	// Invite: email the new person an invitation (create only; the person was
+	// added by email, without a password).
+	Invite bool `json:"invite,omitempty"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -917,7 +925,15 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 		return
 	}
 	log.Printf("[USERS] %s created user %s (role=%s products=%v code_reviewer=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products, rec.CodeReviewer)
-	writeUsersJSON(w, http.StatusCreated, viewOf(rec))
+	view := viewOf(rec)
+	if req.Invite {
+		// Adding the person has already succeeded: an email problem is
+		// reported, never a reason to fail.
+		result := api.invitePerson(r.Context(), r, rec, GetUserIDFromContext(r.Context()))
+		view.InviteEmail, view.InviteDetail, view.SignInURL = result.Status, result.Detail, publicBaseURL(r)
+		log.Printf("[USERS] invitation email for %s: %s", rec.Username, result.Status)
+	}
+	writeUsersJSON(w, http.StatusCreated, view)
 }
 
 // PUT /api/admin/users/{id}

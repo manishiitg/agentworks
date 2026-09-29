@@ -231,3 +231,42 @@ Read-only users see neither.
 
 Roles inside products, shareable Video Studio projects, teams or
 organisations, multiple server replicas.
+
+## Invitation email (2026-09-29)
+
+Adding a person by email (Access → Users, or the top-bar Users page) sends
+them an invitation through the same Supabase project that handles Google
+sign-in: Supabase Auth's admin invite (`POST /auth/v1/invite`). The link in the
+email lands on the deployment's sign-in page (`PUBLIC_URL`, else the request's
+host); the person continues with Google using the invited address, and the
+account keeps the role and products the admin set.
+
+- **Never blocks adding.** The create response carries `invite_email`:
+  `sent`, `not_configured` (no key: nothing goes out), `exists` (that address
+  already has a Supabase sign-in, so Supabase will not invite it again) or
+  `failed` with a reason (rate limit, default-SMTP team-only, unreachable).
+  The panel shows it and offers **Copy invitation** for anything but `sent`.
+- **Resend** on an Invited row: `POST /api/admin/users/{id}/invite`, admin only,
+  only for a person added by email who has not signed in.
+- **Setup, once per deployment (needs Supabase dashboard access):**
+  1. Authentication → SMTP: set a real SMTP account (for Excellence, Google
+     Workspace SMTP with an app password, sender no-reply@ their domain).
+     Until then Supabase only emails its own team, at 2 per hour, and every
+     invitee fails with "Email address not authorized".
+  2. Authentication → URL Configuration: add the deployment's URL to the
+     redirect allow list.
+  3. Authentication → Email Templates → Invite user: word it for the product
+     ("You have been added … sign in with Google using this address").
+  4. Put `SUPABASE_SERVICE_ROLE_KEY` in the server's private env file
+     (`/srv/<product>/.env`), never in git or in chat, and restart.
+- **Shared project.** Excellence signs in through Confida's Supabase project,
+  so SMTP settings and templates apply to Confida's own auth emails too, and
+  an invited address becomes a user of that project. A dedicated project
+  avoids both.
+- **The key is a full-admin secret for that project.** The server's
+  environment is inherited by coding-agent processes, so
+  `SUPABASE_SERVICE_ROLE_KEY` is on multi-llm-provider-go's scrub list
+  (`isScopedCredentialEnvironmentKey`): a scoped agent never inherits it.
+  Files the server user can read are still reachable by the CLIs' own read
+  tools until they are confined (PLAT-364 part 2), the same exposure as
+  `AUTH_SECRET`.

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail } from 'lucide-react'
+import { Loader2, Trash2, AlertCircle, Users, KeyRound, Ban, CheckCircle2, UserPlus, Mail, Copy, Send } from 'lucide-react'
 import { authApi, type AdminUser, type AdminUserWrite } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
@@ -11,6 +11,7 @@ import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { enabledProductSurfaces } from '../../products/productSurfaceConfig'
 import { selectableProducts } from './selectableProducts'
+import { deploymentName, invitationText, inviteNotice, type InviteEmailStatus } from './invitation'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -65,6 +66,13 @@ const UsersAdminPanel: React.FC = () => {
   const [inviteRole, setInviteRole] = useState<Role>('viewer')
   const [inviteProducts, setInviteProducts] = useState<string[]>([])
   const [inviting, setInviting] = useState(false)
+  // What happened to the last invitation email, with the text to copy.
+  const [inviteResult, setInviteResult] = useState<{ tone: 'ok' | 'copy' | 'error'; text: string; copy: string } | null>(null)
+  const showInviteResult = (status: InviteEmailStatus | undefined, email: string, detail: string | undefined, url: string | undefined) => {
+    const notice = inviteNotice(status, email, detail)
+    setInviteResult(notice ? { ...notice, copy: invitationText(deploymentName(), email, url || window.location.origin) } : null)
+  }
+  const copyInvitation = (email: string, url?: string) => { void navigator.clipboard?.writeText(invitationText(deploymentName(), email, url || window.location.origin)) }
   const inviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())
 
   const refresh = useCallback(async () => {
@@ -116,13 +124,15 @@ const UsersAdminPanel: React.FC = () => {
     setInviting(true)
     setError(null)
     try {
-      await authApi.createAdminUser({
+      const created = await authApi.createAdminUser({
         username: email,
         email,
         ...roleFields(inviteRole),
         // With one product there is nothing to choose: they get it.
         products: inviteRole === 'admin' ? [] : products.length === 1 ? products : inviteProducts,
+        invite: true,
       })
+      showInviteResult(created.invite_email, email, created.invite_detail, created.sign_in_url)
       setInviteEmail('')
       setInviteProducts([])
       await refresh()
@@ -181,6 +191,15 @@ const UsersAdminPanel: React.FC = () => {
                 </label>
               ))}
               {inviteProducts.length === 0 && <span className="text-muted-foreground">{inviteRole === 'creator' ? '(none ticked: all)' : '(none ticked: none)'}</span>}
+            </div>
+          )}
+          {inviteResult && (
+            <div role="status" className={`flex flex-wrap items-center gap-2 rounded-md border p-2 text-xs ${inviteResult.tone === 'ok' ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300' : inviteResult.tone === 'error' ? 'border-destructive/40 text-destructive' : 'border-amber-500/40 text-amber-700 dark:text-amber-300'}`}>
+              <span className="min-w-0 flex-1">{inviteResult.text}</span>
+              {inviteResult.tone !== 'ok' && (
+                <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(inviteResult.copy) }}><Copy className="mr-1 h-3.5 w-3.5" />Copy invitation</Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setInviteResult(null)}>Dismiss</Button>
             </div>
           )}
         </div>
@@ -287,6 +306,18 @@ const UsersAdminPanel: React.FC = () => {
                     <td className="py-2 align-top">
                       <div className="flex items-center justify-end gap-1">
                         {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                        {u.invited && u.email && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Send the invitation email again" aria-label={`Resend the invitation to ${u.email}`} disabled={busy}
+                              onClick={() => { void run(u.id, async () => { const result = await authApi.inviteAdminUser(u.id); showInviteResult(result.invite_email, u.email!, result.invite_detail, result.sign_in_url) }) }}>
+                              <Send className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Copy the invitation to send yourself" aria-label={`Copy the invitation for ${u.email}`} disabled={busy}
+                              onClick={() => copyInvitation(u.email!)}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

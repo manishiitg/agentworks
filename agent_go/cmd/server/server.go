@@ -2376,6 +2376,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
+	apiRouter.HandleFunc("/admin/users/{id}/invite", requireAdmin(api.handleAdminInviteUser)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminUpdateUser)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminDeleteUser)).Methods("DELETE")
 	apiRouter.HandleFunc("/workflow/user-permissions", requireWorkflowOwnerAccess(api.handleListWorkflowUserPermissions)).Methods("GET", "OPTIONS")
