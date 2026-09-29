@@ -3866,6 +3866,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
 	}
+	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -6132,7 +6133,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
-				if req.ExternalBuilderOperationID != "" {
+				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
 					readPaths, writePaths = externalBuilderFolderPaths(workflowPhaseFolder)
 					workspaceExecutors = wrapExecutorsWithFolderGuard(workspaceExecutors, "EXTERNAL BUILDER", "EXTERNAL BUILDER", folderGuardContextWorkflow, nil, fileContextBlockedWriteFolders, writePaths)
 				}
@@ -6803,21 +6804,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						sendError(fmt.Sprintf("Failed to configure coding-agent working directory: %v", err), true)
 						return
 					}
-					// Restrict shell commands to the workflow folder via Isolator
-					// Include #workflow read-only paths so the builder can read referenced workflows
-					phaseReadPaths := []string{phaseWorkspacePath, "Chats", "skills", "subagents", "Downloads"}
-					phaseReadPaths = append(phaseReadPaths, workflowReadOnlyFolders...)
-					workspace.SetSessionFolderGuard(sessionID,
-						phaseReadPaths,
-						[]string{phaseWorkspacePath, "Downloads"},
-					)
-					if req.ExternalBuilderOperationID != "" {
-						readPaths, writePaths := externalBuilderFolderPaths(phaseWorkspacePath)
-						workspace.SetSessionFolderGuard(sessionID, readPaths, writePaths)
-						workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, []string{phaseWorkspacePath + "/workflow.json", phaseWorkspacePath + "/planning/"})
-						protectOtherWorkflowBuilderChats(sessionID, phaseWorkspacePath, currentUserID)
-					}
-					// The phase setup above rebuilds the long-lived Builder guard.
+					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					todo_creation_human.ConfigureManagedWorkflowDBSession(
