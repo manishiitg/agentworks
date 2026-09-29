@@ -1044,7 +1044,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       setDeleteCandidate(null)
       useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”.`, 'success')
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : `Could not delete ${product.noun}.`
+      const serverMessage = (cause as { response?: { data?: { error?: string } } })?.response?.data?.error
+      const message = serverMessage || (cause instanceof Error ? cause.message : `Could not delete ${product.noun}.`)
       useChatStore.getState().addToast(`Failed to delete ${product.noun}: ${message}`, 'error')
     } finally {
       setDeletingProjectId(null)
@@ -1103,7 +1104,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         onConfirm={() => { void deleteProject() }}
         title={`Delete ${product.noun}`}
         message={deleteCandidate
-          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database? This cannot be undone.`
+          ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this Crew from every workflow before deleting it.' : ''} This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}

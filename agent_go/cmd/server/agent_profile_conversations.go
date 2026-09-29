@@ -355,6 +355,18 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			return
 		}
 	}
+	if strings.EqualFold(profile.ID, crewProfileID) {
+		used, err := crewUsedByWorkflow(r.Context(), profile.ID, binding.ResourceID, binding.WorkspacePath)
+		if err != nil {
+			log.Printf("[CREW_DELETE] could not check workflow dependencies for project %s: %v", binding.ResourceID, err)
+			writeAgentProfileError(w, http.StatusServiceUnavailable, "Could not check workflow dependencies. Try deleting the Crew again later.")
+			return
+		}
+		if used {
+			writeAgentProfileError(w, http.StatusConflict, "Remove this Crew from every workflow before deleting it.")
+			return
+		}
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
 	if err := client.DeleteFolder(r.Context(), binding.WorkspacePath); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
@@ -373,8 +385,10 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		removedIDs = append(removedIDs, record.SessionID)
 	}
 	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
-	// Other crews and workflows that attached this crew stop pointing at it.
-	go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+	if strings.EqualFold(profile.ID, crewProfileID) {
+		// Older context-path references do not prevent deletion.
+		go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+	}
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
 		// A deleted Code takes its share list with it, and everyone's
 		// personal MCP switches for it.
