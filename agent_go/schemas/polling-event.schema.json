@@ -586,6 +586,136 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "CodingAgentQuestionAnswer": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "selected_labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CodingAgentQuestionEvent": {
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "span_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "parent_id": {
+          "type": "string"
+        },
+        "is_end_event": {
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "hierarchy_level": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "native_session_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "native_sequence": {
+          "type": "integer"
+        },
+        "prompt_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/CodingAgentQuestionPrompt"
+          },
+          "type": "array"
+        },
+        "answers": {
+          "items": {
+            "$ref": "#/$defs/CodingAgentQuestionAnswer"
+          },
+          "type": "array"
+        },
+        "outcome": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CodingAgentQuestionOption": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CodingAgentQuestionPrompt": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "multi_select": {
+          "type": "boolean"
+        },
+        "min_selections": {
+          "type": "integer"
+        },
+        "max_selections": {
+          "type": "integer"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/CodingAgentQuestionOption"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ContextCancelledEvent": {
       "properties": {
         "timestamp": {
@@ -1020,6 +1150,9 @@
         "coding_agent_background_task": {
           "$ref": "#/$defs/CodingAgentBackgroundTaskEvent"
         },
+        "coding_agent_question": {
+          "$ref": "#/$defs/CodingAgentQuestionEvent"
+        },
         "synthetic_turn_ready": {
           "$ref": "#/$defs/SyntheticTurnReadyEvent"
         },
@@ -1087,6 +1220,7 @@
         "background_agent_terminated",
         "blocking_human_feedback",
         "coding_agent_background_task",
+        "coding_agent_question",
         "context_cancelled",
         "conversation_end",
         "conversation_error",

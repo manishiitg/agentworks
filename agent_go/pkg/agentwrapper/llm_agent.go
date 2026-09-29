@@ -103,6 +103,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			PersistentPi:                      config.PiPersistentInteractiveSession,
 			PersistentMuse:                    config.MusePersistentInteractiveSession,
 			PersistentAgy:                     config.AgyPersistentInteractiveSession,
+			UserAnswersNativeQuestions:        config.CodingAgentUserAnswersNativeQuestions,
 			CursorBridgeTools:                 config.CursorBridgeToolsMode,
 			AgentToolsMode:                    config.CodingAgentToolsMode,
 			ApprovalsMode:                     config.CodingAgentApprovalsMode,
@@ -318,9 +319,12 @@ type LLMAgentConfig struct {
 	PiPersistentInteractiveSession         bool
 	MusePersistentInteractiveSession       bool
 	AgyPersistentInteractiveSession        bool
-	CursorBridgeToolsMode                  bool
-	CodingAgentToolsMode                   string
-	CodingAgentApprovalsMode               string
+	// CodingAgentUserAnswersNativeQuestions: a person attends this chat and can
+	// answer the coding CLI's native questions; otherwise they are auto-answered.
+	CodingAgentUserAnswersNativeQuestions bool
+	CursorBridgeToolsMode                 bool
+	CodingAgentToolsMode                  string
+	CodingAgentApprovalsMode              string
 	// BridgeRoutingInstructionsOverride replaces mcpagent's generic
 	// bridge-only preamble. Product profiles with native coding tools use an
 	// empty override because their own prompt explains the product tools.

@@ -107,7 +107,7 @@
     <header class="hero">
       <div class="eyebrow">Pulse platform · Coding agent bridge</div>
       <h1>PLAT-354 — Show coding-agent native questions in chat</h1>
-      <div class="meta"><div class="meta-item"><span>Status</span><strong>Question card removed (auto-first everywhere); completion is structured for all five CLIs; submit path next</strong></div>
+      <div class="meta"><div class="meta-item"><span>Status</span><strong>Question card restored for attended Muse chats (2026-09-29); completion is structured for all five CLIs</strong></div>
 <div class="meta-item"><span>Priority</span><strong>P0 contract migration; P1 question flow</strong></div>
 <div class="meta-item"><span>Owner</span><strong>coding agent bridge and frontend chat</strong></div>
 <div class="meta-item"><span>Reported</span><strong>2026-09-23</strong></div>
@@ -443,6 +443,21 @@ path or a verified policy that prevents them from appearing. Test pause,
 answer, cancel, and resume without a person at the tmux pane. This is a
 future gate, not a mode change in PLAT-354.</p>
 <h2 id="migration-progress-2026-09-23">Migration progress (2026-09-23)</h2>
+<p class="contract-note"><strong>Decision (2026-09-29, user): the native question
+card is back for chats a person is attending.</strong> Muse's structured
+<code>user_input_prompt_requested</code> record drives a chat card; the person's
+choice is typed into the live widget after it is checked against that record.
+Unattended runs (schedule, bot, webhook, background stage) still auto-select the
+first option. Multi-select questions (<code>selection.mode = "multiple"</code>)
+render as checkboxes within the min/max bounds and are answered by toggling rows
+then Submit. The card always offers <em>Let Muse choose</em> (the auto-first
+answer), and a question the server reports as no longer open releases the input
+lock. A retried submit resumes at the question shown in the widget, and labels
+are matched with whitespace folded so wrapped or description-column rows match.
+Muse's <code>muse serve</code> (MSP) has a native <code>userInput/answer</code>
+method; moving Muse to that transport would retire the keystroke submit.
+Live: <code>TestMuseCLIRealStructuredQuestionChoiceP0</code> (single choice,
+three questions with review, multi-select).</p>
 <p class="contract-note"><strong>Decision (2026-09-23, user): the native question
 card is removed.</strong> Muse auto-selects the first option of its native
 <code>request_user_input</code> widget in every run: chat, schedule, bot,

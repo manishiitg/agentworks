@@ -170,6 +170,7 @@ interface ChatInputProps {
   // controls and render a simple customer-facing composer.
   surfaceVariant?: 'default' | 'product'
   placeholderOverride?: string
+  pendingNativeChoice?: boolean
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
   showCompactRuntimeLoading?: boolean
@@ -445,6 +446,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   tabId: scopedTabId,
   surfaceVariant = 'default',
   placeholderOverride,
+  pendingNativeChoice = false,
   showNewChatAction = false,
   hideRuntimeStatus = false,
   showCompactRuntimeLoading = false,
@@ -2265,6 +2267,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
     const trimmed = query?.trim() || ''
     if (!trimmed) return
+    if (pendingNativeChoice) {
+      addToast('Choose an option above before sending another message.', 'info')
+      return
+    }
     if (isUploadingFiles) {
       addToast('Wait for the file upload to finish before sending.', 'info')
       return
@@ -2354,7 +2360,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, canSubmit, isStreaming, isUploadingFiles, queueStreamingMessage])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, chatPastedAttachments, onSubmit, clearInputState, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, canSubmit, isStreaming, isUploadingFiles, queueStreamingMessage, pendingNativeChoice])
 
   // SparkQuill's voice auto-send: handleVoiceText already merged the
   // transcript into localInputText, but queryToSubmit (which also layers in
@@ -2907,13 +2913,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = Boolean(inputText?.trim())
-  const inputDisabled = isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
+  const inputDisabled = pendingNativeChoice || isViewOnly || (!tabSessionId && !canBootstrapMultiAgentTab && !canBootstrapWorkflowPhaseTab)
   // Product follow-ups are queued while a structured turn is working, including
   // the short interval before the backend has attached the live session.
-  const submitButtonDisabled = !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
+  const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || isUploadingFiles
   
   // Memoized placeholder
   const placeholder = useMemo(() => {
+    if (pendingNativeChoice) return 'Choose an option above to continue…'
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (isProductSurface) return isStreaming ? 'Add a message…' : (placeholderOverride || 'Describe what you want to create…')
     if (placeholderOverride) return placeholderOverride
@@ -2925,7 +2932,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab])
+  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.

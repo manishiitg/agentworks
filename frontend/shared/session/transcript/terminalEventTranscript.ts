@@ -86,9 +86,6 @@ const NON_TRANSCRIPT_TYPES = new Set([
   // typed product_interaction events declared in product.yaml.
   'work_identity_updated',
   'work_workflow_references_updated',
-  // Retired native-question card. Chats stored while it existed still carry
-  // these rows; coding-agent questions are now always auto-answered.
-  'coding_agent_question',
   'streaming_end',
   // Cache diagnostics are still emitted on the wire (one cache_event per
   // cached MCP connection per tool call) for observability tracers, but they

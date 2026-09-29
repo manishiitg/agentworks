@@ -65,6 +65,7 @@ import {
 import { activateTab } from '../utils/activateTab'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
+import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
@@ -972,6 +973,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
   ), [activeSessionId, displayEvents, olderHistory.events, olderHistory.sessionId])
+  // Questions the server says are no longer open (the CLI restarted or the
+  // turn ended without a settled record) must not keep the composer locked.
+  const [closedCodingAgentQuestions, setClosedCodingAgentQuestions] = useState<ReadonlySet<string>>(() => new Set())
+  const pendingCodingAgentChoice = useMemo(() => buildCleanConversationItems(transcriptEvents).some(
+    (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
+  ), [transcriptEvents, closedCodingAgentQuestions])
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.
@@ -3821,6 +3828,19 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
+            onAnswerCodingAgentQuestion={async (provider, promptId, answers, auto) => {
+              if (!activeSessionId) throw new Error('The coding agent session is no longer active')
+              try {
+                await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
+              } catch (cause) {
+                const detail = codingAgentQuestionErrorText(cause)
+                if (/no longer pending|unavailable/i.test(detail)) {
+                  setClosedCodingAgentQuestions((current) => new Set(current).add(promptId))
+                  throw new Error('This question is no longer open. You can keep chatting.')
+                }
+                throw new Error(detail || 'Could not submit this choice. Refresh and try again.')
+              }
+            }}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
         ) : selectedModeCategory === 'workflow' ? (
@@ -3975,6 +3995,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           showProductTerminalControl={showProductTerminalControl}
           showNewChatAction={showNewChatAction}
           placeholderOverride={composerPlaceholder}
+          pendingNativeChoice={pendingCodingAgentChoice}
         />
       )}
 
@@ -3998,3 +4019,9 @@ const ChatArea = ChatAreaInner
 ChatArea.displayName = 'ChatArea'
 
 export default ChatArea
+
+function codingAgentQuestionErrorText(cause: unknown): string {
+  const data = (cause as { response?: { data?: unknown } })?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  return cause instanceof Error ? cause.message : ''
+}

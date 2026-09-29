@@ -136,6 +136,7 @@ export interface EventDataUnion {
   background_agent_completed?: BackgroundAgentCompletedEvent;
   background_agent_terminated?: BackgroundAgentTerminatedEvent;
   coding_agent_background_task?: CodingAgentBackgroundTaskEvent;
+  coding_agent_question?: CodingAgentQuestionEvent;
   synthetic_turn_ready?: SyntheticTurnReadyEvent;
   auto_notification_steered?: AutoNotificationSteeredEvent;
   presentation_updated?: PresentationUpdatedEvent;
@@ -950,6 +951,47 @@ export interface CodingAgentBackgroundTaskEvent {
   native_sequence?: number;
   kind?: string;
   message?: string;
+}
+export interface CodingAgentQuestionEvent {
+  timestamp?: string;
+  trace_id?: string;
+  span_id?: string;
+  event_id?: string;
+  parent_id?: string;
+  is_end_event?: boolean;
+  correlation_id?: string;
+  hierarchy_level?: number;
+  session_id?: string;
+  component?: string;
+  metadata?: {
+    [k: string]: unknown;
+  };
+  provider?: string;
+  native_session_id?: string;
+  run_id?: string;
+  native_sequence?: number;
+  prompt_id?: string;
+  kind?: string;
+  questions?: CodingAgentQuestionPrompt[];
+  answers?: CodingAgentQuestionAnswer[];
+  outcome?: string;
+}
+export interface CodingAgentQuestionPrompt {
+  id?: string;
+  header?: string;
+  question?: string;
+  multi_select?: boolean;
+  min_selections?: number;
+  max_selections?: number;
+  options?: CodingAgentQuestionOption[];
+}
+export interface CodingAgentQuestionOption {
+  label?: string;
+  description?: string;
+}
+export interface CodingAgentQuestionAnswer {
+  id?: string;
+  selected_labels?: string[];
 }
 export interface SyntheticTurnReadyEvent {
   timestamp?: string;
