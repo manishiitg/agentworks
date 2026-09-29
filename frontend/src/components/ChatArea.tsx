@@ -23,7 +23,7 @@ import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest } from './useTranscriptScroll'
 import { MainAgentTerminal } from './MainAgentTerminal'
-import { placeViewKey, rememberedPlaceViewMode } from '../utils/placeViewMode'
+import { placeViewKey } from '../utils/placeViewMode'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetStore } from '../stores'
@@ -657,9 +657,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeTab = useChatStore(state =>
     targetTabId ? state.chatTabs[targetTabId] : undefined
   )
-  // Open each tab in the view (chat or terminal) the person last chose for
-  // its Crew, Code or workflow. Applied once per tab and place, so an
-  // automatic fallback to chat (terminal unavailable) is never fought.
+  // Every Crew, Code or workflow opens in the chat view (user, 2026-09-29):
+  // the terminal is a choice for the moment, not remembered. Applied once per
+  // tab and place, so switching to the terminal afterwards is never fought.
   const activePlaceViewKey = placeViewKey(activeTab)
   const appliedPlaceViewRef = useRef(new Set<string>())
   useEffect(() => {
@@ -667,9 +667,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const appliedKey = `${activeTab.tabId}|${activePlaceViewKey}`
     if (appliedPlaceViewRef.current.has(appliedKey)) return
     appliedPlaceViewRef.current.add(appliedKey)
-    const remembered = rememberedPlaceViewMode(activeTab)
-    if (remembered && remembered !== normalizeEventViewMode(activeTab.viewMode)) {
-      useChatStore.getState().setTabViewMode(activeTab.tabId, remembered)
+    if (normalizeEventViewMode(activeTab.viewMode) !== 'formatted') {
+      useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per tab and place
   }, [activeTab?.tabId, activePlaceViewKey])

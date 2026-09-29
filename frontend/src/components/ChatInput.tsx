@@ -1,5 +1,4 @@
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
-import { rememberPlaceViewMode } from '../utils/placeViewMode'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
@@ -130,12 +129,10 @@ import { terminalSessionUsageLines, terminalUsageLines } from './terminalUsage'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 
-// The person's own chat/terminal choice: applied to this tab and remembered
-// for its Crew, Code or workflow.
+// The person's chat/terminal choice for this tab. Not remembered: every
+// Crew, Code or workflow opens in the chat view.
 function chooseViewMode(tabId: string, mode: 'formatted' | 'terminal') {
-  const store = useChatStore.getState()
-  store.setTabViewMode(tabId, mode)
-  rememberPlaceViewMode(store.chatTabs[tabId], mode)
+  useChatStore.getState().setTabViewMode(tabId, mode)
 }
 
 // A dismissed picker stays closed while the user keeps typing the same token
