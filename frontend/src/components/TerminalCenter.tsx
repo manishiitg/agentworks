@@ -20,7 +20,7 @@ import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { normalizeEventViewMode, useChatStore } from '../stores/useChatStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { TERMINAL_REFRESH_REQUEST_EVENT } from '../utils/terminalRefresh'
-import { GEOMETRY_RECONNECT_AFTER_CLOSE, planGeometryChange, planLiveAttachClose, terminalGridChange, terminalGridNeedsReconnect, terminalReconnectDelayMs, terminalSnapshotCanReconnect, type GeometryChangeStep } from '../utils/terminalReconnect'
+import { GEOMETRY_RECONNECT_AFTER_CLOSE, LIVE_ATTACH_INBAND_RESEED_DEBOUNCE_MS, LIVE_ATTACH_INBAND_RESEED_TIMEOUT_MS, LiveAttachReseedTracker, planGeometryChange, planLiveAttachClose, routeLiveAttachFrame, terminalGridChange, terminalReconnectDelayMs, terminalSnapshotCanReconnect, type GeometryChangeStep } from '../utils/terminalReconnect'
 import { terminalPayloadHasVisibleContent } from '../utils/terminalVisibleContent'
 import { useTheme } from '../hooks/useTheme'
 import { useSessionExecutionTree } from '../hooks/useSessionExecutionTree'
@@ -168,6 +168,8 @@ const LIVE_ATTACH_SNAPSHOT_LINES = 200
 // ONLY signal that distinguishes eviction from an ordinary disconnect, and the
 // only thing preventing two open tabs from evicting each other in a loop.
 const LIVE_ATTACH_SUPERSEDED_CLOSE_CODE = 4001
+// Trailing debounce on ResizeObserver before a fit is evaluated.
+const LIVE_ATTACH_FIT_DEBOUNCE_MS = 120
 const TERMINAL_SETTLED_CAPTURE_INTERVAL_MS = 400
 const TERMINAL_SETTLED_CAPTURE_MIN_WINDOW_MS = 1200
 const TERMINAL_SETTLED_CAPTURE_STABLE_SAMPLES = 2
@@ -1460,11 +1462,14 @@ function useSpinnerFrame(active: boolean): string {
 //
 // The xterm stays display-only (disableStdin, no onData -> WS): input keeps
 // flowing through the EXISTING chat live-input / send-keys path into the tmux
-// session and returns as %output over this same WS. A connection keeps one fixed
-// terminal grid. Layout changes reconnect with the new dimensions so the backend
-// resizes tmux before producing a fresh in-band seed; this prevents bytes wrapped
-// for an old width from being interpreted by an already-resized xterm. Running
-// sessions also reconnect on socket close, so recovery needs no client replay.
+// session and returns as %output over this same WS; the socket itself carries
+// only resize frames from the browser. A width change re-seeds IN-BAND on the
+// same socket (a reseed request, then the server's marker and a fresh seed at
+// the new width); bytes arriving between the request and the marker may be
+// wrapped for the old width and are dropped, so they are never interpreted by
+// an already-resized xterm. A server that never answers falls back to
+// reconnecting with the new dimensions. Running sessions also reconnect on
+// socket close, so recovery needs no client replay.
 const LiveAttachXtermPaneInner: React.FC<{
   terminalId: string
   tmuxSession?: string
@@ -1481,7 +1486,7 @@ const LiveAttachXtermPaneInner: React.FC<{
   streamUrl?: (cols: number, rows: number) => string
   loadSnapshot?: () => Promise<TerminalSnapshot>
 }> = ({ terminalId, tmuxSession, sessionId, className, contentRef, xtermTheme, authoritativeContent, authoritativeVersion, reconnectOnClose, onViewportStickChange, onScrollToBottomReady, onOutputText, streamUrl, loadSnapshot }) => {
-  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'snapshot' | 'settled' | 'superseded'>('connecting')
+  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'snapshot' | 'settled' | 'superseded' | 'revoked' | 'exited'>('connecting')
   // Set inside the socket effect so the superseded badge's "Take over" button
   // can re-attach this pane without remounting it.
   const takeOverRef = useRef<(() => void) | null>(null)
@@ -1565,6 +1570,20 @@ const LiveAttachXtermPaneInner: React.FC<{
     let seedTimer: number | undefined
     let resizeReconnectPending = false
     let superseded = false
+    // Set by a final close code (access revoked / CLI exited): nothing
+    // reconnects afterwards.
+    let finalState = false
+    // Set while connect() waits for a usable (visible) fit box.
+    let awaitingFitBox = false
+    const reseed = new LiveAttachReseedTracker()
+    let reseedTimer: number | undefined
+    let reseedDebounceTimer: number | undefined
+    const clearReseedTimers = () => {
+      if (reseedTimer !== undefined) window.clearTimeout(reseedTimer)
+      if (reseedDebounceTimer !== undefined) window.clearTimeout(reseedDebounceTimer)
+      reseedTimer = undefined
+      reseedDebounceTimer = undefined
+    }
 
     const clearSeedTimer = () => {
       if (seedTimer !== undefined) {
@@ -1633,6 +1652,21 @@ const LiveAttachXtermPaneInner: React.FC<{
         setConnectionState('settled')
         return
       }
+      if (!hasUsableTerminalFitBox(contentRef.current || mount)) {
+        // A hidden/collapsed pane still holds its previous grid; connecting now
+        // would seed tmux at that stale width. Wait for the ResizeObserver to
+        // report a usable box (fitTerminal resumes here), with the slow retry
+        // kept as a backstop for visibility changes that do not resize the box.
+        awaitingFitBox = true
+        reconnectTimer = window.setTimeout(connect, terminalReconnectDelayMs(failedAttempts))
+        return
+      }
+      awaitingFitBox = false
+      try {
+        fitRawXtermToVisibleGrid(fit)
+      } catch {
+        // Fall through to the grid check below.
+      }
       if (!hasUsableGrid()) {
         // The pane can be transiently hidden/collapsed when a reconnect fires.
         // Retry instead of bailing: returning here used to strand the stream
@@ -1655,7 +1689,7 @@ const LiveAttachXtermPaneInner: React.FC<{
       wsRef.current = ws
       // Per-connection decoder: a partial multibyte sequence from a dropped
       // socket must not leak into the next connection's first chunk.
-      const decoder = new TextDecoder()
+      let decoder = new TextDecoder()
       // The first frame of every (re)connect is the backend's in-band seed
       // (reset + scrollback history + current screen). It gets the same
       // embedded-xterm ANSI normalization as the static snapshot path (drops
@@ -1674,6 +1708,32 @@ const LiveAttachXtermPaneInner: React.FC<{
         // Its replacement starts with an authoritative reset + seed.
         if (resizeReconnectPending || wsRef.current !== ws) return
         const data = ev.data
+        const route = routeLiveAttachFrame(reseed, data)
+        if (route.kind === 'drop' || route.kind === 'ignore-marker') {
+          // While a reseed is pending, bytes may be wrapped for the old width
+          // and the seed after the marker already contains their effect. A
+          // marker for a superseded request is ignored; the newer one follows.
+          return
+        }
+        if (route.kind === 'reseed') {
+          if (reseedTimer !== undefined) {
+            window.clearTimeout(reseedTimer)
+            reseedTimer = undefined
+          }
+          // Only now is the old screen discarded: the next binary frame is
+          // the authoritative seed captured at the new grid.
+          resetRawXtermForGeometryChange()
+          try {
+            term.resize(route.grid.cols, route.grid.rows)
+          } catch {
+            // The seed still lands; the next fit corrects the grid.
+          }
+          decoder = new TextDecoder()
+          seedPending = true
+          // The layout may have moved again while the reseed was in flight.
+          scheduleFit(true)
+          return
+        }
         if (seedPending) {
           seedPending = false
           clearSeedTimer()
@@ -1710,7 +1770,12 @@ const LiveAttachXtermPaneInner: React.FC<{
       ws.onclose = event => {
         clearSeedTimer()
         const wasCurrentSocket = wsRef.current === ws
-        if (wasCurrentSocket) wsRef.current = null
+        if (wasCurrentSocket) {
+          wsRef.current = null
+          // The replacement socket starts with a full seed of its own.
+          reseed.cancel()
+          clearReseedTimers()
+        }
         const action = planLiveAttachClose({
           code: event.code,
           paneClosed: closed,
@@ -1731,6 +1796,14 @@ const LiveAttachXtermPaneInner: React.FC<{
           resizeReconnectPending = false
           superseded = true
           setConnectionState('superseded')
+          return
+        }
+        if (action === 'access-revoked' || action === 'cli-exited') {
+          // Final: reconnecting cannot bring the stream back. Keep the last
+          // rendered frame and say why.
+          resizeReconnectPending = false
+          finalState = true
+          setConnectionState(action === 'access-revoked' ? 'revoked' : 'exited')
           return
         }
         if (action === 'geometry-reconnect') {
@@ -1844,6 +1917,50 @@ const LiveAttachXtermPaneInner: React.FC<{
       }
     }
 
+    const minimumGrid = { cols: RAW_XTERM_MIN_FIT_COLS, rows: RAW_XTERM_MIN_FIT_ROWS }
+
+    // Old-server / failed-reseed path: close this socket and reconnect at the
+    // new grid (the reconnect seeds from scratch).
+    const reconnectForGeometry = () => {
+      const steps = planGeometryChange({
+        hasSocket: Boolean(wsRef.current),
+        alreadyPending: resizeReconnectPending,
+        needsReconnect: true,
+        superseded: superseded || finalState,
+      })
+      for (const step of steps) {
+        if (!runGeometryStep(step)) break
+      }
+    }
+
+    // Sends one in-band reseed request for the settled grid. The old screen
+    // stays up (no reset, no badge) until the matching marker arrives.
+    const requestReseed = () => {
+      reseedDebounceTimer = undefined
+      if (closed || superseded || finalState || resizeReconnectPending) return
+      const ws = wsRef.current
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      // Never reseed a hidden/collapsed pane at a stale width; the
+      // ResizeObserver fires again once the box is usable.
+      if (!hasUsableTerminalFitBox(contentRef.current || mount)) return
+      const proposed = fit.proposeDimensions()
+      const current = reseed.pendingGrid ?? { cols: term.cols, rows: term.rows }
+      if (!proposed || terminalGridChange(current, proposed, minimumGrid) === 'none') return
+      const request = reseed.begin({ cols: proposed.cols, rows: proposed.rows })
+      try {
+        ws.send(JSON.stringify(request))
+      } catch {
+        reseed.cancel()
+        reconnectForGeometry()
+        return
+      }
+      if (reseedTimer !== undefined) window.clearTimeout(reseedTimer)
+      reseedTimer = window.setTimeout(() => {
+        reseedTimer = undefined
+        if (reseed.timeout(request.epoch)) reconnectForGeometry()
+      }, LIVE_ATTACH_INBAND_RESEED_TIMEOUT_MS)
+    }
+
     const fitTerminal = () => {
       try {
         if (!hasUsableTerminalFitBox(contentRef.current || mount)) return
@@ -1852,29 +1969,50 @@ const LiveAttachXtermPaneInner: React.FC<{
           if (hasUsableGrid()) connect()
           return
         }
+        if (awaitingFitBox && !wsRef.current && !closed) {
+          // A reconnect was parked on a hidden pane; the box is usable again.
+          if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+          reconnectTimer = undefined
+          connect()
+          return
+        }
 
-        const currentGrid = { cols: term.cols, rows: term.rows }
+        // Compare against the grid a pending reseed is moving to, not the
+        // xterm grid it has not been resized to yet.
+        const currentGrid = reseed.pendingGrid ?? { cols: term.cols, rows: term.rows }
         const proposedGrid = fit.proposeDimensions()
-        const minimumGrid = { cols: RAW_XTERM_MIN_FIT_COLS, rows: RAW_XTERM_MIN_FIT_ROWS }
         const gridChange = terminalGridChange(currentGrid, proposedGrid, minimumGrid)
+        if (gridChange === 'none') return
+        const openSocket = wsRef.current?.readyState === WebSocket.OPEN ? wsRef.current : null
+        const socketOpen = openSocket !== null
 
         // Vertical layout changes do not alter line wrapping. Resize xterm and
         // tmux over the existing socket so the browser's accumulated history is
         // retained. Reconnecting here used to send a RIS seed, clearing all
         // xterm scrollback; Claude's alternate-screen TUI commonly has
         // tmux history_size=0, so there was nothing with which to restore it.
-        if (gridChange === 'rows-only' && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (gridChange === 'rows-only' && socketOpen && !reseed.shouldDropBinary() && !resizeReconnectPending) {
           fitRawXtermToVisibleGrid(fit)
-          wsRef.current.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+          openSocket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
           return
         }
 
-        const needsReconnect = terminalGridNeedsReconnect(currentGrid, proposedGrid, minimumGrid)
+        // A width change (or any change while a reseed is in flight) re-seeds
+        // in-band on this socket once the layout has settled.
+        if (socketOpen && reseed.supported && !resizeReconnectPending && !superseded && !finalState) {
+          if (reseedDebounceTimer !== undefined) window.clearTimeout(reseedDebounceTimer)
+          reseedDebounceTimer = window.setTimeout(
+            requestReseed,
+            Math.max(0, LIVE_ATTACH_INBAND_RESEED_DEBOUNCE_MS - LIVE_ATTACH_FIT_DEBOUNCE_MS),
+          )
+          return
+        }
+
         const steps = planGeometryChange({
           hasSocket: Boolean(wsRef.current),
           alreadyPending: resizeReconnectPending,
-          needsReconnect,
-          superseded,
+          needsReconnect: gridChange === 'columns',
+          superseded: superseded || finalState,
         })
         for (const step of steps) {
           if (!runGeometryStep(step)) break
@@ -1893,7 +2031,13 @@ const LiveAttachXtermPaneInner: React.FC<{
       if (!force && sameFitBox) return
       lastObservedFitBox = { width: fitBox.width, height: fitBox.height }
       if (fitTimer !== undefined) window.clearTimeout(fitTimer)
-      fitTimer = window.setTimeout(fitTerminal, 120)
+      // The layout is still moving: a queued reseed would capture a width
+      // that is about to change. fitTerminal re-queues it once settled.
+      if (reseedDebounceTimer !== undefined) {
+        window.clearTimeout(reseedDebounceTimer)
+        reseedDebounceTimer = undefined
+      }
+      fitTimer = window.setTimeout(fitTerminal, LIVE_ATTACH_FIT_DEBOUNCE_MS)
     }
     // Wait for one settled layout pass before opening the stream. In the app the
     // terminal pane is flex-sized after mount; connecting immediately can seed
@@ -1911,6 +2055,7 @@ const LiveAttachXtermPaneInner: React.FC<{
       if (fitTimer !== undefined) window.clearTimeout(fitTimer)
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
       clearSeedTimer()
+      clearReseedTimers()
       const ws = wsRef.current
       wsRef.current = null
       if (ws) {
@@ -2017,6 +2162,8 @@ const LiveAttachXtermPaneInner: React.FC<{
             {connectionState === 'snapshot' && 'Showing latest snapshot · connecting'}
             {connectionState === 'settled' && 'Terminal session ended'}
             {connectionState === 'superseded' && 'Open in another window · showing snapshot'}
+            {connectionState === 'revoked' && 'Terminal access revoked'}
+            {connectionState === 'exited' && 'The CLI exited'}
           </span>
           {connectionState === 'superseded' && (
             // Deliberately explicit: taking over evicts the other window, so it

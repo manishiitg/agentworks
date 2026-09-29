@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { TerminalSnapshot } from '../services/api-types'
 import {
   GEOMETRY_RECONNECT_AFTER_CLOSE,
+  LIVE_ATTACH_ACCESS_REVOKED_CLOSE_CODE,
+  LIVE_ATTACH_CLI_EXITED_CLOSE_CODE,
+  LiveAttachReseedTracker,
   planGeometryChange,
   planLiveAttachClose,
+  routeLiveAttachFrame,
   terminalGridChange,
   terminalGridNeedsReconnect,
   terminalReconnectDelayMs,
@@ -142,5 +146,106 @@ describe('live-attach close classification', () => {
 
   it('does not reconnect a settled terminal', () => {
     expect(planLiveAttachClose({ ...base, reconnectOnClose: false })).toBe('ignore')
+  })
+
+  it('treats access-revoked and CLI-exited as final states, never reconnects', () => {
+    expect(LIVE_ATTACH_ACCESS_REVOKED_CLOSE_CODE).toBe(4003)
+    expect(LIVE_ATTACH_CLI_EXITED_CLOSE_CODE).toBe(4004)
+    for (const patch of [{}, { resizeReconnectPending: true }, { reconnectOnClose: false }]) {
+      expect(planLiveAttachClose({ ...base, ...patch, code: 4003 })).toBe('access-revoked')
+      expect(planLiveAttachClose({ ...base, ...patch, code: 4004 })).toBe('cli-exited')
+    }
+    // Stale sockets stay ignored.
+    expect(planLiveAttachClose({ ...base, code: 4004, wasCurrentSocket: false })).toBe('ignore')
+  })
+
+  it('never reconnects a pane left in a final state on a later geometry change', () => {
+    // The pane passes superseded||finalState into the planner.
+    expect(planGeometryChange({ hasSocket: false, alreadyPending: false, needsReconnect: true, superseded: true })).toEqual([])
+  })
+})
+
+describe('in-band reseed', () => {
+  const bin = (text: string) => new TextEncoder().encode(text).buffer
+  const marker = (epoch: number, cols = 90, rows = 30) => JSON.stringify({ type: 'reseed', epoch, cols, rows })
+
+  it('sends a reseed resize frame with an increasing epoch', () => {
+    const tracker = new LiveAttachReseedTracker()
+    expect(tracker.begin({ cols: 90, rows: 30 })).toEqual({ type: 'resize', cols: 90, rows: 30, reseed: true, epoch: 1 })
+    expect(tracker.begin({ cols: 80, rows: 30 }).epoch).toBe(2)
+  })
+
+  it('passes output through when no reseed is pending', () => {
+    const tracker = new LiveAttachReseedTracker()
+    expect(routeLiveAttachFrame(tracker, bin('live'))).toEqual({ kind: 'output' })
+  })
+
+  it('drops binary frames until the matching marker, and resets only on the marker', () => {
+    const tracker = new LiveAttachReseedTracker()
+    const { epoch } = tracker.begin({ cols: 90, rows: 30 })
+    // Old-width output keeps arriving; none of it is written, and none of it
+    // triggers a reset (the old screen stays visible meanwhile).
+    const routes = ['a', 'b', 'c'].map(chunk => routeLiveAttachFrame(tracker, bin(chunk)))
+    expect(routes.every(route => route.kind === 'drop')).toBe(true)
+    expect(routes.some(route => route.kind === 'reseed')).toBe(false)
+
+    expect(routeLiveAttachFrame(tracker, marker(epoch))).toEqual({ kind: 'reseed', grid: { cols: 90, rows: 30 } })
+    // The seed and live output after the marker are written normally.
+    expect(routeLiveAttachFrame(tracker, bin('\x1bcseed'))).toEqual({ kind: 'output' })
+    expect(routeLiveAttachFrame(tracker, bin('live'))).toEqual({ kind: 'output' })
+    expect(tracker.pendingEpoch).toBeNull()
+  })
+
+  it('ignores stale markers from a superseded request', () => {
+    const tracker = new LiveAttachReseedTracker()
+    const first = tracker.begin({ cols: 90, rows: 30 })
+    const second = tracker.begin({ cols: 70, rows: 30 })
+    // The first request's marker and seed arrive: ignored, seed still dropped.
+    expect(routeLiveAttachFrame(tracker, marker(first.epoch))).toEqual({ kind: 'ignore-marker' })
+    expect(routeLiveAttachFrame(tracker, bin('seed@90'))).toEqual({ kind: 'drop' })
+    expect(routeLiveAttachFrame(tracker, marker(second.epoch, 70, 30))).toEqual({ kind: 'reseed', grid: { cols: 70, rows: 30 } })
+    // A late duplicate/older marker after completion is ignored too.
+    expect(routeLiveAttachFrame(tracker, marker(first.epoch))).toEqual({ kind: 'ignore-marker' })
+    expect(routeLiveAttachFrame(tracker, bin('live'))).toEqual({ kind: 'output' })
+  })
+
+  it('uses the geometry the server applied (clamped) when the marker carries it', () => {
+    const tracker = new LiveAttachReseedTracker()
+    const { epoch } = tracker.begin({ cols: 900, rows: 30 })
+    expect(routeLiveAttachFrame(tracker, marker(epoch, 500, 30))).toEqual({ kind: 'reseed', grid: { cols: 500, rows: 30 } })
+    const next = tracker.begin({ cols: 88, rows: 31 })
+    expect(routeLiveAttachFrame(tracker, JSON.stringify({ type: 'reseed', epoch: next.epoch }))).toEqual({ kind: 'reseed', grid: { cols: 88, rows: 31 } })
+  })
+
+  it('falls back to reconnecting when no marker arrives in time, and stops trying reseed on old servers', () => {
+    const tracker = new LiveAttachReseedTracker()
+    const { epoch } = tracker.begin({ cols: 90, rows: 30 })
+    expect(tracker.timeout(epoch)).toBe(true)
+    // After the fallback, output is no longer dropped (the reconnect takes over).
+    expect(routeLiveAttachFrame(tracker, bin('x'))).toEqual({ kind: 'output' })
+    // A server that never answered is treated as not supporting reseed.
+    expect(tracker.supported).toBe(false)
+  })
+
+  it('does not fall back for a timer whose request already completed or was superseded', () => {
+    const tracker = new LiveAttachReseedTracker()
+    const first = tracker.begin({ cols: 90, rows: 30 })
+    const second = tracker.begin({ cols: 80, rows: 30 })
+    expect(tracker.timeout(first.epoch)).toBe(false)
+    routeLiveAttachFrame(tracker, marker(second.epoch, 80, 30))
+    expect(tracker.timeout(second.epoch)).toBe(false)
+    expect(tracker.supported).toBe(true)
+    // A later timeout on a server that has answered before stays on reseed.
+    const third = tracker.begin({ cols: 70, rows: 30 })
+    expect(tracker.timeout(third.epoch)).toBe(true)
+    expect(tracker.supported).toBe(true)
+  })
+
+  it('clears the pending request when the socket closes', () => {
+    const tracker = new LiveAttachReseedTracker()
+    tracker.begin({ cols: 90, rows: 30 })
+    tracker.cancel()
+    expect(tracker.pendingGrid).toBeNull()
+    expect(routeLiveAttachFrame(tracker, bin('seed'))).toEqual({ kind: 'output' })
   })
 })

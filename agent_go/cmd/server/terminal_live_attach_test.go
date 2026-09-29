@@ -2,7 +2,6 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -752,8 +751,8 @@ func TestLiveAttachAddViewerSeedsAndStreams(t *testing.T) {
 	st.broadcast([]byte("live"))
 	select {
 	case b := <-viewer.ch:
-		if string(b) != "live" {
-			t.Fatalf("got %q, want live", string(b))
+		if string(b.data) != "live" {
+			t.Fatalf("got %q, want live", string(b.data))
 		}
 	case <-time.After(time.Second):
 		t.Fatal("viewer did not receive live bytes")
@@ -901,15 +900,15 @@ func TestLiveAttachSeedSpliceExcludesPreSeedOutput(t *testing.T) {
 	}
 	select {
 	case b := <-viewer.ch:
-		t.Fatalf("viewer received pre-seed output %q; must be dropped (already in the capture)", string(b))
+		t.Fatalf("viewer received pre-seed output %q; must be dropped (already in the capture)", string(b.data))
 	default:
 	}
 
 	st.broadcast([]byte("post-seed"))
 	select {
 	case b := <-viewer.ch:
-		if string(b) != "post-seed" {
-			t.Fatalf("got %q, want post-seed", string(b))
+		if string(b.data) != "post-seed" {
+			t.Fatalf("got %q, want post-seed", string(b.data))
 		}
 	case <-time.After(time.Second):
 		t.Fatal("viewer did not receive post-seed bytes")
@@ -961,8 +960,8 @@ func TestLiveAttachManagerSupersedesPreviousViewer(t *testing.T) {
 		if !ok {
 			t.Fatal("newest viewer channel closed")
 		}
-		if string(b) != "hello" {
-			t.Fatalf("got %q, want hello", b)
+		if string(b.data) != "hello" {
+			t.Fatalf("got %q, want hello", b.data)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("newest viewer did not receive broadcast")
@@ -1479,7 +1478,7 @@ func windowSizeResponder(cols, rows int, screen []string) func(string) liveattac
 	}
 }
 
-func viewerClosed(t *testing.T, ch chan []byte) bool {
+func viewerClosed(t *testing.T, ch chan liveAttachFrame) bool {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
 	for {
@@ -1547,8 +1546,8 @@ func TestLiveAttachLayoutChangeIgnoresSelfInflictedResize(t *testing.T) {
 		if !ok {
 			t.Fatal("viewer dropped by a self-inflicted layout change")
 		}
-		if string(b) != "still-live" {
-			t.Fatalf("got %q, want still-live", string(b))
+		if string(b.data) != "still-live" {
+			t.Fatalf("got %q, want still-live", string(b.data))
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("viewer did not receive live bytes after layout change")
@@ -1586,52 +1585,6 @@ func TestLiveAttachInitialSizeClampsOversizedGeometry(t *testing.T) {
 	cols, rows := liveAttachInitialSize(req)
 	if cols != liveAttachMaxCols || rows != liveAttachMaxRows {
 		t.Fatalf("initial size = %dx%d, want clamp to %dx%d", cols, rows, liveAttachMaxCols, liveAttachMaxRows)
-	}
-}
-
-func TestLiveAttachRawInputChunksLargePaste(t *testing.T) {
-	// Each byte becomes its own send-keys -H argument, so a large paste must be
-	// split across commands or the argv blows past ARG_MAX and never reaches
-	// the pane.
-	var mu sync.Mutex
-	var calls [][]string
-	origRun := runTerminalTmuxCommand
-	runTerminalTmuxCommand = func(ctx context.Context, stdin string, args ...string) error {
-		mu.Lock()
-		defer mu.Unlock()
-		calls = append(calls, append([]string(nil), args...))
-		return nil
-	}
-	t.Cleanup(func() { runTerminalTmuxCommand = origRun })
-
-	api := &StreamingAPI{}
-	payload := bytes.Repeat([]byte("a"), liveAttachRawInputChunkBytes*2+7)
-	api.liveAttachRawInput(context.Background(), "sessPaste", payload)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(calls) != 3 {
-		t.Fatalf("send-keys call count = %d, want 3 chunks", len(calls))
-	}
-	var got []byte
-	for _, args := range calls {
-		if len(args) < 5 || args[0] != "send-keys" || args[3] != "-H" {
-			t.Fatalf("unexpected send-keys argv: %#v", args[:min(len(args), 6)])
-		}
-		if hexBytes := len(args) - 4; hexBytes > liveAttachRawInputChunkBytes {
-			t.Fatalf("chunk carried %d bytes, want <= %d", hexBytes, liveAttachRawInputChunkBytes)
-		}
-		for _, h := range args[4:] {
-			var b byte
-			if _, err := fmt.Sscanf(h, "%02x", &b); err != nil {
-				t.Fatalf("bad hex argument %q: %v", h, err)
-			}
-			got = append(got, b)
-		}
-	}
-	// Chunking must be transparent: the pane sees the exact original bytes.
-	if !bytes.Equal(got, payload) {
-		t.Fatalf("reassembled payload (%d bytes) != original (%d bytes)", len(got), len(payload))
 	}
 }
 
