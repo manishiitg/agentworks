@@ -13,6 +13,7 @@ import type { ReportCostOptions, ReportDataApi } from './reportEmbedContext'
 import { getReportGoalMetrics, renderReportGoalProgress } from './reportGoalProgress'
 import { REPORT_OPEN_ATTR, REPORT_SRC_ATTR } from './reportMarkdownLinks'
 import { reportDaisyUiHead } from './reportDaisyUi'
+import { selectReportDocument } from '../reportDocuments'
 
 export type ReportHostTheme = 'dark' | 'light'
 
@@ -325,6 +326,21 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
       if (/^https?:\/\//i.test(href)) {
         e.preventDefault()
         window.open(href, '_blank', 'noopener,noreferrer')
+        return
+      }
+
+      // A relative link would navigate the frame against the app's own URL
+      // (a srcdoc frame inherits the parent's base), and the server answers
+      // an unknown path with the app itself: the whole UI rendered inside
+      // the dashboard. Never let the frame navigate; a link to another
+      // dashboard view (`tasks.html`, `./tasks.html`) switches to that view.
+      if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+        e.preventDefault()
+        const view = href.split(/[?#]/)[0].replace(/^\.\//, '')
+        const workspacePath = win.report?.workspacePath
+        if (/\.html$/i.test(view) && typeof workspacePath === 'string') {
+          selectReportDocument(workspacePath, view.startsWith('db/reports/') ? view : `db/reports/${view}`)
+        }
       }
     })
   }
@@ -339,6 +355,8 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   // fixes every existing report at once and cannot be forgotten by whatever
   // authors the next one.
   const showReportError = (message: string, source?: string) => {
+    // A Chromium diagnostic, not a failure (see main.tsx isBenignRendererError).
+    if (String(message || '').includes('ResizeObserver loop')) return
     const text = String(message || 'Unknown error').slice(0, 400)
     if (Array.isArray(win.__reportHostErrors)) {
       win.__reportHostErrors.push(source ? `${text} (${source})` : text)
