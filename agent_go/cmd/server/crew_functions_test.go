@@ -973,3 +973,27 @@ func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {
 		t.Fatalf("failure detail dropped the target's work: %q", detail)
 	}
 }
+
+// A private peer call to a Code is listed only for the person who made it:
+// the Code's owner never sees an editor's call results (#246 review H1).
+func TestRecentCallsHidePrivateCodePeerCallsFromOthers(t *testing.T) {
+	crewFunctionCalls.Lock()
+	saved := crewFunctionCalls.m
+	crewFunctionCalls.m = map[string]*crewFunctionCall{
+		"fn-peer": {ID: "fn-peer", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "code-y", TargetProfileID: codeproduct.ProfileID, Function: "run", Status: "done", Result: map[string]interface{}{"secret": "from bob's MCP"}},
+		"fn-crew": {ID: "fn-crew", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "crew-z", TargetProfileID: "work", Function: "run", Status: "done"},
+	}
+	crewFunctionCalls.Unlock()
+	t.Cleanup(func() { crewFunctionCalls.Lock(); crewFunctionCalls.m = saved; crewFunctionCalls.Unlock() })
+
+	if got := recentCrewFunctionCalls("code-y", "alice"); len(got) != 0 {
+		t.Fatalf("owner saw an editor's private peer call: %+v", got)
+	}
+	if got := recentCrewFunctionCalls("code-y", "bob"); len(got) != 1 || got[0].CallID != "fn-peer" {
+		t.Fatalf("the caller must see their own peer call: %+v", got)
+	}
+	// Calls to a Crew stay visible to whoever can open that Crew.
+	if got := recentCrewFunctionCalls("crew-z", "alice"); len(got) != 1 {
+		t.Fatalf("Crew calls list: %+v", got)
+	}
+}
