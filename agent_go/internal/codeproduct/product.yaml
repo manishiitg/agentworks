@@ -20,9 +20,12 @@ profile:
     - files
     - browser
     - secrets
-    # Global platform servers selected per Code (as in a Crew), plus each
-    # person's own servers in their own chats (docs/design/code_private_mcp.md).
-    - mcp
+    # Each person's own servers in their own chats
+    # (docs/design/code_private_mcp.md). scope personal: the agent gets only
+    # manage_my_mcp_servers, never the tools that create connections shared
+    # with everyone.
+    - id: mcp
+      options: {scope: personal}
     - skills
     - attached-folders
     - id: workflow-references

@@ -1708,6 +1708,7 @@ func init() {
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
+	ServerCmd.AddCommand(setMCPAppCmd)
 	ServerCmd.AddCommand(migrateDurableChatsCmd)
 	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
@@ -1985,6 +1986,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	} else if report.Imported > 0 || report.Duplicates > 0 || report.Quarantined > 0 {
 		log.Printf("[COST_LEDGER] Legacy migration imported=%d duplicates=%d quarantined=%d",
 			report.Imported, report.Duplicates, report.Quarantined)
+	}
+	// Cursor Auto calls recorded before Auto had an estimated price.
+	if n, repriceErr := costLedger.RepriceUnpriced(estimateCursorAutoCost); repriceErr != nil {
+		log.Printf("[COST_LEDGER] Repricing Cursor Auto calls skipped after error: %v", repriceErr)
+	} else if n > 0 {
+		log.Printf("[COST_LEDGER] Priced %d earlier Cursor Auto call(s) at the estimated average", n)
 	}
 	fmt.Printf("💾 Operator store: workspace API (%s)\n", getWorkspaceAPIURL())
 	fmt.Printf("💵 Cost events: SQLite (%s)\n", costDBPath)
@@ -2420,6 +2427,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleListPersonalMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers", api.handleAddPersonalMCP).Methods("POST")
 	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
+	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
+	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
@@ -3866,6 +3876,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if crewGuest != "" {
 		currentUserIsReadOnly = true
 	}
+	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
@@ -6132,7 +6143,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
-				if req.ExternalBuilderOperationID != "" {
+				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
 					readPaths, writePaths = externalBuilderFolderPaths(workflowPhaseFolder)
 					workspaceExecutors = wrapExecutorsWithFolderGuard(workspaceExecutors, "EXTERNAL BUILDER", "EXTERNAL BUILDER", folderGuardContextWorkflow, nil, fileContextBlockedWriteFolders, writePaths)
 				}
@@ -6803,21 +6814,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						sendError(fmt.Sprintf("Failed to configure coding-agent working directory: %v", err), true)
 						return
 					}
-					// Restrict shell commands to the workflow folder via Isolator
-					// Include #workflow read-only paths so the builder can read referenced workflows
-					phaseReadPaths := []string{phaseWorkspacePath, "Chats", "skills", "subagents", "Downloads"}
-					phaseReadPaths = append(phaseReadPaths, workflowReadOnlyFolders...)
-					workspace.SetSessionFolderGuard(sessionID,
-						phaseReadPaths,
-						[]string{phaseWorkspacePath, "Downloads"},
-					)
-					if req.ExternalBuilderOperationID != "" {
-						readPaths, writePaths := externalBuilderFolderPaths(phaseWorkspacePath)
-						workspace.SetSessionFolderGuard(sessionID, readPaths, writePaths)
-						workspace.SetSessionFolderGuardBlockedWritePaths(sessionID, []string{phaseWorkspacePath + "/workflow.json", phaseWorkspacePath + "/planning/"})
-						protectOtherWorkflowBuilderChats(sessionID, phaseWorkspacePath, currentUserID)
-					}
-					// The phase setup above rebuilds the long-lived Builder guard.
+					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
 					// Reapply the managed DB boundary on every setup/restore so old
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					todo_creation_human.ConfigureManagedWorkflowDBSession(

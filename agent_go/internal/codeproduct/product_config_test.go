@@ -79,3 +79,35 @@ func TestNewProjectFilesHaveANameOnly(t *testing.T) {
 		}
 	}
 }
+
+// A Code's MCP connections are personal: its agent gets manage_my_mcp_servers
+// and none of the tools that create, edit, remove or select connections shared
+// with everyone (an admin's "connect my Gmail" must never share their account),
+// nor the shared-connection skill.
+func TestCodeMCPIsPersonalOnly(t *testing.T) {
+	profile := BuiltinAgentProfile()
+	if err := agentprofiles.ResolveFeatures(&profile); err != nil {
+		t.Fatal(err)
+	}
+	enabled := map[string]bool{}
+	for _, tool := range profile.ToolPolicy.Enabled {
+		enabled[tool] = true
+	}
+	if !enabled["manage_my_mcp_servers"] {
+		t.Fatal("Code lost its personal MCP tool")
+	}
+	for _, tool := range []string{"install_mcp_server", "add_mcp_server", "remove_mcp_server", "update_project_mcp_server_selection", "list_mcp_servers", "search_mcp_catalog", "get_mcp_server_logs", "trigger_mcp_discovery"} {
+		if enabled[tool] {
+			t.Fatalf("Code can use the shared-connection tool %s", tool)
+		}
+	}
+	for _, skill := range profile.Skills {
+		if strings.HasSuffix(skill, "-mcp") {
+			t.Fatalf("Code attaches the shared MCP skill %s", skill)
+		}
+	}
+	guidance := strings.Join(agentprofiles.FeaturePromptExtensions(profile), "\n")
+	if !strings.Contains(guidance, "manage_my_mcp_servers") || strings.Contains(guidance, "code-mcp") || strings.Contains(guidance, "platform connection setup") {
+		t.Fatalf("Code's MCP guidance is not the personal one: %s", guidance)
+	}
+}

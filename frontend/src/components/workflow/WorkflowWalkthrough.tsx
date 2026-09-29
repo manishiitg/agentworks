@@ -214,12 +214,85 @@ const CREW_STEPS: WalkthroughStep[] = [
   },
 ]
 
+const EMPTY_CODE_STEPS: WalkthroughStep[] = [
+  {
+    title: 'What is Code for?',
+    body: 'Code is your private workspace with an AI agent: write, research, analyse, build and automate, however you like. Your files, chats and connected apps stay yours, and you share a workspace only with people you choose.',
+    example: 'Ask it to clean up a spreadsheet, draft a report, or build and test a feature.',
+  },
+  {
+    selector: '[data-tour="crew-empty-state"]',
+    title: 'Your workspaces start here',
+    body: 'Create a workspace to keep a piece of work’s chat, files and connections together.',
+  },
+  {
+    selector: '[data-tour="crew-create"]',
+    title: 'Create a workspace',
+    body: 'Give it a name. Once it opens, a separate guide shows you around.',
+  },
+  {
+    selector: '[data-tour="global-providers"]',
+    title: 'Providers',
+    body: 'Connect a model or coding agent for your workspaces to use, or use one an admin shared with you.',
+  },
+  {
+    selector: '[data-tour="global-mcp"]',
+    title: 'Connect an AI agent',
+    body: 'Admins and reviewers: connect your own AI agent to this server, for example to review workspaces.',
+  },
+  {
+    selector: '[data-tour="global-users"]',
+    title: 'Add your team',
+    body: 'Admins: add people by email. They sign in with Google, and you choose what each person can open.',
+  },
+]
+
+const CODE_STEPS: WalkthroughStep[] = [
+  {
+    title: 'Your private workspace',
+    body: 'Chat with the agent, keep your files, and connect your own apps here. Only you and the people you share it with can open it; administrators and reviewers can view it read-only.',
+    example: 'Ask it to research a topic, then turn the notes into a document.',
+  },
+  {
+    selector: '[data-tour="crew-chat"]',
+    title: 'Work together in chat',
+    body: 'Ask for anything: write, analyse, research, build or automate. You can follow up while the agent is working.',
+  },
+  {
+    selector: '[data-tour="chat-input-box"]',
+    title: 'Describe the work',
+    body: 'Type your request here. Use @ to refer to files and / to browse commands; to add a command of your own, ask the agent to create it.',
+  },
+  {
+    selector: '[data-tour="chat-send-controls"]',
+    title: 'Attach and send',
+    body: 'Add files or context, then send your request.',
+  },
+  {
+    selector: '[data-tour="work-tools"]',
+    title: 'Workspace tools',
+    body: 'Open files, the browser and costs, and Setup for sharing, your connected apps (MCPs, each with your own sign-in), your secrets and models.',
+  },
+  {
+    selector: '[data-tour="crew-workspace"]',
+    title: 'Workspace pane',
+    body: 'The selected file, view or setup page appears here.',
+  },
+  {
+    selector: '[data-tour="global-providers"]',
+    title: 'Providers',
+    body: 'Choose which model or coding agent this workspace uses.',
+  },
+]
+
 const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
   overview: OVERVIEW_STEPS,
   'empty-automation': EMPTY_AUTOMATION_STEPS,
   automation: AUTOMATION_STEPS,
   'empty-crew': EMPTY_CREW_STEPS,
   crew: CREW_STEPS,
+  'empty-code': EMPTY_CODE_STEPS,
+  code: CODE_STEPS,
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
@@ -228,6 +301,8 @@ const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: str
   automation: { product: 'Goals', section: 'Automation', aria: 'Automation workspace walkthrough' },
   'empty-crew': { product: 'Crew', section: 'Getting started', aria: 'Empty Crew walkthrough' },
   crew: { product: 'Crew', section: 'Workspace', aria: 'Crew workspace walkthrough' },
+  'empty-code': { product: 'Code', section: 'Getting started', aria: 'Empty Code walkthrough' },
+  code: { product: 'Code', section: 'Workspace', aria: 'Code workspace walkthrough' },
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)

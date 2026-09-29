@@ -52,7 +52,7 @@ it('offers separate user, workflow, crew and project summaries with cross naviga
   await click(button(container, 'Bots'))
   expect(container.textContent).toContain('External channel delivery fees are not included')
   await click(button(container, 'MCP'))
-  expect(container.textContent).toContain('Known service chargeUnknown')
+  expect(container.textContent).toContain('Known service chargeNone recorded')
   await click(button(container, 'Other'))
   expect(container.textContent).toContain('Unattributed activity')
 })
@@ -65,9 +65,9 @@ it('labels unpriced workflow cost as unknown instead of zero', async () => {
   } as CostOverview)
   const container = await render()
   await click(button(container, 'Workflows'))
-  expect(container.textContent).toContain('Tracked costUnknown')
-  expect(container.textContent).toContain('472 LLM calls have unknown cost')
-  expect(button(container, 'rts')?.textContent).toContain('Unknown')
+  expect(container.textContent).toContain('Tracked costNot priced')
+  expect(container.textContent).toContain('472 LLM calls have no price')
+  expect(button(container, 'rts')?.textContent).toContain('Not priced')
 })
 
 it('shows cost by account with the split by work and person', async () => {

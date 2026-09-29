@@ -332,10 +332,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
 		// A Code resolves in the caller's own tree, or under an owner who
 		// shared it with them; turn access (owner/co-owner/editor) was
-		// checked by conversationTargetAccess. Like a Crew, a Code runs with
-		// native agent tools unless its "Native agent tools" switch is off
-		// (owner decision 2026-09-28; the CLIs' own reads are not sandboxed
-		// yet, PLAT-364 part 2).
+		// checked by conversationTargetAccess. Like a Crew, a Code always runs
+		// with native agent tools: there is no switch (owner decision
+		// 2026-09-29; the CLIs' own reads are not sandboxed yet, PLAT-364
+		// part 2).
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
 			return nil, fmt.Errorf("agent_profile_conversation_key is required for Code")
@@ -347,7 +347,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		crewOwned = project.OwnedByCaller
 		crewRoot = project.Binding.WorkspacePath
 		// Everyone who may chat with a Code (owner, co-owner, editor) gets
-		// the Code's switch; viewers never reach this turn.
+		// native tools; viewers never reach this turn.
 		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "hybrid"
 		}

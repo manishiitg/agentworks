@@ -9,6 +9,8 @@ import { Badge } from '../ui/badge'
 import { Input } from '../ui/Input'
 import { SecretField } from '../ui/SecretField'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
+import { enabledProductSurfaces } from '../../products/productSurfaceConfig'
+import { selectableProducts } from './selectableProducts'
 
 // One role per account. The server stamps `role` and dual-writes the legacy
 // booleans; both are sent so older servers (which ignore `role`) enforce
@@ -32,10 +34,12 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
 
 const PRODUCT_LABELS: Record<string, string> = {
   agentworks: 'Goals',
+  work: 'Crew',
+  code: 'Code',
   'video-studio': 'Video Studio',
   finance: 'Finance',
   dominion: 'Dominion',
-  code: 'Code',
+  sparkquill: 'SparkQuill',
 }
 const productLabel = (id: string) => PRODUCT_LABELS[id] ?? id
 
@@ -69,7 +73,7 @@ const UsersAdminPanel: React.FC = () => {
     try {
       const resp = await authApi.listAdminUsers()
       setUsers(resp.users || [])
-      setProducts(resp.products || [])
+      setProducts(selectableProducts(resp.products || [], enabledProductSurfaces()))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -116,7 +120,8 @@ const UsersAdminPanel: React.FC = () => {
         username: email,
         email,
         ...roleFields(inviteRole),
-        products: inviteRole === 'admin' ? [] : inviteProducts,
+        // With one product there is nothing to choose: they get it.
+        products: inviteRole === 'admin' ? [] : products.length === 1 ? products : inviteProducts,
       })
       setInviteEmail('')
       setInviteProducts([])
@@ -162,7 +167,7 @@ const UsersAdminPanel: React.FC = () => {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">{ROLES.find((r) => r.value === inviteRole)?.hint}</p>
-          {inviteRole !== 'admin' && products.length > 0 && (
+          {inviteRole !== 'admin' && products.length > 1 && (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">Products:</span>
               {products.map((p) => (
@@ -251,6 +256,9 @@ const UsersAdminPanel: React.FC = () => {
                       {role === 'admin' ? (
                         <span className="text-xs text-muted-foreground">all</span>
                       ) : (
+                        products.length === 1 ? (
+                          <span className="text-xs text-muted-foreground">{productLabel(products[0])}</span>
+                        ) : (
                         <div className="flex flex-wrap gap-2 text-xs">
                           {products.map((p) => (
                             <label key={p} className="inline-flex items-center gap-1.5">
@@ -266,6 +274,7 @@ const UsersAdminPanel: React.FC = () => {
                           {role === 'creator' && u.products.length === 0 && <span className="text-muted-foreground">(all)</span>}
                           {(role === 'viewer' || role === 'editor') && u.products.length === 0 && <span className="text-muted-foreground">(none)</span>}
                         </div>
+                        )
                       )}
                     </td>
                     <td className="py-2 pr-3 align-top text-xs">

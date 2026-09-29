@@ -26,7 +26,7 @@ const overviewCurrency = (amount: number) => {
 
 const costLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'call_count' | 'unpriced_call_count'>) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0
-    ? 'Unknown'
+    ? 'Not priced'
     : overviewCurrency(usage.total_cost_usd)
 
 const unpricedLabel = (count?: number) =>
@@ -189,7 +189,7 @@ export default function CostsOverview() {
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
             <span className="font-medium text-gray-900 dark:text-gray-100">How to read this: </span>
             {costSources.length > 0 ? costSources.join(' · ') : (total?.total_cost_usd ?? 0) > 0 ? 'Recorded cost source unavailable' : 'No priced usage recorded'}.
-            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have unknown cost and are excluded from the tracked amount.`}
+            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have no price and are left out of the tracked amount: the provider did not report a cost and there is no rate for that model (for example Cursor Composer). Their tokens are still counted.`}
             {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription-equivalent estimates are not your subscription bill.'}
           </div>
 

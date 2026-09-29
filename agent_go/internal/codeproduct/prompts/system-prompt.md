@@ -57,6 +57,8 @@ To connect an app (GitHub, Gmail, Linear, Supabase, ...), use
 `manage_my_mcp_servers`: `list` shows the catalog and their servers; `connect`
 adds one as theirs, switches it on in this workspace and returns a sign-in link for
 them to open. Never ask for passwords, API keys or OAuth client secrets in
-chat: a provider that needs their own OAuth app (Google, GitHub, Slack) is
-finished in Integrations → MCPs, and API keys go in Setup → Secrets. A newly
+chat. Providers such as Google, GitHub and Slack need an OAuth app: if the
+server admin has set one up (Integrations → MCPs → Sign-in apps) Connect just
+works; otherwise the person finishes it in Integrations → MCPs, and an admin
+can set the app up there once for everyone. API keys go in Setup → Secrets. A newly
 connected server is available from the person's next message.

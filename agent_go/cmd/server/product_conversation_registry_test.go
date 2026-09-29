@@ -526,8 +526,9 @@ func TestTriggerRunsShareTheTriggersOwnConversation(t *testing.T) {
 	}
 }
 
-// The crew's "Native agent tools" switch lives in workflow.json capabilities
-// and must reach the binding that resolveAgentProfileForQuery reads.
+// A project's native agent tools are always on: the switch is gone (2026-09-29),
+// and an older project's stored "off" no longer reaches the binding that
+// resolveAgentProfileForQuery reads.
 func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
 	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Work/projects"}
@@ -540,7 +541,7 @@ func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 	}{
 		{`{"native_agent_tools":true}`, true},
 		{`{}`, true}, // on by default
-		{`{"native_agent_tools":false}`, false},
+		{`{"native_agent_tools":false}`, true}, // no switch any more: a stored off is ignored
 	} {
 		store := productProjectStore{
 			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
@@ -557,6 +558,34 @@ func TestWorkProjectBindingLoadsNativeAgentTools(t *testing.T) {
 		}
 		if binding.ProjectNativeAgentTools != tc.want {
 			t.Fatalf("capabilities %s: ProjectNativeAgentTools = %v, want %v", tc.capabilities, binding.ProjectNativeAgentTools, tc.want)
+		}
+	}
+}
+
+// A Code has no "Native agent tools" switch: they are always on, even for a
+// Code whose workflow.json still says off from before the switch was removed.
+func TestCodeProjectBindingAlwaysHasNativeAgentTools(t *testing.T) {
+	profile := routeTestProfile("code", true, "")
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, ProjectsRoot: "Chats/Code/projects"}
+	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
+	manifestPath := "_users/user-1/Chats/Code/projects/app/product.json"
+	runtimePath := "_users/user-1/Chats/Code/projects/app/workflow.json"
+	for _, capabilities := range []string{`{}`, `{"native_agent_tools":true}`, `{"native_agent_tools":false}`} {
+		store := productProjectStore{
+			listPaths: func(context.Context, string) ([]string, bool, error) { return []string{manifestPath}, true, nil },
+			read: func(_ context.Context, path string) (string, bool, error) {
+				if path == runtimePath {
+					return `{"schema_version":1,"id":"task-1","capabilities":` + capabilities + `}`, true, nil
+				}
+				return `{"schema_version":1,"product":"code","id":"task-1","title":"App","session_id":"code:project:task-1"}`, true, nil
+			},
+		}
+		binding, err := resolveProductProjectBindingWithStore(context.Background(), "user-1", profile, "task-1", store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !binding.ProjectNativeAgentTools {
+			t.Fatalf("capabilities %s: a Code lost native agent tools", capabilities)
 		}
 	}
 }

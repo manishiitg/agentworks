@@ -361,3 +361,12 @@ Code ships a basic setup first; integrations come later. In Code's
   them see the running app. It is useful for UI work but exposes server ports,
   so it needs per-user lockdown. Not decided; not in the first version unless
   decided.
+
+## Native agent tools (2026-09-29)
+
+A Crew and a Code have no "Native agent tools" switch: they are always on and
+people cannot turn them off. The server ignores a `native_agent_tools: false`
+an older project stored (`ProjectNativeAgentTools` is always true for a
+project product). The separate per-workflow setting is unchanged. A Crew's
+native tools still apply to its owner's own turns only; readers keep
+AgentWorks-only tools.

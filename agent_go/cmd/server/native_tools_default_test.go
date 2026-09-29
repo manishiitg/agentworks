@@ -129,7 +129,8 @@ func TestNativeToolsOnForSlackCrewTurn(t *testing.T) {
 	if mode := crewTurn(`{"capabilities":{}}`); mode != "hybrid" {
 		t.Fatalf("Slack DM Crew turn decided %q, want hybrid", mode)
 	}
-	if mode := crewTurn(`{"capabilities":{"native_agent_tools":false}}`); mode != "mcp_only" {
-		t.Fatalf("Crew switch off decided %q, want mcp_only", mode)
+	// No switch any more (2026-09-29): an older Crew's stored "off" is ignored.
+	if mode := crewTurn(`{"capabilities":{"native_agent_tools":false}}`); mode != "hybrid" {
+		t.Fatalf("a Crew with a stored off decided %q, want hybrid: native tools are always on", mode)
 	}
 }

@@ -52,7 +52,7 @@ const currency = (amount: number) => {
 }
 
 const amountLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'unpriced_call_count'>) =>
-  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Unknown' : currency(usage.total_cost_usd)
+  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd)
 
 const tokens = (usage: CostAggregate) =>
   (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0) + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0)
@@ -103,9 +103,9 @@ function PricingDetail({ usage }: { usage: CostOverviewAggregate }) {
       </div>)}
     </dl> : <p className="mt-1 text-gray-600 dark:text-gray-300">No priced calls recorded.</p>}
     {(usage.unpriced_call_count ?? 0) > 0 && <p className="mt-2 text-gray-600 dark:text-gray-300">
-      {usage.unpriced_call_count?.toLocaleString()} LLM calls have unknown cost and are excluded from the tracked amount.
+      {usage.unpriced_call_count?.toLocaleString()} LLM calls have no price and are left out of the tracked amount: the provider did not report a cost and there is no rate for that model (for example Cursor Composer). Their tokens are still counted.
     </p>}
-    {(usage.subscription_shadow_cost_usd ?? 0) > 0 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Subscription equivalent is a usage estimate, not the subscription bill.</p>}
+    {(usage.subscription_shadow_cost_usd ?? 0) > 0 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Subscription equivalent is a usage estimate, not the subscription bill. Cursor Auto is priced at an average rate, because Auto bills whichever model each request is routed to.</p>}
   </section>
 }
 
@@ -203,7 +203,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
               <span className="block text-xs text-gray-500 dark:text-gray-400">{row.subtitle}</span>
             </span>
             <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
-              {row.mcp ? row.mcp.recorded_cost_usd > 0 ? currency(row.mcp.recorded_cost_usd) : 'Unknown' : amountLabel(row.usage!)}
+              {row.mcp ? row.mcp.recorded_cost_usd > 0 ? currency(row.mcp.recorded_cost_usd) : 'None recorded' : amountLabel(row.usage!)}
               {(row.usage?.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] font-normal text-gray-500 dark:text-gray-400">{row.usage?.unpriced_call_count?.toLocaleString()} unpriced</span>}
             </span>
           </button>)}
@@ -254,7 +254,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
           {selected.item && (selected.item.by_mcp?.length ?? 0) > 0 && <section className="mt-5">
             <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">MCP calls</h4>
             <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
-              {selected.item.by_mcp?.map(mcp => <div key={mcp.server} className="flex justify-between gap-3"><span>{mcp.server} · {mcp.calls.toLocaleString()} calls</span><span>{mcp.recorded_cost_usd > 0 ? currency(mcp.recorded_cost_usd) : 'Unknown'}</span></div>)}
+              {selected.item.by_mcp?.map(mcp => <div key={mcp.server} className="flex justify-between gap-3"><span>{mcp.server} · {mcp.calls.toLocaleString()} calls</span><span>{mcp.recorded_cost_usd > 0 ? currency(mcp.recorded_cost_usd) : 'None recorded'}</span></div>)}
             </div>
           </section>}
           {selected.bot && <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">External channel delivery fees are not included.</p>}
@@ -263,7 +263,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <Metric label="MCP calls" value={selected.mcp.calls.toLocaleString()} />
             <Metric label="Unpriced calls" value={selected.mcp.unpriced_calls.toLocaleString()} />
-            <Metric label="Known service charge" value={selected.mcp.recorded_cost_usd > 0 ? currency(selected.mcp.recorded_cost_usd) : 'Unknown'} />
+            <Metric label="Known service charge" value={selected.mcp.recorded_cost_usd > 0 ? currency(selected.mcp.recorded_cost_usd) : 'None recorded'} />
           </div>
           <p className="mt-4 text-sm leading-6 text-gray-600 dark:text-gray-300">The MCP service did not report a price for unpriced calls. Model tokens used to process tool results remain in the LLM usage totals.</p>
         </>}

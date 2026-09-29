@@ -5,6 +5,7 @@ import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import SchedulesPage from '../../components/SchedulesPage'
+import AdminPages from '../../components/AdminPages'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
@@ -789,6 +790,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   const [createError, setCreateError] = useState<string | null>(null)
   const showProviders = useLLMStore((state) => state.showLLMModal)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
+  const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
@@ -1073,7 +1075,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       <ModePresetBar
         productControl={topBarControl}
         reduced
-        walkthroughSurface={selected ? 'crew' : 'empty-crew'}
+        walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
         walkthroughReady={!sessionsLoading && !creating && !error}
         // The guided tour is Crew's (identity, templates, automation); a Code
         // never opens it on its own.
@@ -1116,7 +1118,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       >
         <LlmModalHost />
         {showSchedulesOverview && !showProviders && <SchedulesPage />}
-        <div className={showProviders || showSchedulesOverview ? 'hidden' : 'h-full'}>
+        {adminPage && !showProviders && <AdminPages />}
+        <div className={showProviders || showSchedulesOverview || adminPage ? 'hidden' : 'h-full'}>
           {error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : !selected ? (

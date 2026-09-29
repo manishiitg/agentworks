@@ -7,6 +7,9 @@ import { ConnectorGroupSection } from '../../components/connectors/ConnectorGrou
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Checkbox } from '../../components/ui/checkbox'
+import { McpAppsSection } from './McpAppsSection'
+import { parseOAuthClientJson } from './oauthClientJson'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { personalMcpApi, type PersonalMcpCatalogServer, type PersonalMcpServer } from '../../api/personalMcp'
 
 const errorText = (cause: unknown, fallback: string) => {
@@ -31,6 +34,7 @@ interface Card {
  * (Setup → Secrets).
  */
 export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; onAsk?: (message: string) => Promise<void> }) {
+  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const [servers, setServers] = useState<PersonalMcpServer[]>([])
   const [secrets, setSecrets] = useState<string[]>([])
   const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
@@ -219,6 +223,7 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
           </Button>
         )}
       </div>
+      {isAdmin && <McpAppsSection />}
       {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
 
       {clientPrompt && (
@@ -230,6 +235,17 @@ export function PersonalMcpSection({ projectId, onAsk }: { projectId: string; on
           {clientPrompt.redirectUri && (
             <p className="text-xs text-muted-foreground">Callback URL to register: <code className="break-all text-foreground">{clientPrompt.redirectUri}</code></p>
           )}
+          <label className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:underline">
+            Upload client_secret.json
+            <input type="file" accept="application/json,.json" className="hidden" aria-label="Upload the client JSON" onChange={event => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void file.text().then(text => {
+                const parsed = parseOAuthClientJson(text)
+                if (parsed) { setClientId(parsed.clientId); setClientSecret(parsed.clientSecret) } else setError('That file is not an OAuth client file (client_secret_….json).')
+              })
+            }} />
+          </label>
           <div className="grid gap-2 sm:grid-cols-2">
             <Input value={clientId} onChange={event => setClientId(event.target.value)} placeholder="Client ID" aria-label="OAuth client ID" />
             <Input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="Client secret" aria-label="OAuth client secret" />

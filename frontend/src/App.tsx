@@ -42,6 +42,7 @@ const queryClient = new QueryClient();
 
 const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
+const AdminPages = lazy(() => import('./components/AdminPages'))
 const VideoStudioSurface = lazy(() => import('./products/video-studio/VideoStudioSurface').then(module => ({ default: module.VideoStudioSurface })))
 const DominionSurface = lazy(() => import('./products/dominion/DominionSurface').then(module => ({ default: module.DominionSurface })))
 const SparkQuillSurface = lazy(() => import('./products/sparkquill/SparkQuillSurface').then(module => ({ default: module.SparkQuillSurface })))
@@ -132,7 +133,8 @@ function App() {
     showWorkflowsOverview,
     setShowWorkflowsOverview,
     showSchedulesOverview,
-    setShowSchedulesOverview
+    setShowSchedulesOverview,
+    adminPage
   } = useAppStore(useShallow(state => ({
     setSelectedPresetId: state.setSelectedPresetId,
     workspaceMinimized: state.workspaceMinimized,
@@ -142,6 +144,7 @@ function App() {
     setShowWorkflowsOverview: state.setShowWorkflowsOverview,
     showSchedulesOverview: state.showSchedulesOverview,
     setShowSchedulesOverview: state.setShowSchedulesOverview,
+    adminPage: state.adminPage,
   })))
   const [hasOpenedWorkflowsOverview, setHasOpenedWorkflowsOverview] = useState(showWorkflowsOverview)
   const [hasOpenedSchedulesOverview, setHasOpenedSchedulesOverview] = useState(showSchedulesOverview)
@@ -873,7 +876,7 @@ function App() {
   }, [showSchedulesOverview])
 
   useEffect(() => {
-    if (showWorkflowsOverview || showProviders || showSchedulesOverview) {
+    if (showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage) {
       setWorkspaceMinimizedForLayout(true)
       return
     }
@@ -882,7 +885,7 @@ function App() {
       const { workspaceMinimizedByMode } = useAppStore.getState()
       setWorkspaceMinimizedForLayout(Boolean(workspaceMinimizedByMode?.[selectedModeCategory]))
     }
-  }, [selectedModeCategory, showWorkflowsOverview, showProviders, showSchedulesOverview, setWorkspaceMinimizedForLayout])
+  }, [selectedModeCategory, showWorkflowsOverview, showProviders, showSchedulesOverview, adminPage, setWorkspaceMinimizedForLayout])
 
   useEffect(() => {
     const collapseWorkspaceForPopup = () => {
@@ -957,8 +960,15 @@ function App() {
                     </Suspense>
                   </div>
                 )}
+                {adminPage && !showProviders && (
+                  <div className="h-full">
+                    <Suspense fallback={<FileSurfaceFallback />}>
+                      <AdminPages />
+                    </Suspense>
+                  </div>
+                )}
                 <LlmModalHost />
-                <div className={!showWorkflowsOverview && !showProviders && !showSchedulesOverview ? 'h-full' : 'hidden'}>
+                <div className={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
                   <WorkflowLayout
                     className="h-full"
                     onNewChat={startNewChat}

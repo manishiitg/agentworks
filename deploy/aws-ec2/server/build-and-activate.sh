@@ -95,6 +95,11 @@ install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/m
 mkdir -p "$BUILD_DIR/static"
 cp -R "$REPO_ROOT/agent_go/cmd/server/static/." "$BUILD_DIR/static/"
 install -m 0644 "$SCRIPT_DIR/server/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
+# This deployment's own branding assets (logo, mark, favicon), served at /brand/.
+if [[ -d "$SCRIPT_DIR/server/brand" ]]; then
+  install -d -m 0755 "$BUILD_DIR/frontend/brand"
+  install -m 0644 "$SCRIPT_DIR/server/brand"/* "$BUILD_DIR/frontend/brand/"
+fi
 # One shared MCP catalog for every deployment, plus this one's differences.
 python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/configs/mcp_servers_clean.json" "$BUILD_DIR/configs/mcp_servers_video_studio.json" "$SCRIPT_DIR/server/mcp-servers.override.json"
 chmod 0644 "$BUILD_DIR/configs/mcp_servers_video_studio.json"
