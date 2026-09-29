@@ -41,4 +41,33 @@ describe("standalone report page", () => {
       await act(async () => view.root.unmount());
     }
   });
+
+  it("opens a Code dashboard for someone its owner shared it with, at the owner's path", async () => {
+    const view = await renderReport("Chats/Code/projects/hrms-1", "owner-1", "member-2");
+    try {
+      expect(view.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/hrms-1");
+    } finally {
+      await act(async () => view.root.unmount());
+    }
+  });
+
+  it("opens a Code dashboard for its owner at the logical path", async () => {
+    const view = await renderReport("Chats/Code/projects/hrms-1", "owner-1", "owner-1");
+    try {
+      expect(view.host.textContent).toContain("Dashboard runtime Chats/Code/projects/hrms-1");
+    } finally {
+      await act(async () => view.root.unmount());
+    }
+  });
+
+  it("accepts a shared member's absolute Code path and rejects anything deeper", async () => {
+    const ok = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "member-2");
+    const bad = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1/db", undefined, "member-2");
+    try {
+      expect(ok.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/hrms-1");
+      expect(bad.host.textContent).toContain("Invalid dashboard URL");
+    } finally {
+      await act(async () => { ok.root.unmount(); bad.root.unmount() });
+    }
+  });
 });
