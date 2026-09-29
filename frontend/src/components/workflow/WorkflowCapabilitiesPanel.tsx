@@ -12,6 +12,7 @@ import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import ConnectorsBrowser from '../connectors/ConnectorsBrowser'
+import { PlaceMcpSection } from '../../products/work/PlaceMcpSection'
 import { agentApi, workflowManifestApi } from '../../services/api'
 import type { WorkflowCapabilities } from '../../services/api-types'
 import { useMCPStore } from '../../stores/useMCPStore'
@@ -376,6 +377,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath }: Wo
                 <div key={activeMcpTab === 'apps' ? 'apps' : `${activeMcpTab}:${tabNonce}`}>
                 {activeMcpTab === 'apps' && (
                   <>
+                    {workspacePath && (
+                      <div className="mt-3 border-t border-border pt-3">
+                        <PlaceMcpSection workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow} />
+                      </div>
+                    )}
                     {selectedAvailableServers.length > 0 && (
                       <div className="mt-3 border-t border-border pt-3">
                         <div className="mb-3 text-sm font-medium text-muted-foreground">

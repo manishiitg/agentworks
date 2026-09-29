@@ -9,6 +9,7 @@ import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { PersonalMcpSection } from './PersonalMcpSection'
+import { PlaceMcpSection } from './PlaceMcpSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
@@ -118,6 +119,9 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
+      {/* A Crew's own connections with someone's login. A shared Crew
+          arrives under its owner's _users/ path: viewers see, never add. */}
+      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} />
       {needsConnecting.length > 0 && (
         <div data-testid="work-mcp-needs-connecting" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
           <div className="flex items-center gap-2 font-medium">

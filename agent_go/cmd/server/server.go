@@ -2433,6 +2433,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/me/mcp/servers/{name}", api.handleRemovePersonalMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/connect", api.handleConnectPersonalMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/me/mcp/servers/{name}/codes/{project_id}", api.handleSwitchPersonalMCP).Methods("PUT", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
+	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/mcp/place/{name}", api.handleRemovePlaceMCP).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/me/secrets/{name}", api.handlePutPersonalSecret).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/files", api.handleListSharedProjectFiles).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects/{project_id}/file", api.handleGetSharedProjectFile).Methods("GET", "OPTIONS")
@@ -5741,6 +5745,24 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
 				}
 				for name, override := range personalOverrides {
+					agentConfig.RuntimeOverrides[name] = override
+				}
+			}
+		} else {
+			// A workflow's or Crew's own connections (docs/design/
+			// personal_mcp_attach.md) join its selected servers like any other.
+			placeRoot := ""
+			if isWorkflowPhase {
+				placeRoot = workflowPhaseFolder
+			} else if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+				placeRoot = agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+			}
+			if placeNames, placeOverrides := attachedMCPServersForRoot(r.Context(), placeRoot); len(placeNames) > 0 {
+				selectedServers = mergeServerLists(selectedServers, placeNames)
+				if agentConfig.RuntimeOverrides == nil {
+					agentConfig.RuntimeOverrides = mcpclient.RuntimeOverrides{}
+				}
+				for name, override := range placeOverrides {
 					agentConfig.RuntimeOverrides[name] = override
 				}
 			}

@@ -749,6 +749,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyStepConfigToAgentConfig(config *
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config not found - using orchestrator defaults: %v", config.ServerNames))
 		}
 	}
+	hcpo.addPlaceMCPServers(config)
 	if stepConfig != nil && len(stepConfig.SelectedTools) > 0 {
 		filtered := filterToolsByWorkflow(stepConfig.SelectedTools, workflowServers)
 		config.SelectedTools = filtered
@@ -1741,6 +1742,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Step config not found - using orchestrator defaults: %v", config.ServerNames))
 		}
 	}
+	hcpo.addPlaceMCPServers(config)
 	if stepConfig != nil && len(stepConfig.SelectedTools) > 0 {
 		filtered := filterToolsByWorkflow(stepConfig.SelectedTools, workflowServersTodo)
 		config.SelectedTools = filtered
