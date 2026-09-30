@@ -7,6 +7,36 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Muse uses its private temporary directory under Landlock
+- Keep the upstream directory-listing startup fix, and remove the blanket
+  shared `/tmp` grant for `muse-cli`. Muse receives `TMPDIR=<private-home>/tmp`.
+  Other providers retain their compatibility grants; Cursor uses fixed socket
+  paths in `/tmp`. Explicit host and per-launch grants are still honored.
+- The directory-discovery failure does not require shared temporary-file
+  access. A real SDK-policy probe could read another CLI's canary in shared
+  `/tmp` before this change; afterwards its reads and overwrites are denied,
+  while project reads and writes work. Narrowing this grant reduces exposure
+  between chats running as the same Linux user.
+- Evidence: Muse Code 1.4.1 (`1.4.1-R4503.1`) completed headless echo startup
+  under the actual SDK policy and Linux launcher. A separate interactive
+  tmux probe completed a fresh echo turn and resumed the saved native session.
+  The exact original startup error was reproduced in an unprivileged local
+  Ubuntu container and on Excellence, where no services were changed.
+- These checks use disposable homes and no account credentials. They do not
+  certify Meta authentication, token refresh, or native-tool calls. The root
+  listing grant still exposes file and folder names, and the launcher's
+  shared-browser grants and Unix socket access remain separate limitations.
+  A private `TMPDIR` is not a private filesystem namespace.
+- Code: `multi-llm-provider-go/internal/clisandbox/landlock.go` and
+  `landlock_directory_test.go`; kernel boundary tests in
+  `workspace/security/landlock_directory_linux_test.go`; live reproduction in
+  `scripts/test-muse-landlock-startup.py`. Details and test limits:
+  `docs/bugs/muse_landlock_directory_startup.md`.
+- The implementation and original regression artifacts are already on main
+  (`3428203` / `398488710`). Draft review PRs replay only these changes against
+  dedicated review bases; they are not deployment requests. This entry is a
+  proposed documentation addition pending review.
+
 ### 2026-09-30 — Costs shows input and output, with cache counted once
 - The dedicated Costs summary and its user/work/project/account breakdowns
   show input tokens, output tokens and cached input. Cache is part of input;
@@ -210,6 +240,17 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Open issues
 
+- **Confinement can be skipped when the launcher is unavailable.**
+  `applyCLILandlock` logs and returns without applying a strict policy when
+  `CLILandlockRunner` fails its capability/preflight check, even with
+  `AGENTWORKS_CLI_LANDLOCK=on`. The operational decision to confine every CLI
+  therefore is not a fail-closed guarantee. This fallback needs an explicit
+  decision; the Muse temporary-directory patch does not change it.
+- **Shared browser paths remain launcher grants.** SDK CLI policies leave
+  `BrowserScoped` false. `landlockSystemWritePaths` therefore grants existing
+  shared browser socket/temp directories and, when configured, shared-profile
+  roots for users, workflows and projects. Removing Muse's blanket `/tmp`
+  grant does not remove those paths. Their access needs separate review.
 - **Shared `/tmp` between confined CLIs.** Every CLI on a server runs as the
   same Linux user. Providers other than Muse can read and write `/tmp`:
   other CLIs' temp files, the
@@ -229,8 +270,13 @@ Each entry says what was decided, why, and where it lives in the code.
   refuses when a CLI resolves outside the managed install. Confida had a stray
   `tools/node/bin/claude` from an interrupted install (removed by hand
   2026-09-30). The check names only the CLI, not the path it found.
-- **Muse authenticated smoke test.** Startup and resume pass under the lock;
-  a real Meta-authenticated turn with native tools is still to be run.
+- **Muse authenticated smoke test and credential refresh.** Echo startup and
+  resume pass under the lock; a real Meta-authenticated turn with native tools
+  and token refresh is still to be run. The private-home credential helper
+  links logins, but `musePrepareIsolatedConfig` still copies `auth.json` into
+  the per-launch config selected by `XDG_CONFIG_HOME`. Its cleanup deletes
+  that config without returning refreshed credentials to the account; the
+  "never a copy" statement above does not cover this Muse launch path.
 - **Personal accounts per provider.** The Providers screen says "The
   installation does not allow personal accounts for this provider" when the
   provider is locked to the server's account (RTS Cursor runs on the server's
