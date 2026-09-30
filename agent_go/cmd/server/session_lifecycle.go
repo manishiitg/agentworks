@@ -441,6 +441,11 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	closeReason := "user pressed stop"
 	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, closeReason)
 	log.Printf("[SESSION DEBUG] Closed any tmux-backed coding-CLI session for stopped session %s", sessionID)
+	// The Stop button closes the coding CLI, so nothing can finish the turn it was running:
+	// release every marker that says the conversation is busy, or the next message is refused
+	// (409) or queued behind a dead turn forever (excellence, 2026-09-30: a Muse Code chat).
+	// The runtime-cancel path has the same call; this is the one the Stop button takes.
+	api.releaseStoppedSessionTurnMarkers(sessionID)
 
 	// The calls above are keyed by the chat / main-agent session ID. Workflow-step
 	// sub-agents, however, register their interactive CLI session under the STEP

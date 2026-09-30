@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -232,5 +235,43 @@ func TestRecoveryDropsStaleWaitingTurnsOnly(t *testing.T) {
 	}
 	if strings.Join(kept, ",") != "recent-waiting,was-running" {
 		t.Fatalf("kept %v, want [recent-waiting was-running]", kept)
+	}
+}
+
+// The Stop button (handleStopSession) releases the stopped turn's markers too: after it, the next
+// message is accepted instead of queueing behind a dead turn (excellence, a Muse Code chat).
+func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
+	files := map[string]string{}
+	api := newConversationTurnQueueTestAPI(files)
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now()}
+	api.activeSessions = map[string]*ActiveSessionInfo{"session-1": {SessionID: "session-1", UserID: "u1", Status: "running"}}
+	api.stoppedSessions = map[string]bool{}
+	api.sessionBusy = map[string]bool{"session-1": true}
+	api.lastQueryRequests = map[string]QueryRequest{}
+	api.sessionWorkspaceFolders = map[string]string{}
+	api.sessionAgents = map[string]*agent.LLMAgentWrapper{}
+	api.completionLoopStarted = map[string]bool{}
+	api.bgAgentRegistry = NewBackgroundAgentRegistry()
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
+	if _, _, err := api.enqueueConversationTurn(ctx, "u1", "session-1", QueryRequest{Query: "running", AgentMode: "multi-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := api.claimNextConversationTurn(ctx, "u1", "session-1"); !ok {
+		t.Fatal("could not claim the first turn")
+	}
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("the session should be occupied before Stop")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/session/stop?cancelAgents=true&preserveConversation=true", nil).WithContext(ctx)
+	req.Header.Set("X-Session-ID", "session-1")
+	rec := httptest.NewRecorder()
+	api.handleStopSession(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("the Stop button left the conversation marked busy")
 	}
 }
