@@ -47,6 +47,9 @@ func TestCodingCLIWorkflowP0MultipleAccounts(t *testing.T) {
 						keys.MuseCLI = &slot.key
 					case "pi-cli":
 						keys.PiProviderKeys = map[string]string{"google": slot.key}
+					case "agy-cli":
+						keys.RuntimeEnvironment["GEMINI_API_KEY"] = slot.key
+						keys.RuntimeEnvironment["GOOGLE_API_KEY"] = slot.key
 					}
 					provider.apiKeys = &llm.ProviderAPIKeys{ResolveConnection: func(ctx context.Context, p llm.Provider, id string) (*llm.ProviderAPIKeys, error) {
 						if p != base.provider || id != provider.connectionID {

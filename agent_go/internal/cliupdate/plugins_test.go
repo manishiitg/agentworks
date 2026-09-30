@@ -120,14 +120,17 @@ func pluginCacheEnv(t *testing.T) (agentDir, root string) {
 }
 
 func TestUpdatePiTempPluginsUpgradesOutdated(t *testing.T) {
+	original := managedPiTempPlugins
+	managedPiTempPlugins = []string{"test-managed-extension"}
+	t.Cleanup(func() { managedPiTempPlugins = original })
 	_, root := pluginCacheEnv(t)
-	writeCachedPlugin(t, root, "pi-mcp-adapter", "2.10.0")
-	log := fakeNpm(t, map[string]string{"pi-mcp-adapter": "2.35.0"})
+	writeCachedPlugin(t, root, "test-managed-extension", "2.10.0")
+	log := fakeNpm(t, map[string]string{"test-managed-extension": "2.35.0"})
 
 	if err := updatePiTempPlugins(context.Background(), os.Environ()); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "node_modules", "pi-mcp-adapter", "package.json"))
+	data, err := os.ReadFile(filepath.Join(root, "node_modules", "test-managed-extension", "package.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,16 +141,19 @@ func TestUpdatePiTempPluginsUpgradesOutdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "install pi-mcp-adapter@latest --prefix " + root + " --legacy-peer-deps"
+	want := "install test-managed-extension@latest --prefix " + root + " --legacy-peer-deps"
 	if !strings.Contains(string(calls), want) {
 		t.Fatalf("npm calls=%q want substring %q", calls, want)
 	}
 }
 
 func TestUpdatePiTempPluginsSkipsCurrent(t *testing.T) {
+	original := managedPiTempPlugins
+	managedPiTempPlugins = []string{"test-managed-extension"}
+	t.Cleanup(func() { managedPiTempPlugins = original })
 	_, root := pluginCacheEnv(t)
-	writeCachedPlugin(t, root, "pi-mcp-adapter", "2.35.0")
-	log := fakeNpm(t, map[string]string{"pi-mcp-adapter": "2.35.0"})
+	writeCachedPlugin(t, root, "test-managed-extension", "2.35.0")
+	log := fakeNpm(t, map[string]string{"test-managed-extension": "2.35.0"})
 
 	if err := updatePiTempPlugins(context.Background(), os.Environ()); err != nil {
 		t.Fatal(err)
@@ -201,5 +207,17 @@ func TestPiAgentDirOverride(t *testing.T) {
 	want := filepath.Join(home, ".pi", "agent")
 	if err != nil || got != want {
 		t.Fatalf("default: got=%q want=%q err=%v", got, want, err)
+	}
+}
+
+func TestNativePiMCPDoesNotRefreshRetiredPlugin(t *testing.T) {
+	_, root := pluginCacheEnv(t)
+	writeCachedPlugin(t, root, "pi-mcp-adapter", "3.2.0")
+	log := fakeNpm(t, map[string]string{"pi-mcp-adapter": "3.3.0"})
+	if err := updatePiTempPlugins(context.Background(), os.Environ()); err != nil {
+		t.Fatal(err)
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Fatalf("retired adapter refreshed: %s", calls)
 	}
 }
