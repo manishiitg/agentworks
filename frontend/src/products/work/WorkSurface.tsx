@@ -247,7 +247,10 @@ function useWorkSessions(product: ProjectProductConfig) {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
+    // The account travels with the provider: without it "Use account" saved only the provider,
+    // and the Crew or Code kept running on the server account (excellence/Confida, 2026-09-30).
     const llmConfig = workLLMConfigFromSelection({
+      connectionId: selection.connectionId,
       provider: selection.provider || selection.engine,
       modelId: selection.modelId,
       reasoningEffort: selection.reasoningEffort,
