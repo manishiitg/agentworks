@@ -99,6 +99,11 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return err
 		}
 	}
+	for _, path := range policy.ListPaths {
+		if err := addLandlockPathRule(int(rulesetFD), path, handled&unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
+			return err
+		}
+	}
 
 	if err := os.Chdir(policy.WorkDir); err != nil {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: enter working directory: %w", err)

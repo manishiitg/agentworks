@@ -9,6 +9,9 @@ type LandlockPolicy struct {
 	ReadPaths  []string `json:"read_paths"`
 	WritePaths []string `json:"write_paths"`
 	WorkDir    string   `json:"work_dir"`
+	// ListPaths may be listed (folder names only, no file reads). Coding
+	// CLIs get "/": Muse opens every folder from / down to its workspace.
+	ListPaths []string `json:"list_paths,omitempty"`
 	// PrivateTmp: the launcher was started in its own user and mount
 	// namespaces and must give the command a private /tmp (Linux).
 	PrivateTmp bool `json:"private_tmp,omitempty"`

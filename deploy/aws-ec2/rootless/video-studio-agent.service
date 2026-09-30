@@ -26,6 +26,11 @@ Environment=USER_INVITE_EMAILS=off
 Environment=AGENTWORKS_CLI_LANDLOCK=on
 # Full CLI (Claude's own shell and file edits) inside that lock, for every user.
 Environment=AGENTWORKS_CLI_FULL=on
+# The server's temp files (launch scripts, per-launch CLI configs, bridge
+# tokens) go to a private folder: coding CLIs may write the shared /tmp.
+# tmux keeps its socket in /tmp so running chats stay reachable.
+Environment=TMPDIR=%h/video-studio/state/agent-tmp
+Environment=TMUX_TMPDIR=/tmp
 # %h/.config is root-owned on this host (the bootstrap wrote the systemd user
 # units there), so tools that keep state under XDG config -- cursor-agent
 # does -- get a writable location instead of EACCES.
