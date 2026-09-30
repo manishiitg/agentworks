@@ -2,7 +2,8 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RunsOnPicker, rememberRunsOn, type RunsOnSelection } from './RunsOnPicker'
+import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
+import { rememberRunsOn } from './runsOnMemory'
 
 const accounts = vi.hoisted(() => ({ list: [] as unknown[] }))
 vi.mock('../../services/llm-config-api', () => ({

@@ -15,7 +15,8 @@ import { useLLMStore } from '../stores/useLLMStore';
 import { useModeStore } from '../stores/useModeStore';
 
 import LLMSelectionDropdown from './LLMSelectionDropdown';
-import { RunsOnPicker, rememberRunsOn, type RunsOnSelection } from '../products/work/RunsOnPicker';
+import { RunsOnPicker, type RunsOnSelection } from '../products/work/RunsOnPicker';
+import { rememberRunsOn } from '../products/work/runsOnMemory';
 
 
 import type { LLMOption } from '../types/llm';

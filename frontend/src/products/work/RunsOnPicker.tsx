@@ -4,6 +4,7 @@ import { llmConfigService, type ProviderConnection } from '../../services/llm-co
 import { useLLMStore } from '../../stores/useLLMStore'
 import { accountConfigured, accountRelation, accountUsable } from '../../components/providers/ProviderAccounts'
 import { loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
+import { readLastRunsOn } from './runsOnMemory'
 
 /** What a new Crew or Code runs on: the coding CLI, its model, and the account. */
 export type RunsOnSelection = {
@@ -21,17 +22,6 @@ type Choice = {
   ready: boolean
   accountLabel: string
   connectionId?: string
-}
-
-const lastChoiceKey = (profileId: string) => `agentworks.runsOn.${profileId}`
-
-const readLastChoice = (profileId: string) => {
-  try { return window.localStorage.getItem(lastChoiceKey(profileId)) || '' } catch { return '' }
-}
-
-/** Remembers the provider picked for a new project, so the next one starts with it. */
-export function rememberRunsOn(profileId: string, provider: string) {
-  try { window.localStorage.setItem(lastChoiceKey(profileId), provider) } catch { /* private window */ }
 }
 
 const newestFirst = (a: ProviderConnection, b: ProviderConnection) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
@@ -111,7 +101,7 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
   // product default, so the default is right for most people.
   const initial = useMemo(() => {
     if (choices.length === 0) return undefined
-    const last = readLastChoice(profileId)
+    const last = readLastRunsOn(profileId)
     return choices.find(choice => choice.option.id === last && choice.ready)
       || choices.find(choice => choice.ready && choice.accountLabel.startsWith('your account'))
       || choices.find(choice => choice.ready && choice.option.default)

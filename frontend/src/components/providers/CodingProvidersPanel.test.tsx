@@ -75,7 +75,7 @@ describe('CodingProvidersPanel', () => {
     }
   })
 
-  it('shows coding agents only and renders server status plus the four-step usage path', async () => {
+  it('shows coding agents only, with sign-in on the accounts and no setup steps or usage check', async () => {
     vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({
       id: 'usage-1', provider: 'codex-cli', action: 'usage', status: 'running',
     } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
@@ -124,25 +124,16 @@ describe('CodingProvidersPanel', () => {
       expect(dialog.textContent).toContain('Antigravity CLI (Alpha)')
       expect(dialog.textContent).not.toContain('OpenAI API')
       expect(dialog.textContent).toContain('Not installed')
-      expect(dialog.textContent).toContain('CLI availability')
-      expect(dialog.textContent).toContain('Authenticate')
-      expect(dialog.textContent).toContain('Verify the installation')
-      expect(dialog.textContent).toContain('Use in a workflow')
-      expect(dialog.textContent).toContain('missing from the AgentWorks installation')
+      expect(dialog.textContent).toContain('not installed on this server')
       expect(dialog.textContent).not.toContain('npm install')
+      // Signing in happens on the account rows; the page has no setup steps or usage check.
+      for (const gone of ['CLI availability', 'Verify the installation', 'Use in a workflow', 'Check usage', 'Product defaults']) {
+        expect(dialog.textContent).not.toContain(gone)
+      }
 
       await act(async () => Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.includes('Codex'))!.click())
-      expect(dialog.textContent).toContain('Authentication detected via Codex home')
-      expect(dialog.textContent).toContain("Sign in the shared login")
-      expect(dialog.textContent).toContain('Open terminal')
-      expect(dialog.textContent).toContain('Check usage')
-      expect(dialog.textContent).toContain('Type /status')
       expect(dialog.querySelector('[aria-label="Codex CLI is connected"]')).not.toBeNull()
-      expect(Array.from(dialog.querySelectorAll('span')).filter(span => span.textContent === 'Connected')).toHaveLength(1)
-
-      await act(async () => Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.includes('Check usage'))!.click())
-      expect(llmConfigService.startProviderSetup).toHaveBeenCalledWith('codex-cli', 'usage', 100, 24, undefined, false)
-      expect(dialog.querySelector('[data-testid="guided-terminal"]')?.textContent).toBe('Terminal usage-1')
+      expect(dialog.textContent).not.toContain('Check usage')
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -150,8 +141,8 @@ describe('CodingProvidersPanel', () => {
   })
 
   it('keeps a guided session mounted when leaving the Providers page, without modal Escape or cancellation', async () => {
-    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
-    vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({ id: 'setup-1', provider: 'codex-cli', action: 'inspect', status: 'running' } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
+    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({ id: 'pi-cli', display_name: 'Pi', runtime_command: 'pi' })], provider_order: ['pi-cli'], integration_kinds: {} })
+    vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({ id: 'setup-1', provider: 'pi-cli', action: 'authenticate', status: 'running' } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     const onClose = vi.fn()
     const renderPage = (isOpen: boolean) => <div hidden={!isOpen}><CodingProvidersPanel embedded isOpen={isOpen} onClose={onClose} /></div>
@@ -160,7 +151,7 @@ describe('CodingProvidersPanel', () => {
       expect(host.querySelector('[role="dialog"]')).toBeNull()
       expect(host.querySelector('[role="region"]')).not.toBeNull()
       expect(document.body.style.overflow).toBe('')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Open terminal'))!.click())
+      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Manage connections'))!.click())
       const terminal = host.querySelector('[data-testid="guided-terminal"]')
       expect(terminal?.textContent).toBe('Terminal setup-1')
       await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
@@ -176,18 +167,16 @@ describe('CodingProvidersPanel', () => {
   })
 
   it('offers to replace a setup session after a conflict', async () => {
-    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
+    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({ id: 'pi-cli', display_name: 'Pi', runtime_command: 'pi' })], provider_order: ['pi-cli'], integration_kinds: {} })
     vi.mocked(llmConfigService.startProviderSetup)
-      .mockRejectedValueOnce({ response: { status: 409, data: { error: 'a codex-cli setup session is already running' } } })
-      .mockResolvedValueOnce({ id: 'setup-2', provider: 'codex-cli', action: 'authenticate', status: 'running' } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
+      .mockRejectedValueOnce({ response: { status: 409, data: { error: 'a pi-cli setup session is already running' } } })
+      .mockResolvedValueOnce({ id: 'setup-2', provider: 'pi-cli', action: 'authenticate', status: 'running' } as Awaited<ReturnType<typeof llmConfigService.startProviderSetup>>)
     Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<CodingProvidersPanel isOpen onClose={vi.fn()} />))
       await act(async () => Promise.resolve())
-      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes("Sign in the shared login"))!.click())
-      // The shared login asks first: it is everyone's account, not yours.
-      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Sign in shared login')!.click())
+      await act(async () => Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('Manage connections'))!.click())
       await act(async () => Promise.resolve())
 
       const replaceButton = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('End existing session and start new'))
@@ -196,7 +185,7 @@ describe('CodingProvidersPanel', () => {
       await act(async () => Promise.resolve())
 
       expect(window.confirm).toHaveBeenCalled()
-      expect(llmConfigService.startProviderSetup).toHaveBeenLastCalledWith('codex-cli', 'authenticate', 100, 24, undefined, true)
+      expect(llmConfigService.startProviderSetup).toHaveBeenLastCalledWith('pi-cli', 'authenticate', 100, 24, undefined, true)
       expect(document.querySelector('[data-testid="guided-terminal"]')?.textContent).toBe('Terminal setup-2')
     } finally {
       await act(async () => root.unmount())
@@ -232,8 +221,7 @@ describe('CodingProvidersPanel', () => {
 
       const dialog = document.querySelector('[role="dialog"]')!
       expect(dialog.textContent).toContain('Muse Code')
-      expect(dialog.textContent).toContain('missing from the AgentWorks installation')
-      expect(dialog.textContent).toContain('Run on the backend server')
+      expect(dialog.textContent).toContain('not installed on this server')
       expect(dialog.textContent).toContain("curl --proto '=https' --proto-redir '=https' --tlsv1.2 https://dev.meta.ai/install.sh | bash")
 
       vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({
@@ -253,8 +241,8 @@ describe('CodingProvidersPanel', () => {
       await act(async () => refresh.click())
       await act(async () => Promise.resolve())
 
-      expect(dialog.textContent).toContain("Sign in the shared login")
-      expect(dialog.textContent).toContain('No SSH or direct server access is required')
+      // Installed now: the notice goes; signing in is on the account rows.
+      expect(dialog.textContent).not.toContain('not installed on this server')
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -327,8 +315,7 @@ describe('CodingProvidersPanel', () => {
       const dialog = document.querySelector('[role="dialog"]')!
       expect(dialog.textContent).toContain('Future CLI')
       expect(dialog.textContent).toContain('CLI version 9.9.9')
-      expect(dialog.textContent).toContain('Authenticate')
-      expect(dialog.textContent).toContain('Complete authentication for this provider in the guided terminal')
+      expect(dialog.textContent).toContain('Guided sign-in for this provider is not available yet')
     } finally {
       await act(async () => root.unmount())
       host.remove()

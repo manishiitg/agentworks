@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Users, Plus, ShieldCheck, UserRound, Pencil, Trash2, LogIn, LogOut, Loader2, X, Gauge, Share2, Lock, Terminal, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Users, Plus, ShieldCheck, UserRound, LogIn, Loader2, X, Share2, Lock, MoreHorizontal } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import ProviderAccountCostsSection from './AccountCosts'
@@ -15,8 +15,6 @@ import {
   type ProviderSetupSession,
 } from '../../services/llm-config-api'
 
-// Providers whose CLI has a usage command the guided terminal can run.
-const USAGE_PROVIDERS = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
 
@@ -199,7 +197,15 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         if (result.session) { setSession(result.session); setSessionRowId(record.id) }
         else setUsageText({ rowId: record.id, text: result.usage_output || 'No usage output.' })
       } else {
-        setSession(await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id))
+        let started: ProviderSetupSession
+        try {
+          started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, false, record.id)
+        } catch (startError) {
+          // One sign-in or terminal per account at a time: offer to end the running one.
+          if ((startError as { response?: { status?: number } })?.response?.status !== 409 || !window.confirm(`A ${providerLabel || provider} terminal is already open for this account. End it and start a new one?`)) throw startError
+          started = await llmConfigService.startProviderSetup(provider, action, 100, 24, undefined, true, record.id)
+        }
+        setSession(started)
         setSessionRowId(record.id)
       }
     } catch (setupError) { setError(providerApiErrorText(setupError, action === 'usage' ? 'Could not check usage.' : action === 'inspect' ? 'Could not open the terminal.' : 'Could not start account login.')) }
@@ -235,27 +241,33 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
   const inputClass = 'mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
   const secondaryButtonClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-  const iconButtonClass = 'rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800'
   const badgeClass = 'rounded-md px-1.5 py-0.5 text-[10px] font-medium'
   const cancel = () => { setAdding(false); setEditingId(null); resetForm() }
   const openAdd = () => { setAdding(true); setEditingId(null); resetForm() }
 
-  const usageButton = (record: ProviderConnection) => record.can_view_usage && USAGE_PROVIDERS.has(provider) && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Usage for ${record.display_name}`} onClick={() => void runSetup(record, 'usage')}><Gauge className="h-3.5 w-3.5" /> Usage</button>
-  )
   // Per-account actions. The server enforces who may run each one.
-  const statusLine = (record: ProviderConnection) => statuses[record.id] && (
-    <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300" aria-label={`Status of ${record.display_name}`}>{accountStatusText(statuses[record.id])}</p>
-  )
-  const statusButton = (record: ProviderConnection) => statuses[record.id] !== undefined && (
-    <button disabled={busy || statuses[record.id] === 'loading'} type="button" className={secondaryButtonClass} aria-label={`Refresh status of ${record.display_name}`} title="Run the real login check" onClick={() => void refreshStatus(record)}><RefreshCw className="h-3.5 w-3.5" /> Status</button>
-  )
-  const terminalButton = (record: ProviderConnection) => record.can_manage && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Open terminal for ${record.display_name} (${accountScopeLabel(record)})`} onClick={() => void runSetup(record, 'inspect')}><Terminal className="h-3.5 w-3.5" /> Open terminal ({accountScopeLabel(record)})</button>
-  )
-  const signOutButton = (record: ProviderConnection) => record.can_manage && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login') && (
-    <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Sign out ${record.display_name}`} onClick={() => void signOut(record)}><LogOut className="h-3.5 w-3.5" /> Sign out</button>
-  )
+  // One status line: a dot and a few words, checked automatically on load.
+  const needsSignIn = (record: ProviderConnection) => {
+    const status = statuses[record.id]
+    if (status && status !== 'loading') return status.state === 'signed_out' || status.state === 'key_rejected'
+    return record.configured === false
+  }
+  const statusLine = (record: ProviderConnection) => {
+    const status = statuses[record.id]
+    const text = status ? accountStatusText(status) : record.configured === false ? 'Not signed in' : ''
+    if (!text) return null
+    const ok = status && status !== 'loading' && status.state === 'signed_in'
+    return (
+      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300" aria-label={`Status of ${record.display_name}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${ok ? 'bg-emerald-500' : needsSignIn(record) ? 'bg-amber-500' : 'bg-gray-400'}`} />{text}
+      </p>
+    )
+  }
+  const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
+  // The terminal is where a person signs in by hand and checks usage (/usage); there is no
+  // separate usage check.
+  const terminalItem = (record: ProviderConnection) => record.can_manage ? [{ label: 'Terminal (sign in, check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
+  const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined ? [{ label: 'Check sign-in again', onSelect: () => void refreshStatus(record) }] : []
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
   )) || (usageText && usageText.rowId === record.id && (
@@ -301,14 +313,16 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         </div>
         {!disabled && (
           <div className="flex flex-wrap items-center gap-1">
-            {statusButton(record)}
-            {usageButton(record)}
-            {terminalButton(record)}
-            {canManage && record.auth_method === 'cli_login' && personalAllowed && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
-            {personalAllowed && signOutButton(record)}
-            {canManage && manage && <button disabled={busy} type="button" className={secondaryButtonClass} aria-label={`Sharing for ${record.display_name}`} onClick={() => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) }}><Share2 className="h-3.5 w-3.5" /> Sharing</button>}
-            {own && personalAllowed && <button disabled={busy} type="button" aria-label={`Edit ${record.display_name}`} title="Edit account" className={iconButtonClass} onClick={() => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') }}><Pencil className="h-3.5 w-3.5" /></button>}
-            {canManage && <button disabled={busy} type="button" aria-label={`Remove ${record.display_name}`} title="Remove account" className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-red-500/10 dark:hover:text-red-400" onClick={() => void remove(record)}><Trash2 className="h-3.5 w-3.5" /></button>}
+            {canManage && record.auth_method === 'cli_login' && personalAllowed && needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
+            <ActionsMenu label={`More for ${record.display_name}`} disabled={busy} items={[
+              ...terminalItem(record),
+              ...checkItem(record),
+              ...(canManage && record.auth_method === 'cli_login' && personalAllowed && !needsSignIn(record) ? [{ label: 'Sign in again', onSelect: () => void login(record) }] : []),
+              ...(personalAllowed && canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
+              ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
+              ...(own && personalAllowed ? [{ label: 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
+              ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
+            ]} />
           </div>
         )}
         {sharingEditor(record)}
@@ -319,46 +333,60 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
 
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
+    const choice = availabilityDraft === null ? null : availabilityDraft === 'all' ? 'all' : availabilityDraft === 'admins' ? 'admins' : 'chosen'
     return (
       <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Shared account</span>
-                <span className={`${badgeClass} bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300`} title="One login on the server, used by everyone it is available to">Everyone allowed uses it</span>
-                {record.kind && record.kind !== 'user' && <span className={`${badgeClass} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300`}>{record.kind === 'admin' ? 'Admin-configured' : 'Installed'}</span>}
-                {record.usable === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`}>Not available to you</span>}
-                {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="The server has no login or key for this CLI yet">Not set up</span>}
-              </div>
-              {record.identity && <p className="mt-0.5 break-words text-xs font-medium text-gray-700 dark:text-gray-200">Signed in as {record.identity}</p>}
-              {record.source && <p className="mt-0.5 break-words text-xs text-gray-500 dark:text-gray-400">{record.source}</p>}
-              {availability && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Used by: {availability.text}</p>}
-              {availability?.pinned && <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><Lock className="h-3 w-3" /> Set by the installation</p>}
-              {statusLine(record)}
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Shared account</span>
+              {statusLine(record) || (record.identity && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Signed in as {record.identity}</p>)}
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
+                {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
+              </p>
             </div>
           </div>
-          {!disabled && (
+          {!disabled && record.can_manage && (
             <div className="flex flex-wrap items-center gap-1">
-              {statusButton(record)}
-              {usageButton(record)}
-              {terminalButton(record)}
-              {record.can_manage && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setConfirmSharedLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in the shared login</button>}
-              {signOutButton(record)}
-              {record.availability_editable && availabilityDraft === null && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(availability?.available_to ?? 'all')}>Edit who can use it</button>}
+              {needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setConfirmSharedLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
+              <ActionsMenu label="More for the shared account" disabled={busy} items={[
+                ...terminalItem(record),
+                ...checkItem(record),
+                ...(!needsSignIn(record) ? [{ label: 'Sign in with another login', onSelect: () => setConfirmSharedLogin(record) }] : []),
+                ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
+                ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
+              ]} />
             </div>
           )}
         </div>
-        {availabilityDraft !== null && record.availability_editable && (
-          <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }}>
-            <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
+        {choice !== null && record.availability_editable && (
+          <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Who can use the shared account
+              <select aria-label="Who can use the shared account" disabled={busy} value={choice} className={inputClass}
+                onChange={event => {
+                  const value = event.target.value
+                  // Everyone and Only admins save at once; Specific people opens the pickers.
+                  if (value === 'all' || value === 'admins') void saveAvailability(value)
+                  else setAvailabilityDraft({ admins: true, products: [], users: [] })
+                }}>
+                <option value="all">Everyone</option>
+                <option value="admins">Only admins</option>
+                <option value="chosen">Specific people or products…</option>
+              </select>
+            </label>
+            {choice === 'chosen' && availabilityDraft !== null && (
+              <form className="space-y-3" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }}>
+                <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
+                <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+              </form>
+            )}
             <div className="flex flex-wrap gap-2">
-              <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
               {availability?.source === 'admin' && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void saveAvailability(null)}>Reset to installation policy</button>}
-              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Cancel</button>
+              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Done</button>
             </div>
-          </form>
+          </div>
         )}
         {terminalFor(record)}
       </div>
@@ -437,7 +465,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             type="warning"
           />
         </section>
-        <ProviderAccountCostsSection provider={provider} />
+        {/* Cost is not part of setting up an account: collapsed, one click away. */}
+        <details className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+          <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">Cost by account</summary>
+          <div className="mt-3"><ProviderAccountCostsSection provider={provider} /></div>
+        </details>
       </>
     )
   }
@@ -477,3 +509,38 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     </section>
   )
 }
+
+/** A small "more" menu: the account's less common actions, so each row shows at most one button. */
+function ActionsMenu({ label, items, disabled }: {
+  label: string
+  items: { label: string; onSelect: () => void; danger?: boolean }[]
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+  if (items.length === 0) return null
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" disabled={disabled} aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-20 mt-1 min-w-52 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+          {items.map(item => (
+            <button key={item.label} role="menuitem" type="button" onClick={() => { setOpen(false); item.onSelect() }}
+              className={`block w-full px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-gray-800 ${item.danger ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'}`}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
