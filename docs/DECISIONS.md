@@ -7,6 +7,14 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — No public default secrets key left in the decrypt path
+- `services/workspace_config.go` still derived its decryption key from the public
+  `dev-secret-change-in-production` when `AUTH_SECRET` was empty. The server already
+  refuses to start with that value, so it was dead-but-confusing. `deriveSecretsKey` now
+  returns nil without `AUTH_SECRET` and decryption fails with a clear error; the value is
+  trimmed like the server's own reader. No real secret was ever in the code (`env.example`
+  holds a placeholder).
+
 ### 2026-09-30 — Workflow Run and Builder also link the real workflow into private runtimes
 - Apply Crew's linked-directory design to workflow conversational CLI runtimes.
   Keep the existing user/workflow/chat/provider/mode identity and distinct Run/
