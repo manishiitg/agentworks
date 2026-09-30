@@ -1137,6 +1137,10 @@ export MULTI_USER_MODE="false"
 # Enable local mode (enables CDP browser connection and other local-only features)
 export LOCAL_MODE="true"
 
+# Full CLI on a person's own machine (PLAT-364): Claude and Codex get their own shell and file
+# edits, unconfined. The server refuses it in multi-user mode. Set to "off" to keep hybrid.
+export AGENTWORKS_CLI_FULL_UNCONFINED="${AGENTWORKS_CLI_FULL_UNCONFINED:-on}"
+
 # Log all agent prompts (system prompt + user message) to logs/agent_prompts/
 export LOG_AGENT_PROMPTS="true"
 
