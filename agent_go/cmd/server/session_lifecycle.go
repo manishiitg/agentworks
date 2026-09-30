@@ -155,6 +155,10 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	api.lastQueryMu.Unlock()
 
 	closeAllCodingCLISessionsForRuntimeCancel(sessionID, closeReason)
+	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
+	// marker that says the session is busy, or the next message queues behind a dead turn forever
+	// (excellence, 2026-09-30: every message after a Stop stayed "queued_for_turn").
+	api.releaseStoppedSessionTurnMarkers(sessionID)
 	if api.terminalStore == nil {
 		return
 	}
@@ -437,6 +441,11 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	closeReason := "user pressed stop"
 	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, closeReason)
 	log.Printf("[SESSION DEBUG] Closed any tmux-backed coding-CLI session for stopped session %s", sessionID)
+	// The Stop button closes the coding CLI, so nothing can finish the turn it was running:
+	// release every marker that says the conversation is busy, or the next message is refused
+	// (409) or queued behind a dead turn forever (excellence, 2026-09-30: a Muse Code chat).
+	// The runtime-cancel path has the same call; this is the one the Stop button takes.
+	api.releaseStoppedSessionTurnMarkers(sessionID)
 
 	// The calls above are keyed by the chat / main-agent session ID. Workflow-step
 	// sub-agents, however, register their interactive CLI session under the STEP
@@ -642,4 +651,46 @@ func (api *StreamingAPI) sessionHasActiveWork(sessionID string) bool {
 		return true
 	}
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
+}
+
+// releaseStoppedSessionTurnMarkers clears what still marks a stopped session as running a turn:
+// the retained coding-agent session's active turn (its CLI was just closed), the retained-main-turn
+// record, and the durable queue entry of the turn that was running (claimed, never finished). Turns
+// still waiting in the queue are kept: they run, in order, when the person sends their next message.
+func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained != nil && retained.ActiveTurnID() != "" {
+		if err := retained.Close(); err != nil {
+			log.Printf("[STOP] session=%s could not close the retained session: %v", sessionID, err)
+		} else {
+			log.Printf("[STOP] session=%s released the retained session's active turn", sessionID)
+		}
+	}
+	api.retainedMainTurnsMu.Lock()
+	_, retainedTurn := api.retainedMainTurns[sessionID]
+	delete(api.retainedMainTurns, sessionID)
+	api.retainedMainTurnsMu.Unlock()
+	if retainedTurn {
+		log.Printf("[STOP] session=%s released the retained main turn record", sessionID)
+	}
+	if dropped := api.dropStartedConversationTurns(sessionID); dropped > 0 {
+		log.Printf("[STOP] session=%s dropped %d claimed queue entr%s of the stopped turn", sessionID, dropped, map[bool]string{true: "y", false: "ies"}[dropped == 1])
+	}
+}
+
+// runningServerAPI is the server's API, set when it starts. Code that has no API handle (the access
+// and runtime-configuration changes below) uses it to release busy markers; nil (tests, CLI tools)
+// means only the CLI is closed.
+var runningServerAPI *StreamingAPI
+
+// closeCodingCLIAndReleaseTurnMarkers closes a chat's coding CLI on purpose (its access or runtime
+// configuration changed) and clears what marks the conversation busy. A turn that was running in
+// that CLI can no longer finish, so leaving its markers made every later message queue behind it.
+func closeCodingCLIAndReleaseTurnMarkers(sessionID, reason string) {
+	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+	if runningServerAPI != nil {
+		runningServerAPI.releaseStoppedSessionTurnMarkers(sessionID)
+	}
 }

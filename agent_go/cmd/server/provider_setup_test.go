@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -332,5 +333,27 @@ func TestProviderSetupAllowlistIncludesReviewedProviderActions(t *testing.T) {
 		if actual.command != expected.command || strings.Join(actual.args, "\x00") != strings.Join(expected.args, "\x00") {
 			t.Fatalf("unexpected %s usage command: %#v", provider, actual)
 		}
+	}
+}
+
+// The account terminal must not open on Claude's first-run theme picker; a chosen theme and
+// the rest of the file are kept.
+func TestSeedClaudeThemeKeepsExistingSettings(t *testing.T) {
+	home := t.TempDir()
+	seedClaudeTheme(home)
+	raw, _ := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if !strings.Contains(string(raw), `"theme": "dark"`) {
+		t.Fatalf("theme not seeded: %s", raw)
+	}
+	_ = os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"theme":"light","hasCompletedOnboarding":true}`), 0o600)
+	seedClaudeTheme(home)
+	raw, _ = os.ReadFile(filepath.Join(home, ".claude.json"))
+	if !strings.Contains(string(raw), `"theme":"light"`) {
+		t.Fatalf("overwrote a chosen theme: %s", raw)
+	}
+	_ = os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{broken`), 0o600)
+	seedClaudeTheme(home)
+	if raw, _ = os.ReadFile(filepath.Join(home, ".claude.json")); string(raw) != `{broken` {
+		t.Fatalf("rewrote an unreadable file: %s", raw)
 	}
 }

@@ -2164,13 +2164,22 @@ func UploadFile(c *gin.Context) {
 	// Get folder path relative to user
 	folderRelPath := filepath.Dir(relativePath)
 
+	// Native terminal attachments need an unambiguous path even when the CLI
+	// runs in a project subfolder rather than the workspace root.
+	absolutePath, err := filepath.Abs(fullFilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to resolve uploaded file path", Error: err.Error()})
+		return
+	}
+
 	// Prepare response
 	response := models.FileUploadResponse{
-		FilePath:    relativePath,
-		FileName:    fileName,
-		FileSize:    fileSize,
-		ContentType: contentType,
-		Folder:      folderRelPath,
+		AbsolutePath: absolutePath,
+		FilePath:     relativePath,
+		FileName:     fileName,
+		FileSize:     fileSize,
+		ContentType:  contentType,
+		Folder:       folderRelPath,
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse[any]{

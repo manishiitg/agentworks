@@ -14,6 +14,7 @@ import { READ_ONLY_TITLE } from '../../../hooks/useCanWriteWorkflow'
 import { AskAIButton } from '../AskAIButton'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
+import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import { GmailSetupGuide } from './GmailSetupGuide'
 
 // ── Email notifications (account-wide, shared by every workflow) ──────────
@@ -169,7 +170,7 @@ function gmailBackendLabel(backend: string | undefined): { name: string; install
 }
 
 type GmailNotificationsBots = Pick<WorkflowBots,
-  | 'readOnly'
+  | 'gmailConnectionsReadOnly' | 'gmailSettingsReadOnly' | 'canRemoveGmailConnection'
   | 'gmailConfig' | 'setGmailConfig' | 'gmailBlockedText' | 'setGmailBlockedText'
   | 'gmailLoading' | 'gmailSaving' | 'gmailTesting' | 'gmailError' | 'gmailSuccess' | 'gmailTestResult'
   | 'gmailBlockedDefaults' | 'gmailDefaultIsBlocked' | 'gmailCanEnable' | 'gmailHasChanges' | 'saveGmail' | 'testGmail'
@@ -231,7 +232,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   onAsk?: (message: string) => void | Promise<void>
 }) {
   const {
-    readOnly,
+    gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
     gmailLoading, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailCanEnable, gmailHasChanges, saveGmail, testGmail,
@@ -243,7 +244,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   } = bots
 
   const handleRemoveMailbox = (conn: { id: string; display_name: string; client_name?: string }) => {
-    if (!window.confirm(`Remove "${conn.display_name}"? This also removes its OAuth client if no other account uses it.`)) return
+    if (!window.confirm(`Remove "${conn.display_name}"?`)) return
     void removeGmailMailboxAndClient(conn.id, conn.client_name || '')
   }
 
@@ -363,6 +364,11 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               />
             }
           >
+              {readOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">
+                {workspacePath && /(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)
+                  ? "Only this Code's owner can manage its Google accounts."
+                  : 'An admin manages shared Gmail accounts. You can remove your own connected account.'}
+              </p>}
               {!platformConnect && !(gmailConfig.auth.authenticated && gmailConfig.auth.has_gmail_scope) && gmailConnections.length === 0 && (
                 <Card className="border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
                   <div className="flex gap-2"><AlertTriangle className="h-4 w-4 flex-shrink-0" /><div><strong>No account connected yet.</strong> Add a sending account below and sign in with Google. <code>{gmailBackendLabel(gmailConfig.auth.backend).install}</code> must be installed on the server host.</div></div>
@@ -375,7 +381,18 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 {newClientParseError && <StatusBanner tone="error">{newClientParseError}</StatusBanner>}
 
                 {gmailConnections.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No sending accounts yet — add one below.</p>
+                  <p className="text-xs text-muted-foreground">{platformConnect ? 'No Google account connected yet.' : 'No sending accounts yet — add one below.'}</p>
+                ) : platformConnect ? (
+                  <GoogleAccountList
+                    connections={gmailConnections}
+                    busyId={gmailConnectionsBusy}
+                    readOnly={readOnly}
+                    canRemove={canRemoveGmailConnection}
+                    onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
+                    onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
+                    onReconnect={conn => connectGmailAccount(conn.id)}
+                    onRemove={conn => handleRemoveMailbox(conn)}
+                  />
                 ) : (
                   <ul className="space-y-2">
                     {gmailConnections.map(conn => (
@@ -501,8 +518,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                             variant="outline"
                             size="sm"
                             onClick={() => handleRemoveMailbox(conn)}
-                            disabled={readOnly || gmailConnectionsBusy === conn.id}
-                            title={readOnly ? READ_ONLY_TITLE : undefined}
+                            disabled={!canRemoveGmailConnection(conn) || gmailConnectionsBusy === conn.id}
+                            title={!canRemoveGmailConnection(conn) ? READ_ONLY_TITLE : undefined}
                             className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
                           >
                             Remove
@@ -726,6 +743,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
             title="Delivery settings"
             description={<>Account-wide one-way email delivery, shared by <code>notify_user</code> across every workflow and product chat. Turn this off to stop all outbound email. Email replies do not resume an agent.</>}
           >
+            {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change shared Gmail delivery settings or send a test email.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
             {gmailSuccess && <StatusBanner tone="success">{gmailSuccess}</StatusBanner>}
             <Card className="p-4">
@@ -734,8 +752,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 description="Available to notify_user across workflows and product chats."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}
-                disabled={readOnly || (!gmailConfig.enabled && !gmailCanEnable)}
-                disabledTitle={readOnly ? READ_ONLY_TITLE : undefined}
+                disabled={gmailSettingsReadOnly || (!gmailConfig.enabled && !gmailCanEnable)}
+                disabledTitle={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}
               />
               {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Sign in a Gmail account above to enable; it switches on automatically once one is connected.</p>}
             </Card>
@@ -744,19 +762,19 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                   <Label className="mb-2 block">Default recipients</Label>
                   {/* Deliberately type="text": type="email" rejects a comma-separated
                       list, which is the whole point of this field. */}
-                  <Input type="text" inputMode="email" value={gmailConfig.default_to || ''} onChange={event => setGmailConfig({ ...gmailConfig, default_to: event.target.value })} disabled={readOnly} placeholder="you@example.com, teammate@example.com" aria-label="Default recipients" />
+                  <Input type="text" inputMode="email" value={gmailConfig.default_to || ''} onChange={event => setGmailConfig({ ...gmailConfig, default_to: event.target.value })} disabled={gmailSettingsReadOnly} placeholder="you@example.com, teammate@example.com" aria-label="Default recipients" />
                   <p className="mt-1 text-xs text-muted-foreground">Where notifications are emailed when a workflow has no recipients of its own. Separate several addresses with commas.</p>
                 </div>
                 <div>
                   <Label className="mb-2 block">Disallowed recipients</Label>
-                  <Textarea value={gmailBlockedText} onChange={event => setGmailBlockedText(event.target.value)} disabled={readOnly} rows={3} placeholder="blocked@example.com, no-notify@example.com" className="font-mono" aria-label="Disallowed recipients" />
+                  <Textarea value={gmailBlockedText} onChange={event => setGmailBlockedText(event.target.value)} disabled={gmailSettingsReadOnly} rows={3} placeholder="blocked@example.com, no-notify@example.com" className="font-mono" aria-label="Disallowed recipients" />
                   {gmailDefaultIsBlocked && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{gmailBlockedDefaults.join(', ')} {gmailBlockedDefaults.length === 1 ? 'is' : 'are'} both a default recipient and disallowed.</p>}
                 </div>
               </Card>
-              <Button variant="outline" onClick={testGmail} disabled={readOnly || gmailTesting || !gmailConfig.default_to || gmailDefaultIsBlocked} title={readOnly ? READ_ONLY_TITLE : undefined} className="w-full">{gmailTesting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending…</> : 'Send test email'}</Button>
+              <Button variant="outline" onClick={testGmail} disabled={gmailSettingsReadOnly || gmailTesting || !gmailConfig.default_to || gmailDefaultIsBlocked} title={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined} className="w-full">{gmailTesting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending…</> : 'Send test email'}</Button>
               {gmailTestResult && <Card className={`p-3 text-sm ${gmailTestResult.success ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300' : 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'}`}>{gmailTestResult.message}</Card>}
               <div className="flex justify-end">
-                <Button onClick={saveGmail} disabled={readOnly || !gmailHasChanges || gmailSaving || gmailLoading || gmailDefaultIsBlocked || (gmailConfig.enabled && !gmailCanEnable)} title={readOnly ? READ_ONLY_TITLE : undefined}>{gmailSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save'}</Button>
+                <Button onClick={saveGmail} disabled={gmailSettingsReadOnly || !gmailHasChanges || gmailSaving || gmailLoading || gmailDefaultIsBlocked || (gmailConfig.enabled && !gmailCanEnable)} title={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}>{gmailSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save'}</Button>
               </div>
           </FormSection>
           </>

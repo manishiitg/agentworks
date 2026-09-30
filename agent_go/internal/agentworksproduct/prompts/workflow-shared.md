@@ -10,6 +10,17 @@ Read `soul/soul.md` before workflow decisions. It is canonical for the objective
 
 {{template "mode-instructions" .}}
 
+## Linked CLI workspace
+
+When using a private coding CLI runtime, `project/` links to the real workflow.
+Native file paths use `project/<path>` (for example `project/soul/soul.md`);
+commands that need workflow-relative paths use `cd project && ...`. Paths in
+workspace bridge tools and the workflow references below remain relative to the
+real workflow, without the `project/` prefix. Keep durable work under the link
+and generated CLI instructions, skills and configuration in the private runtime.
+The link never grants permissions: obey the current mode and folder grants,
+and preserve the workflow's own instructions and CLI configuration.
+
 ## Execution policy
 
 Before running, read `builder-reference/references/running-steps.md`. Select real step IDs from the plan and an explicit `group_name` from `variables/variables.json`. {{if .AvailableGroups}}Available groups: **{{.AvailableGroups}}**.{{end}} For multi-group runs, default to sequential one-group-at-a-time execution; parallel groups require an explicit user request. See `builder-reference/references/execution-policy.md`.
@@ -32,8 +43,7 @@ Load a reference with `read_skill(skills=[{"name":"builder-reference","path":"re
 - Locating files or inspecting logs: `builder-reference/references/file-layout.md`. Persistent data and writer/consumer ownership: `builder-reference/references/stores.md`.
 - Tool signatures, notifications, execution controls, and guided commands: `builder-reference/references/workflow-tools.md`. For a slash command or matching review/improvement intent, call `get_workflow_command_guidance` with the requested kind and conversation-derived `focus`; follow the permitted flow without expanding user authorization.
 {{if eq .WorkshopMode "workshop"}}
-- Reusable engineering setup: call `search_playbooks` when the user's intent may match a playbook. Recommend the best fit from its setup areas, deliverables, and Strategic Pulse focus; if it is not installed, ask the user to install it and open the Playbooks view. For an available update, report the installed and latest versions and summarize only the authored changelog; never infer changes from a version number. When configuring an installed playbook, recommend its Strategic lens and activation model when useful. Keep Plan Drift generic; Technical scope comes from operational evidence and Architecture scope from structural risk. Searching never installs or changes the workflow.
-- For an installed multi-Crew Playbook, read its `playbook.json` slots and handoffs and its `SETUP.json` before editing the plan. Reuse compatible Crew identities. For each required or selected optional handoff, bind the producer's exact output path, inspect the package validator's real interface, and put a blocking scripted validation step before the consumer. Prove a valid and rejected artifact, then exercise a real authorized case manually. Save validator output and source/run IDs; authored fixtures alone do not complete setup. Keep recurrence and external actions off until the customer reviews their exact routes.
+- Playbooks (the user's intent may match one, installing or updating one, or configuring a multi-Crew one): call `search_playbooks` and read `builder-reference/references/playbook-setup.md`. Searching never installs or changes the workflow.
 - Designing steps: `builder-reference/references/plan-design.md`; before changing a description, `builder-reference/references/step-description.md`; when restructuring, `builder-reference/references/plan-change-impact.md`. Use `message-sequence` for conversational agents, `scripted` for deterministic API/CLI/data work, and `routing` / `branch` / `orchestrator` for their control-flow boundaries.
 - Measurement: `builder-reference/references/measurement-plan.md` before adding or moving a measurement. Reuse producer outputs; Pulse history flows through `record_goal_observations`.
 - Debugging and repairs: `builder-reference/references/debugging-flow.md`, then `builder-reference/references/fix-verification.md` before applying a repair. Pulse review/fix work follows `builder-reference/references/pulse-review-fixer.md`.

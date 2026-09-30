@@ -95,6 +95,24 @@ function assistantResponseText(event: PollingEvent): string {
   return content || finalResult || result
 }
 
+// The streamed text stays on screen for a moment after the turn ends, and the finished reply is
+// added as a normal row meanwhile. Showing both doubled a long answer, then collapsed it: a big
+// jump. When the finished reply already says what the live text says, the live row is dropped, so
+// the swap happens inside one frame.
+export function liveTextAlreadyCommitted(items: TranscriptRenderItem[], liveText: string): boolean {
+  const live = liveText.replace(/\s+/g, ' ').trim().toLowerCase()
+  if (!live) return false
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index]
+    if (item.kind !== 'event') continue
+    if (item.event.type === 'user_message') return false
+    const answer = assistantResponseText(item.event).replace(/\s+/g, ' ').trim().toLowerCase()
+    if (!answer) continue
+    return answer === live || answer.startsWith(live) || live.startsWith(answer)
+  }
+  return false
+}
+
 function presentationActivity(event: PollingEvent): { label: string; title: string; destination: string; detail: string } | null {
 	if (event.type !== 'presentation_updated') return null
 	const payload = transcriptEventPayload(event)
@@ -422,6 +440,29 @@ function failureHints(payload: Record<string, unknown>): { code?: unknown; provi
 const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry }) => {
   const [open, setOpen] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  // A cancel is something the person did, not a fault: one quiet line, not a full error card.
+  if (failure.code === 'cancelled') {
+    return (
+      <div data-testid="terminal-clear-turn-failure" className="my-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <XCircle className="h-3 w-3 shrink-0" />
+        <span>{failure.title}</span>
+        {timestamp && <span className="tabular-nums">{timestamp}</span>}
+        {failure.retryable && onRetry && (
+          <button
+            type="button"
+            disabled={retrying}
+            className="underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+            onClick={async () => {
+              setRetrying(true)
+              try { await onRetry() } finally { setRetrying(false) }
+            }}
+          >
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        )}
+      </div>
+    )
+  }
   return (
     <article data-testid="terminal-clear-turn-failure" className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
       <div className="flex items-start gap-2">
@@ -839,9 +880,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     error || (isAtTranscriptStart && (hasOlder || loadingOlder) && onLoadOlder),
   )
   const listData = useMemo<TranscriptRenderItem[]>(
-    () => (streamingText || streamingStatus
+    () => (streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText)
       ? [...items, { kind: 'live' as const, key: '__live-stream__', text: streamingText, status: streamingStatus }]
-      : items),
+      : items,
     [items, streamingStatus, streamingText],
   )
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])

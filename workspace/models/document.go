@@ -113,11 +113,12 @@ type FileUploadRequest struct {
 
 // FileUploadResponse represents the response after file upload
 type FileUploadResponse struct {
-	FilePath    string `json:"filepath"`
-	FileName    string `json:"filename"`
-	FileSize    int64  `json:"file_size"`
-	ContentType string `json:"content_type"`
-	Folder      string `json:"folder"`
+	AbsolutePath string `json:"absolute_path"`
+	FilePath     string `json:"filepath"`
+	FileName     string `json:"filename"`
+	FileSize     int64  `json:"file_size"`
+	ContentType  string `json:"content_type"`
+	Folder       string `json:"folder"`
 }
 
 // CreateFolderRequest represents the request to create a folder

@@ -14,7 +14,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -257,6 +256,16 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 			}
 			req.ReasoningEffort = effort
 		}
+	}
+	// An account belongs to one provider. The one inherited from the conversation is only valid
+	// while the chat stays on that provider: switching Pi -> Agy with no account picked used to
+	// send Pi's account with Agy and fail "provider connection does not match selected provider"
+	// (Confida 2026-09-30). The new provider then gets its own default account.
+	if strings.TrimSpace(input.ConnectionID) == "" && req.ConnectionID != "" &&
+		strings.TrimSpace(conversation.Provider) != "" && strings.TrimSpace(req.Provider) != "" &&
+		!strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(req.Provider)) &&
+		req.ConnectionID == strings.TrimSpace(conversation.ConnectionID) {
+		req.ConnectionID = ""
 	}
 	return req, nil
 }
@@ -706,6 +715,17 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			api.sessionWorkspaceMu.RUnlock()
 			preferredSessionVerifiedForWorkspace = activeWorkspace != "" && normalizeConversationWorkspace(activeWorkspace) == normalizeConversationWorkspace(binding.WorkspacePath)
 		}
+		if !preferredSessionVerifiedForWorkspace {
+			// A session's history is only saved when its turn ends, so a follow-up sent while
+			// the first turn still runs (or a session that has not saved yet) has no history to
+			// verify against. The server's own registry entry for this very slot, bound to this
+			// project, is the same proof.
+			if current, found, _, historyErr := defaultProductConversationRegistryStore().history(r.Context(), userID, profile, binding); historyErr == nil && found &&
+				strings.TrimSpace(current.SessionID) == candidate &&
+				normalizeConversationWorkspace(current.WorkspacePath) == normalizeConversationWorkspace(binding.WorkspacePath) {
+				preferredSessionVerifiedForWorkspace = true
+			}
+		}
 		if isProjectProfileID(profile.ID) && !preferredSessionVerifiedForWorkspace {
 			return ProductConversationRecord{}, fmt.Errorf("conversation continuity conflict: requested session is not verified in this project")
 		}
@@ -836,21 +856,10 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 	}
 }
 
-// Product manifests include AGY for local alpha runs. Keep the option out of
-// public profile responses whenever the runtime gate refuses it.
+// Product provider options remain visible; runtime/auth readiness is reported
+// by the provider manifest rather than silently removing an engine.
 func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.Profile {
-	profile = profileWithProductDefault(context.Background(), profile)
-	if llmguard.AgyAlphaEnabled() {
-		return profile
-	}
-	options := make([]agentprofiles.ProviderOption, 0, len(profile.Runtime.ProviderOptions))
-	for _, option := range profile.Runtime.ProviderOptions {
-		if !strings.EqualFold(strings.TrimSpace(option.Provider), "agy-cli") {
-			options = append(options, option)
-		}
-	}
-	profile.Runtime.ProviderOptions = options
-	return profile
+	return profileWithProductDefault(context.Background(), profile)
 }
 
 func validateAgentProfileHandler() http.HandlerFunc {
@@ -899,23 +908,33 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
-	if conversation.Provider != "" && canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) {
-		// Only a real account change needs a new conversation: moving onto a
-		// private connection, or between private connections, must stay
-		// explicit (billing + CLI identity). A provider switch with no
-		// private account on either side is safe to rebind — the restart
-		// below relaunches the CLI — so a stale engine pick must not lock
-		// the user out of their own chat.
-		if strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "" {
-			log.Printf("[PRODUCT_CHAT] account change refused for conversation %q: bound %s/%s, requested %s/%s", conversation.ConversationKey, conversation.Provider, conversation.ConnectionID, query.Provider, query.ConnectionID)
-			return QueryRequest{}, fmt.Errorf("account change requires a new conversation")
-		}
+	// A conversation that started on the shared account stays there: the query path defaults a
+	// chat with no account to the person's own one, which would move it under a different CLI
+	// login while its saved history stays under the old one. Only new conversations get the default.
+	if strings.TrimSpace(query.ConnectionID) == "" && strings.TrimSpace(conversation.ConnectionID) == "" &&
+		strings.TrimSpace(conversation.Provider) != "" && strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) {
+		query.ConnectionID = "global:" + strings.TrimSpace(query.Provider)
+	}
+	// An account change is always an explicit choice here: an omitted account inherits the bound
+	// one, and the default above never moves an existing chat. The chat stays one conversation with
+	// its history; its CLI restarts on the new account (bindRuntimeConfiguration below), and the old
+	// account's saved native session cannot resume under another login, so it is not resumed.
+	accountChanged := conversation.Provider != "" &&
+		canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) &&
+		strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) &&
+		(strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "")
+	if accountChanged {
+		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
 	target, found, err := resolveProductResumeTarget(userID, conversation)
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
 	}
 	if found {
+		if accountChanged && target != nil {
+			// Keep the visible history; start a fresh CLI session on the new account.
+			target.Runtime = nil
+		}
 		query.resolvedResumeTarget = target
 	}
 	if strings.TrimSpace(query.Provider) != "" {
@@ -924,7 +943,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			return QueryRequest{}, err
 		}
 		if restart {
-			closeAllCodingCLIInteractiveSessionsForOwner(conversation.SessionID, "product chat: runtime configuration changed")
+			closeCodingCLIAndReleaseTurnMarkers(conversation.SessionID, "product chat: runtime configuration changed")
 		}
 	}
 	return query, nil

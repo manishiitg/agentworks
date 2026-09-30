@@ -100,6 +100,7 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-label="Switch product"
+        data-tour-products={visibleProductIDs.join(' ')}
         aria-haspopup="menu"
         aria-expanded={open}
         title={currentProduct.label}

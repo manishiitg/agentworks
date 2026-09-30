@@ -246,6 +246,44 @@ func (api *StreamingAPI) removeConversationTurn(ctx context.Context, turn queued
 	return api.writeConversationTurnQueue(ctx, turn.UserID, kept)
 }
 
+// dropStartedConversationTurns removes the session's queue entries that were claimed for
+// execution (StartedAt set): the turn they belong to has been stopped and will never remove
+// them. Unstarted entries stay queued. Returns how many were removed.
+func (api *StreamingAPI) dropStartedConversationTurns(sessionID string) int {
+	api.conversationTurnQueueMu.Lock()
+	userID := api.conversationTurnQueueOwners[sessionID]
+	api.conversationTurnQueueMu.Unlock()
+	if userID == "" {
+		return 0
+	}
+	ctx := context.Background()
+	path := conversationTurnQueuePath(userID)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, userID)
+	if err != nil || len(turns) == 0 {
+		return 0
+	}
+	kept := make([]queuedConversationTurn, 0, len(turns))
+	dropped := 0
+	for _, turn := range turns {
+		if turn.SessionID == sessionID && turn.StartedAt != nil {
+			dropped++
+			continue
+		}
+		kept = append(kept, turn)
+	}
+	if dropped == 0 {
+		return 0
+	}
+	if err := api.writeConversationTurnQueue(ctx, userID, kept); err != nil {
+		logTurnQueue("cannot drop stopped turns for %s: %v", sessionID, err)
+		return 0
+	}
+	return dropped
+}
+
 func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" || api.conversationTurnOccupied(sessionID) {
 		return
@@ -417,6 +455,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			lock.Unlock()
 			continue
 		}
+		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
 		for i := range turns {
 			turns[i].StartedAt = nil
 		}
@@ -438,6 +477,25 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			api.kickConversationTurnQueue(turn.SessionID)
 		}
 	}
+}
+
+// staleWaitingTurnAge: a message that has waited this long without ever starting was stuck behind
+// a turn that never finished; the person has almost always resent it since. Running it after a
+// restart would repeat work (excellence, 2026-09-30: the same demo-data request queued three times).
+const staleWaitingTurnAge = 30 * time.Minute
+
+// dropStaleWaitingTurns removes turns that never started and are older than staleWaitingTurnAge.
+// Turns that had started (they were running when the server stopped) are kept and run again.
+func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
+	kept := make([]queuedConversationTurn, 0, len(turns))
+	for _, turn := range turns {
+		if turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
+			logTurnQueue("dropping a message that waited %s without starting (session %s)", now.Sub(turn.CreatedAt).Round(time.Minute), turn.SessionID)
+			continue
+		}
+		kept = append(kept, turn)
+	}
+	return kept
 }
 
 func logTurnQueue(format string, args ...interface{}) {

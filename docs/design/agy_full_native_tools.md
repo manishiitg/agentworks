@@ -13,7 +13,7 @@ instead of silently reducing Full CLI to hybrid.
 
 ## Enable locally
 
-Start the single-user backend with `AGY_ALPHA=1` and
+Start the single-user backend with
 `AGENTWORKS_CLI_FULL_UNCONFINED=on`. Keep **Native agent tools** enabled for the
 chat. The local `agent_go/run_server_with_logging.sh` runner defaults the Full CLI
 flag to `on`; set it to `off` to keep hybrid. Restart the backend when changing
@@ -28,15 +28,24 @@ explicit full mode. The temporary workspace hook is restored when the session
 closes. Unconfined mode runs with the local user's host permissions; the working
 directory is not a filesystem boundary.
 
-**Rollout: local only. Do not use AGY on RTS or excellence for now.** This work
-does not deploy to either host, certify Linux confinement, or enable AGY for
-shared users.
+**Initial validation scope: local only.** The original checks below did not
+certify Linux confinement or multi-user native-tool scenarios. The later
+deployment policy offers AGY on servers through the normal provider controls.
 
 ## Authentication and completion
 
 AGY 1.2.14 uses the same existing Google/Gemini API key used by Pi when exported
 as `GEMINI_API_KEY`. The adapter sets `modelProvider: "gemini"` in its private
 home. The key does not need to be duplicated into global AGY settings.
+
+AGY is offered on local and multi-user installations alongside the other
+coding CLIs; no alpha environment flag hides or refuses it. Normal account
+admission, authentication and CLI sandbox policy still apply. Every deployment
+installs and updates all six coding CLIs through the shared installer. Confida
+selects Gemini API-key mode using the service's existing `GEMINI_API_KEY`.
+The managed AGY installer verifies Google's release checksum before replacing
+the binary. This rollout does not extend local certification to every Linux
+native-tool scenario.
 
 Native subagent invocation is asynchronous. The retained completion reader
 requires both the child's completed native record and its notification in the

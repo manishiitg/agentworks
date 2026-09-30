@@ -149,6 +149,13 @@ func TestRestoreLatestBuilderConversationRanksAfterNativeTranscriptCatchUp(t *te
 		{"Role": "ai", "Parts": []map[string]string{{"Text": "a different older answer"}}},
 	}, nil)
 
+	// A bot lookup (run first: a refresh saves its catch-up, which changes the snapshot) refreshes only the most recently updated few (a busy workflow has dozens, and
+	// refreshing them all took 70 s): with a limit of 1 the older snapshot is not refreshed, so the
+	// most recently saved conversation wins. With room for both it is the caught-up one, as above.
+	limited, err := (&StreamingAPI{}).restoreLatestBuilderConversationLimited(context.Background(), "sales-outreach", workspacePath, 1)
+	if err != nil || limited == nil || limited.SessionID != "newer-saved-session" {
+		t.Fatalf("limited restore = %+v, %v; want the most recently saved conversation", limited, err)
+	}
 	response, err := (&StreamingAPI{}).restoreLatestBuilderConversation(context.Background(), "sales-outreach", workspacePath)
 	if err != nil {
 		t.Fatalf("restore latest builder conversation: %v", err)
@@ -161,5 +168,10 @@ func TestRestoreLatestBuilderConversationRanksAfterNativeTranscriptCatchUp(t *te
 	}
 	if response.UpdatedAt != "2026-08-30T10:01:00Z" {
 		t.Fatalf("updated_at = %q, want native transcript recency", response.UpdatedAt)
+	}
+
+	both, err := (&StreamingAPI{}).restoreLatestBuilderConversationLimited(context.Background(), "sales-outreach", workspacePath, 2)
+	if err != nil || both == nil || both.SessionID != "saved-older-session" {
+		t.Fatalf("restore with room for both = %+v, %v; want the caught-up conversation", both, err)
 	}
 }

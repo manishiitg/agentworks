@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +139,15 @@ func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
 	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
 
 	for _, caller := range []string{"other", "gone"} {
+		for name, handler := range map[string]func(*StreamingAPI, http.ResponseWriter, *http.Request){
+			"list chats": (*StreamingAPI).handleAdminCodeChats,
+			"read chat":  (*StreamingAPI).handleAdminCodeChat,
+		} {
+			if rec := adminGet(api, handler, caller, "/x?user=owner", project); rec.Code != http.StatusForbidden {
+				t.Fatalf("%s %s: %d %s", caller, name, rec.Code, rec.Body.String())
+			}
+		}
+
 		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/code/workspaces", nil); rec.Code != http.StatusForbidden {
 			t.Fatalf("%s listed every Code: %d", caller, rec.Code)
 		}
@@ -205,5 +217,56 @@ func TestCodeInspectionListsConnections(t *testing.T) {
 	mock.mu.Unlock()
 	if !strings.Contains(log, `"action":"list_mcp"`) {
 		t.Fatalf("MCP inspection not audited:\n%s", log)
+	}
+}
+
+func TestCodeConversationReviewBindsProjectAndAuditsReads(t *testing.T) {
+	api, mock := newCodeAdminFixture(t, true)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev","code_reviewer":true}]}`)
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	write := func(relative, data string) {
+		filename := filepath.Join(docs, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(codePrivacyOwnerRoot+"/builder/session-code-chat-conversation.json", `{"session_id":"code-chat","user_id":"owner","runtime":{"workspace_path":"`+codePrivacyOwnerRoot+`"},"conversation_history":[{"Role":"human","Parts":[{"Text":"Code question"}]},{"Role":"ai","Parts":[{"Text":"Code answer"}]}]}`)
+	write("_users/owner/chat_history/2026-09-30/session-private-chat-conversation.json", `{"session_id":"private-chat","user_id":"owner","runtime":{"workspace_path":"Chats/Work/projects/private"},"conversation_history":[{"Role":"human","Parts":[{"Text":"Private Work question"}]}]}`)
+	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000", "session_id": "code-chat"}
+	rec := adminGet(api, (*StreamingAPI).handleAdminCodeChats, "rev", "/x", project)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "code-chat") || strings.Contains(rec.Body.String(), "private-chat") {
+		t.Fatalf("chats: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Code answer") {
+		t.Fatalf("read: %d %s", rec.Code, rec.Body.String())
+	}
+	project["session_id"] = "private-chat"
+	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
+	if rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "Private Work") {
+		t.Fatalf("guessed private chat: %d %s", rec.Code, rec.Body.String())
+	}
+	mock.mu.Lock()
+	audit := mock.files[codeAdminAuditPath(time.Now())]
+	mock.mu.Unlock()
+	if !strings.Contains(audit, `"action":"list_chats"`) || !strings.Contains(audit, `"action":"read_chat"`) || !strings.Contains(audit, "owner/code-chat") || strings.Contains(audit, "private-chat") {
+		t.Fatalf("audit = %s", audit)
+	}
+	project["session_id"] = "code-chat"
+	previous := codeAdminAuditAppend
+	codeAdminAuditAppend = func(context.Context, string, string) error { return fmt.Errorf("audit offline") }
+	rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project)
+	codeAdminAuditAppend = previous
+	if rec.Code != http.StatusServiceUnavailable || strings.Contains(rec.Body.String(), "Code answer") {
+		t.Fatalf("unaudited read: %d %s", rec.Code, rec.Body.String())
+	}
+	*directory = `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev"}]}`
+	invalidateUserDirectoryCache()
+	if rec = adminGet(api, (*StreamingAPI).handleAdminCodeChat, "rev", "/x?user=owner", project); rec.Code != http.StatusForbidden {
+		t.Fatalf("revoked reviewer: %d %s", rec.Code, rec.Body.String())
 	}
 }

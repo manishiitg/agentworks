@@ -45,10 +45,6 @@ func isPublishedLLMProviderAllowed(provider string) bool {
 	return false
 }
 
-func agyAlphaEnabled() bool {
-	return llmguard.AgyAlphaEnabled()
-}
-
 func defaultPublishedLLMProviderAndModel() (string, string) {
 	for _, provider := range []string{"codex-cli", "cursor-cli", "pi-cli", "claude-code"} {
 		modelID := strings.TrimSpace(llm.GetDefaultModel(llm.Provider(provider)))
@@ -61,12 +57,7 @@ func defaultPublishedLLMProviderAndModel() (string, string) {
 
 // getSupportedProviders returns the list of supported LLM providers based on environment configuration
 func getSupportedProviders() []string {
-	offered := make([]string, 0, len(supportedLLMProviders))
-	for _, provider := range supportedLLMProviders {
-		if provider != "agy-cli" || agyAlphaEnabled() {
-			offered = append(offered, provider)
-		}
-	}
+	offered := append([]string(nil), supportedLLMProviders...)
 	envValue := os.Getenv("SUPPORTED_LLM_PROVIDERS")
 	if envValue == "" {
 		return offered

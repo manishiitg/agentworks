@@ -25,6 +25,22 @@ const USER_DATA_PATH = CONFIGURED_USER_DATA_PATH
 app.setName('AgentWorks');
 app.setPath('userData', USER_DATA_PATH);
 
+const { createWalkthroughState } = require('./walkthroughState');
+// Initialize lazily, after legacy profile migration has completed.
+let walkthroughState;
+const getWalkthroughState = () => walkthroughState ||
+  (walkthroughState = createWalkthroughState(app.getPath('userData')));
+ipcMain.on('get-walkthrough-dismissals', event => {
+  event.returnValue = getWalkthroughState().getDismissed();
+});
+ipcMain.on('dismiss-walkthrough', (_event, key) => {
+  try {
+    getWalkthroughState().dismiss(key);
+  } catch (error) {
+    diagLog('[main] Failed to save walkthrough dismissal:', String(error));
+  }
+});
+
 // Dynamic ports (assigned at runtime)
 let dynamicAgentPort = 0;
 let dynamicWorkspacePort = 0;

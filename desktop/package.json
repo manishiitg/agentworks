@@ -55,6 +55,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "walkthroughState.js",
       "settings.html",
       "auth-prompt.html"
     ]

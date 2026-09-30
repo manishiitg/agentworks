@@ -244,3 +244,25 @@ func TestConversationRuntimeChangeReportsRestartForMCPAndSkills(t *testing.T) {
 		t.Fatal("equivalent workflow reference selection requested a restart")
 	}
 }
+
+// Switching provider mid-chat must not carry the old provider's account along.
+func TestProfileQueryDropsInheritedAccountOnProviderSwitch(t *testing.T) {
+	profile := engineModelTestProfile()
+	conversation := ProductConversationRecord{SessionID: "s", WorkspacePath: "Chats/P", ConversationKey: "main", Provider: "claude-code", ConnectionID: "acct-claude"}
+
+	req, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hi", Engine: "codex-cli"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ConnectionID != "" {
+		t.Fatalf("codex must not inherit the claude account, got %q", req.ConnectionID)
+	}
+	req, err = queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hi", Engine: "claude-code"}, conversation)
+	if err != nil || req.ConnectionID != "acct-claude" {
+		t.Fatalf("same provider keeps its account, got %q %v", req.ConnectionID, err)
+	}
+	req, err = queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hi", Engine: "codex-cli", ConnectionID: "acct-codex"}, conversation)
+	if err != nil || req.ConnectionID != "acct-codex" {
+		t.Fatalf("an explicit account is kept, got %q %v", req.ConnectionID, err)
+	}
+}

@@ -1,3 +1,4 @@
+import { inputTokens } from './costTokens'
 import type { CostAggregate, CostExecutionAggregate, CostSummary, WorkflowActivityTimingAggregate, WorkflowActivityTimingSummary } from '../services/api-types'
 
 export interface ActivityTiming {
@@ -16,6 +17,7 @@ export interface CostActivityCategory {
 }
 
 const emptyCost = (): CostAggregate => ({
+  input_tokens: 0,
   prompt_tokens: 0,
   completion_tokens: 0,
   reasoning_tokens: 0,
@@ -33,6 +35,9 @@ const finiteNumber = (value: unknown): number => {
 
 const addCost = (target: CostAggregate, source?: Partial<CostAggregate>) => {
   if (!source) return
+  target.input_tokens = (target.input_tokens ?? 0) + inputTokens(source)
+  target.unpriced_call_count = (target.unpriced_call_count ?? 0) + finiteNumber(source.unpriced_call_count)
+  target.missing_usage_call_count = (target.missing_usage_call_count ?? 0) + finiteNumber(source.missing_usage_call_count)
   target.prompt_tokens += finiteNumber(source.prompt_tokens)
   target.completion_tokens += finiteNumber(source.completion_tokens)
   target.reasoning_tokens += finiteNumber(source.reasoning_tokens)

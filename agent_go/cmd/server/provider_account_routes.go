@@ -36,15 +36,15 @@ type providerAccountView struct {
 	AvailabilityEditable bool                       `json:"availability_editable,omitempty"`
 	// Usable reports whether the caller may select the account for the
 	// requested workflow, Crew, Code or product.
-	Usable       bool `json:"usable"`
+	Usable bool `json:"usable"`
 	// Configured reports whether the account is set up: signed in, or has
 	// a key. Absent when a check could not tell; that never blocks use.
 	Configured *bool `json:"configured,omitempty"`
 	// Identity is who the account is signed in as (an email or plan name
 	// the CLI reports), so people can see whose login a shared account uses.
-	Identity string `json:"identity,omitempty"`
-	CanManage    bool `json:"can_manage"`
-	CanViewUsage bool `json:"can_view_usage"`
+	Identity     string `json:"identity,omitempty"`
+	CanManage    bool   `json:"can_manage"`
+	CanViewUsage bool   `json:"can_view_usage"`
 }
 
 // serverAccountEnvNames lists the installation variables that carry a
@@ -108,14 +108,9 @@ func providerEnabled(provider string) bool {
 // serverAccountProviders lists the enabled providers that can be run on a
 // named account at all.
 func serverAccountProviders() []string {
-	providers := []string{}
-	for _, provider := range getSupportedProviders() {
-		if _, err := connectionCredentialKeys(storedProviderConnection{ProviderConnection: ProviderConnection{Provider: provider, UnderlyingProvider: "placeholder"}, Credential: "placeholder"}); err != nil {
-			continue
-		}
-		providers = append(providers, provider)
-	}
-	return providers
+	// Every offered CLI can use its installation's account. Support for
+	// personal credentials is a separate contract and must not hide it.
+	return getSupportedProviders()
 }
 
 // providerHasUsageCommand reports whether provider has a usage action.
@@ -168,7 +163,8 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			return nil, err
 		}
 		kind, source := serverAccountSource(provider, stored)
-		allowed := !personalProviderConnectionsLocked(provider)
+		_, credentialErr := connectionCredentialKeys(storedProviderConnection{ProviderConnection: ProviderConnection{Provider: provider, UnderlyingProvider: "placeholder"}, Credential: "placeholder"})
+		allowed := credentialErr == nil && !personalProviderConnectionsLocked(provider)
 		usable := availability.AvailableTo.admits(userID, run.Product)
 		if anyProduct {
 			usable = false

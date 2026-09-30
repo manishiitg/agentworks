@@ -225,7 +225,12 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
           )}
         </div>
       </div>
-      <div ref={mountRef} className="h-72 w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
+      {/* The account terminal is for signing in and checking usage only; real work belongs in a
+          Crew, Code or workflow, where tools, files and history are set up. */}
+      <p data-testid="provider-terminal-purpose" className="border-b border-white/10 bg-violet-500/10 px-3 py-2 text-[11px] leading-4 text-violet-100">
+        Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew, Code or workflow.
+      </p>
+      <div ref={mountRef} className="h-[min(65vh,640px)] w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
       {terminalError && <p className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{terminalError}</p>}
       <p className="border-t border-white/10 px-3 py-2 text-[11px] text-gray-500">
         {isUsage
@@ -237,3 +242,12 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
     </section>
   )
 }
+
+// The CLI's own usage command, when it has one, so the note says what to type.
+function usageCommandHint(displayName: string): string {
+  const name = displayName.toLowerCase()
+  if (name.includes('codex')) return ' (type /status)'
+  if (name.includes('claude') || name.includes('muse')) return ' (type /usage)'
+  return ''
+}
+

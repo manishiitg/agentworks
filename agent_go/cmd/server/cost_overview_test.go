@@ -21,7 +21,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	add := func(id, workflowID, scope, provider, model string, usd float64) {
 		t.Helper()
 		if err := ledger.Append(costledger.Entry{
-			EventID: id, Timestamp: ts, WorkflowID: workflowID, Scope: scope,
+			EventID: id, Timestamp: ts, WorkflowID: workflowID, Scope: scope, SessionID: "chat-" + id,
 			Provider: provider, ModelID: model, LLMCallCount: 1,
 			PromptTokens: 100, TotalCostUSD: usd, BillingBasis: "provider_actual",
 		}); err != nil {
@@ -42,6 +42,14 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	visible := func(id, kind string) bool { return id != "Workflow/secret" }
 
 	member := buildCostOverview(summary, visible, false)
+	if len(member.ByConversation) != 3 {
+		t.Fatalf("visible conversations=%d, want 3", len(member.ByConversation))
+	}
+	for _, conversation := range member.ByConversation {
+		if conversation.WorkflowID == "Workflow/secret" || conversation.SessionID == "chat-e5" || conversation.SessionID == "chat-e6" {
+			t.Fatalf("private conversation leaked: %+v", conversation)
+		}
+	}
 	if got, want := len(member.Items), 2; got != want {
 		t.Fatalf("member items = %d, want %d: %+v", got, want, member.Items)
 	}
@@ -79,6 +87,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 }
 
 func TestBuildCostOverviewRecognizesOwnerScopedProductProjects(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"Alice","email":"alice@example.com"},{"id":"bob","username":"bob@example.com"}]}`)
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +112,7 @@ func TestBuildCostOverviewRecognizesOwnerScopedProductProjects(t *testing.T) {
 	}, false)
 	if len(alice.Items) != 1 || alice.Items[0].Kind != costOverviewKindProduct ||
 		alice.Items[0].ID != "_users/alice/Chats/Video Studio/projects/launch" ||
-		alice.Items[0].OwnerID != "alice" || alice.Items[0].TotalCostUSD != 3 || alice.Total.TotalCostUSD != 3 {
+		alice.Items[0].OwnerID != "alice" || alice.Items[0].OwnerEmail != "alice@example.com" || alice.Items[0].TotalCostUSD != 3 || alice.Total.TotalCostUSD != 3 {
 		t.Fatalf("Alice's visible product project = %+v, total %+v", alice.Items, alice.Total)
 	}
 	if costOverviewProductVisible("_users/bob/Chats/Video Studio/projects/launch", "alice", false) {
@@ -270,5 +279,56 @@ func TestBuildCostOverviewGroupsBotsAndMCPsAfterAccessFiltering(t *testing.T) {
 	admin := buildCostOverview(summary, func(string, string) bool { return true }, true)
 	if len(admin.ByMCP) != 2 || len(admin.ByBot) != 3 {
 		t.Fatalf("admin bots/MCPs = %d/%d, want 3/2", len(admin.ByBot), len(admin.ByMCP))
+	}
+}
+
+func TestCostOverviewMCPUsersFollowVisibleWork(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"Alice","email":"alice@example.com"}]}`)
+	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	for i, entry := range []costledger.Entry{
+		{WorkflowID: "Workflow/shared", UserID: "alice", BillingBasis: "unpriced"},
+		{WorkflowID: "Workflow/shared/runs/one", UserID: "alice", BillingBasis: "provider_actual", TotalCostUSD: 0.2},
+		{WorkflowID: "Workflow/shared", UserID: "", BillingBasis: "unpriced"},
+		{WorkflowID: "Workflow/secret", UserID: "bob", BillingBasis: "provider_actual", TotalCostUSD: 7},
+	} {
+		entry.EventID = []string{"one", "two", "three", "hidden"}[i]
+		entry.Component = "mcp:github"
+		entry.Timestamp = time.Now().UTC()
+		if err := ledger.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	overview := buildCostOverview(summary, func(id, kind string) bool { return id == "Workflow/shared" }, false)
+	if len(overview.ByMCP) != 1 || overview.ByMCP[0].Calls != 3 || len(overview.ByMCP[0].ByUser) != 2 {
+		t.Fatalf("incorrect MCP users: %+v", overview.ByMCP)
+	}
+	actor := overview.ByMCP[0].ByUser[0]
+	if actor.ID != "alice" || actor.Email != "alice@example.com" || actor.Calls != 2 || actor.UnpricedCalls != 1 || actor.RecordedCostUSD != 0.2 {
+		t.Fatalf("incorrect actor: %+v", actor)
+	}
+	if overview.ByMCP[0].ByUser[1].Name != "Unattributed" {
+		t.Fatal("missing actor was attributed to a person")
+	}
+	if len(overview.Items[0].ByMCP[0].ByUser) != 2 {
+		t.Fatal("work MCP breakdown lost actors")
+	}
+	serialized, err := json.Marshal(overview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded costOverviewResponse
+	if err := json.Unmarshal(serialized, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.ByMCP[0].ByUser) != 2 || decoded.ByMCP[0].ByUser[0].Email != "alice@example.com" {
+		t.Fatalf("MCP user JSON lost attribution: %s", serialized)
 	}
 }

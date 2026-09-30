@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
+import { inputTokens, totalTokens } from '../../../utils/costTokens'
 import { agentApi } from '../../../services/api'
 import { buildCostActivityBreakdown } from '../../../utils/costActivityBreakdown'
 import type {
@@ -42,7 +43,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
   // `${routeStepId}::${routeId}`, since route_id strings can collide across
   // unrelated routing/branch steps.
   const [routeFilterByRunFolder, setRouteFilterByRunFolder] = useState<Record<string, string | null>>({})
-  const [expandedDailyDate, setExpandedDailyDate] = useState<string | null>(null)
+  const [expandedDailyDates, setExpandedDailyDates] = useState<Set<string>>(new Set())
   const [costHistory, setCostHistory] = useState<{ hasMore: boolean; nextBefore?: string } | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const loadGenerationRef = useRef(0)
@@ -64,7 +65,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       setExpandedRunFolders(new Set())
       setExpandedCostModels(new Set())
       setCostViewMode({})
-      setExpandedDailyDate(null)
+      setExpandedDailyDates(new Set())
       setCostHistory(null)
       setLoadingOlder(false)
     }
@@ -368,7 +369,9 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     if (scopedCosts && Object.keys(scopedCosts.by_scope || {}).length > 0) {
       return {
         totalCost: scopedCosts.total.total_cost_usd,
-        totalTokens: scopedCosts.total.prompt_tokens + scopedCosts.total.completion_tokens,
+        totalTokens: totalTokens(scopedCosts.total),
+        totalInputTokens: inputTokens(scopedCosts.total),
+        totalOutputTokens: scopedCosts.total.completion_tokens,
         totalRuns: aggregateSummary?.totalRuns || 0
       }
     }
@@ -377,6 +380,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     return {
       totalCost: (aggregateSummary?.totalCost || 0) + (phaseCostSummary?.totalCost || 0),
       totalTokens: (aggregateSummary?.totalTokens || 0) + (phaseCostSummary?.totalTokens || 0),
+      totalInputTokens: (aggregateSummary?.totalInputTokens || 0) + (phaseCostSummary?.totalInputTokens || 0),
+      totalOutputTokens: (aggregateSummary?.totalOutputTokens || 0) + (phaseCostSummary?.totalOutputTokens || 0),
       totalRuns: aggregateSummary?.totalRuns || 0
     }
   }, [aggregateSummary, phaseCostSummary, scopedCosts])
@@ -401,6 +406,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
             workflowTokens: 0,
             evaluationTokens: 0,
             totalTokens: 0,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
             llmDurationMS: 0,
             runCount: 0,
             runKeys: new Set<string>(),
@@ -416,6 +423,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
         entry.totalCost += daily.summary.totalCost
         entry.builderTokens += daily.summary.totalTokens
         entry.totalTokens += daily.summary.totalTokens
+        entry.totalInputTokens = (entry.totalInputTokens ?? 0) + daily.summary.totalInputTokens
+        entry.totalOutputTokens = (entry.totalOutputTokens ?? 0) + daily.summary.totalOutputTokens
       })
       runDailyCostSummaries.forEach(daily => {
         const entry = ensureLegacyEntry(daily.date)
@@ -428,6 +437,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
         }
         entry.totalCost += daily.summary.totalCost
         entry.totalTokens += daily.summary.totalTokens
+        entry.totalInputTokens = (entry.totalInputTokens ?? 0) + daily.summary.totalInputTokens
+        entry.totalOutputTokens = (entry.totalOutputTokens ?? 0) + daily.summary.totalOutputTokens
         entry.runKeys.add(`${daily.scope}:${daily.runFolder}`)
         entry.runCount = entry.runKeys.size
       })
@@ -461,7 +472,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       .map(([date, total]): CombinedDailyCostSummaryEntry => {
         const byScope = total.by_scope || {}
         const costFor = (scope: string) => byScope[scope]?.total_cost_usd || 0
-        const tokensFor = (scope: string) => (byScope[scope]?.prompt_tokens || 0) + (byScope[scope]?.completion_tokens || 0)
+        const tokensFor = (scope: string) => totalTokens(byScope[scope])
         const artifacts = artifactByDate.get(date)
         const ledgerWorkflowCost = costFor('workflow_execution')
         const ledgerEvaluationCost = costFor('evaluation')
@@ -480,7 +491,9 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
           pulseTokens: tokensFor('pulse'),
           workflowTokens: tokensFor('workflow_execution') || artifacts?.workflowTokens || 0,
           evaluationTokens: tokensFor('evaluation') || artifacts?.evaluationTokens || 0,
-          totalTokens: (total.prompt_tokens || 0) + (total.completion_tokens || 0),
+          totalTokens: totalTokens(total),
+          totalInputTokens: inputTokens(total),
+          totalOutputTokens: total.completion_tokens,
           llmDurationMS: total.llm_generation_duration_ms || 0,
           runCount: total.workflow_run_count || artifacts?.runs.size || 0,
         }
@@ -515,8 +528,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     expandedCostModels,
     costViewMode,
     routeFilterByRunFolder,
-    expandedDailyDate,
-    setExpandedDailyDate,
+    expandedDailyDates,
+    setExpandedDailyDates,
     costHistory,
     loadingOlder,
     loadAllCosts,

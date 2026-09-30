@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { VirtuosoHandle } from 'react-virtuoso'
-import { followTranscriptLatest, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
+import { followTranscriptLatest, transcriptBlank, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.unstubAllGlobals() })
@@ -116,5 +116,28 @@ describe('transcript scroll DOM lifecycle', () => {
     test.flush()
     expect(test.saved.following).toBe(true)
     expect(test.element.scrollTop).toBe(600)
+  })
+})
+
+describe('transcriptBlank', () => {
+  const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
+  const scrollerWith = (rows: [number, number][]) => {
+    const scroller = document.createElement('div')
+    scroller.getBoundingClientRect = () => box(100, 500)
+    for (const [top, bottom] of rows) {
+      const row = document.createElement('div')
+      row.dataset.transcriptKey = `r${top}`
+      row.getBoundingClientRect = () => box(top, bottom)
+      scroller.append(row)
+    }
+    return scroller
+  }
+  it('is blank when every drawn row is outside the visible area (the send-then-blank case)', () => {
+    expect(transcriptBlank(scrollerWith([[-900, -600], [-600, -300]]))).toBe(true)
+    expect(transcriptBlank(scrollerWith([[600, 800]]))).toBe(true)
+  })
+  it('is not blank when any row is visible', () => {
+    expect(transcriptBlank(scrollerWith([[-300, 150]]))).toBe(false)
+    expect(transcriptBlank(scrollerWith([[200, 300]]))).toBe(false)
   })
 })

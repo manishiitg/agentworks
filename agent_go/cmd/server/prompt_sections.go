@@ -3,6 +3,8 @@ package server
 import (
 	"log"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
 // The system prompt is assembled from independent sections, each with its own
@@ -50,6 +52,7 @@ type promptContext struct {
 	ProfileID       string
 	HasProfile      bool
 	IsWorkflowPhase bool
+	CrewReadOnly    bool
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
@@ -105,6 +108,21 @@ const governedProjectMemoryInstructions = `## Persistent project memory
 - Do not save guesses, transient status, raw conversation, credentials, secret values, or sensitive personal information unless the user explicitly asks for it to be retained. Never turn unverified research into memory. Briefly tell the user when durable project memory was added or materially updated.
 - Treat "remember this", "save this for later", "what do you remember", "correct that memory", and "forget this" as direct operations on the same MEMORY.md file.`
 
+// codeHostSafetyInstructions are the rules for a Code project's agent. A Code project is a shared
+// server that other people's projects also run on; its agent may write code, install packages and
+// run tools for the project, but must keep to the project and never turn the server into a service
+// for someone else (Ashutosh's Code chat, excellence, 2026-09-30: a browser IDE opened to the
+// internet and used to browse the server's folders).
+const codeHostSafetyInstructions = `## Working on a shared server
+
+This project runs on a server that other people's projects share. Keep to your own project.
+
+- Work inside your working folder. Create projects, files and folders there, never in "~", "/srv", "/tmp" or any folder outside the working folder. "~" is a private hidden folder for the tool itself; anything created there is invisible to the user.
+- Do not look at, list or open folders or files outside your working folder, including the server's own folders and other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
+- Do not install, start or expose remote-access or hosting tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, VPNs, tunnels, reverse proxies, port forwarders, or anything that listens for connections from outside this project. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only.
+- Do not install or run anything harmful or unrelated to the project: cryptocurrency miners, scanners, botnets, credential or data harvesters, or tools that try to get around this environment's limits or other people's access controls. Do not run other autonomous coding agents or piped remote install scripts ("curl ... | bash") to set up such tools.
+- Use ordinary project dependencies (npm, pip, go modules) inside the working folder. If a request needs something outside these rules, say so and ask the user instead of doing it.`
+
 // promptSections is the assembly order. Order is the slice order — previously
 // it was "wherever the if happened to sit".
 var promptSections = []promptSection{
@@ -133,11 +151,23 @@ var promptSections = []promptSection{
 		// root and therefore do not receive a misleading persistence promise.
 		Name:    "project-memory",
 		Applies: func(c promptContext) bool { return c.HasProfile || c.IsWorkflowPhase },
-		Build:   func(promptContext) string { return governedProjectMemoryInstructions },
+		Build: func(c promptContext) string {
+			if c.CrewReadOnly {
+				return "## Persistent project memory\n\nRead the Crew's project-root MEMORY.md when relevant, within the current folder grants. Run mode cannot update memory, instructions, or skills. In a private CLI runtime, the project memory is at project/MEMORY.md.\n"
+			}
+			return governedProjectMemoryInstructions
+		},
+	},
+	{
+		// Code only: a private coding workspace whose agent can install and run things on a server
+		// shared with other people's projects.
+		Name:    "code-host-safety",
+		Applies: func(c promptContext) bool { return c.ProfileID == codeproduct.ProfileID },
+		Build:   func(promptContext) string { return codeHostSafetyInstructions },
 	},
 	{
 		Name:    "product-features",
-		Applies: func(c promptContext) bool { return c.HasProfile && len(c.FeatureExtensions) > 0 },
+		Applies: func(c promptContext) bool { return c.HasProfile && !c.CrewReadOnly && len(c.FeatureExtensions) > 0 },
 		Build:   func(c promptContext) string { return strings.Join(c.FeatureExtensions, "\n\n") },
 	},
 	{

@@ -1615,6 +1615,7 @@ export interface ChatHistoryConversation {
   runtime?: ChatHistoryAgentRuntime;
   workshop_mode?: 'workshop' | 'run' | string;
   conversation_history: ChatHistoryMessage[];
+  saved_prompt_sizes?: { role: 'system' | 'developer'; character_count: number }[];
   terminal_snapshots?: TerminalSnapshot[];
   ui_events?: PollingEventSchema[];
   history_pagination?: {
@@ -1819,6 +1820,8 @@ export interface CostAggregate {
   // blank when several providers contributed.
   provider?: string
   pricing_model_id?: string
+  // Canonical input, with cached tokens included exactly once.
+  input_tokens?: number
   prompt_tokens: number
   completion_tokens: number
   reasoning_tokens: number
@@ -1828,6 +1831,8 @@ export interface CostAggregate {
   call_count: number
   // LLM calls without a known price are excluded from total_cost_usd.
   unpriced_call_count?: number
+  // Subset of unpriced calls with neither usage nor cost reported.
+  missing_usage_call_count?: number
   // Sum of time spent waiting for LLM generations. This deliberately excludes
   // tool execution and queue time, so it is not a workflow wall-clock duration.
   llm_generation_duration_ms?: number
@@ -1838,6 +1843,7 @@ export interface CostAggregate {
 // and adds an optional per-model breakdown for that date so clients
 // can expand a row to see which models contributed.
 export interface CostDateAggregate extends CostAggregate {
+  by_conversation?: Record<string, CostConversation>
   by_model?: Record<string, CostAggregate>
   by_scope?: Record<string, CostScopeAggregate>
   by_source_platform?: Record<string, CostAggregate>
@@ -1857,7 +1863,25 @@ export interface CostScopeAggregate extends CostAggregate {
   by_execution?: Record<string, CostExecutionAggregate>
 }
 
+export interface CostConversation extends CostAggregate {
+  source_platform?: string
+  session_id: string
+  workflow_id: string
+  user_id?: string
+  first_seen: string
+  last_seen: string
+  by_execution: Record<string, CostConversationExecution>
+}
+
+export interface CostConversationExecution extends CostAggregate {
+  scope: string
+  first_seen: string
+  last_seen: string
+  by_model?: Record<string, CostAggregate>
+}
+
 export interface CostSummary {
+  by_conversation?: Record<string, CostConversation>
   from?: string
   to?: string
   total: CostAggregate
@@ -1882,6 +1906,7 @@ export interface CostOverviewItem extends CostOverviewAggregate {
   kind: 'workflow' | 'crew' | 'product' | 'other'
   name: string
   owner_id?: string
+  owner_email?: string
   by_scope?: Record<string, CostAggregate>
   by_model?: Record<string, CostAggregate>
   by_user?: CostOverviewActor[]
@@ -1922,12 +1947,14 @@ export interface CostOverviewBot extends CostOverviewAggregate {
 
 export interface CostOverviewMCP {
   server: string
+  by_user?: { id: string; name: string; email?: string; calls: number; unpriced_calls: number; recorded_cost_usd: number }[]
   calls: number
   unpriced_calls: number
   recorded_cost_usd: number
 }
 
 export interface CostOverview {
+  by_conversation?: CostConversation[]
   from?: string
   to?: string
   total: CostOverviewAggregate
@@ -3124,6 +3151,8 @@ export interface GoogleServiceGrant {
 /** One configured Gmail sending account. Identifiers and labels only —
  *  the API never returns tokens, secrets, or credential file contents. */
 export interface GmailConnection {
+  /** Server authorization to remove this account, independent of shared settings. */
+  can_remove?: boolean
   id: string
   display_name: string
   email?: string

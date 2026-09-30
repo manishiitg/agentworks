@@ -630,6 +630,13 @@ func filterNativeContinuityMessagesUncapped(messages []builderConversationMessag
 		if strings.HasPrefix(text, "[AGENTWORKS CONVERSATION CONTINUITY]") || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") {
 			continue
 		}
+		// Agy has no system-prompt flag, so its first message is built as "System instructions:\n<system
+		// prompt>\n\n<user message>" (agycli_exec.go). The person's own message is already in the chat;
+		// publishing this transcript row added a second "user" row holding the whole system prompt,
+		// dated now (Confida, Saurabh's chat, 2026-09-30).
+		if strings.HasPrefix(text, "System instructions:\n") {
+			continue
+		}
 		filtered = append(filtered, message)
 	}
 	return filtered

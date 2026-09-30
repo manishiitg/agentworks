@@ -359,6 +359,25 @@ func (api *StreamingAPI) handleAdminCodeChat(w http.ResponseWriter, r *http.Requ
 		writeAgentProfileError(w, http.StatusNotFound, "chat not found")
 		return
 	}
+	// The legacy conversation reader falls back to this user's global history.
+	// Bind the requested session to this Code before calling it: knowing the
+	// ID of a personal Work chat must not widen a Code reviewer's access.
+	sessions, err := ListChatHistorySessionsByKind(userID, "", 0, 0, root)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusServiceUnavailable, "cannot list project chats")
+		return
+	}
+	belongs := false
+	for _, session := range sessions {
+		if session.SessionID == sessionID && (workspacePathsMatchForUser(userID, chatHistorySessionWorkspace(session), root) || strings.HasPrefix(normalizeConversationWorkspace(session.ConversationPath), normalizeConversationWorkspace(root)+"/")) {
+			belongs = true
+			break
+		}
+	}
+	if !belongs {
+		writeAgentProfileError(w, http.StatusNotFound, "chat not found")
+		return
+	}
 	if err := recordCodeAdminView(r.Context(), claims, "read_chat", ownerID, projectID, userID+"/"+sessionID); err != nil {
 		writeAgentProfileError(w, http.StatusServiceUnavailable, "the admin audit log is unavailable")
 		return

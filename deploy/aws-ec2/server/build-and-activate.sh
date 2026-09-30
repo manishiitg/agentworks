@@ -139,6 +139,7 @@ esac
 # root copy from install-system-tools.sh stays as a fallback.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-gog.sh"
 "${SSH[@]}" "export PATH='$REMOTE_TOOLS_DIR/bin:'\$PATH; command -v agent-browser >/dev/null || npm install -g --prefix '$REMOTE_TOOLS_DIR' agent-browser@latest; command -v agent-browser >/dev/null"
+bash "$REPO_ROOT/deploy/common/install-coding-clis.sh" "$REMOTE_TOOLS_DIR" "$HOME"
 "${SSH[@]}" "mkdir -p '$REMOTE_RELEASE'; touch '$REMOTE_RELEASE/.deploying'"
 "${SSH[@]}" "node '$REMOTE_RELEASE/check-release-assets.mjs' '$REMOTE_RELEASE/frontend'"
 install -m 0600 "$GLOBAL_FILE" "$REMOTE_APP/.globals-$RELEASE_ID"
@@ -189,19 +190,7 @@ chmod 600 "$env_file.next"
 mv "$env_file.next" "$env_file"
 
 printf 'prefix=%s\n' "$tools_dir" > "$HOME/.npmrc"
-# Every deploy moves the coding CLIs to their latest release; the in-app
-# updater only keeps them current between deploys. An interrupted npm run
-# leaves a `.<name>-XXXX` staging copy and can drop the bin link, and the
-# services then silently fall back to an old root-installed /usr/bin/claude
-# (RTS 2026-09-25: 2.1.233 ran for hours while 2.1.282 sat unlinked). Clear
-# the leftovers, reinstall, and assert the link resolves.
-rm -rf "$tools_dir"/lib/node_modules/@anthropic-ai/.claude-code-* "$tools_dir"/lib/node_modules/@earendil-works/.pi-coding-agent-*
-npm install -g --prefix "$tools_dir" @anthropic-ai/claude-code@latest
-if test -e "$tools_dir/lib/node_modules/@earendil-works/pi-coding-agent"; then
-  npm install -g --prefix "$tools_dir" @earendil-works/pi-coding-agent@latest
-fi
-test -x "$tools_dir/bin/claude"
-echo "claude: $("$tools_dir/bin/claude" --version)"
+# The shared installer above updates and launch-checks all six CLIs.
 # One managed copy. The services resolve claude from PATH, so the managed one must be
 # the one that wins, and no system copy should exist: an old /usr/bin/claude ignores
 # AGENTS.md (where the session prompt is carried) and ran silently for hours on
@@ -227,12 +216,6 @@ if [[ "$agentworks_provider" == "cursor-cli" ]]; then
   # The AgentWorks LLM shells out to cursor-agent (through tmux); install it
   # into the same dominion-owned tool prefix as claude. Cursor's installer
   # writes to $HOME/.local/bin, which is $tools_dir/bin here.
-  if ! test -x "$tools_dir/bin/cursor-agent"; then
-    curl -fsS https://cursor.com/install | bash
-  else
-    cursor-agent update || echo "WARNING: cursor-agent update failed; keeping $(cursor-agent --version 2>/dev/null)" >&2
-  fi
-  test -x "$tools_dir/bin/cursor-agent"
   cursor_key="$(sed -n 's/^CURSOR_API_KEY=//p' "$global_file" | head -n 1)"
   if [[ -z "$cursor_key" ]]; then
     echo "CURSOR_API_KEY is missing from the global secret; AgentWorks is configured for cursor-cli and would fail on every turn." >&2

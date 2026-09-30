@@ -2432,3 +2432,25 @@ func TestPulseReviewFocusCatalogUsesValidationContractHealthWithoutSafety(t *tes
 		t.Fatal("safety_permissions must not be an active selectable focus")
 	}
 }
+
+// A Pulse run has two names (the session-style ID final commands are stored
+// under, and the fix-run record's UUID). The run's own session may write under
+// either; anyone else naming the wrong run is refused with the ID to use.
+func TestPulseFinalCommandAcceptsTheRunsOtherNameFromItsOwnSession(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	workspacePath := "Workflow/example"
+	const session, uuid = "schedule-cron--pulse-fi_1", "85d08c43-b8c4-4ec8-81bc-0f3c0b5538bf"
+	if err := initializePulseFinalCommandStates(context.Background(), workspacePath, session); err != nil {
+		t.Fatalf("initialize final commands: %v", err)
+	}
+	other := mcpexecutor.WithSessionID(context.Background(), "some-other-session")
+	_, err := markPulseFinalCommandStateFromAgent(other, workspacePath, pulseFinalCommandBackup, uuid, "running", "Backing up")
+	if err == nil || !strings.Contains(err.Error(), "belongs to Pulse run") || !strings.Contains(err.Error(), `pulse_run_id="`+session+`"`) {
+		t.Fatalf("a foreign session must be refused with the ID to use, got: %v", err)
+	}
+	own := mcpexecutor.WithSessionID(context.Background(), session)
+	if _, err := markPulseFinalCommandStateFromAgent(own, workspacePath, pulseFinalCommandBackup, uuid, "running", "Backing up"); err != nil {
+		t.Fatalf("the run's own session under its other name must be accepted: %v", err)
+	}
+}

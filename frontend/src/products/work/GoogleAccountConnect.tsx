@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { googleAppApi } from '../../api/googleApp'
+import { CHANGE_GOOGLE_ACCESS_EVENT, GOOGLE_SERVICES, type GoogleAccessLevel } from './googleAccountAccess'
 
-type Level = 'off' | 'read' | 'write'
-
-// Google Workspace services beyond Gmail (Gmail has its own switches). Keys are what the server
-// calls them (services.GoogleServiceCatalog).
-const SERVICES: { key: string; label: string }[] = [
-  { key: 'drive', label: 'Drive' },
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'docs', label: 'Docs' },
-  { key: 'sheets', label: 'Sheets' },
-  { key: 'slides', label: 'Slides' },
-]
+type Level = GoogleAccessLevel
+const SERVICES = GOOGLE_SERVICES
 
 const errorText = (cause: unknown, fallback: string) => {
   const response = (cause as { response?: { data?: unknown } })?.response
@@ -35,6 +27,22 @@ export function GoogleAccountConnect({ workspacePath, onChanged }: { workspacePa
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
+  // Set when "Change access" on an account opened this form: sign in again as that account and
+  // the new connection replaces the old one.
+  const [changing, setChanging] = useState<string | null>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ email: string; gmail: Level; levels: Record<string, Level> }>).detail
+      setGmail(detail.gmail === 'off' ? 'read' : detail.gmail)
+      setLevels(detail.levels)
+      setChanging(detail.email)
+      setOpened(false)
+      sectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    }
+    window.addEventListener(CHANGE_GOOGLE_ACCESS_EVENT, open)
+    return () => window.removeEventListener(CHANGE_GOOGLE_ACCESS_EVENT, open)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -80,8 +88,9 @@ export function GoogleAccountConnect({ workspacePath, onChanged }: { workspacePa
   )
 
   return (
-    <section data-testid="google-account-connect" className="mb-4 rounded-md border border-border p-3">
-      <div className="text-sm font-medium">Connect your Google account</div>
+    <section ref={sectionRef} data-testid="google-account-connect" className={`mb-4 rounded-md border p-3 ${changing ? 'border-primary' : 'border-border'}`}>
+      <div className="text-sm font-medium">{changing ? `Change access for ${changing}` : 'Connect a Google account'}</div>
+      {changing && <p className="mt-1 text-xs text-muted-foreground">Pick what the agent may use, then sign in again as {changing}. The new access replaces the old one. <button type="button" className="font-medium text-primary hover:underline" onClick={() => setChanging(null)}>Cancel</button></p>}
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
         Sign in with your own Google account, personal or work. It stays in this Code and works only for you. The agent uses it through the server and never sees your password or token.
       </p>
@@ -99,7 +108,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged }: { workspacePa
       {opened && <p className="mt-2 text-xs text-muted-foreground">Finish signing in on the Google tab that opened. This list updates when you come back.</p>}
       <div className="mt-3 flex justify-end">
         <Button size="sm" disabled={busy} onClick={() => { void connect() }}>
-          {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Connect Google account
+          {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}{changing ? 'Sign in again with Google' : 'Connect Google account'}
         </Button>
       </div>
     </section>

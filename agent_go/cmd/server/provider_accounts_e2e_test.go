@@ -209,7 +209,7 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 		t.Fatalf("scheduled W run: %v", err)
 	}
 	// Copying the connection ID into Bob's own workflow grants nothing.
-	if _, err := env.resolveForRun("bob", "Workflow/v", "claude-code", account.ID); err == nil || err.Error() != "this account is no longer available to workflow Bob's own" {
+	if _, err := env.resolveForRun("bob", "Workflow/v", "claude-code", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "workflow Bob's own"}).Error() {
 		t.Fatalf("bob used the account outside W: %v", err)
 	}
 	// Carol cannot run W at all, so W's share does not reach her.
@@ -241,7 +241,7 @@ func TestProviderAccountsSharedWithWorkflow(t *testing.T) {
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
 		t.Fatalf("alice made the account private: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID); err == nil || err.Error() != "this account is no longer available to workflow Weekly report" {
+	if _, err := env.resolveForRun("bob", "Workflow/w", "claude-code", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "workflow Weekly report"}).Error() {
 		t.Fatalf("bob's next W turn after the share was removed: %v", err)
 	}
 	if _, err := env.resolveForRun("alice", "Workflow/w", "claude-code", account.ID); err != nil {
@@ -276,7 +276,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 	if err != nil || keys.CodexCLI == nil || *keys.CodexCLI != "alice-codex-key" {
 		t.Fatalf("bob in his Code: %v", err)
 	}
-	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || err.Error() != "this account is no longer available to this Code" {
+	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || err.Error() != providerAccountNotShared(providerAccountRun{Label: "this Code"}).Error() {
 		t.Fatalf("carol used an account not shared with her: %v", err)
 	}
 	view, ok := findAccountView(env.list(t, "bob", ""), account.ID)
@@ -487,6 +487,11 @@ func TestProviderAccountsLiveMuseUsage(t *testing.T) {
 // Bob sees only his share.
 func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	withMemoryUserDirectory(t, `{"users":[
+        {"id":"admin","username":"admin","admin":true,"can_create":true},
+        {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
+        {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
+        {"id":"carol","username":"carol","can_create":true}]}`)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
@@ -610,8 +615,8 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	if row := accountRow(costs("bob"), account.ID); row == nil || row.FullSplit || row.Name != "Removed account" || len(row.Split) != 2 {
 		t.Fatalf("former account user gained another person's history: %+v", row)
 	}
-	if row := accountRow(costs("carol"), account.ID); row != nil {
-		t.Fatalf("unrelated user sees deleted account: %+v", row)
+	if w := env.do(t, env.api.handleProviderAccountCosts, http.MethodGet, "/", "carol", nil, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user read account costs: %d %s", w.Code, w.Body.String())
 	}
 }
 

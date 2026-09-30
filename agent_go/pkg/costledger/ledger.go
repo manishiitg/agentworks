@@ -91,9 +91,11 @@ type Entry struct {
 
 // Aggregate is the rolled-up token + cost total for a date/model bucket.
 type Aggregate struct {
-	Provider                 string  `json:"provider,omitempty"`
-	PricingModelID           string  `json:"pricing_model_id,omitempty"`
-	PricingVersion           string  `json:"pricing_version,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	PricingModelID string `json:"pricing_model_id,omitempty"`
+	PricingVersion string `json:"pricing_version,omitempty"`
+	// InputTokens includes cached input exactly once; PromptTokens preserves provider reporting.
+	InputTokens              int     `json:"input_tokens"`
 	PromptTokens             int     `json:"prompt_tokens"`
 	CompletionTokens         int     `json:"completion_tokens"`
 	ReasoningTokens          int     `json:"reasoning_tokens"`
@@ -104,6 +106,7 @@ type Aggregate struct {
 	LLMGenerationDurationMS  int64   `json:"llm_generation_duration_ms"`
 	AccountingEventCount     int     `json:"accounting_event_count"`
 	UnpricedCallCount        int     `json:"unpriced_call_count"`
+	MissingUsageCallCount    int     `json:"missing_usage_call_count"`
 	ProviderActualCostUSD    float64 `json:"provider_actual_cost_usd"`
 	TokenEstimateCostUSD     float64 `json:"token_estimate_cost_usd"`
 	SubscriptionShadowUSD    float64 `json:"subscription_shadow_cost_usd"`
@@ -132,6 +135,7 @@ func (a *Aggregate) add(e Entry) {
 		// is intentionally left blank when providers differ.
 		a.Provider = ""
 	}
+	a.InputTokens += entryInputTokens(e)
 	a.PromptTokens += e.PromptTokens
 	a.CompletionTokens += e.CompletionTokens
 	a.ReasoningTokens += e.ReasoningTokens
@@ -143,6 +147,9 @@ func (a *Aggregate) add(e Entry) {
 	a.AccountingEventCount++
 	if e.LLMCallCount > 0 && e.BillingBasis == "unpriced" {
 		a.UnpricedCallCount += e.LLMCallCount
+		if e.PromptTokens == 0 && e.CompletionTokens == 0 && e.ReasoningTokens == 0 && e.CacheReadTokens == 0 && e.CacheWriteTokens == 0 && e.TotalCostUSD == 0 {
+			a.MissingUsageCallCount += e.LLMCallCount
+		}
 		a.UnpricedPromptTokens += e.PromptTokens
 		a.UnpricedCompletionTokens += e.CompletionTokens
 		a.UnpricedReasoningTokens += e.ReasoningTokens
@@ -159,6 +166,25 @@ func (a *Aggregate) add(e Entry) {
 	}
 }
 
+// entryInputTokens normalizes providers that report cache inside or outside
+// prompt tokens. Historical Muse events predate the persisted reporting flag;
+// Muse has always reported inclusive input. Other old entries retain the
+// existing exclusive-prompt convention.
+func entryInputTokens(e Entry) int {
+	includes, known := e.OperationMetadata["prompt_tokens_include_cache"].(bool)
+	if !known {
+		provider := strings.ToLower(strings.TrimSpace(e.EffectiveProvider))
+		if provider == "" {
+			provider = strings.ToLower(strings.TrimSpace(e.Provider))
+		}
+		includes = provider == "muse-cli" || provider == "muse_cli"
+	}
+	if includes {
+		return e.PromptTokens
+	}
+	return e.PromptTokens + e.CacheReadTokens + e.CacheWriteTokens
+}
+
 // DateAggregate is one row in the per-date rollup. It embeds Aggregate
 // so its JSON shape stays flat (existing consumers reading
 // `prompt_tokens`/`call_count`/etc. at the date level keep working),
@@ -166,10 +192,11 @@ func (a *Aggregate) add(e Entry) {
 // row.
 type DateAggregate struct {
 	Aggregate
-	ByModel          map[string]*Aggregate      `json:"by_model,omitempty"`
-	ByScope          map[string]*ScopeAggregate `json:"by_scope,omitempty"`
-	BySourcePlatform map[string]*Aggregate      `json:"by_source_platform,omitempty"`
-	WorkflowRunCount int                        `json:"workflow_run_count,omitempty"`
+	ByConversation   map[string]*ConversationAggregate `json:"by_conversation,omitempty"`
+	ByModel          map[string]*Aggregate             `json:"by_model,omitempty"`
+	ByScope          map[string]*ScopeAggregate        `json:"by_scope,omitempty"`
+	BySourcePlatform map[string]*Aggregate             `json:"by_source_platform,omitempty"`
+	WorkflowRunCount int                               `json:"workflow_run_count,omitempty"`
 	workflowRunIDs   map[string]struct{}
 }
 
@@ -193,15 +220,92 @@ type ExecutionAggregate struct {
 	ByPhase map[string]*Aggregate `json:"by_phase,omitempty"`
 }
 
+// ConversationAggregate links recorded usage to one actor's conversation in
+// one workspace. Executions are separate turns/agent runs, not model-call counts.
+type ConversationAggregate struct {
+	Aggregate
+	SessionID      string                            `json:"session_id"`
+	SourcePlatform string                            `json:"source_platform,omitempty"`
+	WorkflowID     string                            `json:"workflow_id"`
+	UserID         string                            `json:"user_id,omitempty"`
+	FirstSeen      time.Time                         `json:"first_seen"`
+	LastSeen       time.Time                         `json:"last_seen"`
+	ByExecution    map[string]*ConversationExecution `json:"by_execution"`
+}
+
+type ConversationExecution struct {
+	Aggregate
+	Scope     string                `json:"scope"`
+	FirstSeen time.Time             `json:"first_seen"`
+	LastSeen  time.Time             `json:"last_seen"`
+	ByModel   map[string]*Aggregate `json:"by_model,omitempty"`
+}
+
+func addConversationEntry(buckets map[string]*ConversationAggregate, e Entry) {
+	if strings.TrimSpace(e.SessionID) == "" {
+		return
+	}
+	key := e.WorkflowID + "\x1f" + e.UserID + "\x1f" + e.SessionID
+	if e.SourcePlatform != "" {
+		key += "\x1f" + e.SourcePlatform
+	}
+	b := buckets[key]
+	if b == nil {
+		b = &ConversationAggregate{SessionID: e.SessionID, SourcePlatform: e.SourcePlatform, WorkflowID: e.WorkflowID, UserID: e.UserID, FirstSeen: e.Timestamp, ByExecution: map[string]*ConversationExecution{}}
+		buckets[key] = b
+	}
+	b.Aggregate.add(e)
+	if e.Timestamp.Before(b.FirstSeen) {
+		b.FirstSeen = e.Timestamp
+	}
+	if e.Timestamp.After(b.LastSeen) {
+		b.LastSeen = e.Timestamp
+	}
+	executionID := firstConversationExecutionID(e)
+	turn := b.ByExecution[executionID]
+	if turn == nil {
+		turn = &ConversationExecution{Scope: e.Scope, FirstSeen: e.Timestamp, ByModel: map[string]*Aggregate{}}
+		b.ByExecution[executionID] = turn
+	}
+	turn.Aggregate.add(e)
+	if e.Timestamp.Before(turn.FirstSeen) {
+		turn.FirstSeen = e.Timestamp
+	}
+	if e.Timestamp.After(turn.LastSeen) {
+		turn.LastSeen = e.Timestamp
+	}
+	modelID := strings.TrimSpace(e.EffectiveModelID)
+	if modelID == "" {
+		modelID = e.ModelID
+	}
+	if modelID != "" {
+		if turn.ByModel[modelID] == nil {
+			turn.ByModel[modelID] = &Aggregate{}
+		}
+		turn.ByModel[modelID].add(e)
+	}
+}
+
+func firstConversationExecutionID(e Entry) string {
+	if id := strings.TrimSpace(e.ExecutionID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(e.RunID); id != "" {
+		return id
+	}
+	return e.EventID
+}
+
 // Summary is the aggregated view returned by Summarize.
 type Summary struct {
-	From             string                     `json:"from,omitempty"`
-	To               string                     `json:"to,omitempty"`
-	Total            Aggregate                  `json:"total"`
-	ByDate           map[string]*DateAggregate  `json:"by_date"`  // YYYY-MM-DD UTC
-	ByModel          map[string]*Aggregate      `json:"by_model"` // model_id
-	ByScope          map[string]*ScopeAggregate `json:"by_scope,omitempty"`
-	BySourcePlatform map[string]*Aggregate      `json:"by_source_platform,omitempty"`
+	ByConversation   map[string]*ConversationAggregate `json:"by_conversation,omitempty"`
+	From             string                            `json:"from,omitempty"`
+	To               string                            `json:"to,omitempty"`
+	Total            Aggregate                         `json:"total"`
+	ByDate           map[string]*DateAggregate         `json:"by_date"`  // YYYY-MM-DD UTC
+	ByModel          map[string]*Aggregate             `json:"by_model"` // model_id
+	ByScope          map[string]*ScopeAggregate        `json:"by_scope,omitempty"`
+	BySourcePlatform map[string]*Aggregate             `json:"by_source_platform,omitempty"`
 	// ByWorkflow keys spend by the raw workflow_id it was attributed to
 	// (a Workflow/<name> folder, a crew root, a chat folder). Events with no
 	// workflow_id land under "". Callers that present it fold subpaths and
@@ -244,8 +348,10 @@ type BotAggregate struct {
 }
 
 type MCPAggregate struct {
-	Calls         int `json:"calls"`
-	UnpricedCalls int `json:"unpriced_calls"`
+	// Actor details are exposed only after the overview filters work access.
+	ByUser        map[string]*MCPAggregate `json:"-"`
+	Calls         int                      `json:"calls"`
+	UnpricedCalls int                      `json:"unpriced_calls"`
 	// Cost remains unknown when an MCP service does not report a price.
 	RecordedCostUSD float64 `json:"recorded_cost_usd"`
 }
@@ -681,6 +787,10 @@ func addEntryToExecutionBucket(bucket *ExecutionAggregate, e Entry) {
 func addEntryToSummary(summary *Summary, date string, e Entry) {
 	normalizeEntry(&e)
 	summary.Total.add(e)
+	if summary.ByConversation == nil {
+		summary.ByConversation = map[string]*ConversationAggregate{}
+	}
+	addConversationEntry(summary.ByConversation, e)
 	if summary.ByScope == nil {
 		summary.ByScope = make(map[string]*ScopeAggregate)
 	}
@@ -734,6 +844,10 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 		summary.ByDate[date] = bucket
 	}
 	bucket.Aggregate.add(e)
+	if bucket.ByConversation == nil {
+		bucket.ByConversation = map[string]*ConversationAggregate{}
+	}
+	addConversationEntry(bucket.ByConversation, e)
 	if sourcePlatform != "" {
 		dateSourceBucket, ok := bucket.BySourcePlatform[sourcePlatform]
 		if !ok {
@@ -818,6 +932,20 @@ func addEntryToBotAndMCPBuckets(summary *Summary, e Entry) {
 			bucket.UnpricedCalls++
 		}
 		bucket.RecordedCostUSD += e.TotalCostUSD
+		if bucket.ByUser == nil {
+			bucket.ByUser = make(map[string]*MCPAggregate)
+		}
+		userID := strings.TrimSpace(e.UserID)
+		actor := bucket.ByUser[userID]
+		if actor == nil {
+			actor = &MCPAggregate{}
+			bucket.ByUser[userID] = actor
+		}
+		actor.Calls++
+		if e.BillingBasis == "unpriced" {
+			actor.UnpricedCalls++
+		}
+		actor.RecordedCostUSD += e.TotalCostUSD
 	}
 }
 

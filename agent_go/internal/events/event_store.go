@@ -946,7 +946,11 @@ func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil
 	}
-	return es.addEventUnheld(sessionID, event)
+	err := es.addEventUnheld(sessionID, event)
+	if err == nil {
+		es.signalAnswerEnded(sessionID, event)
+	}
+	return err
 }
 
 func (es *EventStore) addEventUnheld(sessionID string, event Event) error {

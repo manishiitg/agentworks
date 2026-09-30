@@ -9,9 +9,14 @@ type LandlockPolicy struct {
 	ReadPaths  []string `json:"read_paths"`
 	WritePaths []string `json:"write_paths"`
 	WorkDir    string   `json:"work_dir"`
+	// ListPaths may be listed (folder names only, no file reads). Coding
+	// CLIs get "/": Muse opens every folder from / down to its workspace.
+	ListPaths []string `json:"list_paths,omitempty"`
 	// PrivateTmp: the launcher was started in its own user and mount
 	// namespaces and must give the command a private /tmp (Linux).
 	PrivateTmp bool `json:"private_tmp,omitempty"`
+	// PrivatePTS gives the command its own terminal devices before granting PTY access.
+	PrivatePTS bool `json:"private_pts,omitempty"`
 	// BrowserScoped: the command's own browser socket folder and profile are
 	// in WritePaths, so the shared browser folders are not granted.
 	BrowserScoped bool `json:"browser_scoped,omitempty"`

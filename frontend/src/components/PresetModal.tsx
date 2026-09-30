@@ -15,7 +15,8 @@ import { useLLMStore } from '../stores/useLLMStore';
 import { useModeStore } from '../stores/useModeStore';
 
 import LLMSelectionDropdown from './LLMSelectionDropdown';
-import { RunsOnPicker, rememberRunsOn, type RunsOnSelection } from '../products/work/RunsOnPicker';
+import { RunsOnPicker, type RunsOnSelection } from '../products/work/RunsOnPicker';
+import { rememberRunsOn } from '../products/work/runsOnMemory';
 
 
 import type { LLMOption } from '../types/llm';
@@ -603,7 +604,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                   Optional. Use an emoji or short symbol; otherwise the automation’s initial is used.
                 </p>
                 {showRunsOn && (
-                  <RunsOnPicker profileId="workflow" accountsProduct="" options={runsOnOptions} onChange={setRunsOn} />
+                  <RunsOnPicker profileId="workflow" accountsProduct="" saveAccount="when-needed" options={runsOnOptions} onChange={setRunsOn} />
                 )}
                 {!editingPreset && (
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">

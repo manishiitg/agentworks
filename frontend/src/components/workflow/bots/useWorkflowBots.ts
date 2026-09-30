@@ -2,6 +2,7 @@ import { projectProductForPath } from '../../../products/work/projectProduct'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentApi } from '../../../services/api'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
+import { useAuthStore } from '../../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import type {
     BotRoute, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailOAuthClient, GmailTestResponse,
@@ -24,6 +25,13 @@ const serverErrorMessage = (err: unknown, fallback: string): string => {
   const data = (err as { response?: { data?: unknown } })?.response?.data
   if (typeof data === 'string' && data.trim()) return data.trim()
   return err instanceof Error ? err.message : fallback
+}
+
+const gmailErrorMessage = (err: unknown, fallback: string): string => {
+  const data = (err as { response?: { data?: { error?: string; required_access?: string } } })?.response?.data
+  if (data?.required_access === 'admin') return 'Only an admin can manage shared Gmail accounts and delivery settings.'
+  if (typeof data?.error === 'string' && data.error.trim()) return data.error.trim()
+  return serverErrorMessage(err, fallback)
 }
 
 const normalizeGmailEmails = (values: string | string[] | undefined): string[] => {
@@ -79,6 +87,19 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
   // no Save step for the panel to gate -- so each mutating control disables.
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const readOnly = hasTarget ? false : !canWriteWorkflow
+  // Shared Gmail accounts and delivery settings are admin-managed on the server.
+  // A Code owner manages its private accounts independently of the shared settings.
+  const canManageSharedGmail = useAuthStore(state => state.user?.is_admin === true
+    || (state.isMultiUserModeChecked && !state.isMultiUserMode))
+  const userId = useAuthStore(state => state.user?.id)
+  const codeOwner = /^_users\/([^/]+)\//.exec((workspacePath || '').replace(/^\/+/, ''))?.[1]
+  const gmailConnectionsReadOnly = readOnly || (gmailScopeWorkspace
+    ? !!codeOwner && codeOwner !== userId
+    : !canManageSharedGmail)
+  const gmailSettingsReadOnly = readOnly || !canManageSharedGmail
+  const canRemoveGmailConnection = useCallback((connection: GmailConnection) =>
+    !readOnly && (connection.can_remove ?? !gmailConnectionsReadOnly),
+  [readOnly, gmailConnectionsReadOnly])
   // Slack apps are owner-managed (writers get a 403 server-side); readers see
   // everything disabled through readOnly as usual.
   const canManageWorkflowSlack = !readOnly && (workflow?.my_access || 'owner') === 'owner'
@@ -326,7 +347,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
         await loadGmailConnections()
         return true
       } catch (error) {
-        setGmailError(error instanceof Error ? error.message : 'Connection action failed')
+        setGmailError(gmailErrorMessage(error, 'Connection action failed'))
         return false
       } finally {
         setGmailConnectionsBusy(null)
@@ -413,7 +434,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     } catch (error) {
       setGmailAuthPending(null)
       setGmailAuthUrl(null)
-      setGmailError(error instanceof Error ? error.message : 'Could not start Google sign-in')
+      setGmailError(gmailErrorMessage(error, 'Could not start Google sign-in'))
     }
   }, [gmailScopeWorkspace, loadGmailConnections])
 
@@ -457,26 +478,22 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       void connectGmailAccount(connection.id)
       return true
     } catch (error) {
-      setGmailOAuthClientError(error instanceof Error ? error.message : 'Failed to register the OAuth client')
+      setGmailOAuthClientError(gmailErrorMessage(error, 'Failed to register the OAuth client'))
       return false
     } finally {
       setGmailOAuthClientsBusy(false)
     }
   }, [gmailScopeWorkspace, loadGmailOAuthClients, loadGmailConnections, connectGmailAccount])
 
-  // Removes a sending account and, when it was the last one using its OAuth
-  // client, the client too — the two were created together as one action
-  // (createGmailOAuthClient above), so removal undoes both by default rather
-  // than leaving an orphaned, unused client behind that has to be separately
-  // noticed and cleaned up. A client still backing another mailbox is left
-  // alone: only the account being removed is deleted.
+  // Account owners can remove their own credentials. Only an admin also
+  // cleans up an unused shared OAuth client registration.
   const removeGmailMailboxAndClient = useCallback(async (connectionId: string, clientName: string) => {
     try {
       setGmailConnectionsBusy(connectionId)
       setGmailError(null)
       await agentApi.deleteGmailConnection(connectionId)
       const stillInUse = gmailConnections.some(c => c.id !== connectionId && c.client_name === clientName)
-      if (!stillInUse && clientName) {
+      if (canManageSharedGmail && !stillInUse && clientName) {
         await agentApi.deleteGmailOAuthClient(clientName).catch(() => {
           // Best-effort: the account is already gone either way, and an
           // orphaned client can still be removed later from its own row.
@@ -484,11 +501,11 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       }
       await Promise.all([loadGmailConnections(), loadGmailOAuthClients()])
     } catch (error) {
-      setGmailError(error instanceof Error ? error.message : 'Failed to remove the sending account')
+      setGmailError(gmailErrorMessage(error, 'Failed to remove the sending account'))
     } finally {
       setGmailConnectionsBusy(null)
     }
-  }, [gmailConnections, loadGmailConnections, loadGmailOAuthClients])
+  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, loadGmailOAuthClients])
 
   const loadGmail = useCallback(async (background = false) => {
     try {
@@ -505,7 +522,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
         setGmailOriginal({ enabled: data.enabled, default_to: data.default_to || '', blocked_recipients: blocked })
       }
     } catch (error) {
-      setGmailError(error instanceof Error ? error.message : 'Failed to load Gmail configuration')
+      setGmailError(gmailErrorMessage(error, 'Failed to load Gmail configuration'))
     } finally {
       setGmailLoading(false)
       setGmailChecking(false)
@@ -1067,7 +1084,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       setGmailOriginal({ enabled: data.enabled, default_to: data.default_to || '', blocked_recipients: blocked })
       setGmailSuccess('Gmail notification settings saved.')
     } catch (error) {
-      setGmailError(error instanceof Error ? error.message : 'Failed to save Gmail configuration')
+      setGmailError(gmailErrorMessage(error, 'Failed to save Gmail configuration'))
     } finally {
       setGmailSaving(false)
     }
@@ -1206,6 +1223,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     // routes
     myRoutes, workflowRoutes, removeRoute, updateRoute, addSlackRoute, addWaRoute,
     // gmail
+    gmailConnectionsReadOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
     gmailLoading, gmailChecking, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailTestPassed, gmailCanEnable, gmailHasChanges, loadGmail, saveGmail, testGmail,

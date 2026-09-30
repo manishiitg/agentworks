@@ -29,7 +29,7 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         config = (ROOT / "products/confida/product.env").read_text()
         for expected in (
             "PIN_NODE_VERSION=\"24.21.0\"",
-            "CLI_TOOLS=(claude codex pi cursor muse)",
+            "AGY_AUTH_MODE=gemini",
             "COPY_PLAYBOOKS=true",
             "RUN_WORKFLOW_BUILDER_MIGRATION=true",
             "PERSIST_MCP_STATE=true",
@@ -39,17 +39,20 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         ):
             self.assertIn(expected, config)
 
-    def test_sparkquill_codex_install_is_pinned_and_launch_checked(self):
-        config = (ROOT / "products/sparkquill/product.env").read_text()
-        deploy = (REPO / "deploy.sh").read_text()
-        self.assertIn("CODEX_CLI_NPM_VERSION=0.156.1", config)
-        self.assertIn("--include=optional", deploy)
-        self.assertIn('check_lines+="codex --version"', deploy)
+    def test_every_deployment_uses_the_complete_cli_installer(self):
+        for name in ("deploy.sh", "deploy/aws-ec2/server/build-and-activate.sh", "deploy/dedicated-vm/deploy-dominion.sh"):
+            with self.subTest(entry=name):
+                self.assertIn("deploy/common/install-coding-clis.sh", (REPO / name).read_text())
+        # Product-specific dependency lists must not silently omit a provider.
+        for product in ("confida", "sparkquill", "agents"):
+            config = (ROOT / "products" / product / "product.env").read_text()
+            self.assertNotIn("CLI_TOOLS=", config)
+            self.assertNotIn("CODEX_CLI_NPM_VERSION=", config)
 
     def test_shared_builder_owns_confida_runtime_guards(self):
         deploy = (REPO / "deploy.sh").read_text()
         build = (ROOT / "build-and-activate.sh").read_text()
-        for expected in ("install-slack-cli.sh", "agent-browser@latest", "CLI_TOOLS", "to_https_url"):
+        for expected in ("install-slack-cli.sh", "agent-browser@latest", "install-coding-clis.sh", "to_https_url"):
             self.assertIn(expected, deploy)
         for expected in (
             "RUNTIME_CONFIG_REQUIRED_SNIPPETS",

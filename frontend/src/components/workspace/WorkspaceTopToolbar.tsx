@@ -5,6 +5,7 @@ export function WorkspaceTopToolbar({ className = '', ...props }: HTMLAttributes
   return (
     <div
       {...props}
+      data-terminal-focus-chrome="toolbar"
       // z-30, not z-10: this wrapper establishes its own stacking context
       // (position + z-index), so a dropdown opened from it (e.g. Setup,
       // its own z-50) only outranks OTHER content within this context, not

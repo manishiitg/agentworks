@@ -137,6 +137,15 @@ func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 
+		// Signing the same Google account in again in this Code (to change its access) replaces
+		// the older connection instead of listing the account twice.
+		for _, old := range svc.PrivateDuplicatesOf(connectionID) {
+			if err := svc.DeleteConnection(r.Context(), old.ID); err != nil {
+				log.Printf("[GMAIL] Could not remove replaced connection %s: %v", old.ID, err)
+			} else {
+				log.Printf("[GMAIL] Connection %s replaced by %s (%s)", old.ID, connectionID, email)
+			}
+		}
 		log.Printf("[GMAIL] Connection %s authorized as %s", connectionID, email)
 		detail := "You can close this tab and return to the app."
 		if email != "" {

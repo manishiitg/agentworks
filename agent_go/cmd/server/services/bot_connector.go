@@ -2479,6 +2479,13 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		msg.PresetWorkflow = nil
 	}
 
+	// Timing of the steps before the agent starts, so a slow bot turn shows which step was slow.
+	botStart := time.Now()
+	botStep := func(step string) {
+		if elapsed := time.Since(botStart); elapsed > 2*time.Second {
+			log.Printf("[BOT_TIMING] %s: %s after the message reached the bot manager", step, elapsed.Round(100*time.Millisecond))
+		}
+	}
 	sessionID := newBotSessionID(msg.Platform)
 	if len(resumeSessionID) > 0 && resumeSessionID[0] != "" {
 		sessionID = resumeSessionID[0]
@@ -2504,6 +2511,7 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 			msg.Text = m.buildQueryWithThreadHistory(msg.Text, msg.Platform, threadID)
 		}
 		req, profileSessionID, handled, err := m.profileTurn(context.Background(), workspaceUserID, msg, threadID)
+		botStep("product conversation prepared")
 		if err != nil {
 			log.Printf("[BOT_MANAGER] Profile turn failed for thread %s: %v", threadID.Key(), err)
 			if connector := m.GetConnector(msg.Platform); connector != nil {
@@ -2528,7 +2536,9 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		// sender's own chat of the workflow, the one their web Builder
 		// restores — even over a chat this thread used before, since the
 		// web's current chat is the one that counts.
-		if own := strings.TrimSpace(m.userWorkflowChat(context.Background(), workspaceUserID, *msg.PresetWorkflow)); own != "" && own != sessionID {
+		own := strings.TrimSpace(m.userWorkflowChat(context.Background(), workspaceUserID, *msg.PresetWorkflow))
+		botStep("workflow chat looked up")
+		if own != "" && own != sessionID {
 			sessionID = own
 			restoredConversationSessionID = ""
 			log.Printf("[BOT_MANAGER] %s thread %s continues user %s's workflow chat %s", msg.Platform, threadID.Key(), workspaceUserID, sessionID)
@@ -2539,8 +2549,10 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		queryWithHistory := msg.Text
 		if len(resumeSessionID) == 0 || resumeSessionID[0] == "" {
 			queryWithHistory = m.buildQueryWithThreadHistory(msg.Text, msg.Platform, threadID)
+			botStep("thread history loaded")
 		}
 		queryReq = m.buildQueryRequest(queryWithHistory, workspaceUserID, msg.ChannelID, msg.PresetWorkflow, msg.Platform, botDMUserID(msg, workspaceUserID), threadID)
+		botStep("query request built")
 		addRestoredConversationSessionID(queryReq, restoredConversationSessionID)
 	}
 	if existing, _ := queryReq["session_title"].(string); strings.TrimSpace(existing) == "" && sessionTitle != "" {
@@ -2571,7 +2583,9 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 	applyBotRequestMetadata(active, queryReq)
 	m.sessions[threadID.Key()] = active
 	m.mu.Unlock()
+	botStep("before saving the session binding")
 	m.persistBotSessionBinding(active, startedAt)
+	botStep("session binding saved")
 
 	// Long-running indicator: if the agent hasn't replied within ~10s, layer an
 	// hourglass reaction on top of the "eyes" ack so the user knows the bot is
@@ -2716,6 +2730,9 @@ func (m *BotConversationManager) runSession(active *activeBotSession, queryReq m
 		cancel()
 	})
 
+	if elapsed := time.Since(active.LastActivity); elapsed > 2*time.Second {
+		log.Printf("[BOT_TIMING] before starting the event filter: %s after the session was created", elapsed.Round(100*time.Millisecond))
+	}
 	if m.eventSubscriber != nil {
 		log.Printf("[BOT_MANAGER] Starting event filter goroutine for session %s", sessionID)
 		go active.eventFilter.Start(sessionCtx, m.eventSubscriber, sessionID)

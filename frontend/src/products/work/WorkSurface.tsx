@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
 import SchedulesPage from '../../components/SchedulesPage'
 import AdminPages from '../../components/AdminPages'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -38,7 +39,8 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type ProductEngineSelectionDetail, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
-import { rememberRunsOn, type RunsOnSelection } from './RunsOnPicker'
+import { type RunsOnSelection } from './RunsOnPicker'
+import { rememberRunsOn } from './runsOnMemory'
 import { crewTemplates, type CrewTemplateId } from './crewTemplates'
 import { WorkTemplateSetup } from './WorkTemplateSetup'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
@@ -1075,7 +1077,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   return (
     <ProjectProductProvider value={product}>
-    <div className="flex h-screen min-h-0 flex-col bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 flex-col bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1083,9 +1085,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         reduced
         walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
         walkthroughReady={!sessionsLoading && !creating && !error}
-        // The guided tour is Crew's (identity, templates, automation); a Code
-        // never opens it on its own.
-        walkthroughPaused={createOpen || deleteCandidate !== null || !product.hasIdentity}
+        // Both products have their own tour; only active dialogs pause it.
+        walkthroughPaused={createOpen || deleteCandidate !== null}
       />
       {inspectOpen ? <AdminCodeInspector onClose={() => setInspectOpen(false)} /> : null}
       {createOpen && !product.hasIdentity ? (
@@ -1135,8 +1136,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               {sessionsLoading || creating ? (
                 <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
               ) : !product.hasIdentity ? (
-                <div className="flex max-w-xl flex-col items-center px-6 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                <div data-tour="code-empty-state" className="flex max-w-xl flex-col items-center px-6 text-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 [@media(max-height:600px)]:hidden">
                     <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;/&gt;</span>
                   </div>
                   <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
@@ -1160,6 +1161,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   </div>
                   <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
                   <button
+                    data-tour="code-create"
                     type="button"
                     onClick={openCreateProject}
                     className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -1364,7 +1366,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
           )}
         </div>
       </div>
-    </div>
+    </TerminalFocusLayout>
     </ProjectProductProvider>
   )
 }

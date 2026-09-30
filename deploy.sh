@@ -202,42 +202,16 @@ fi
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/agent_go/scripts/install-slack-cli.sh"
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
-if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
-  CODEX_CLI_NPM_VERSION="${CODEX_CLI_NPM_VERSION:-latest}"
-  [[ "$CODEX_CLI_NPM_VERSION" == latest || "$CODEX_CLI_NPM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid CODEX_CLI_NPM_VERSION" >&2; exit 1; }
-  cli_install_cmd() {
-    case "$1" in
-      claude) printf "npm install -g --prefix '%s' @anthropic-ai/claude-code@latest >/dev/null" "$REMOTE_TOOLS" ;;
-      codex)  printf "npm install -g --prefix '%s' '@openai/codex@%s' --include=optional >/dev/null" "$REMOTE_TOOLS" "$CODEX_CLI_NPM_VERSION" ;;
-      pi)     printf "npm install -g --prefix '%s' @earendil-works/pi-coding-agent@latest >/dev/null" "$REMOTE_TOOLS" ;;
-      cursor) printf "HOME='%s/home' curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | HOME='%s/home' bash" "$REMOTE_APP" "$REMOTE_APP" ;;
-      muse)   printf "HOME='%s/home' MUSE_INSTALL_DIR='%s/home/.local/bin' MUSE_NO_MODIFY_PATH=1 bash -c \"curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://dev.meta.ai/install.sh | bash\"" "$REMOTE_APP" "$REMOTE_APP" ;;
-      *) echo "Unknown CLI_TOOLS entry: $1" >&2; exit 1 ;;
-    esac
-  }
-  cli_bin_name() { [[ "$1" == cursor ]] && echo cursor-agent || echo "$1"; }
-
-  install_lines=""
-  check_lines=""
-  for cli in "${CLI_TOOLS[@]}"; do
-    install_lines+="$(cli_install_cmd "$cli")"$'\n'
-    check_lines+="command -v '$(cli_bin_name "$cli")' >/dev/null"$'\n'
-    if [[ "$cli" == codex ]]; then check_lines+="codex --version"$'\n'; fi
-  done
-
-  echo "==> [$PRODUCT] Installing server CLI dependencies (agent-browser, ${CLI_TOOLS[*]})"
-  "${SSH[@]}" "set -euo pipefail
-    install -d -m 0755 '$REMOTE_TOOLS' '$REMOTE_APP/home/.local/bin'
-    export PATH='$REMOTE_RUNTIME_PATH'
-    npm install -g --prefix '$REMOTE_TOOLS' --allow-scripts=agent-browser agent-browser@latest >/dev/null
-    $install_lines
-    export PATH='$REMOTE_TOOLS/bin':\"\$PATH\"
-    export PATH='$REMOTE_APP/home/.local/bin':\"\$PATH\"
-    command -v agent-browser >/dev/null
-    command -v slack >/dev/null
-    $check_lines
-    agent-browser --version"
-fi
+echo "==> [$PRODUCT] Installing/updating all server coding CLIs"
+# Ship both helpers because this phase precedes the server's source clone.
+cli_helpers="$(mktemp -d)"
+cp "$LOCAL_REPO_ROOT/deploy/common/install-coding-clis.sh" "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh" "$cli_helpers/"
+remote_cli_helpers="$REMOTE_APP/tools/.deploy-cli-helpers"
+"${SSH[@]}" "install -d -m 0700 '$remote_cli_helpers'"
+"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
+rm -rf "$cli_helpers"
+"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}'; npm install -g --prefix '$REMOTE_TOOLS' --allow-scripts=agent-browser agent-browser@latest >/dev/null; command -v agent-browser >/dev/null; command -v slack >/dev/null; agent-browser --version"
+"${SSH[@]}" "rm -rf '$remote_cli_helpers'"
 
 JOB="$PRODUCT-deploy-$(date +%Y%m%d%H%M%S)-$$"
 REMOTE_JOB="$REMOTE_APP/builds/$JOB"
@@ -297,6 +271,53 @@ done
 
 echo "==> [$PRODUCT] Done."
 )
+
+# --- Deploy notices in Slack -------------------------------------------------
+# A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
+# URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
+# or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
+# With neither set nothing is sent, and a failed post never fails or delays a deploy.
+deploy_notify() {
+  local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
+  [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
+  [[ -n "$url" ]] || return 0
+  local payload
+  payload="$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$1" 2>/dev/null)" || return 0
+  curl -sS -m 10 -X POST -H 'Content-type: application/json' --data "$payload" "$url" >/dev/null 2>&1 || true
+}
+
+deploy_label() {
+  case "$SERVER" in
+    rts|video-studio) echo "RTS (video.realtrainingsys.com)" ;;
+    excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
+    confida) echo "Confida (confida.agentworkshq.com)" ;;
+    *) echo "$SERVER" ;;
+  esac
+}
+
+deploy_start_notice() {
+  [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
+  local head_line
+  git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
+  head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' origin/main 2>/dev/null | cut -c1-90)"
+  DEPLOY_NOTICE_STARTED="$(date +%s)"
+  deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own."
+  trap 'deploy_finish_notice $?' EXIT
+}
+
+deploy_finish_notice() {
+  local rc="$1" took=""
+  [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
+  trap - EXIT
+  if [[ "$rc" == "0" ]]; then
+    deploy_notify ":white_check_mark: *$(deploy_label)* is deployed${took}. You can carry on."
+  else
+    deploy_notify ":warning: The *$(deploy_label)* deploy finished${took} with a problem (exit $rc). It may still be on the previous release; the team is checking."
+  fi
+  return "$rc"
+}
+
+deploy_start_notice
 
 case "$SERVER" in
   rts|video-studio)

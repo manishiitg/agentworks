@@ -109,7 +109,7 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
-		writeGmailConnection(w, svc, conn)
+		writeGmailConnection(w, r, svc, conn)
 	}
 }
 

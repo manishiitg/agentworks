@@ -74,6 +74,17 @@ const render = async (element: React.ReactElement) => {
 }
 const buttonByText = (container: HTMLElement, text: string) => [...container.querySelectorAll('button')].find(button => button.textContent?.trim() === text)
 const click = async (element?: Element | null) => { expect(element).toBeTruthy(); await act(async () => { (element as HTMLElement).click() }); await act(async () => Promise.resolve()) }
+// Less common actions live in each row's "More" menu.
+const menuItem = async (container: HTMLElement, menu: string, item: string) => {
+  await click(container.querySelector(`[aria-label="${menu}"]`))
+  return [...container.querySelectorAll('[role="menuitem"]')].find(element => element.textContent?.trim() === item)
+}
+const menuItems = async (container: HTMLElement, menu: string) => {
+  await click(container.querySelector(`[aria-label="${menu}"]`))
+  const items = [...container.querySelectorAll('[role="menuitem"]')].map(element => element.textContent?.trim())
+  await click(container.querySelector(`[aria-label="${menu}"]`))
+  return items
+}
 const setValue = async (input: HTMLInputElement | HTMLSelectElement, value: string) => {
   const prototype = input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype
   await act(async () => {
@@ -84,22 +95,18 @@ const setValue = async (input: HTMLInputElement | HTMLSelectElement, value: stri
 
 it('shows the server account with its origin and lets an admin change who can use it', async () => {
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
-  expect(container.textContent).toContain('Installed')
-  expect(container.textContent).toContain('Installation (.env: CLAUDE_CODE_OAUTH_TOKEN)')
-  expect(container.textContent).toContain('Used by: Everyone')
-  await click(buttonByText(container, 'Edit who can use it'))
-  const adminsOnly = [...container.querySelectorAll('label')].find(label => label.textContent?.trim() === 'Admins only')?.querySelector('input')
-  await click(adminsOnly)
-  await click(buttonByText(container, 'Save'))
+  expect(container.textContent).toContain('Used by everyone')
+  await click(await menuItem(container, 'More for the shared account', 'Who can use it'))
+  // Everyone / Only admins save at once, no Save button.
+  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Who can use the shared account"]')!, 'admins')
   expect(llmConfigService.setServerAccountAvailability).toHaveBeenCalledWith('claude-code', 'admins')
 })
 
 it('says when the installation pins who can use the server account', async () => {
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, kind: 'admin', availability: { available_to: 'admins', text: 'Admins only', source: 'installation', pinned: true }, availability_editable: false }])
   const container = await render(<ProviderAccounts provider="claude-code" />)
-  expect(container.textContent).toContain('Admin-configured')
-  expect(container.textContent).toContain('Set by the installation')
-  expect(buttonByText(container, 'Edit who can use it')).toBeUndefined()
+  expect(container.textContent).toContain('set by the installation')
+  expect(await menuItems(container, 'More for the shared account')).not.toContain('Who can use it')
 })
 
 it('groups own, shared-with-you and admin-view accounts with the right controls', async () => {
@@ -109,17 +116,18 @@ it('groups own, shared-with-you and admin-view accounts with the right controls'
   expect(container.textContent).toContain('Shared with you')
   expect(container.textContent).toContain('Shared by Dana')
   expect(container.textContent).not.toContain('Native tools off')
-  expect(container.querySelector('[aria-label="Remove Dana team"]')).toBeNull()
-  expect(container.querySelector('[aria-label="Sharing for Dana team"]')).toBeNull()
+  const danaItems = await menuItems(container, 'More for Dana team')
+  expect(danaItems).not.toContain('Remove')
+  expect(danaItems).not.toContain('Who can use it')
   expect(container.textContent).toContain("Other people's accounts")
   expect(container.textContent).toContain('Owner: Erin · Private (only Erin can use it)')
-  await click(container.querySelector('[aria-label="Remove Erin personal"]'))
+  await click(await menuItem(container, 'More for Erin personal', 'Remove'))
   expect(llmConfigService.deleteProviderConnection).toHaveBeenCalledWith('acct-erin')
 })
 
 it('edits sharing on an own account', async () => {
   const container = await render(<ProviderAccounts provider="claude-code" />)
-  await click(container.querySelector('[aria-label="Sharing for My Max"]'))
+  await click(await menuItem(container, 'More for My Max', 'Who can use it'))
   expect(container.textContent).toContain(SHARING_WARNING)
   const crew = [...container.querySelectorAll('label')].find(label => label.textContent?.includes('Ops Crew'))?.querySelector('input')
   await click(crew)
@@ -148,25 +156,18 @@ it('adds an account shared with a workflow after showing the billing warning', a
 it('shows server validation text when saving fails', async () => {
   vi.mocked(llmConfigService.updateProviderConnection).mockRejectedValue({ response: { status: 400, data: 'sharing names a workflow you cannot open' } })
   const container = await render(<ProviderAccounts provider="claude-code" />)
-  await click(container.querySelector('[aria-label="Sharing for My Max"]'))
+  await click(await menuItem(container, 'More for My Max', 'Who can use it'))
   await click(buttonByText(container, 'Save sharing'))
   expect(container.querySelector('[role="alert"]')?.textContent).toBe('sharing names a workflow you cannot open')
 })
 
-it('runs usage for the chosen account and shows it inline', async () => {
-  vi.mocked(llmConfigService.checkProviderUsage).mockResolvedValue({ session: { id: 'usage-1', provider: 'claude-code', action: 'usage', status: 'running', created_at: '', updated_at: '' } })
+it('has no separate usage check: usage and sign-in are in the account terminal', async () => {
+  vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({ id: 'term-1', provider: 'claude-code', action: 'inspect', status: 'running', created_at: '', updated_at: '' })
   const container = await render(<ProviderAccounts provider="claude-code" />)
-  await click(container.querySelector('[aria-label="Usage for Dana team"]'))
-  expect(llmConfigService.checkProviderUsage).toHaveBeenCalledWith('claude-code', 'acct-dana')
-  expect(container.querySelector('[data-testid="guided-terminal"]')?.textContent).toBe('Terminal usage-1')
-})
-
-it('shows server-collected usage text, with no terminal, for an account the viewer does not manage', async () => {
-  vi.mocked(llmConfigService.checkProviderUsage).mockResolvedValue({ usage_output: 'Plan: Max · resets 5pm' })
-  const container = await render(<ProviderAccounts provider="claude-code" />)
-  await click(container.querySelector('[aria-label="Usage for Dana team"]'))
-  expect(container.querySelector('[aria-label="Usage output for Dana team"]')?.textContent).toBe('Plan: Max · resets 5pm')
-  expect(container.querySelector('[data-testid="guided-terminal"]')).toBeNull()
+  expect([...container.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Usage')).toBe(false)
+  await click(await menuItem(container, 'More for My Max', 'Terminal (sign in, check usage)'))
+  expect(llmConfigService.startProviderSetup).toHaveBeenCalledWith('claude-code', 'inspect', 100, 24, undefined, false, 'acct-own')
+  expect(container.querySelector('[data-testid="guided-terminal"]')?.textContent).toBe('Terminal term-1')
 })
 
 it('picker lists usable accounts in groups and keeps an unavailable selection', async () => {
@@ -183,23 +184,25 @@ it('shows each account\'s status and offers the per-account actions to managers 
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
   await act(async () => Promise.resolve())
   expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Signed in as me@x.com')
-  expect(container.querySelector('[aria-label="Open terminal for My Max (your account)"]')).not.toBeNull()
-  expect(container.querySelector('[aria-label="Open terminal for Server account (server account (shared))"]')).not.toBeNull()
-  expect(buttonByText(container, 'Sign in the shared login')).toBeDefined()
+  expect(await menuItems(container, 'More for My Max')).toContain('Terminal (sign in, check usage)')
+  expect(await menuItems(container, 'More for the shared account')).toContain('Terminal (sign in, check usage)')
+  // The shared account is signed out, so its one button is Sign in.
+  expect(buttonByText(container, 'Sign in')).toBeDefined()
   // Not a manager of Dana's account: no terminal, no sign-out.
-  expect(container.querySelector('[aria-label="Open terminal for Dana team (Dana\'s account)"]')).toBeNull()
-  expect(container.querySelector('[aria-label="Sign out Dana team"]')).toBeNull()
+  const dana = await menuItems(container, 'More for Dana team')
+  expect(dana).not.toContain('Terminal (sign in, check usage)')
+  expect(dana).not.toContain('Sign out')
   // API-key accounts have no sign-out.
-  expect(container.querySelector('[aria-label="Sign out Erin personal"]')).toBeNull()
+  expect(await menuItems(container, 'More for Erin personal')).not.toContain('Sign out')
   vi.mocked(llmConfigService.getProviderAccountStatus).mockResolvedValue({ state: 'key_rejected', detail: '401 invalid token', verified: true, checked_at: '' })
-  await click(container.querySelector('[aria-label="Refresh status of My Max"]'))
+  await click(await menuItem(container, 'More for My Max', 'Check sign-in again'))
   expect(llmConfigService.getProviderAccountStatus).toHaveBeenLastCalledWith('acct-own', true, undefined)
   expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Login rejected: 401 invalid token')
 })
 
 it('confirms before signing out the server account', async () => {
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
-  await click(container.querySelector('[aria-label="Sign out Server account"]'))
+  await click(await menuItem(container, 'More for the shared account', 'Sign out'))
   expect(window.confirm).toHaveBeenCalledWith('Every run that uses the Claude Code server account will stop working until someone signs in again.')
   expect(llmConfigService.signOutProviderAccount).toHaveBeenCalledWith('global:claude-code')
 })

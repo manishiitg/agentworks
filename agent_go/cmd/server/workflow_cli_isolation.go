@@ -13,10 +13,15 @@ import (
 )
 
 // Workflow chat isolation is the default for coding-agent providers. Keep an
-// explicit environment rollback while deployments transition; workflow
-// manifests cannot enable or disable this server-owned boundary.
+// explicit Builder rollback while deployments transition; Run must always
+// isolate so a writable CLI cwd cannot promote read-only workflow access.
+// Workflow manifests cannot enable or disable this server-owned boundary.
 func workflowCLIIsolationEnabled() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_ISOLATE_WORKFLOW_CLI")), "false")
+}
+
+func workflowCLIIsolationEnabledForMode(mode string) bool {
+	return workflowCLIIsolationEnabled() || strings.EqualFold(strings.TrimSpace(mode), "run")
 }
 
 func workflowCLIMode(req *QueryRequest, readOnly bool) string {
@@ -65,14 +70,14 @@ func defaultWorkflowCLIStateRoot() (string, error) {
 
 func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string, error) {
 	shared := codingAgentWorkspaceWorkingDir(folder)
-	if !workflowCLIIsolationEnabled() || !isCodingAgentProvider(provider, "") {
+	if !workflowCLIIsolationEnabledForMode(mode) || !isCodingAgentProvider(provider, "") {
 		return shared, nil
 	}
 	stateRoot, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
 	}
-	dir, err := cliruntime.Prepare(stateRoot, fsutil.WorkspaceDocsRoot(), user, shared, session, provider, mode)
+	dir, err := cliruntime.PrepareLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, shared, session, provider, mode)
 	if err != nil {
 		return "", fmt.Errorf("cannot isolate workflow CLI session: %w", err)
 	}
@@ -80,19 +85,23 @@ func workflowCLIWorkingDir(folder, user, session, provider, mode string) (string
 }
 
 func workflowCLIWorkspaceInstructions(folder string) string {
-	return fmt.Sprintf("\nCLI runtime location: the current directory contains this chat's private instructions and skills. The authoritative workflow root is %q. Use absolute paths rooted there for native file tools, and explicitly cd there for native shell commands that use workflow-relative paths. Workspace bridge tools already resolve to that workflow. Keep generated CLI instructions and skills in the private runtime directory.\n", codingAgentWorkspaceWorkingDir(folder))
+	return fmt.Sprintf("\nWorkflow CLI runtime: the current directory holds this chat's mode-specific instructions, skills and CLI configuration. `project/` links to the authoritative workflow at %q. Native file tools use `project/<path>`; use `cd project && ...` for commands that need workflow-relative paths. Durable outputs belong under that link. Workspace bridge tools already resolve to the real workflow and must not include the `project/` prefix. Keep generated CLI instructions/configuration in the private runtime, preserve the workflow's own instructions, and obey current Run/Builder permissions through linked paths.\n", codingAgentWorkspaceWorkingDir(folder))
 }
 
 func workflowCLIResumeAllowed(agent *mcpagent.Agent, runtime *ChatHistoryAgentRuntime) bool {
-	if !workflowCLIIsolationEnabled() || runtime == nil {
+	if runtime == nil {
 		return true
 	}
 	current := mcpagent.SnapshotAgentSession(agent)
 	if current == nil {
-		return false
+		// Preserve legacy non-isolated restoration for agents without a
+		// configured provider handle. Private Crew agents are constructed with
+		// their runtime cwd and always take the identity check below.
+		return !workflowCLIIsolationEnabled()
 	}
 	// Apply this only to agents constructed with a private runtime directory.
-	// Ordinary chats and existing isolated step agents keep their own policy.
+	// Crew linked runtimes use the same identity check, even when workflow
+	// isolation is disabled. Ordinary chats and step agents keep their policy.
 	if !strings.Contains(current.Provider.WorkingDir, string(os.PathSeparator)+"cli-runtimes"+string(os.PathSeparator)+"v1"+string(os.PathSeparator)) {
 		return true
 	}

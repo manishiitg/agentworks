@@ -153,9 +153,9 @@ func (api *StreamingAPI) prepareWorkflowRetainedDelivery(ctx context.Context, se
 // current trusted project state before allowing the native CLI to receive input.
 func (api *StreamingAPI) agentProfileRetainedPolicyCompatible(ctx context.Context, session string, req QueryRequest) (bool, error) {
 	user := GetUserIDFromContext(ctx)
-	profile, err := api.resolveAgentProfileForQuery(ctx, &req, user, session)
-	if err != nil {
-		return false, err
+	profile, _, admissionErr := api.admitQueryTarget(ctx, &req, user, session)
+	if admissionErr != nil {
+		return false, admissionErr
 	}
 	if profile == nil {
 		return false, fmt.Errorf("product profile is unavailable")

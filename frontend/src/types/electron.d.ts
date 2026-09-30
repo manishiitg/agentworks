@@ -8,6 +8,8 @@ interface ElectronUpdateProgress {
 }
 
 interface ElectronBridge {
+  isWalkthroughDismissed?: (key: string) => boolean
+  dismissWalkthrough?: (key: string) => void
   getApiBaseUrl?: () => string
   getWorkspaceApiBaseUrl?: () => string
   getAppVersion?: () => Promise<string>

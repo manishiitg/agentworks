@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -2012,6 +2013,63 @@ const liveAttachRawInputChunkBytes = 512
 // `send-keys -H` (hex), so Enter (0d), Ctrl-C (03), arrows, and pastes all pass
 // through. Reuses the existing tmux exec helper.
 func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession string, data []byte, streams ...*liveAttachStream) error {
+	if len(data) == 0 {
+		return nil
+	}
+	data, stripped := stripCLIExitKeys(data)
+	if stripped {
+		liveAttachSlashNote(streams, "That key would close the agent. Use Esc to interrupt, or the chat's Stop button")
+		if len(data) == 0 {
+			return nil
+		}
+	}
+	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data); decision {
+	case slashDrop:
+		liveAttachSlashNote(streams, "Pick a slash command by typing its full name")
+		return nil
+	case slashCancel:
+		log.Printf("[live-attach] session=%s: a slash command was not allowed and its line was erased (allowed: %s)", tmuxSession, terminalSlashCommandsEnv)
+		if erase > 0 {
+			if err := api.liveAttachRawSend(ctx, tmuxSession, bytes.Repeat([]byte{0x7f}, erase), streams...); err != nil {
+				return err
+			}
+		}
+		tmuxinput.Default.ClearInteractiveDraft(tmuxSession)
+		liveAttachSlashNote(streams, "That slash command is turned off here. Use the chat")
+		return nil
+	}
+	return api.liveAttachRawSend(ctx, tmuxSession, data, streams...)
+}
+
+// stripCLIExitKeys removes the control keys that end or suspend a coding CLI (Ctrl-C, which
+// exits on a second press, Ctrl-D, Ctrl-\\ and Ctrl-Z) so a keystroke in the raw view cannot
+// close the agent's tmux session. Esc still interrupts a turn, and the chat has a Stop
+// button. A bracketed paste is left whole: those bytes are then just pasted text.
+func stripCLIExitKeys(data []byte) ([]byte, bool) {
+	if bytes.Contains(data, []byte("\x1b[200~")) {
+		return data, false
+	}
+	out := make([]byte, 0, len(data))
+	for _, b := range data {
+		switch b {
+		case 0x03, 0x04, 0x1a, 0x1c:
+			continue
+		}
+		out = append(out, b)
+	}
+	return out, len(out) != len(data)
+}
+
+// liveAttachSlashNote overlays a one-line note on the top row (cursor saved and restored); the CLI's
+// next redraw clears it.
+func liveAttachSlashNote(streams []*liveAttachStream, text string) {
+	if len(streams) > 0 && streams[0] != nil {
+		streams[0].broadcast([]byte("\x1b7\x1b[1;1H\x1b[7m " + text + " \x1b[0m\x1b8"))
+	}
+}
+
+// liveAttachRawSend forwards raw terminal input bytes with no slash-command check.
+func (api *StreamingAPI) liveAttachRawSend(ctx context.Context, tmuxSession string, data []byte, streams ...*liveAttachStream) error {
 	if len(data) == 0 {
 		return nil
 	}

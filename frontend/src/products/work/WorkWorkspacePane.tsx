@@ -330,7 +330,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   }
 
   return (
-    <WorkspacePanelGuideContext.Provider value="crew">
+    <WorkspacePanelGuideContext.Provider value={product.profileId === 'code' ? 'code' : 'crew'}>
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === 'files' && (readOnly ? <SharedCrewFilesPanel

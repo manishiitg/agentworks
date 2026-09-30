@@ -64,3 +64,17 @@ func TestResolveWorkflowWorkspaceFolderWorkingDirWinsOverWritableAttachedCrews(t
 		t.Fatalf("got %q, %v; want the session's own Crew project", got, err)
 	}
 }
+
+func TestWorkflowDBWriteDenialTellsTheCallerItIsAPlatformProblem(t *testing.T) {
+	msg := errWorkflowDBWriteGrantMissing("mutation", "session-group-x-1", "").Error()
+	for _, want := range []string{
+		"explicit db_access=read-write is required", // the original text stays for anything matching it
+		"platform permission problem",
+		"report it as a platform issue",
+		`"session-group-x-1"`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("denial message missing %q: %s", want, msg)
+		}
+	}
+}

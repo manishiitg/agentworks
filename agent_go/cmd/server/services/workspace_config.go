@@ -401,10 +401,12 @@ func LoadProviderKeys(ctx context.Context, workspaceURL string) (map[string]inte
 
 // deriveSecretsKey derives the AES-256 key from AUTH_SECRET using HMAC-SHA256.
 // Must match the derivation in server/secrets_routes.go.
+// It returns nil without AUTH_SECRET: the old public default key is gone, so nothing can be
+// decrypted with a key anyone could know. Trimmed like the server's own AUTH_SECRET reader.
 func deriveSecretsKey() []byte {
-	secret := os.Getenv("AUTH_SECRET")
+	secret := strings.TrimSpace(os.Getenv("AUTH_SECRET"))
 	if secret == "" {
-		secret = "dev-secret-change-in-production"
+		return nil
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte("secrets-encryption-key"))
@@ -414,6 +416,9 @@ func deriveSecretsKey() []byte {
 // decryptWithAAD decrypts AES-256-GCM encrypted data with the given AAD string.
 func decryptWithAAD(data []byte, aad string) ([]byte, error) {
 	key := deriveSecretsKey()
+	if key == nil {
+		return nil, fmt.Errorf("AUTH_SECRET is not set")
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err

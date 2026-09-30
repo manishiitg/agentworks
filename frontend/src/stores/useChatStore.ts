@@ -73,10 +73,31 @@ const chatStoreHydrationGate = createHydrationGate({
 let chatStoreHydrationBackstopReported = false
 
 // Streaming inactivity auto-clear timers (per sessionId)
-// When no new chunk arrives for 3s, streaming text is auto-cleared
+// When no new chunk arrives for STREAMING_INACTIVITY_MS, streaming text is auto-cleared,
+// unless the turn is still running (see sessionTurnRunning).
 const _streamingInactivityTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const _executionStreamingInactivityTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const STREAMING_INACTIVITY_MS = 60000
+
+// A long tool call is a silent stretch of a turn that is still running: clearing the streamed text
+// then made the reply vanish and jump back in when the turn ended. Only an idle session is cleared.
+function sessionTurnRunning(sessionId: string): boolean {
+  return Object.values(useChatStore.getState().chatTabs).some(tab => tab.sessionId === sessionId && tab.isStreaming)
+}
+
+function armStreamingInactivityClear(sessionId: string) {
+  if (_streamingInactivityTimers[sessionId]) clearTimeout(_streamingInactivityTimers[sessionId])
+  _streamingInactivityTimers[sessionId] = setTimeout(() => {
+    delete _streamingInactivityTimers[sessionId]
+    if (sessionTurnRunning(sessionId)) {
+      armStreamingInactivityClear(sessionId)
+      return
+    }
+    if (useChatStore.getState().streamingText[sessionId]) {
+      useChatStore.getState().clearStreamingText(sessionId)
+    }
+  }, STREAMING_INACTIVITY_MS)
+}
 
 // Per-mode event counts type — kept for backwards compat with persisted state
 export type PerModeEventCounts = { micro: number }
@@ -743,6 +764,8 @@ export interface ChatState extends StoreActions {
   
   // Streaming text actions
   appendStreamingChunk: (sessionId: string, chunkIndex: number, chunk: string, meta?: StreamingChunkMeta) => void
+  // Applies pieces queued by appendStreamingChunk now (all sessions when none is named).
+  flushStreamingChunks: (sessionId?: string) => void
   setStreamingTerminalSnapshot: (sessionId: string, chunkIndex: number, chunk: string) => void
   setStreamingTerminalActive: (sessionId: string, active: boolean) => void
   setTerminalOutputOpen: (sessionId: string, open: boolean) => void
@@ -774,6 +797,94 @@ export interface ChatState extends StoreActions {
   // account that just signed out.
   discardChatStateForAccountChange: () => void
   isAtBottom: (element: HTMLDivElement) => boolean
+}
+
+
+type PendingStreamingChunk = { chunkIndex: number; chunk: string; meta?: StreamingChunkMeta }
+const _pendingStreamingChunks: Record<string, PendingStreamingChunk[]> = {}
+let _streamingFlushHandle: ReturnType<typeof setTimeout> | null = null
+
+function scheduleStreamingFlush() {
+  if (_streamingFlushHandle !== null) return
+  // setTimeout (not requestAnimationFrame) so a hidden tab still applies pieces and tests can use
+  // fake timers; 16 ms is one frame.
+  _streamingFlushHandle = setTimeout(() => {
+    _streamingFlushHandle = null
+    useChatStore.getState().flushStreamingChunks()
+  }, 16)
+}
+
+// applyStreamingChunk is the per-piece update, applied in order by flushStreamingChunks.
+function applyStreamingChunk(state: ChatState, sessionId: string, chunkIndex: number, chunk: string, meta?: StreamingChunkMeta): Partial<ChatState> {
+          let lastIndex = state.lastStreamingChunkIndex[sessionId] ?? -1
+          let currentText = state.streamingText[sessionId] || ''
+          let clearCompleted = false
+
+          // Auto-reset if we see chunk 0 or 1 (start of new generation)
+          if (chunkIndex === 0 || chunkIndex === 1) {
+             lastIndex = -1
+             currentText = ''
+             clearCompleted = true
+          }
+
+          // Deduplicate: skip chunks already processed (handles concurrent poll overlap)
+          if (chunkIndex >= 0 && chunkIndex <= lastIndex) {
+            return {}
+          }
+
+          // Build completedStreamingText update if needed
+          const completedUpdate = clearCompleted
+            ? (() => { const c = { ...state.completedStreamingText }; delete c[sessionId]; return c })()
+            : state.completedStreamingText
+
+          // Route heartbeat/provider/tool progress messages to streamingStatus instead of streamingText.
+          // Mixed chunks are split so raw markers like "api-bridge - execute_shell_command (MCP)"
+          // cannot leak into the visible assistant markdown.
+          const { statusText, text } = splitStreamingStatusAndText(chunk)
+          // Trust the backend's own classification when it sent one; only fall
+          // back to sniffing the text when the field is absent.
+          const isTerminalScreenText = isTerminalSourceChunk(meta) || looksLikeTerminalScreenText(text || chunk)
+          const safeText = isTerminalScreenText ? '' : text
+          const effectiveStatusText = statusText || (isTerminalScreenText ? 'Agent is working' : null)
+          if (effectiveStatusText && !safeText) {
+            return {
+              streamingStatus: {
+                ...state.streamingStatus,
+                [sessionId]: effectiveStatusText
+              },
+              lastStreamingChunkIndex: {
+                ...state.lastStreamingChunkIndex,
+                [sessionId]: chunkIndex
+              },
+              ...(clearCompleted ? { completedStreamingText: completedUpdate } : {})
+            }
+          }
+
+          // Clear status once real content arrives
+          const newStreamingStatus = { ...state.streamingStatus }
+          if (effectiveStatusText) {
+            newStreamingStatus[sessionId] = effectiveStatusText
+          } else {
+            delete newStreamingStatus[sessionId]
+          }
+
+          const nextStreamingText = { ...state.streamingText }
+          const nextText = appendStreamingText(currentText, safeText, meta?.isDelta)
+          if (nextText) {
+            nextStreamingText[sessionId] = nextText
+          } else {
+            delete nextStreamingText[sessionId]
+          }
+
+          return {
+            streamingText: nextStreamingText,
+            streamingStatus: newStreamingStatus,
+            lastStreamingChunkIndex: {
+              ...state.lastStreamingChunkIndex,
+              [sessionId]: chunkIndex
+            },
+            ...(clearCompleted ? { completedStreamingText: completedUpdate } : {})
+          }
 }
 
 type DurableChatState = Pick<ChatState, 'chatTabs' | 'activeTabId' | 'eventViewModePreference'>
@@ -1666,88 +1777,31 @@ export const useChatStore = create<ChatState>()(
       appendStreamingChunk: (sessionId: string, chunkIndex: number, chunk: string, meta?: StreamingChunkMeta) => {
         if (typeof chunk !== 'string' || !chunk) return
 
-        // Reset inactivity auto-clear timer — if no new chunk arrives in 3s, clear streaming text
-        if (_streamingInactivityTimers[sessionId]) {
-          clearTimeout(_streamingInactivityTimers[sessionId])
-        }
-        _streamingInactivityTimers[sessionId] = setTimeout(() => {
-          const currentText = useChatStore.getState().streamingText[sessionId]
-          if (currentText) {
-            useChatStore.getState().clearStreamingText(sessionId)
-          }
-          delete _streamingInactivityTimers[sessionId]
-        }, STREAMING_INACTIVITY_MS)
+        // Reset the inactivity auto-clear timer.
+        armStreamingInactivityClear(sessionId)
 
-        set((state) => {
-          let lastIndex = state.lastStreamingChunkIndex[sessionId] ?? -1
-          let currentText = state.streamingText[sessionId] || ''
-          let clearCompleted = false
+        // Pieces are applied at most once per frame: one store update per piece re-rendered the
+        // whole chat for every few characters, which read as flicker and small scroll jumps when a
+        // CLI (or a background agent in the same session) streamed many small pieces at once.
+        ;(_pendingStreamingChunks[sessionId] ||= []).push({ chunkIndex, chunk, meta })
+        scheduleStreamingFlush()
+      },
 
-          // Auto-reset if we see chunk 0 or 1 (start of new generation)
-          if (chunkIndex === 0 || chunkIndex === 1) {
-             lastIndex = -1
-             currentText = ''
-             clearCompleted = true
-          }
-
-          // Deduplicate: skip chunks already processed (handles concurrent poll overlap)
-          if (chunkIndex >= 0 && chunkIndex <= lastIndex) {
-            return state
-          }
-
-          // Build completedStreamingText update if needed
-          const completedUpdate = clearCompleted
-            ? (() => { const c = { ...state.completedStreamingText }; delete c[sessionId]; return c })()
-            : state.completedStreamingText
-
-          // Route heartbeat/provider/tool progress messages to streamingStatus instead of streamingText.
-          // Mixed chunks are split so raw markers like "api-bridge - execute_shell_command (MCP)"
-          // cannot leak into the visible assistant markdown.
-          const { statusText, text } = splitStreamingStatusAndText(chunk)
-          // Trust the backend's own classification when it sent one; only fall
-          // back to sniffing the text when the field is absent.
-          const isTerminalScreenText = isTerminalSourceChunk(meta) || looksLikeTerminalScreenText(text || chunk)
-          const safeText = isTerminalScreenText ? '' : text
-          const effectiveStatusText = statusText || (isTerminalScreenText ? 'Agent is working' : null)
-          if (effectiveStatusText && !safeText) {
-            return {
-              streamingStatus: {
-                ...state.streamingStatus,
-                [sessionId]: effectiveStatusText
-              },
-              lastStreamingChunkIndex: {
-                ...state.lastStreamingChunkIndex,
-                [sessionId]: chunkIndex
-              },
-              ...(clearCompleted ? { completedStreamingText: completedUpdate } : {})
+      flushStreamingChunks: (sessionId?: string) => {
+        const sessions = sessionId ? [sessionId] : Object.keys(_pendingStreamingChunks)
+        const work = sessions
+          .map(id => [id, _pendingStreamingChunks[id]] as const)
+          .filter(([, pending]) => pending && pending.length > 0)
+        for (const [id] of work) delete _pendingStreamingChunks[id]
+        if (work.length === 0) return
+        set((initial) => {
+          let state = initial
+          for (const [id, pending] of work) {
+            for (const piece of pending!) {
+              state = { ...state, ...applyStreamingChunk(state, id, piece.chunkIndex, piece.chunk, piece.meta) }
             }
           }
-
-          // Clear status once real content arrives
-          const newStreamingStatus = { ...state.streamingStatus }
-          if (effectiveStatusText) {
-            newStreamingStatus[sessionId] = effectiveStatusText
-          } else {
-            delete newStreamingStatus[sessionId]
-          }
-
-          const nextStreamingText = { ...state.streamingText }
-          const nextText = appendStreamingText(currentText, safeText, meta?.isDelta)
-          if (nextText) {
-            nextStreamingText[sessionId] = nextText
-          } else {
-            delete nextStreamingText[sessionId]
-          }
-
-          return {
-            streamingText: nextStreamingText,
-            streamingStatus: newStreamingStatus,
-            lastStreamingChunkIndex: {
-              ...state.lastStreamingChunkIndex,
-              [sessionId]: chunkIndex
-            },
-            ...(clearCompleted ? { completedStreamingText: completedUpdate } : {})
-          }
+          return state
         })
       },
 
@@ -1817,6 +1871,7 @@ export const useChatStore = create<ChatState>()(
       },
 
       clearStreamingText: (sessionId: string) => {
+        useChatStore.getState().flushStreamingChunks(sessionId)
         // Cancel any pending inactivity timer
         if (_streamingInactivityTimers[sessionId]) {
           clearTimeout(_streamingInactivityTimers[sessionId])

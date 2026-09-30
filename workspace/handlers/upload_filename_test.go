@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -62,6 +63,18 @@ func TestUploadEmptyDotfileToCrew(t *testing.T) {
 		t.Fatalf("upload status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 	path := filepath.Join(docsDir, "_users", "crew-user", "Chats", "Work", "projects", "alpha", ".env")
+	var response struct {
+		Data struct {
+			AbsolutePath string `json:"absolute_path"`
+			FilePath     string `json:"filepath"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Data.AbsolutePath != path || response.Data.FilePath != "Chats/Work/projects/alpha/.env" {
+		t.Fatalf("upload paths = %#v, want absolute path %q and user-relative filepath", response.Data, path)
+	}
 	contents, err := os.ReadFile(path)
 	if err != nil || len(contents) != 0 {
 		t.Fatalf("empty .env upload missing or changed: size=%d, err=%v", len(contents), err)

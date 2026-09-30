@@ -101,10 +101,17 @@ runtime storage, path obstructions and storage inside workspace documents.
 This tests server functions and adapters, not the HTTP query lifecycle or an
 actual restarted CLI. It makes zero model calls.
 
-The implementation is enabled by default for workflow chats when an absolute
-`AGENTWORKS_STATE_ROOT` is available. `AGENTWORKS_ISOLATE_WORKFLOW_CLI=false`
-is the explicit server rollback. The instance launcher enables isolation by
-default and exposes `--no-isolate-workflow-cli` for negative-control testing.
+Workflow chats now add a `project/` directory link to the authoritative workflow
+inside their private mode runtimes. Native paths use that prefix; bridge paths
+remain workflow-relative. Existing private runtime identities and compatible
+native resume are preserved. Tests include all six providers, including Agy.
+
+The implementation is enabled by default for workflow chats, using an absolute
+configured state root or the durable application default.
+`AGENTWORKS_ISOLATE_WORKFLOW_CLI=false` is the explicit Builder rollback. Run
+always isolates so cwd's automatic write grant cannot promote workflow data.
+The instance launcher enables isolation by default and exposes
+`--no-isolate-workflow-cli` for Builder negative-control testing.
 Inspect configuration without launching services:
 
 ```sh

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, X } from 'lucide-react'
 import ModalPortal from '../ui/ModalPortal'
 import type { WalkthroughSurface } from '../../utils/onboarding'
@@ -13,7 +13,20 @@ type WalkthroughStep = {
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
   selector: '[aria-label="Switch product"]',
   title: 'Choose a workspace',
-  body: 'Use Goals for repeatable work with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
+  body: 'Switch between the products available to you here.',
+}
+
+const productSwitcherBody = () => {
+  const available = document.querySelector('[aria-label="Switch product"]')?.getAttribute('data-tour-products')?.split(' ') ?? []
+  const descriptions: Record<string, string> = {
+    agentworks: 'Goals for repeatable work with a success metric',
+    work: 'Crew for a specialist teammate that remembers a project',
+    code: 'Code for a private coding workspace with files, an editor and a terminal',
+  }
+  const choices = available.map(id => descriptions[id]).filter(Boolean)
+  return choices.length > 0
+    ? `Use ${choices.join('; ')}. Switch between the products available to you here.`
+    : PRODUCT_SWITCHER_STEP.body
 }
 
 const OVERVIEW_STEPS: WalkthroughStep[] = [
@@ -46,7 +59,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Set up the models and coding agents your automations can use.',
+    body: 'Connect your coding provider accounts here. Choose which provider and account an automation uses in its Runs on setting.',
   },
   {
     selector: '[data-tour="active-work-switcher"]',
@@ -138,7 +151,7 @@ const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect the models and coding agents your automations can use.',
+    body: 'Add your provider login or key here, or use an account shared with you. Choose the automation’s provider and account through Runs on when creating it or in Setup later.',
   },
 ]
 
@@ -167,7 +180,7 @@ const EMPTY_CREW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect a model or coding agent for your Crew to use.',
+    body: 'Add your provider login or key here, or use an account shared with you. Choose your Crew’s provider and account through Runs on when creating it or in Setup later.',
   },
 ]
 
@@ -217,23 +230,23 @@ const CREW_STEPS: WalkthroughStep[] = [
 const EMPTY_CODE_STEPS: WalkthroughStep[] = [
   {
     title: 'What is Code for?',
-    body: 'Code is your private workspace with an AI agent: write, research, analyse, build and automate, however you like. Your files, chats and connected apps stay yours, and you share a workspace only with people you choose.',
-    example: 'Ask it to clean up a spreadsheet, draft a report, or build and test a feature.',
+    body: 'Code gives you a private workspace with files, an editor, a terminal and a coding agent on the team server. Share it with teammates when ready. Server admins and Code reviewers have logged, read-only access.',
+    example: 'Ask the agent to build a feature, run its tests and fix a failing check.',
   },
   {
-    selector: '[data-tour="crew-empty-state"]',
+    selector: '[data-tour="code-empty-state"]',
     title: 'Your workspaces start here',
     body: 'Create a workspace to keep a piece of work’s chat, files and connections together.',
   },
   {
-    selector: '[data-tour="crew-create"]',
+    selector: '[data-tour="code-create"]',
     title: 'Create a workspace',
-    body: 'Give it a name. Once it opens, a separate guide shows you around.',
+    body: 'Give it a name and use Runs on to choose the coding provider and account it will use. Once it opens, a separate guide shows you around.',
   },
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect a model or coding agent for your workspaces to use, or use one an admin shared with you.',
+    body: 'Add your own provider login or key, or use an account shared with you. Choose it in Runs on when creating a workspace; you can change it later in Setup.',
   },
   {
     selector: '[data-tour="global-mcp"]',
@@ -252,6 +265,11 @@ const CODE_STEPS: WalkthroughStep[] = [
     title: 'Your private workspace',
     body: 'Chat with the agent, keep your files, and connect your own apps here. Only you and the people you share it with can open it; administrators and reviewers can view it read-only.',
     example: 'Ask it to research a topic, then turn the notes into a document.',
+  },
+  {
+    selector: '[data-tour="crew-selector"]',
+    title: 'Current workspace',
+    body: 'Use the name menu to open another workspace or create a new one. Each workspace keeps its own chats, files and connections.',
   },
   {
     selector: '[data-tour="crew-chat"]',
@@ -281,7 +299,34 @@ const CODE_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Choose which model or coding agent this workspace uses.',
+    body: 'Manage provider logins and keys here. Add my account creates a private account unless you share it. Select the workspace’s provider and account in Setup; Costs shows recorded spend across your work.',
+  },
+]
+
+const PROVIDERS_STEPS: WalkthroughStep[] = [
+  {
+    title: 'Connect the account your work runs on',
+    body: 'Providers manages coding agent logins and keys. Goals, Crew and Code select a provider and account through Runs on when you create them, or in their setup later.',
+  },
+  {
+    selector: '[data-tour="providers-list"]',
+    title: 'Choose a provider',
+    body: 'Select a coding provider to see its accounts. Connected means it is ready; Needs authentication means it needs a login or key; Not installed means its runtime needs installing.',
+  },
+  {
+    selector: '[data-tour="provider-accounts"]',
+    title: 'Your accounts and shared accounts',
+    body: 'Add my account signs in your own login or saves your key. It stays private unless you share it. Shared with you lists accounts someone has granted you; the server account is managed by an administrator.',
+  },
+  {
+    selector: '[data-tour="providers-costs"]',
+    title: 'Costs across your work',
+    body: 'Open Costs to review recorded spend by provider, account and work. This is measured run cost; your provider subscription and remaining plan allowance are separate.',
+  },
+  {
+    selector: '[aria-label="Refresh provider status"]',
+    title: 'Refresh connection status',
+    body: 'After signing in or installing a provider, refresh its status here. Then return to your workspace and choose its provider and account.',
   },
 ]
 
@@ -293,6 +338,7 @@ const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
   crew: CREW_STEPS,
   'empty-code': EMPTY_CODE_STEPS,
   code: CODE_STEPS,
+  providers: PROVIDERS_STEPS,
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
@@ -303,6 +349,7 @@ const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: str
   crew: { product: 'Crew', section: 'Workspace', aria: 'Crew workspace walkthrough' },
   'empty-code': { product: 'Code', section: 'Getting started', aria: 'Empty Code walkthrough' },
   code: { product: 'Code', section: 'Workspace', aria: 'Code workspace walkthrough' },
+  providers: { product: 'Providers', section: 'Accounts and costs', aria: 'Providers walkthrough' },
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
@@ -342,6 +389,9 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   const [progress, setProgress] = useState({ surface, openToken, index: 0 })
   // A new surface must render its first step immediately, before effects run.
   const stepIndex = progress.surface === surface && progress.openToken === openToken ? progress.index : 0
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [panelMeasuredHeight, setPanelMeasuredHeight] = useState(228)
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
 
   const findStep = useCallback((startIndex: number, direction: 1 | -1) => {
@@ -417,24 +467,60 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   useEffect(() => {
     if (!isOpen) return
     updateTarget()
-    window.addEventListener('resize', updateTarget)
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+      updateTarget()
+    }
+    window.addEventListener('resize', handleResize)
     window.addEventListener('scroll', updateTarget, true)
     // Changing pages or opening an automation can replace tour targets without
     // causing a resize or scroll event.
     const interval = window.setInterval(updateTarget, 300)
     return () => {
-      window.removeEventListener('resize', updateTarget)
+      window.removeEventListener('resize', handleResize)
       window.removeEventListener('scroll', updateTarget, true)
       window.clearInterval(interval)
     }
   }, [isOpen, updateTarget])
 
+  // This guide allows interaction with the highlighted page control. Move
+  // focus into it on opening, but do not trap focus or hijack page arrow keys.
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const launcher = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setViewport({ width: window.innerWidth, height: window.innerHeight })
+    panelRef.current?.querySelector<HTMLButtonElement>('[data-tour-primary]')?.focus({ preventScroll: true })
+    return () => {
+      const returnTarget = launcher?.isConnected && launcher !== document.body
+        ? launcher
+        : document.querySelector<HTMLElement>('[aria-label^="Account:"]')
+      returnTarget?.focus({ preventScroll: true })
+    }
+  }, [isOpen, openToken, surface])
+
+  useLayoutEffect(() => {
+    if (!isOpen || !panelRef.current) return
+    const panel = panelRef.current
+    const measure = () => {
+      const height = panel.getBoundingClientRect().height
+      if (height > 0) setPanelMeasuredHeight(previous => previous === height ? previous : height)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [isOpen, openToken, stepIndex, surface])
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
-      if (event.key === 'ArrowLeft') goToStep(-1)
-      if (event.key === 'ArrowRight') goToStep(1)
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (!panelRef.current?.contains(event.target as Node)) return
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        goToStep(event.key === 'ArrowLeft' ? -1 : 1)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -450,36 +536,36 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   const stepTotal = visibleIndices.length
   const isFirstVisibleStep = displayedPosition === 0
   const isLastVisibleStep = stepTotal === 0 || displayedPosition === stepTotal - 1
-  const panelWidth = Math.min(380, window.innerWidth - 24)
-  const panelHeight = Math.min(228, window.innerHeight - 24)
+  const panelWidth = Math.min(380, viewport.width - 24)
+  const panelHeight = Math.min(panelMeasuredHeight, viewport.height - 24)
   // Top-bar menus open below their triggers. Keep the guide beside them so
   // people can open the automation picker while its step is highlighted.
   const topBarTarget = targetRect && targetRect.top < 80 && targetRect.height < 80
   const panelBesideTarget = topBarTarget && (
-    targetRect.right + panelWidth + 64 <= window.innerWidth - 12 ||
+    targetRect.right + panelWidth + 64 <= viewport.width - 12 ||
     targetRect.left - panelWidth - 24 >= 12
   )
   const panelLeft = panelBesideTarget && targetRect
-    ? targetRect.right + panelWidth + 64 <= window.innerWidth - 12
+    ? targetRect.right + panelWidth + 64 <= viewport.width - 12
       ? targetRect.right + 64
       : targetRect.left - panelWidth - 24
     : targetRect
-    ? clamp(targetRect.left, 12, window.innerWidth - panelWidth - 12)
-    : clamp((window.innerWidth - panelWidth) / 2, 12, window.innerWidth - panelWidth - 12)
+    ? clamp(targetRect.left, 12, viewport.width - panelWidth - 12)
+    : clamp((viewport.width - panelWidth) / 2, 12, viewport.width - panelWidth - 12)
   const panelTop = !targetRect
-    ? window.innerHeight / 2
+    ? viewport.height / 2
     : panelBesideTarget
-    ? clamp(targetRect.bottom + 10, 12, window.innerHeight - panelHeight - 12)
-    : targetRect.bottom + panelHeight + 16 > window.innerHeight
-      ? clamp(targetRect.top - panelHeight - 14, 12, window.innerHeight - panelHeight - 12)
-      : clamp(targetRect.bottom + 14, 12, window.innerHeight - panelHeight - 12)
+    ? clamp(targetRect.bottom + 10, 12, viewport.height - panelHeight - 12)
+    : targetRect.bottom + panelHeight + 16 > viewport.height
+      ? clamp(targetRect.top - panelHeight - 14, 12, viewport.height - panelHeight - 12)
+      : clamp(targetRect.bottom + 14, 12, viewport.height - panelHeight - 12)
 
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-[10000] pointer-events-none">
         {targetRect && (
           <div
-            className="fixed rounded-xl border-2 border-primary transition-all duration-150"
+            className="fixed rounded-xl border-2 border-primary transition-all duration-150 motion-reduce:transition-none"
             style={{
               left: targetRect.left - 6,
               top: targetRect.top - 6,
@@ -490,8 +576,9 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
           />
         )}
         <div
+          ref={panelRef}
           className="fixed pointer-events-auto overflow-y-auto rounded-2xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl"
-          style={{ left: panelLeft, top: panelTop, transform: targetRect ? undefined : 'translateY(-50%)', width: panelWidth, maxHeight: window.innerHeight - 24 }}
+          style={{ left: panelLeft, top: panelTop, transform: targetRect ? undefined : 'translateY(-50%)', width: panelWidth, maxHeight: viewport.height - 24 }}
           role="dialog"
           aria-label={surfaceLabel.aria}
           aria-describedby="workflow-walkthrough-description"
@@ -510,12 +597,12 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="mt-2 flex items-center justify-between gap-3" aria-live="polite" aria-atomic="true">
             <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore Goals'}</h3>
             {stepTotal > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stepNumber} of {stepTotal}</span>}
           </div>
           <p id="workflow-walkthrough-description" className="mt-2 text-sm leading-5 text-muted-foreground">
-            {step?.body ?? 'This part of the interface is still loading. You can reopen the walkthrough from your account menu.'}
+            {step === PRODUCT_SWITCHER_STEP ? productSwitcherBody() : step?.body ?? 'This part of the interface is still loading. You can reopen the walkthrough from your account menu.'}
           </p>
           {step?.example && (
             <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-xs leading-5 text-muted-foreground">
@@ -547,6 +634,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <button
                 onClick={onClose}
                 data-testid="workflow-walkthrough-done"
+                data-tour-primary="true"
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 Finish
@@ -555,6 +643,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <button
                 onClick={() => goToStep(1)}
                 data-testid="workflow-walkthrough-next"
+                data-tour-primary="true"
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 Next

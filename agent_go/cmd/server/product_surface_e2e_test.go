@@ -191,6 +191,15 @@ func TestCrewProductSurfaceE2E(t *testing.T) {
 	if err := comparePromptSource(profile.SystemPromptTemplate, prompt); err != nil {
 		t.Fatal(err)
 	}
+	runPrompt, err := agentprofiles.LoadChatPrompt(os.DirFS("../../internal/workproduct"), manifest.Chat["run"].Prompt)
+	if err != nil || runPrompt != workproduct.RunPromptTemplate() {
+		t.Fatalf("Crew Run prompt is not its product.yaml source: %v", err)
+	}
+	for mode, name := range map[string]string{"builder": "crew-builder", "run": "crew-run"} {
+		if err := compareProductSurface(manifest.Chat[mode].Skills, []string{name}); err != nil {
+			t.Fatalf("Crew %s skills: %v", mode, err)
+		}
+	}
 	assertInstructionSectionsDeclared(t, manifest.InstructionSections)
 }
 
@@ -198,6 +207,11 @@ func assertInstructionSectionsDeclared(t *testing.T, declared []string) {
 	t.Helper()
 	actual := []string{}
 	for _, section := range promptSections {
+		// This section is restricted to Code by its Applies predicate. Crew
+		// and workflow manifests declare the shared instruction surface only.
+		if section.Name == "code-host-safety" {
+			continue
+		}
 		actual = append(actual, section.Name)
 	}
 	if err := compareProductSurface(actual, declared); err != nil {

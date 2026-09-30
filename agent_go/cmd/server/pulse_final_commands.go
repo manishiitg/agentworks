@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 )
 
 const (
@@ -126,7 +128,13 @@ func markPulseFinalCommandStateFromAgent(ctx context.Context, workspacePath, com
 		return nil, fmt.Errorf("final command %q was not initialized for this Pulse run: %w", command, err)
 	}
 	if existing.PulseRunID != pulseRunID {
-		return nil, fmt.Errorf("final command %q belongs to Pulse run %q, not %q", command, existing.PulseRunID, pulseRunID)
+		// A Pulse run has two names: the session-style ID its final commands
+		// are stored under and the fix-run record's UUID. The run's own session
+		// writing under either name is still writing its own run.
+		if strings.TrimSpace(mcpexecutor.SessionIDFromContext(ctx)) != existing.PulseRunID {
+			return nil, fmt.Errorf("final command %q belongs to Pulse run %q, not %q; pass pulse_run_id=%q (or \"current\") from inside that run", command, existing.PulseRunID, pulseRunID, existing.PulseRunID)
+		}
+		pulseRunID = existing.PulseRunID
 	}
 	if existing.Status == status {
 		return existing, nil

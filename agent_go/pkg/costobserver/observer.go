@@ -350,6 +350,9 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	entry.ReasoningTokens = generation.UsageMetrics.ReasoningTokens
 	entry.CacheReadTokens = firstPositive(cacheRead, generation.UsageMetrics.CacheTokens)
 	entry.CacheWriteTokens = cacheWrite
+	if includes, ok := metadata["prompt_tokens_include_cache"].(bool); ok {
+		entry.OperationMetadata = map[string]interface{}{"prompt_tokens_include_cache": includes}
+	}
 	entry.TotalCostUSD = totalCostUSD
 	entry.BillingBasis = billingBasis
 	entry.PricingSource = pricingSource
@@ -403,6 +406,9 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 	entry.ReasoningTokens = tu.ReasoningTokens
 	entry.CacheReadTokens = cacheRead
 	entry.CacheWriteTokens = cacheWrite
+	if includes, ok := tu.GenerationInfo["prompt_tokens_include_cache"].(bool); ok {
+		entry.OperationMetadata = map[string]interface{}{"prompt_tokens_include_cache": includes}
+	}
 	entry.TotalCostUSD = totalCostUSD
 	entry.BillingBasis = billingBasis
 	entry.PricingSource = pricingSource

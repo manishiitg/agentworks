@@ -110,6 +110,22 @@ function nestedScroller(target: EventTarget | null, root: HTMLElement, delta: nu
   return false
 }
 
+/**
+ * Whether the transcript shows no message row although it has some: every row Virtuoso drew
+ * is outside the visible part of the scroller. A list with no rows at all is not blank.
+ */
+export function transcriptBlank(scroller: HTMLElement): boolean {
+  const rows = scroller.querySelectorAll<HTMLElement>('[data-transcript-key]')
+  if (rows.length === 0) return scroller.scrollHeight > scroller.clientHeight + 1
+  const view = scroller.getBoundingClientRect()
+  if (view.height <= 0) return false
+  for (const row of Array.from(rows)) {
+    const box = row.getBoundingClientRect()
+    if (box.bottom > view.top + 1 && box.top < view.bottom - 1) return false
+  }
+  return true
+}
+
 export function useTranscriptScroll(
   keys: string[],
   saved: TranscriptReadingState,
@@ -123,6 +139,7 @@ export function useTranscriptScroll(
   const focusAnchor = useRef<ReadingAnchor | undefined>(undefined)
   const restoreFrame = useRef<number | null>(null)
   const mounted = useRef(false)
+  const blankCheck = useRef<number | null>(null)
   const [controller] = useState(() => new TranscriptScrollController(
     saved.following,
     () => {
@@ -132,6 +149,16 @@ export function useTranscriptScroll(
       // Stop once we reach the physical end. scrollToIndex retries while rows
       // are measured; starting that process on each resize can fight itself.
       if (bottom - element.scrollTop > 1) virtuoso.current?.scrollTo({ top: bottom, behavior: 'auto' })
+      // Blank-transcript recovery: the bottom is read before the list re-measures a new or
+      // replaced row, so the scroller can land where Virtuoso drew no rows. Virtuoso draws
+      // rows a frame or two after a scroll, so only act on a blank that persists, once at a
+      // time, and only while still following the latest message.
+      if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
+      blankCheck.current = window.setTimeout(() => {
+        blankCheck.current = null
+        if (!saved.following || !transcriptBlank(element)) return
+        virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
+      }, 350)
     },
     (value) => { saved.following = value; setFollowing(value) },
   ))
@@ -252,12 +279,31 @@ export function useTranscriptScroll(
     scroller.addEventListener('touchstart', touchStart, { passive: true })
     scroller.addEventListener('touchmove', touchMove, { passive: true })
     scroller.addEventListener('scroll', scroll, { passive: true })
-    const observer = new ResizeObserver(layoutChanged)
+    // The chat area changes height when the message box grows or shrinks while typing. Correct the
+    // position right here, before the browser paints: waiting for the next animation frame (as
+    // layoutChanged does) drew one frame at the old offset, a small visible jump per line typed.
+    let lastHeight = scroller.clientHeight
+    const observer = new ResizeObserver(() => {
+      const height = scroller.clientHeight
+      if (height !== lastHeight) {
+        const grewBy = lastHeight - height
+        lastHeight = height
+        if (controller.following) {
+          scroller.scrollTop = Math.max(0, scroller.scrollHeight - height)
+        } else if (grewBy !== 0) {
+          // Reading back in the transcript: keep the text under the reader's eye in place.
+          scroller.scrollTop = Math.max(0, scroller.scrollTop + grewBy)
+        }
+      }
+      layoutChanged()
+    })
     observer.observe(scroller)
     if (saved.following) layoutChanged()
     return () => {
       remember()
       mounted.current = false
+      if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
+      blankCheck.current = null
       observer.disconnect()
       controller.cancelPending()
       cancelRestore()

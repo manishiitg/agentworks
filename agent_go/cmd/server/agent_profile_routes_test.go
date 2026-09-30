@@ -421,11 +421,10 @@ func TestProductTurnAllowsGlobalProviderSwitch(t *testing.T) {
 	}
 }
 
-// A real account change still needs a new conversation: moving onto a
-// private connection, or between two private connections, must stay
-// explicit. (Omitting a connection inherits the bound one, so it cannot
-// silently drop back to shared use.)
-func TestProductTurnStillRejectsPrivateAccountChange(t *testing.T) {
+// An explicit account change (the person picked another account for the project) keeps the same
+// conversation: the account is rebound and the CLI restarts on it. Nothing switches silently: an
+// omitted account inherits the bound one.
+func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, conversation); err != nil {
 		t.Fatalf("first turn: %v", err)
@@ -434,19 +433,52 @@ func TestProductTurnStillRejectsPrivateAccountChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !strings.Contains(err.Error(), "account change requires a new conversation") {
-		t.Fatalf("shared-to-private switch should be refused, got: %v", err)
+	// Shared -> private is allowed and rebinds the same conversation.
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err != nil {
+		t.Fatalf("shared-to-private switch should be allowed, got: %v", err)
 	}
+	rebound, err := api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebound.ConversationID != conversation.ConversationID || rebound.ConnectionID != "account-B" {
+		t.Fatalf("conversation %q/%q, want the same conversation on account-B", rebound.ConversationID, rebound.ConnectionID)
+	}
+	// Private -> private too; omitting the account inherits the bound one (no silent drop to shared).
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-A"}, rebound); err != nil {
+		t.Fatalf("private-to-private switch should be allowed, got: %v", err)
+	}
+	after, _ := api.resolveAgentProfileConversation(req, profile, "main")
+	if after.ConversationID != conversation.ConversationID || after.ConnectionID != "account-A" {
+		t.Fatalf("conversation %q/%q, want the same conversation on account-A", after.ConversationID, after.ConnectionID)
+	}
+	inherited, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, after)
+	if err != nil || inherited.ConnectionID != "account-A" {
+		t.Fatalf("an omitted account must inherit the bound one: %q %v", inherited.ConnectionID, err)
+	}
+}
 
-	api, req, profile, conversation = accountSwitchTestSetup(t, "main")
-	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-A"}, conversation); err != nil {
-		t.Fatalf("private first turn: %v", err)
+// A conversation that started on the shared account stays on it: the query path's "use your own
+// account by default" applies to new conversations only, so a follow-up is pinned to the server
+// account instead of silently moving under another CLI login.
+func TestExistingSharedAccountConversationStaysOnTheServerAccount(t *testing.T) {
+	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	first, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatalf("first turn: %v", err)
+	}
+	if first.ConnectionID != "" {
+		t.Fatalf("a new conversation gets the default at run time, not here: %q", first.ConnectionID)
 	}
 	conversation, err = api.resolveAgentProfileConversation(req, profile, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !strings.Contains(err.Error(), "account change requires a new conversation") {
-		t.Fatalf("private-to-private switch should be refused, got: %v", err)
+	followUp, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "again", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatalf("follow-up: %v", err)
+	}
+	if followUp.ConnectionID != "global:muse-cli" {
+		t.Fatalf("follow-up connection = %q, want the server account", followUp.ConnectionID)
 	}
 }

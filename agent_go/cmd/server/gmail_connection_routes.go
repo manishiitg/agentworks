@@ -53,6 +53,7 @@ type GmailConnectionResponse struct {
 	Status             string `json:"status,omitempty"`
 	Enabled            bool   `json:"enabled"`
 	IsDefault          bool   `json:"is_default"`
+	CanRemove          bool   `json:"can_remove"`
 
 	// Auth is live state, cached per connection so listing N accounts does not
 	// spawn N subprocesses. Checking=true means "ask again shortly".
@@ -123,13 +124,13 @@ func GmailConnectionRoutes(router *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("", createGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}", getGmailConnectionHandler(api)).Methods("GET")
 	r.HandleFunc("/{id}", requireGmailConnectionManager(updateGmailConnectionHandler(api))).Methods("PATCH", "POST", "OPTIONS")
-	r.HandleFunc("/{id}", requireGmailConnectionManager(deleteGmailConnectionHandler(api))).Methods("DELETE", "OPTIONS")
+	r.HandleFunc("/{id}", deleteGmailConnectionHandler(api)).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/{id}/default", requireGmailConnectionManager(setDefaultGmailConnectionHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}/test", requireGmailConnectionManager(testGmailConnectionSendHandler(api))).Methods("POST", "OPTIONS")
 }
 
-// requireGmailConnectionManager gates changing, testing, authorizing or
-// deleting one connection. A shared account is the organisation's: only an
+// requireGmailConnectionManager gates changing, testing or authorizing
+// one connection. A shared account is the organisation's: only an
 // admin manages it (anyone could otherwise re-authorize it to their own
 // Google account, repoint its credentials, or send from it). A Code's private
 // account is its owner's alone; gmailConnectionService enforces that.
@@ -153,6 +154,41 @@ func requireGmailConnectionManager(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// Removal is narrower than managing an account: a person may disconnect their
+// own credentials without being allowed to change shared settings or clients.
+// Older shared entries have no owner ID. Their Google-discovered email can
+// identify the owner against the current server-side user directory; never
+// infer ownership from a display name, request body or stale token email.
+func canRemoveGmailConnection(r *http.Request, conn services.GmailConnection) bool {
+	claims := GetUserFromContext(r.Context())
+	if IsMultiUserMode() && (claims == nil || strings.TrimSpace(claims.UserID) == "") {
+		return false
+	}
+	if claims != nil && claims.Provider == "bot_route" {
+		return false
+	}
+	var user *UserRecord
+	if claims != nil && strings.TrimSpace(claims.UserID) != "" {
+		user = directoryUserFor(claims.UserID, "", "")
+		if user != nil && user.Disabled {
+			return false
+		}
+	}
+	ownerMatches := claims != nil && strings.TrimSpace(claims.UserID) != "" &&
+		strings.TrimSpace(conn.OwnerID) != "" && sanitizeUserIDForPath(claims.UserID) == strings.TrimSpace(conn.OwnerID)
+	if conn.IsPrivate() {
+		return ownerMatches
+	}
+	if currentUserIsAdmin(r) {
+		return true
+	}
+	if strings.TrimSpace(conn.OwnerID) != "" {
+		return ownerMatches
+	}
+	email := strings.TrimSpace(conn.Email)
+	return user != nil && email != "" && strings.EqualFold(email, strings.TrimSpace(user.Email))
+}
+
 // requireAdminWrite gates a Gmail settings write to admins.
 func requireAdminWrite(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +201,7 @@ func requireAdminWrite(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // projectGmailConnection is the single place a connection becomes JSON.
-func projectGmailConnection(svc *services.GmailService, conn services.GmailConnection, defaultID string) GmailConnectionResponse {
+func projectGmailConnection(r *http.Request, svc *services.GmailService, conn services.GmailConnection, defaultID string) GmailConnectionResponse {
 	auth, resolved := svc.AuthStatusForConnection(conn.ID)
 	if !resolved {
 		// The registry could not answer for this connection. That is missing
@@ -203,6 +239,7 @@ func projectGmailConnection(svc *services.GmailService, conn services.GmailConne
 		Status:                status,
 		Enabled:               conn.Enabled,
 		IsDefault:             conn.ID == defaultID,
+		CanRemove:             canRemoveGmailConnection(r, conn),
 		Auth:                  auth,
 		Ready:                 conn.Enabled && auth.Authenticated && auth.HasGmailScope,
 	}
@@ -215,9 +252,9 @@ func projectGmailConnection(svc *services.GmailService, conn services.GmailConne
 	return out
 }
 
-func writeGmailConnection(w http.ResponseWriter, svc *services.GmailService, conn services.GmailConnection) {
+func writeGmailConnection(w http.ResponseWriter, r *http.Request, svc *services.GmailService, conn services.GmailConnection) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(projectGmailConnection(svc, conn, svc.GetConfig().DefaultConnectionID))
+	json.NewEncoder(w).Encode(projectGmailConnection(r, svc, conn, svc.GetConfig().DefaultConnectionID))
 }
 
 // gmailCredentialPathsAllowed refuses (403) a config_home or credentials_file
@@ -313,7 +350,7 @@ func listGmailConnectionsHandler(api *StreamingAPI) http.HandlerFunc {
 			DefaultConnectionID: defaultID,
 		}
 		for _, c := range conns {
-			out.Connections = append(out.Connections, projectGmailConnection(svc, c, defaultID))
+			out.Connections = append(out.Connections, projectGmailConnection(r, svc, c, defaultID))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)
@@ -331,7 +368,7 @@ func getGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("gmail connection %q not found", id), http.StatusNotFound)
 			return
 		}
-		writeGmailConnection(w, svc, conn)
+		writeGmailConnection(w, r, svc, conn)
 	}
 }
 
@@ -383,7 +420,7 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		log.Printf("[GMAIL] Created connection %s (%s) at %s", conn.ID, conn.DisplayName, conn.ConfigHome)
 		w.WriteHeader(http.StatusCreated)
-		writeGmailConnection(w, svc, conn)
+		writeGmailConnection(w, r, svc, conn)
 	}
 }
 
@@ -421,7 +458,7 @@ func updateGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		writeGmailConnection(w, svc, conn)
+		writeGmailConnection(w, r, svc, conn)
 	}
 }
 
@@ -433,6 +470,15 @@ func deleteGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		svc, id, ok := gmailConnectionService(w, r)
 		if !ok {
+			return
+		}
+		conn, found := svc.GetConnection(id)
+		if !found {
+			http.Error(w, fmt.Sprintf("gmail connection %q not found", id), http.StatusNotFound)
+			return
+		}
+		if !canRemoveGmailConnection(r, conn) {
+			http.Error(w, "Only the account owner or an admin can remove this Gmail account.", http.StatusForbidden)
 			return
 		}
 		if err := svc.DeleteConnection(r.Context(), id); err != nil {
@@ -460,7 +506,7 @@ func setDefaultGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		conn, _ := svc.GetConnection(id)
-		writeGmailConnection(w, svc, conn)
+		writeGmailConnection(w, r, svc, conn)
 	}
 }
 

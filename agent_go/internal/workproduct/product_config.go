@@ -8,8 +8,18 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-//go:embed product.yaml prompts/system-prompt.md skills/*/SKILL.md commands/*.md
+//go:embed product.yaml prompts/*.md skills/*/SKILL.md commands/*.md
 var productConfigFiles embed.FS
+
+// RunPromptTemplate is deliberately separate from the authoring feature
+// extensions in the Builder prompt. Readers never receive setup instructions.
+func RunPromptTemplate() string {
+	text, err := agentprofiles.LoadChatPrompt(productConfigFiles, mustWorkManifest().Chat["run"].Prompt)
+	if err != nil {
+		panic(fmt.Errorf("read Crew Run prompt: %w", err))
+	}
+	return text
+}
 
 // ProductManifest is the shared product.yaml shape (pkg/agentprofiles).
 type ProductManifest = agentprofiles.ProductManifest

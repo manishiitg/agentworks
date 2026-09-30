@@ -626,7 +626,7 @@ api.interceptors.request.use((config) => {
   config.headers = config.headers || {}
 
   // Only add session ID if not already provided
-  if (!config.headers['X-Session-ID']) {
+  if (config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
     config.headers['X-Session-ID'] = getSessionId()
   }
 
@@ -1078,10 +1078,11 @@ export const agentApi = {
   // resume_turns query name, this GET never resumes a provider session and is
   // valid for both owners and permitted read-only viewers. Actual continuation
   // is authorized separately by the mutating restore/start endpoint.
-  getChatHistoryResumeConversation: async (sessionId: string, workspacePath?: string, resumeTurns = 100, resumeOffset = 0, includeUiEvents = false): Promise<ChatHistoryConversation> => {
+  getChatHistoryResumeConversation: async (sessionId: string, workspacePath?: string, resumeTurns = 100, resumeOffset = 0, includeUiEvents = false, includePromptSizes = false): Promise<ChatHistoryConversation> => {
     const params: Record<string, string> = { resume_turns: String(resumeTurns) }
     if (resumeOffset > 0) params.resume_offset = String(resumeOffset)
     if (includeUiEvents) params.include_ui_events = '1'
+    if (includePromptSizes) params.include_saved_prompt_sizes = '1'
     if (workspacePath) params.workspace_path = workspacePath
     const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
     return response.data
@@ -1194,8 +1195,10 @@ export const agentApi = {
     request: AgentProfileConversationRequest,
     existingSessionId?: string,
   ): Promise<AgentProfileConversationResponse> => {
-    const headers: Record<string, string> = {}
-    if (existingSessionId) headers['X-Session-ID'] = existingSessionId
+    // Opening a project resolves its canonical chat. An unrelated active tab's
+    // session must not become a continuation candidate (shared Code returned 422).
+    // Axios omits a false header; the interceptor preserves this opt-out.
+    const headers: Record<string, string | false> = { 'X-Session-ID': existingSessionId || false }
     const response = await api.post(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation`,
       request,

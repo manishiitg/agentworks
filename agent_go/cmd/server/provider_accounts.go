@@ -580,6 +580,13 @@ func providerAccountUnavailable(run providerAccountRun) error {
 	return fmt.Errorf("this account is no longer available to %s", run.Label)
 }
 
+// providerAccountNotShared is the denial for an account that exists but is private to its owner
+// (or not shared with this person or place). It says what to do; there is no fallback to another
+// account.
+func providerAccountNotShared(run providerAccountRun) error {
+	return fmt.Errorf("the account %s is set to run on is private to its owner and not shared with you. Ask the owner to share it with %s (Providers, Who can use it), or switch %s to another account in Models", run.Label, run.Label, run.Label)
+}
+
 // admitProviderAccount decides whether scope may use account id of provider.
 // It returns the stored user account (nil for the server account).
 func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope providerAccountScope, provider, id string) (*storedProviderConnection, error) {
@@ -632,7 +639,7 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 			return &record, nil
 		}
 		log.Printf("[PROVIDER_ACCOUNT] account %s (owner %s) denied for %s (%s)", record.ID, record.OwnerUserID, principal, run.Label)
-		return nil, providerAccountUnavailable(run)
+		return nil, providerAccountNotShared(run)
 	}
 	return nil, providerAccountUnavailable(run)
 }

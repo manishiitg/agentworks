@@ -4182,7 +4182,7 @@ func pulseArgTypeName(raw interface{}) string {
 func strictStringSliceToolArg(raw interface{}) ([]string, error) {
 	arr, ok := raw.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("must be an array of strings, got %s", pulseArgTypeName(raw))
+		return nil, fmt.Errorf("must be an array of strings such as [\"first\", \"second\"] (one string goes in a one-item array), got %s", pulseArgTypeName(raw))
 	}
 	out := make([]string, 0, len(arr))
 	for index, item := range arr {

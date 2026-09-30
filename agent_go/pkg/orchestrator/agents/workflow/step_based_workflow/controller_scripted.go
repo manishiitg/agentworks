@@ -1027,6 +1027,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// Build request using the same ExecuteShellCommandParams struct the LLM agent uses,
 	// so the workspace API receives the same JSON shape and applies the same logic.
 	// Use timeout=0 so the parent workflow/sub-agent context controls cancellation.
+	// The script's DB writes go through the bridge as its MCP session, so that
+	// session must carry the step's DB grant.
+	grantScriptBridgeSessionDB(extraEnv["MCP_SESSION_ID"], hcpo.GetWorkspacePath(), dbAccess)
+
 	// Long-running scripted steps can legitimately exceed a fixed shell timeout.
 	timeout := 0
 	useShell := true

@@ -52,12 +52,21 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("missing command")
 	}
+	if policy.PrivatePTS && os.Getenv(privatePTSChildEnv) != "1" {
+		return runPrivatePTSChild(policy, argv)
+	}
+	_ = os.Unsetenv(privatePTSChildEnv)
 	abi, err := landlockABI()
 	if err != nil || abi < 1 {
 		return fmt.Errorf("SANDBOX_UNAVAILABLE: Landlock filesystem ABI unavailable: %w", err)
 	}
 	if policy.PrivateTmp {
 		if err := enterPrivateTmp(policy); err != nil {
+			return fmt.Errorf("SANDBOX_UNAVAILABLE: %w", err)
+		}
+	}
+	if policy.PrivatePTS {
+		if err := enterPrivatePTS(); err != nil {
 			return fmt.Errorf("SANDBOX_UNAVAILABLE: %w", err)
 		}
 	}
@@ -89,6 +98,13 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 			return err
 		}
 	}
+	if policy.PrivatePTS {
+		for _, path := range []string{"/dev/pts", "/dev/ptmx"} {
+			if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
+				return err
+			}
+		}
+	}
 	for _, path := range policy.ReadPaths {
 		if err := addLandlockPathRule(int(rulesetFD), path, readAccess); err != nil {
 			return err
@@ -96,6 +112,11 @@ func RunLandlockLauncher(policy LandlockPolicy, argv []string) error {
 	}
 	for _, path := range policy.WritePaths {
 		if err := addLandlockPathRule(int(rulesetFD), path, writeAccess); err != nil {
+			return err
+		}
+	}
+	for _, path := range policy.ListPaths {
+		if err := addLandlockPathRule(int(rulesetFD), path, handled&unix.LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
 			return err
 		}
 	}

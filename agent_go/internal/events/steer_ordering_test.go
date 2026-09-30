@@ -246,3 +246,85 @@ func TestDeferredSteerUserRowKeepsAckTimeWithoutHeldRows(t *testing.T) {
 		t.Fatalf("timestamp = %s, want ack time %s", got, acked)
 	}
 }
+
+// Answer rows that arrive after their turn ended (Cursor's late transcript chunks) must not keep
+// the session "in flight" forever: after a quiet gap a steer counts as idle, so the reply to the
+// new message is held until the message row is written (RTS 2026-09-30: the reply landed above it).
+func TestDeferredSteerAfterAQuietGapHoldsTheReply(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	now := time.Now()
+	steerNow = func() time.Time { return now }
+	defer func() { steerNow = time.Now }()
+
+	store.AddEvent("chat", steerCompletion("completion-a"))
+	store.AddEvent("chat", transcriptMessage("late-a", "late chunk after the turn ended"))
+	now = now.Add(deferredSteerQuietWindow + time.Second)
+
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+	store.AddEvent("chat", transcriptMessage("answer-b", "reply to b"))
+	expectIDs(t, store, "chat", "completion-a", "late-a")
+	store.CompleteDeferredSteer("chat", steerUser("user:b"))
+	waitForIDs(t, store, "chat", 4)
+	expectIDs(t, store, "chat", "completion-a", "late-a", "user:b", "answer-b")
+}
+
+// A tool call that is still running is not a quiet gap: the answer is in flight.
+func TestDeferredSteerWithARunningToolCallStillLetsTheAnswerFinish(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	now := time.Now()
+	steerNow = func() time.Time { return now }
+	defer func() { steerNow = time.Now }()
+
+	store.AddEvent("chat", steerRow("tool-a", "tool_call_start"))
+	now = now.Add(deferredSteerQuietWindow + 30*time.Second)
+
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+	store.AddEvent("chat", steerRow("tool-a-end", "tool_call_end"))
+	store.AddEvent("chat", steerCompletion("completion-a"))
+	store.AddEvent("chat", transcriptMessage("answer-b", "reply to b"))
+	expectIDs(t, store, "chat", "tool-a", "tool-a-end", "completion-a")
+}
+
+// The CLI takes a queued message the moment its answer ends, but the answer's completion row is
+// recorded a moment after the ack. The user row must wait for it, or the tail of the first answer
+// lands below the second message (Muse, excellence 2026-09-30).
+func TestAckedSteerWaitsForTheInFlightAnswersEnd(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	store.AddEvent("chat", transcriptMessage("answer-a", "in flight"))
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+
+	done := make(chan struct{})
+	go func() {
+		store.CompleteDeferredSteer("chat", steerUser("user:b")) // the ack, before the completion row
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	expectIDs(t, store, "chat", "answer-a") // the user row is not written yet
+	store.AddEvent("chat", steerCompletion("completion-a"))
+	store.AddEvent("chat", transcriptMessage("answer-b", "reply to b"))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the acked steer never completed")
+	}
+	waitForIDs(t, store, "chat", 4)
+	expectIDs(t, store, "chat", "answer-a", "completion-a", "user:b", "answer-b")
+}
+
+// If the answer's end row never comes, the user row is written after the grace, not stranded.
+func TestAckedSteerWritesAfterTheGraceWhenNoEndComes(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	old := deferredSteerAckGrace
+	deferredSteerAckGrace = 150 * time.Millisecond
+	defer func() { deferredSteerAckGrace = old }()
+
+	store.AddEvent("chat", transcriptMessage("answer-a", "in flight"))
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+	store.CompleteDeferredSteer("chat", steerUser("user:b"))
+	waitForIDs(t, store, "chat", 2)
+	expectIDs(t, store, "chat", "answer-a", "user:b")
+}

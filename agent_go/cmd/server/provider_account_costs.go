@@ -215,6 +215,10 @@ func (api *StreamingAPI) handleProviderAccountCosts(w http.ResponseWriter, r *ht
 	if !ok {
 		return
 	}
+	if !currentUserCanReviewCode(r) {
+		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		return
+	}
 	if api.costLedger == nil {
 		http.Error(w, `{"error":"cost ledger not initialized"}`, http.StatusServiceUnavailable)
 		return

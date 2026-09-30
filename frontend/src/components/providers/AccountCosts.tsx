@@ -1,8 +1,9 @@
+import CostTokenBreakdown from './CostTokenBreakdown'
 import { useEffect, useState } from 'react'
 import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
 import { llmConfigService } from '../../services/llm-config-api'
-import { formatTokens } from '../workflow/costs/helpers'
+import { tokenSummary } from '../../utils/costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
 const currency = (amount: number) => {
@@ -18,7 +19,7 @@ const costText = (usage: CostAggregate) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd ?? 0)
 
 const tokenText = (usage: CostAggregate) =>
-  formatTokens((usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0) + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0))
+  tokenSummary(usage)
 
 const WORK_KIND: Record<string, string> = { workflow: 'Workflow', crew: 'Crew', code: 'Code', product: 'Project', chat: 'Chat', other: 'Other' }
 
@@ -37,12 +38,13 @@ function AccountRow({ account }: { account: ProviderAccountCost }) {
           <span className="text-xs text-gray-500 dark:text-gray-400">{accountKindText(account)}</span>
           {!account.full_split && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600 dark:bg-gray-800 dark:text-gray-300">Your share only</span>}
         </button>
-        <span className="w-20 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{tokenText(account.total)} tokens</span>
+        <span className="text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{tokenText(account.total)}</span>
         <span className="w-20 text-right tabular-nums text-gray-900 dark:text-gray-100">{costText(account.total)}</span>
       </div>
+      {open && <div className="mt-2"><CostTokenBreakdown usage={account.total} /></div>}
       {open && split.length > 0 && (
         <table className="mt-2 w-full text-xs">
-          <thead><tr className="text-left text-gray-500 dark:text-gray-400"><th className="py-1 pl-5 font-medium">Where</th><th className="py-1 font-medium">Person</th><th className="py-1 text-right font-medium">Tokens</th><th className="py-1 text-right font-medium">Cost</th></tr></thead>
+          <thead><tr className="text-left text-gray-500 dark:text-gray-400"><th className="py-1 pl-5 font-medium">Where</th><th className="py-1 font-medium">Person</th><th className="py-1 text-right font-medium">Input / output tokens</th><th className="py-1 text-right font-medium">Cost</th></tr></thead>
           <tbody>
             {split.map(row => (
               <tr key={`${row.work_id}/${row.user_id}`} className="border-t border-gray-100 text-gray-700 dark:border-gray-800 dark:text-gray-300">

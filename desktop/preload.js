@@ -1,6 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Read once before React mounts, so an already-dismissed tour never flashes.
+let walkthroughDismissals = new Set();
+try {
+  walkthroughDismissals = new Set(ipcRenderer.sendSync('get-walkthrough-dismissals'));
+} catch (_) {
+  // Older/test shells can continue using renderer localStorage.
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  isWalkthroughDismissed: key => walkthroughDismissals.has(key),
+  dismissWalkthrough: key => {
+    walkthroughDismissals.add(key);
+    ipcRenderer.send('dismiss-walkthrough', key);
+  },
   getApiBaseUrl: () => {
     // In dev mode, prefer the runtime-config file written by the launcher.
     const runtime = window.__APP_RUNTIME_CONFIG__;

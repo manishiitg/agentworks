@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspacePanelGuideContext } from './WorkspacePanelGuideContext'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
@@ -48,6 +48,31 @@ describe('Panel walkthroughs', () => {
       await act(async () => root.unmount())
       host.remove()
     }
+  })
+
+  it('does not show an automatic tip after the same help was opened manually', async () => {
+    vi.useFakeTimers()
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkspaceViewHeader title="Manual-first test panel" />))
+      const button = host.querySelector<HTMLButtonElement>('[aria-label="Walkthrough: Manual-first test panel"]')!
+      button.getBoundingClientRect = () => ({ width: 30, height: 30, left: 20, right: 50, top: 20, bottom: 50 }) as DOMRect
+      await act(async () => button.click())
+      expect(host.querySelector('[role="dialog"]')).not.toBeNull()
+      await act(async () => button.click())
+      await act(async () => vi.advanceTimersByTime(600))
+      expect(host.querySelector('[role="dialog"]')).toBeNull()
+    } finally {
+      await act(async () => root.unmount()); host.remove(); vi.useRealTimers()
+    }
+  })
+
+  it('uses Code wording and scope for project sections', () => {
+    const code = getWorkspacePanelGuide('Identity · General', 'code')
+    expect(code.surface).toBe('code')
+    expect(code.purpose).toContain('coding workspace')
+    expect(code.purpose).not.toContain('Crew')
+    expect(getWorkspacePanelGuide('Integrations · MCPs', 'code').howTo).toContain('project')
   })
 
   it('provides specific guidance for different panels', () => {

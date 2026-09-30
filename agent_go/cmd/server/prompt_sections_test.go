@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
 type recordingAppender struct {
@@ -279,6 +281,25 @@ func TestSectionNamesAreUniqueAndNonEmpty(t *testing.T) {
 		seen[section.Name] = true
 		if section.Applies == nil || section.Build == nil {
 			t.Fatalf("prompt section %q must define both Applies and Build", section.Name)
+		}
+	}
+}
+
+// The shared-server rules are for the Code product only: not Crew, workflows or other products.
+func TestHostSafetyRulesApplyToCodeOnly(t *testing.T) {
+	section := sectionByName(t, "code-host-safety")
+	if !section.Applies(promptContext{ProfileID: codeproduct.ProfileID, HasProfile: true}) {
+		t.Fatal("the Code product did not get the shared-server rules")
+	}
+	for _, profile := range []string{"work", "video-studio", "workflow", ""} {
+		if section.Applies(promptContext{ProfileID: profile, HasProfile: profile != ""}) {
+			t.Fatalf("profile %q got the Code-only shared-server rules", profile)
+		}
+	}
+	text := section.Build(promptContext{})
+	for _, must := range []string{"working folder", "code-server", "127.0.0.1", "\"~\""} {
+		if !strings.Contains(text, must) {
+			t.Fatalf("the shared-server rules no longer mention %s", must)
 		}
 	}
 }

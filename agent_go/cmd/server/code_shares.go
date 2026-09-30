@@ -382,6 +382,6 @@ func closeCodeSessionsForGrantee(ctx context.Context, userID, projectID string) 
 		return
 	}
 	for sessionID := range sessions {
-		closeAllCodingCLIInteractiveSessionsForOwner(sessionID, "code access changed")
+		closeCodingCLIAndReleaseTurnMarkers(sessionID, "code access changed")
 	}
 }

@@ -155,6 +155,11 @@ func TestProviderAccountsDelegationAndScheduledScopes(t *testing.T) {
 // of a workflow she cannot open.
 func TestProviderAccountsCostSplitMasksHiddenWork(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	withMemoryUserDirectory(t, `{"users":[
+        {"id":"admin","username":"admin","admin":true,"can_create":true},
+        {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
+        {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
+        {"id":"carol","username":"carol","can_create":true}]}`)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {

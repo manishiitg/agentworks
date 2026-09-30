@@ -157,7 +157,11 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const [workflowWalkthroughOpenToken, setWorkflowWalkthroughOpenToken] = useState(0)
   const [pendingDuplicatePreset, setPendingDuplicatePreset] = useState<{ id: string; label: string } | null>(null)
   const [duplicatingPreset, setDuplicatingPreset] = useState(false)
-  const [llmDiscoveryReady, setLLMDiscoveryReady] = useState(() => getLLMDiscoveryOnboardingState() !== 'open')
+  const [llmDiscoveryReady, setLLMDiscoveryReady] = useState(() => getLLMDiscoveryOnboardingState() === 'cleared')
+  const workflowPresetsLoaded = useGlobalPresetStore(state => state.workflowPresetsLoaded)
+  // The persisted preset ID arrives before its manifest. Until the initial
+  // fetch finishes, an existing automation looks like an empty workspace.
+  const walkthroughStartupReady = walkthroughReady && (productWalkthroughSurface !== undefined || workflowPresetsLoaded)
   const evaluatedAutoWalkthroughRef = useRef<Partial<Record<WalkthroughSurface, boolean>>>({})
   const pausedWalkthroughForPresetRef = useRef<WalkthroughSurface | null>(null)
   const showWorkflowsOverview = useAppStore(s => s.showWorkflowsOverview)
@@ -199,7 +203,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   }))
 
   const openWorkflowWalkthrough = useCallback((surface: WalkthroughSurface = currentWalkthroughSurface) => {
-    if (showProviders) useLLMStore.getState().setShowLLMModal(false)
+    if (showProviders) {
+      window.dispatchEvent(new Event('open-providers-walkthrough'))
+      return
+    }
     evaluatedAutoWalkthroughRef.current[surface] = true
     setWalkthroughSurface(surface)
     setWorkflowWalkthroughOpenToken(token => token + 1)
@@ -232,6 +239,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
     window.addEventListener(LLM_DISCOVERY_ONBOARDING_OPENED_EVENT, handleLLMDiscoveryOpened)
     window.addEventListener(LLM_DISCOVERY_ONBOARDING_CLEARED_EVENT, handleLLMDiscoveryCleared)
+    // The modal host may resolve onboarding before this listener mounts.
+    setLLMDiscoveryReady(getLLMDiscoveryOnboardingState() === 'cleared')
     return () => {
       window.removeEventListener(LLM_DISCOVERY_ONBOARDING_OPENED_EVENT, handleLLMDiscoveryOpened)
       window.removeEventListener(LLM_DISCOVERY_ONBOARDING_CLEARED_EVENT, handleLLMDiscoveryCleared)
@@ -245,7 +254,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         evaluatedAutoWalkthroughRef.current[walkthroughSurface] = false
       }
     }
-    if (showPresetModal || walkthroughPaused || !walkthroughReady) return
+    if (showPresetModal || walkthroughPaused || !walkthroughStartupReady) return
     if (showProviders) {
       setShowWorkflowWalkthrough(false)
       if (!isWorkflowWalkthroughDismissed(currentWalkthroughSurface)) {
@@ -253,13 +262,13 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
       }
       return
     }
-    if (!llmDiscoveryReady) return
+    if (!llmDiscoveryReady || getLLMDiscoveryOnboardingState() !== 'cleared') return
     if (evaluatedAutoWalkthroughRef.current[currentWalkthroughSurface]) return
     evaluatedAutoWalkthroughRef.current[currentWalkthroughSurface] = true
     if (!isWorkflowWalkthroughDismissed(currentWalkthroughSurface)) {
       openWorkflowWalkthrough(currentWalkthroughSurface)
     }
-  }, [currentWalkthroughSurface, llmDiscoveryReady, openWorkflowWalkthrough, showPresetModal, showProviders, showWorkflowWalkthrough, walkthroughPaused, walkthroughReady, walkthroughSurface])
+  }, [currentWalkthroughSurface, llmDiscoveryReady, openWorkflowWalkthrough, showPresetModal, showProviders, showWorkflowWalkthrough, walkthroughPaused, walkthroughStartupReady, walkthroughSurface])
 
   useEffect(() => {
     if (showPresetModal || walkthroughPaused) {
@@ -589,7 +598,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <div className="flex-shrink-0 border-b border-border bg-muted px-4 py-2">
+      <div data-terminal-focus-chrome="header" className="flex-shrink-0 border-b border-border bg-muted px-4 py-2">
         <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
           {/* Product and current automation */}
           <div className="flex min-w-0 items-center gap-3">

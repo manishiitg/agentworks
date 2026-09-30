@@ -25,7 +25,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxinput"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -2199,6 +2198,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	// Pulse Goal Work reaches other workflows and Crews through the external API.
 	pulsePlatformAPI = api
+	runningServerAPI = api
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
 	projectSecretReader = api.projectSecretValue
@@ -5513,9 +5513,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError(isolationErr.Error(), true)
 				return
 			}
+		} else if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID {
+			var isolationErr error
+			chatWorkingDir, isolationErr = crewCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
+			if isolationErr != nil {
+				sendError(isolationErr.Error(), true)
+				return
+			}
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
+		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
+		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
+			cliWritePaths = nil
+		}
 		if chatWorkingDir != sharedChatWorkingDir {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
@@ -5523,7 +5534,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
-			cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
+			if !crewReaderCLI {
+				cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
+			}
 		}
 		cliSecurityPolicy, err := api.cliSecurityStore.Resolve(
 			currentUserID,
@@ -6597,13 +6610,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
-				// Crew Run mode: readers chat under a read-only operating
-				// mode on top of the crew's own prompt. Tools and guards
-				// enforce it; the prompt states it so refusals are
-				// coherent instead of confused retries.
-				// A reader's role is not added here: every session in a Crew
-				// folder shares one prompt, and the role reaches the CLI as a
-				// block at the front of each message (crew_session_mode.go).
+				if resolvedProfile.Definition.ID == crewProfileID && chatWorkingDir != sharedChatWorkingDir {
+					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
+						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
+						return
+					}
+				}
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
 				logfWithContext(queryLogCtx, "[CHAT] Added direct-chat instructions to system prompt")
@@ -6673,6 +6685,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				Provider:                 req.Provider,
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
+				CrewReadOnly:             crewReaderCLI,
 				HasTriggerAutoNotifyTool: canTriggerAutoNotify,
 				ShellRoot:                shellRoot,
 				PerUserChatsFolder:       perUserChatsFolder,
@@ -7084,7 +7097,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to assemble the system prompt for phase %s: %v", workflowPhaseID, phasePromptErr), true)
 					return
 				}
-				if workflowCLIIsolationEnabled() && isCodingAgentProvider(finalProvider, finalModelID) {
+				if workflowCLIIsolationEnabledForMode(workflowCLIMode(&req, currentUserIsReadOnly)) && isCodingAgentProvider(finalProvider, finalModelID) {
 					phaseSystemPrompt += workflowCLIWorkspaceInstructions(phaseWorkspacePath)
 				}
 				if err := llmAgent.ResetInstructions(phaseSystemPrompt); err != nil {
@@ -10200,12 +10213,8 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 	if api == nil || strings.TrimSpace(message) == "" {
 		return false
 	}
-	if api.hasNativeTerminalDraft(sessionID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusLocked)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "terminal_draft_active", "message": tmuxinput.ErrInteractiveDraft.Error()})
-		return true
-	}
+	// Text typed in the CLI's own composer does not block a chat send: only the person who owns the
+	// chat can reach that terminal, and the refusal (423) was a false alarm for real users.
 	detached := r.WithContext(context.WithoutCancel(r.Context()))
 	detached.Header = r.Header.Clone()
 	recorded := &internalResponseCapture{header: http.Header{}}
@@ -13607,6 +13616,10 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	access, err := api.conversationTargetAccess(ctx, *req)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
+	}
+	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
+	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
 	return resolvedProfile, access, nil
 }

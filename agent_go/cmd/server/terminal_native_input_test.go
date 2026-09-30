@@ -101,19 +101,6 @@ func TestNativeTerminalSeedRestoresInputModes(t *testing.T) {
 	}
 }
 
-func TestNativeTerminalDraftRejectsChatWithoutDelivery(t *testing.T) {
-	o := nativeInputObserverFixture(t)
-	store := terminals.NewStore()
-	store.HandleEvent(o.snapshot.SessionID, terminalRouteChunkEvent(o.snapshot.SessionID, "main:"+o.snapshot.SessionID, o.snapshot.TmuxSession, "pane", 1))
-	o.api.terminalStore = store
-	tmuxinput.Default.NoteInteractiveInput(o.snapshot.TmuxSession, []byte("unfinished"))
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/query", nil)
-	if !o.api.tryDeliverQueryAsLiveInput(rec, req, o.snapshot.SessionID, "new input", "new-query") || rec.Code != http.StatusLocked {
-		t.Fatalf("draft not rejected before delivery: status=%d body=%s", rec.Code, rec.Body.String())
-	}
-}
-
 // Real tmux control-mode and WebSocket input: UTF-8, slash text, arrow bytes,
 // Ctrl+C and native bracketed paste, without contacting a coding provider.
 func TestNativeTerminalRealTmuxKeyboardAndPaste(t *testing.T) {

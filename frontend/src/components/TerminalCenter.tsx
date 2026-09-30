@@ -568,12 +568,16 @@ const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
 export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {
   dark: {
     background: '#0b0e14',
+    // xterm always draws the ruler's left edge, independently of the top and
+    // bottom border options. Its default is white even in a dark theme.
+    overviewRulerBorder: '#00000000',
     scrollbarSliderBackground: '#94a3b838',
     scrollbarSliderHoverBackground: '#94a3b866',
     scrollbarSliderActiveBackground: '#94a3b88c',
   },
   light: {
     background: '#ffffff',
+    overviewRulerBorder: '#00000000',
     scrollbarSliderBackground: '#64748b38',
     scrollbarSliderHoverBackground: '#64748b66',
     scrollbarSliderActiveBackground: '#64748b8c',

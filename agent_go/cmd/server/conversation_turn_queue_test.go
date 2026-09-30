@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
@@ -173,4 +176,126 @@ func TestPendingQueuedMessagesListOnlyUnstartedKeyedTurnsOfTheSession(t *testing
 	if other := api.pendingQueuedMessages(context.Background(), "bob", "chat"); len(other) != 0 {
 		t.Fatalf("another user's queue leaked: %+v", other)
 	}
+}
+
+// Stop closes the coding CLI, so the turn it was running can never finish. Its claimed queue
+// entry and retained-turn record must not keep the session "occupied": the next message used to
+// queue behind that dead turn forever.
+func TestStopReleasesTheStoppedTurnsMarkers(t *testing.T) {
+	files := map[string]string{}
+	api := newConversationTurnQueueTestAPI(files)
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
+	for _, message := range []string{"running", "waiting", "other session"} {
+		session := "session-1"
+		if message == "other session" {
+			session = "session-2"
+		}
+		if _, _, err := api.enqueueConversationTurn(ctx, "u1", session, QueryRequest{Query: message, AgentMode: "multi-agent"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := api.claimNextConversationTurn(ctx, "u1", "session-1"); !ok { // "running" is claimed
+		t.Fatal("could not claim the first turn")
+	}
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("the session should be occupied while its turn is retained")
+	}
+
+	api.releaseStoppedSessionTurnMarkers("session-1")
+
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("a stopped session is still occupied by its dead turn")
+	}
+	var left []string
+	for _, turn := range api.mustReadTurnQueueForTest(t, "u1") {
+		left = append(left, turn.SessionID+":"+turn.Request.Query)
+	}
+	if strings.Join(left, ",") != "session-1:waiting,session-2:other session" {
+		t.Fatalf("queue after stop = %v (the claimed turn goes, waiting and other sessions stay)", left)
+	}
+	if _, kept := api.retainedMainTurns["session-2"]; !kept {
+		t.Fatal("another session's retained turn was released")
+	}
+}
+
+// After a restart, a message that waited over half an hour without starting is dropped instead of
+// re-run; recent waiting messages and turns that had started are kept.
+func TestRecoveryDropsStaleWaitingTurnsOnly(t *testing.T) {
+	now := time.Now().UTC()
+	started := now.Add(-2 * time.Hour)
+	turns := []queuedConversationTurn{
+		{ID: "stale-waiting", SessionID: "s", CreatedAt: now.Add(-45 * time.Minute)},
+		{ID: "recent-waiting", SessionID: "s", CreatedAt: now.Add(-5 * time.Minute)},
+		{ID: "was-running", SessionID: "s", CreatedAt: now.Add(-3 * time.Hour), StartedAt: &started},
+	}
+	var kept []string
+	for _, turn := range dropStaleWaitingTurns(turns, now) {
+		kept = append(kept, turn.ID)
+	}
+	if strings.Join(kept, ",") != "recent-waiting,was-running" {
+		t.Fatalf("kept %v, want [recent-waiting was-running]", kept)
+	}
+}
+
+// The Stop button (handleStopSession) releases the stopped turn's markers too: after it, the next
+// message is accepted instead of queueing behind a dead turn (excellence, a Muse Code chat).
+func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
+	files := map[string]string{}
+	api := newConversationTurnQueueTestAPI(files)
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now()}
+	api.activeSessions = map[string]*ActiveSessionInfo{"session-1": {SessionID: "session-1", UserID: "u1", Status: "running"}}
+	api.stoppedSessions = map[string]bool{}
+	api.sessionBusy = map[string]bool{"session-1": true}
+	api.lastQueryRequests = map[string]QueryRequest{}
+	api.sessionWorkspaceFolders = map[string]string{}
+	api.sessionAgents = map[string]*agent.LLMAgentWrapper{}
+	api.completionLoopStarted = map[string]bool{}
+	api.bgAgentRegistry = NewBackgroundAgentRegistry()
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
+	if _, _, err := api.enqueueConversationTurn(ctx, "u1", "session-1", QueryRequest{Query: "running", AgentMode: "multi-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := api.claimNextConversationTurn(ctx, "u1", "session-1"); !ok {
+		t.Fatal("could not claim the first turn")
+	}
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("the session should be occupied before Stop")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/session/stop?cancelAgents=true&preserveConversation=true", nil).WithContext(ctx)
+	req.Header.Set("X-Session-ID", "session-1")
+	rec := httptest.NewRecorder()
+	api.handleStopSession(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("the Stop button left the conversation marked busy")
+	}
+}
+
+// Closing a chat's CLI on purpose (access or runtime configuration changed) releases its busy
+// markers, so the next message is not queued behind the turn that CLI was running.
+func TestClosingACLIOnPurposeReleasesTheTurnMarkers(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
+	old := runningServerAPI
+	runningServerAPI = api
+	t.Cleanup(func() { runningServerAPI = old })
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("session-1 should be occupied before the close")
+	}
+
+	closeCodingCLIAndReleaseTurnMarkers("session-1", "code access changed")
+
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("the chat is still marked busy after its CLI was closed")
+	}
+	if !api.conversationTurnOccupied("session-2") {
+		t.Fatal("another chat's turn was released")
+	}
+	runningServerAPI = nil
+	closeCodingCLIAndReleaseTurnMarkers("session-2", "no api") // must not panic without an API
 }

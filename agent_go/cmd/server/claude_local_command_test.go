@@ -108,3 +108,18 @@ func TestFullHistoryCommandFilterPreservesMetadataAndSource(t *testing.T) {
 		t.Fatal("source was mutated")
 	}
 }
+
+// A background task's completion is written by Claude as a user turn; it must not show as a
+// message the person sent. Text that merely mentions the tag is still a real message.
+func TestClaudeTaskNotificationIsNotAUserMessage(t *testing.T) {
+	notice := "<task-notification>\n<task-id>kqblj1dnx</task-id>\n<status>completed</status>\n<result>{}</result>\n</task-notification>"
+	if !isClaudeLocalCommandMessage("user", notice) {
+		t.Fatal("task notification shown as a user message")
+	}
+	if isClaudeLocalCommandMessage("assistant", notice) {
+		t.Fatal("assistant text is never filtered")
+	}
+	if isClaudeLocalCommandMessage("user", "why do I see <task-notification> in the chat?") {
+		t.Fatal("a real message mentioning the tag was hidden")
+	}
+}

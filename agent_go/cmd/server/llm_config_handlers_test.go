@@ -376,31 +376,21 @@ func TestIsPublishedLLMProviderAllowedCodingAgentsOnly(t *testing.T) {
 	}
 }
 
-func TestAgyAlphaRequiresExplicitFlag(t *testing.T) {
+func TestAgyAlwaysOfferedIncludingItsServerAccount(t *testing.T) {
 	t.Setenv("SUPPORTED_LLM_PROVIDERS", "")
 	t.Setenv("AGY_ALPHA", "")
-	for _, provider := range getSupportedProviders() {
-		if provider == "agy-cli" {
-			t.Fatal("agy-cli offered without AGY_ALPHA=1")
+	for _, mode := range []string{"", "true"} {
+		t.Setenv("MULTI_USER_MODE", mode)
+		if !isPublishedLLMProviderAllowed("agy-cli") {
+			t.Fatalf("AGY publication refused in mode %q", mode)
 		}
-	}
-	if isPublishedLLMProviderAllowed("agy-cli") {
-		t.Fatal("agy-cli publication allowed without alpha flag")
-	}
-	t.Setenv("AGY_ALPHA", "1")
-	if !isPublishedLLMProviderAllowed("agy-cli") {
-		t.Fatal("agy-cli publication denied with alpha flag")
-	}
-	found := false
-	for _, provider := range getSupportedProviders() {
-		found = found || provider == "agy-cli"
-	}
-	if !found {
-		t.Fatal("agy-cli missing with alpha flag")
-	}
-	t.Setenv("MULTI_USER_MODE", "true")
-	if isPublishedLLMProviderAllowed("agy-cli") {
-		t.Fatal("agy-cli allowed on a shared multi-user server")
+		found := false
+		for _, provider := range serverAccountProviders() {
+			found = found || provider == "agy-cli"
+		}
+		if !found {
+			t.Fatalf("AGY server account hidden in mode %q", mode)
+		}
 	}
 }
 
