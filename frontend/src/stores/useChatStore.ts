@@ -73,10 +73,31 @@ const chatStoreHydrationGate = createHydrationGate({
 let chatStoreHydrationBackstopReported = false
 
 // Streaming inactivity auto-clear timers (per sessionId)
-// When no new chunk arrives for 3s, streaming text is auto-cleared
+// When no new chunk arrives for STREAMING_INACTIVITY_MS, streaming text is auto-cleared,
+// unless the turn is still running (see sessionTurnRunning).
 const _streamingInactivityTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const _executionStreamingInactivityTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const STREAMING_INACTIVITY_MS = 60000
+
+// A long tool call is a silent stretch of a turn that is still running: clearing the streamed text
+// then made the reply vanish and jump back in when the turn ended. Only an idle session is cleared.
+function sessionTurnRunning(sessionId: string): boolean {
+  return Object.values(useChatStore.getState().chatTabs).some(tab => tab.sessionId === sessionId && tab.isStreaming)
+}
+
+function armStreamingInactivityClear(sessionId: string) {
+  if (_streamingInactivityTimers[sessionId]) clearTimeout(_streamingInactivityTimers[sessionId])
+  _streamingInactivityTimers[sessionId] = setTimeout(() => {
+    delete _streamingInactivityTimers[sessionId]
+    if (sessionTurnRunning(sessionId)) {
+      armStreamingInactivityClear(sessionId)
+      return
+    }
+    if (useChatStore.getState().streamingText[sessionId]) {
+      useChatStore.getState().clearStreamingText(sessionId)
+    }
+  }, STREAMING_INACTIVITY_MS)
+}
 
 // Per-mode event counts type — kept for backwards compat with persisted state
 export type PerModeEventCounts = { micro: number }
@@ -1756,17 +1777,8 @@ export const useChatStore = create<ChatState>()(
       appendStreamingChunk: (sessionId: string, chunkIndex: number, chunk: string, meta?: StreamingChunkMeta) => {
         if (typeof chunk !== 'string' || !chunk) return
 
-        // Reset inactivity auto-clear timer — if no new chunk arrives in 3s, clear streaming text
-        if (_streamingInactivityTimers[sessionId]) {
-          clearTimeout(_streamingInactivityTimers[sessionId])
-        }
-        _streamingInactivityTimers[sessionId] = setTimeout(() => {
-          const currentText = useChatStore.getState().streamingText[sessionId]
-          if (currentText) {
-            useChatStore.getState().clearStreamingText(sessionId)
-          }
-          delete _streamingInactivityTimers[sessionId]
-        }, STREAMING_INACTIVITY_MS)
+        // Reset the inactivity auto-clear timer.
+        armStreamingInactivityClear(sessionId)
 
         // Pieces are applied at most once per frame: one store update per piece re-rendered the
         // whole chat for every few characters, which read as flicker and small scroll jumps when a

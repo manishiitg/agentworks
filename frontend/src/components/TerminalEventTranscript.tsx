@@ -95,6 +95,24 @@ function assistantResponseText(event: PollingEvent): string {
   return content || finalResult || result
 }
 
+// The streamed text stays on screen for a moment after the turn ends, and the finished reply is
+// added as a normal row meanwhile. Showing both doubled a long answer, then collapsed it: a big
+// jump. When the finished reply already says what the live text says, the live row is dropped, so
+// the swap happens inside one frame.
+export function liveTextAlreadyCommitted(items: TranscriptRenderItem[], liveText: string): boolean {
+  const live = liveText.replace(/\s+/g, ' ').trim().toLowerCase()
+  if (!live) return false
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index]
+    if (item.kind !== 'event') continue
+    if (item.event.type === 'user_message') return false
+    const answer = assistantResponseText(item.event).replace(/\s+/g, ' ').trim().toLowerCase()
+    if (!answer) continue
+    return answer === live || answer.startsWith(live) || live.startsWith(answer)
+  }
+  return false
+}
+
 function presentationActivity(event: PollingEvent): { label: string; title: string; destination: string; detail: string } | null {
 	if (event.type !== 'presentation_updated') return null
 	const payload = transcriptEventPayload(event)
@@ -862,9 +880,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     error || (isAtTranscriptStart && (hasOlder || loadingOlder) && onLoadOlder),
   )
   const listData = useMemo<TranscriptRenderItem[]>(
-    () => (streamingText || streamingStatus
+    () => (streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText)
       ? [...items, { kind: 'live' as const, key: '__live-stream__', text: streamingText, status: streamingStatus }]
-      : items),
+      : items,
     [items, streamingStatus, streamingText],
   )
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])

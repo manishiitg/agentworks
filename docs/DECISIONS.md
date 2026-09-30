@@ -7,6 +7,16 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Chat jumpiness: no clear during a running turn, no doubled reply at the end
+- The live streamed text auto-cleared after 60s of silence (the code comment said 3s; it
+  never was) even while a long tool call was still running, so the reply vanished and
+  jumped back. It now re-arms while a tab of that session is streaming
+  (`armStreamingInactivityClear`, `useChatStore.ts`).
+- The finished reply is added as a normal row while the live row stays up to 500ms, so a
+  long answer showed twice and then collapsed. The live row is dropped as soon as the
+  finished reply says the same thing (`liveTextAlreadyCommitted`,
+  `TerminalEventTranscript.tsx`). Found by reading the code, not reproduced live.
+
 ### 2026-09-30 — Agy tool calls show while the turn runs, not only at the end
 - Agy has no live tool stream; its calls are read from the conversation database.
   They were published only once the whole turn settled, so a 4-minute Confida turn
