@@ -4,21 +4,23 @@ Status: shipped 2026-09-24. All code is on main in mcpagent, multi-llm-provider-
 and this repo. Transport history is in
 [PLAT-354](../bugs/pulse_platform/coding-agent-bridge/plat-354.html).
 
-## Two modes
+## Tool modes
 
-A coding CLI runs in one of two tool modes, set by the agent profile's
+A coding CLI runs in one of four tool modes, set by the agent profile's
 `runtime.agent_tools.mode`:
 
 | Mode | UI name | What the CLI gets |
 |---|---|---|
 | `mcp_only` | off | Native web search only. Everything else goes through the MCP bridge. |
-| `hybrid` | **Native agent tools** | The bridge, plus the CLI's own read, search, skill, todo and subagent tools. |
+| `hybrid` | **Native agent tools** | The bridge, plus the CLI's allowed native reads, searches and support tools. The allowlist varies by provider. |
+| `full` | **Full CLI** | MCP plus native reads, edits, shell and delegation under an enforced Linux Landlock policy. |
+| `full_unconfined` | Local Full CLI | MCP plus the full native toolset on an explicitly opted-in single-user host. |
 
-**Native writes are never allowed, in either mode** (user decision, 2026-09-24).
-File writes, edits, deletes and shell commands that change things go through the
-bridge, where the platform's tool policy and approvals apply. The two modes are
-kept separate so each can be tested on its own. A new native tool goes into
-`hybrid`, never silently into `mcp_only`.
+Native writes remain denied in `mcp_only` and `hybrid`. Full CLI permits native
+writes, commands and delegation. Local Full CLI uses
+`AGENTWORKS_CLI_FULL_UNCONFINED=on`, requires single-user mode and upgrades only
+chats with Native agent tools already enabled. AGY's local integration and
+certification scope are in [AGY Full CLI](agy_full_native_tools.md).
 
 Why hybrid exists: models did worse with their own tools off. A Muse log audit
 found 28 `read_file`, 16 `read_skill` and 12 `search` denials. The CLIs also
@@ -26,13 +28,14 @@ handle long tasks better with their own todo lists and background subagents.
 
 ## What hybrid enables, per CLI
 
-| CLI | Enabled in hybrid | Always off |
+| CLI | Enabled in hybrid | Denied in hybrid |
 |---|---|---|
 | Claude Code | `Read`, `Grep`, `Glob`, `Skill`, `Agent`, `TaskCreate/Get/Update/List`, `TodoWrite`, `WebFetch`, `WebSearch` | `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` |
 | Muse | `read_skill`, `read_file`, `search`, `subagent_*` (delegation is on when `subagent_spawn` is allowed); `write_todos` works in both modes | shell, file writes |
-| Codex | shell and `multi_agent` only. Every other native feature is disabled (browser, computer use, image generation…). Todos via `update_plan`. | Writes: Codex's sandbox is `read-only` in **every** mode, so `apply_patch` and shell writes fail |
+| Codex | shell and `multi_agent` only. Every other native feature is disabled (browser, computer use, image generation…). Todos via `update_plan`. | Writes: Codex's sandbox is `read-only` in hybrid, so `apply_patch` and shell writes fail |
 | Cursor | `Read`, `List`, `ListDir`, `Glob`, `Grep`, `Search` | `Write`, `Edit`, `Delete`, shell, `task`/subagents, `ComputerUse`, `RecordScreen`, `generateImage` (hooks deny them) |
-| Pi | nothing; Pi stays bridge-only in both modes | everything native |
+| Pi | nothing; Pi stays bridge-only in hybrid | everything native |
+| AGY | `view_file`, `list_dir`, `find_by_name`, `grep_search`, `search_web`, `read_url_content` | native writes, edits, shell and subagents |
 
 Where the lists live:
 
@@ -107,6 +110,10 @@ With subagents on, both Claude and Muse used to end a turn early with an interim
   drains it → that run's terminal, and reads the answer from the last run. If the
   log stops growing for 5 minutes, it stops waiting.
 
+AGY local Full CLI waits for each launched native child's completed conversation
+record and its notification in the parent conversation before accepting the
+parent's final answer. An idle terminal alone does not prove completion.
+
 ## Tests
 
 Live tests (real CLIs):
@@ -116,7 +123,10 @@ Live tests (real CLIs):
 - Codex: `TestCodexCLIRealReadOnlyHybridP0`, plus its subagent P0
 - Cursor: `TestCursorCLIRealReadOnlyHybridP0`, `BlocksDelete`
 
-Each test also checks that no native write ran.
+Each hybrid test also checks that no native write ran. AGY adds
+`TestAgyCLIRealFullNativeToolsExec` and
+`TestAgyCLIRealFullNativeToolsInteractive` for actual native edits, commands,
+subagents and MCP, including retained-session continuation.
 
 Stress tests are opt-in: `-coding-cli-stress`, with `CODING_CLI_STRESS_ITERATIONS`
 setting the count. Each iteration runs parallel subagents, todos, a slow MCP tool

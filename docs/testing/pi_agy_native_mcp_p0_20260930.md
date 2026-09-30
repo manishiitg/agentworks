@@ -37,11 +37,13 @@ sources at certification time. They did not certify the later platform rollout
 on Linux. Other providers and the optional two-account live matrix were not
 selected. The existing user app was not rebuilt or restarted.
 
-**AGY Full CLI is not certified or implemented by this change.** The platform
+**Historical scope of this initial Pi/AGY certification:** AGY Full CLI was not implemented by this initial change. The platform
 can upgrade its tool mode to `full` under Landlock, but mcpagent still maps AGY
 to `hybrid`; its hook denies native shell commands, file writes and subagents.
-Supporting Full CLI needs explicit AGY mode handling and Linux containment
-checks. Native MCP support alone does not enable those tools.
+The later [AGY local Full CLI integration](../design/agy_full_native_tools.md)
+adds explicit mode handling and local native-tool checks. Linux containment
+checks remain outside that local certification. Native MCP support alone does
+not enable those tools.
 
 Before publication, the Pi and AGY adapter unit suites, formatting contracts,
 bridge routing checks, platform plugin updater, retained-mode wiring, version

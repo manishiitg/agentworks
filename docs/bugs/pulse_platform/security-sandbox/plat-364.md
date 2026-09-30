@@ -303,3 +303,14 @@ switch says why.
   profile per CLI derived from a real turn (as for Landlock), the same private CLI home, and
   a certification pass per CLI.
 
+
+### AGY local Full CLI, 2026-09-30
+
+AGY now retains the platform's `full_unconfined` mode instead of downgrading it
+to `hybrid`. Its native tool gate allows the full toolset, including edits, shell
+and subagents, with the private MCP bridge still available. The same single-user
+opt-in applies. See [AGY Full CLI](../../../design/agy_full_native_tools.md).
+
+The rollout is **local only**. Do not use AGY on RTS or excellence for now. This
+change does not certify AGY's Linux Landlock behavior or shared-server account
+isolation. Local unconfined mode runs with the host user's permissions.
