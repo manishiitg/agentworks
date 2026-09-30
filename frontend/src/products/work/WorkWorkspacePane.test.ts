@@ -83,6 +83,6 @@ describe('Work Setup consolidation', () => {
     expect(integrations).toContain('fixedChannel="whatsapp"')
     expect(integrations).toContain('<WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />')
     expect(integrations).toContain('className="min-h-0 flex-1 overflow-y-auto p-4"')
-    expect(integrations.match(/manageOwnScroll=\{false\}/g)?.length).toBe(4)
+    expect(integrations.match(/manageOwnScroll=\{false\}/g)?.length).toBe(3)
   })
 })

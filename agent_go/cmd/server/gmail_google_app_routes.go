@@ -93,10 +93,11 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("failed to initialize Gmail service: %v", err), http.StatusInternalServerError)
 			return
 		}
+		displayName := googleAppDisplayName(req.DisplayName)
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{
 			ScopeWorkspace:        scope.CodeWorkspace,
 			OwnerID:               scope.UserID,
-			DisplayName:           req.DisplayName,
+			DisplayName:           displayName,
 			ClientName:            services.PlatformGoogleClientName,
 			AllowReadAccess:       req.AllowReadAccess,
 			AllowAgentWriteAccess: req.AllowAgentWriteAccess,
@@ -110,4 +111,13 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 		w.WriteHeader(http.StatusCreated)
 		writeGmailConnection(w, svc, conn)
 	}
+}
+
+// The account's email is only known after sign-in, so the connect form has no name
+// field; a blank name gets a plain default instead of "display name is required".
+func googleAppDisplayName(name string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	return "Google account"
 }

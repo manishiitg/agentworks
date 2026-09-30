@@ -108,3 +108,12 @@ func TestOAuthCallbackHandsGmailSignInToGmail(t *testing.T) {
 		t.Fatalf("an unknown state was treated as a Gmail sign-in: %d", rec.Code)
 	}
 }
+
+func TestGoogleAppDisplayNameDefault(t *testing.T) {
+	if got := googleAppDisplayName("  "); got != "Google account" {
+		t.Fatalf("blank name: %q", got)
+	}
+	if got := googleAppDisplayName(" Work "); got != "Work" {
+		t.Fatalf("given name: %q", got)
+	}
+}

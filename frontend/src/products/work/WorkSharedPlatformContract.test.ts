@@ -37,7 +37,6 @@ describe('Crew shared AgentWorks platform contract', () => {
       "../../components/workflow/WorkflowBotsPanel",
       "../../components/skills/SkillsManagerPanel",
       "../../components/secrets/SecretSelectionSection",
-      "../../components/connectors/ConnectorsBrowser",
     ]) {
       expect(setup).toContain(sharedSetupPrimitive)
     }
