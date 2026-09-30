@@ -52,3 +52,17 @@ func TestCLIFullUnconfinedIsSingleUserOnly(t *testing.T) {
 		t.Fatal("allowed on a multi-user server")
 	}
 }
+
+func TestCLILandlockExemptDefaultsToMuse(t *testing.T) {
+	if !cliLandlockExempt("muse-cli") || cliLandlockExempt("claude-code") {
+		t.Fatal("default exemption should be exactly muse-cli")
+	}
+	t.Setenv(cliLandlockExemptEnv, "none")
+	if cliLandlockExempt("muse-cli") {
+		t.Fatal("none must lock every CLI")
+	}
+	t.Setenv(cliLandlockExemptEnv, "muse-cli, pi-cli")
+	if !cliLandlockExempt("pi-cli") {
+		t.Fatal("list entries must be honoured")
+	}
+}
