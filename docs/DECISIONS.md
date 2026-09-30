@@ -194,12 +194,19 @@ Each entry says what was decided, why, and where it lives in the code.
 ### 2026-09-30 — What a confined CLI may touch
 - Read/write: its working folder, its private home
   (`<workdir>/.sandbox-cache/cli-home/<cli>`), the folders its chat's folder
-  guard grants, and explicitly granted runtime files. Providers other than
-  Muse also receive the shared `/tmp` grant.
-- `/tmp` is writable because Cursor keeps sockets at fixed `/tmp` paths
+  guard grants, and explicitly granted runtime files. Only **Cursor** also
+  receives the shared `/tmp` grant (tested per provider in
+  `internal/clisandbox/landlock_tmp_test.go`).
+- `/tmp` is writable for Cursor because it keeps sockets at fixed `/tmp` paths
   (`cursor-askpass-*.sock`, and `/tmp/.cursor/<project>` when its home path is
-  too long for a socket). Accepted as low risk; see the open issue below.
-- Muse uses its private `TMPDIR` without the blanket shared `/tmp` grant.
+  too long for a socket). Every other CLI uses its private `TMPDIR`: Muse, Pi and
+  Agy were started under the real launcher without `/tmp` and made no `/tmp`
+  access; Claude and Codex ran confined on RTS before the grant existed.
+  Verified 2026-09-30; a CLI that turns out to need `/tmp` is added by name.
+- Muse's private `TMPDIR` was first narrowed by a separate patch (provider
+  `3428203`, review PRs provider #39 / builder #258); the Cursor-only rule
+  above replaced it and covers Muse the same way. A canary test with the real
+  launcher shows another CLI's `/tmp` file can be neither read nor overwritten.
   Live echo startup and native resume pass under this narrower policy; real
   Meta authentication and native-tool calls still need an authenticated smoke
   test. See `docs/bugs/muse_landlock_directory_startup.md` for the regression
@@ -261,9 +268,22 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Open issues
 
-- **Shared `/tmp` between confined CLIs.** Every CLI on a server runs as the
-  same Linux user. Providers other than Muse can read and write `/tmp`:
-  other CLIs' temp files, the
+- **Confinement can be skipped when the launcher is unavailable.**
+  `applyCLILandlock` logs and runs the CLI unconfined when `CLILandlockRunner`
+  fails its capability check, even with `AGENTWORKS_CLI_LANDLOCK=on`, so
+  "confine every CLI" is not fail-closed. Decide: refuse to start the CLI, or
+  keep failing open with a loud log.
+- **Shared browser paths remain launcher grants.** CLI policies leave
+  `BrowserScoped` false, so `landlockSystemWritePaths` grants the shared
+  browser socket/temp folders and, when set, shared-profile roots for users,
+  workflows and projects. Cursor-only `/tmp` does not remove these.
+- **Muse per-launch login copy is not returned.** `musePrepareIsolatedConfig`
+  copies `auth.json` into the per-launch config folder and deletes it after the
+  launch, so a token Muse refreshes is lost. The "logins are linked, never
+  copied" rule above does not cover this Muse path. Likely the next failure
+  for Meta-authenticated users.
+- **Shared `/tmp` for Cursor.** Cursor's confined sessions can read and write
+  `/tmp`: other CLIs' fixed-path temp files, the
   workspace command scratch (`/tmp/aws-<uid>`) and the browser sockets
   (`/tmp/.agent-browser`). Landlock also does not govern `connect()` to
   Unix sockets, so the tmux socket (`/tmp/tmux-<uid>/default`) is reachable
@@ -273,9 +293,6 @@ Each entry says what was decided, why, and where it lives in the code.
   saved; `[BOT_TIMING]` and `[BUILDER_RESTORE_TIMING]` logs are in place to
   name the slow step (suspect: `restoreLatestBuilderConversation` reading every
   saved Builder conversation).
-- **Cursor chat text only at turn end (checked 2026-09-30).** With the store
-  order fixed, mid-turn text should stream; confirm on RTS after the deploy that
-  the chat shows Cursor's messages while the turn runs.
 - **Deploy check can fail on a stale `claude`.** `deploy/common/install-coding-clis.sh`
   refuses when a CLI resolves outside the managed install. Confida had a stray
   `tools/node/bin/claude` from an interrupted install (removed by hand
