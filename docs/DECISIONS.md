@@ -19,6 +19,13 @@ Each entry says what was decided, why, and where it lives in the code.
 - Reverses the prompt-text display below. Code: `chat_history_routes.go` and
   `frontend/src/components/providers/CostConversations.tsx`.
 
+### 2026-09-30 — Switching provider mid-chat no longer inherits the old provider's account
+- Confida: Pi -> Agy in one chat failed 403 "provider connection does not match
+  selected provider" (a hard refresh cleared it). `queryRequestForAgentProfileChat`
+  filled a missing account from the conversation's saved one, which belongs to the
+  old provider. It is now inherited only while the provider is unchanged; the new
+  provider gets its default account. An explicit account is always kept.
+
 ### 2026-09-30 — The raw terminal drops keys that close the agent; a closed terminal says how to resume
 - Ctrl-C (exits on a second press), Ctrl-D, Ctrl-\\ and Ctrl-Z typed in the raw
   terminal are dropped (`stripCLIExitKeys`, `terminal_live_attach.go`) with a

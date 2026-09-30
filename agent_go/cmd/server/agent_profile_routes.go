@@ -257,6 +257,16 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 			req.ReasoningEffort = effort
 		}
 	}
+	// An account belongs to one provider. The one inherited from the conversation is only valid
+	// while the chat stays on that provider: switching Pi -> Agy with no account picked used to
+	// send Pi's account with Agy and fail "provider connection does not match selected provider"
+	// (Confida 2026-09-30). The new provider then gets its own default account.
+	if strings.TrimSpace(input.ConnectionID) == "" && req.ConnectionID != "" &&
+		strings.TrimSpace(conversation.Provider) != "" && strings.TrimSpace(req.Provider) != "" &&
+		!strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(req.Provider)) &&
+		req.ConnectionID == strings.TrimSpace(conversation.ConnectionID) {
+		req.ConnectionID = ""
+	}
 	return req, nil
 }
 
