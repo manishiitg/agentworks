@@ -155,6 +155,10 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	api.lastQueryMu.Unlock()
 
 	closeAllCodingCLISessionsForRuntimeCancel(sessionID, closeReason)
+	// Stop closes the coding CLI, so nothing can finish the turn it was running: release every
+	// marker that says the session is busy, or the next message queues behind a dead turn forever
+	// (excellence, 2026-09-30: every message after a Stop stayed "queued_for_turn").
+	api.releaseStoppedSessionTurnMarkers(sessionID)
 	if api.terminalStore == nil {
 		return
 	}
@@ -642,4 +646,31 @@ func (api *StreamingAPI) sessionHasActiveWork(sessionID string) bool {
 		return true
 	}
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
+}
+
+// releaseStoppedSessionTurnMarkers clears what still marks a stopped session as running a turn:
+// the retained coding-agent session's active turn (its CLI was just closed), the retained-main-turn
+// record, and the durable queue entry of the turn that was running (claimed, never finished). Turns
+// still waiting in the queue are kept: they run, in order, when the person sends their next message.
+func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained != nil && retained.ActiveTurnID() != "" {
+		if err := retained.Close(); err != nil {
+			log.Printf("[STOP] session=%s could not close the retained session: %v", sessionID, err)
+		} else {
+			log.Printf("[STOP] session=%s released the retained session's active turn", sessionID)
+		}
+	}
+	api.retainedMainTurnsMu.Lock()
+	_, retainedTurn := api.retainedMainTurns[sessionID]
+	delete(api.retainedMainTurns, sessionID)
+	api.retainedMainTurnsMu.Unlock()
+	if retainedTurn {
+		log.Printf("[STOP] session=%s released the retained main turn record", sessionID)
+	}
+	if dropped := api.dropStartedConversationTurns(sessionID); dropped > 0 {
+		log.Printf("[STOP] session=%s dropped %d claimed queue entr%s of the stopped turn", sessionID, dropped, map[bool]string{true: "y", false: "ies"}[dropped == 1])
+	}
 }

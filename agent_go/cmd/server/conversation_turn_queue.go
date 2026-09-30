@@ -246,6 +246,44 @@ func (api *StreamingAPI) removeConversationTurn(ctx context.Context, turn queued
 	return api.writeConversationTurnQueue(ctx, turn.UserID, kept)
 }
 
+// dropStartedConversationTurns removes the session's queue entries that were claimed for
+// execution (StartedAt set): the turn they belong to has been stopped and will never remove
+// them. Unstarted entries stay queued. Returns how many were removed.
+func (api *StreamingAPI) dropStartedConversationTurns(sessionID string) int {
+	api.conversationTurnQueueMu.Lock()
+	userID := api.conversationTurnQueueOwners[sessionID]
+	api.conversationTurnQueueMu.Unlock()
+	if userID == "" {
+		return 0
+	}
+	ctx := context.Background()
+	path := conversationTurnQueuePath(userID)
+	lock := productConversationRegistryMutex(path)
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, userID)
+	if err != nil || len(turns) == 0 {
+		return 0
+	}
+	kept := make([]queuedConversationTurn, 0, len(turns))
+	dropped := 0
+	for _, turn := range turns {
+		if turn.SessionID == sessionID && turn.StartedAt != nil {
+			dropped++
+			continue
+		}
+		kept = append(kept, turn)
+	}
+	if dropped == 0 {
+		return 0
+	}
+	if err := api.writeConversationTurnQueue(ctx, userID, kept); err != nil {
+		logTurnQueue("cannot drop stopped turns for %s: %v", sessionID, err)
+		return 0
+	}
+	return dropped
+}
+
 func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" || api.conversationTurnOccupied(sessionID) {
 		return

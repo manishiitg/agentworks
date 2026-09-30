@@ -174,3 +174,44 @@ func TestPendingQueuedMessagesListOnlyUnstartedKeyedTurnsOfTheSession(t *testing
 		t.Fatalf("another user's queue leaked: %+v", other)
 	}
 }
+
+// Stop closes the coding CLI, so the turn it was running can never finish. Its claimed queue
+// entry and retained-turn record must not keep the session "occupied": the next message used to
+// queue behind that dead turn forever.
+func TestStopReleasesTheStoppedTurnsMarkers(t *testing.T) {
+	files := map[string]string{}
+	api := newConversationTurnQueueTestAPI(files)
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u1", Username: "u1"})
+	for _, message := range []string{"running", "waiting", "other session"} {
+		session := "session-1"
+		if message == "other session" {
+			session = "session-2"
+		}
+		if _, _, err := api.enqueueConversationTurn(ctx, "u1", session, QueryRequest{Query: message, AgentMode: "multi-agent"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := api.claimNextConversationTurn(ctx, "u1", "session-1"); !ok { // "running" is claimed
+		t.Fatal("could not claim the first turn")
+	}
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("the session should be occupied while its turn is retained")
+	}
+
+	api.releaseStoppedSessionTurnMarkers("session-1")
+
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("a stopped session is still occupied by its dead turn")
+	}
+	var left []string
+	for _, turn := range api.mustReadTurnQueueForTest(t, "u1") {
+		left = append(left, turn.SessionID+":"+turn.Request.Query)
+	}
+	if strings.Join(left, ",") != "session-1:waiting,session-2:other session" {
+		t.Fatalf("queue after stop = %v (the claimed turn goes, waiting and other sessions stay)", left)
+	}
+	if _, kept := api.retainedMainTurns["session-2"]; !kept {
+		t.Fatal("another session's retained turn was released")
+	}
+}
