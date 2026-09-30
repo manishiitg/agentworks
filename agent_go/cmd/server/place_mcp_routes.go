@@ -235,6 +235,10 @@ type placeMCPCatalogServer struct {
 	config mcpclient.MCPServerConfig
 }
 
+// mcpCatalogHiddenKeys are providers whose servers are not offered as MCP connectors: Google
+// (connected through the Google app and gog, not as MCP) and GitHub (a personal access token).
+var mcpCatalogHiddenKeys = map[string]bool{"google": true, "github": true}
+
 func (api *StreamingAPI) placeMCPCatalog() []placeMCPCatalogServer {
 	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
 	if err != nil {
@@ -256,8 +260,7 @@ func (api *StreamingAPI) placeMCPCatalog() []placeMCPCatalogServer {
 		// that needs Google-side enrollment, while gog works with a normal OAuth client and keeps
 		// the token on the server. GitHub is a personal access token used with git and the API.
 		// An existing connection to either keeps working; new ones are not offered.
-		// (Adding the provider to mcpAppFocusKeys brings its connectors and its sign-in app card back.)
-		if key := keys[name]; (key == "google" || key == "github") && !mcpAppFocusKeys[key] {
+		if mcpCatalogHiddenKeys[keys[name]] {
 			continue
 		}
 		local := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(name), "_"), "_")

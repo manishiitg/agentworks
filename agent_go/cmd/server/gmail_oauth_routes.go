@@ -74,6 +74,20 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 
 		redirectURI := gmailOAuthRedirectURI(r)
+		if conn.ClientName == services.PlatformGoogleClientName {
+			// The deployment's Google app: keep the named client in step with the stored app
+			// and return through the callback that app already registers.
+			clientID, clientSecret, ok := platformGoogleApp()
+			if !ok {
+				http.Error(w, "This server's Google app is no longer configured. Ask an administrator.", http.StatusConflict)
+				return
+			}
+			if _, err := services.EnsurePlatformOAuthClient(r.Context(), clientID, clientSecret); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			redirectURI = gmailGoogleAppReturnURI(r)
+		}
 		extraScopes := services.GoogleServiceScopeURIs(conn.Services)
 		authURL, err := services.BeginGmailOAuth(id, conn.ClientName, redirectURI, conn.AllowReadAccess, conn.AllowAgentWriteAccess, extraScopes)
 		if err != nil {

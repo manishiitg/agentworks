@@ -2717,6 +2717,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	GmailFeedbackRoutes(router, api)
 	GmailConnectionRoutes(router, api)
 	GmailOAuthRoutes(router, api)
+	GoogleAppRoutes(router, api)
 	GmailOAuthClientRoutes(router, api)
 
 	// Per-user notification preferences (Slack channel, WhatsApp number)

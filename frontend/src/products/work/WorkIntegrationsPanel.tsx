@@ -9,6 +9,8 @@ import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { PlaceMcpSection } from './PlaceMcpSection'
+import { GoogleAccountConnect } from './GoogleAccountConnect'
+import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
@@ -249,6 +251,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // The Connect tab points at this installation's API origin. Hosted apps need
   // a public origin; local agents can connect directly to a loopback MCP URL.
   const product = useProjectProduct()
+  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const visibleTabs = INTEGRATION_TABS.filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
@@ -332,7 +335,17 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}
-        {activeTab === 'gmail' && <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />}
+        {activeTab === 'gmail' && (
+          <>
+            {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
+            {isAdmin && <McpAppsSection />}
+            {/* A Code connects its owner's own Google account through the server's Google app. */}
+            {product.profileId === 'code' && !workspacePath.startsWith('_users/') && (
+              <GoogleAccountConnect workspacePath={workspacePath} onChanged={() => setTabNonce(nonce => nonce + 1)} />
+            )}
+            <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />
+          </>
+        )}
         {activeTab === 'cli' && <CliMcpSetupPanel />}
       </div>
     </div>

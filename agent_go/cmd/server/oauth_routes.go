@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -176,6 +177,13 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 	<p>You can close this window.</p>
 </body>
 </html>`)
+		return
+	}
+
+	// A Google account sign-in through the deployment's Google app returns here too (one
+	// redirect URI registered on the client); hand it to the Gmail completion.
+	if services.HasPendingGmailOAuthState(state) {
+		gmailOAuthCallbackHandler(api)(w, r)
 		return
 	}
 

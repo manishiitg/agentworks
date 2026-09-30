@@ -344,17 +344,18 @@ func TestSharedConnectUsesSignInApp(t *testing.T) {
 // token), so tests of the sign-in-app mechanism name the providers they use.
 func withMCPAppFocus(t *testing.T, keys ...string) {
 	t.Helper()
-	previous := mcpAppFocusKeys
-	mcpAppFocusKeys = map[string]bool{}
+	previous, previousHidden := mcpAppFocusKeys, mcpCatalogHiddenKeys
+	mcpAppFocusKeys, mcpCatalogHiddenKeys = map[string]bool{}, map[string]bool{}
 	for _, key := range keys {
 		mcpAppFocusKeys[key] = true
 	}
-	t.Cleanup(func() { mcpAppFocusKeys = previous })
+	t.Cleanup(func() { mcpAppFocusKeys, mcpCatalogHiddenKeys = previous, previousHidden })
 }
 
-// By default no provider gets a Sign-in apps card, and Google and GitHub are not offered as
-// MCP connectors (Google apps are the Gmail tab / gog, GitHub is a personal access token).
-func TestNoSignInAppCardsAndNoGoogleOrGitHubConnectors(t *testing.T) {
+// By default only Google has an app card (the deployment's Google app for gog), and Google and
+// GitHub are not offered as MCP connectors (Google apps are the Gmail tab / gog, GitHub is a
+// personal access token).
+func TestOnlyTheGoogleAppCardAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)
 	api, _ := newCodePrivacyFixture(t)
@@ -368,8 +369,8 @@ func TestNoSignInAppCardsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	}
 	api.mcpConfigPath = catalogPath
 	api.logger = loggerv2.NewNoop()
-	if cards := api.mcpAppGroups(); len(cards) != 0 {
-		t.Fatalf("sign-in app cards = %+v, want none", cards)
+	if cards := api.mcpAppGroups(); len(cards) != 1 || cards[0].Key != "google" {
+		t.Fatalf("sign-in app cards = %+v, want only the Google app", cards)
 	}
 	var names []string
 	for _, entry := range api.placeMCPCatalog() {
