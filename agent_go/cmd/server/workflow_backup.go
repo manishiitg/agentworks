@@ -91,12 +91,6 @@ func supportedWorkflowBackupStrategies() []WorkflowBackupStrategyInfo {
 			Description: "Best for dataset/model-style backups, generated media, and revisioned ML artifacts.",
 			BestFor:     []string{"datasets", "models", "media", "large-artifacts"},
 		},
-		{
-			ID:          "local_zip",
-			Label:       "Local ZIP export",
-			Description: "Manual full-folder export/import for recovery or transfer. This is not automatic remote backup.",
-			BestFor:     []string{"manual-export", "restore", "transfer"},
-		},
 	}
 }
 

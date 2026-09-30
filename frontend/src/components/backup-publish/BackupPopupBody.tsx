@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, ChevronRight, Cloud, Download, GitBranch, HardDrive, Loader2, X } from 'lucide-react'
+import { AlertCircle, ChevronRight, Cloud, GitBranch, Loader2, X } from 'lucide-react'
 import type { WorkflowBackupInfoResponse, WorkflowBackupStrategyInfo } from '../../services/api-types'
 import { formatBackupStateLabel, getBackupStateVisual } from '../workflow/backupStatus'
 import { AskAIButton } from '../workflow/AskAIButton'
@@ -14,12 +14,6 @@ import {
   type StrategyAskContext,
 } from './popupUtils'
 
-type BackupExportAction = {
-  label: string
-  filename: string
-  exportBlob: () => Promise<Blob>
-}
-
 export interface BackupPopupProps {
   loadInfo: () => Promise<WorkflowBackupInfoResponse>
   onStateLoaded?: (state: string) => void
@@ -31,7 +25,6 @@ export interface BackupPopupProps {
   askContext?: StrategyAskContext
   loadErrorMessage?: string
   showEnabledBadge?: boolean
-  exportAction?: BackupExportAction
   headerAction?: React.ReactNode
 }
 
@@ -46,13 +39,11 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
   askContext,
   loadErrorMessage = 'Failed to load backup status',
   showEnabledBadge = false,
-  exportAction,
   headerAction,
 }) => {
   const [loading, setLoading] = useState(false)
   const [info, setInfo] = useState<WorkflowBackupInfoResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,27 +62,6 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
   useEffect(() => {
     void load()
   }, [load])
-
-  const handleExport = async () => {
-    if (!exportAction) return
-    setIsExporting(true)
-    setError(null)
-    try {
-      const blob = await exportAction.exportBlob()
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = exportAction.filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to export local ZIP'))
-    } finally {
-      setIsExporting(false)
-    }
-  }
 
   const state = info?.effective_state || 'not_configured'
   const visual = getBackupStateVisual(state)
@@ -214,73 +184,40 @@ const BackupPopupBody: React.FC<BackupPopupProps> = ({
                   )}
                 </section>
 
-                <div className={exportAction ? 'grid gap-3 lg:grid-cols-[1fr_280px]' : ''}>
-                  <details className="group rounded-md border border-border">
-                    <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground">
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-                      Supported strategies
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{supportedStrategies.length}</span>
-                    </summary>
-                    <div className="grid divide-y divide-border border-t border-border md:grid-cols-2 md:divide-x md:divide-y-0">
-                      {supportedStrategies.map((strategy) => (
-                        <div key={strategy.id} className="flex items-start justify-between gap-3 px-4 py-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                              {strategy.id === 'git' ? <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <Cloud className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                              {strategy.label}
-                            </div>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{strategy.description}</p>
-                            {strategy.best_for && strategy.best_for.length > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-1">
-                                {strategy.best_for.slice(0, 4).map(tag => (
-                                  <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{tag}</span>
-                                ))}
-                              </div>
-                            )}
+                <details className="group rounded-md border border-border">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-foreground">
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                    Supported strategies
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{supportedStrategies.length}</span>
+                  </summary>
+                  <div className="grid divide-y divide-border border-t border-border md:grid-cols-2 md:divide-x md:divide-y-0">
+                    {supportedStrategies.map((strategy) => (
+                      <div key={strategy.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                            {strategy.id === 'git' ? <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <Cloud className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                            {strategy.label}
                           </div>
-                          {askContext && (
-                            <AskAIButton
-                              workspacePath={askContext.workspacePath}
-                              iconOnly
-                              message={`Help me ${askContext.strategyVerb} ${strategy.label}. Explain what I need and walk me through it.`}
-                            />
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{strategy.description}</p>
+                          {strategy.best_for && strategy.best_for.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {strategy.best_for.slice(0, 4).map(tag => (
+                                <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{tag}</span>
+                              ))}
+                            </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </details>
-
-                  {exportAction && (
-                    <section className="rounded-md border border-border px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                            <HardDrive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            Local export
-                          </div>
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            Manual ZIP for recovery. Not a replacement for remote backup.
-                          </p>
-                        </div>
-                        {askContext?.exportMessage && (
+                        {askContext && (
                           <AskAIButton
                             workspacePath={askContext.workspacePath}
                             iconOnly
-                            message={askContext.exportMessage}
+                            message={`Help me ${askContext.strategyVerb} ${strategy.label}. Explain what I need and walk me through it.`}
                           />
                         )}
                       </div>
-                      <button
-                        onClick={() => { void handleExport() }}
-                        disabled={isExporting}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                        {exportAction.label}
-                      </button>
-                    </section>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
           </div>

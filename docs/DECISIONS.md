@@ -30,6 +30,25 @@ Design references for the linked runtime decisions:
   Evidence, scope and qualification plan:
   [progressive discovery design](design/progressive_prompt_discovery.md).
 
+### 2026-09-30 — Workspace ZIP backup export/import removed
+- Removed `POST /api/workspace/export` and `POST /api/workspace/import`
+  (`workspace/handlers/backup.go` deleted, routes dropped from
+  `workspace/server.go`) after a security review found the extraction loop
+  unsafe to keep; the private audit holds the details, not this log. The proxy
+  bulk-route entries, the `local_zip` supported strategy, and every UI caller
+  (Files tree menu, Backup popup Download ZIP, shared-folder Import) went with
+  it. The public share-link folder download is a separate endpoint and stays.
+  A router test pins both routes as 404 so a reintroduction fails loudly.
+- To restore the capability, reimplement export/import with separator-aware
+  containment, symlink resolution before create, and size/count caps, plus
+  regression tests — do not revert this commit as-is.
+- Code: `workspace/server.go`, `workspace/workspace_backup_removed_test.go`,
+  `agent_go/cmd/server/workspace_proxy_policy.go`, `workflow_backup.go`,
+  `frontend/src/services/api.ts`, `Workspace.tsx`, `PlannerFileList.tsx`,
+  `WorkflowBackupView.tsx`, `BackupPopupBody.tsx`, `SharedFolder.tsx`
+  (`ImportProgressDialog.tsx` deleted). Committed bundles under
+  `agent_go/static/` refresh on the next frontend build/deploy.
+
 ### 2026-09-30 — Process-killing routes: browser ids checked, and admin-only through the proxy
 - Audit of the other workspace routes a logged-in user reaches through `/api/wp`:
   `POST /api/browser/cleanup` ran `kill -9` on any process id in the body, so any user

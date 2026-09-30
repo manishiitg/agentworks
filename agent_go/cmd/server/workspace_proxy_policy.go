@@ -13,8 +13,8 @@ import (
 //   - the docs root, config/ and _system/ are admin-only;
 //   - inside Workflow/<id> reads need workflow read access, writes need write
 //     access, and workflow.json (its access record) only its owners;
-//   - bulk routes (export, import, search, glob, folder copy) never run on the
-//     whole workspace for non-admins.
+//   - bulk routes (search, glob, folder copy) never run on the whole
+//     workspace for non-admins.
 type workspaceProxyPolicy struct {
 	ctx    context.Context
 	claims *UserClaims
@@ -31,7 +31,6 @@ var workspaceProxyReadOnlyPostRoutes = map[string]bool{
 
 // Routes that act on a whole subtree at once.
 var workspaceProxyBulkRoutes = map[string]bool{
-	"api/workspace/export": true, "api/workspace/import": true,
 	"api/search": true, "api/glob": true, "api/folders/copy": true,
 }
 

@@ -829,12 +829,12 @@ func TestWorkspaceRoutesGoThroughAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/wp/api/workspace/export", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/wp/api/documents/notes.md", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-User-ID", "spoofed")
 	rec := httptest.NewRecorder()
 	g.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || seenPath != "/api/wp/api/workspace/export" || seenUser == "spoofed" {
+	if rec.Code != http.StatusOK || seenPath != "/api/wp/api/documents/notes.md" || seenUser == "spoofed" {
 		t.Fatalf("status=%d path=%q user=%q", rec.Code, seenPath, seenUser)
 	}
 }

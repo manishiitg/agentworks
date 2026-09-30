@@ -377,8 +377,8 @@ func TestWorkspaceProxyCrossUserBlock(t *testing.T) {
 			t.Fatalf("%s: status = %d, want 403", target, status)
 		}
 	}
-	if status, _ := verdict(proxyRequest("POST", "/api/wp/api/workspace/export", `{"workspace_path":"_users/owner/Chats"}`)); status != http.StatusForbidden {
-		t.Fatalf("cross-user workspace export status = %d, want 403", status)
+	if status, _ := verdict(proxyRequest("POST", "/api/wp/api/folders/copy", `{"source_path":"Chats/a","destination_path":"_users/owner/Chats/a"}`)); status != http.StatusForbidden {
+		t.Fatalf("cross-user folder copy status = %d, want 403", status)
 	}
 }
 

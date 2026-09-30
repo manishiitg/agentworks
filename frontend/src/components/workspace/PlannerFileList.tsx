@@ -1,6 +1,6 @@
 import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, Archive, CheckSquare, Edit2, Link, Check } from 'lucide-react'
+import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, CheckSquare, Edit2, Link, Check } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -38,10 +38,6 @@ interface PlannerFileListProps {
   downloadingFilePath?: string
   hideAddToChat?: boolean
   hideRootActions?: boolean
-  onExportBackup?: (folderPath: string) => void
-  onImportBackup?: (folderPath: string) => void
-  isExporting?: boolean
-  isImporting?: boolean
   isSelectionMode?: boolean
   selectedFiles?: Set<string>
   onToggleFileSelection?: (file: PlannerFile) => void
@@ -88,10 +84,6 @@ export default function PlannerFileList({
   downloadingFilePath,
   hideAddToChat = false,
   hideRootActions = false,
-  onExportBackup,
-  onImportBackup,
-  isExporting = false,
-  isImporting = false,
   isSelectionMode = false,
   selectedFiles = new Set(),
   onToggleFileSelection,
@@ -401,40 +393,6 @@ export default function PlannerFileList({
                         <Edit2 className="w-3 h-3" />
                         Rename
                       </button>
-                    )}
-                    {/* Export/Import Backup - top-level folder only */}
-                    {file.type === 'folder' && depth === 0 && onExportBackup && onImportBackup && (
-                      <>
-                        <div className="border-t border-border my-1"></div>
-                        <button
-                          onClick={(e) => {
-                          e.stopPropagation()
-                          setOpenActionsPath(null)
-                          onExportBackup(file.originalFilepath || file.filepath)
-                          }}
-                          disabled={isExporting}
-                          className="w-full px-3 py-1 text-left text-xs text-foreground hover:bg-muted flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isExporting ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Archive className="w-3 h-3" />
-                          )}
-                          Export Backup
-                        </button>
-                        <button
-                          onClick={(e) => {
-                          e.stopPropagation()
-                          setOpenActionsPath(null)
-                          onImportBackup(file.originalFilepath || file.filepath)
-                          }}
-                          disabled={isImporting}
-                          className="w-full px-3 py-1 text-left text-xs text-foreground hover:bg-muted flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Upload className="w-3 h-3" />
-                          Import Backup
-                        </button>
-                      </>
                     )}
                     {onSelectFileAndEnterSelectionMode && (
                       <>

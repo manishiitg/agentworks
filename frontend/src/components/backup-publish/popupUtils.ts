@@ -10,8 +10,6 @@ export interface StrategyAskContext {
   workspacePath: string | null
   /** e.g. "back up this workflow with" / "publish this workflow to" */
   strategyVerb: string
-  /** Full Ask AI message for the local-export card (backup only). */
-  exportMessage?: string
 }
 
 export const formatRelativeTime = (dateStr?: string): string => {

@@ -215,12 +215,5 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// Document operations with filepath (catch-all route - MUST BE LAST)
 		api.Any("/documents/*filepath", handlers.HandleDocumentRequest)
-
-		// Workspace backup routes
-		workspace := api.Group("/workspace")
-		{
-			workspace.POST("/export", handlers.ExportWorkspace)
-			workspace.POST("/import", handlers.ImportWorkspace)
-		}
 	}
 }

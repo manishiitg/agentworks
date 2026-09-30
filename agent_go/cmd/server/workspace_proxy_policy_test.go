@@ -34,9 +34,9 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		allowed           bool
 	}
 	for _, tc := range []call{
-		// Whole-workspace export and server configuration.
-		{"bob", http.MethodPost, "/api/wp/api/workspace/export", map[string]any{"workspace_path": "."}, false},
-		{"root", http.MethodPost, "/api/wp/api/workspace/export", map[string]any{"workspace_path": "."}, true},
+		// Whole-workspace bulk routes and server configuration.
+		{"bob", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, false},
+		{"root", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "."}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents/config/users.json", nil, false},
 		{"bob", http.MethodGet, "/api/wp/api/documents/_system/costs.jsonl", nil, false},
 		{"bob", http.MethodGet, "/api/wp/api/search?query=x", nil, false},
@@ -45,7 +45,6 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		{"alice", http.MethodGet, "/api/wp/api/documents/Workflow/private/notes.md", nil, true},
 		{"bob", http.MethodPost, "/api/wp/api/query", map[string]any{"db_path": "Workflow/private/db/db.sqlite", "sql": "select 1"}, false},
 		{"bob", http.MethodPost, "/api/wp/api/query", map[string]any{"db_path": "Workflow/shared/db/db.sqlite", "sql": "select 1"}, true},
-		{"bob", http.MethodPost, "/api/wp/api/workspace/export", map[string]any{"workspace_path": "Workflow/private"}, false},
 		// Writes need write access; body-path routes count too.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Workflow/shared/notes.md", map[string]any{"content": "x"}, true},
 		{"bob", http.MethodPost, "/api/wp/api/folders/copy", map[string]any{"source_path": "Chats/a", "destination_path": "Workflow/private/a"}, false},

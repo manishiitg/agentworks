@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../../services/api', () => ({
-  agentApi: { getWorkflowBackup: vi.fn(), exportWorkflowBackup: vi.fn() },
+  agentApi: { getWorkflowBackup: vi.fn() },
   getApiBaseUrl: () => '',
   getAuthToken: () => '',
 }))
