@@ -39,7 +39,7 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 		"call_sub_agent",
 		"Prefer direct sub-agent tools whenever the provider exposes them.",
 		"in a bridge-only CLI session",
-		"**CODE EXECUTION MODE — Access MCP Tools via HTTP API:**",
+		"## Code execution: calling tools over HTTP",
 		"{{TOOL_STRUCTURE}}",
 		"`MCP_CUSTOM` / `MCP_AUTH`",
 		"get_api_spec(tool_name=\"...\")",
