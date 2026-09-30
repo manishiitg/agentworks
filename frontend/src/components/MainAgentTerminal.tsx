@@ -196,13 +196,33 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
             loadSnapshot={() => agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })}
           />
         ) : (
-          <StaticXtermPane
-            key={`${snapshot.terminal_id}:${snapshot.chunk_index}`}
-            content={snapshot.content}
-            className="h-full w-full"
-            contentRef={contentRef}
-            xtermTheme={RAW_XTERM_THEMES[theme]}
-          />
+          <div className="flex h-full min-h-0 flex-col">
+            {/* A closed pane cannot take typing. It is brought back by the next chat
+                message (the server relaunches the CLI there), so say that here
+                instead of leaving a read-only screen with no way forward. */}
+            <div
+              className="flex flex-wrap items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-300"
+              data-testid="main-agent-terminal-closed-banner"
+            >
+              <span className="min-w-0 flex-1">
+                This terminal closed after a period of inactivity. Send a message in the chat and it resumes where it left off.
+              </span>
+              {onUnavailable && (
+                <button type="button" className="rounded-md border border-neutral-600 px-3 py-1 text-neutral-100 hover:bg-neutral-800" onClick={() => onUnavailableRef.current?.()}>
+                  Back to chat to resume
+                </button>
+              )}
+            </div>
+            <div className="min-h-0 flex-1">
+              <StaticXtermPane
+                key={`${snapshot.terminal_id}:${snapshot.chunk_index}`}
+                content={snapshot.content}
+                className="h-full w-full"
+                contentRef={contentRef}
+                xtermTheme={RAW_XTERM_THEMES[theme]}
+              />
+            </div>
+          </div>
         )}
       </div>
     </section>
