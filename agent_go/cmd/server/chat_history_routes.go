@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -683,7 +684,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		workspacePath := r.URL.Query().Get("workspace_path")
 		resumeTurns := parsePositiveQueryInt(r, "resume_turns")
 		resumeOffset := parseNonNegativeQueryInt(r, "resume_offset")
-		includeSavedPrompts := r.URL.Query().Get("include_saved_prompts") == "1"
+		includePromptSizes := r.URL.Query().Get("include_saved_prompt_sizes") == "1"
 		_, workflowScoped, allowed := chatHistoryWorkspaceAccess(r, workspacePath)
 		if !allowed {
 			http.Error(w, "workflow access denied", http.StatusForbidden)
@@ -693,7 +694,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 		var data json.RawMessage
 		servedResumeSnapshot := false
 		var err error
-		if resumeTurns == chatHistoryResumeSnapshotTurns && resumeOffset == 0 && r.URL.Query().Get("include_ui_events") != "1" && !includeSavedPrompts {
+		if resumeTurns == chatHistoryResumeSnapshotTurns && resumeOffset == 0 && r.URL.Query().Get("include_ui_events") != "1" && !includePromptSizes {
 			data, servedResumeSnapshot, err = ReadChatHistoryResumeSnapshot(userID, sessionID, workspacePath)
 		}
 		if !servedResumeSnapshot {
@@ -751,8 +752,8 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			if includeUIEvents {
 				data = attachChatHistoryUIEventsForResume(data, rawUIEvents)
 			}
-			if includeSavedPrompts {
-				data = attachChatHistorySavedPrompts(data, resumeSource)
+			if includePromptSizes {
+				data = attachChatHistorySavedPromptSizes(data, resumeSource)
 			}
 			data = boundChatHistoryResumeSnapshot(data)
 			if limit == chatHistoryResumeSnapshotTurns && resumeOffset == 0 {
@@ -775,11 +776,11 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 	}
 }
 
-// Saved prompts are debug context, separate from paginated chat turns. Only
+// Prompt sizes are debug context, separate from paginated chat turns. Only
 // the latest saved instruction of each role is available: native continuation
 // replaces earlier system prompts, so this is not a per-request prompt archive.
 // Call only after the conversation's existing access checks have succeeded.
-func attachChatHistorySavedPrompts(projected, source []byte) []byte {
+func attachChatHistorySavedPromptSizes(projected, source []byte) []byte {
 	var doc map[string]json.RawMessage
 	var archive struct {
 		History []json.RawMessage `json:"conversation_history"`
@@ -787,27 +788,26 @@ func attachChatHistorySavedPrompts(projected, source []byte) []byte {
 	if json.Unmarshal(projected, &doc) != nil || json.Unmarshal(source, &archive) != nil {
 		return projected
 	}
-	type savedPrompt struct {
-		Role      string `json:"role"`
-		Text      string `json:"text"`
-		Truncated bool   `json:"truncated,omitempty"`
+	type savedPromptSize struct {
+		Role           string `json:"role"`
+		CharacterCount int    `json:"character_count"`
 	}
-	latest := make(map[string]savedPrompt)
+	latest := make(map[string]savedPromptSize)
 	for _, raw := range archive.History {
-		role, text := chatHistoryMessageRoleAndText(raw)
-		if (role != "system" && role != "developer") || text == "" {
+		role, text := readChatHistoryMessageText(raw, true)
+		if role != "system" && role != "developer" {
 			continue
 		}
-		const maxPromptBytes = 64 * 1024
-		latest[role] = savedPrompt{Role: role, Text: truncateUTF8Bytes(text, maxPromptBytes), Truncated: len(text) > maxPromptBytes}
+		latest[role] = savedPromptSize{Role: role, CharacterCount: utf8.RuneCountInString(text)}
 	}
-	prompts := make([]savedPrompt, 0, 2)
+	prompts := make([]savedPromptSize, 0, 2)
 	for _, role := range []string{"system", "developer"} {
 		if prompt, ok := latest[role]; ok {
 			prompts = append(prompts, prompt)
 		}
 	}
-	doc["saved_prompts"], _ = json.Marshal(prompts)
+	delete(doc, "saved_prompts")
+	doc["saved_prompt_sizes"], _ = json.Marshal(prompts)
 	return marshalChatHistoryProjectionOrOriginal(doc, projected)
 }
 
@@ -1059,6 +1059,10 @@ func botProgressiveChatHistoryReader(_ context.Context, userID, sessionID string
 }
 
 func chatHistoryMessageRoleAndText(raw json.RawMessage) (string, string) {
+	return readChatHistoryMessageText(raw, false)
+}
+
+func readChatHistoryMessageText(raw json.RawMessage, keepWhitespace bool) (string, string) {
 	var message struct {
 		Role      string `json:"Role"`
 		RoleLower string `json:"role"`
@@ -1098,13 +1102,16 @@ func chatHistoryMessageRoleAndText(raw json.RawMessage) (string, string) {
 		if value == "" {
 			value = part.ContentLo
 		}
-		if strings.TrimSpace(value) == "" {
+		if value == "" || (!keepWhitespace && strings.TrimSpace(value) == "") {
 			continue
 		}
 		if text.Len() > 0 {
 			text.WriteString("\n\n")
 		}
 		text.WriteString(value)
+	}
+	if keepWhitespace {
+		return role, text.String()
 	}
 	return role, strings.TrimSpace(text.String())
 }

@@ -7,6 +7,18 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Costs shows prompt character counts only
+- Replace the saved prompt text preview with character counts for the latest
+  saved system and developer instructions, as requested. The Costs history GET
+  opts in with `include_saved_prompt_sizes=1`; it returns size metadata without
+  prompt text. The previous prompt-text opt-in is removed.
+- Count the full saved instructions as Unicode code points, including leading
+  and trailing whitespace; counts are not byte lengths or truncated previews.
+  This measures the latest saved version, not a per-run prompt archive. Missing
+  prompts remain explicit. Existing conversation access checks still apply.
+- Reverses the prompt-text display below. Code: `chat_history_routes.go` and
+  `frontend/src/components/providers/CostConversations.tsx`.
+
 ### 2026-09-30 — The raw terminal drops keys that close the agent; a closed terminal says how to resume
 - Ctrl-C (exits on a second press), Ctrl-D, Ctrl-\\ and Ctrl-Z typed in the raw
   terminal are dropped (`stripCLIExitKeys`, `terminal_live_attach.go`) with a
