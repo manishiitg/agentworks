@@ -653,3 +653,17 @@ func TestFilterNativeContinuityMessagesRemovesSyntheticHandoffs(t *testing.T) {
 		t.Fatalf("synthetic continuity handoff leaked into durable history: %+v", filtered)
 	}
 }
+
+// Agy's first message carries the system prompt ("System instructions:\n..."); it must not be
+// published as a second user row when the transcript is read back.
+func TestFilterNativeContinuityMessagesDropsAgySystemInstructionsRow(t *testing.T) {
+	messages := []builderConversationMessage{
+		{Role: "human", Parts: []builderConversationPart{{Text: "System instructions:\n# Workflow Builder Agent\n\nlong prompt\n\nhello"}}},
+		{Role: "ai", Parts: []builderConversationPart{{Text: "real reply"}}},
+		{Role: "human", Parts: []builderConversationPart{{Text: "System instructions are documented in the wiki, can you summarise them?"}}},
+	}
+	filtered := filterNativeContinuityMessages(messages)
+	if len(filtered) != 2 || builderConversationMessageText(filtered[0]) != "real reply" {
+		t.Fatalf("Agy's system prompt row leaked, or a real user message was dropped: %+v", filtered)
+	}
+}
