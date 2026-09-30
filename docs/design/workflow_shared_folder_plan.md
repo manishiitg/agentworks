@@ -1,59 +1,63 @@
-# Workflows on the shared folder (plan, not built)
+# Workflow Run and Builder with linked project folders
 
-Status: planned 2026-09-30; not implemented by the Crew change. Crew now retains
-private mode directories and links its real project with `project/` instead of
-using the shared-folder design below. Workflows still use private runtimes;
-applying links to workflows is a separate decision. The earlier plan follows:
+Status: implemented 2026-09-30, not deployed. This replaces the proposal to run
+workflow chats in their shared data folder with one shared prompt. Workflows
+instead use the same linked private-runtime design as Crew.
 
-Crew and Code are built first and tested (see
-`project_instruction_files_safe`: one shared prompt per folder, the reader role
-sent as an `[AGENTWORKS SESSION]` block in front of each message, and a project's
-own AGENTS.md / .claude / .cursor / .pi never overwritten or deleted). Workflows
-follow only after that has run for a while.
+Related: [project instruction files](project_instruction_files.md),
+[PLAT-296](../bugs/pulse_platform/security-sandbox/plat-296.md), and
+[PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
 
-Consolidated behavior: [project instruction files](project_instruction_files.md); ticket [PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
+## Layout and paths
 
-## Why
+Each conversational CLI runtime stays outside workspace documents, keyed by
+user, workflow, chat, provider and mode. It holds the generated instructions,
+projected skills, CLI configuration and private home. Its `project/` directory
+link points to the authoritative workflow folder.
 
-Workflow Builder and Run chats run in a private per-session runtime folder
-(`cliruntime.Prepare`, PLAT-296) because Builder and Run need different prompts and
-skills. With native tools becoming the main way agents work, a working directory
-outside the workflow folder costs too much: relative paths and shell commands go to
-the wrong place, and files written with a relative path are silently misplaced.
+Native tools use `project/<path>`; commands with workflow-relative paths use
+`cd project && ...`. Workspace bridge tools keep their real-workflow-relative
+paths without this prefix. The shared prompt records this distinction and the
+server appends the actual target path. A directory link supports creates,
+atomic saves, renames and deletes without copying or synchronizing data.
 
-## Decisions
+User-owned workflow instructions and native CLI configuration stay in the real
+workflow; platform projections never use them as destinations. Preparing the
+link refuses an existing file, directory or different link instead of deleting
+it or falling back to a shared cwd. Removing a runtime leaves its target intact.
 
-1. One shared prompt per folder: `workflow-shared.md` goes in the instruction file,
-   identical for Builder and Run. The mode text (Builder ~1.4 KB, Run ~3.6 KB) goes in
-   the session block in front of each message, normal turn and live input. Run's block
-   is cut to about 1 KB; the rest moves into a skill loaded on demand.
-2. Native CLI session key = (session id, mode). A Builder/Run switch inside one chat
-   tab never shares a CLI conversation across modes; the visible chat history stays
-   per session id. Today a mode change already refuses to resume the earlier native
-   session (`modeChangedThisTurn`); the private folder's identity
-   (user, workflow, session, provider, mode) also separated them. Without the private
-   folder the session handle must carry the mode.
-3. Generated files must stay out of workflow data. `AGENTS.md` blocks, `.claude/skills`,
-   `.cursor`, `.pi`, `.codex`, `.agents` in a workflow folder are excluded from: backup
-   hashing (`shouldSkipBackupHashFile`), git versioning (`workspace_git.go`), workspace
-   listings and search (`workflowfiles`, `handlers/documents.go`), publish and
-   remote-workflow sync, and the hidden-folder lists (`code_admin.go`,
-   `crew_directory.go`). Search for every enumerator before switching the cwd.
-4. Skills are counted per session like the instruction file, so one mode ending never
-   deletes a skill the other mode's running session uses (Run's skills are a subset of
-   Builder's: system-tools, builder-reference, workflow-ui-control; Builder adds
-   workflow-commands and ui-ux-pro-max).
-5. Switch the working directory: remove the `cliruntime.Prepare` call for workflow chats
-   and schedules and the "private runtime directory" prompt line. Keep
-   `AGENTWORKS_ISOLATE_WORKFLOW_CLI` as a one-release rollback.
-6. Migration: existing Builder chats resume from the private folder, so the resume check
-   refuses them once and they start a fresh CLI session with history replayed.
+## Modes and permissions
 
-## Tests
+Keep the existing separate Builder and Run prompts and skill bundles. Builder
+adds its authoring references; Run cannot gain authoring permission from project
+guidance or a linked path. Access and server-maintained provenance still select
+the tool surface. This change adds no mode toggle or permission promotion.
 
-Listing and backup exclusions; two overlapping sessions in one workflow folder; a real
-Claude turn as Builder and as Run on a test workflow; a project's own files surviving.
+The link itself grants no access. The real workflow is read-only for a read-only
+turn and writable only with Builder's authorized grants. Landlock's final Run
+policy drops initial and attached-folder workspace writes, leaving the private
+runtime writable. Backend workflow execution may still perform its authorized
+business actions and persist outputs; that is separate from the chat CLI's
+ability to edit configuration. Existing Landlock blocked-path and host-grant
+limitations remain as listed in `DECISIONS.md`.
 
-## Not deploying
+`AGENTWORKS_ISOLATE_WORKFLOW_CLI=false` remains a transitional Builder rollback.
+Run always isolates: the launcher automatically grants cwd writes, so using the
+real workflow as Run's cwd would promote read-only access. API models and step
+agents retain their existing working-directory policies.
 
-Nothing here is deployed. Ask per host before any deploy.
+## Resume and verification
+
+Adding the link preserves existing private directory identities and compatible
+native sessions. Resuming another mode/chat directory or an old shared-folder
+session stays refused, including Codex's project-directory override. The shared
+path guidance changes both mode definition keys so stale retained processes
+reload instructions through the existing relaunch path.
+Restored workflow terminals defer to fresh query admission even during the
+Builder rollback, so a saved pane cannot bypass current access/mode checks.
+
+Offline tests cover all six providers, including Agy, stable existing runtimes,
+mode boundaries, separate prompt/skills, link failures, bridge path guidance and
+read-only Landlock policy construction. Linux launcher tests verify linked
+read/edit/create/rename/delete and denial of ungranted nested link targets.
+Authenticated live CLI qualification in both modes is required before deploy.

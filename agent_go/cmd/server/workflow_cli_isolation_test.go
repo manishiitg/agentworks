@@ -89,6 +89,9 @@ func TestWorkflowCLIIsolationSelectionAndResume(t *testing.T) {
 	if get("owner", "chat-a", "codex-cli", "workshop") != codingAgentWorkspaceWorkingDir("Workflow/testing") {
 		t.Fatal("disabled rollout changed existing behavior")
 	}
+	if get("reader", "chat-a", "codex-cli", "run") == codingAgentWorkspaceWorkingDir("Workflow/testing") {
+		t.Fatal("Builder rollback made Run's CLI cwd writable workflow data")
+	}
 }
 
 func TestWorkflowCLIWorkingDirTrustsPrivateAgyRuntime(t *testing.T) {

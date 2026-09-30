@@ -13,7 +13,7 @@ describe for shared folders.
 |---|---|
 | Crew chats, schedules, triggers, bots | private runtime per user/project/chat/provider/mode, with `project/` linked to the real Crew folder |
 | Code chats, schedules, triggers, bots | the project's own folder (shared by every session in it) |
-| Workflow Builder chat and workflow schedule | private per-session runtime folder outside the docs tree ([PLAT-296](../bugs/pulse_platform/security-sandbox/plat-296.md)); planned to move to the shared folder ([plan](workflow_shared_folder_plan.md)) |
+| Workflow Run/Builder chats, schedules and bots | private per-session/mode runtime outside the docs tree, with `project/` linked to the real workflow ([design](workflow_shared_folder_plan.md)) |
 | Workflow step agents | fresh temporary folder |
 
 ## Crew linked runtimes
@@ -37,6 +37,13 @@ folder remains denied. Isolation of instructions is not a replacement for these
 kernel permissions or the bridge folder guard.
 
 ## Rules for projection destinations
+
+Workflow chats also use linked private runtimes. Their existing separate prompts
+and skill bundles are preserved; workspace bridge paths remain unchanged. Run
+always isolates, including when the transitional Builder rollback is enabled.
+Read-only turns lose real-workflow and attached-folder CLI write grants. The
+backend may still execute the workflow's authorized actions and persist results.
+The added link preserves existing runtime identities and compatible native resume.
 
 1. **Never delete what we did not create.** A project's own `AGENTS.md`,
    `.claude/`, `.cursor/`, `.pi/`, `.codex/`, `.agents/` are read, never replaced.

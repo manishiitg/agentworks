@@ -5524,7 +5524,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
 		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
-		if crewReaderCLI {
+		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
 		}
 		if chatWorkingDir != sharedChatWorkingDir {
@@ -7097,7 +7097,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to assemble the system prompt for phase %s: %v", workflowPhaseID, phasePromptErr), true)
 					return
 				}
-				if workflowCLIIsolationEnabled() && isCodingAgentProvider(finalProvider, finalModelID) {
+				if workflowCLIIsolationEnabledForMode(workflowCLIMode(&req, currentUserIsReadOnly)) && isCodingAgentProvider(finalProvider, finalModelID) {
 					phaseSystemPrompt += workflowCLIWorkspaceInstructions(phaseWorkspacePath)
 				}
 				if err := llmAgent.ResetInstructions(phaseSystemPrompt); err != nil {

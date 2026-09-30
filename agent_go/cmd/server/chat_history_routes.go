@@ -355,7 +355,10 @@ func startRestoredTerminalHandler(api *StreamingAPI) http.HandlerFunc {
 		// During the isolation rollout, defer attachment until /api/query has
 		// rebuilt and checked the current user/mode/private runtime identity.
 		// Otherwise a saved live pane can bypass the native-resume migration.
-		if workflowCLIIsolationEnabled() && strings.HasPrefix(runtime.WorkspacePath, "Workflow/") {
+		// Always re-admit workflow restores, including during Builder rollback:
+		// access may have changed since the saved pane launched, and Run must
+		// never attach a former shared-folder Builder process.
+		if workflowScoped || strings.HasPrefix(runtime.WorkspacePath, "Workflow/") {
 			_ = json.NewEncoder(w).Encode(startRestoredTerminalResponse{OK: true, Started: false, Reason: "private_runtime_requires_query"})
 			return
 		}

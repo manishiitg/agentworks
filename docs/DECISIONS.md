@@ -7,6 +7,38 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Workflow Run and Builder also link the real workflow into private runtimes
+- Apply Crew's linked-directory design to workflow conversational CLI runtimes.
+  Keep the existing user/workflow/chat/provider/mode identity and distinct Run/
+  Builder prompts and skill bundles. Add `project/` pointing to the authoritative
+  workflow folder; native tools use that prefix or `cd project`, while bridge
+  paths remain workflow-relative. Prompts, skills, configs and private CLI homes
+  stay outside workflow documents. The earlier shared-folder plan is superseded.
+- Keep the existing private directory digest, so adding the link does not move
+  a saved session or discard compatible native resume. The updated shared prompt
+  carries the path contract in both mode definition fingerprints, ensuring an
+  old retained CLI reloads instructions. Mode/chat/provider boundaries and
+  Codex's project-directory check remain enforced. Restored workflow terminals
+  defer to fresh query admission even during rollback instead of attaching a
+  saved pane with potentially stale access and working-directory permissions.
+- Read-only workflow turns no longer retain the initial real-folder write grant
+  in CLI security or inherit folder-guard workspace write grants in the final
+  Landlock policy. The CLI can write its private runtime and read granted data;
+  authorized workflow execution still writes its results through the backend.
+  Builder retains its authorized project/folder writes. Existing blocked-path
+  and host-grant limitations are not resolved by a symlink.
+- `AGENTWORKS_ISOLATE_WORKFLOW_CLI=false` remains a transitional rollback for
+  writable Builder turns. Run always uses a private linked cwd, even with that
+  flag, because the launcher grants cwd writes automatically. Link/state errors
+  fail launch instead of falling back to the real workflow folder. API models
+  and workflow step agents keep their existing working-directory behavior.
+- Code: `workflow_cli_isolation.go`, `cli_landlock.go`, `server.go`, and
+  `internal/agentworksproduct/prompts/workflow-shared.md`. Tests cover all six
+  providers (including Agy), mode contracts, existing-session resume, link
+  failures and final read/write policies. Linux launcher tests exercise the
+  linked-file boundary. Not deployed; authenticated CLI qualification in both
+  modes remains required before deployment.
+
 ### 2026-09-30 — Crew Run and Builder use private runtimes linked to the real project
 - Reverse the shared Crew prompt/folder decision in PLAT-371. Every Crew coding
   CLI uses a private directory keyed by user, project, chat, provider and mode.

@@ -109,7 +109,7 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessio
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
 }
 
-// The final folder guard supplies project access. A Crew reader's writable
+// The final folder guard supplies project access. A read-only turn's writable
 // runtime must never promote the linked real project through an initial grant
 // or an attached folder alias. Landlock grants are additive, so dropping that
 // write authority is essential; the link is not a read-only boundary itself.
@@ -119,7 +119,8 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 		policy = base.Clone()
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
-	if cfg != nil && cfg.CrewReader {
+	readOnly := cfg != nil && (cfg.CrewReader || cfg.WorkflowReadOnly)
+	if readOnly {
 		policy.WorkspaceWritePaths = nil
 	}
 	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
@@ -127,7 +128,7 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 		for _, rel := range cfg.ReadPaths {
 			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, codingAgentWorkspaceWorkingDir(rel))
 		}
-		if !cfg.CrewReader {
+		if !readOnly {
 			for _, rel := range cfg.WritePaths {
 				policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, codingAgentWorkspaceWorkingDir(rel))
 			}
