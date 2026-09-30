@@ -7,6 +7,18 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — The raw terminal drops keys that close the agent; a closed terminal says how to resume
+- Ctrl-C (exits on a second press), Ctrl-D, Ctrl-\\ and Ctrl-Z typed in the raw
+  terminal are dropped (`stripCLIExitKeys`, `terminal_live_attach.go`) with a
+  one-line note. Esc still interrupts and the chat has a Stop button. Bracketed
+  pastes pass whole. tmux prefix keys were never at risk: input goes to the pane
+  by `send-keys -H`.
+- After the 1h idle reaper closes a terminal the view is read-only. The restore
+  endpoint deliberately does not relaunch (tool-registration race); the next chat
+  message does. `MainAgentTerminal` now says so with a "Back to chat to resume" button.
+- Muse under the lock could not write its endpoint lease (`<data>/muse/runtime`);
+  granted write on that folder only (`musecli_landlock.go`).
+
 ### 2026-09-30 — People can disconnect their own legacy Gmail account
 - The shared-account admin gate also blocked removal of personal connections
   created before owner IDs were recorded. Confida has an ownerless Gmail entry

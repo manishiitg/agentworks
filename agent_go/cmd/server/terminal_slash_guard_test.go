@@ -102,3 +102,21 @@ func TestSlashGuardPolicyValues(t *testing.T) {
 		t.Fatalf("a listed /status was blocked: %v", d)
 	}
 }
+
+func TestStripCLIExitKeys(t *testing.T) {
+	for _, key := range []byte{0x03, 0x04, 0x1a, 0x1c} {
+		if out, stripped := stripCLIExitKeys([]byte{key}); !stripped || len(out) != 0 {
+			t.Fatalf("key %#x should be dropped, got %v %v", key, out, stripped)
+		}
+	}
+	if out, stripped := stripCLIExitKeys([]byte("hi\x03there")); !stripped || string(out) != "hithere" {
+		t.Fatalf("got %q %v", out, stripped)
+	}
+	if out, stripped := stripCLIExitKeys([]byte("\x1b")); stripped || string(out) != "\x1b" {
+		t.Fatalf("Esc must pass, got %q", out)
+	}
+	paste := []byte("\x1b[200~a\x03b\x1b[201~")
+	if out, stripped := stripCLIExitKeys(paste); stripped || string(out) != string(paste) {
+		t.Fatalf("bracketed paste must pass whole")
+	}
+}
