@@ -13,6 +13,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-09-30 — Process-killing routes: browser ids checked, and admin-only through the proxy
+- Audit of the other workspace routes a logged-in user reaches through `/api/wp`:
+  `POST /api/browser/cleanup` ran `kill -9` on any process id in the body, so any user
+  could stop the agent, gateway or workspace service (all one account) or another user's
+  work; `{"all": true}` kills every user's chromium. `POST /api/processes/cleanup` sweeps
+  workflow processes server-wide.
+- The handler now kills only ids that are in the current browser-process list
+  (`filterBrowserPIDs`, `workspace/handlers/browser_processes.go`). The proxy makes
+  `api/browser/cleanup` and `api/processes/cleanup` admin-only (`workspaceProxyAdminOnlyRoutes`);
+  on a single-user machine everyone counts as an admin, so the top-bar runtime-health control
+  keeps working there. In multi-user mode an ordinary user's click on cleanup now gets a 403;
+  hiding those buttons for non-admins is not done.
+- Not changed, noted: `GET /api/browser/processes` and `GET /api/processes` list server
+  processes to every user; `GET /api/cdp-check` probes local ports; `POST /api/skills/cli/install`
+  runs `npx skills add <source>` by design. Not deployed.
+
 ### 2026-09-30 — Browsers can no longer call the shell-execute route through the proxy
 - Found from a pasted Slack message: a logged-in user could `POST /api/wp/api/execute`
   with only `{"command": …}`. The workspace service runs a command with no `folder_guard`
