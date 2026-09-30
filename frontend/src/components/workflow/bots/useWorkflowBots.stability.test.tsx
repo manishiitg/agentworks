@@ -18,6 +18,10 @@ vi.mock('../../../stores/useWorkflowManifestStore', () => {
   return { useWorkflowManifestStore: (selector: (value: typeof state) => unknown) => selector(state) }
 })
 
+vi.mock('../../../stores/useAuthStore', () => ({
+  useAuthStore: (selector: (state: unknown) => unknown) => selector({ user: { id: 'alice', is_admin: true }, isMultiUserMode: true, isMultiUserModeChecked: true }),
+}))
+
 vi.mock('../../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
 
 import { agentApi } from '../../../services/api'

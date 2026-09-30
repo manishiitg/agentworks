@@ -626,7 +626,7 @@ api.interceptors.request.use((config) => {
   config.headers = config.headers || {}
 
   // Only add session ID if not already provided
-  if (!config.headers['X-Session-ID']) {
+  if (config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
     config.headers['X-Session-ID'] = getSessionId()
   }
 
@@ -1194,8 +1194,10 @@ export const agentApi = {
     request: AgentProfileConversationRequest,
     existingSessionId?: string,
   ): Promise<AgentProfileConversationResponse> => {
-    const headers: Record<string, string> = {}
-    if (existingSessionId) headers['X-Session-ID'] = existingSessionId
+    // Opening a project resolves its canonical chat. An unrelated active tab's
+    // session must not become a continuation candidate (shared Code returned 422).
+    // Axios omits a false header; the interceptor preserves this opt-out.
+    const headers: Record<string, string | false> = { 'X-Session-ID': existingSessionId || false }
     const response = await api.post(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation`,
       request,
