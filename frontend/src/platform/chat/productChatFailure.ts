@@ -4,7 +4,6 @@ export type ProductChatFailureCode =
   | 'rate_limited'
   | 'provider_unavailable'
   | 'configuration_error'
-  | 'account_change_requires_new_conversation'
   | 'cancelled'
   | 'internal_error'
 
@@ -104,19 +103,6 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   const resetLabel = museResetLabelFrom(evidence)
   const actionUrl = museUpgradeUrlFrom(evidence)
   const providerLabel = provider || 'The AI provider'
-
-  // A chat keeps the account it started on (its CLI history lives under it). The project now
-  // uses another account, so this chat cannot continue on it: say what to do, not "went wrong".
-  if (normalizedCode === 'account_change_requires_new_conversation' || /account change requires a new conversation|started on a different account/i.test(raw)) {
-    return {
-      code: 'account_change_requires_new_conversation',
-      title: 'This chat cannot switch accounts',
-      message: 'This chat started on a different account than the one this project now uses, and a chat cannot switch accounts. Switch the project back to the account this chat started on (Models), or ask an administrator to reset this chat.',
-      provider,
-      retryable: false,
-      technicalDetails,
-    }
-  }
 
   if (normalizedCode === 'quota_exhausted' || QUOTA_MARKERS.some((pattern) => pattern.test(evidence))) {
     return {

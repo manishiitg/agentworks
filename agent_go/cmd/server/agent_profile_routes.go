@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -882,19 +881,8 @@ func validateAgentProfileHandler() http.HandlerFunc {
 	}
 }
 
-// errAccountChangeNeedsNewConversation: a conversation keeps the provider account it started on
-// (its CLI history lives under that account), so moving it to another account means a new chat.
-// The text says what to do; the code lets the app offer it.
-var errAccountChangeNeedsNewConversation = errors.New("This chat started on a different account than the one this project now uses, and a chat cannot switch accounts. Switch the project back to the account this chat started on (Models), or ask an administrator to reset this chat.")
-
-const accountChangeNeedsNewConversationCode = "account_change_requires_new_conversation"
-
 func writeAgentProfileError(w http.ResponseWriter, status int, message string) {
-	body := map[string]string{"error": message}
-	if message == errAccountChangeNeedsNewConversation.Error() {
-		body["code"] = accountChangeNeedsNewConversationCode
-	}
-	writeAgentProfileJSON(w, status, body)
+	writeAgentProfileJSON(w, status, map[string]string{"error": message})
 }
 
 func writeAgentProfileJSON(w http.ResponseWriter, status int, value interface{}) {
@@ -918,23 +906,26 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		strings.TrimSpace(conversation.Provider) != "" && strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) {
 		query.ConnectionID = "global:" + strings.TrimSpace(query.Provider)
 	}
-	if conversation.Provider != "" && canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) {
-		// Only a real account change needs a new conversation: moving onto a
-		// private connection, or between private connections, must stay
-		// explicit (billing + CLI identity). A provider switch with no
-		// private account on either side is safe to rebind — the restart
-		// below relaunches the CLI — so a stale engine pick must not lock
-		// the user out of their own chat.
-		if strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "" {
-			log.Printf("[PRODUCT_CHAT] account change refused for conversation %q: bound %s/%s, requested %s/%s", conversation.ConversationKey, conversation.Provider, conversation.ConnectionID, query.Provider, query.ConnectionID)
-			return QueryRequest{}, errAccountChangeNeedsNewConversation
-		}
+	// An account change is always an explicit choice here: an omitted account inherits the bound
+	// one, and the default above never moves an existing chat. The chat stays one conversation with
+	// its history; its CLI restarts on the new account (bindRuntimeConfiguration below), and the old
+	// account's saved native session cannot resume under another login, so it is not resumed.
+	accountChanged := conversation.Provider != "" &&
+		canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) &&
+		strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) &&
+		(strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "")
+	if accountChanged {
+		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
 	target, found, err := resolveProductResumeTarget(userID, conversation)
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
 	}
 	if found {
+		if accountChanged && target != nil {
+			// Keep the visible history; start a fresh CLI session on the new account.
+			target.Runtime = nil
+		}
 		query.resolvedResumeTarget = target
 	}
 	if strings.TrimSpace(query.Provider) != "" {
