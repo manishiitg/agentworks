@@ -563,13 +563,20 @@ type TerminalTheme = (typeof TERMINAL_THEMES)[TerminalColorScheme]
 
 const RAW_XTERM_FONT_FAMILY = '"JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, "Cascadia Mono", "Fira Code", Consolas, "Liberation Mono", monospace'
 const RAW_XTERM_FONT_SIZE = 13
+const RAW_XTERM_SCROLLBAR_WIDTH = 7
 const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
 export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {
   dark: {
     background: '#0b0e14',
+    scrollbarSliderBackground: '#94a3b838',
+    scrollbarSliderHoverBackground: '#94a3b866',
+    scrollbarSliderActiveBackground: '#94a3b88c',
   },
   light: {
     background: '#ffffff',
+    scrollbarSliderBackground: '#64748b38',
+    scrollbarSliderHoverBackground: '#64748b66',
+    scrollbarSliderActiveBackground: '#64748b8c',
   },
 }
 
@@ -1539,6 +1546,9 @@ const LiveAttachXtermPaneInner: React.FC<{
       fontWeight: 400,
       fontWeightBold: 600,
       scrollback: 20000,
+      // xterm 6 uses the ruler width for its scrollbar; FitAddon reserves the
+      // same width so the thinner track keeps the terminal grid accurate.
+      overviewRuler: { width: RAW_XTERM_SCROLLBAR_WIDTH, showTopBorder: false, showBottomBorder: false },
       theme: xtermTheme,
     })
     const fit = new FitAddon()
@@ -2413,6 +2423,9 @@ const StaticXtermPaneInner: React.FC<{
       fontWeight: 400,
       fontWeightBold: 600,
       scrollback: 20000,
+      // xterm 6 uses the ruler width for its scrollbar; FitAddon reserves the
+      // same width so the thinner track keeps the terminal grid accurate.
+      overviewRuler: { width: RAW_XTERM_SCROLLBAR_WIDTH, showTopBorder: false, showBottomBorder: false },
       theme: xtermTheme,
     })
     const fit = new FitAddon()

@@ -2905,7 +2905,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Scheduled runs share the compact actions beside the live-terminal toggle.
   // Bot runs still use the separate footer in ChatArea.
   const hasRunFooter = !!activeTab?.metadata?.isBotRun && !activeTab?.metadata?.isScheduledRun
-  const showStopButton = !!tabSessionId && isTurnInFlight && !hasRunFooter
+  const showStopButton = !!tabSessionId && isTurnInFlight && !hasRunFooter && !terminalViewSelected
   const stopButton = activeTabId ? <SessionStopButton key={activeTabId} tabId={activeTabId} /> : null
 
   // Check if query is valid (view-only tabs cannot submit)
@@ -2983,7 +2983,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return (
       <div className={`${inputPadX} flex items-center gap-3 border-t border-border py-2 text-xs text-muted-foreground`} data-testid="native-terminal-toolbar">
         <span className="flex-1">Type directly in the terminal</span>
-        {showStopButton && stopButton}
         <Button type="button" variant="outline" size="sm" onClick={() => useChatStore.getState().setTabViewMode(activeTabId, 'formatted')}>
           Return to chat
         </Button>

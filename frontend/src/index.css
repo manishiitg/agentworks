@@ -1747,3 +1747,8 @@
 .git-gutter-added { border-left: 3px solid #10b981; margin-left: 3px; }
 .git-gutter-modified { border-left: 3px solid #3b82f6; margin-left: 3px; }
 .git-gutter-deleted { border-bottom: 2px solid #ef4444; margin-left: 3px; width: 6px !important; }
+
+/* xterm draws its own scrollbar instead of a browser-native one. */
+.runloop-raw-xterm .xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px;
+}
