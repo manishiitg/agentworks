@@ -22,7 +22,7 @@ Use `install_mcp_server(name, url=...)` for a new verified URL. It probes the en
 
 ### A person's own account (Gmail, Drive, GitHub, ...)
 
-When the user wants the workflow to use **their own account** of a service in the catalog (their Gmail rather than a shared mailbox), there is a separate path: someone who can edit the workflow adds it under **Capabilities → MCP → Connected with a person's login → Add with your login**, and signs in there. Every chat and run of this workflow then uses it with their login, schedules and Slack included. It belongs to this workflow only and needs no admin. You cannot add it or sign in for them: point them to that button, and explain that everyone who uses the workflow acts with their login. Its servers are named `u<id>__<name>` and are already on for the workflow: never add them to `selected_servers`.
+When the user wants the workflow to use **their own account** of a service in the catalog (their Gmail rather than a shared mailbox), there is a separate path: someone who can edit the workflow adds it under **Capabilities → MCP → MCP connections → Available** (search, then **Connect**), and signs in there. Every chat and run of this workflow then uses it with their login, schedules and Slack included. It belongs to this workflow only and needs no admin. You cannot add it or sign in for them: point them to that button, and explain that everyone who uses the workflow acts with their login. Its servers are named `u<id>__<name>` and are already on for the workflow: never add them to `selected_servers`.
 
 ### Reporting back to the user
 

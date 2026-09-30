@@ -19,10 +19,11 @@ Owner decisions:
    that Crew. It never shows in the person's Code, in other Crews, or in workflows,
    and the same holds for a Code's connections.
 2. **Everyone who uses the place uses the adder's login.** That includes Slack
-   channels, where anyone in the channel can @mention the bot. The person
-   accepts this in a warning before adding: "Everyone who can use this Crew,
-   including every chat, schedule, trigger, workflow that calls it and Slack channel it
-   answers in, can use GoogleGmail as you."
+   channels, where anyone in the channel can @mention the bot. The page
+   says so in one line above the list (it used to be a confirmation popup; removed
+   2026-09-30): each connection uses the login of the person who added it, and everyone who
+   uses this place uses it as that person, including every chat, schedule, trigger,
+   workflow that calls it and Slack channel it answers in.
 3. **No special treatment at runtime.** It joins the place's servers like any
    other: chat turns, step agents, and the workshop bridge.
 
@@ -87,12 +88,17 @@ folder) maps to its root (`placeRootOf`).
 ## UI
 
 `PlaceMcpSection`, the one screen for a Code (its MCPs tab), a Crew (top of the
-MCP tab) and a workflow (Capabilities → MCP): the list with whose login each
-uses, "Add with your login" (search, sign-in groups such as Google Workspace as
-service chips, catalog, or a server that is not listed with an API-key header
-from the project secrets), then the warning, then sign-in (with the own-OAuth-app
-panel when a provider needs one), Sign in and Remove. Admins also see the
-sign-in apps setup.
+MCP tab) and a workflow (Capabilities → MCP): **MCP connections**, one page. **Connected**
+lists each connection with whose login it uses (Connected, Sign in, Remove); **Available**
+lists what can be added, on the page itself with a search box: sign-in groups such as
+Google Workspace as service chips ("Connect N services"), every other connector with a
+**Connect** button, and "Add a server that is not listed" (an API-key header uses a
+secret of the project). Connecting goes straight to the sign-in, with the own-OAuth-app
+panel when a provider needs one. There is no confirmation popup (owner decision
+2026-09-30, replacing the earlier warning dialog): the rule is one line on the page, "Each
+connection uses the login of the person who added it, and everyone who uses this Code
+uses it as that person". A failed or empty connector list says so, with Retry. Admins
+also get the sign-in apps setup, collapsed at the bottom.
 
 ## Code
 

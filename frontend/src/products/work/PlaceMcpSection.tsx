@@ -4,7 +4,6 @@ import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { McpAppsSection } from './McpAppsSection'
 import { parseOAuthClientJson } from './oauthClientJson'
 import { personalMcpApi, type PersonalMcpCatalogServer } from '../../api/personalMcp'
@@ -44,12 +43,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [picking, setPicking] = useState(false)
   const [query, setQuery] = useState('')
-  const [confirmAdd, setConfirmAdd] = useState<PersonalMcpCatalogServer | null>(null)
   // A sign-in group (Google Workspace): pick services, add them, sign in once.
   const [groupPicks, setGroupPicks] = useState<Record<string, string[]>>({})
-  const [confirmGroup, setConfirmGroup] = useState<string | null>(null)
   // A sign-in that needs the person's own OAuth app (Google, GitHub).
   const [clientPrompt, setClientPrompt] = useState<{ server: string; redirectUri?: string } | null>(null)
   const [clientId, setClientId] = useState('')
@@ -60,7 +56,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   const [customUrl, setCustomUrl] = useState('')
   const [customHeader, setCustomHeader] = useState('')
   const [customSecret, setCustomSecret] = useState('')
-  const [confirmCustom, setConfirmCustom] = useState<PlaceMcpCustomServer | null>(null)
   const groups = useMemo(() => providerGroups(catalog), [catalog])
 
   const refresh = useCallback(async () => {
@@ -81,9 +76,10 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
       .then(list => { setCatalog(list.filter(entry => entry.sign_in)); setCatalogState('ready') })
       .catch(() => { setCatalog([]); setCatalogState('failed') })
   }, [])
+  // The connectors people can add are listed on the page itself (no button to reveal them).
   useEffect(() => {
-    if (picking && catalogState === 'idle') loadCatalog()
-  }, [picking, catalogState, loadCatalog])
+    if (canEdit && catalogState === 'idle') loadCatalog()
+  }, [canEdit, catalogState, loadCatalog])
   // API-key servers name a secret of this project (Setup > Secrets).
   useEffect(() => {
     if (!showCustom) return
@@ -128,7 +124,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
 
   const add = (entry: PersonalMcpCatalogServer) => run(entry.catalog, async () => {
     const saved = await placeMcpApi.add(workspacePath, entry.catalog)
-    setPicking(false)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
   }, 'Could not add the connection.')
@@ -140,7 +135,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
       const saved = await placeMcpApi.add(workspacePath, entry.catalog)
       if (saved.oauth) first = first ?? saved.name
     }
-    setPicking(false)
     setGroupPicks(current => ({ ...current, [group]: [] }))
     await refresh()
     // One sign-in covers every service added here.
@@ -149,7 +143,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
 
   const addCustom = (server: PlaceMcpCustomServer) => run('custom', async () => {
     const saved = await placeMcpApi.add(workspacePath, server)
-    setCustomName(''); setCustomUrl(''); setCustomHeader(''); setCustomSecret(''); setShowCustom(false); setPicking(false)
+    setCustomName(''); setCustomUrl(''); setCustomHeader(''); setCustomSecret(''); setShowCustom(false)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
   }, 'Could not add the server.')
@@ -182,7 +176,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   return (
     <div data-testid="place-mcp-section" className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium text-muted-foreground">Connected with a person's login</div>
+        <div className="text-sm font-medium text-foreground">MCP connections</div>
         <div className="flex items-center gap-2">
           {canEdit && onAsk && (
             <Button size="sm" variant="ghost" onClick={() => {
@@ -191,19 +185,15 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
               <MessageCircle className="mr-1 h-3.5 w-3.5" />Ask the agent
             </Button>
           )}
-          {canEdit && (
-            <Button size="sm" variant="outline" onClick={() => setPicking(open => !open)}>
-              <Plus className="mr-1 h-3.5 w-3.5" />Add with your login
-            </Button>
-          )}
         </div>
       </div>
       <p className="text-xs leading-5 text-muted-foreground">
-        Everyone who uses this {placeNoun} uses these with the login of the person who added them. They stay in this {placeNoun} only. Changes apply from the next message.
+        Each connection uses the login of the person who added it, and everyone who uses this {placeNoun} uses it as that person. It stays in this {placeNoun} only. Changes apply from the next message.
       </p>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       {message && <p className="text-xs text-amber-700 dark:text-amber-300">{message}</p>}
 
+      {servers.length > 0 && <div className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Connected</div>}
       {servers.map(server => (
         <div key={`${server.owner}:${server.name}`} className={`flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm ${server.active ? '' : 'opacity-60'}`}>
           <ConnectionIcon icon={brandSlugFor(server.catalog || server.name)} name={server.catalog || server.name} size="sm" />
@@ -263,9 +253,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
         </div>
       )}
 
-      {picking && (
-        <div className="flex flex-col gap-3 rounded-md border border-dashed border-border p-3">
-          {isAdmin && <McpAppsSection />}
+      {canEdit && (
+        <div className="mt-2 flex flex-col gap-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available</div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search connectors" aria-label="Search connectors" className="pl-9" />
@@ -296,6 +286,15 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                     <div className="text-xs text-muted-foreground">One {provider} sign-in covers every service you pick.</div>
                   </div>
                 </div>
+                {group === 'google' && (
+                  // Google's Workspace MCP servers are a Developer Preview: Google refuses the sign-in (on its
+                  // own page, with a message about the preview) unless the Google Cloud project behind this
+                  // server's OAuth client is enrolled and has the MCP APIs enabled. Say so before the person
+                  // meets Google's page; the catalog descriptions already label them this way.
+                  <p data-testid="mcp-google-preview-note" className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                    Google's Workspace MCP servers are in Developer Preview. If Google says the app is not supported or not registered for the preview, the Google Cloud project behind this server's sign-in app must be enrolled in Google's Workspace Developer Preview and have these services' MCP APIs enabled. That is set up by the server admin, not here.
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {available.map(entry => {
                     const service = groupServiceLabel(entry.catalog, group)
@@ -314,9 +313,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                   })}
                 </div>
                 {picks.length > 0 && (
-                  <Button size="sm" className="mt-2.5" disabled={busy !== null} onClick={() => setConfirmGroup(group)}>
+                  <Button size="sm" className="mt-2.5" disabled={busy !== null} onClick={() => { void addGroup(group) }}>
                     {busy === `group:${group}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                    Add {picks.length} {picks.length === 1 ? 'service' : 'services'} with your login
+                    Connect {picks.length} {picks.length === 1 ? 'service' : 'services'}
                   </Button>
                 )}
               </section>
@@ -329,12 +328,14 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                 key={entry.catalog}
                 type="button"
                 disabled={busy !== null}
-                onClick={() => setConfirmAdd(entry)}
+                onClick={() => { void add(entry) }}
                 className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
               >
                 <ConnectionIcon icon={brandSlugFor(entry.catalog)} name={entry.catalog} size="xs" />
                 <span className="truncate">{entry.catalog}</span>
-                {busy === entry.catalog && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />}
+                {busy === entry.catalog
+                  ? <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+                  : <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground"><Plus className="h-3 w-3" />Connect</span>}
               </button>
             ))}
           </div>
@@ -358,43 +359,21 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                 </select>
                 <div className="flex justify-end gap-2 sm:col-span-2">
                   <Button variant="ghost" size="sm" onClick={() => setShowCustom(false)}>Cancel</Button>
-                  <Button size="sm" disabled={busy !== null || !customName.trim() || !customUrl.trim() || (!!customHeader.trim() && !customSecret)} onClick={() => setConfirmCustom(customServer())}>
+                  <Button size="sm" disabled={busy !== null || !customName.trim() || !customUrl.trim() || (!!customHeader.trim() && !customSecret)} onClick={() => { void addCustom(customServer()) }}>
                     {busy === 'custom' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}Add server
                   </Button>
                 </div>
               </div>
             )}
           </div>
+          {isAdmin && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs text-muted-foreground">Sign-in apps (admin)</summary>
+              <div className="mt-2"><McpAppsSection /></div>
+            </details>
+          )}
         </div>
       )}
-
-      <ConfirmationDialog
-        isOpen={confirmGroup !== null}
-        onClose={() => setConfirmGroup(null)}
-        onConfirm={() => { const group = confirmGroup; setConfirmGroup(null); if (group) void addGroup(group) }}
-        title={`Add ${confirmGroup ? providerGroupLabel(confirmGroup) : ''} with your login?`}
-        message={`Everyone who can use this ${placeNoun} — every chat, schedule, trigger, workflow that calls it and Slack channel it answers in — can use these ${confirmGroup ? providerGroupLabel(confirmGroup) : ''} services as you: ${(confirmGroup ? groupPicks[confirmGroup] ?? [] : []).map(item => confirmGroup ? groupServiceLabel(item, confirmGroup) : item).join(', ')}. They stay in this ${placeNoun} only. You can remove them any time.`}
-        confirmText="Add with my login"
-        type="warning"
-      />
-      <ConfirmationDialog
-        isOpen={confirmAdd !== null}
-        onClose={() => setConfirmAdd(null)}
-        onConfirm={() => { const entry = confirmAdd; setConfirmAdd(null); if (entry) void add(entry) }}
-        title={`Add ${confirmAdd?.catalog ?? ''} with your login?`}
-        message={`Everyone who can use this ${placeNoun} — every chat, schedule, trigger, workflow that calls it and Slack channel it answers in — can use ${confirmAdd?.catalog ?? 'it'} as you. It stays in this ${placeNoun} only. You can remove it any time.`}
-        confirmText="Add with my login"
-        type="warning"
-      />
-      <ConfirmationDialog
-        isOpen={confirmCustom !== null}
-        onClose={() => setConfirmCustom(null)}
-        onConfirm={() => { const server = confirmCustom; setConfirmCustom(null); if (server) void addCustom(server) }}
-        title={`Add ${confirmCustom?.name ?? ''} with your login?`}
-        message={`Everyone who can use this ${placeNoun} — every chat, schedule, trigger, workflow that calls it and Slack channel it answers in — can use ${confirmCustom?.name ?? 'it'} as you. It stays in this ${placeNoun} only. You can remove it any time.`}
-        confirmText="Add with my login"
-        type="warning"
-      />
     </div>
   )
 }

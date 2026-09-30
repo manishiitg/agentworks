@@ -40,26 +40,27 @@ async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w') 
 }
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
 const button = (root: ParentNode, text: string) => [...root.querySelectorAll('button')].find(b => b.textContent?.includes(text))!
-const openPicker = async (host: HTMLElement) => { await act(async () => { button(host, 'Add with your login').click() }); await settle() }
+// The connectors people can add are on the page itself now; there is no button to reveal them.
+const openPicker = async (_host: HTMLElement) => { await settle() }
 
 it('lists the connections with whose login they use', async () => {
   const host = await render(false)
   expect(host.textContent).toContain('GoogleGmail')
   expect(host.textContent).toContain("manish's login")
   expect(host.textContent).toContain('Connected')
-  // A viewer who cannot edit adds nothing.
-  expect(host.textContent).not.toContain('Add with your login')
+  // A viewer who cannot edit adds nothing: no connector list.
+  expect(host.textContent).not.toContain('Available')
+  expect(host.querySelector('input[aria-label="Search connectors"]')).toBeNull()
 })
 
-it('warns that everyone using the workflow acts with your login before adding', async () => {
+it('connects a listed server with one click, no popup, and says whose login it uses', async () => {
   const host = await render(true)
-  await openPicker(host)
+  // The rule is a plain line on the page, not a dialog in the way.
+  expect(host.textContent).toContain('uses the login of the person who added it')
+  expect(host.textContent).toContain('Available')
   await act(async () => { button(host, 'GoogleDrive').click() })
-  expect(document.body.textContent).toContain('can use GoogleDrive as you')
-  expect(document.body.textContent).toContain('Slack channel')
-  expect(placeMock.add).not.toHaveBeenCalled()
-  await act(async () => { button(document.body, 'Add with my login').click() })
   await settle()
+  expect(document.body.textContent).not.toContain('with my login')
   expect(placeMock.add).toHaveBeenCalledWith('Workflow/w', 'GoogleDrive')
 })
 
@@ -71,13 +72,13 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   ]
   placeMock.add.mockResolvedValueOnce({ name: 'googledrive', oauth: true }).mockResolvedValueOnce({ name: 'googlecalendar', oauth: true })
   const host = await render(true, 'Code', 'Chats/Code/projects/p1')
-  expect(host.textContent).toContain('Everyone who uses this Code')
+  expect(host.textContent).toContain('everyone who uses this Code uses it as that person')
   await openPicker(host)
   expect(host.querySelector('[data-testid="mcp-group-google"]')).not.toBeNull()
+  expect(host.querySelector('[data-testid="mcp-google-preview-note"]')?.textContent).toContain('Developer Preview')
   await act(async () => { (host.querySelector('button[aria-label="Add Drive"]') as HTMLButtonElement).click() })
   await act(async () => { (host.querySelector('button[aria-label="Add Calendar"]') as HTMLButtonElement).click() })
-  await act(async () => { button(host, 'Add 2 services with your login').click() })
-  await act(async () => { button(document.body, 'Add with my login').click() })
+  await act(async () => { button(host, 'Connect 2 services').click() })
   await settle()
   expect(placeMock.add.mock.calls).toEqual([['Chats/Code/projects/p1', 'GoogleDrive'], ['Chats/Code/projects/p1', 'GoogleCalendar']])
   // One sign-in covers both.
@@ -119,7 +120,6 @@ it('adds a server that is not listed, with an API-key header from the project se
   await act(async () => { set('Server name', 'linear'); set('Server URL', 'https://mcp.linear.app/mcp'); set('API key header', 'Authorization') })
   await act(async () => { set('Secret for the header', 'LINEAR_KEY', 'select') })
   await act(async () => { button(host, 'Add server').click() })
-  await act(async () => { button(document.body, 'Add with my login').click() })
   await settle()
   expect(placeMock.add).toHaveBeenCalledWith('Chats/Work/projects/p1', {
     name: 'linear', url: 'https://mcp.linear.app/mcp', headers: { Authorization: { secret: 'LINEAR_KEY', format: 'Bearer {}' } },
