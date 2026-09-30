@@ -7,6 +7,23 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — People can disconnect their own legacy Gmail account
+- The shared-account admin gate also blocked removal of personal connections
+  created before owner IDs were recorded. Confida has an ownerless Gmail entry
+  whose Google-discovered email matches an enabled, non-admin directory user.
+- DELETE now permits the recorded owner, or for an ownerless legacy entry an
+  exact email match with the authenticated user's current server-side directory
+  record. A recorded owner overrides email; private Code accounts stay strictly
+  owner-only. Unknown identities, missing emails and disabled users cannot use
+  the legacy fallback. Shared account changes and OAuth client management stay
+  admin-only.
+- Connection responses include `can_remove`. Both account lists enable removal
+  separately from management controls; non-admin removal preserves the shared
+  OAuth client registration. Workflow read-only access still disables the UI.
+- Code: `gmail_connection_routes.go`, `useWorkflowBots.ts`,
+  `GmailNotifications.tsx`, `GoogleAccountList.tsx`. Not deployed: deploys remain
+  on hold until the next batch of major fixes.
+
 ### 2026-09-30 — Every ledger cost surface uses normalized input
 - Extend the Providers token correction to workflow, Code and Crew cost
   dialogs, activity/execution/phase/model details, daily history and embedded
@@ -45,6 +62,7 @@ Each entry says what was decided, why, and where it lives in the code.
   explain the small recorded dollar estimate; it is not an invoice.
 - Code: `agent_go/pkg/costledger`, `agent_go/pkg/costobserver`,
   `agent_go/cmd/server/cost_overview.go`, `frontend/src/components/providers`.
+
 
 ### 2026-09-30 — A reply to a live message is held until the message row (all CLIs)
 - When a message is sent into a running CLI, its chat row is written when the

@@ -15,6 +15,22 @@ const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach(fn => fn()))
 
 describe('Google accounts in a Code', () => {
+  it('permits only removal when an account owner cannot manage shared settings', async () => {
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    cleanups.push(() => { act(() => root.unmount()); host.remove() })
+    const remove = vi.fn()
+    const reconnect = vi.fn()
+    await act(async () => { root.render(<GoogleAccountList connections={[account({ can_remove: true })]} busyId={null} readOnly canRemove={conn => conn.can_remove === true} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={reconnect} onRemove={remove} />) })
+    expect([...host.querySelectorAll('button')].find(button => button.textContent === 'Change access')!.disabled).toBe(true)
+    await act(async () => { (host.querySelector('[aria-label="More for me@x.com"]') as HTMLButtonElement).click() })
+    const items = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    expect(items.filter(item => !item.disabled).map(item => item.textContent)).toEqual(['Remove'])
+    await act(async () => { items.find(item => item.textContent === 'Reconnect')!.click(); items.find(item => item.textContent === 'Remove')!.click() })
+    expect(reconnect).not.toHaveBeenCalled()
+    expect(remove).toHaveBeenCalledTimes(1)
+  })
+
   it('says what the agent may do in one line', () => {
     expect(googleAccessSummary(account({}))).toBe('Gmail: read · Drive, Calendar: read')
     expect(googleAccessSummary(account({ allow_agent_write_access: true, services: [{ service: 'docs', write: true }] }))).toBe('Gmail: read, draft and send · Docs: read and edit')

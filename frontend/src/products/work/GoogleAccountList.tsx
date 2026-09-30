@@ -8,10 +8,11 @@ import { changeGoogleAccountAccess, googleAccessSummary } from './googleAccountA
  * one button, Change access (the same Connect form, prefilled; signing in again replaces the old
  * connection). Less common actions sit in a More menu.
  */
-export function GoogleAccountList({ connections, busyId, readOnly, onSendTest, onToggle, onReconnect, onRemove }: {
+export function GoogleAccountList({ connections, busyId, readOnly, canRemove, onSendTest, onToggle, onReconnect, onRemove }: {
   connections: GmailConnection[]
   busyId: string | null
   readOnly?: boolean
+  canRemove?: (conn: GmailConnection) => boolean
   onSendTest: (conn: GmailConnection) => void
   onToggle: (conn: GmailConnection) => void
   onReconnect: (conn: GmailConnection) => void
@@ -22,6 +23,7 @@ export function GoogleAccountList({ connections, busyId, readOnly, onSendTest, o
       {connections.map(conn => {
         const ready = conn.ready !== false && conn.enabled
         const busy = busyId === conn.id
+        const removalAllowed = canRemove ? canRemove(conn) : !readOnly
         return (
           <li key={conn.id} className="flex flex-wrap items-center gap-3 rounded-md border border-border p-3">
             <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? 'bg-green-500' : 'bg-amber-500'}`} />
@@ -36,11 +38,11 @@ export function GoogleAccountList({ connections, busyId, readOnly, onSendTest, o
               className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50">
               {conn.ready === false ? 'Sign in again' : 'Change access'}
             </button>
-            <MoreMenu disabled={readOnly || busy} label={`More for ${conn.email || conn.display_name}`} items={[
-              { label: 'Send a test email', onSelect: () => onSendTest(conn) },
-              { label: 'Reconnect', onSelect: () => onReconnect(conn) },
-              { label: conn.enabled ? 'Turn off' : 'Turn on', onSelect: () => onToggle(conn) },
-              { label: 'Remove', danger: true, onSelect: () => onRemove(conn) },
+            <MoreMenu disabled={busy || (readOnly && !removalAllowed)} label={`More for ${conn.email || conn.display_name}`} items={[
+              { label: 'Send a test email', disabled: readOnly || busy, onSelect: () => onSendTest(conn) },
+              { label: 'Reconnect', disabled: readOnly || busy, onSelect: () => onReconnect(conn) },
+              { label: conn.enabled ? 'Turn off' : 'Turn on', disabled: readOnly || busy, onSelect: () => onToggle(conn) },
+              { label: 'Remove', disabled: !removalAllowed || busy, danger: true, onSelect: () => onRemove(conn) },
             ]} />
           </li>
         )
@@ -49,7 +51,7 @@ export function GoogleAccountList({ connections, busyId, readOnly, onSendTest, o
   )
 }
 
-function MoreMenu({ label, items, disabled }: { label: string; items: { label: string; onSelect: () => void; danger?: boolean }[]; disabled?: boolean }) {
+function MoreMenu({ label, items, disabled }: { label: string; items: { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean }[]; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -66,8 +68,8 @@ function MoreMenu({ label, items, disabled }: { label: string; items: { label: s
       {open && (
         <div role="menu" className="absolute right-0 z-20 mt-1 min-w-44 overflow-hidden rounded-md border border-border bg-background py-1 shadow-lg">
           {items.map(item => (
-            <button key={item.label} role="menuitem" type="button" onClick={() => { setOpen(false); item.onSelect() }}
-              className={`block w-full px-3 py-2 text-left text-xs hover:bg-muted ${item.danger ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
+            <button key={item.label} role="menuitem" type="button" disabled={disabled || item.disabled} onClick={() => { setOpen(false); item.onSelect() }}
+              className={`block w-full px-3 py-2 text-left text-xs hover:bg-muted disabled:opacity-50 ${item.danger ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
               {item.label}
             </button>
           ))}

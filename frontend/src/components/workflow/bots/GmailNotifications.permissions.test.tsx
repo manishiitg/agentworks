@@ -78,7 +78,7 @@ describe('Gmail management permissions', () => {
 
   it('explains admin access and prevents a workflow editor from adding or removing shared accounts', async () => {
     await render()
-    expect(host.textContent).toContain('Only an admin can add, reconnect, change or remove shared Gmail accounts.')
+    expect(host.textContent).toContain('An admin manages shared Gmail accounts. You can remove your own connected account.')
     for (const label of ['+ Add account', 'Remove', 'Reconnect', 'Make default', 'Send test', 'Enable', 'Edit access', 'Save', 'Send test email']) {
       // This mailbox is enabled, so its toggle is labelled Disable.
       const control = button(label === 'Enable' ? 'Disable' : label)
@@ -90,12 +90,33 @@ describe('Gmail management permissions', () => {
     expect(host.querySelector('[aria-label="Google Cloud client file"]')).toBeNull()
   })
 
+  it('lets a member remove their server-identified account without managing shared settings or deleting the OAuth app', async () => {
+    vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ connections: [{
+      id: 'gmail_002', display_name: 'Own mailbox', client_name: 'test-client', can_remove: true,
+      enabled: true, is_default: false, ready: true, auth: { authenticated: true, has_gmail_scope: true, gws_installed: true },
+    }] })
+    await render()
+    expect(button('Remove').disabled).toBe(false)
+    for (const label of ['+ Add account', 'Reconnect', 'Make default', 'Send test', 'Disable', 'Edit access', 'Save']) {
+      expect(button(label).disabled, label).toBe(true)
+    }
+    access.canWrite = false
+    await render()
+    expect(button('Remove').disabled).toBe(true)
+    access.canWrite = true
+    await render()
+    await act(async () => button('Remove').click())
+    expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
+    expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
+  })
+
   it('allows an admin to remove and open the add-account form', async () => {
     access.user.is_admin = true
     await render()
     expect(button('Remove').disabled).toBe(false)
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
+    expect(agentApi.deleteGmailOAuthClient).toHaveBeenCalledWith('test-client')
     await act(async () => button('+ Add account').click())
     expect((host.querySelector('[aria-label="Google Cloud client file"]') as HTMLInputElement).disabled).toBe(false)
   })

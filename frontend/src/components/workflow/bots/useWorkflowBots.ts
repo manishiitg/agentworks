@@ -97,6 +97,9 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     ? !!codeOwner && codeOwner !== userId
     : !canManageSharedGmail)
   const gmailSettingsReadOnly = readOnly || !canManageSharedGmail
+  const canRemoveGmailConnection = useCallback((connection: GmailConnection) =>
+    !readOnly && (connection.can_remove ?? !gmailConnectionsReadOnly),
+  [readOnly, gmailConnectionsReadOnly])
   // Slack apps are owner-managed (writers get a 403 server-side); readers see
   // everything disabled through readOnly as usual.
   const canManageWorkflowSlack = !readOnly && (workflow?.my_access || 'owner') === 'owner'
@@ -482,19 +485,15 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     }
   }, [gmailScopeWorkspace, loadGmailOAuthClients, loadGmailConnections, connectGmailAccount])
 
-  // Removes a sending account and, when it was the last one using its OAuth
-  // client, the client too — the two were created together as one action
-  // (createGmailOAuthClient above), so removal undoes both by default rather
-  // than leaving an orphaned, unused client behind that has to be separately
-  // noticed and cleaned up. A client still backing another mailbox is left
-  // alone: only the account being removed is deleted.
+  // Account owners can remove their own credentials. Only an admin also
+  // cleans up an unused shared OAuth client registration.
   const removeGmailMailboxAndClient = useCallback(async (connectionId: string, clientName: string) => {
     try {
       setGmailConnectionsBusy(connectionId)
       setGmailError(null)
       await agentApi.deleteGmailConnection(connectionId)
       const stillInUse = gmailConnections.some(c => c.id !== connectionId && c.client_name === clientName)
-      if (!stillInUse && clientName) {
+      if (canManageSharedGmail && !stillInUse && clientName) {
         await agentApi.deleteGmailOAuthClient(clientName).catch(() => {
           // Best-effort: the account is already gone either way, and an
           // orphaned client can still be removed later from its own row.
@@ -506,7 +505,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     } finally {
       setGmailConnectionsBusy(null)
     }
-  }, [gmailConnections, loadGmailConnections, loadGmailOAuthClients])
+  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, loadGmailOAuthClients])
 
   const loadGmail = useCallback(async (background = false) => {
     try {
@@ -1224,7 +1223,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     // routes
     myRoutes, workflowRoutes, removeRoute, updateRoute, addSlackRoute, addWaRoute,
     // gmail
-    gmailConnectionsReadOnly, gmailSettingsReadOnly,
+    gmailConnectionsReadOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
     gmailLoading, gmailChecking, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailTestPassed, gmailCanEnable, gmailHasChanges, loadGmail, saveGmail, testGmail,

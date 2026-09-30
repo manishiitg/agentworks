@@ -170,7 +170,7 @@ function gmailBackendLabel(backend: string | undefined): { name: string; install
 }
 
 type GmailNotificationsBots = Pick<WorkflowBots,
-  | 'gmailConnectionsReadOnly' | 'gmailSettingsReadOnly'
+  | 'gmailConnectionsReadOnly' | 'gmailSettingsReadOnly' | 'canRemoveGmailConnection'
   | 'gmailConfig' | 'setGmailConfig' | 'gmailBlockedText' | 'setGmailBlockedText'
   | 'gmailLoading' | 'gmailSaving' | 'gmailTesting' | 'gmailError' | 'gmailSuccess' | 'gmailTestResult'
   | 'gmailBlockedDefaults' | 'gmailDefaultIsBlocked' | 'gmailCanEnable' | 'gmailHasChanges' | 'saveGmail' | 'testGmail'
@@ -232,7 +232,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   onAsk?: (message: string) => void | Promise<void>
 }) {
   const {
-    gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly,
+    gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
     gmailLoading, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailCanEnable, gmailHasChanges, saveGmail, testGmail,
@@ -244,7 +244,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
   } = bots
 
   const handleRemoveMailbox = (conn: { id: string; display_name: string; client_name?: string }) => {
-    if (!window.confirm(`Remove "${conn.display_name}"? This also removes its OAuth client if no other account uses it.`)) return
+    if (!window.confirm(`Remove "${conn.display_name}"?`)) return
     void removeGmailMailboxAndClient(conn.id, conn.client_name || '')
   }
 
@@ -367,7 +367,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               {readOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">
                 {workspacePath && /(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)
                   ? "Only this Code's owner can manage its Google accounts."
-                  : 'Only an admin can add, reconnect, change or remove shared Gmail accounts.'}
+                  : 'An admin manages shared Gmail accounts. You can remove your own connected account.'}
               </p>}
               {!platformConnect && !(gmailConfig.auth.authenticated && gmailConfig.auth.has_gmail_scope) && gmailConnections.length === 0 && (
                 <Card className="border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
@@ -387,6 +387,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                     connections={gmailConnections}
                     busyId={gmailConnectionsBusy}
                     readOnly={readOnly}
+                    canRemove={canRemoveGmailConnection}
                     onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
                     onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
                     onReconnect={conn => connectGmailAccount(conn.id)}
@@ -517,8 +518,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                             variant="outline"
                             size="sm"
                             onClick={() => handleRemoveMailbox(conn)}
-                            disabled={readOnly || gmailConnectionsBusy === conn.id}
-                            title={readOnly ? READ_ONLY_TITLE : undefined}
+                            disabled={!canRemoveGmailConnection(conn) || gmailConnectionsBusy === conn.id}
+                            title={!canRemoveGmailConnection(conn) ? READ_ONLY_TITLE : undefined}
                             className="ml-auto text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
                           >
                             Remove
