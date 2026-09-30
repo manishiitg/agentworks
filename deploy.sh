@@ -202,48 +202,16 @@ fi
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/agent_go/scripts/install-slack-cli.sh"
 # gog (Gmail connector CLI), kept on the latest checksum-verified release.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS'" < "$LOCAL_REPO_ROOT/deploy/common/install-gog.sh"
-if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
-  CODEX_CLI_NPM_VERSION="${CODEX_CLI_NPM_VERSION:-latest}"
-  [[ "$CODEX_CLI_NPM_VERSION" == latest || "$CODEX_CLI_NPM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid CODEX_CLI_NPM_VERSION" >&2; exit 1; }
-  cli_install_cmd() {
-    case "$1" in
-      claude) printf "npm install -g --prefix '%s' @anthropic-ai/claude-code@latest >/dev/null" "$REMOTE_TOOLS" ;;
-      codex)  printf "npm install -g --prefix '%s' '@openai/codex@%s' --include=optional >/dev/null" "$REMOTE_TOOLS" "$CODEX_CLI_NPM_VERSION" ;;
-      pi)     printf "npm install -g --prefix '%s' @earendil-works/pi-coding-agent@latest >/dev/null" "$REMOTE_TOOLS" ;;
-      cursor) printf "HOME='%s/home' curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | HOME='%s/home' bash" "$REMOTE_APP" "$REMOTE_APP" ;;
-      muse)   printf "HOME='%s/home' MUSE_INSTALL_DIR='%s/home/.local/bin' MUSE_NO_MODIFY_PATH=1 bash -c \"curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://dev.meta.ai/install.sh | bash\"" "$REMOTE_APP" "$REMOTE_APP" ;;
-      agy)    printf ':' ;; # Installed and configured by the checksum-verified helper below.
-      *) echo "Unknown CLI_TOOLS entry: $1" >&2; exit 1 ;;
-    esac
-  }
-  cli_bin_name() { [[ "$1" == cursor ]] && echo cursor-agent || echo "$1"; }
-
-  install_lines=""
-  check_lines=""
-  for cli in "${CLI_TOOLS[@]}"; do
-    install_lines+="$(cli_install_cmd "$cli")"$'\n'
-    check_lines+="command -v '$(cli_bin_name "$cli")' >/dev/null"$'\n'
-    if [[ "$cli" == codex ]]; then check_lines+="codex --version"$'\n'; fi
-  done
-
-  if [[ " ${CLI_TOOLS[*]} " == *" agy "* ]]; then
-    [[ "${AGY_AUTH_MODE:-}" == gemini ]] || { echo 'Agy server installation requires AGY_AUTH_MODE=gemini' >&2; exit 1; }
-    "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS' '$REMOTE_APP/home'" < "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh"
-  fi
-
-  echo "==> [$PRODUCT] Installing server CLI dependencies (agent-browser, ${CLI_TOOLS[*]})"
-  "${SSH[@]}" "set -euo pipefail
-    install -d -m 0755 '$REMOTE_TOOLS' '$REMOTE_APP/home/.local/bin'
-    export PATH='$REMOTE_RUNTIME_PATH'
-    npm install -g --prefix '$REMOTE_TOOLS' --allow-scripts=agent-browser agent-browser@latest >/dev/null
-    $install_lines
-    export PATH='$REMOTE_TOOLS/bin':\"\$PATH\"
-    export PATH='$REMOTE_APP/home/.local/bin':\"\$PATH\"
-    command -v agent-browser >/dev/null
-    command -v slack >/dev/null
-    $check_lines
-    agent-browser --version"
-fi
+echo "==> [$PRODUCT] Installing/updating all server coding CLIs"
+# Ship both helpers because this phase precedes the server's source clone.
+cli_helpers="$(mktemp -d)"
+cp "$LOCAL_REPO_ROOT/deploy/common/install-coding-clis.sh" "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh" "$cli_helpers/"
+remote_cli_helpers="$REMOTE_APP/tools/.deploy-cli-helpers"
+"${SSH[@]}" "install -d -m 0700 '$remote_cli_helpers'"
+"${SCP[@]}" "$cli_helpers/install-coding-clis.sh" "$cli_helpers/install-agy.sh" "$PRODUCT@$HOST_IP:$remote_cli_helpers/"
+rm -rf "$cli_helpers"
+"${SSH[@]}" "set -euo pipefail; export PATH='$REMOTE_RUNTIME_PATH'; bash '$remote_cli_helpers/install-coding-clis.sh' '$REMOTE_TOOLS' '$REMOTE_APP/home' '${AGY_AUTH_MODE:-auto}'; npm install -g --prefix '$REMOTE_TOOLS' --allow-scripts=agent-browser agent-browser@latest >/dev/null; command -v agent-browser >/dev/null; command -v slack >/dev/null; agent-browser --version"
+"${SSH[@]}" "rm -rf '$remote_cli_helpers'"
 
 JOB="$PRODUCT-deploy-$(date +%Y%m%d%H%M%S)-$$"
 REMOTE_JOB="$REMOTE_APP/builds/$JOB"

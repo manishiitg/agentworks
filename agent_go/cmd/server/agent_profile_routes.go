@@ -14,7 +14,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -847,21 +846,10 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 	}
 }
 
-// Product manifests include AGY for local alpha runs. Keep the option out of
-// public profile responses whenever the runtime gate refuses it.
+// Product provider options remain visible; runtime/auth readiness is reported
+// by the provider manifest rather than silently removing an engine.
 func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.Profile {
-	profile = profileWithProductDefault(context.Background(), profile)
-	if llmguard.AgyAlphaEnabled() {
-		return profile
-	}
-	options := make([]agentprofiles.ProviderOption, 0, len(profile.Runtime.ProviderOptions))
-	for _, option := range profile.Runtime.ProviderOptions {
-		if !strings.EqualFold(strings.TrimSpace(option.Provider), "agy-cli") {
-			options = append(options, option)
-		}
-	}
-	profile.Runtime.ProviderOptions = options
-	return profile
+	return profileWithProductDefault(context.Background(), profile)
 }
 
 func validateAgentProfileHandler() http.HandlerFunc {

@@ -118,6 +118,7 @@ if ! cmp -s "$SELF_SOURCE" "$SELF_TARGET"; then
   mv "$SELF_TARGET.next" "$SELF_TARGET"
 fi
 sync_repo "mcpagent" "$MCPAGENT"
+bash "$REPO/deploy/common/install-coding-clis.sh" /srv/dominion/tools /srv/dominion/home
 bash "$REPO/agent_go/scripts/install-slack-cli.sh" /srv/dominion/tools
 command -v slack >/dev/null
 echo "==> Ensuring gog (Gmail connector CLI) is the latest release"

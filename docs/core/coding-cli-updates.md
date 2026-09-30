@@ -32,6 +32,17 @@ it. A successful check is due again after 24 hours. A failure is retried after
 one hour without rerunning providers that are not due. Each attempt has a
 15-minute timeout, and cancellation terminates its subprocess group.
 
+## Deployment provisioning
+
+Every server deployment (rootless products, RTS and Dominion) uses
+`deploy/common/install-coding-clis.sh` to install or update Claude Code, Codex,
+Cursor Agent, Pi, Muse and AGY. It requests current official releases and
+checks that every managed executable launches with `--version` before the
+release can activate. Missing binaries are installed; existing binaries are
+updated. The backend updater above handles checks between deployments.
+Provider menus retain all offered CLIs and report authentication/runtime
+readiness. AGY has no separate local-only visibility gate.
+
 ## State and migration
 
 The durable, atomically written `state.json` lives in:
