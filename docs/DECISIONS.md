@@ -7,6 +7,18 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Terminal mode has no app message composer
+- All typing stays in the native CLI; remove the optional composer and its
+  expand/collapse control. Keep the saved chat draft for Return to chat.
+- Commands use their standalone picker. Attach uploads to the scoped folder
+  and pastes absolute file references into the current chat's live tmux input
+  without pressing Enter. A failed paste retains the files as chat attachments.
+- The upload API returns an additional absolute path so native file references
+  remain valid when the CLI's working directory is a project subfolder.
+- Code: `frontend/src/components/ChatInput.tsx`,
+  `frontend/src/components/NativeTerminalToolbar.tsx`,
+  `workspace/handlers/documents.go`.
+
 ### 2026-09-30 — Automatic walkthroughs wait for startup to resolve
 - Wait for provider onboarding to be cleared and for the initial automation
   manifests to load before opening a tour. Crew and Code use their existing

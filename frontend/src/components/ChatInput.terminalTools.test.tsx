@@ -62,7 +62,9 @@ describe('terminal toolbar shared tools', () => {
     useWorkspaceStore.setState({ activeFolder: 'Workflow/project' })
     vi.spyOn(useWorkspaceStore.getState(), 'fetchFiles').mockResolvedValue(undefined)
     vi.spyOn(agentApi, 'listTerminals').mockResolvedValue({ terminals: [] } as never)
-    vi.spyOn(agentApi, 'uploadPlannerFile').mockResolvedValue({ data: { file_path: 'Workflow/project/example.txt' } } as never)
+    vi.spyOn(agentApi, 'uploadPlannerFile').mockResolvedValue({ data: { file_path: 'Workflow/project/example.txt', absolute_path: '/workspace/Workflow/project/example.txt' } } as never)
+    vi.spyOn(agentApi, 'getMainTerminal').mockImplementation(async sessionId => ({ terminal_id: `${sessionId}:main`, session_id: sessionId, tmux_session: `${sessionId}-tmux`, process_state: 'live', active: false } as never))
+    vi.spyOn(agentApi, 'sendTerminalInput').mockResolvedValue(undefined)
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     host = document.createElement('div'); document.body.append(host); root = createRoot(host)
     await act(async () => renderComposer())
@@ -74,7 +76,14 @@ describe('terminal toolbar shared tools', () => {
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
   const textarea = () => host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
-  const composer = () => document.getElementById(button('Show message composer')?.getAttribute('aria-controls') ?? button('Hide message composer').getAttribute('aria-controls')!)!
+  const composer = () => host.querySelector<HTMLDivElement>('[data-testid="message-composer"]')!
+  const attach = async () => {
+    await act(async () => button('Attach files').click())
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['example'], 'example.txt', { type: 'text/plain' })] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+  }
+
 
   it('executes from a standalone picker without opening or consuming the chat draft', async () => {
     await act(async () => setUserCommands([{ command: 'terminal-review', description: 'Review in this session', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => { expect(ctx.beforeSlash).toBe(''); ctx.onSubmit('review via app command') } }]))
@@ -188,23 +197,95 @@ describe('terminal toolbar shared tools', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
-  it('uploads through the scoped shared file input, keeps the draft, and sends in terminal mode', async () => {
-    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
-    const click = vi.spyOn(input, 'click')
-    await act(async () => button('Attach files').click())
-    expect(click).toHaveBeenCalledOnce()
-    expect(composer().hidden).toBe(false)
-    const file = new File(['example'], 'example.txt', { type: 'text/plain' })
-    Object.defineProperty(input, 'files', { configurable: true, value: [file] })
-    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-    expect(agentApi.uploadPlannerFile).toHaveBeenCalledWith(file, 'Workflow/project', expect.any(String))
+  it('uploads and pastes references into tmux without a composer, submission, or consuming the saved draft', async () => {
+    const focus = vi.fn()
+    window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus)
+    try {
+      const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+      const click = vi.spyOn(input, 'click')
+      expect(button('Show message composer')).toBeNull()
+      expect(button('Hide message composer')).toBeNull()
+      await attach()
+      expect(click).toHaveBeenCalledOnce()
+      expect(composer().hidden).toBe(true)
+      expect(agentApi.uploadPlannerFile).toHaveBeenCalledWith(expect.any(File), 'Workflow/project', expect.any(String))
+      expect(agentApi.getMainTerminal).toHaveBeenCalledWith('A-session', { content: 'none' })
+      expect(agentApi.sendTerminalInput).toHaveBeenCalledWith('A-session:main', ' @/workspace/Workflow/project/example.txt ', false)
+      expect(useChatStore.getState().getTabConfig('A')?.fileContext).toEqual([])
+      expect(useChatStore.getState().getTabConfig('B')?.fileContext).toEqual([])
+      expect(textarea().value).toBe('review this file')
+      expect(send).not.toHaveBeenCalled()
+      expect((focus.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'A-session' })
+      await act(async () => button('Return to chat').click())
+      expect(composer().hidden).toBe(false)
+      expect(textarea().value).toBe('review this file')
+    } finally { window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
+  })
+
+  it('preserves successful uploads as chat attachments when tmux paste fails', async () => {
+    vi.mocked(agentApi.sendTerminalInput).mockRejectedValueOnce(new Error('Disconnected'))
+    await attach()
+    expect(composer().hidden).toBe(true)
     expect(useChatStore.getState().getTabConfig('A')?.fileContext).toEqual([{ name: 'example.txt', path: 'Workflow/project/example.txt', type: 'file' }])
-    expect(useChatStore.getState().getTabConfig('B')?.fileContext).toEqual([])
     expect(textarea().value).toBe('review this file')
     expect(send).not.toHaveBeenCalled()
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Send to terminal"]')!.click())
-    expect(send).toHaveBeenCalledWith('review this file', expect.objectContaining({ sourceTabId: 'A' }))
-    expect(useChatStore.getState().getTab('A')?.viewMode).toBe('terminal')
+    await act(async () => button('Return to chat').click())
+    expect(composer().hidden).toBe(false)
+  })
+
+  it.each(['no live pane', 'missing absolute path'])('retains attachments instead of pasting when there is %s', async reason => {
+    if (reason === 'no live pane') vi.mocked(agentApi.getMainTerminal).mockResolvedValueOnce({ terminal_id: 'A-session:main', active: false, process_state: 'closed' } as never)
+    else vi.mocked(agentApi.uploadPlannerFile).mockResolvedValueOnce({ data: { filepath: 'Workflow/project/example.txt' } } as never)
+    await attach()
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(useChatStore.getState().getTabConfig('A')?.fileContext).toHaveLength(1)
+    expect(textarea().value).toBe('review this file')
+    expect(composer().hidden).toBe(true)
+  })
+
+  it('rechecks session ownership after the terminal lookup completes', async () => {
+    vi.mocked(agentApi.getMainTerminal).mockImplementationOnce(async () => {
+      const state = useChatStore.getState()
+      useChatStore.setState({ chatTabs: { ...state.chatTabs, A: { ...state.chatTabs.A, sessionId: 'replacement' } } })
+      return { terminal_id: 'A-session:main', tmux_session: 'old-tmux', active: true } as never
+    })
+    await attach()
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(useChatStore.getState().getTabConfig('A')?.fileContext).toEqual([])
+    expect(textarea().value).toBe('review this file')
+  })
+
+  it('uploads in chat mode without pasting into tmux', async () => {
+    await act(async () => button('Return to chat').click())
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['example'], 'example.txt')] })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(useChatStore.getState().getTabConfig('A')?.fileContext).toHaveLength(1)
+    expect(textarea().value).toBe('review this file')
+    expect(composer().hidden).toBe(false)
+  })
+
+  it.each(['session', 'view'])('does not paste into a changed %s after upload started', async change => {
+    vi.mocked(agentApi.uploadPlannerFile).mockImplementationOnce(async () => {
+      const state = useChatStore.getState()
+      if (change === 'session') useChatStore.setState({ chatTabs: { ...state.chatTabs, A: { ...state.chatTabs.A, sessionId: 'replacement' } } })
+      else state.setTabViewMode('A', 'formatted')
+      return { data: { filepath: 'Workflow/project/example.txt', absolute_path: '/workspace/Workflow/project/example.txt' } } as never
+    })
+    await attach()
+    expect(agentApi.sendTerminalInput).not.toHaveBeenCalled()
+    expect(textarea().value).toBe('review this file')
+    expect(useChatStore.getState().getTabConfig('A')?.fileContext).toHaveLength(change === 'view' ? 1 : 0)
+  })
+
+  it('quotes paths with spaces and uses the scoped terminal when another tab is globally active', async () => {
+    await act(async () => renderComposer('B'))
+    vi.mocked(agentApi.uploadPlannerFile).mockResolvedValueOnce({ data: { filepath: 'Workflow/project/my file.txt', absolute_path: '/workspace/Workflow/project/my file.txt' } } as never)
+    await attach()
+    expect(agentApi.sendTerminalInput).toHaveBeenCalledWith('B-session:main', ' @"/workspace/Workflow/project/my file.txt" ', false)
+    expect(useChatStore.getState().activeTabId).toBe('A')
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('closes an open command picker when changing tabs and keeps the next terminal composer collapsed', async () => {
@@ -215,25 +296,6 @@ describe('terminal toolbar shared tools', () => {
     expect(textarea().getAttribute('aria-expanded')).toBe('false')
     expect(document.querySelector('[role="listbox"]')).toBeNull()
     expect(send).not.toHaveBeenCalled()
-  })
-
-  it('retains rejected submissions and attachments, and returns focus to the originating terminal on collapse', async () => {
-    const focus = vi.fn()
-    window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus)
-    try {
-      const file = { name: 'example.txt', path: 'Workflow/project/example.txt', type: 'file' as const }
-      await act(async () => useChatStore.getState().setTabConfig('A', { fileContext: [file] }))
-      await act(async () => button('Show message composer').click())
-      send.mockResolvedValueOnce(false)
-      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Send to terminal"]')!.click())
-      expect(textarea().value).toBe('review this file')
-      expect(useChatStore.getState().getTabConfig('A')?.fileContext).toEqual([file])
-      await act(async () => button('Hide message composer').click())
-      expect(composer().hidden).toBe(true)
-      expect(focus).toHaveBeenCalledOnce()
-      expect((focus.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'A-session' })
-      expect(useChatStore.getState().getTab('A')?.viewMode).toBe('terminal')
-    } finally { window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
   })
 
   it('toggles focus without remounting the composer, and restores normal layout on return to chat', async () => {

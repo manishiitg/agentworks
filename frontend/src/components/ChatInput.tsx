@@ -1555,13 +1555,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [terminalToolsExpanded, setTerminalToolsExpanded] = useState(false)
   const [terminalCommandPalette, setTerminalCommandPalette] = useState(false)
   const nativeCommandButtonRef = useRef<HTMLButtonElement>(null)
   const terminalComposerId = React.useId()
-  useLayoutEffect(() => {
-    if (terminalToolsExpanded) textareaRef.current?.focus()
-  }, [terminalToolsExpanded])
   // A pane that pre-fills the composer (e.g. Ask in chat on a decision) asks
   // it to take focus with the caret at the end, ready for the user's words.
   useEffect(() => {
@@ -1713,7 +1709,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         adjustTextareaHeight()
       }
     }
-  }, [inputText, adjustTextareaHeight, isProductSurface, terminalToolsExpanded])
+  }, [inputText, adjustTextareaHeight, isProductSurface, terminalViewSelected])
   
   // Set initial height on mount
   useEffect(() => {
@@ -1989,7 +1985,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   useLayoutEffect(() => {
     closeComposerPickers()
-    setTerminalToolsExpanded(false)
   }, [activeTabId, terminalViewSelected, closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
@@ -2713,6 +2708,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     addToast(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`, 'info')
     console.info('[CHAT_UPLOAD] starting upload', { count: files.length, target: uploadTargetFolder })
     const uploadedPaths: string[] = []
+    const uploadedAbsolutePaths = new Map<string, string>()
     const failures: string[] = []
 
     for (const file of files) {
@@ -2727,6 +2723,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           response?.filepath
         if (uploadedPath && typeof uploadedPath === 'string') {
           uploadedPaths.push(uploadedPath)
+          const absolutePath = response?.data?.absolute_path || response?.absolute_path
+          if (typeof absolutePath === 'string' && absolutePath.startsWith('/')) uploadedAbsolutePaths.set(uploadedPath, absolutePath)
           console.info('[CHAT_UPLOAD] upload success', { name: file.name, path: uploadedPath })
         } else {
           failures.push(`${file.name}: Upload succeeded but filepath missing in response`)
@@ -2740,7 +2738,29 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
 
     if (uploadedPaths.length > 0 && stillOwnsUpload()) {
-      if (activeTabId) {
+      let insertedIntoTerminal = false
+      const nativeUpload = terminalViewSelected && liveTerminalOffered
+      if (nativeUpload && uploadSessionId && useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') {
+        try {
+          // Resolve this chat's live pane after the upload, never a global or child terminal.
+          const terminal = await agentApi.getMainTerminal(uploadSessionId, { content: 'none' })
+          if (stillOwnsUpload() && useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') {
+            if (!terminal.tmux_session || (!terminal.active && terminal.process_state !== 'live')) throw new Error('The terminal is not running')
+            const references = uploadedPaths.map(path => {
+              const absolutePath = uploadedAbsolutePaths.get(path)
+              if (!absolutePath) throw new Error('The upload server did not return a terminal file path')
+              return formatFileReference(absolutePath)
+            })
+            // Paste only: the user adds instructions and presses Enter in the CLI.
+            await agentApi.sendTerminalInput(terminal.terminal_id, ` ${references.join(' ')} `, false)
+            insertedIntoTerminal = true
+          }
+        } catch (error) {
+          if (stillOwnsUpload()) addToast(`Files uploaded, but could not be inserted into the terminal. Return to chat to use the attachments. ${error instanceof Error ? error.message : ''}`, 'error')
+        }
+      }
+      if (!stillOwnsUpload()) { setIsUploadingFiles(false); return }
+      if (activeTabId && !insertedIntoTerminal) {
         const latestFileContext = useChatStore.getState().getTabConfig(activeTabId)?.fileContext || chatFileContext
         const seenPaths = new Set(latestFileContext.map((item: { path: string }) => item.path))
         const uploadedContextItems = uploadedPaths
@@ -2779,9 +2799,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         'success'
       )
 
-      setTimeout(() => {
-        textareaRef.current?.focus()
-      }, 0)
+      if (nativeUpload) {
+        if (useChatStore.getState().getTab(activeTabId!)?.viewMode === 'terminal') requestMainTerminalFocus(uploadSessionId)
+      } else {
+        setTimeout(() => textareaRef.current?.focus(), 0)
+      }
     }
 
     if (failures.length > 0) {
@@ -2793,7 +2815,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     console.info('[CHAT_UPLOAD] upload completed', { uploadedCount: uploadedPaths.length, failureCount: failures.length })
 
     setIsUploadingFiles(false)
-  }, [activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast])
+  }, [activeTabId, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, terminalViewSelected, liveTerminalOffered])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -3018,7 +3040,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
   const openAttachmentPicker = () => {
     closeComposerPickers()
-    if (nativeTerminalTools) setTerminalToolsExpanded(true)
     const inputEl = fileUploadInputRef.current
     if (!inputEl) {
       addToast('Upload input not ready. Please retry.', 'error')
@@ -3026,14 +3047,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
     inputEl.click()
   }
-  const toggleTerminalComposer = () => {
-    closeComposerPickers()
-    setTerminalToolsExpanded(!terminalToolsExpanded)
-    if (terminalToolsExpanded) {
-      requestMainTerminalFocus(tabSessionId)
-    }
-  }
-
   // Shared controls are defined once and placed in the appropriate composer
   // group. The mic always stays with the right-hand send actions.
   const micEl = voiceCapabilityEnabled && (
@@ -3100,16 +3113,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {nativeTerminalTools && (
         <NativeTerminalToolbar
           className={inputPadX}
-          expanded={terminalToolsExpanded}
           uploading={isUploadingFiles}
-          composerId={terminalComposerId}
           commandsOpen={terminalCommandPalette && showCommandDialog}
           commandListId={commandListId}
           commandButtonRef={nativeCommandButtonRef}
           onCommands={() => {
             const wasOpen = terminalCommandPalette && showCommandDialog
             closeComposerPickers()
-            setTerminalToolsExpanded(false)
             if (wasOpen) {
               requestMainTerminalFocus(tabSessionId)
             } else {
@@ -3120,16 +3130,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             }
           }}
           onAttach={openAttachmentPicker}
-          onToggleComposer={toggleTerminalComposer}
           focused={terminalFocus.focused}
           onToggleFocus={terminalFocus.available ? terminalFocus.toggle : undefined}
           onReturnToChat={() => chooseViewMode(activeTabId!, 'formatted')}
         />
       )}
-      {/* Keep shared draft, upload input and command dialogs mounted in terminal
-          mode. Native keys go to xterm; this optional composer submits app tools
-          and attachments through the same scoped chat/CLI delivery path. */}
-      <div id={terminalComposerId} hidden={nativeTerminalTools && !terminalToolsExpanded}>
+      {/* Preserve the chat draft while native terminal input owns all typing.
+          Commands and uploads remain available through the terminal toolbar. */}
+      <div id={terminalComposerId} hidden={nativeTerminalTools} data-testid="message-composer">
       {/* Pasted-text Attachments */}
       {chatPastedAttachments.length > 0 && (
         <div className={inputPadX}>
