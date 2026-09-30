@@ -286,3 +286,45 @@ func TestDeferredSteerWithARunningToolCallStillLetsTheAnswerFinish(t *testing.T)
 	store.AddEvent("chat", transcriptMessage("answer-b", "reply to b"))
 	expectIDs(t, store, "chat", "tool-a", "tool-a-end", "completion-a")
 }
+
+// The CLI takes a queued message the moment its answer ends, but the answer's completion row is
+// recorded a moment after the ack. The user row must wait for it, or the tail of the first answer
+// lands below the second message (Muse, excellence 2026-09-30).
+func TestAckedSteerWaitsForTheInFlightAnswersEnd(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	store.AddEvent("chat", transcriptMessage("answer-a", "in flight"))
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+
+	done := make(chan struct{})
+	go func() {
+		store.CompleteDeferredSteer("chat", steerUser("user:b")) // the ack, before the completion row
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	expectIDs(t, store, "chat", "answer-a") // the user row is not written yet
+	store.AddEvent("chat", steerCompletion("completion-a"))
+	store.AddEvent("chat", transcriptMessage("answer-b", "reply to b"))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the acked steer never completed")
+	}
+	waitForIDs(t, store, "chat", 4)
+	expectIDs(t, store, "chat", "answer-a", "completion-a", "user:b", "answer-b")
+}
+
+// If the answer's end row never comes, the user row is written after the grace, not stranded.
+func TestAckedSteerWritesAfterTheGraceWhenNoEndComes(t *testing.T) {
+	store := NewEventStore(100)
+	defer store.Stop()
+	old := deferredSteerAckGrace
+	deferredSteerAckGrace = 150 * time.Millisecond
+	defer func() { deferredSteerAckGrace = old }()
+
+	store.AddEvent("chat", transcriptMessage("answer-a", "in flight"))
+	store.BeginDeferredSteer("chat", steerUser("user:b"))
+	store.CompleteDeferredSteer("chat", steerUser("user:b"))
+	waitForIDs(t, store, "chat", 2)
+	expectIDs(t, store, "chat", "answer-a", "user:b")
+}
