@@ -7,6 +7,24 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — A reply to a live message is held until the message row (all CLIs)
+- When a message is sent into a running CLI, its chat row is written when the
+  CLI confirms it took the message (`watchLiveInputDurableRecording`), and the
+  event store holds the reply's rows until then (`steer_ordering.go`) so the
+  reply never lands above the question.
+- The hold was skipped whenever the session looked "mid-answer". Answer rows
+  that arrive after their turn ended (Cursor's late transcript chunks, native
+  transcript catch-up) marked it mid-answer with nothing left to end it, so
+  Cursor's first reply line to a message landed above that message (RTS
+  rts-pr-reviewer: the line looked missing; it was above the message).
+- Now a session is mid-answer only if an answer row arrived in the last 15 s
+  (`deferredSteerQuietWindow`) or a tool call is still running. Past that it is
+  idle and the reply is held. Trade-off: a CLI silent for over 15 s mid-answer
+  with no tool running (very long thinking) can still sort a message ahead of
+  the rest of that answer. Tune the window if that shows up.
+- NOT DEPLOYED yet (on main, e8340db68). Deploys are on hold until the next
+  batch of major fixes.
+
 ### 2026-09-30 — Every CLI is qualified under the lock in both chat modes before a deploy
 - Turning the lock on for everyone exposed that only Claude and Codex had been
   run under it. In one day Muse, Cursor and Pi each failed at start or in the
@@ -49,6 +67,12 @@ Each entry says what was decided, why, and where it lives in the code.
   and that a live message was really received, so the extension is required,
   not optional. Read-only access made Pi exit at start with "Failed to load
   extension ... EACCES ... markers.jsonl".
+- **Pi bridge:** read/exec on the bridge program named in Pi's private
+  `mcp.json` (`piLandlockReads` reads `PI_CODING_AGENT_DIR` from the launch
+  environment). Without it Pi started but its platform tools failed with
+  "api-bridge: failed: spawn .../mcpbridge EACCES". The launch folder, the
+  extension cache and the bridge were three separate grants; a confined Pi
+  needs all three.
 - **Pi extension cache:** a confined Pi gets its own `tmp/extensions` folder
   instead of the shared one in the server home (`linkSharedPiExtensionCache`).
   The shared cache is executable code every user's Pi would load, so a writable
@@ -149,6 +173,15 @@ Each entry says what was decided, why, and where it lives in the code.
   `run_server_with_logging.sh`) gives the CLI its own shell and file edits on a
   single-user machine; refused in multi-user mode. macOS Seatbelt is deferred
   (PLAT-364 doc).
+
+## Deploy state (2026-09-30, deploys on hold)
+
+- **Live:** RTS `fa635b8` (Cursor store order); Confida (Pi launch folder,
+  extension cache, bridge; Pi confirmed working); excellence (Muse hooks,
+  resume adoption).
+- **On main, not deployed:** the steer-ordering fix (`e8340db68`).
+- Deploys wait for the next batch of major fixes. Deploy from a clean
+  worktree; the server clones main of all three repos.
 
 ## Open issues
 
