@@ -50,7 +50,7 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 			}
 		}
 	}
-	key := strings.Trim(personalMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
+	key := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
 	if len(key) > 40 {
 		key = key[:40]
 	}
@@ -59,12 +59,13 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 
 var mcpAppLabels = map[string]string{"google": "Google", "github": "GitHub", "slack": "Slack"}
 
-// mcpAppFocusKeys are the only providers whose sign-in app an admin manages here. The
-// product focuses on Google apps (Gmail, Drive, Calendar, ...) and GitHub (owner
-// decision 2026-09-30); listing every provider that has no automatic registration
-// (Slack, Atlassian, ...) only added cards nobody sets up. A connector of another
-// provider still works if the person brings their own OAuth app when connecting.
-var mcpAppFocusKeys = map[string]bool{"google": true, "github": true}
+// mcpAppFocusKeys are the providers whose sign-in app an admin manages on the Sign-in apps card
+// and with `set-mcp-app`. Only Google (owner decision 2026-09-30): it is the deployment's Google
+// app, the OAuth client people sign in through to connect their own Google accounts (Gmail,
+// Drive, Calendar, Docs, Sheets, Slides, used through the server-side gog tool; see
+// docs/design/google_accounts_gog.md). GitHub is a personal access token and every other
+// connector registers itself, so none of them needs a platform app.
+var mcpAppFocusKeys = map[string]bool{"google": true}
 
 // mcpApp is what an admin stores for one provider.
 type mcpApp struct {
@@ -206,7 +207,7 @@ func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup
 			continue // its key is shared with a server that signs in elsewhere
 		}
 		if !mcpAppFocusKeys[key] {
-			continue // only Google and GitHub sign-in apps are managed here
+			continue // no sign-in app card for this provider (see mcpAppFocusKeys)
 		}
 		group := byKey[key]
 		if group == nil {
@@ -299,7 +300,7 @@ func (api *StreamingAPI) handlePutMCPApp(w http.ResponseWriter, r *http.Request)
 // closePersonalConnectionsForApp drops the pooled connections of every
 // personal server that uses the app, so they reconnect with the current one.
 func (api *StreamingAPI) closePersonalConnectionsForApp(key string) {
-	root, err := personalMCPRoot()
+	root, err := mcpConnectionsRoot()
 	if err != nil {
 		return
 	}
@@ -311,8 +312,8 @@ func (api *StreamingAPI) closePersonalConnectionsForApp(key string) {
 		if !entry.IsDir() {
 			continue
 		}
-		var servers []personalMCPServer
-		if readPersonalMCPJSON(filepath.Join(root, entry.Name(), "servers.json"), &servers) != nil {
+		var servers []placeMCPServer
+		if readPlaceMCPJSON(filepath.Join(root, entry.Name(), "servers.json"), &servers) != nil {
 			continue
 		}
 		for _, server := range servers {

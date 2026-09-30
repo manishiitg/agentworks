@@ -44,7 +44,7 @@ describe('CreateWorkProjectDialog', () => {
 
     expect(submit.disabled).toBe(false)
     await act(async () => { submit.click() })
-    expect(onCreate).toHaveBeenCalledWith('Customer portal', 'Build and maintain the portal.', '🚀', undefined)
+    expect(onCreate).toHaveBeenCalledWith('Customer portal', 'Build and maintain the portal.', '🚀', undefined, undefined)
 
     await act(async () => { root.unmount() })
   })
@@ -74,6 +74,7 @@ describe('CreateWorkProjectDialog', () => {
       expect.stringContaining('Analyze authorized finance records'),
       '📊',
       'finance-analyst',
+      undefined,
     )
     await act(async () => { root.unmount() })
   })
@@ -98,7 +99,7 @@ describe('CreateWorkProjectDialog', () => {
     })
     expect((container.querySelector('[data-testid="work-create-project-name-input"]') as HTMLInputElement).value).toBe('Website Growth Starter')
     await act(async () => { (container!.querySelector('[data-testid="work-create-project-submit"]') as HTMLButtonElement).click() })
-    expect(onCreate).toHaveBeenCalledWith('Website Growth Starter', expect.stringContaining('Audit the business website'), '🌱', 'website-growth-starter')
+    expect(onCreate).toHaveBeenCalledWith('Website Growth Starter', expect.stringContaining('Audit the business website'), '🌱', 'website-growth-starter', undefined)
     await act(async () => { root.unmount() })
   })
 
@@ -142,7 +143,7 @@ describe('CreateWorkProjectDialog', () => {
     })
     expect(container.textContent).toContain('Connections, schedules, triggers, functions, and Automations are not activated.')
     await act(async () => { (container!.querySelector('[data-testid="work-create-project-submit"]') as HTMLButtonElement).click() })
-    expect(onCreate).toHaveBeenCalledWith('Lead Intake & Qualifier', expect.stringContaining('Turn an authorized inbound enquiry'), '📥', 'lead-intake-qualifier')
+    expect(onCreate).toHaveBeenCalledWith('Lead Intake & Qualifier', expect.stringContaining('Turn an authorized inbound enquiry'), '📥', 'lead-intake-qualifier', undefined)
     await act(async () => { root.unmount() })
   })
 
@@ -165,7 +166,7 @@ describe('CreateWorkProjectDialog', () => {
     })
     expect(container.textContent).toContain('Connections, schedules, triggers, functions, and Automations are not activated.')
     await act(async () => { (container!.querySelector('[data-testid="work-create-project-submit"]') as HTMLButtonElement).click() })
-    expect(onCreate).toHaveBeenCalledWith('Customer Onboarding Coordinator', expect.stringContaining('Turn an authorized new-customer handoff'), '🚀', 'customer-onboarding-coordinator')
+    expect(onCreate).toHaveBeenCalledWith('Customer Onboarding Coordinator', expect.stringContaining('Turn an authorized new-customer handoff'), '🚀', 'customer-onboarding-coordinator', undefined)
     await act(async () => { root.unmount() })
   })
 
@@ -189,7 +190,7 @@ describe('CreateWorkProjectDialog', () => {
     })
     expect(container.textContent).toContain('exports work first')
     await act(async () => { (container!.querySelector('[data-testid="work-create-project-submit"]') as HTMLButtonElement).click() })
-    expect(onCreate).toHaveBeenCalledWith('Spend & Payables Coordinator', expect.stringContaining('Review proposed purchases, bills and spend'), '🧮', 'spend-payables-coordinator')
+    expect(onCreate).toHaveBeenCalledWith('Spend & Payables Coordinator', expect.stringContaining('Review proposed purchases, bills and spend'), '🧮', 'spend-payables-coordinator', undefined)
     await act(async () => { root.unmount() })
   })
 

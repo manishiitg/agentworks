@@ -1,19 +1,22 @@
 import { useState, type FormEvent } from 'react'
+import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { AlertCircle, Loader2, X } from 'lucide-react'
 
 // A Code workspace has a name only: no identity, purpose, icon or template.
-export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error }: {
+export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code' }: {
   onClose: () => void
-  onCreate: (title: string) => void | Promise<void>
+  onCreate: (title: string, runsOn?: RunsOnSelection) => void | Promise<void>
+  profileId?: string
   submitting: boolean
   error: string | null
 }) {
   const [title, setTitle] = useState('')
+  const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const trimmed = title.trim()
     if (!trimmed || submitting) return
-    void onCreate(trimmed)
+    void onCreate(trimmed, runsOn)
   }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm" role="presentation">
@@ -38,6 +41,7 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
           placeholder="e.g. billing-service"
           className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
+        <RunsOnPicker profileId={profileId} onChange={setRunsOn} disabled={submitting} />
         {error ? <p className="mt-3 flex items-center gap-1.5 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} disabled={submitting} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50">Cancel</button>

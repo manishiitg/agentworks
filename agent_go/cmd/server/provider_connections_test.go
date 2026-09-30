@@ -126,3 +126,52 @@ func TestProviderConnectionSetupEnvironmentIsAccountScoped(t *testing.T) {
 		t.Fatal("setup inherited a global identity or lost account paths")
 	}
 }
+
+// A person who added their own account for a provider uses it by default in their Crew or Code;
+// another person's account, another provider's, or one known not signed in is never picked.
+func TestOwnDefaultProviderAccountID(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", "account-test-only-secret")
+	t.Setenv("LLM_CONFIG_LOCKED", "")
+	t.Setenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS", "")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,muse-cli")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","can_create":true,"products":[]},{"id":"bob","username":"bob","can_create":true,"products":[]}]}`)
+	mock := &mockWorkspaceAPI{files: map[string]string{}}
+	ws := httptest.NewServer(mock)
+	defer ws.Close()
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	api := &StreamingAPI{}
+	create := func(user, provider, name string) ProviderConnection {
+		w := httptest.NewRecorder()
+		api.handleProviderConnections(w, sharedSecretsRequest("POST", "/", user, map[string]string{"provider": provider, "display_name": name, "credential": "k-" + name}))
+		if w.Code != 201 {
+			t.Fatalf("create status %d: %s", w.Code, w.Body.String())
+		}
+		var result ProviderConnection
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
+		return result
+	}
+	ctx := context.Background()
+	if got := ownDefaultProviderAccountID(ctx, "alice", "codex-cli"); got != "" {
+		t.Fatalf("no account yet, got %q", got)
+	}
+	bobs := create("bob", "codex-cli", "bob")
+	create("alice", "muse-cli", "alice-muse")
+	if got := ownDefaultProviderAccountID(ctx, "alice", "codex-cli"); got != "" {
+		t.Fatalf("picked someone else's or another provider's account: %q", got)
+	}
+	mine := create("alice", "codex-cli", "alice-codex")
+	if got := ownDefaultProviderAccountID(ctx, "alice", "codex-cli"); got != mine.ID {
+		t.Fatalf("own account not picked: %q want %q", got, mine.ID)
+	}
+	if got := ownDefaultProviderAccountID(ctx, "bob", "codex-cli"); got != bobs.ID {
+		t.Fatalf("bob gets his own: %q", got)
+	}
+	rememberProviderAccountStatus(mine.ID, providerAccountStatus{State: "signed_out"})
+	if configured, ok := cachedProviderAccountConfigured(mine.ID); ok && configured != nil && !*configured {
+		if got := ownDefaultProviderAccountID(ctx, "alice", "codex-cli"); got != "" {
+			t.Fatalf("picked an account known not signed in: %q", got)
+		}
+	}
+}

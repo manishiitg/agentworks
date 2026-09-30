@@ -254,11 +254,11 @@ func TestNativeRecoveryPublishesOnlyToRegisteredMatchingOwner(t *testing.T) {
 	defer store.Stop()
 	api := &StreamingAPI{eventStore: store}
 	messages := []builderConversationMessage{{Role: "ai", Parts: []builderConversationPart{{Text: "private"}}}}
-	if api.publishOwnedNativeTranscriptRecoveredAssistantMessages("alice", "s", nil, messages, nil) != 0 {
+	if api.publishOwnedNativeTranscriptRecoveredMessages("alice", "s", nil, messages, nil) != 0 {
 		t.Fatal("published before ownership registration")
 	}
 	store.SetSessionOwner("s", "bob")
-	if api.publishOwnedNativeTranscriptRecoveredAssistantMessages("alice", "s", nil, messages, nil) != 0 {
+	if api.publishOwnedNativeTranscriptRecoveredMessages("alice", "s", nil, messages, nil) != 0 {
 		t.Fatal("published into another owner's live session")
 	}
 }

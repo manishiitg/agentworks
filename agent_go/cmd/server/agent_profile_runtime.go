@@ -37,6 +37,11 @@ type resolvedAgentProfile struct {
 	// (resuming the same conversation) instead of the old process answering
 	// "not registered by any connected server" (RTS 2026-09-29).
 	ChatConnections []string
+	// ChatSecrets are the names (never values) of the secrets this chat gets as SECRET_*
+	// environment variables. The coding CLI's environment is fixed when it launches, so a secret
+	// attached to the project later reaches it only through a relaunch: the names feed the
+	// session fingerprint, like ChatConnections (RTS, SDE private, GITHUB_TOKEN, 2026-09-30).
+	ChatSecrets []string
 	// APIKeys carries the project-scoped credential this resolver loaded from the
 	// encrypted per-user/workspace store. It is returned on the resolver's own
 	// result rather than handed back through req.LLMConfig so the query path can
@@ -78,12 +83,15 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	sort.Strings(servers)
 	connections := append([]string(nil), profile.ChatConnections...)
 	sort.Strings(connections)
+	secrets := append([]string(nil), profile.ChatSecrets...)
+	sort.Strings(secrets)
 	payload, err := json.Marshal(struct {
 		Definition      agentprofiles.Profile `json:"definition"`
 		SelectedServers []string              `json:"selected_servers,omitempty"`
 		IdentityKey     string                `json:"identity_key,omitempty"`
 		ChatConnections []string              `json:"chat_connections,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections})
+		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -539,6 +547,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 			llmOptions["reasoning_effort"] = effort
 		}
+		// No account chosen: a person who added their own account for this provider uses it
+		// (owner decision 2026-09-30). Choosing an account, the server one included, wins.
+		if strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope {
+			req.ConnectionID = ownDefaultProviderAccountID(ctx, userID, provider)
+		}
 		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: provider, ModelID: modelID, Options: llmOptions, ConnectionID: req.ConnectionID}}
 		req.LLMConfigSource = llmConfigSourceAgentProfile
 		if strings.EqualFold(strings.TrimSpace(profile.Runtime.CredentialScope), agentprofiles.CredentialScopeGlobal) {
@@ -580,17 +593,48 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey,
-		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)}, nil
+		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
+		ChatSecrets:     chatSecretNames(req)}, nil
+}
+
+// chatSecretNames lists the secrets the turn will expose to the coding CLI, by name only.
+func chatSecretNames(req *QueryRequest) []string {
+	if req == nil {
+		return nil
+	}
+	var names []string
+	for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+		names = append(names, secret.Name)
+	}
+	return names
 }
 
 // chatMCPConnections are the chat's own connections, resolved exactly as the
-// query path adds them to the turn: the Crew's or Code's attached servers.
+// query path adds them to the turn: the Crew's or Code's attached servers. Each
+// carries whether its sign-in is done: a server added but not signed in starts
+// with no tools, so the chat's retained CLI must relaunch again when the sign-in
+// finishes (same list of names, different state), not only when a server is
+// added. Without that the CLI kept the tool-less server and the agent said the
+// connection was fine but had no tools (RTS, SDE private, Notion, 2026-09-30).
 func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
 	if !isProjectProfileID(profileID) {
 		return nil
 	}
-	names, _ := attachedMCPServersForRoot(ctx, agentProfileRuntimeWorkspace(userID, selectedFolder))
-	return names
+	root := agentProfileRuntimeWorkspace(userID, selectedFolder)
+	names, _ := attachedMCPServersForRoot(ctx, root)
+	if len(names) == 0 {
+		return names
+	}
+	signedIn := placeMCPSignedInInternalNames(ctx, root)
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		if signedIn[name] {
+			out = append(out, name+"#signed-in")
+		} else {
+			out = append(out, name+"#signed-out")
+		}
+	}
+	return out
 }
 
 func profileRuntimeEventType(event any) string {

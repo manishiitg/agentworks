@@ -34,3 +34,21 @@ func TestCLIFullRolloutIsSeparate(t *testing.T) {
 		t.Fatal("Full CLI rollout list not honoured")
 	}
 }
+
+// Unconfined Full CLI is for a person's own machine only: it needs its own switch and is refused
+// on a multi-user server, where the lock is the boundary.
+func TestCLIFullUnconfinedIsSingleUserOnly(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv(cliFullUnconfinedEnv, "")
+	if cliFullUnconfinedAllowed() {
+		t.Fatal("allowed without the switch")
+	}
+	t.Setenv(cliFullUnconfinedEnv, "on")
+	if !cliFullUnconfinedAllowed() {
+		t.Fatal("refused on a single-user machine with the switch on")
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if cliFullUnconfinedAllowed() {
+		t.Fatal("allowed on a multi-user server")
+	}
+}

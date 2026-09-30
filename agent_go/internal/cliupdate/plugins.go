@@ -13,17 +13,9 @@ import (
 	"time"
 )
 
-// managedPiTempPlugins are the platform's unpinned pi extensions. pi loads
-// `-e npm:<name>` extensions from a temporary cache that it never refreshes
-// on its own: unpinned specs reinstall only when missing, and temporary scope
-// is excluded from `pi update --extensions`. This package therefore refreshes
-// them on the same cadence as the CLIs themselves.
-//
-// Only our own unpinned specs are listed here. The statusline extension is
-// deliberately excluded: the launcher passes a pinned spec, so upgrading it
-// here would fight the pin on the next launch. Anything else in pi's temp
-// cache (e.g. the user's own `-e` extensions) is never touched.
-var managedPiTempPlugins = []string{"pi-mcp-adapter"}
+// Native MCP ships with Pi. No third-party MCP extension is managed or refreshed.
+// Retain the generic updater for future platform extensions.
+var managedPiTempPlugins = []string{}
 
 const piNpmViewTimeout = 10 * time.Second
 

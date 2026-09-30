@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, MessageCircle, Plus, Search, Trash2, UserRound } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { McpAppsSection } from './McpAppsSection'
 import { parseOAuthClientJson } from './oauthClientJson'
-import { personalMcpApi, type PersonalMcpCatalogServer } from '../../api/personalMcp'
+import { mcpCatalogApi, type McpCatalogServer } from '../../api/mcpCatalog'
 import { placeMcpApi, type PlaceMcpCustomServer, type PlaceMcpServer } from '../../api/placeMcp'
 import { secretsApi } from '../../api/secrets'
-import { useAuthStore } from '../../stores/useAuthStore'
+import { DEVELOPER_FIRST_GROUP_ORDER, GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
 import { groupServiceLabel, providerGroupLabel, providerGroups } from './mcpGroups'
 
 const errorText = (cause: unknown, fallback: string) => {
@@ -32,9 +31,8 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   /** Lets the person ask the agent to connect something (chat products). */
   onAsk?: (message: string) => Promise<void>
 }) {
-  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const [servers, setServers] = useState<PlaceMcpServer[]>([])
-  const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
+  const [catalog, setCatalog] = useState<McpCatalogServer[]>([])
   // idle -> loading -> ready | failed. An empty list must say which: a load that failed or came
   // back empty used to show "Loading…" forever, which looks like there is nothing to connect.
   const [catalogState, setCatalogState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
@@ -72,7 +70,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   useEffect(() => { void refresh() }, [refresh])
   const loadCatalog = useCallback(() => {
     setCatalogState('loading')
-    void personalMcpApi.catalog()
+    void mcpCatalogApi.catalog()
       .then(list => { setCatalog(list.filter(entry => entry.sign_in)); setCatalogState('ready') })
       .catch(() => { setCatalog([]); setCatalogState('failed') })
   }, [])
@@ -92,6 +90,23 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refresh])
+
+  // A connection turning "connected" (sign-in finished in the other tab, or an API-key server
+  // that connected at once) is also told to the chat, through the same function as Connect, so
+  // the agent knows it can use it now (the API bridge resolves connections on every call). The first load only records what
+  // was already connected, so opening the screen never sends anything.
+  const connectedBefore = useRef<{ path: string; names: Set<string> } | null>(null)
+  useEffect(() => {
+    if (loading) return
+    const now = new Set(servers.filter(item => item.mine && item.active && item.connected).map(item => item.catalog || item.name))
+    const before = connectedBefore.current?.path === workspacePath ? connectedBefore.current.names : null
+    connectedBefore.current = { path: workspacePath, names: now }
+    if (!before || !onAsk) return
+    const added = [...now].filter(name => !before.has(name))
+    if (added.length > 0) {
+      void onAsk(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Check it now through the API bridge (its tools may not be in your direct tool list yet, that is fine) and tell me briefly what you can do with it.`)
+    }
+  }, [servers, loading, onAsk, placeNoun, workspacePath])
 
   const mineByCatalog = useMemo(() => new Set(servers.filter(s => s.mine).map(s => s.catalog || s.name)), [servers])
 
@@ -122,7 +137,14 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     }
   }
 
-  const add = (entry: PersonalMcpCatalogServer) => run(entry.catalog, async () => {
+  // Connect hands the request to the agent in this project's chat (the same path as "Ask the
+  // agent"): it adds the connection with the person's login and sends back the sign-in link, so
+  // the chat shows what happened and the person can adjust it in words.
+  const add = (entry: McpCatalogServer) => run(entry.catalog, async () => {
+    if (onAsk) {
+      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} with my login. Add it, and if it needs a sign-in give me the link. Tell me when it is connected.`)
+      return
+    }
     const saved = await placeMcpApi.add(workspacePath, entry.catalog)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
@@ -256,6 +278,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
       {canEdit && (
         <div className="mt-2 flex flex-col gap-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available</div>
+          <p data-testid="mcp-google-pointer" className="text-xs leading-5 text-muted-foreground">
+            Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) are connected in the Google apps tab, not here. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Setup → Secrets; the agent uses it with git and the GitHub API.
+          </p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search connectors" aria-label="Search connectors" className="pl-9" />
@@ -286,15 +311,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                     <div className="text-xs text-muted-foreground">One {provider} sign-in covers every service you pick.</div>
                   </div>
                 </div>
-                {group === 'google' && (
-                  // Google's Workspace MCP servers are a Developer Preview: Google refuses the sign-in (on its
-                  // own page, with a message about the preview) unless the Google Cloud project behind this
-                  // server's OAuth client is enrolled and has the MCP APIs enabled. Say so before the person
-                  // meets Google's page; the catalog descriptions already label them this way.
-                  <p data-testid="mcp-google-preview-note" className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                    Google's Workspace MCP servers are in Developer Preview. If Google says the app is not supported or not registered for the preview, the Google Cloud project behind this server's sign-in app must be enrolled in Google's Workspace Developer Preview and have these services' MCP APIs enabled. That is set up by the server admin, not here.
-                  </p>
-                )}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {available.map(entry => {
                     const service = groupServiceLabel(entry.catalog, group)
@@ -322,23 +338,37 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
             )
           })}
 
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {catalog.filter(entry => !mineByCatalog.has(entry.catalog) && !(entry.group && groups.has(entry.group)) && matches(entry.catalog)).map(entry => (
-              <button
-                key={entry.catalog}
-                type="button"
-                disabled={busy !== null}
-                onClick={() => { void add(entry) }}
-                className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
-              >
-                <ConnectionIcon icon={brandSlugFor(entry.catalog)} name={entry.catalog} size="xs" />
-                <span className="truncate">{entry.catalog}</span>
-                {busy === entry.catalog
-                  ? <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                  : <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground"><Plus className="h-3 w-3" />Connect</span>}
-              </button>
-            ))}
-          </div>
+          {/* The same shelves the old platform browser had (Payments, Customers, ...),
+              so a long list of servers stays scannable. */}
+          {(placeNoun === 'Code' ? DEVELOPER_FIRST_GROUP_ORDER : GROUP_ORDER).map(shelf => {
+            const entries = catalog.filter(entry => !mineByCatalog.has(entry.catalog) && !(entry.group && groups.has(entry.group)) && matches(entry.catalog) && groupFor(entry.catalog) === shelf.id)
+            if (entries.length === 0) return null
+            return (
+              <section key={shelf.id} data-testid={`mcp-shelf-${shelf.id}`}>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{shelf.label}</div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {entries.map(entry => (
+                    <button
+                      key={entry.catalog}
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => { void add(entry) }}
+                      className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                    >
+                      <ConnectionIcon icon={brandSlugFor(entry.catalog)} name={entry.catalog} size="xs" />
+                      <span className="min-w-0">
+                        <span className="block truncate">{entry.catalog}</span>
+                        {descriptionFor(entry.catalog) && <span className="block truncate text-xs text-muted-foreground">{descriptionFor(entry.catalog)}</span>}
+                      </span>
+                      {busy === entry.catalog
+                        ? <Loader2 className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin" />
+                        : <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Plus className="h-3 w-3" />Connect</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
 
           <div className="border-t border-border pt-3">
             {!showCustom ? (
@@ -366,12 +396,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
               </div>
             )}
           </div>
-          {isAdmin && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-xs text-muted-foreground">Sign-in apps (admin)</summary>
-              <div className="mt-2"><McpAppsSection /></div>
-            </details>
-          )}
         </div>
       )}
     </div>

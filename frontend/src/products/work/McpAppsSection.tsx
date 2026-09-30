@@ -99,7 +99,7 @@ export function McpAppsSection() {
     return (
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs" data-testid="mcp-apps-section">
         <KeyRound className="h-3.5 w-3.5 text-primary" />
-        <span className="font-medium text-foreground">Sign-in apps</span>
+        <span className="font-medium text-foreground">Google sign-in app</span>
         <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span>
         {ready.length > 0 && <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{ready.join(', ')} set up</span>}
         {missing.length > 0 && <span className="text-amber-600">{missing.join(', ')} not set up</span>}
@@ -112,10 +112,10 @@ export function McpAppsSection() {
     <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3" data-testid="mcp-apps-section">
       <div className="flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-primary" />
-        <h4 className="text-sm font-semibold text-foreground">Sign-in apps <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span></h4>
+        <h4 className="text-sm font-semibold text-foreground">Google sign-in app <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span></h4>
       </div>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        These providers need an OAuth app before anyone can connect. Set one up per provider once, and everyone just clicks Connect and signs in with their own account. The app only identifies this server to the provider; the secret is stored encrypted and never shown again.
+        People connect their own Google account (Gmail, Drive, Calendar, Docs, Sheets, Slides) through this app: set it up once, and everyone just clicks Connect Google account and signs in as themselves, with no file of their own. The app only identifies this server to Google.
       </p>
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
       <div className="mt-2 space-y-2">
@@ -124,7 +124,7 @@ export function McpAppsSection() {
             <button type="button" className="flex w-full items-center gap-2 p-2 text-left text-sm" onClick={() => openGroup(app.key)} aria-expanded={open === app.key}>
               {open === app.key ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               <span className="font-medium text-foreground">{app.label}</span>
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{app.servers.join(', ')}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{app.key === 'google' ? 'Gmail, Drive, Calendar, Docs, Sheets, Slides' : app.servers.join(', ')}</span>
               {app.configured
                 ? <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />Set up</span>
                 : <span className="text-xs text-amber-600">Not set up</span>}
@@ -147,6 +147,7 @@ export function McpAppsSection() {
                       <li>In <a className="text-primary underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud → Credentials</a>, use a project of your Workspace and turn on the Google Workspace MCP services you want (Gmail, Drive, Docs, Sheets, Slides, Calendar, Chat, People).</li>
                       <li>Set the OAuth consent screen to <b>Internal</b> (your own Workspace only, no Google review).</li>
                       <li>Create credentials → OAuth client ID → <b>Web application</b>, with the redirect URI below.</li>
+                      <li>Enable the <b>Gmail, Drive, Calendar, Docs, Sheets and Slides</b> APIs in that project (the regular APIs, not the Workspace MCP preview).</li>
                       <li>Download the client JSON and upload it here, or paste the client ID and secret.</li>
                     </ol>
                   ) : (

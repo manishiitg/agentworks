@@ -6,19 +6,21 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/mcpagent/oauth"
+	"golang.org/x/oauth2"
 )
 
 // connectCodeForTest adds a server to a Code as its owner's connection.
 func connectCodeForTest(t *testing.T, owner, root, name string) string {
 	t.Helper()
 	store := placeMCPStoreID(owner, root)
-	if _, err := addPersonalMCPServer(store, personalMCPServer{Name: name, URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
+	if _, err := addPlaceMCPServer(store, placeMCPServer{Name: name, URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := recordPlaceMCP(owner, name, root); err != nil {
 		t.Fatal(err)
 	}
-	internal, _, err := personalMCPServerConfig(store, name)
+	internal, _, err := placeMCPServerConfig(store, name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +33,7 @@ func connectCodeForTest(t *testing.T, owner, root, name string) string {
 // handed to the platform catalog; a non-Code session is left to the other
 // scopes.
 func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	api := &StreamingAPI{}
 	ctx := context.Background()
@@ -100,7 +102,7 @@ func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
 // and the agent see), for that Code only.
 func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	ctx := context.Background()
 	internal := connectCodeForTest(t, "owner", codePrivacyOwnerRoot, "deepwiki")
@@ -118,5 +120,41 @@ func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 	}
 	if resolved, _, _ := api.resolveCodeMCPServer(ctx, "other-chat", "deepwiki", "ask"); resolved != nil && resolved.Name == internal {
 		t.Fatalf("an unrelated Code reached the owner's connection: %+v", resolved)
+	}
+}
+
+// A connection added but not signed in starts a CLI with no tools; when the sign-in finishes the
+// chat must relaunch. The chat's session key carries each connection's sign-in state, so it changes
+// when the sign-in completes even though the list of names does not (RTS, 2026-09-30: Notion was
+// "connected" but its tools never reached the retained CLI).
+func TestPlaceMCPSignInStateChangesTheChatKey(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	ctx := context.Background()
+	root := "_users/alice/Chats/Code/projects/x"
+	store := placeMCPStoreID("alice", root)
+	server := placeMCPServer{
+		Name: "notion", URL: "https://mcp.notion.com/mcp", Transport: "http",
+		OAuth: &oauth.OAuthConfig{AuthURL: "https://example.com/auth", TokenURL: "https://example.com/token"},
+	}
+	if _, err := addPlaceMCPServer(store, server); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordPlaceMCP("alice", "notion", root); err != nil {
+		t.Fatal(err)
+	}
+	internal, _, err := placeMCPServerConfig(store, "notion")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if placeMCPSignedInInternalNames(ctx, root)[internal] {
+		t.Fatal("signed in before any sign-in")
+	}
+	dir, _ := placeMCPDir(store)
+	if err := oauth.NewTokenStore(placeMCPTokenFile(dir, store, "notion")).Save(&oauth2.Token{AccessToken: "a", RefreshToken: "r"}); err != nil {
+		t.Fatal(err)
+	}
+	if !placeMCPSignedInInternalNames(ctx, root)[internal] {
+		t.Fatal("not signed in after the sign-in finished")
 	}
 }

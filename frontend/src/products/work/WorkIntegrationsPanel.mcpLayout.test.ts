@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 describe('Crew MCP tab parity with workflow', () => {
-  it('shows This project / Platform connected shelves above a connect-only browser', () => {
+  it('shows This project / Platform connected shelves under the one place-MCP screen', () => {
     const crew = readFileSync('src/products/work/WorkIntegrationsPanel.tsx', 'utf8')
     const workflow = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
@@ -12,8 +12,11 @@ describe('Crew MCP tab parity with workflow', () => {
     expect(crew).toContain('This project')
     expect(crew).toContain('Platform connected')
     expect(crew).toContain('Shared with everyone. Tick one to let this project use it.')
-    expect(crew).toContain('Connect a new app')
-    expect(crew).toContain('hideConnectedSection')
+    // One connect surface: the place-MCP screen. The old platform browser
+    // ("Connect a new app") is gone so a Crew never shows two MCP UIs.
+    expect(crew).not.toContain('Connect a new app')
+    expect(crew).not.toContain('ConnectorsBrowser')
+    expect(crew).toContain('<PlaceMcpSection')
     // Same shelf component as the workflow tab.
     expect(workflow).toContain('<ToolSelectionSection')
     expect(crew).toContain('<ToolSelectionSection')

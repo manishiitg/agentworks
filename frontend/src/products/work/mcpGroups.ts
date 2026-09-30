@@ -1,4 +1,4 @@
-import type { PersonalMcpCatalogServer } from '../../api/personalMcp'
+import type { McpCatalogServer } from '../../api/mcpCatalog'
 
 // Catalog servers that share one sign-in (Google's services): shown as one
 // card and signed in once (docs/design/personal_mcp_attach.md).
@@ -13,8 +13,8 @@ export const groupServiceLabel = (catalog: string, group: string) => {
 }
 
 /** Sign-in groups with more than one catalog server (Google's 8), by key. */
-export function providerGroups(catalog: PersonalMcpCatalogServer[]): Map<string, PersonalMcpCatalogServer[]> {
-  const groups = new Map<string, PersonalMcpCatalogServer[]>()
+export function providerGroups(catalog: McpCatalogServer[]): Map<string, McpCatalogServer[]> {
+  const groups = new Map<string, McpCatalogServer[]>()
   for (const entry of catalog) {
     if (!entry.group) continue
     groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry])

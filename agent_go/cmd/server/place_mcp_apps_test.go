@@ -21,9 +21,10 @@ import (
 // app wins, the secret is sealed at rest and never returned, and only admins
 // can touch the app.
 func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
+	withMCPAppFocus(t, "google")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	google := `"oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token","extra_auth_params":{"access_type":"offline","prompt":"consent"}}`
 	catalog := `{"mcpServers":{
@@ -103,7 +104,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if raw, _ := os.ReadFile(path); strings.Contains(string(raw), "shared-secret") || strings.Contains(string(raw), "965.apps") {
 		t.Fatalf("the app is stored in the clear: %s", raw)
 	}
-	catalogRec := personalRoute(api, (*StreamingAPI).handlePersonalMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
+	catalogRec := personalRoute(api, (*StreamingAPI).handlePlaceMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
 	if strings.Contains(catalogRec.Body.String(), `"needs_client":true`) {
 		t.Fatalf("a configured app still needs a client: %s", catalogRec.Body.String())
 	}
@@ -118,7 +119,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if r := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/theirs","catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
 		t.Fatalf("other add = %d %s", r.Code, r.Body.String())
 	}
-	if _, cfg, err := personalMCPServerConfig(otherStore, "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
+	if _, cfg, err := placeMCPServerConfig(otherStore, "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
 		t.Fatalf("other's config = %+v %v", cfg.OAuth, err)
 	}
 
@@ -126,14 +127,14 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := put("google", `{"client_id":"new.apps.googleusercontent.com","client_secret":"GOCSPX-rotated"}`); code != http.StatusOK {
 		t.Fatalf("rotate = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
+	if _, cfg, _ := placeMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
 		t.Fatalf("rotation did not reach the person: %+v", cfg.OAuth)
 	}
 	// A client the person entered for their own app wins.
-	if err := writePersonalMCPClient(ownerStore, "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
+	if err := writePlaceMCPClient(ownerStore, "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, cfg, _ := personalMCPServerConfig(ownerStore, "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
+	if _, cfg, _ := placeMCPServerConfig(ownerStore, "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
 		t.Fatalf("own client lost to the deployment app: %+v", cfg.OAuth)
 	}
 
@@ -141,7 +142,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "google"}).Code; code != http.StatusOK {
 		t.Fatalf("delete = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "" {
+	if _, cfg, _ := placeMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "" {
 		t.Fatalf("removed app still resolves: %+v", cfg.OAuth)
 	}
 }
@@ -151,7 +152,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 func TestSetMCPAppCommandReadsGoogleClientJSONFromStdin(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	for name, input := range map[string]string{
 		"web":       `{"web":{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd","project_id":"p","redirect_uris":["https://a.example.com/api/oauth/callback"]}}`,
 		"installed": `{"installed":{"client_id":"1.apps.googleusercontent.com","client_secret":"GOCSPX-cmd"}}`,
@@ -222,16 +223,16 @@ func TestSignInAppKeysMatchHostsAndRefuseSharedKeys(t *testing.T) {
 
 func TestOlderCatalogServersAndRemovalAndAtomicWrite(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	// A catalog server added before apps existed has no app key yet.
-	if _, err := addPersonalMCPServer("owner", personalMCPServer{Name: "gmail", URL: "https://gmailmcp.googleapis.com/mcp/v1", Catalog: "GoogleGmail",
+	if _, err := addPlaceMCPServer("owner", placeMCPServer{Name: "gmail", URL: "https://gmailmcp.googleapis.com/mcp/v1", Catalog: "GoogleGmail",
 		OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeMCPApp("google", mcpApp{ClientID: "id.apps.googleusercontent.com", ClientSecret: "GOCSPX-old"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, cfg, err := personalMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "id.apps.googleusercontent.com" {
+	if _, cfg, err := placeMCPServerConfig("owner", "gmail"); err != nil || cfg.OAuth.ClientID != "id.apps.googleusercontent.com" {
 		t.Fatalf("an older catalog server did not find the app: %+v %v", cfg.OAuth, err)
 	}
 	// Overwrites leave no temp files and never a partial app.
@@ -256,7 +257,7 @@ func TestOlderCatalogServersAndRemovalAndAtomicWrite(t *testing.T) {
 func TestStoredAppCanBeRemovedAfterItsProviderLeavesTheCatalog(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -281,9 +282,10 @@ func TestStoredAppCanBeRemovedAfterItsProviderLeavesTheCatalog(t *testing.T) {
 }
 
 func TestSetMCPAppCommandRefusesRootAndUnknownKeys(t *testing.T) {
+	withMCPAppFocus(t, "google", "github")
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -315,7 +317,7 @@ func TestSharedConnectUsesSignInApp(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	catalog := `{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`
 	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
@@ -337,24 +339,44 @@ func TestSharedConnectUsesSignInApp(t *testing.T) {
 	}
 }
 
-// The Sign-in apps card manages only Google and GitHub (owner decision 2026-09-30): a
-// provider that merely has no automatic registration, such as Slack or Atlassian, gets no
-// card. Its connector still works if the person brings their own OAuth app.
-func TestSignInAppsCoverOnlyGoogleAndGitHub(t *testing.T) {
+// withMCPAppFocus lists providers on the Sign-in apps card for one test. The card is empty by
+// default (owner decision 2026-09-30: Google through gog, GitHub with a personal access
+// token), so tests of the sign-in-app mechanism name the providers they use.
+func withMCPAppFocus(t *testing.T, keys ...string) {
+	t.Helper()
+	previous, previousHidden := mcpAppFocusKeys, mcpCatalogHiddenKeys
+	mcpAppFocusKeys, mcpCatalogHiddenKeys = map[string]bool{}, map[string]bool{}
+	for _, key := range keys {
+		mcpAppFocusKeys[key] = true
+	}
+	t.Cleanup(func() { mcpAppFocusKeys, mcpCatalogHiddenKeys = previous, previousHidden })
+}
+
+// By default only Google has an app card (the deployment's Google app for gog), and Google and
+// GitHub are not offered as MCP connectors (Google apps are the Gmail tab / gog, GitHub is a
+// personal access token).
+func TestOnlyTheGoogleAppCardAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
-	servers := map[string]mcpclient.MCPServerConfig{
-		"GoogleGmail": {URL: "https://gmailmcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
-		"GoogleDrive": {URL: "https://drivemcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
-		"GitHub":      {URL: "https://api.githubcopilot.com/mcp/", OAuth: &oauth.OAuthConfig{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"}},
-		"Slack":       {URL: "https://mcp.slack.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://slack.com/oauth/v2_user/authorize", TokenURL: "https://slack.com/api/oauth.v2.user.access"}},
-		"Atlassian":   {URL: "https://mcp.atlassian.com/v1/sse", OAuth: &oauth.OAuthConfig{AuthURL: "https://auth.atlassian.com/authorize", TokenURL: "https://auth.atlassian.com/oauth/token"}},
+	withMCPConnectionsRoot(t)
+	api, _ := newCodePrivacyFixture(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	catalog := `{"mcpServers":{
+		"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}},
+		"GitHub":{"url":"https://api.githubcopilot.com/mcp/","protocol":"http","oauth":{"auth_url":"https://github.com/login/oauth/authorize","token_url":"https://github.com/login/oauth/access_token"}},
+		"Linear":{"url":"https://mcp.linear.app/mcp","protocol":"http","oauth":{"auth_url":"https://mcp.linear.app/authorize","token_url":"https://mcp.linear.app/token","registration_endpoint":"https://mcp.linear.app/register"}}}}`
+	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	var keys []string
-	for _, group := range mcpAppGroupsFor(servers) {
-		keys = append(keys, group.Key)
+	api.mcpConfigPath = catalogPath
+	api.logger = loggerv2.NewNoop()
+	if cards := api.mcpAppGroups(); len(cards) != 1 || cards[0].Key != "google" {
+		t.Fatalf("sign-in app cards = %+v, want only the Google app", cards)
 	}
-	if strings.Join(keys, ",") != "github,google" {
-		t.Fatalf("sign-in app cards = %v, want only github and google", keys)
+	var names []string
+	for _, entry := range api.placeMCPCatalog() {
+		names = append(names, entry.Catalog)
+	}
+	if strings.Join(names, ",") != "Linear" {
+		t.Fatalf("connectors offered = %v, want only Linear", names)
 	}
 }

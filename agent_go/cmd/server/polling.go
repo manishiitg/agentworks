@@ -274,6 +274,26 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 	var lastProcessedIndex int
 	var hasMoreFromStore bool
 	if durableChat {
+		// Returning from the native terminal requests a single catch-up before
+		// reading the durable page. Ordinary polling and older-page reads do
+		// not repeatedly parse the provider's entire transcript.
+		if r.URL.Query().Get("sync_native_transcript") == "1" && !cursorOnly && sinceStr == "" && beforeSequenceStr == "" {
+			// A cold EventStore has no in-memory owner yet. Only restore the
+			// identity already recorded by the journal, never the caller's
+			// identity merely because a shared read was permitted above.
+			if api.eventStore.GetSessionOwner(sessionID) == "" {
+				if owner, err := api.eventStore.DurableChatOwner(sessionID); err == nil && owner == currentUserID {
+					api.eventStore.SetSessionOwner(sessionID, owner)
+				}
+			}
+			recoveryWorkspace := workspacePath
+			if recoveryWorkspace == "" {
+				api.sessionWorkspaceMu.RLock()
+				recoveryWorkspace = api.sessionWorkspaceFolders[sessionID]
+				api.sessionWorkspaceMu.RUnlock()
+			}
+			api.syncWorkflowBuilderConversationFromNativeTranscript(r.Context(), currentUserID, sessionID, recoveryWorkspace)
+		}
 		pageOpts := events.DurableEventPageOptions{Limit: 300}
 		if cursorOnly {
 			pageOpts.Limit = 1

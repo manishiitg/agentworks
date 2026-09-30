@@ -1,5 +1,7 @@
 import { referenceTag, removeReferenceTags, textMentionsReference } from '../utils/referenceTags'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
+import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
+import { NativeTerminalToolbar } from './NativeTerminalToolbar'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { resolvePiModelGroup } from '../utils/llmDisplay'
@@ -1551,6 +1553,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [terminalToolsExpanded, setTerminalToolsExpanded] = useState(false)
+  const [terminalCommandRequested, setTerminalCommandRequested] = useState(false)
+  const terminalComposerId = React.useId()
+  useLayoutEffect(() => {
+    if (terminalToolsExpanded) textareaRef.current?.focus()
+  }, [terminalToolsExpanded])
   // A pane that pre-fills the composer (e.g. Ask in chat on a decision) asks
   // it to take focus with the caret at the end, ready for the user's words.
   useEffect(() => {
@@ -1699,7 +1707,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         adjustTextareaHeight()
       }
     }
-  }, [inputText, adjustTextareaHeight, isProductSurface])
+  }, [inputText, adjustTextareaHeight, isProductSurface, terminalToolsExpanded])
   
   // Set initial height on mount
   useEffect(() => {
@@ -1971,6 +1979,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [])
 
   useEffect(() => { closeComposerPickers(); dismissedTriggerRef.current = null }, [activeTabId, closeComposerPickers])
+
+  useLayoutEffect(() => {
+    closeComposerPickers()
+    setTerminalToolsExpanded(false)
+    setTerminalCommandRequested(false)
+  }, [activeTabId, terminalViewSelected, closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
     const palette = commandPaletteRef.current
@@ -2482,6 +2496,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     textareaRef.current?.focus()
   }, [inputText, showCommandDialog, closeComposerPickers])
 
+  // Open after the expanded composer is committed, so palette geometry and
+  // keyboard focus come from the visible textarea rather than a hidden box.
+  useEffect(() => {
+    if (!terminalCommandRequested || !terminalToolsExpanded) return
+    setTerminalCommandRequested(false)
+    openCommandMenu()
+  }, [terminalCommandRequested, terminalToolsExpanded, openCommandMenu])
+
   // Command selection handler - executes commands directly
   const handleCommandSelect = useCallback((command: string) => {
     if (!activeTabId) return
@@ -2905,7 +2927,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Scheduled runs share the compact actions beside the live-terminal toggle.
   // Bot runs still use the separate footer in ChatArea.
   const hasRunFooter = !!activeTab?.metadata?.isBotRun && !activeTab?.metadata?.isScheduledRun
-  const showStopButton = !!tabSessionId && isTurnInFlight && !hasRunFooter
+  const showStopButton = !!tabSessionId && isTurnInFlight && !hasRunFooter && !terminalViewSelected
   const stopButton = activeTabId ? <SessionStopButton key={activeTabId} tabId={activeTabId} /> : null
 
   // Check if query is valid (view-only tabs cannot submit)
@@ -2978,17 +3000,23 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     )
   }
 
-  // Terminal mode owns keyboard focus; retain the chat draft in component state.
-  if (terminalViewSelected && liveTerminalOffered && activeTabId) {
-    return (
-      <div className={`${inputPadX} flex items-center gap-3 border-t border-border py-2 text-xs text-muted-foreground`} data-testid="native-terminal-toolbar">
-        <span className="flex-1">Type directly in the terminal</span>
-        {showStopButton && stopButton}
-        <Button type="button" variant="outline" size="sm" onClick={() => useChatStore.getState().setTabViewMode(activeTabId, 'formatted')}>
-          Return to chat
-        </Button>
-      </div>
-    )
+  const nativeTerminalTools = terminalViewSelected && liveTerminalOffered && !!activeTabId
+  const openAttachmentPicker = () => {
+    closeComposerPickers()
+    if (nativeTerminalTools) setTerminalToolsExpanded(true)
+    const inputEl = fileUploadInputRef.current
+    if (!inputEl) {
+      addToast('Upload input not ready. Please retry.', 'error')
+      return
+    }
+    inputEl.click()
+  }
+  const toggleTerminalComposer = () => {
+    closeComposerPickers()
+    setTerminalToolsExpanded(!terminalToolsExpanded)
+    if (terminalToolsExpanded) {
+      requestMainTerminalFocus(tabSessionId)
+    }
   }
 
   // Shared controls are defined once and placed in the appropriate composer
@@ -3033,16 +3061,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           variant="outline"
           size="icon"
           disabled={isUploadingFiles}
-          onClick={() => {
-            const inputEl = fileUploadInputRef.current
-            if (!inputEl) {
-              console.error('[CHAT_UPLOAD] upload input ref not available')
-              addToast('Upload input not ready. Please retry.', 'error')
-              return
-            }
-            console.info('[CHAT_UPLOAD] opening file picker')
-            inputEl.click()
-          }}
+          onClick={openAttachmentPicker}
           className="h-7 w-7 p-0"
           data-testid="chat-upload-button"
           aria-label="Attach files"
@@ -3063,6 +3082,25 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   return (
     <TooltipProvider>
       <div className={isProductSurface ? 'border-t border-border bg-background py-1.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]' : 'space-y-1'} data-product-chat-input={isProductSurface || undefined}>
+      {nativeTerminalTools && (
+        <NativeTerminalToolbar
+          className={inputPadX}
+          expanded={terminalToolsExpanded}
+          uploading={isUploadingFiles}
+          composerId={terminalComposerId}
+          onCommands={() => {
+            setTerminalToolsExpanded(true)
+            setTerminalCommandRequested(true)
+          }}
+          onAttach={openAttachmentPicker}
+          onToggleComposer={toggleTerminalComposer}
+          onReturnToChat={() => chooseViewMode(activeTabId!, 'formatted')}
+        />
+      )}
+      {/* Keep shared draft, upload input and command dialogs mounted in terminal
+          mode. Native keys go to xterm; this optional composer submits app tools
+          and attachments through the same scoped chat/CLI delivery path. */}
+      <div id={terminalComposerId} hidden={nativeTerminalTools && !terminalToolsExpanded}>
       {/* Pasted-text Attachments */}
       {chatPastedAttachments.length > 0 && (
         <div className={inputPadX}>
@@ -3286,7 +3324,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               </div>
             )}
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-1.5">
+              <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
                 {showNewChatAction && onNewChat ? (
                   <Button
                     type="button"
@@ -3721,8 +3759,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
-                      {attachmentEl}
-                      {micEl}
+                      {!nativeTerminalTools && attachmentEl}
+                      {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary
                           button stops the running session. */}
                       {showStopButton ? stopButton : (
@@ -3735,7 +3773,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                               size="icon"
                               className={isProductSurface ? 'h-7 w-7 bg-violet-600 p-0 text-white hover:bg-violet-500' : 'h-7 w-7 p-0'}
                               data-testid="chat-submit-button"
-                              aria-label="Send message"
+                              aria-label={nativeTerminalTools ? "Send to terminal" : "Send message"}
                             >
                               <Send className="w-3.5 h-3.5" />
                             </Button>
@@ -3774,6 +3812,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         />
       </div>
       
+      </div>
+
       {/* Command Selection Dialog */}
       <CommandSelectionDialog
         isOpen={showCommandDialog}

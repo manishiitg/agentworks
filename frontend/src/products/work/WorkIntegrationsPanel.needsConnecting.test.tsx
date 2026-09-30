@@ -42,19 +42,15 @@ async function mount(onAsk = vi.fn()) {
 }
 
 describe('Crew MCPs: selected but disconnected apps', () => {
-  it('names each app that needs connecting and offers Connect and Ask agent', async () => {
+  it('names each app that needs connecting and offers Ask agent', async () => {
     useAuthStore.setState({ user: { id: 'admin', username: 'admin', is_admin: true } })
     useMCPStore.setState({ toolList: [tool('Notion')], isLoadingTools: false })
     const { host, onAsk } = await mount()
     const banner = host.querySelector('[data-testid="work-mcp-needs-connecting"]')
     expect(banner?.textContent).toContain('Resend')
     expect(banner?.textContent).not.toContain('Notion')
-    const [connect, ask] = Array.from(banner!.querySelectorAll('button'))
-    await act(async () => connect.click())
-    expect(host.querySelector('[data-testid="connectors-browser"]')?.textContent).toBe('Resend')
-    // Connect takes the user to the connect section for that app, and the
-    // notice stays until the app is actually connected.
-    expect(host.querySelector('[data-testid="work-mcp-connect-section"]')?.textContent).toContain('Connect Resend')
+    const [ask] = Array.from(banner!.querySelectorAll('button'))
+    // The one connect surface is the list above; the notice stays until the app is connected.
     expect(host.querySelector('[data-testid="work-mcp-needs-connecting"]')).not.toBeNull()
     await act(async () => useMCPStore.setState({ isLoadingTools: true }))
     expect(host.querySelector('[data-testid="work-mcp-needs-connecting"]')?.textContent).toContain('Resend')

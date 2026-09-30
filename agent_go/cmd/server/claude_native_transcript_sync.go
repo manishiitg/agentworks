@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/pathidentity"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/security"
 )
 
 // claudeNativeTranscriptRuntime is the minimal subset of a persisted builder
@@ -242,7 +243,7 @@ func (api *StreamingAPI) syncWorkflowBuilderConversationFromNativeTranscript(ctx
 	); err != nil {
 		log.Printf("[CHAT_HISTORY] Native transcript sync: cannot update index for %s: %v", conversationPath, err)
 	}
-	api.publishOwnedNativeTranscriptRecoveredAssistantMessages(
+	api.publishOwnedNativeTranscriptRecoveredMessages(
 		userID,
 		sessionID,
 		current.ConversationHistory,
@@ -260,6 +261,10 @@ func (api *StreamingAPI) syncWorkflowBuilderConversationFromNativeTranscript(ctx
 // second completion event: a completion would settle the next queued retained
 // turn when several user messages were submitted together.
 func (api *StreamingAPI) publishNativeTranscriptRecoveredAssistantMessages(sessionID string, current, refreshed []builderConversationMessage, durableUIEvents []storeevents.Event) int {
+	return api.publishNativeTranscriptRecoveredMessages(sessionID, current, refreshed, durableUIEvents, false)
+}
+
+func (api *StreamingAPI) publishNativeTranscriptRecoveredMessages(sessionID string, current, refreshed []builderConversationMessage, durableUIEvents []storeevents.Event, includeUsers bool) int {
 	if api == nil || api.eventStore == nil || strings.TrimSpace(sessionID) == "" {
 		return 0
 	}
@@ -276,9 +281,48 @@ func (api *StreamingAPI) publishNativeTranscriptRecoveredAssistantMessages(sessi
 		}
 	}
 	refreshedCounts := make(map[string]int)
+	currentUsers := make(map[string]int)
+	refreshedUsers := make(map[string]int)
+	visibleUsers := nativeTerminalEventUserCounts(api.eventStore, sessionID)
+	for _, text := range nativeTerminalUsers(current) {
+		currentUsers[text]++
+	}
+	durableUsers := make(map[string]int)
+	for _, row := range durableUIEvents {
+		if row.Type == "user_message" {
+			if text, ok := eventPayloadMap(row)["content"].(string); ok {
+				durableUsers[strings.TrimSpace(text)]++
+			}
+		}
+	}
+	for text, count := range durableUsers {
+		if count > visibleUsers[text] {
+			visibleUsers[text] = count
+		}
+	}
 	now := time.Now()
 	published := 0
 	for index, message := range refreshed {
+		if includeUsers && (message.Role == "human" || message.Role == "user") {
+			text := strings.TrimSpace(builderConversationMessageText(message))
+			if text == "" {
+				continue
+			}
+			refreshedUsers[text]++
+			if refreshedUsers[text] <= currentUsers[text] || refreshedUsers[text] <= visibleUsers[text] {
+				continue
+			}
+			id := fmt.Sprintf("native-transcript-sync-user-%s-%d", sessionID, index)
+			user := agentevents.NewUserMessageEvent(0, text, "user")
+			user.Timestamp = now
+			user.Metadata = map[string]interface{}{"source": "native_transcript_sync", "message_id": id, "delivery_status": "sent_to_cli", "recovered_live": true}
+			wrapped := agentevents.NewAgentEvent(user)
+			wrapped.SessionID = sessionID
+			api.eventStore.AddEvent(sessionID, storeevents.Event{ID: id, Type: "user_message", Timestamp: now, SessionID: sessionID, ExecutionKind: "main_agent", TerminalOwnerID: "main:" + sessionID, Data: wrapped})
+			visibleUsers[text]++
+			published++
+			continue
+		}
 		if !builderConversationRoleIsAssistant(message.Role) {
 			continue
 		}
@@ -486,6 +530,23 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 // Input observation needs the full user sequence to distinguish repeated
 // prompts even when the persisted chat's bounded window is full.
 func nativeTranscriptMessagesForRuntimeUncapped(provider, nativeSessionID, workingDir string, accountHome ...string) (messages []builderConversationMessage, maxTimestamp time.Time, transcriptPath string, ok bool, err error) {
+	// Landlocked chats keep their CLI files in the chat's private home, not
+	// the connected account's home. Resolve the exact native session there
+	// first, including records saved before private-home metadata existed.
+	// Never search another chat's home or substitute a different native ID.
+	if filepath.IsAbs(workingDir) && nativeSessionID != "" {
+		privateHome := filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+		if info, statErr := os.Stat(privateHome); statErr == nil && info.IsDir() {
+			messages, maxTimestamp, transcriptPath, ok, err = readNativeTranscriptMessagesForHome(provider, nativeSessionID, workingDir, privateHome)
+			if ok || err != nil {
+				return
+			}
+		}
+	}
+	return readNativeTranscriptMessagesForHome(provider, nativeSessionID, workingDir, accountHome...)
+}
+
+func readNativeTranscriptMessagesForHome(provider, nativeSessionID, workingDir string, accountHome ...string) (messages []builderConversationMessage, maxTimestamp time.Time, transcriptPath string, ok bool, err error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "agy-cli":
 		if nativeSessionID == "" {
@@ -1080,11 +1141,12 @@ func extractClaudeTranscriptText(content json.RawMessage) string {
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
-// Startup recovery may run before a browser restores a session. Persist its
-// history, but publish live events only to an already registered matching owner.
-func (api *StreamingAPI) publishOwnedNativeTranscriptRecoveredAssistantMessages(owner, session string, current, refreshed []builderConversationMessage, durableUIEvents []storeevents.Event) int {
+// Terminal-only turns can be wholly absent from platform history. Publish their
+// recovered human and assistant rows in conversation order without delivering
+// input to the provider or starting a new turn.
+func (api *StreamingAPI) publishOwnedNativeTranscriptRecoveredMessages(owner, session string, current, refreshed []builderConversationMessage, durableUIEvents []storeevents.Event) int {
 	if api == nil || api.eventStore == nil || owner == "" || api.eventStore.GetSessionOwner(session) != owner {
 		return 0
 	}
-	return api.publishNativeTranscriptRecoveredAssistantMessages(session, current, refreshed, durableUIEvents)
+	return api.publishNativeTranscriptRecoveredMessages(session, current, refreshed, durableUIEvents, true)
 }

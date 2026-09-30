@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { agentApi } from '../services/api'
 import type { TerminalSnapshot } from '../services/api-types'
 import { useTheme } from '../hooks/useTheme'
+import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 import { LiveAttachXtermPane, RAW_XTERM_THEMES, StaticXtermPane } from './TerminalCenter'
 
 type MainAgentTerminalProps = {
@@ -38,6 +39,14 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
   const [notStarted, setNotStarted] = useState(false)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const snapshotRef = useRef<TerminalSnapshot | null>(null)
+  useEffect(() => {
+    const focusTerminal = (event: Event) => {
+      if (readOnly || (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId !== sessionId) return
+      contentRef.current?.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea')?.focus({ preventScroll: true })
+    }
+    window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focusTerminal)
+    return () => window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focusTerminal)
+  }, [sessionId, readOnly])
   // Consecutive "no main terminal" answers: a retained pane can be missing for
   // one poll while the server rebinds it, so the view is dropped only when it
   // stays gone.

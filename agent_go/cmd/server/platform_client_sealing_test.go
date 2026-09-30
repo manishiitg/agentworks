@@ -18,7 +18,7 @@ import (
 // sealed platform client file, and mcpagent reads it back from there.
 func TestPlatformClientSecretsLiveSealedOutsideTheOverlay(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	dir := t.TempDir()
 	api := &StreamingAPI{mcpConfigPath: filepath.Join(dir, "mcp.json"), logger: loggerv2.NewNoop()}
 	if err := os.WriteFile(api.mcpConfigPath, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
@@ -74,7 +74,7 @@ func TestPlatformClientSecretsLiveSealedOutsideTheOverlay(t *testing.T) {
 // start, and both still read back through the token store.
 func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	tokenPath := getUserTokenFilePath(platformMCPTokenUserID, "Linear")
 	store := oauth.NewTokenStore(tokenPath)
 	if err := store.Save(&oauth2.Token{AccessToken: "at-plain-secret", RefreshToken: "rt-plain-secret", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}); err != nil {

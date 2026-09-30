@@ -18,7 +18,7 @@ const catalogMock = vi.hoisted(() => ({
 }))
 vi.mock('../../api/placeMcp', () => ({ placeMcpApi: placeMock }))
 const catalogFn = vi.hoisted(() => vi.fn())
-vi.mock('../../api/personalMcp', () => ({ personalMcpApi: { catalog: catalogFn } }))
+vi.mock('../../api/mcpCatalog', () => ({ mcpCatalogApi: { catalog: catalogFn } }))
 vi.mock('../../api/secrets', () => ({ secretsApi: { listWorkflowSecrets: vi.fn(async () => [{ name: 'LINEAR_KEY' }]) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
@@ -30,11 +30,11 @@ catalogFn.mockImplementation(async () => catalogMock.entries)
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogFn.mockImplementation(async () => catalogMock.entries); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
 
-async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w') {
+async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk: (message: string) => Promise<void> = async () => undefined) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<PlaceMcpSection workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={async () => undefined} />) })
+  await act(async () => { root.render(<PlaceMcpSection workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} />) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   return host
 }
@@ -53,15 +53,21 @@ it('lists the connections with whose login they use', async () => {
   expect(host.querySelector('input[aria-label="Search connectors"]')).toBeNull()
 })
 
-it('connects a listed server with one click, no popup, and says whose login it uses', async () => {
-  const host = await render(true)
+it('Connect sends the request to the agent chat, no popup, and says whose login it uses', async () => {
+  const onAsk = vi.fn(async (_message: string) => undefined)
+  const host = await render(true, 'Crew', 'Workflow/w', onAsk)
   // The rule is a plain line on the page, not a dialog in the way.
   expect(host.textContent).toContain('uses the login of the person who added it')
   expect(host.textContent).toContain('Available')
+  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('Google apps tab')
+  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('GITHUB_TOKEN')
   await act(async () => { button(host, 'GoogleDrive').click() })
   await settle()
   expect(document.body.textContent).not.toContain('with my login')
-  expect(placeMock.add).toHaveBeenCalledWith('Workflow/w', 'GoogleDrive')
+  // The chat does the connecting (and sends back any sign-in link); the screen adds nothing itself.
+  expect(onAsk).toHaveBeenCalledTimes(1)
+  expect(String(onAsk.mock.calls[0][0])).toContain('Connect GoogleDrive')
+  expect(placeMock.add).not.toHaveBeenCalled()
 })
 
 // A Code is a place like a Crew: the same screen, worded for the Code.
@@ -75,7 +81,6 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   expect(host.textContent).toContain('everyone who uses this Code uses it as that person')
   await openPicker(host)
   expect(host.querySelector('[data-testid="mcp-group-google"]')).not.toBeNull()
-  expect(host.querySelector('[data-testid="mcp-google-preview-note"]')?.textContent).toContain('Developer Preview')
   await act(async () => { (host.querySelector('button[aria-label="Add Drive"]') as HTMLButtonElement).click() })
   await act(async () => { (host.querySelector('button[aria-label="Add Calendar"]') as HTMLButtonElement).click() })
   await act(async () => { button(host, 'Connect 2 services').click() })
@@ -145,4 +150,20 @@ it('reports a failed connector list with a retry, and an empty one plainly', asy
   await openPicker(empty)
   await settle()
   expect(empty.textContent).toContain('No connectors with sign-in are set up on this server')
+})
+
+// A sign-in finishing in the other tab turns a connection to "connected"; the chat is told through
+// onAsk, but opening the screen with connections already connected sends nothing.
+it('tells the chat when a connection becomes connected, not on first load', async () => {
+  const listed = [{ name: 'u1__linear', catalog: 'Linear', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: false, active: true }]
+  placeMock.list.mockImplementation(async () => [...listed])
+  const onAsk = vi.fn(async (_message: string) => undefined)
+  const host = await render(true, 'Crew', 'Workflow/w', onAsk)
+  expect(onAsk).not.toHaveBeenCalled()
+  listed[0] = { ...listed[0], connected: true }
+  await act(async () => { window.dispatchEvent(new Event('focus')) })
+  await settle()
+  expect(host).toBeTruthy()
+  expect(onAsk).toHaveBeenCalledTimes(1)
+  expect(String(onAsk.mock.calls[0][0])).toContain('Linear is now connected in this Crew')
 })

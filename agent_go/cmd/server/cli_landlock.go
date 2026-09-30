@@ -23,6 +23,24 @@ const cliLandlockEnv = "AGENTWORKS_CLI_LANDLOCK"
 // top of the Landlock lock and to chats with Native agent tools on.
 const cliFullEnv = "AGENTWORKS_CLI_FULL"
 
+// cliFullUnconfinedEnv turns on Full CLI without the lock ("on"), for a person's own machine
+// (macOS has no launcher yet; Seatbelt is deferred, see PLAT-364). Claude then gets its own
+// shell and file edits with the person's own rights, so it is refused on any multi-user server.
+const cliFullUnconfinedEnv = "AGENTWORKS_CLI_FULL_UNCONFINED"
+
+func cliFullUnconfinedAllowed() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(cliFullUnconfinedEnv)), "on") && !IsMultiUserMode()
+}
+
+// applyFullUnconfined upgrades a Native-agent-tools chat to Full CLI without confinement.
+func applyFullUnconfined(llmAgent *agent.LLMAgentWrapper, sessionID string) {
+	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFullUnconfined(); err != nil {
+		log.Printf("[CLI_LANDLOCK] session %s: could not turn on unconfined Full CLI: %v", sessionID, err)
+	} else if upgraded {
+		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on WITHOUT confinement (%s=on, single-user machine)", sessionID, cliFullUnconfinedEnv)
+	}
+}
+
 func cliLandlockRequested(userID, userEmail string) bool {
 	return cliRolloutRequested(cliLandlockEnv, userID, userEmail)
 }
@@ -56,12 +74,21 @@ func cliRolloutRequested(env, userID, userEmail string) bool {
 // for the CLI; blocked paths inside a granted folder are not carved out
 // (Landlock only adds access) — the bridge tools still enforce them.
 func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
-	if llmAgent == nil || !cliLandlockRequested(userID, userEmail) || strings.TrimSpace(workingDir) == "" {
+	if llmAgent == nil {
+		return
+	}
+	if !cliLandlockRequested(userID, userEmail) || strings.TrimSpace(workingDir) == "" {
+		if cliFullUnconfinedAllowed() {
+			applyFullUnconfined(llmAgent, sessionID)
+		}
 		return
 	}
 	runner, ok := security.CLILandlockRunner()
 	if !ok {
 		log.Printf("[CLI_LANDLOCK] %s=on but this host cannot confine CLIs (no Landlock launcher); session %s runs unconfined", cliLandlockEnv, sessionID)
+		if cliFullUnconfinedAllowed() {
+			applyFullUnconfined(llmAgent, sessionID)
+		}
 		return
 	}
 	policy := llmtypes.CLISecurityPolicy{Provider: provider}

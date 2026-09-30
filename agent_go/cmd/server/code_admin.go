@@ -434,14 +434,14 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 	}
 	rows := []codeAdminPersonalServer{}
 	place := cleanAttachRoot(root)
-	attachments, _ := personalMCPAttachmentsFor(place)
+	attachments, _ := placeMCPAttachmentsFor(place)
 	for _, a := range attachments {
 		store := placeMCPStoreID(a.Owner, place)
-		servers, err := listPersonalMCPServers(store)
+		servers, err := listPlaceMCPServers(store)
 		if err != nil {
 			continue
 		}
-		dir, _ := personalMCPDir(store)
+		dir, _ := placeMCPDir(store)
 		for _, server := range servers {
 			if server.Name != a.Server {
 				continue
@@ -449,7 +449,7 @@ func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Reque
 			rows = append(rows, codeAdminPersonalServer{
 				UserID: a.Owner, Username: crewOwnerDisplayName(sanitizeUserIDForPath(a.Owner)), Name: server.Name,
 				URL: redactedURL(server.URL), Transport: server.Transport, OAuth: server.OAuth != nil,
-				Connected: personalMCPServerConnected(dir, store, server),
+				Connected: placeMCPServerConnected(dir, store, server),
 			})
 		}
 	}

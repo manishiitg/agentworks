@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { AlertTriangle, Search, Server } from 'lucide-react'
-import ConnectorsBrowser from '../../components/connectors/ConnectorsBrowser'
+import { AlertTriangle, Server } from 'lucide-react'
 import { ToolSelectionSection } from '../../components/ToolSelectionSection'
 import { isSelectedServer, serverNamesMatch } from '../../utils/mcpServerAlias'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
@@ -9,6 +8,9 @@ import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { PlaceMcpSection } from './PlaceMcpSection'
+import { GoogleAccountConnect } from './GoogleAccountConnect'
+import { googleAppApi } from '../../api/googleApp'
+import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
@@ -24,7 +26,7 @@ const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
   { value: 'skills', label: 'Skills' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'gmail', label: 'Gmail' },
+  { value: 'gmail', label: 'Google apps' },
   { value: 'cli', label: 'Connect' },
 ]
 
@@ -34,16 +36,16 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
-    gmail: `Help me with this ${noun} project's Gmail. Explain the setup and ask what I want to change.`,
+    gmail: `Help me with this ${noun} project's Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides). Explain the setup and ask what I want to change.`,
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
 
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
 // the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
-// the always-on MCP "Connect" tab is hidden, and Google is reached through MCP
-// servers only.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'gmail'])
+// the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
+// Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string
@@ -67,7 +69,6 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
   const actualSelected = selectedServers.filter(server => server !== 'NO_SERVERS')
   const selectedAvailableServers = useMemo(() => availableServers.filter(serverName => isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
   const unselectedAvailableServers = useMemo(() => availableServers.filter(serverName => !isSelectedServer(actualSelected, serverName)), [availableServers, actualSelected])
-  const [searchQuery, setSearchQuery] = useState('')
   // Selected for this project but not connected to the platform (e.g. a Crew
   // the Builder created with an app that still needs sign-in). Its tools do
   // not work until someone connects it, so say so and offer the way.
@@ -82,24 +83,11 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
     lastNeedsConnecting.current = next
     return next
   }, [toolsLoading, actualSelected, toolList])
-  // Connecting a platform app is admin-only (ConnectorsBrowser's rule); for
+  // Connecting a platform app is admin-only (an admin-only action); for
   // anyone else Connect cannot do anything, so say who can.
   const canConnectApps = useAuthStore(state =>
     state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
   )
-  const connectSectionRef = useRef<HTMLDivElement>(null)
-  const [connectFocus, setConnectFocus] = useState<string | null>(null)
-  useEffect(() => {
-    if (!connectFocus) return
-    connectSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-    const timer = window.setTimeout(() => setConnectFocus(null), 2500)
-    return () => window.clearTimeout(timer)
-  }, [connectFocus])
-  const startConnect = (serverName: string) => {
-    setSearchQuery(serverName)
-    setConnectFocus(serverName)
-  }
-
   const setSelected = async (servers: string[]) => {
     const store = useChatStore.getState()
     const selected = servers.length > 0 ? servers : ['NO_SERVERS']
@@ -134,17 +122,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
             {needsConnecting.map(serverName => (
               <li key={serverName} className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{serverName}</span>
-                {canConnectApps ? (
-                  <button
-                    type="button"
-                    className="rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100 dark:border-amber-600 dark:hover:bg-amber-900/40"
-                    onClick={() => startConnect(serverName)}
-                  >
-                    Connect
-                  </button>
-                ) : (
-                  <span className="text-xs text-amber-800/80 dark:text-amber-200/80">Only an admin can connect it.</span>
-                )}
+                {!canConnectApps && <span className="text-xs text-amber-800/80 dark:text-amber-200/80">Only an admin can connect it.</span>}
                 <button
                   type="button"
                   className="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
@@ -169,7 +147,6 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
             selectedTools={[]}
             onServerChange={(servers) => void setSelected(servers)}
             onToolChange={() => {}}
-            query={searchQuery}
             agentMode="multi-agent"
             hideHeader
             hideToolDetails
@@ -192,7 +169,6 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
             selectedTools={[]}
             onServerChange={(servers) => void setSelected(servers)}
             onToolChange={() => {}}
-            query={searchQuery}
             agentMode="multi-agent"
             hideHeader
             hideToolDetails
@@ -200,37 +176,6 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
           />
         </div>
       )}
-      <div className="relative mt-3 shrink-0">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search apps"
-          aria-label="Search apps"
-          className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-        />
-      </div>
-      <div
-        ref={connectSectionRef}
-        data-testid="work-mcp-connect-section"
-        className={`mt-3 scroll-mt-3 border-t border-border pt-3 transition-colors ${connectFocus ? 'rounded-md bg-amber-50/70 ring-2 ring-amber-300 dark:bg-amber-950/20 dark:ring-amber-700/60' : ''}`}
-      >
-        <div className="mb-3 text-sm font-medium text-muted-foreground">
-          {connectFocus ? `Connect ${connectFocus}` : 'Connect a new app'}
-        </div>
-        <ConnectorsBrowser
-          compact
-          manageOwnScroll={false}
-          workspacePath={workspacePath}
-          workspaceLabel="project"
-          assistantLabel="agent"
-          onAskAI={(message) => void onAsk(message)}
-          query={searchQuery}
-          hideSearch
-          hideConnectedSection
-        />
-      </div>
     </div>
   )
 }
@@ -249,6 +194,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // The Connect tab points at this installation's API origin. Hosted apps need
   // a public origin; local agents can connect directly to a loopback MCP URL.
   const product = useProjectProduct()
+  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const visibleTabs = INTEGRATION_TABS.filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels) &&
     !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
@@ -256,6 +202,13 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
+  // Whether the server has a Google app: then adding an account is one sign-in form.
+  const [googleAppReady, setGoogleAppReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void googleAppApi.status().then(status => { if (!cancelled) setGoogleAppReady(status.configured) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [tabNonce])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
   const toggleSkill = async (folderName: string) => {
@@ -332,7 +285,23 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
         />}
-        {activeTab === 'gmail' && <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />}
+        {activeTab === 'gmail' && (
+          <>
+            {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
+            {isAdmin && <McpAppsSection />}
+            {/* A Code connects its owner's own Google account through the server's Google app. With
+                that app the account list and the sign-in form are one place (no client file to
+                upload); without it the list keeps its own upload flow. */}
+            <WorkflowEmailPanel
+              workspacePath={workspacePath}
+              scopeNoun="project"
+              onAsk={onAsk}
+              platformConnect={googleAppReady && product.profileId === 'code' && !workspacePath.startsWith('_users/')
+                ? <GoogleAccountConnect workspacePath={workspacePath} onChanged={() => setTabNonce(nonce => nonce + 1)} />
+                : undefined}
+            />
+          </>
+        )}
         {activeTab === 'cli' && <CliMcpSetupPanel />}
       </div>
     </div>

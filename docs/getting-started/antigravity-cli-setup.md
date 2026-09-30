@@ -59,7 +59,14 @@ The providers panel entry flips to **Connected** when the runtime is on
 The existing **Native agent tools** switch also applies to Antigravity. With
 it off, AGY uses the MCP bridge for tools. With it on, AGY can use native file
 read/search and web read/search tools; commands, writes and subagents still
-use the bridge. AgentWorks installs a temporary `.agents/hooks.json` entry in
+use the bridge in this hybrid mode. Local **Full CLI** enables the complete native
+toolset alongside MCP when the single-user backend starts with
+`AGENTWORKS_CLI_FULL_UNCONFINED=on`. Keep Native agent tools on for the chat;
+restart the backend after changing the flag. See [AGY Full CLI](../design/agy_full_native_tools.md)
+for the mode contract and local certification. AGY is excluded from the RTS and
+excellence rollout for now.
+
+AgentWorks installs a temporary `.gemini/hooks.json` entry in
 the AGY workspace for this gate and restores the prior hook file after the
 session closes. This mode needs `python3` on the backend `PATH`.
 
@@ -82,7 +89,7 @@ required (the variable alone has no effect):
 export GEMINI_API_KEY="<key from https://aistudio.google.com/apikey>"
 ```
 
-Notes, verified against agy 1.2.12:
+Notes, key mode rechecked against agy 1.2.14:
 
 - agy never reads `.env` files; export the variable in the process
   environment (or the CI secret store).

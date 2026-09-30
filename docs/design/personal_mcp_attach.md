@@ -97,9 +97,10 @@ secret of the project). Connecting goes straight to the sign-in, with the own-OA
 panel when a provider needs one. There is no confirmation popup (owner decision
 2026-09-30, replacing the earlier warning dialog): the rule is one line on the page, "Each
 connection uses the login of the person who added it, and everyone who uses this Code
-uses it as that person". A failed or empty connector list says so, with Retry. Admins
-also get the sign-in apps setup, collapsed at the bottom; it lists only Google and GitHub
-(the product focuses on Google apps and GitHub; `mcpAppFocusKeys`, 2026-09-30).
+uses it as that person". A failed or empty connector list says so, with Retry. Google and GitHub are
+not offered as MCP connectors (2026-09-30): Google apps are the Gmail tab (gog, through the
+server's Google app: [google_accounts_gog.md](google_accounts_gog.md)), GitHub is a personal access
+token secret used with git and the API. The admin's Google app card lives in the Gmail tab.
 
 ## Code
 

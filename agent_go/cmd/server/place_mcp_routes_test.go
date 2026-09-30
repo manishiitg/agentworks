@@ -27,10 +27,10 @@ func personalRoute(api *StreamingAPI, handler func(*StreamingAPI, http.ResponseW
 // add to, or resolve, that Code's connection.
 func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	catalog := `{"mcpServers":{
-		"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token","scopes":["https://www.googleapis.com/auth/gmail.readonly"],"extra_auth_params":{"access_type":"offline","prompt":"consent"}}},
+		"AcmeMail":{"url":"https://mcp.acme.example/mcp","protocol":"http","oauth":{"auth_url":"https://auth.acme.example/oauth/authorize","token_url":"https://auth.acme.example/oauth/token","scopes":["https://www.googleapis.com/auth/gmail.readonly"],"extra_auth_params":{"access_type":"offline","prompt":"consent"}}},
 		"Keyed":{"url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer ${KEY}"}},
 		"Local":{"command":"npx","args":["x"]}}}`
 	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
@@ -42,11 +42,11 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	root := codePrivacyOwnerRoot
 	store := placeMCPStoreID("owner", root)
 
-	rec := personalRoute(api, (*StreamingAPI).handlePersonalMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
+	rec := personalRoute(api, (*StreamingAPI).handlePlaceMCPCatalog, http.MethodGet, "/x", "", "owner", nil)
 	var listed struct {
-		Servers []personalMCPCatalogServer `json:"servers"`
+		Servers []placeMCPCatalogServer `json:"servers"`
 	}
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 || listed.Servers[0].Name != "googlegmail" || !listed.Servers[0].NeedsClient {
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 || listed.Servers[0].Name != "acmemail" || !listed.Servers[0].NeedsClient {
 		t.Fatalf("catalog = %d %s", rec.Code, rec.Body.String())
 	}
 	add := func(user, body string) *httptest.ResponseRecorder {
@@ -57,16 +57,16 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	}
 	// Only the Code's owner connects to it (a logical path is always the
 	// caller's own tree, so the owner's Code is named by its physical path).
-	if rec := add("other", `{"workspace_path":"`+root+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusForbidden {
+	if rec := add("other", `{"workspace_path":"`+root+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("another person added to the owner's Code: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("add from catalog = %d %s", rec.Code, rec.Body.String())
 	}
-	if servers, _ := listPersonalMCPServers(store); len(servers) != 1 || servers[0].Catalog != "GoogleGmail" {
+	if servers, _ := listPlaceMCPServers(store); len(servers) != 1 || servers[0].Catalog != "AcmeMail" {
 		t.Fatalf("stored servers = %+v", servers)
 	}
-	if attached, _ := personalMCPAttachmentsFor(root); len(attached) != 1 || attached[0].Owner != "owner" || attached[0].Server != "gmail" {
+	if attached, _ := placeMCPAttachmentsFor(root); len(attached) != 1 || attached[0].Owner != "owner" || attached[0].Server != "gmail" {
 		t.Fatalf("attachments = %+v", attached)
 	}
 
@@ -85,31 +85,31 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	}
 
 	// The entered client is kept only once the sign-in succeeds.
-	if _, cfg, err := personalMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+	if _, cfg, err := placeMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
 		t.Fatalf("client kept before sign-in: %+v, %v", cfg.OAuth, err)
 	}
-	if err := writePersonalMCPClient(store, "gmail", registeredClient{ClientID: "cid.apps.googleusercontent.com", ClientSecret: "shh-owner"}); err != nil {
+	if err := writePlaceMCPClient(store, "gmail", registeredClient{ClientID: "cid.apps.googleusercontent.com", ClientSecret: "shh-owner"}); err != nil {
 		t.Fatal(err)
 	}
-	_, cfg, err := personalMCPServerConfig(store, "gmail")
+	_, cfg, err := placeMCPServerConfig(store, "gmail")
 	if err != nil || cfg.OAuth == nil || cfg.OAuth.ClientID != "cid.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "shh-owner" || cfg.OAuth.ExtraAuthParams["access_type"] != "offline" {
 		t.Fatalf("runtime config = %+v, %v", cfg.OAuth, err)
 	}
-	dir, _ := personalMCPDir(store)
+	dir, _ := placeMCPDir(store)
 	stored, _ := os.ReadFile(filepath.Join(dir, "servers.json"))
-	clientFile, _ := os.ReadFile(personalMCPClientFile(dir, store, "gmail"))
+	clientFile, _ := os.ReadFile(placeMCPClientFile(dir, store, "gmail"))
 	if strings.Contains(string(stored), "shh-owner") || strings.Contains(string(clientFile), "shh-owner") {
 		t.Fatalf("client secret stored in the clear")
 	}
-	if _, other, err := personalMCPServerConfig(placeMCPStoreID("other", root), "gmail"); err == nil {
+	if _, other, err := placeMCPServerConfig(placeMCPStoreID("other", root), "gmail"); err == nil {
 		t.Fatalf("another store resolved the Code's connection: %+v", other)
 	}
 	// Adding the name again starts clean: the old client never reaches
 	// whatever the name points at now.
-	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("re-add = %d %s", rec.Code, rec.Body.String())
 	}
-	if _, cfg, err := personalMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
+	if _, cfg, err := placeMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {
 		t.Fatalf("old client survived a re-add: %+v, %v", cfg.OAuth, err)
 	}
 }

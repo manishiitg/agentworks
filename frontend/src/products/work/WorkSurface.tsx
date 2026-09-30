@@ -38,6 +38,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type ProductEngineSelectionDetail, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
+import { rememberRunsOn, type RunsOnSelection } from './RunsOnPicker'
 import { crewTemplates, type CrewTemplateId } from './crewTemplates'
 import { WorkTemplateSetup } from './WorkTemplateSetup'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
@@ -191,8 +192,9 @@ function useWorkSessions(product: ProjectProductConfig) {
     return () => { cancelled = true }
   }, [product, setSelectedId])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
-    const session = await createWorkSession(title, description, icon, templateId, product)
+  const create = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection) => {
+    const session = await createWorkSession(title, description, icon, templateId, product, runsOn)
+    if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     setSessions((current) => [session, ...current])
     setSelectedId(session.id)
     return session
@@ -247,7 +249,10 @@ function useWorkSessions(product: ProjectProductConfig) {
     const project = sessions.find(item => item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (project.shared) throw new Error(`Only the ${product.noun} owner can change this.`)
+    // The account travels with the provider: without it "Use account" saved only the provider,
+    // and the Crew or Code kept running on the server account (excellence/Confida, 2026-09-30).
     const llmConfig = workLLMConfigFromSelection({
+      connectionId: selection.connectionId,
       provider: selection.provider || selection.engine,
       modelId: selection.modelId,
       reasoningEffort: selection.reasoningEffort,
@@ -1012,12 +1017,12 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     })
   }, [reportPreviewPreference, selected?.id, setSplitRatio, startSplitDrag])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection) => {
     if (creating) return
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, templateId)
+      const created = await create(title, description, icon, templateId, runsOn)
       if (templateId) {
         setPanelOpen(true)
         setWorkspaceView('files')
@@ -1086,7 +1091,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       {createOpen && !product.hasIdentity ? (
         <CreateCodeWorkspaceDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={title => createProject(title, '')}
+          onCreate={(title, runsOn) => createProject(title, '', undefined, undefined, runsOn)}
+          profileId={product.profileId}
           submitting={creating}
           error={createError}
         />
@@ -1094,6 +1100,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         <CreateWorkProjectDialog
           onClose={() => { if (!creating) setCreateOpen(false) }}
           onCreate={createProject}
+          profileId={product.profileId}
           submitting={creating}
           error={createError}
         />

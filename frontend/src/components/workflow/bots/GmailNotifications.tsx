@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle, Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
 import type { GmailConnection, GoogleServiceGrant } from '../../../services/api-types'
@@ -221,10 +221,13 @@ function SignInLinkBox({ url }: { url: string }) {
   )
 }
 
-export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk }: {
+export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk, platformConnect }: {
   bots: GmailNotificationsBots
   workspacePath: string | null
   scopeNoun?: 'workflow' | 'project'
+  /** When the server has a Google app, adding an account is this one sign-in form: no client
+   *  file to upload, so the upload form and its setup guide are not shown at all. */
+  platformConnect?: ReactNode
   onAsk?: (message: string) => void | Promise<void>
 }) {
   const {
@@ -348,7 +351,9 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 </span>
               </span>
             }
-            description="Sending accounts used for notifications. Uploading the Google Cloud client file signs in that mailbox; a workflow may select an account, otherwise the default is used."
+            description={platformConnect
+              ? 'Your Google accounts for this project. The agent uses them through the server; the default one sends notifications.'
+              : 'Sending accounts used for notifications. Uploading the Google Cloud client file signs in that mailbox; a workflow may select an account, otherwise the default is used.'}
             actions={
               <AskAIButton
                 workspacePath={workspacePath}
@@ -358,13 +363,13 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               />
             }
           >
-              {!(gmailConfig.auth.authenticated && gmailConfig.auth.has_gmail_scope) && gmailConnections.length === 0 && (
+              {!platformConnect && !(gmailConfig.auth.authenticated && gmailConfig.auth.has_gmail_scope) && gmailConnections.length === 0 && (
                 <Card className="border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
                   <div className="flex gap-2"><AlertTriangle className="h-4 w-4 flex-shrink-0" /><div><strong>No account connected yet.</strong> Add a sending account below and sign in with Google. <code>{gmailBackendLabel(gmailConfig.auth.backend).install}</code> must be installed on the server host.</div></div>
                 </Card>
               )}
 
-              <GmailSetupGuide backend={gmailConfig.auth.backend} />
+              {!platformConnect && <GmailSetupGuide backend={gmailConfig.auth.backend} />}
 
                 {gmailOAuthClientError && <StatusBanner tone="error">{gmailOAuthClientError}</StatusBanner>}
                 {newClientParseError && <StatusBanner tone="error">{newClientParseError}</StatusBanner>}
@@ -599,6 +604,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                   </ul>
                 )}
 
+                {platformConnect ? platformConnect : (
+<>
                 {gmailConnections.length > 0 && !showAddClientForm ? (
                   <Button
                     variant="outline"
@@ -712,6 +719,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                     </Button>
                   </div>
                 )}
+</>
+)}
           </FormSection>
           <FormSection
             title="Delivery settings"

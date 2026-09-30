@@ -7,7 +7,7 @@ import api from '../services/api'
 export interface PersonalMcpHeader { secret: string; format?: string }
 
 /** A platform catalog server a person can connect with their own login. */
-export interface PersonalMcpCatalogServer {
+export interface McpCatalogServer {
   name: string
   catalog: string
   description?: string
@@ -20,9 +20,9 @@ export interface PersonalMcpCatalogServer {
 
 export interface PersonalMcpConnectResult { auth_url?: string; status?: string; message?: string; redirect_uri?: string }
 
-export const personalMcpApi = {
-  catalog: async (): Promise<PersonalMcpCatalogServer[]> => {
-    const response = await api.get('/api/me/mcp/catalog')
+export const mcpCatalogApi = {
+  catalog: async (): Promise<McpCatalogServer[]> => {
+    const response = await api.get('/api/mcp/catalog')
     return response.data.servers || []
   },
 }

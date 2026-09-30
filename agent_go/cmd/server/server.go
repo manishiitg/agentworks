@@ -2400,7 +2400,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.sweepOrphanCodeSessionPins(context.Background())
 	}()
 	// The catalog of servers that can be connected, and connections of a place.
-	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
+	apiRouter.HandleFunc("/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
+	// The old path, kept for a browser tab still running the previous frontend.
+	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
@@ -2715,6 +2717,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	GmailFeedbackRoutes(router, api)
 	GmailConnectionRoutes(router, api)
 	GmailOAuthRoutes(router, api)
+	GoogleAppRoutes(router, api)
 	GmailOAuthClientRoutes(router, api)
 
 	// Per-user notification preferences (Slack channel, WhatsApp number)
@@ -3438,7 +3441,9 @@ func (api *StreamingAPI) corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-AgentWorks-Attended-Chat")
+		// X-User-ID: the workspace client sends it on /api/wp calls; the gateway overwrites it with
+		// the signed-in user (workspace_proxy.go), so allowing it only lets the preflight pass.
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Session-ID, Idempotency-Key, X-Conversation-Continuation, X-Queued-Chat-Delivery, X-Client-Submitted-At, X-AgentWorks-Attended-Chat, X-User-ID")
 		w.Header().Set("Access-Control-Expose-Headers", "Server-Timing")
 		if originAllowed {
 			w.Header().Set("Timing-Allow-Origin", origin)
@@ -6390,7 +6395,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// A Code chat's agent connects the person's own MCP servers.
 			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-				if err := api.registerPersonalMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
+				if err := api.registerPlaceMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
 					sendError(fmt.Sprintf("Failed to register personal MCP tool: %v", err), true)
 					return
 				}

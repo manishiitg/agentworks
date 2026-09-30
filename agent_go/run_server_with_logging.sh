@@ -6,6 +6,44 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
+# (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
+# of origin/main; agents work in their own worktrees and push to main. A clean checkout on main
+# that is behind is fast-forwarded; one with uncommitted edits or on another branch is left alone
+# with a warning. AGENTWORKS_SKIP_AUTO_PULL=1 turns this off (also set for the re-exec below).
+auto_pull_local_checkouts() {
+    [ "${AGENTWORKS_SKIP_AUTO_PULL:-}" = "1" ] && return 0
+    local root repo branch behind updated_self=0
+    root="$(cd "$SCRIPT_DIR/.." && pwd)"
+    for repo in "$root" "$root/../mcpagent" "$root/../multi-llm-provider-go"; do
+        [ -d "$repo/.git" ] || [ -f "$repo/.git" ] || continue
+        # A worktree (e.g. an agent's) is not the local app; only real checkouts are pulled.
+        [ -d "$repo/.git" ] || continue
+        branch="$(git -C "$repo" branch --show-current 2>/dev/null)"
+        GIT_TERMINAL_PROMPT=0 git -C "$repo" fetch -q origin main 2>/dev/null || { echo "⚠️  $(basename "$repo"): could not fetch origin (offline?); running as is"; continue; }
+        behind="$(git -C "$repo" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+        [ "$behind" = "0" ] && continue
+        # frontend/public/runtime-config.js is rewritten by this script on every start; it is
+        # not someone's work, so it neither blocks the update nor survives it.
+        if [ "$branch" != "main" ] || [ -n "$(git -C "$repo" status --porcelain 2>/dev/null | grep -v ' frontend/public/runtime-config.js$')" ]; then
+            echo "⚠️  $(basename "$repo") is $behind commit(s) behind origin/main but has uncommitted changes or is not on main; not updating it."
+            continue
+        fi
+        git -C "$repo" checkout -q -- frontend/public/runtime-config.js 2>/dev/null
+        if git -C "$repo" merge -q --ff-only origin/main 2>/dev/null; then
+            echo "⬇️  $(basename "$repo"): updated to origin/main (+$behind commits)"
+            [ "$repo" = "$root" ] && updated_self=1
+        else
+            echo "⚠️  $(basename "$repo"): local commits not on origin/main; not updating it."
+        fi
+    done
+    # Bash reads this script while it runs; after updating it, start again from the new copy.
+    if [ "$updated_self" = "1" ]; then
+        AGENTWORKS_SKIP_AUTO_PULL=1 exec "$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" "$@"
+    fi
+}
+auto_pull_local_checkouts "$@"
+
 # Capture WORKSPACE_DOCS_PATH from the caller's shell BEFORE any .env sourcing.
 # .env files in this project commonly carry the Docker path (/app/workspace-docs),
 # which must not leak into native mode — but a deliberate shell export is a
@@ -1301,6 +1339,10 @@ export MULTI_USER_MODE="false"
 
 # Enable local mode (enables CDP browser connection and other local-only features)
 export LOCAL_MODE="true"
+
+# Full CLI on a person's own machine (PLAT-364): Claude and Codex get their own shell and file
+# edits, unconfined. The server refuses it in multi-user mode. Set to "off" to keep hybrid.
+export AGENTWORKS_CLI_FULL_UNCONFINED="${AGENTWORKS_CLI_FULL_UNCONFINED:-on}"
 
 # Log all agent prompts (system prompt + user message) to logs/agent_prompts/
 export LOG_AGENT_PROMPTS="true"

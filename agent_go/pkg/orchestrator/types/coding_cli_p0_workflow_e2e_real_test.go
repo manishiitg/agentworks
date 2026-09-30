@@ -139,7 +139,7 @@ func codingCLIP0Providers(t *testing.T) map[string]codingCLIP0Provider {
 			provider:    llm.ProviderAgyCLI,
 			model:       model("AGY_CLI_WORKFLOW_P0_MODEL", "gemini-3.8-flash-high"),
 			requiredBin: "agy",
-			apiKeys:     &llm.ProviderAPIKeys{AgyCLI: optional(os.Getenv("GEMINI_API_KEY"))},
+			apiKeys:     &llm.ProviderAPIKeys{RuntimeEnvironment: map[string]string{"GEMINI_API_KEY": firstNonEmptyEnv("GEMINI_API_KEY", "GOOGLE_API_KEY")}},
 			cleanup:     func(ctx context.Context) { _ = llmproviders.CleanupAgyCLIInteractiveSessions(ctx) },
 		},
 	}
@@ -197,7 +197,10 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	}
 	t.Setenv("WORKSPACE_DOCS_PATH", wsRoot)
 
-	relWorkspace := "Workflow/_p0_cli_" + provider.name + "_" + filepath.Base(t.TempDir())
+	// TempDir's final component is usually "001" in every test process. Use
+	// its unique parent so a rerun cannot consume a prior interrupted run's
+	// files or completion logs from the shared workspace API.
+	relWorkspace := "Workflow/_p0_cli_" + provider.name + "_" + filepath.Base(filepath.Dir(t.TempDir()))
 	workspaceDisk := filepath.Join(wsRoot, relWorkspace)
 	if os.Getenv("KEEP_E2E_WORKSPACE") == "" {
 		t.Cleanup(func() { _ = os.RemoveAll(workspaceDisk) })
@@ -226,13 +229,23 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	if err := writeJSON(filepath.Join(workspaceDisk, "planning", "plan.json"), map[string]interface{}{
 		"steps": []map[string]interface{}{
 			{
-				"type": "regular", "id": "p0-first", "title": "First P0 turn",
-				"description":          fmt.Sprintf("Use the declared MCP bridge shell tool (api-bridge.execute_shell_command / api_bridge_execute_shell_command), never a built-in shell or file tool, to run this exact file operation:\nprintf '%%s\\n' '%s' > '%s' && cat '%s'\nAfter the bridge call succeeds, return only this completion summary and status—do not reproduce the tool name, arguments, command, or output envelope:\nP0_FIRST_COMPLETED %s\nSTATUS: COMPLETED", firstBridgeToken, firstBridgeFile, firstBridgeFile, firstBridgeToken),
+				// Message sequences are the agentic step type. Regular steps
+				// now require a saved script and do not exercise CLI completion.
+				"type": "message_sequence", "id": "p0-first", "title": "First P0 turn",
+				"description": "Create the first MCP bridge proof and complete the turn.",
+				"items": []map[string]interface{}{{
+					"id": "run", "type": "user_message",
+					"message": fmt.Sprintf("Use the declared MCP bridge shell tool (api-bridge.execute_shell_command / api_bridge_execute_shell_command), never a built-in shell or file tool, to run this exact file operation:\nprintf '%%s\\n' '%s' > '%s' && cat '%s'\nAfter the bridge call succeeds, return only this completion summary and status—do not reproduce the tool name, arguments, command, or output envelope:\nP0_FIRST_COMPLETED %s\nSTATUS: COMPLETED", firstBridgeToken, firstBridgeFile, firstBridgeFile, firstBridgeToken),
+				}},
 				"context_dependencies": []string{}, "context_output": "p0-bridge-first.txt", "next_step_id": "p0-second",
 			},
 			{
-				"type": "regular", "id": "p0-second", "title": "Second P0 turn",
-				"description":          fmt.Sprintf("Use the declared MCP bridge shell tool (api-bridge.execute_shell_command / api_bridge_execute_shell_command), never a built-in shell or file tool, to verify the prior file and create the next one:\ntest \"$(cat '%s')\" = '%s' && printf '%%s\\n' '%s' > '%s' && cat '%s'\nAfter the bridge call succeeds, return only this completion summary and status—do not reproduce the tool name, arguments, command, or output envelope:\nP0_SECOND_STARTED_AFTER_FIRST %s\nSTATUS: COMPLETED", firstBridgeFile, firstBridgeToken, secondBridgeToken, secondBridgeFile, secondBridgeFile, secondBridgeToken),
+				"type": "message_sequence", "id": "p0-second", "title": "Second P0 turn",
+				"description": "Verify the first proof, create the second MCP bridge proof, and complete the turn.",
+				"items": []map[string]interface{}{{
+					"id": "run", "type": "user_message",
+					"message": fmt.Sprintf("Use the declared MCP bridge shell tool (api-bridge.execute_shell_command / api_bridge_execute_shell_command), never a built-in shell or file tool, to verify the prior file and create the next one:\ntest \"$(cat '%s')\" = '%s' && printf '%%s\\n' '%s' > '%s' && cat '%s'\nAfter the bridge call succeeds, return only this completion summary and status—do not reproduce the tool name, arguments, command, or output envelope:\nP0_SECOND_STARTED_AFTER_FIRST %s\nSTATUS: COMPLETED", firstBridgeFile, firstBridgeToken, secondBridgeToken, secondBridgeFile, secondBridgeFile, secondBridgeToken),
+				}},
 				"context_dependencies": []string{"p0-bridge-first.txt"}, "context_output": "p0-bridge-second.txt", "next_step_id": "end",
 			},
 		},

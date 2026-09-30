@@ -185,8 +185,8 @@ func TestCodeReviewerSeesEveryCodesCost(t *testing.T) {
 // without its query, signed-in state), audited; never to a member.
 func TestCodeInspectionListsConnections(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
-	withPersonalMCPRoot(t)
-	if _, err := addPersonalMCPServer(placeMCPStoreID("owner", codePrivacyOwnerRoot), personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
+	withMCPConnectionsRoot(t)
+	if _, err := addPlaceMCPServer(placeMCPStoreID("owner", codePrivacyOwnerRoot), placeMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := recordPlaceMCP("owner", "deepwiki", codePrivacyOwnerRoot); err != nil {

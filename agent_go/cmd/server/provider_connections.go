@@ -314,3 +314,35 @@ func personalProviderConnectionsLocked(provider string) bool {
 	allow := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_PERSONAL_PROVIDER_CONNECTIONS")))
 	return isProviderLocked(provider) && allow != "true" && allow != "1"
 }
+
+// ownDefaultProviderAccountID is the account a Crew or Code chat uses when it names none: the
+// person's own account for this provider (the one they added themselves), newest first, skipping
+// one known not to be signed in. Empty means the server account, as before. An account chosen
+// explicitly in the project, the server account included ("global:<provider>"), always wins
+// over this default; see resolveAgentProfileForQuery.
+func ownDefaultProviderAccountID(ctx context.Context, userID, provider string) string {
+	userID, provider = strings.TrimSpace(userID), strings.TrimSpace(provider)
+	if userID == "" || provider == "" || personalProviderConnectionsLocked(provider) {
+		return ""
+	}
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return ""
+	}
+	best := ""
+	var bestAt time.Time
+	for _, record := range records {
+		if record.Removed || record.Scope != "user" || record.OwnerUserID != userID || record.Provider != provider {
+			continue
+		}
+		if configured, ok := cachedProviderAccountConfigured(record.ID); ok && configured != nil && !*configured {
+			continue
+		}
+		if best == "" || record.UpdatedAt.After(bestAt) {
+			best, bestAt = record.ID, record.UpdatedAt
+		}
+	}
+	return best
+}

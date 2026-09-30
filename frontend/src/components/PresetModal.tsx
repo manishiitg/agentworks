@@ -15,6 +15,7 @@ import { useLLMStore } from '../stores/useLLMStore';
 import { useModeStore } from '../stores/useModeStore';
 
 import LLMSelectionDropdown from './LLMSelectionDropdown';
+import { RunsOnPicker, rememberRunsOn, type RunsOnSelection } from '../products/work/RunsOnPicker';
 
 
 import type { LLMOption } from '../types/llm';
@@ -105,6 +106,19 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     () => getWorkflowProviderOptions(providerManifest),
     [providerManifest]
   );
+  // "Runs on" for a new workflow: the coding CLI and the account (your own signed-in one first),
+  // chosen at creation so the first run works without opening the Models panel. Hidden when the
+  // deployment locks model settings (the reason the model section was removed on 2026-09-03).
+  const llmConfigLocked = useLLMStore(state => state.llmConfigLocked);
+  const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>();
+  const runsOnOptions = useMemo(() => providerProfileOptions.map(option => ({
+    id: option.provider,
+    label: option.label || option.provider,
+    provider: option.provider,
+    model_id: option.model,
+    default: option.provider === primaryConfig.provider,
+  })), [providerProfileOptions, primaryConfig.provider]);
+  const showRunsOn = effectiveAgentMode === 'workflow' && !editingPreset && !llmConfigLocked && runsOnOptions.length > 0;
 
   useEffect(() => {
     if (isOpen && effectiveAgentMode === 'workflow' && !providerManifestLoaded) {
@@ -370,6 +384,11 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
           tier_3: stripRetiredLLMFallbacks(effectiveTier3LLM),
         } : undefined;
 
+        if (showRunsOn && runsOn?.provider) {
+          workflowBaseLLMConfig.provider = runsOn.provider as PresetLLMConfig['provider'];
+          workflowBaseLLMConfig.connection_id = runsOn.connectionId;
+          rememberRunsOn('workflow', runsOn.provider);
+        }
         if (!showWorkflowLLMAdvanced) {
           if (!workflowBaseLLMConfig.provider) {
             alert('Select a coding agent provider');
@@ -450,7 +469,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
     } finally {
       setIsSavingPreset(false);
     }
-  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, pulseLLM, effectivePulseLLM, browserMode, cdpPort, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider]);
+  }, [label, icon, query, effectiveAgentMode, selectedFolder, selectedServers, selectedTools, selectedSkills, selectedSecrets, selectedGlobalSecrets, llmConfig, builderLLM, effectiveBuilderLLM, maintenanceLLM, effectiveMaintenanceLLM, pulseLLM, effectivePulseLLM, browserMode, cdpPort, editingPreset, onSave, onClose, defaultAgentLLM, effectiveTier1LLM, effectiveTier2LLM, effectiveTier3LLM, showWorkflowLLMAdvanced, unsavedCredentialProvider, showRunsOn, runsOn]);
 
   // Close modal on escape key
   useEffect(() => {
@@ -583,6 +602,9 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                 <p id="preset-icon-help" className="text-xs text-gray-500 dark:text-gray-400">
                   Optional. Use an emoji or short symbol; otherwise the automation’s initial is used.
                 </p>
+                {showRunsOn && (
+                  <RunsOnPicker profileId="workflow" accountsProduct="" options={runsOnOptions} onChange={setRunsOn} />
+                )}
                 {!editingPreset && (
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     Saved under <span className="font-mono">{selectedFolder?.filepath || 'Workflow/workflow'}</span>. Models, secrets and connectors are set up inside the workflow.

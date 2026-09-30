@@ -113,9 +113,15 @@ func TestDirectoryDrivesWorkflowTierAndProducts(t *testing.T) {
 	if fields := productAccessResponseFields(&UserClaims{UserID: "a1", Username: "alice"}); fields["allowed_products"] != nil {
 		t.Fatal("admin must be unrestricted (null)")
 	}
-	// An identity the directory does not know keeps the legacy default.
+	// An identity a populated directory does not list is not the deployment's
+	// owner (that used to make it an admin); admin is something a record grants.
+	if got := workflowAccessForIdentity("zz", "zed", ""); got != WorkflowAccessWrite {
+		t.Fatalf("unlisted identity in a populated directory should get write, got %s", got)
+	}
+	// With no directory at all (legacy deployments) the owner default stands.
+	withMemoryUserDirectory(t, "")
 	if got := workflowAccessForIdentity("zz", "zed", ""); got != WorkflowAccessOwner {
-		t.Fatalf("unknown identity should fall back to legacy owner default, got %s", got)
+		t.Fatalf("with no directory the legacy owner default should stand, got %s", got)
 	}
 }
 

@@ -95,15 +95,16 @@ Example:
 		if model == "" {
 			model = defaultCodingAgentE2EModel(provider)
 		}
-		// Cursor's retained UI is the Workflow Builder. Ordinary direct chat
-		// intentionally uses structured transport and cannot certify tmux Send.
-		if provider == "cursor-cli" && client.presetQueryID == "" && client.agentMode == "simple" {
+		// General chat has been retired. Exercise every retained CLI through
+		// an isolated Workflow Builder, the supported product context that
+		// actually owns a retained tmux session.
+		if client.presetQueryID == "" && client.agentMode == "simple" {
 			docs := strings.TrimSpace(codingAgentChatE2EFlags.workspaceDocs)
 			if docs == "" {
 				docs = strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
 			}
 			if docs == "" {
-				return fmt.Errorf("Cursor retained P0 requires --workspace-docs for an isolated Workflow Builder fixture")
+				return fmt.Errorf("%s retained P0 requires --workspace-docs for an isolated Workflow Builder fixture", provider)
 			}
 			fixture, cleanup, err := createWorkflowAutoNotificationFixture(docs, false, provider, model)
 			if err != nil {
@@ -278,7 +279,7 @@ Example:
 
 func init() {
 	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.serverURL, "server-url", "http://localhost:18743", "coding-agent-loop server URL")
-	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.provider, "provider", "codex-cli", "coding CLI provider: codex-cli, cursor-cli, pi-cli, or claude-code")
+	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.provider, "provider", "codex-cli", "coding CLI provider: claude-code, codex-cli, cursor-cli, pi-cli, muse-cli, or agy-cli")
 	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.model, "model", "", "model ID; defaults to the provider-specific E2E model")
 	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.sessionID, "session-id", "", "session ID to reuse; generated when omitted")
 	codingAgentChatE2ECmd.Flags().StringVar(&codingAgentChatE2EFlags.selectedFolder, "selected-folder", "_users/default/Chats", "workspace-relative folder for the chat session")
