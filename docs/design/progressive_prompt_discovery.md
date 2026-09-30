@@ -1,0 +1,216 @@
+# Progressive prompt and tool discovery
+
+Status: investigation and recommended design, 2026-10-01. No runtime behavior is
+changed by this document. Inspected builder `7da5366df`, mcpagent `42ad02e`, and
+provider `1fef821`, in separate owned worktrees.
+
+The problem is instruction ownership and discovery, not just verbosity. We
+already load skill bodies on demand, but independently author feature summaries,
+product instructions, transport instructions, and a complete tool-name index.
+They overlap and sometimes disagree. Shortening each copy independently leaves
+the same maintenance problem.
+
+## What the agent receives today
+
+| Layer | Source and delivery | Assessment |
+| --- | --- | --- |
+| Product identity and behavior | Code/Crew `prompts/system-prompt.md`; workflow phase templates | Keep identity, mode boundaries, and essential behavior. These also contain feature procedures duplicated elsewhere. |
+| Runtime context and policy | Server `prompt_sections.go`, assembled in `server.go`; folder/secret/browser sections | Keep live grants and applicable constraints. Replace procedural detail with references where appropriate. |
+| Feature summaries | `pkg/agentprofiles/features.go`, `FeaturePromptExtensions`; server section `product-features` | Each nonempty feature extension is always appended to writable profile chats. Some repeat skill procedures and product text. Crew readers deliberately skip this section. |
+| Skill discovery | `internal/workproduct/profile_definition.go`, `RegisterFeatureSkills`; mcpagent `agent/skill.go`, `renderSkillListing`; provider projection | API models get names/descriptions in the prompt. Coding CLIs generally get native skill files instead. Full bodies are read on demand. |
+| Provider tool mode and bridge routing | mcpagent `agent/agent.go`, `appendBridgeRoutingInstructions`; `coding_agent_bridge_routing_prompt.go` | Provider-specific native permissions plus shared bridge/HTTP instructions. Shared instructions include unrelated feature procedures. |
+| Complete authorized tool-name index | mcpagent `effective_system_prompt.go` → `code_execution_tools.go`, `buildToolIndexForContext` → `prompt/builder.go` | Every code-execution outgoing prompt gets the current index. It contains names, grouping, and endpoints, not all argument schemas. |
+| Detailed tool schema | mcpagent `get_api_spec` | Loaded on demand, but requires an exact tool name. There is no local `search_tools` discovery tool. |
+| Additional HTTP tutorial | mcpagent `GetCodeExecutionInstructions`; builder `workflow_phase_prompt.go`; workflow shared prompt and bundled bridge reference | Workflows have extra copies of discovery, native-tool, endpoint, auth, and curl guidance. |
+
+The feature-to-skill relationship is many-to-many, not one skill per feature:
+secrets, models, and attached folders share `work-integrations`; schedules,
+triggers, and bots share `work-schedules-and-bots`; database and dashboard share
+`work-dashboard`. Code renders these templates under `code-*` names. Some
+features, such as memory and terminal, have no feature skill. Do not mechanically
+delete every feature extension or introduce eighteen duplicate skill files.
+
+The manifest already uses a canonical tool registry and request-time permission
+checks. This is valuable: it reflects late registration and changed allowlists.
+There is only one tagged `<available_tools>` section after composition. The
+duplication is mainly semantic, not repeated identical manifest blocks.
+
+## Real prompt baseline
+
+An earlier read-only RTS inspection of a saved Code session from
+2026-09-30T13:18:04Z measured its saved system text:
+
+| Portion | Unicode characters |
+| --- | ---: |
+| Code base | 3,566 |
+| Workspace | 825 |
+| Memory instructions | 2,449 |
+| 18 feature summaries | 5,487 |
+| Attached folders | 173 |
+| Browser | 399 |
+| Secret references | 1,099 |
+| Bridge routing | 3,438 |
+| Tool catalog | 4,793 |
+| Total | 22,229 |
+
+Features, routing, and catalog account for 13,718 characters, about 62% of that
+saved system text. This is opportunity size, not a promised reduction: their
+replacements still need content. The catalog had 70 custom and 44 connected MCP
+tool names. Twenty-two custom groups repeated the same endpoint.
+
+This snapshot is older than the inspected source and is not a tokenized count
+of the entire provider request. Native CLI instructions, skill descriptions,
+conversation history, and tool definitions also consume context. An API
+tool-calling session can carry schemas separately from its system text. Compare
+before/after using identical profile, grants, tools, and provider settings; do
+not attribute unrelated profile changes to this work. No private prompt or
+credential values are included here.
+
+## Concrete drift and gaps
+
+1. **Useful skill triggers are discarded.**
+   `pkg/agentprofiles/skillfiles.go` strips SKILL.md frontmatter, then uses
+   `SkillFileBinding.Description` from Go. For example, `work-mcp` has a detailed
+   action-trigger description in its file, but registration substitutes
+   “Connect and manage MCP servers for … projects.” Provider projection
+   synthesizes frontmatter from that shorter registered description. Improving
+   the file's description alone does not improve discovery.
+2. **Code repeats function and connection procedures.** Its base prompt explains
+   `list_functions`, `call_function`, follow-ups, and peer-Code boundaries;
+   `workflow-references` adds another explanation; `code-workflow-files` contains
+   the longer procedure. Personal MCP setup similarly appears in the base,
+   feature summary, and `code-mcp` skill.
+3. **Connection timing disagrees.** Code's base says a newly connected server is
+   available on the next message. Its MCP skill says it works immediately, even
+   without direct tools, and suggests `get_api_spec` for a server. Local
+   mcpagent requires `tool_name`, so server-only discovery is not supported by
+   that handler. This needs an end-to-end connection test; do not choose the
+   timing contract by editing prose alone.
+4. **A workflow reference contradicts hybrid mode.**
+   `guidance/templates/system/mcp-bridge.md` says all native reads/search are
+   disabled whenever the bridge is active. Current hybrid provider guidance
+   permits native reads/search. Loading the deep reference reintroduces the
+   contradiction even if the always-loaded prompt is shortened.
+5. **Transport guidance includes feature-specific procedures.** Shared bridge
+   routing teaches model/provider configuration and blocking human feedback.
+   These belong with the appropriate skill/tool contract. The routing block
+   gates feedback guidance on shell admission, not on actual feedback admission,
+   and includes Cursor timing advice for every provider.
+6. **Provider support is not uniform.** Agy is classified as a coding provider,
+   so outgoing composition suppresses its skill listing. No Agy `ProjectSkills`
+   implementation was found in the inspected provider source. Agy-specific mode
+   preambles exist, but its initializer does not call the bridge-routing append
+   path used by the other five CLIs. Treat these as static delivery gaps to
+   verify, not proof that all Agy actions fail. Removing summaries could make
+   the gaps more visible.
+7. **A routing test misses the real hybrid branch.**
+   `TestCodingAgentProviderRoutingPromptDoesNotNameExcludedBridgeTools` sets
+   hybrid mode but no provider. It passes through the bridge-only preamble. A
+   real Claude/Codex/Cursor/Muse hybrid preamble still names
+   `execute_shell_command` before admission-filtered guidance. Qualification
+   must exercise actual provider/mode pairs.
+8. **Descriptions do not fully reflect product options.** Code gets its own
+   names and personal-MCP file, but other shared skill bodies are principally
+   product-name substitutions. Code peer-calling and DM-only bot restrictions
+   currently depend partly on base/feature instructions. Audit those option
+   contracts before moving their summaries into skills.
+
+## Recommended ownership
+
+Keep four things upfront: product identity, applicable mode/authorization rules,
+current workspace/grants, and a short transport contract. Keep one skill index:
+native provider discovery when supported, otherwise mcpagent's names/descriptions.
+Do not add another feature index repeating that same skill catalog.
+
+Feature definitions should separate **always-on constraints** from **procedures**.
+Examples of constraints are Code peer ownership, Run cannot author, private
+connection ownership, secret handling, and linked-path access. Keep each once
+in the appropriate policy section. Procedures such as connection setup,
+schedule creation, dashboard authoring, and call follow-up live in skills or
+their references. Skills never grant permission; the backend remains the
+authority.
+
+Use SKILL.md frontmatter as the canonical capability description, with explicit
+registration overrides only where a rendered product variant needs one. The
+same parsed description feeds native projection and API listing. Render
+option-specific instructions from the resolved profile into the relevant skill
+or reference. Shared skills can keep several feature sections; one skill per
+feature is unnecessary.
+
+mcpagent should own all transport guidance. It should generate a small contract
+from the actual provider, configured native-tool mode, and admitted bridge tools:
+which native operations work; which exact direct bridge names are declared; how
+to discover other tools; how to execute their returned route. Include one safe
+HTTP/auth example when shell routing is available. Move extended examples,
+response decoding, quoting, and feedback waiting into on-demand references or
+the relevant tool schema. Gate provider quirks and feature instructions on
+their actual applicability. Remove product-owned copies of the generic tutorial
+after the shared delivery path is verified for that surface.
+
+## Tool discovery before removing the catalog
+
+Add a small intrinsic bridge tool, `search_tools`, while preserving
+`get_api_spec(tool_name=...)` for exact schemas and existing callers.
+
+- Search the agent's canonical registry, never the process-global union of
+  another session's tools. Apply current tool, server, account, product, and
+  turn authorization before returning results. Execution rechecks permission.
+- Accept intent text and optional group/server filters. Return a bounded page
+  of exact names, short descriptions, source, and relevant skill references.
+  Include pagination and an explicit empty/unavailable result. Never return
+  credentials or suggest unauthorized alternatives.
+- Begin with deterministic ranking over names, descriptions, and capability
+  tags derived from existing feature bindings. A group enumeration fallback
+  prevents a synonym mismatch from hiding a tool. Embeddings or an additional
+  LLM are unnecessary for the initial implementation.
+- For example, the agent reads the scheduling skill, searches “create recurring
+  project chat message,” obtains the admitted exact tool name, requests its
+  schema, then executes its returned route. For an unfamiliar connected app,
+  search discovers the app's tool names without injecting every name upfront.
+- Tool visibility is discovered on demand, not permanently inferred from the
+  first user message. A task can change during a turn. Permissions and current
+  connections can change between turns; cached results are not authority.
+
+Only then replace the global `<available_tools>` name dump with the short
+discovery contract. Skill instructions may still mention a few important tool
+names where they explain the procedure; they do not need to enumerate every
+tool or carry argument schemas.
+
+The remote AgentWorks MCP API already exposes `get_api_spec` with no-argument
+listing and `call_tool` (`cmd/server/external_mcp.go`). It is a separate surface
+with separate permissions. Its existence does not make no-argument discovery
+work inside a local coding-agent bridge. Reuse the architectural pattern, not
+an assumption that these handlers are interchangeable.
+
+Start with CLI sessions and API code-execution sessions. API native
+tool-calling sessions already supply tool schemas separately; hiding those
+requires a supported deferred-tool mechanism or a discovery/execution interface
+of its own. Removing system text alone does not remove their schema cost.
+
+## Implementation order and evidence required
+
+1. Establish actual skill delivery for all six CLIs, especially Agy, and preserve
+   separate Code, Crew Builder/Run, workflow Builder/Run, and step contracts.
+2. Make skill descriptions canonical, cover product-option variants, and move
+   repeated procedures into those skills. Keep essential constraints explicit.
+3. Add session-authorized discovery while retaining the existing catalog. Verify
+   unknown-name recovery, empty matches, denied tools, unavailable servers,
+   multi-account isolation, late registration, and permission changes after a
+   cached schema lookup.
+4. Consolidate transport guidance and opt the relevant surfaces into discovery
+   instead of the full catalog. Preserve the old path until live discovery is
+   qualified; do not change API native tool-calling exposure accidentally.
+5. Compare real outbound prompt and tool-definition sizes with the same fixture.
+   Exercise first use, platform actions, connected apps, linked `project` and
+   `output` searches, denied actions, and native resume. Measure success, extra
+   discovery calls, latency, and total turn usage as well as initial prompt size.
+
+Existing focused tests passed on the inspected source for Code feature-skill
+rendering, selected feature contracts, exact-name discovery, denial filtering,
+schema-cache authorization, and reserved skill reads. These establish useful
+invariants; they do not qualify the proposed architecture or resolve the static
+delivery/drift findings above.
+
+The first implementation should address discovery and ownership together.
+Merely shortening the 18 summaries while retaining independent catalogs and
+tutorials would save some text but preserve the cause of the duplication.

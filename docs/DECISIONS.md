@@ -13,6 +13,23 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Prompt reduction needs discovery and clear instruction ownership
+- Investigated Code, Crew Builder/Run, workflow chat/step composition, mcpagent's
+  registry/schema discovery, and native skill projection in owned worktrees.
+  Skill bodies already load on demand; feature summaries and product/runtime
+  procedures still overlap. The local `get_api_spec` requires an exact tool
+  name, so removing its always-loaded name catalog first would break discovery.
+- Record the recommended design before changing runtime behavior: canonical
+  skill descriptions, one owner for transport instructions, essential mode and
+  access constraints retained once, and session-authorized tool search before
+  the full catalog is removed. This commit is investigation only.
+- Open findings: skill frontmatter triggers are replaced by Go descriptions;
+  Code connection timing and workflow hybrid-read guidance disagree across
+  documents; Agy skill projection/routing delivery needs verification; existing
+  option-specific restrictions must survive any move from summaries into skills.
+  Evidence, scope and qualification plan:
+  [progressive discovery design](design/progressive_prompt_discovery.md).
+
 ### 2026-09-30 — Process-killing routes: browser ids checked, and admin-only through the proxy
 - Audit of the other workspace routes a logged-in user reaches through `/api/wp`:
   `POST /api/browser/cleanup` ran `kill -9` on any process id in the body, so any user
