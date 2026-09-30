@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -610,7 +609,9 @@ func fetchCursorCLIModels() *dynamicModelsResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, binPath, "--list-models").Output()
+	listCmd := exec.CommandContext(ctx, binPath, "--list-models")
+	listCmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
+	out, err := listCmd.Output()
 	if err != nil {
 		resp.Source = "fallback_metadata"
 		resp.Models = cursorFallbackModels()
@@ -874,7 +875,7 @@ func listPiCLIModels() ([]dynamicModelEntry, error) {
 		args = []string{"--yes", "@earendil-works/pi-coding-agent", "--list-models"}
 	}
 	cmd := exec.CommandContext(ctx, runtimePath, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("PI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err

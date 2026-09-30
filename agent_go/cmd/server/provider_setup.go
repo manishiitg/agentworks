@@ -400,7 +400,7 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 		command.Dir = workDir
 	}
 	if environment == nil {
-		environment = os.Environ()
+		environment = minimalChildEnv()
 	}
 	command.Env = append(environment, "TERM=xterm-256color", "COLORTERM=truecolor")
 	cols, rows, validSize := clampLiveAttachGeometry(cols, rows)

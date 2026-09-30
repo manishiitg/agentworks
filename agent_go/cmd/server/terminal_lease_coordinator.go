@@ -214,7 +214,9 @@ func processStartedAt(pid int) (time.Time, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ps", "-o", "lstart=", "-p", strconv.Itoa(pid)).Output()
+	psCmd := exec.CommandContext(ctx, "ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
+	psCmd.Env = minimalChildEnv()
+	out, err := psCmd.Output()
 	if err != nil {
 		return time.Time{}, false
 	}

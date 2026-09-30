@@ -355,6 +355,7 @@ func captureTmuxPanePlain(tmuxSession string) string {
 	defer cancel()
 	var out bytes.Buffer
 	cmd := exec.CommandContext(ctx, "tmux", "capture-pane", "-p", "-S", "-200", "-t", tmuxSession)
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("TMUX_TMPDIR")...)
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {

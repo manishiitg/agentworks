@@ -53,6 +53,27 @@ Design references for the linked runtime decisions:
   Evidence, scope and qualification plan:
   [progressive discovery design](design/progressive_prompt_discovery.md).
 
+### 2026-09-30 — Spawned children get a minimal explicit environment
+- Every bare spawn site in `agent_go/cmd/server` (nil `cmd.Env`, which inherits
+  everything, or a raw `os.Environ()` assignment) now builds its environment
+  from `minimalChildEnv` (`child_env.go`): PATH/HOME/TMPDIR, locale, TERM and
+  other non-secret vars carried over only when set. Sites that provably need
+  more pass it explicitly: tmux commands keep `TMUX_TMPDIR` for socket
+  discovery, CLI status/model probes keep that CLI's documented API key var,
+  the provider pty keeps TERM/COLORTERM.
+- Deliberate constructions are untouched: explicit caller envs (including the
+  workflow credential injection in `workflowProviderSetupEnvironment`), the
+  per-account env in `providerConnectionSetupEnvironment`, the trigger notify
+  allowlist, and the locked-down git env. The two denylist-based builders
+  remain fail-open by design and are follow-up work, as is the mcpagent-side
+  tmux session creator, which this repo does not contain.
+- Tests: `child_env_test.go` pins the base/passthrough behavior. Full
+  `cmd/server` suite shows only 6 pre-existing failures, byte-identical with
+  and without this change (verified against the pristine base with the same
+  dependency worktrees): sales-crew catalog, delegation-tier defaults,
+  playbook catalog x2, a real-tmux keystroke-timing assertion, and workshop
+  LLM defaults. Left open; none touch process spawning.
+
 ### 2026-09-30 — AUTH_SECRET is cached at startup and cleared from the environment
 - The server read `AUTH_SECRET` from the environment on every call, so the
   secret stayed in the environment of every child process (agent shells, CLIs,

@@ -1423,7 +1423,7 @@ func (st *liveAttachStream) runControlMode(ctx context.Context) {
 	}
 
 	cmd := exec.CommandContext(ctx, "tmux", "-CC", "attach", "-t", st.tmuxSession)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(minimalChildEnv("TERM=xterm-256color"), passthroughChildEnv("TMUX_TMPDIR")...)
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
 		log.Printf("[live-attach] attach failed session=%s: %v", st.tmuxSession, err)
