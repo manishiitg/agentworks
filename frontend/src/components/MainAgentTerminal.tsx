@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { agentApi } from '../services/api'
 import type { TerminalSnapshot } from '../services/api-types'
 import { useTheme } from '../hooks/useTheme'
@@ -6,6 +6,7 @@ import { LiveAttachXtermPane, RAW_XTERM_THEMES, StaticXtermPane } from './Termin
 
 type MainAgentTerminalProps = {
   sessionId: string
+  readOnly?: boolean
   /** Called when the session has no live pane to show (structured-transport
    * providers such as Cursor never have one); the host returns the tab to
    * the conversation instead of leaving a placeholder on screen. */
@@ -24,7 +25,7 @@ const MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP = 3
 // Product raw view for the one main coding-agent terminal. This intentionally
 // reuses the mature xterm renderer/live tmux attach rather than maintaining a
 // second preformatted-text terminal. Child terminal rails stay diagnostics-only.
-export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTerminalProps) {
+export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }: MainAgentTerminalProps) {
   const onUnavailableRef = useRef(onUnavailable)
   useEffect(() => { onUnavailableRef.current = onUnavailable }, [onUnavailable])
   const { theme } = useTheme()
@@ -36,87 +37,94 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
   // and keep checking, instead of silently switching back to the chat.
   const [notStarted, setNotStarted] = useState(false)
   const contentRef = useRef<HTMLDivElement | null>(null)
-  const requestInFlight = useRef(false)
   const snapshotRef = useRef<TerminalSnapshot | null>(null)
   // Consecutive "no main terminal" answers: a retained pane can be missing for
   // one poll while the server rebinds it, so the view is dropped only when it
   // stays gone.
   const missesRef = useRef(0)
 
-  useEffect(() => { snapshotRef.current = snapshot }, [snapshot])
-
-  const refresh = useCallback(async () => {
-    if (requestInFlight.current) return
-    requestInFlight.current = true
-    try {
-      // The WebSocket owns live output and its first frame already carries the
-      // tmux seed. Poll only metadata here: repeatedly downloading a growing
-      // full-history body made this 3s health check reach megabytes and could
-      // starve the socket/browser until Axios hit its 15s read timeout.
-      const metadata = await agentApi.getMainTerminal(sessionId, { content: 'none' })
-      const previous = snapshotRef.current
-      if (paneIsLive(metadata)) {
-        const next = {
-          ...metadata,
-          content: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.content : '',
-          rows: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.rows : [],
-        }
-        snapshotRef.current = next
-        setSnapshot(next)
-      } else {
-        // A settled pane has no stream to retain its output, so fetch its final
-        // history once per revision instead of on every poll. A retained agent
-        // (e.g. Cursor on tmux) reuses this pane for later turns; a turn that
-        // starts and settles between two polls is visible only as a new
-        // chunk_index, and without refetching on it the view froze on old output.
-        const needsFinalHistory = !previous ||
-          previous.terminal_id !== metadata.terminal_id ||
-          previous.active ||
-          !previous.content ||
-          previous.chunk_index !== metadata.chunk_index
-        if (needsFinalHistory) {
-          const settled = await agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })
-          snapshotRef.current = settled
-          setSnapshot(settled)
-        } else {
-          const next = { ...previous, ...metadata, content: previous.content, rows: previous.rows }
+  useEffect(() => {
+    // Slow responses from another session cannot replace this terminal.
+    let cancelled = false
+    let requestInFlight = false
+    const refresh = async () => {
+      if (cancelled || requestInFlight) return
+      requestInFlight = true
+      try {
+        // The WebSocket owns live output and its first frame already carries the
+        // tmux seed. Poll only metadata here: repeatedly downloading a growing
+        // full-history body made this 3s health check reach megabytes and could
+        // starve the socket/browser until Axios hit its 15s read timeout.
+        const metadata = await agentApi.getMainTerminal(sessionId, { content: 'none' })
+        if (cancelled) return
+        const previous = snapshotRef.current
+        if (paneIsLive(metadata)) {
+          const next = {
+            ...metadata,
+            content: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.content : '',
+            rows: previous?.terminal_id === metadata.terminal_id && previous.tmux_session === metadata.tmux_session ? previous.rows : [],
+          }
           snapshotRef.current = next
           setSnapshot(next)
+        } else {
+          // A settled pane has no stream to retain its output, so fetch its final
+          // history once per revision instead of on every poll. A retained agent
+          // (e.g. Cursor on tmux) reuses this pane for later turns; a turn that
+          // starts and settles between two polls is visible only as a new
+          // chunk_index, and without refetching on it the view froze on old output.
+          const needsFinalHistory = !previous ||
+            previous.terminal_id !== metadata.terminal_id ||
+            previous.active ||
+            !previous.content ||
+            previous.chunk_index !== metadata.chunk_index
+          if (needsFinalHistory) {
+            const settled = await agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })
+            if (cancelled) return
+            snapshotRef.current = settled
+            setSnapshot(settled)
+          } else {
+            const next = { ...previous, ...metadata, content: previous.content, rows: previous.rows }
+            snapshotRef.current = next
+            setSnapshot(next)
+          }
         }
-      }
-      missesRef.current = 0
-      setError(null)
-      setNotStarted(false)
-    } catch (cause: any) {
-      const hadSnapshot = snapshotRef.current !== null
-      if (cause?.response?.status === 404) {
-        missesRef.current += 1
-        if (!hadSnapshot || missesRef.current >= MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP) {
-          snapshotRef.current = null
-          setSnapshot(null)
-          setError(null)
-          setNotStarted(true)
+        missesRef.current = 0
+        setError(null)
+        setNotStarted(false)
+      } catch (cause: any) {
+        if (cancelled) return
+        const hadSnapshot = snapshotRef.current !== null
+        if (cause?.response?.status === 404) {
+          missesRef.current += 1
+          if (!hadSnapshot || missesRef.current >= MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP) {
+            snapshotRef.current = null
+            setSnapshot(null)
+            setError(null)
+            setNotStarted(true)
+          }
+        } else if (!hadSnapshot) {
+          setError(cause?.message || 'Could not load the live view.')
         }
-      } else if (!hadSnapshot) {
-        setError(cause?.message || 'Could not load the live view.')
+        // With a terminal already on screen, a failed poll (a slow server while a
+        // message is being sent) must never replace it: the next poll retries.
+      } finally {
+        if (!cancelled) setLoading(false)
+        requestInFlight = false
       }
-      // With a terminal already on screen, a failed poll (a slow server while a
-      // message is being sent) must never replace it: the next poll retries.
-    } finally {
-      setLoading(false)
-      requestInFlight.current = false
     }
-  }, [sessionId])
-
-  useEffect(() => {
     snapshotRef.current = null
+    missesRef.current = 0
     setSnapshot(null)
     setError(null)
+    setNotStarted(false)
     setLoading(true)
     void refresh()
     const timer = window.setInterval(() => { void refresh() }, 3000)
-    return () => window.clearInterval(timer)
-  }, [refresh])
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [sessionId])
 
   // A retained CLI keeps its tmux pane between turns (process_state "live"),
   // so the live view stays mounted across turns. Keying it on the turn
@@ -153,7 +161,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
           </div>
         ) : isLive ? (
           <LiveAttachXtermPane
-            key={`${snapshot.terminal_id}:${snapshot.tmux_session}`}
+            key={`${sessionId}:${snapshot.terminal_id}:${snapshot.tmux_session}`}
             terminalId={snapshot.terminal_id}
             tmuxSession={snapshot.tmux_session}
             sessionId={sessionId}
@@ -163,6 +171,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable }: MainAgentTermina
             authoritativeContent={snapshot.content}
             authoritativeVersion={`${snapshot.chunk_index}:${snapshot.updated_at}`}
             reconnectOnClose
+            interactive={!readOnly}
             streamUrl={(cols, rows) => agentApi.getMainTerminalStreamUrl(sessionId, cols, rows, snapshot.tmux_session)}
             loadSnapshot={() => agentApi.getMainTerminal(sessionId, { content: 'history', lines: MAIN_AGENT_TERMINAL_HISTORY_LINES })}
           />

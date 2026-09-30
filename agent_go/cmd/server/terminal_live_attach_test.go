@@ -1438,7 +1438,7 @@ func tail(s string, n int) string {
 	return s[len(s)-n:]
 }
 
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;:]*[A-Za-z]|\x1b.`)
+var ansiRe = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b.`)
 
 func stripAnsiForTest(s string) string {
 	return ansiRe.ReplaceAllString(s, "")

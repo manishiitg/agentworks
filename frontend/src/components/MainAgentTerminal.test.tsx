@@ -15,7 +15,7 @@ vi.mock('../services/api', () => ({
 }))
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 vi.mock('./TerminalCenter', () => ({
-  LiveAttachXtermPane: () => <div data-testid="live-terminal" />,
+  LiveAttachXtermPane: ({ interactive, terminalId }: { interactive: boolean; terminalId: string }) => <div data-testid="live-terminal" data-terminal={terminalId} data-interactive={String(interactive)} />,
   StaticXtermPane: () => <div data-testid="static-terminal" />,
   RAW_XTERM_THEMES: { dark: {} },
 }))
@@ -26,6 +26,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.useRealTimers()
   document.body.innerHTML = ''
 })
 
@@ -50,6 +51,58 @@ describe('MainAgentTerminal sizing', () => {
     }
   })
 
+  it('keeps a connected terminal mounted when a metadata poll fails', async () => {
+    vi.useFakeTimers()
+    getMainTerminal.mockResolvedValueOnce({ terminal_id: 'terminal', tmux_session: 'tmux', active: true })
+      .mockRejectedValueOnce(new Error('metadata timed out'))
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="session" />))
+      const pane = host.querySelector('[data-testid="live-terminal"]')
+      expect(pane).not.toBeNull()
+      await act(async () => vi.advanceTimersByTime(3000))
+      expect(host.querySelector('[data-testid="live-terminal"]')).toBe(pane)
+      expect(host.textContent).not.toContain('metadata timed out')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  it.each(['metadata', 'history', '404'])('ignores an old session’s delayed %s response after switching chats', async kind => {
+    let resolveOld!: (value: unknown) => void
+    let rejectOld!: (reason: unknown) => void
+    const old = new Promise((resolve, reject) => { resolveOld = resolve; rejectOld = reject })
+    const onUnavailable = vi.fn()
+    getMainTerminal.mockImplementation((sessionId: string, options: { content: string }) => {
+      if (sessionId === 'old') {
+        if (kind === 'history' && options.content === 'none') return Promise.resolve({ terminal_id: 'old-terminal', active: false })
+        return old
+      }
+      return Promise.resolve({ terminal_id: 'new-terminal', tmux_session: 'new-tmux', active: true, content: '', rows: [] })
+    })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="old" onUnavailable={onUnavailable} />))
+      await act(async () => root.render(<MainAgentTerminal sessionId="new" onUnavailable={onUnavailable} />))
+      expect(host.querySelector('[data-testid="live-terminal"]')?.getAttribute('data-terminal')).toBe('new-terminal')
+      await act(async () => {
+        if (kind === '404') rejectOld({ response: { status: 404 } })
+        else resolveOld({ terminal_id: 'old-terminal', tmux_session: 'old-tmux', active: true, content: 'old', rows: [] })
+      })
+      expect(host.querySelector('[data-testid="live-terminal"]')?.getAttribute('data-terminal')).toBe('new-terminal')
+      expect(onUnavailable).not.toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  it('keeps idle retained tmux writable and respects read-only views', async () => {
+    getMainTerminal.mockResolvedValue({ terminal_id: 'terminal-idle', tmux_session: 'tmux-idle', active: false, process_state: 'live', content: '', rows: [], status: {} })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="idle" />))
+      expect(host.querySelector('[data-testid="live-terminal"]')?.getAttribute('data-interactive')).toBe('true')
+      expect(getMainTerminal).toHaveBeenCalledTimes(1)
+      await act(async () => root.render(<MainAgentTerminal sessionId="idle" readOnly />))
+      expect(host.querySelector('[data-testid="live-terminal"]')?.getAttribute('data-interactive')).toBe('false')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it('keeps the debug terminal near 80 columns and scrolls when the chat pane is narrower', async () => {
     getMainTerminal.mockResolvedValue({
       terminal_id: 'terminal-1',

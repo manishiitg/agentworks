@@ -3767,7 +3767,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
@@ -3831,7 +3831,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}

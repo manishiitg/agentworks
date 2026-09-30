@@ -31,6 +31,23 @@ type pendingSteer struct {
 	written bool
 }
 
+// PendingUserMessages lets native terminal observation recognize a Chat send
+// whose durable acknowledgement has not published its user row yet.
+func (es *EventStore) PendingUserMessages(sessionID string) []Event {
+	state := es.steerHoldState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	var out []Event
+	if hold := state.holds[sessionID]; hold != nil {
+		for _, pending := range hold.pending {
+			if !pending.written {
+				out = append(out, pending.event)
+			}
+		}
+	}
+	return out
+}
+
 type deferredSteerHold struct {
 	pending        []*pendingSteer
 	boundaryPassed bool

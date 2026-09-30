@@ -546,7 +546,7 @@ func TestResolveProfileRuntimeModelAcceptsCatalogModelsWhenUncurated(t *testing.
 // A provider option's ModelID is only its own default model — Models is the
 // full curated list a turn may request within it (matches SparkQuill's real
 // product.yaml: one codex-cli option with model_id gpt-6-luna and
-// models: [gpt-6-luna, gpt-6-sol, gpt-6-astra]). Caught
+// models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]). Caught
 // live: switching the composer's model from Luna to another Codex model
 // only ever matched against ModelID, missed every Models entry, and fell
 // through to the profile's unrelated default provider option (claude-code)
@@ -558,11 +558,11 @@ func TestResolveProfileRuntimeModelAcceptsCuratedModelsListEntries(t *testing.T)
 			{ID: "claude-code", Label: "Claude Code", Provider: "claude-code", ModelID: "claude-fable-5-1", Default: true},
 			{
 				ID: "codex-cli", Label: "Codex", Provider: "codex-cli", ModelID: "gpt-6-luna",
-				Models: []string{"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"},
+				Models: []string{"gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra"},
 			},
 		},
 	}
-	for _, modelID := range []string{"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"} {
+	for _, modelID := range []string{"gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra"} {
 		t.Run(modelID, func(t *testing.T) {
 			if provider, model := resolveProfileRuntimeModel(runtime, "codex-cli", modelID); provider != "codex-cli" || model != modelID {
 				t.Fatalf("resolveProfileRuntimeModel(codex-cli, %q) = (%q, %q), want (codex-cli, %q)", modelID, provider, model, modelID)

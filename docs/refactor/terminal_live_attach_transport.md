@@ -6,7 +6,7 @@ control-mode-vs-PTY-attach decision) remain accurate. §§4–9 are the *origina
 plan and contain decisions that were **superseded during implementation** — read §0 first;
 it lists exactly what changed.
 **Author/driver:** terminal-stability refactor.
-**Related:** `cli_live_input_unification.md` (input routing — stays valid; this doc is the *output/render* transport). Debug/incident journal: `live_attach_app_vs_demo_debug.md`.
+**Related:** `cli_live_input_unification.md` (chat input routing). This document now also covers native Terminal input. Debug/incident journal: `live_attach_app_vs_demo_debug.md`.
 
 ---
 
@@ -67,7 +67,76 @@ LiveAttachXtermPane`) matches §§1–3 but differs from the §§4–9 plan on t
    `completed` while their process remains `live`; conflating turn completion with process
    closure caused the live WebSocket to close and reopen every polling cycle.
 
-Everything else below is the original design record, kept for rationale.
+### Native main-agent Terminal mode (2026-09-30)
+
+Main-agent live panes accept input directly. Static snapshots, workflow children,
+and read-only run views retain their display-only behavior. The chat composer is
+replaced with a Terminal toolbar while this mode is selected; its draft remains
+in component state when the user returns to Chat.
+
+- xterm preserves the CLI's alternate screen, mouse modes and application cursor
+  keys. Its `onData` UTF-8 bytes and `onBinary` bytes travel as WebSocket binary
+  frames. `send-keys -H` uses the existing control client's stdin, so typing does
+  not spawn a tmux process for each key. Slash commands and Up/Down go to the CLI.
+- Browser paste uses a `paste` control frame and tmux `paste-buffer -p -r`.
+  tmux supplies bracket markers only when the native CLI requested them; this
+  also works when the CLI enabled paste mode before the browser attached.
+- Input remains disabled until the connection seed arrives and while
+  reconnecting. Failed writes disable input and show a reconnect action. No
+  keyboard bytes are queued or replayed after a disconnect. A superseded viewer
+  cannot write queued input once it loses ownership.
+- The seed restores alternate-screen, cursor, keypad and mouse flags from tmux.
+  The original display-only panes suppress the same flags as before.
+- A per-process native transcript observer survives browser view switches. It
+  records actual accepted user rows, preserving repetitions and distinguishing
+  them from `/query` inputs still waiting in the deferred-user hold. Enter itself
+  can choose a menu item and therefore does not create a chat message.
+- `Session.ObserveNativeInput` observes the already accepted turn without sending
+  it again. Claude/Codex/Pi use transcript timestamps; Cursor pins the accepted
+  blob boundary, Muse its accepted sequence, and AGY its accepted step index.
+  Retained observers publish narration, thinking and paired tool events through
+  the normal Chat stream. AGY's tool trail is published after it settles.
+- Raw typing reserves the native draft against programmatic paste. A durable
+  user row releases only its own submission version; a newer draft is preserved.
+  Ctrl+C clears the reservation. Ctrl+U cannot prove that text after the cursor
+  was cleared. Chat sends during a reserved draft return `423 terminal_draft_active`.
+  Native Ctrl+C with no reserved draft also settles its current retained host
+  watcher; a captured generation prevents a late acknowledgement from settling
+  a newer turn. Normal foreground Runs retain their existing interruption path.
+
+Validation uses real xterm key handling, a scratch tmux/WebSocket byte receiver,
+provider transcript fixtures, native repeated-prompt/adoption tests, and race
+tests for the broker and observation lifecycle. These tests do not contact live
+coding-provider accounts. Terminal mode controls the coding CLI's pane; tmux
+client prefix commands and window-management UI are outside this transport.
+
+### Renderer robustness review (2026-09-30)
+
+Live output goes through a bounded, ordered queue in front of xterm's async
+parser (16 MiB and 4,096 queued frames). Overflow closes the connection and
+re-seeds; bytes are never silently dropped while continuing the stream. A
+column resize reseeds over the same socket, discards unparsed old-width frames,
+and waits for the active parse before fitting the new grid. Late socket events, snapshot responses and seed
+callbacks cannot alter a replacement connection, and input stays disabled until
+the seed's terminal modes are parsed. Seeds cancel incomplete escape sequences
+and discard incomplete UTF-8 from a disconnected stream.
+
+The backend seed restores scroll regions, origin, wrap and insert modes after
+painting cells. The server also bounds each viewer's queued output to 16 MiB.
+Keepalive pings, attached-session access checks, and final close reasons are
+preserved. Every WebSocket output/error write has a ten-second deadline;
+writer failure closes the socket and cancels its input context. Font loading
+forces a new fit even when the pane's box is unchanged. Metadata requests belong
+to their session, and a transient metadata failure keeps the current pane mounted.
+Saved snapshot refreshes use the same parser barrier and discard superseded
+refreshes before resetting, so pending old output cannot mix with a new snapshot.
+
+Regression coverage includes component lifecycle races, real xterm parsing of
+fragmented Unicode/ANSI and partial-stream recovery, scrolling regions, output
+overflow, a blocked WebSocket peer, and the existing scratch tmux transport tests.
+
+Everything else below is the original design record, kept for rationale. Its
+display-only input assumptions are superseded by the native-mode section above.
 
 ---
 

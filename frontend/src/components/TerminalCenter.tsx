@@ -27,6 +27,8 @@ import { useSessionExecutionTree } from '../hooks/useSessionExecutionTree'
 import type { Theme } from '../contexts/ThemeContext'
 import { normalizeAnsiForEmbeddedXterm } from '../utils/ansiSanitize'
 import { installDisplayOnlyXtermGuards, xtermCopyText } from '../utils/displayOnlyXterm'
+import { installInteractiveXtermKeys, sendTerminalInput, sendTerminalPaste } from '../utils/interactiveXterm'
+import { TerminalOutputQueue } from '../utils/terminalOutputQueue'
 import { copyToClipboard } from '../utils/textUtils'
 import { preserveTerminalContinuity } from '../utils/terminalContinuity'
 import { isMainAgentTerminal, preferredTerminalForContext } from '../utils/terminalIdentity'
@@ -1460,16 +1462,9 @@ function useSpinnerFrame(active: boolean): string {
 // remounts (fresh buffer + a fresh WS), making cross-session overlap impossible
 // by construction.
 //
-// The xterm stays display-only (disableStdin, no onData -> WS): input keeps
-// flowing through the EXISTING chat live-input / send-keys path into the tmux
-// session and returns as %output over this same WS; the socket itself carries
-// only resize frames from the browser. A width change re-seeds IN-BAND on the
-// same socket (a reseed request, then the server's marker and a fresh seed at
-// the new width); bytes arriving between the request and the marker may be
-// wrapped for the old width and are dropped, so they are never interpreted by
-// an already-resized xterm. A server that never answers falls back to
-// reconnecting with the new dimensions. Running sessions also reconnect on
-// socket close, so recovery needs no client replay.
+// Main-agent panes preserve native input modes and send keyboard bytes to tmux.
+// Width changes reseed on the same socket; the parser drains before fitting the
+// new grid. Diagnostic panes retain their display-only guards.
 const LiveAttachXtermPaneInner: React.FC<{
   terminalId: string
   tmuxSession?: string
@@ -1485,7 +1480,8 @@ const LiveAttachXtermPaneInner: React.FC<{
   onOutputText?: (text: string) => void
   streamUrl?: (cols: number, rows: number) => string
   loadSnapshot?: () => Promise<TerminalSnapshot>
-}> = ({ terminalId, tmuxSession, sessionId, className, contentRef, xtermTheme, authoritativeContent, authoritativeVersion, reconnectOnClose, onViewportStickChange, onScrollToBottomReady, onOutputText, streamUrl, loadSnapshot }) => {
+  interactive?: boolean
+}> = ({ terminalId, tmuxSession, sessionId, className, contentRef, xtermTheme, authoritativeContent, authoritativeVersion, reconnectOnClose, onViewportStickChange, onScrollToBottomReady, onOutputText, streamUrl, loadSnapshot, interactive = false }) => {
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'reconnecting' | 'snapshot' | 'settled' | 'superseded' | 'revoked' | 'exited'>('connecting')
   // Set inside the socket effect so the superseded badge's "Take over" button
   // can re-attach this pane without remounting it.
@@ -1493,11 +1489,17 @@ const LiveAttachXtermPaneInner: React.FC<{
   const mountRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const outputQueueRef = useRef<TerminalOutputQueue | null>(null)
+  const inputReadyRef = useRef(false)
+  const [inputError, setInputError] = useState<string | null>(null)
   const reconnectOnCloseRef = useRef(reconnectOnClose)
   const onViewportStickChangeRef = useRef(onViewportStickChange)
   const onOutputTextRef = useRef(onOutputText)
+  const streamUrlRef = useRef(streamUrl)
+  const loadSnapshotRef = useRef(loadSnapshot)
   const lastVisibleReseedRef = useRef<{ content: string; at: number }>({ content: '', at: 0 })
   const receivedVisibleOutputRef = useRef(false)
+  const receivedLiveSeedRef = useRef(false)
   const wroteConnectingSnapshotRef = useRef(false)
 
   useEffect(() => {
@@ -1512,9 +1514,16 @@ const LiveAttachXtermPaneInner: React.FC<{
     onOutputTextRef.current = onOutputText
   }, [onOutputText])
 
+  useEffect(() => { streamUrlRef.current = streamUrl }, [streamUrl])
+  useEffect(() => { loadSnapshotRef.current = loadSnapshot }, [loadSnapshot])
+
   useEffect(() => {
     const mount = mountRef.current
     if (!mount) return
+    receivedVisibleOutputRef.current = false
+    receivedLiveSeedRef.current = false
+    wroteConnectingSnapshotRef.current = false
+    lastVisibleReseedRef.current = { content: '', at: 0 }
 
     // convertEol stays FALSE: the WS carries the raw terminal byte stream (live
     // %output + the CR-normalized current-screen backfill), so xterm must honor the
@@ -1537,8 +1546,33 @@ const LiveAttachXtermPaneInner: React.FC<{
     term.loadAddon(fit)
     term.open(mount)
     applyRawXtermTheme(term, xtermTheme)
-    const displayGuards = installDisplayOnlyXtermGuards(term)
+    const displayGuards = interactive ? installInteractiveXtermKeys(term) : installDisplayOnlyXtermGuards(term)
     terminalRef.current = term
+    const outputQueue = new TerminalOutputQueue(term)
+    outputQueueRef.current = outputQueue
+    const sendInput = (data: string, binary = false) => {
+      if (!interactive) return
+      if (!sendTerminalInput(wsRef.current, inputReadyRef.current, data, binary)) {
+        inputReadyRef.current = false
+        setInputError('Terminal disconnected. Reconnect before typing again.')
+        term.options.disableStdin = true
+      }
+    }
+    const inputDisposable = term.onData(data => sendInput(data))
+    const binaryInputDisposable = term.onBinary(data => sendInput(data, true))
+    const onPaste = (event: ClipboardEvent) => {
+      if (!interactive) return
+      const text = event.clipboardData?.getData('text/plain')
+      if (!text) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (!sendTerminalPaste(wsRef.current, inputReadyRef.current, text)) {
+        inputReadyRef.current = false
+        setInputError('Terminal disconnected. Reconnect before pasting again.')
+        term.options.disableStdin = true
+      }
+    }
+    mount.addEventListener('paste', onPaste, true)
     onScrollToBottomReady?.(() => {
       if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
       onViewportStickChangeRef.current?.(true)
@@ -1566,7 +1600,7 @@ const LiveAttachXtermPaneInner: React.FC<{
     let reconnectTimer: number | undefined
     let hasConnected = false
     let failedAttempts = 0
-    let snapshotInFlight = false
+    let connectionEpoch = 0
     let seedTimer: number | undefined
     let resizeReconnectPending = false
     let superseded = false
@@ -1592,24 +1626,24 @@ const LiveAttachXtermPaneInner: React.FC<{
       }
     }
 
-    const showDisconnectedSnapshot = async (): Promise<boolean> => {
-      if (closed || snapshotInFlight) return reconnectOnCloseRef.current
-      snapshotInFlight = true
+    const isCurrentRecovery = (epoch: number) => !closed && !superseded && !finalState && connectionEpoch === epoch && !wsRef.current
+    const showDisconnectedSnapshot = async (epoch: number): Promise<boolean> => {
+      if (!isCurrentRecovery(epoch)) return false
       try {
-        const snapshot = loadSnapshot
-          ? await loadSnapshot()
+        const snapshot = loadSnapshotRef.current
+          ? await loadSnapshotRef.current()
           : await agentApi.getTerminal(terminalId, {
               content: 'screen',
               lines: LIVE_ATTACH_SNAPSHOT_LINES,
               debugSource: 'live-attach-reconnect',
             })
-        if (closed) return false
+        if (!isCurrentRecovery(epoch)) return false
 
         const canReconnect = terminalSnapshotCanReconnect(snapshot)
         const snapshotContent = snapshot.content || ''
         if (snapshotContent.trim()) {
           clearXtermSelection(term)
-          term.write(buildVisibleScreenReseed(snapshotContent), () => {
+          outputQueue.reseed(buildVisibleScreenReseed(snapshotContent), () => {
             if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
             onViewportStickChangeRef.current?.(true)
           })
@@ -1620,15 +1654,14 @@ const LiveAttachXtermPaneInner: React.FC<{
         }
         return canReconnect
       } catch {
-        if (!closed) setConnectionState('reconnecting')
+        if (!isCurrentRecovery(epoch)) return false
+        setConnectionState('reconnecting')
         return reconnectOnCloseRef.current
-      } finally {
-        snapshotInFlight = false
       }
     }
 
     const scheduleReconnect = () => {
-      if (closed || !reconnectOnCloseRef.current) {
+      if (closed || superseded || finalState || !reconnectOnCloseRef.current) {
         if (!closed) setConnectionState('settled')
         return
       }
@@ -1640,13 +1673,16 @@ const LiveAttachXtermPaneInner: React.FC<{
 
     const recoverAfterDisconnect = async () => {
       if (closed || !reconnectOnCloseRef.current) return
+      const epoch = connectionEpoch
+      void outputQueue.invalidate()
       setConnectionState('reconnecting')
-      const canReconnect = await showDisconnectedSnapshot()
-      if (canReconnect) scheduleReconnect()
+      const canReconnect = await showDisconnectedSnapshot(epoch)
+      if (canReconnect && isCurrentRecovery(epoch)) scheduleReconnect()
     }
 
     const connect = () => {
-      if (closed) return
+      if (closed || superseded || finalState || resizeReconnectPending) return
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
       reconnectTimer = undefined
       if (!reconnectOnCloseRef.current && hasConnected) {
         setConnectionState('settled')
@@ -1674,9 +1710,17 @@ const LiveAttachXtermPaneInner: React.FC<{
         reconnectTimer = window.setTimeout(connect, terminalReconnectDelayMs(failedAttempts))
         return
       }
+      const epoch = ++connectionEpoch
+      clearSeedTimer()
+      inputReadyRef.current = false
+      term.options.disableStdin = true
+      const oldSocket = wsRef.current
+      wsRef.current = null
+      oldSocket?.close()
+      void outputQueue.invalidate()
       hasConnected = true
-      const url = streamUrl
-        ? streamUrl(term.cols, term.rows)
+      const url = streamUrlRef.current
+        ? streamUrlRef.current(term.cols, term.rows)
         : agentApi.getTerminalStreamUrl(terminalId, term.cols, term.rows, tmuxSession, sessionId)
       let ws: WebSocket
       try {
@@ -1697,7 +1741,21 @@ const LiveAttachXtermPaneInner: React.FC<{
       // Live %output after it is written verbatim, like a real terminal, and
       // never clears the user's selection.
       let seedPending = true
+      let outputBlocked = false
+      let inputFailed = false
+      let renderEpoch = 0
+      const writeOutput = (data: string | Uint8Array, callback?: () => void, reseed = false) => {
+        const accepted = reseed && typeof data === 'string' ? outputQueue.reseed(data, callback) : outputQueue.write(data, callback)
+        if (accepted) return
+        outputBlocked = true
+        inputReadyRef.current = false
+        term.options.disableStdin = true
+        setInputError('Terminal output exceeded the render buffer. Reconnecting…')
+        void outputQueue.invalidate()
+        ws.close(4002, 'terminal render buffer full')
+      }
       ws.onopen = () => {
+        if (closed || wsRef.current !== ws) return
         clearSeedTimer()
         seedTimer = window.setTimeout(() => {
           if (wsRef.current === ws && seedPending) ws.close()
@@ -1706,8 +1764,20 @@ const LiveAttachXtermPaneInner: React.FC<{
       ws.onmessage = ev => {
         // Once a new grid is requested, discard bytes from the old-width socket.
         // Its replacement starts with an authoritative reset + seed.
-        if (resizeReconnectPending || wsRef.current !== ws) return
+        if (closed || outputBlocked || resizeReconnectPending || wsRef.current !== ws) return
         const data = ev.data
+        if (typeof data === 'string') {
+          try {
+            const control = JSON.parse(data)
+            if (control.type === 'input_error') {
+              inputFailed = true
+              setInputError(control.message || 'Terminal input could not be delivered.')
+              inputReadyRef.current = false
+              term.options.disableStdin = true
+              return
+            }
+          } catch { /* Legacy servers may send terminal text frames. */ }
+        }
         const route = routeLiveAttachFrame(reseed, data)
         if (route.kind === 'drop' || route.kind === 'ignore-marker') {
           // While a reseed is pending, bytes may be wrapped for the old width
@@ -1722,12 +1792,12 @@ const LiveAttachXtermPaneInner: React.FC<{
           }
           // Only now is the old screen discarded: the next binary frame is
           // the authoritative seed captured at the new grid.
-          resetRawXtermForGeometryChange()
-          try {
-            term.resize(route.grid.cols, route.grid.rows)
-          } catch {
-            // The seed still lands; the next fit corrects the grid.
-          }
+          const render = ++renderEpoch
+          outputQueue.barrier(() => {
+            if (closed || wsRef.current !== ws || renderEpoch !== render) return
+            resetRawXtermForGeometryChange()
+            try { term.resize(route.grid.cols, route.grid.rows) } catch { /* The next fit retries. */ }
+          })
           decoder = new TextDecoder()
           seedPending = true
           // The layout may have moved again while the reseed was in flight.
@@ -1736,6 +1806,7 @@ const LiveAttachXtermPaneInner: React.FC<{
         }
         if (seedPending) {
           seedPending = false
+          receivedLiveSeedRef.current = true
           clearSeedTimer()
           failedAttempts = 0
           const text = data instanceof ArrayBuffer
@@ -1743,15 +1814,25 @@ const LiveAttachXtermPaneInner: React.FC<{
             : String(data)
           const hasVisibleContent = terminalPayloadHasVisibleContent(text)
           receivedVisibleOutputRef.current = hasVisibleContent
-          setConnectionState(hasVisibleContent ? 'connected' : 'connecting')
           clearXtermSelection(term)
-          term.write(normalizeAnsiForEmbeddedXterm(text))
+          const parsedSeedEpoch = renderEpoch
+          writeOutput(normalizeAnsiForEmbeddedXterm(text), () => {
+            // Input modes (application arrows, mouse tracking) must be parsed
+            // before enabling the keyboard. An old seed callback cannot enable
+            // input on a replacement socket or during a geometry transition.
+            if (closed || connectionEpoch !== epoch || wsRef.current !== ws || resizeReconnectPending || outputBlocked || inputFailed || reseed.shouldDropBinary() || parsedSeedEpoch !== renderEpoch) return
+            setConnectionState(hasVisibleContent ? 'connected' : 'connecting')
+            inputReadyRef.current = interactive
+            term.options.disableStdin = !interactive
+            setInputError(null)
+            if (interactive) term.focus()
+          }, true)
           onOutputTextRef.current?.(text)
           return
         }
         if (data instanceof ArrayBuffer) {
           const bytes = new Uint8Array(data)
-          term.write(bytes)
+          writeOutput(bytes)
           const text = decoder.decode(bytes, { stream: true })
           if (!receivedVisibleOutputRef.current && terminalPayloadHasVisibleContent(text)) {
             receivedVisibleOutputRef.current = true
@@ -1759,7 +1840,7 @@ const LiveAttachXtermPaneInner: React.FC<{
           }
           onOutputTextRef.current?.(text)
         } else if (typeof data === 'string') {
-          term.write(data)
+          writeOutput(data)
           if (!receivedVisibleOutputRef.current && terminalPayloadHasVisibleContent(data)) {
             receivedVisibleOutputRef.current = true
             setConnectionState('connected')
@@ -1768,9 +1849,13 @@ const LiveAttachXtermPaneInner: React.FC<{
         }
       }
       ws.onclose = event => {
-        clearSeedTimer()
+        if (wsRef.current === ws) {
+          inputReadyRef.current = false
+          term.options.disableStdin = true
+        }
         const wasCurrentSocket = wsRef.current === ws
         if (wasCurrentSocket) {
+          clearSeedTimer()
           wsRef.current = null
           // The replacement socket starts with a full seed of its own.
           reseed.cancel()
@@ -1807,27 +1892,27 @@ const LiveAttachXtermPaneInner: React.FC<{
           return
         }
         if (action === 'geometry-reconnect') {
-          resizeReconnectPending = false
-          try {
-            if (!hasUsableTerminalFitBox(contentRef.current || mount)) {
-              scheduleReconnect()
-              return
-            }
-            setConnectionState('reconnecting')
-            // Same reason as the suspend-output step: this path reconnects
-            // because the grid changed, and GEOMETRY_RECONNECT_AFTER_CLOSE is
-            // only ['fit', 'open-socket'], so nothing else drops the history
-            // that was painted at the previous width.
-            resetRawXtermForGeometryChange()
-            for (const step of GEOMETRY_RECONNECT_AFTER_CLOSE) {
-              if (!runGeometryStep(step)) {
+          const epoch = ++connectionEpoch
+          void outputQueue.invalidate().then(() => {
+            if (closed || superseded || connectionEpoch !== epoch || wsRef.current) return
+            resizeReconnectPending = false
+            try {
+              if (!hasUsableTerminalFitBox(contentRef.current || mount)) {
                 scheduleReconnect()
                 return
               }
+              setConnectionState('reconnecting')
+              resetRawXtermForGeometryChange()
+              for (const step of GEOMETRY_RECONNECT_AFTER_CLOSE) {
+                if (!runGeometryStep(step)) {
+                  scheduleReconnect()
+                  return
+                }
+              }
+            } catch {
+              scheduleReconnect()
             }
-          } catch {
-            scheduleReconnect()
-          }
+          })
           return
         }
         void recoverAfterDisconnect()
@@ -1847,16 +1932,30 @@ const LiveAttachXtermPaneInner: React.FC<{
     takeOverRef.current = () => {
       if (closed) return
       superseded = false
+      resizeReconnectPending = true
       failedAttempts = 0
       setConnectionState('reconnecting')
-      try {
-        if (hasUsableTerminalFitBox(contentRef.current || mount)) {
-          fitRawXtermToVisibleGrid(fit)
+      const epoch = ++connectionEpoch
+      clearSeedTimer()
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+      reconnectTimer = undefined
+      inputReadyRef.current = false
+      term.options.disableStdin = true
+      const oldSocket = wsRef.current
+      wsRef.current = null
+      oldSocket?.close()
+      void outputQueue.invalidate().then(() => {
+        if (closed || connectionEpoch !== epoch) return
+        resizeReconnectPending = false
+        try {
+          if (hasUsableTerminalFitBox(contentRef.current || mount)) {
+            fitRawXtermToVisibleGrid(fit)
+          }
+        } catch {
+          // Fall through: connect() re-checks the grid and retries if unusable.
         }
-      } catch {
-        // Fall through: connect() re-checks the grid and retries if unusable.
-      }
-      connect()
+        connect()
+      })
     }
 
     // Executes one planned geometry step. The ORDER comes from
@@ -1883,6 +1982,8 @@ const LiveAttachXtermPaneInner: React.FC<{
           // Stop feeding xterm from the old-width socket BEFORE anything
           // resizes; its replacement starts with an authoritative reset + seed.
           resizeReconnectPending = true
+          inputReadyRef.current = false
+          term.options.disableStdin = true
           setConnectionState('reconnecting')
           // Drop history drawn at the OLD grid. tmux emits lines that are
           // already hard-wrapped at its own width, so xterm has no soft-wrap
@@ -1893,7 +1994,7 @@ const LiveAttachXtermPaneInner: React.FC<{
           // resizing the window never repaired what was already on screen.
           // Safe to discard: the replacement stream opens with an authoritative
           // reset + full seed, so this is re-painted at the new grid.
-          resetRawXtermForGeometryChange()
+          void outputQueue.invalidate()
           return true
         case 'close-socket': {
           const ws = wsRef.current
@@ -1947,6 +2048,9 @@ const LiveAttachXtermPaneInner: React.FC<{
       const current = reseed.pendingGrid ?? { cols: term.cols, rows: term.rows }
       if (!proposed || terminalGridChange(current, proposed, minimumGrid) === 'none') return
       const request = reseed.begin({ cols: proposed.cols, rows: proposed.rows })
+      inputReadyRef.current = false
+      term.options.disableStdin = true
+      void outputQueue.invalidate()
       try {
         ws.send(JSON.stringify(request))
       } catch {
@@ -1963,6 +2067,7 @@ const LiveAttachXtermPaneInner: React.FC<{
 
     const fitTerminal = () => {
       try {
+        if (superseded || finalState || resizeReconnectPending) return
         if (!hasUsableTerminalFitBox(contentRef.current || mount)) return
         if (!hasConnected) {
           fitRawXtermToVisibleGrid(fit)
@@ -1992,8 +2097,11 @@ const LiveAttachXtermPaneInner: React.FC<{
         // xterm scrollback; Claude's alternate-screen TUI commonly has
         // tmux history_size=0, so there was nothing with which to restore it.
         if (gridChange === 'rows-only' && socketOpen && !reseed.shouldDropBinary() && !resizeReconnectPending) {
-          fitRawXtermToVisibleGrid(fit)
-          openSocket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+          outputQueue.barrier(() => {
+            if (closed || finalState || wsRef.current !== openSocket || resizeReconnectPending || reseed.shouldDropBinary()) return
+            fitRawXtermToVisibleGrid(fit)
+            openSocket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+          })
           return
         }
 
@@ -2008,6 +2116,28 @@ const LiveAttachXtermPaneInner: React.FC<{
           return
         }
 
+        const needsReconnect = gridChange === 'columns'
+        if (needsReconnect && !wsRef.current) {
+          // A disconnected parser can still be finishing its last frame. A
+          // layout change must wait for that frame too, and invalidate any
+          // snapshot request/timer started before the geometry changed.
+          resizeReconnectPending = true
+          const epoch = ++connectionEpoch
+          if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+          reconnectTimer = undefined
+          void outputQueue.invalidate().then(() => {
+            if (closed || superseded || connectionEpoch !== epoch) return
+            resizeReconnectPending = false
+            try {
+              resetRawXtermForGeometryChange()
+              fitRawXtermToVisibleGrid(fit)
+              connect()
+            } catch {
+              scheduleReconnect()
+            }
+          })
+          return
+        }
         const steps = planGeometryChange({
           hasSocket: Boolean(wsRef.current),
           alreadyPending: resizeReconnectPending,
@@ -2046,12 +2176,26 @@ const LiveAttachXtermPaneInner: React.FC<{
     scheduleFit(true)
     const resizeObserver = new ResizeObserver(() => scheduleFit())
     resizeObserver.observe(contentRef.current || mount)
+    // Font loading can change the cell width without changing the pane's box,
+    // so ResizeObserver alone will not notice that the fitted grid is stale.
+    const fonts = document.fonts
+    const onFontsLoaded = () => { if (!closed) scheduleFit(true) }
+    fonts?.addEventListener('loadingdone', onFontsLoaded)
+    void fonts?.ready.then(onFontsLoaded)
 
     return () => {
       closed = true
+      connectionEpoch += 1
+      outputQueue.dispose()
+      outputQueueRef.current = null
+      inputReadyRef.current = false
+      inputDisposable.dispose()
+      binaryInputDisposable.dispose()
+      mount.removeEventListener('paste', onPaste, true)
       scrollDisposable.dispose()
       displayGuards.dispose()
       resizeObserver.disconnect()
+      fonts?.removeEventListener('loadingdone', onFontsLoaded)
       if (fitTimer !== undefined) window.clearTimeout(fitTimer)
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
       clearSeedTimer()
@@ -2073,7 +2217,7 @@ const LiveAttachXtermPaneInner: React.FC<{
     }
     // terminalId is stable for a mounted instance (key includes tmux_session).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId])
+  }, [terminalId, tmuxSession, sessionId, interactive])
 
   useEffect(() => {
     const term = terminalRef.current
@@ -2093,12 +2237,12 @@ const LiveAttachXtermPaneInner: React.FC<{
     // its authoritative seed. The first live seed starts with a terminal reset,
     // so it replaces this temporary frame without mixing snapshot and live bytes.
     if (reconnectOnCloseRef.current) {
-      if (!term || !content.trim() || receivedVisibleOutputRef.current || wroteConnectingSnapshotRef.current) return
+      if (!term || !content.trim() || receivedLiveSeedRef.current || wroteConnectingSnapshotRef.current) return
       wroteConnectingSnapshotRef.current = true
       lastVisibleReseedRef.current = { content, at: Date.now() }
       setConnectionState('snapshot')
       clearXtermSelection(term)
-      term.write(buildVisibleScreenReseed(content), () => {
+      outputQueueRef.current?.reseed(buildVisibleScreenReseed(content), () => {
         if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
         onViewportStickChangeRef.current?.(true)
       })
@@ -2122,7 +2266,7 @@ const LiveAttachXtermPaneInner: React.FC<{
 
       lastVisibleReseedRef.current = { content, at: Date.now() }
       clearXtermSelection(currentTerm)
-      currentTerm.write(buildSettledScreenReseed(content), () => {
+      outputQueueRef.current?.reseed(buildSettledScreenReseed(content), () => {
         if (!scrollCurrentXtermToBottom(currentTerm, terminalRef.current)) return
         onViewportStickChangeRef.current?.(true)
       })
@@ -2141,11 +2285,12 @@ const LiveAttachXtermPaneInner: React.FC<{
     const node = contentRef.current
     if (!node) return
     const listenerOptions: AddEventListenerOptions = { passive: false, capture: true }
+    if (interactive) return // xterm routes wheel/mouse input using the CLI's modes.
     node.addEventListener('wheel', handleWheel, listenerOptions)
     return () => {
       node.removeEventListener('wheel', handleWheel, listenerOptions)
     }
-  }, [contentRef, handleWheel])
+  }, [contentRef, handleWheel, interactive])
 
   return (
     <div
@@ -2153,6 +2298,10 @@ const LiveAttachXtermPaneInner: React.FC<{
       className={`relative ${className || ''}`}
       style={{ backgroundColor: xtermTheme.background }}
     >
+      {inputError && <div role="alert" className="absolute bottom-2 left-2 right-2 z-10 flex items-center gap-2 rounded bg-red-950/95 px-3 py-2 text-xs text-red-200">
+        <span className="flex-1">{inputError}</span>
+        <button type="button" className="shrink-0 underline" onClick={() => takeOverRef.current?.()}>Reconnect</button>
+      </div>}
       {connectionState !== 'connected' && (
         <div className={`absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded border border-neutral-700/80 bg-neutral-950/90 px-2 py-1 font-mono text-[10px] text-neutral-300 shadow-sm ${connectionState === 'superseded' ? '' : 'pointer-events-none'}`}>
           {(connectionState === 'connecting' || connectionState === 'reconnecting') && <RefreshCw className="h-3 w-3 animate-spin" />}
@@ -2275,6 +2424,7 @@ const StaticXtermPaneInner: React.FC<{
   const mountRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const outputQueueRef = useRef<TerminalOutputQueue | null>(null)
   const onViewportStickChangeRef = useRef(onViewportStickChange)
 
   useEffect(() => {
@@ -2304,6 +2454,8 @@ const StaticXtermPaneInner: React.FC<{
     const displayGuards = installDisplayOnlyXtermGuards(term)
     terminalRef.current = term
     fitRef.current = fit
+    const outputQueue = new TerminalOutputQueue(term)
+    outputQueueRef.current = outputQueue
     onScrollToBottomReady?.(() => {
       if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
       onViewportStickChangeRef.current?.(true)
@@ -2315,11 +2467,14 @@ const StaticXtermPaneInner: React.FC<{
     })
 
     const fitTerminal = () => {
-      try {
-        fitRawXtermToVisibleGrid(fit)
-      } catch {
-        // Fit can fail during unmount or while the pane is display:none.
-      }
+      void outputQueue.whenIdle().then(() => {
+        if (terminalRef.current !== term) return
+        try {
+          fitRawXtermToVisibleGrid(fit)
+        } catch {
+          // Fit can fail during unmount or while the pane is display:none.
+        }
+      })
     }
     let fitTimer: number | undefined
     const scheduleFit = () => {
@@ -2329,11 +2484,18 @@ const StaticXtermPaneInner: React.FC<{
     scheduleFit()
     const resizeObserver = new ResizeObserver(scheduleFit)
     resizeObserver.observe(contentRef.current || mount)
+    const fonts = document.fonts
+    const onFontsLoaded = () => { if (terminalRef.current === term) scheduleFit() }
+    fonts?.addEventListener('loadingdone', onFontsLoaded)
+    void fonts?.ready.then(onFontsLoaded)
 
     return () => {
+      outputQueue.dispose()
+      outputQueueRef.current = null
       scrollDisposable.dispose()
       displayGuards.dispose()
       resizeObserver.disconnect()
+      fonts?.removeEventListener('loadingdone', onFontsLoaded)
       if (fitTimer !== undefined) window.clearTimeout(fitTimer)
       onScrollToBottomReady?.(null)
       terminalRef.current = null
@@ -2353,47 +2515,45 @@ const StaticXtermPaneInner: React.FC<{
 
   useEffect(() => {
     const term = terminalRef.current
-    if (!term) return
-    const fit = fitRef.current
-    const mount = mountRef.current
-    try {
-      if (fit && mount) {
-        fitRawXtermToVisibleGrid(fit)
-      }
-    } catch {
-      // Fit can fail while the pane is briefly hidden during tab/layout changes.
-    }
+    const outputQueue = outputQueueRef.current
+    if (!term || !outputQueue) return
+    let cancelled = false
     // A refreshed snapshot must not yank a user who scrolled up back to the
     // bottom; restore their line instead (the snapshot is append-mostly).
     const previousViewportY = term.buffer.active.viewportY
     const followBottom = term.buffer.active.baseY - previousViewportY <= 1
-    term.reset()
-    if (!content) {
-      onViewportStickChangeRef.current?.(true)
-      return
-    }
-    term.write(normalizeAnsiForEmbeddedXterm(content), () => {
+    // reset() does not clear xterm's pending write buffer. Wait for the old
+    // parse before resetting; a rapid refresh can then replace it atomically.
+    void outputQueue.invalidate().then(() => {
+      if (cancelled || terminalRef.current !== term) return
       try {
-        const currentFit = fitRef.current
-        const currentMount = mountRef.current
-        if (currentFit && currentMount) {
-          fitRawXtermToVisibleGrid(currentFit)
-        }
+        const fit = fitRef.current
+        if (fit && mountRef.current) fitRawXtermToVisibleGrid(fit)
       } catch {
-        // ignore
+        // Fit can fail while the pane is briefly hidden during tab/layout changes.
       }
-      if (!followBottom) {
-        if (terminalRef.current !== term) return
-        try {
-          term.scrollToLine(Math.min(previousViewportY, term.buffer.active.baseY))
-        } catch {
-          // The pane can be disposed before this write callback runs.
-        }
+      term.reset()
+      if (!content) {
+        onViewportStickChangeRef.current?.(true)
         return
       }
-      if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
-      onViewportStickChangeRef.current?.(true)
+      outputQueue.reseed('\x1bc' + normalizeAnsiForEmbeddedXterm(content), () => {
+        if (cancelled || terminalRef.current !== term) return
+        try {
+          const fit = fitRef.current
+          if (fit && mountRef.current) fitRawXtermToVisibleGrid(fit)
+        } catch {
+          // Fit can fail during a layout transition.
+        }
+        if (!followBottom) {
+          try { term.scrollToLine(Math.min(previousViewportY, term.buffer.active.baseY)) } catch { /* disposed pane */ }
+          return
+        }
+        if (!scrollCurrentXtermToBottom(term, terminalRef.current)) return
+        onViewportStickChangeRef.current?.(true)
+      })
     })
+    return () => { cancelled = true }
   }, [content])
 
   const handleWheel = useCallback((event: WheelEvent) => {
@@ -5312,6 +5472,7 @@ const TerminalCenterInner: React.FC<TerminalCenterProps> = ({ currentSessionId, 
                     />
                   ) : stableLiveAttachId && stableLiveAttachKey ? (
                     <LiveAttachXtermPane
+                      interactive={selectedTerminalUsesSessionEvents}
                       // Keyed on the debounced terminal+tmux identity so transient
                       // selection flicker does not remount, but a relaunched session
                       // with the same logical terminal id reconnects to the new stream.

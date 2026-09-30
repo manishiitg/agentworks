@@ -212,7 +212,7 @@ func TestProviderManifestPublishesCodexTierDefaults(t *testing.T) {
 		for _, model := range provider.Models {
 			models[model.ModelID] = true
 		}
-		for _, modelID := range []string{"gpt-6-sol", "gpt-6-luna", "gpt-6-astra"} {
+		for _, modelID := range []string{"gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"} {
 			if !models[modelID] {
 				t.Fatalf("codex-cli models = %v, want %s", models, modelID)
 			}
@@ -221,10 +221,10 @@ func TestProviderManifestPublishesCodexTierDefaults(t *testing.T) {
 			model  string
 			effort string
 		}{
-			"high":   {model: "gpt-6-sol", effort: "medium"},
+			"high":   {model: "gpt-6.1-sol", effort: "medium"},
 			"medium": {model: "gpt-6-luna", effort: "high"},
 			"low":    {model: "gpt-6-luna", effort: "high"},
-			"pulse":  {model: "gpt-6-sol", effort: "high"},
+			"pulse":  {model: "gpt-6.1-sol", effort: "high"},
 		} {
 			got := provider.DefaultTierModels[tier]
 			if got.ModelID != want.model || got.Options["reasoning_effort"] != want.effort {

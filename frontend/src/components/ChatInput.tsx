@@ -2978,6 +2978,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     )
   }
 
+  // Terminal mode owns keyboard focus; retain the chat draft in component state.
+  if (terminalViewSelected && liveTerminalOffered && activeTabId) {
+    return (
+      <div className={`${inputPadX} flex items-center gap-3 border-t border-border py-2 text-xs text-muted-foreground`} data-testid="native-terminal-toolbar">
+        <span className="flex-1">Type directly in the terminal</span>
+        {showStopButton && stopButton}
+        <Button type="button" variant="outline" size="sm" onClick={() => useChatStore.getState().setTabViewMode(activeTabId, 'formatted')}>
+          Return to chat
+        </Button>
+      </div>
+    )
+  }
+
   // Shared controls are defined once and placed in the appropriate composer
   // group. The mic always stays with the right-hand send actions.
   const micEl = voiceCapabilityEnabled && (

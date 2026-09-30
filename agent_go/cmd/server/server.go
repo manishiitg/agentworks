@@ -25,6 +25,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxinput"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -8495,7 +8496,7 @@ func retainedCodingAgentProvider(snapshot terminals.Snapshot) string {
 		return string(llm.ProviderMuseCLI)
 	case strings.HasPrefix(tmuxSession, "mlp-pi-cli"):
 		return string(llm.ProviderPiCLI)
-	case strings.HasPrefix(tmuxSession, "agy-int-"):
+	case strings.HasPrefix(tmuxSession, "agy-int-") || strings.HasPrefix(tmuxSession, "mlp-agy-"):
 		return string(llm.ProviderAgyCLI)
 	}
 
@@ -8980,6 +8981,9 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 		executionID = "main:" + sessionID
 	}
 	finalResult := api.retainedTurnFinalResponse(provider, sessionID, turnStartedAt)
+	if finalResult == "" && status == "completed" {
+		finalResult = api.nativeTerminalFinalResponse(snapshot.TmuxSession)
+	}
 	if strings.TrimSpace(finalResult) == "" && strings.TrimSpace(failureReason) != "" {
 		finalResult = strings.TrimSpace(failureReason)
 	}
@@ -10188,6 +10192,12 @@ func liveInputErrorProvesNoTarget(err error) bool {
 func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, receivedAt ...time.Time) bool {
 	if api == nil || strings.TrimSpace(message) == "" {
 		return false
+	}
+	if api.hasNativeTerminalDraft(sessionID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusLocked)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "terminal_draft_active", "message": tmuxinput.ErrInteractiveDraft.Error()})
+		return true
 	}
 	detached := r.WithContext(context.WithoutCancel(r.Context()))
 	detached.Header = r.Header.Clone()
