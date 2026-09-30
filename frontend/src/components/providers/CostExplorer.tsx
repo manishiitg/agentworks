@@ -9,14 +9,16 @@ import type {
   CostOverviewUser,
 } from '../../services/api-types'
 import { formatTokens } from '../workflow/costs/helpers'
+import { inputTokens, tokenSummary, pricingCoverageText } from './costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
-type Group = 'user' | 'workflow' | 'crew' | 'product' | 'bot' | 'mcp' | 'other'
+type Group = 'user' | 'workflow' | 'crew' | 'code' | 'product' | 'bot' | 'mcp' | 'other'
 
 type Row = {
   key: string
   title: string
   subtitle: string
+  ownerEmail?: string
   usage?: CostOverviewAggregate
   item?: CostOverviewItem
   user?: CostOverviewUser
@@ -28,11 +30,15 @@ const TABS: { value: Group; label: string }[] = [
   { value: 'user', label: 'Users' },
   { value: 'workflow', label: 'Workflows' },
   { value: 'crew', label: 'Crews' },
+  { value: 'code', label: 'Code' },
   { value: 'product', label: 'Projects' },
   { value: 'bot', label: 'Bots' },
   { value: 'mcp', label: 'MCP' },
   { value: 'other', label: 'Other' },
 ]
+
+const itemGroup = (item: CostOverviewItem): Group =>
+  item.kind === 'product' && /(?:^|\/)Chats\/Code\/projects\//.test(item.id) ? 'code' : item.kind
 
 const scopeNames: Record<string, string> = {
   workflow_execution: 'Runs',
@@ -53,9 +59,6 @@ const currency = (amount: number) => {
 
 const amountLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'unpriced_call_count'>) =>
   usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd)
-
-const tokens = (usage: CostAggregate) =>
-  (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0) + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0)
 
 const orderByCost = <T extends CostAggregate>(values: T[]) => values.sort((a, b) =>
   b.total_cost_usd - a.total_cost_usd || b.call_count - a.call_count)
@@ -79,8 +82,8 @@ function Breakdown({ title, rows }: {
         <div className="min-w-0">
           <div className="truncate text-gray-800 dark:text-gray-200" title={row.label}>{row.label}</div>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {row.usage.call_count.toLocaleString()} calls · {formatTokens(tokens(row.usage))} tokens
-            {(row.usage.unpriced_call_count ?? 0) > 0 && ` · ${row.usage.unpriced_call_count?.toLocaleString()} unpriced`}
+            {tokenSummary(row.usage)}
+            {(row.usage.unpriced_call_count ?? 0) > 0 && ' · incomplete cost'}
           </div>
         </div>
         <span className="shrink-0 font-medium tabular-nums text-gray-900 dark:text-gray-100">{amountLabel(row.usage)}</span>
@@ -102,9 +105,7 @@ function PricingDetail({ usage }: { usage: CostOverviewAggregate }) {
         <dt>{part.label}</dt><dd className="tabular-nums">{currency(part.value)}</dd>
       </div>)}
     </dl> : <p className="mt-1 text-gray-600 dark:text-gray-300">No priced calls recorded.</p>}
-    {(usage.unpriced_call_count ?? 0) > 0 && <p className="mt-2 text-gray-600 dark:text-gray-300">
-      {usage.unpriced_call_count?.toLocaleString()} LLM calls have no price and are left out of the tracked amount: the provider did not report a cost and there is no rate for that model (for example Cursor Composer). Their tokens are still counted.
-    </p>}
+    {(usage.unpriced_call_count ?? 0) > 0 && <p className="mt-2 text-gray-600 dark:text-gray-300">{pricingCoverageText(usage)}</p>}
     {(usage.subscription_shadow_cost_usd ?? 0) > 0 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Subscription equivalent is a usage estimate, not the subscription bill. Cursor Auto is priced at an average rate, because Auto bills whichever model each request is routed to.</p>}
   </section>
 }
@@ -121,36 +122,36 @@ export default function CostExplorer({ data, days, itemLabel }: {
   const workItems = useMemo(() => data.items.filter(item => item.total_cost_usd > 0 || item.call_count > 0), [data.items])
   const workByID = useMemo(() => new Map(workItems.map(item => [item.id, item])), [workItems])
   const rowsByGroup = useMemo(() => {
-    const result: Record<Group, Row[]> = { user: [], workflow: [], crew: [], product: [], bot: [], mcp: [], other: [] }
+    const result: Record<Group, Row[]> = { user: [], workflow: [], crew: [], code: [], product: [], bot: [], mcp: [], other: [] }
     for (const user of orderByCost([...(data.by_user || [])].filter(value => value.total_cost_usd > 0 || value.call_count > 0))) {
-      result.user.push({ key: `user:${user.id}`, title: user.name, subtitle: `${user.call_count.toLocaleString()} LLM calls`, usage: user, user })
+      result.user.push({ key: `user:${user.id}`, title: user.name, subtitle: tokenSummary(user), usage: user, user })
     }
     for (const item of workItems) {
-      result[item.kind].push({
+      result[itemGroup(item)].push({
         key: `work:${item.id}`, title: itemLabel(item),
-        subtitle: `${item.call_count.toLocaleString()} LLM calls`, usage: item, item,
+        subtitle: tokenSummary(item), ownerEmail: item.owner_email, usage: item, item,
       })
     }
     for (const bot of orderByCost([...(data.by_bot || [])].filter(value => value.total_cost_usd > 0 || value.call_count > 0))) {
-      result.bot.push({ key: `bot:${bot.id}`, title: bot.name, subtitle: `${bot.call_count.toLocaleString()} LLM calls`, usage: bot, bot })
+      result.bot.push({ key: `bot:${bot.id}`, title: bot.name, subtitle: tokenSummary(bot), usage: bot, bot })
     }
     for (const mcp of [...(data.by_mcp || [])].filter(value => value.calls > 0).sort((a, b) => b.calls - a.calls)) {
       result.mcp.push({ key: `mcp:${mcp.server}`, title: mcp.server, subtitle: `${mcp.calls.toLocaleString()} tool calls`, mcp })
     }
-    for (const kind of ['workflow', 'crew', 'product', 'other'] as const) {
+    for (const kind of ['workflow', 'crew', 'code', 'product', 'other'] as const) {
       result[kind].sort((a, b) => b.usage!.total_cost_usd - a.usage!.total_cost_usd || b.usage!.call_count - a.usage!.call_count)
     }
     return result
   }, [data, itemLabel, workItems])
 
-  const visibleTabs = TABS.filter(tab => tab.value !== 'other' || rowsByGroup.other.length > 0)
-  const rows = rowsByGroup[group].filter(row => `${row.title} ${row.subtitle}`.toLowerCase().includes(search.toLowerCase()))
+  const visibleTabs = TABS.filter(tab => (tab.value !== 'other' && tab.value !== 'product') || rowsByGroup[tab.value].length > 0)
+  const rows = rowsByGroup[group].filter(row => `${row.title} ${row.ownerEmail ?? ''} ${row.subtitle}`.toLowerCase().includes(search.toLowerCase()))
   const selected = rows.find(row => row.key === selectedKey) || rows[0]
 
   const openWork = (id: string) => {
     const item = workByID.get(id)
     if (!item) return
-    setGroup(item.kind)
+    setGroup(itemGroup(item))
     setSelectedKey(`work:${id}`)
     setSearch('')
   }
@@ -201,10 +202,11 @@ export default function CostExplorer({ data, days, itemLabel }: {
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" title={row.title}>{row.title}</span>
               <span className="block text-xs text-gray-500 dark:text-gray-400">{row.subtitle}</span>
+              {row.ownerEmail && <span className="block break-all text-xs text-gray-500 dark:text-gray-400">Owner: {row.ownerEmail}</span>}
             </span>
             <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
               {row.mcp ? row.mcp.recorded_cost_usd > 0 ? currency(row.mcp.recorded_cost_usd) : 'None recorded' : amountLabel(row.usage!)}
-              {(row.usage?.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] font-normal text-gray-500 dark:text-gray-400">{row.usage?.unpriced_call_count?.toLocaleString()} unpriced</span>}
+              {(row.usage?.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] font-normal text-gray-500 dark:text-gray-400">Incomplete cost</span>}
             </span>
           </button>)}
         </div>}
@@ -215,15 +217,17 @@ export default function CostExplorer({ data, days, itemLabel }: {
           <div className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">Detailed summary</div>
           <h3 className="mt-1 break-words text-lg font-semibold text-gray-950 dark:text-white">{selected.title}</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">{selected.subtitle} · last {days} days</p>
+          {selected.ownerEmail && <p className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">Owner: {selected.ownerEmail}</p>}
         </div>
 
         {usage ? <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label="Tracked cost" value={amountLabel(usage)} />
-            <Metric label="LLM calls" value={usage.call_count.toLocaleString()} />
-            <Metric label="Unpriced calls" value={(usage.unpriced_call_count ?? 0).toLocaleString()} />
-            <Metric label="Tokens" value={formatTokens(tokens(usage))} />
+            <Metric label="Input tokens" value={formatTokens(inputTokens(usage))} />
+            <Metric label="Output tokens" value={formatTokens(usage.completion_tokens ?? 0)} />
+            <Metric label="Cached input" value={formatTokens((usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0))} />
           </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Cached input is included in input tokens.</p>
           <PricingDetail usage={usage} />
           <Breakdown title="Activity" rows={scopeRows} />
           <Breakdown title="Models" rows={modelRows} />
@@ -240,11 +244,11 @@ export default function CostExplorer({ data, days, itemLabel }: {
           </section>}
 
           {selected.item && (selected.item.by_user?.length ?? 0) > 0 && <section className="mt-5">
-            <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Users in this {selected.item.kind === 'crew' ? 'Crew' : selected.item.kind === 'workflow' ? 'workflow' : 'project'}</h4>
+            <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Users in this {selected.item.kind === 'crew' ? 'Crew' : selected.item.kind === 'workflow' ? 'workflow' : itemGroup(selected.item) === 'code' ? 'Code workspace' : 'project'}</h4>
             <div className="space-y-1">
               {selected.item.by_user?.map(actor => <button key={actor.id} type="button" onClick={() => openUser(actor.id)}
                 className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:border-violet-300 dark:border-gray-700 dark:hover:border-violet-500/40">
-                <span className="min-w-0 truncate text-gray-800 dark:text-gray-200">{actor.name} <span className="text-xs text-gray-500">· {actor.call_count.toLocaleString()} calls</span></span>
+                <span className="min-w-0 truncate text-gray-800 dark:text-gray-200">{actor.name} <span className="text-xs text-gray-500">· {tokenSummary(actor)}</span></span>
                 <span className="shrink-0 tabular-nums text-gray-900 dark:text-gray-100">{amountLabel(actor)}</span>
               </button>)}
             </div>
@@ -265,6 +269,19 @@ export default function CostExplorer({ data, days, itemLabel }: {
             <Metric label="Unpriced calls" value={selected.mcp.unpriced_calls.toLocaleString()} />
             <Metric label="Known service charge" value={selected.mcp.recorded_cost_usd > 0 ? currency(selected.mcp.recorded_cost_usd) : 'None recorded'} />
           </div>
+          {(selected.mcp.by_user?.length ?? 0) > 0 && <section className="mt-5">
+            <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Users who accessed this MCP</h4>
+            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+              {selected.mcp.by_user?.map(actor => <div key={actor.id} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                <div className="min-w-0 break-words text-gray-800 dark:text-gray-200">
+                  <div>{actor.name}</div>
+                  {actor.email && actor.email !== actor.name && <div className="break-all text-xs text-gray-500 dark:text-gray-400">{actor.email}</div>}
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{actor.calls.toLocaleString()} tool calls</div>
+                </div>
+                <span className="shrink-0 tabular-nums text-gray-900 dark:text-gray-100">{actor.recorded_cost_usd > 0 ? currency(actor.recorded_cost_usd) : 'None recorded'}</span>
+              </div>)}
+            </div>
+          </section>}
           <p className="mt-4 text-sm leading-6 text-gray-600 dark:text-gray-300">The MCP service did not report a price for unpriced calls. Model tokens used to process tool results remain in the LLM usage totals.</p>
         </>}
       </div>}

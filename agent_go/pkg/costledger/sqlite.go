@@ -284,6 +284,7 @@ GROUP BY scope`
 }
 
 func mergeAggregate(target *Aggregate, source Aggregate) {
+	target.InputTokens += source.InputTokens
 	target.PromptTokens += source.PromptTokens
 	target.CompletionTokens += source.CompletionTokens
 	target.ReasoningTokens += source.ReasoningTokens
@@ -294,6 +295,7 @@ func mergeAggregate(target *Aggregate, source Aggregate) {
 	target.LLMGenerationDurationMS += source.LLMGenerationDurationMS
 	target.AccountingEventCount += source.AccountingEventCount
 	target.UnpricedCallCount += source.UnpricedCallCount
+	target.MissingUsageCallCount += source.MissingUsageCallCount
 	target.ProviderActualCostUSD += source.ProviderActualCostUSD
 	target.TokenEstimateCostUSD += source.TokenEstimateCostUSD
 	target.SubscriptionShadowUSD += source.SubscriptionShadowUSD
@@ -371,6 +373,9 @@ FROM cost_events`
 			return nil, fmt.Errorf("costledger: parse stored timestamp %q: %w", occurredAt, err)
 		}
 		e.Timestamp = ts
+		if err := json.Unmarshal([]byte(metadataJSON), &e.OperationMetadata); err != nil {
+			return nil, fmt.Errorf("costledger: decode stored operation metadata for %q: %w", e.EventID, err)
+		}
 		date := ts.UTC().Format("2006-01-02")
 		addEntryToSummary(summary, date, e)
 	}

@@ -1819,6 +1819,8 @@ export interface CostAggregate {
   // blank when several providers contributed.
   provider?: string
   pricing_model_id?: string
+  // Canonical input, with cached tokens included exactly once.
+  input_tokens?: number
   prompt_tokens: number
   completion_tokens: number
   reasoning_tokens: number
@@ -1828,6 +1830,8 @@ export interface CostAggregate {
   call_count: number
   // LLM calls without a known price are excluded from total_cost_usd.
   unpriced_call_count?: number
+  // Subset of unpriced calls with neither usage nor cost reported.
+  missing_usage_call_count?: number
   // Sum of time spent waiting for LLM generations. This deliberately excludes
   // tool execution and queue time, so it is not a workflow wall-clock duration.
   llm_generation_duration_ms?: number
@@ -1882,6 +1886,7 @@ export interface CostOverviewItem extends CostOverviewAggregate {
   kind: 'workflow' | 'crew' | 'product' | 'other'
   name: string
   owner_id?: string
+  owner_email?: string
   by_scope?: Record<string, CostAggregate>
   by_model?: Record<string, CostAggregate>
   by_user?: CostOverviewActor[]
@@ -1922,6 +1927,7 @@ export interface CostOverviewBot extends CostOverviewAggregate {
 
 export interface CostOverviewMCP {
   server: string
+  by_user?: { id: string; name: string; email?: string; calls: number; unpriced_calls: number; recorded_cost_usd: number }[]
   calls: number
   unpriced_calls: number
   recorded_cost_usd: number

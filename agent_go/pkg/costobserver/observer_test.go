@@ -166,3 +166,34 @@ func TestInferWorkflowScope(t *testing.T) {
 		})
 	}
 }
+
+func TestObserverPersistsInputCacheConvention(t *testing.T) {
+	for _, includes := range []bool{true, false} {
+		t.Run(map[bool]string{true: "inclusive", false: "exclusive"}[includes], func(t *testing.T) {
+			ledger, err := costledger.NewSQLiteLedger(t.TempDir() + "/costs.sqlite")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ledger.Close()
+			obs := New(ledger, "session-input", "alice", "chat", WithModel("codex-cli", "gpt"))
+			generation := &unifiedevents.LLMGenerationEndEvent{
+				UsageMetrics: unifiedevents.UsageMetrics{PromptTokens: 100, CompletionTokens: 10, CacheTokens: 80},
+			}
+			generation.Metadata = map[string]interface{}{"prompt_tokens_include_cache": includes, "cost_usd": 0.25}
+			if err := obs.HandleEvent(context.Background(), &unifiedevents.AgentEvent{Type: unifiedevents.LLMGenerationEnd, Timestamp: time.Now().UTC(), SpanID: "call", Data: generation}); err != nil {
+				t.Fatal(err)
+			}
+			summary, err := ledger.Summarize("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 180
+			if includes {
+				want = 100
+			}
+			if summary.Total.InputTokens != want || summary.Total.PromptTokens != 100 || summary.Total.TotalCostUSD != 0.25 {
+				t.Fatalf("reporting convention lost: %+v, want input %d", summary.Total, want)
+			}
+		})
+	}
+}

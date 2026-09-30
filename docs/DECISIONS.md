@@ -7,6 +7,31 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Costs shows input and output, with cache counted once
+- The dedicated Costs summary and its user/work/project/account breakdowns
+  show input tokens, output tokens and cached input. Cache is part of input;
+  model-call counts remain accounting data rather than headline metrics.
+- Ledger aggregates expose canonical `input_tokens`. New observer entries
+  retain the provider's `prompt_tokens_include_cache` flag; existing Muse
+  entries are inclusive. Raw token fields and recorded USD remain unchanged.
+  Other historical entries retain the legacy prompt-plus-cache calculation
+  because the original inclusion flag was not stored and cannot be recovered safely.
+- The Code tab groups Code workspaces separately from other products.
+  MCP service breakdowns show the recorded actor, email and tool-call count
+  after work access filtering; absent actor IDs remain unattributed.
+- Missing token/cost reports are distinguished from usage without a model
+  rate. `missing_usage_call_count` is a subset of unpriced calls; neither
+  category contributes an invented zero-dollar estimate.
+- Visible project rows include their owner's directory email, when available,
+  in the list, summary and search. Ownership is distinct from contributors in
+  the existing per-user breakdown; access filtering still precedes lookup.
+- Excellence's September 28–30 Muse ledger had $3.78333333 in token estimates:
+  184,406,599 input, 531,213 output, 150,648,665 cached input. The old UI added
+  cache again (335.60M overall tokens). Contributor pricing and cache discounts
+  explain the small recorded dollar estimate; it is not an invoice.
+- Code: `agent_go/pkg/costledger`, `agent_go/pkg/costobserver`,
+  `agent_go/cmd/server/cost_overview.go`, `frontend/src/components/providers`.
+
 ### 2026-09-30 — A reply to a live message is held until the message row (all CLIs)
 - When a message is sent into a running CLI, its chat row is written when the
   CLI confirms it took the message (`watchLiveInputDurableRecording`), and the

@@ -91,9 +91,11 @@ type Entry struct {
 
 // Aggregate is the rolled-up token + cost total for a date/model bucket.
 type Aggregate struct {
-	Provider                 string  `json:"provider,omitempty"`
-	PricingModelID           string  `json:"pricing_model_id,omitempty"`
-	PricingVersion           string  `json:"pricing_version,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	PricingModelID string `json:"pricing_model_id,omitempty"`
+	PricingVersion string `json:"pricing_version,omitempty"`
+	// InputTokens includes cached input exactly once; PromptTokens preserves provider reporting.
+	InputTokens              int     `json:"input_tokens"`
 	PromptTokens             int     `json:"prompt_tokens"`
 	CompletionTokens         int     `json:"completion_tokens"`
 	ReasoningTokens          int     `json:"reasoning_tokens"`
@@ -104,6 +106,7 @@ type Aggregate struct {
 	LLMGenerationDurationMS  int64   `json:"llm_generation_duration_ms"`
 	AccountingEventCount     int     `json:"accounting_event_count"`
 	UnpricedCallCount        int     `json:"unpriced_call_count"`
+	MissingUsageCallCount    int     `json:"missing_usage_call_count"`
 	ProviderActualCostUSD    float64 `json:"provider_actual_cost_usd"`
 	TokenEstimateCostUSD     float64 `json:"token_estimate_cost_usd"`
 	SubscriptionShadowUSD    float64 `json:"subscription_shadow_cost_usd"`
@@ -132,6 +135,7 @@ func (a *Aggregate) add(e Entry) {
 		// is intentionally left blank when providers differ.
 		a.Provider = ""
 	}
+	a.InputTokens += entryInputTokens(e)
 	a.PromptTokens += e.PromptTokens
 	a.CompletionTokens += e.CompletionTokens
 	a.ReasoningTokens += e.ReasoningTokens
@@ -143,6 +147,9 @@ func (a *Aggregate) add(e Entry) {
 	a.AccountingEventCount++
 	if e.LLMCallCount > 0 && e.BillingBasis == "unpriced" {
 		a.UnpricedCallCount += e.LLMCallCount
+		if e.PromptTokens == 0 && e.CompletionTokens == 0 && e.ReasoningTokens == 0 && e.CacheReadTokens == 0 && e.CacheWriteTokens == 0 && e.TotalCostUSD == 0 {
+			a.MissingUsageCallCount += e.LLMCallCount
+		}
 		a.UnpricedPromptTokens += e.PromptTokens
 		a.UnpricedCompletionTokens += e.CompletionTokens
 		a.UnpricedReasoningTokens += e.ReasoningTokens
@@ -157,6 +164,25 @@ func (a *Aggregate) add(e Entry) {
 	case "token_estimate":
 		a.TokenEstimateCostUSD += e.TotalCostUSD
 	}
+}
+
+// entryInputTokens normalizes providers that report cache inside or outside
+// prompt tokens. Historical Muse events predate the persisted reporting flag;
+// Muse has always reported inclusive input. Other old entries retain the
+// existing exclusive-prompt convention.
+func entryInputTokens(e Entry) int {
+	includes, known := e.OperationMetadata["prompt_tokens_include_cache"].(bool)
+	if !known {
+		provider := strings.ToLower(strings.TrimSpace(e.EffectiveProvider))
+		if provider == "" {
+			provider = strings.ToLower(strings.TrimSpace(e.Provider))
+		}
+		includes = provider == "muse-cli" || provider == "muse_cli"
+	}
+	if includes {
+		return e.PromptTokens
+	}
+	return e.PromptTokens + e.CacheReadTokens + e.CacheWriteTokens
 }
 
 // DateAggregate is one row in the per-date rollup. It embeds Aggregate
@@ -244,8 +270,10 @@ type BotAggregate struct {
 }
 
 type MCPAggregate struct {
-	Calls         int `json:"calls"`
-	UnpricedCalls int `json:"unpriced_calls"`
+	// Actor details are exposed only after the overview filters work access.
+	ByUser        map[string]*MCPAggregate `json:"-"`
+	Calls         int                      `json:"calls"`
+	UnpricedCalls int                      `json:"unpriced_calls"`
 	// Cost remains unknown when an MCP service does not report a price.
 	RecordedCostUSD float64 `json:"recorded_cost_usd"`
 }
@@ -818,6 +846,20 @@ func addEntryToBotAndMCPBuckets(summary *Summary, e Entry) {
 			bucket.UnpricedCalls++
 		}
 		bucket.RecordedCostUSD += e.TotalCostUSD
+		if bucket.ByUser == nil {
+			bucket.ByUser = make(map[string]*MCPAggregate)
+		}
+		userID := strings.TrimSpace(e.UserID)
+		actor := bucket.ByUser[userID]
+		if actor == nil {
+			actor = &MCPAggregate{}
+			bucket.ByUser[userID] = actor
+		}
+		actor.Calls++
+		if e.BillingBasis == "unpriced" {
+			actor.UnpricedCalls++
+		}
+		actor.RecordedCostUSD += e.TotalCostUSD
 	}
 }
 

@@ -6,6 +6,7 @@ import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
+import { inputTokens, pricingCoverageText } from './costTokens'
 import { AccountCostList } from './AccountCosts'
 
 const RANGES = [
@@ -29,9 +30,6 @@ const costLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'call_count' | 
     ? 'Not priced'
     : overviewCurrency(usage.total_cost_usd)
 
-const unpricedLabel = (count?: number) =>
-  count ? `${count.toLocaleString()} unpriced ${count === 1 ? 'call' : 'calls'}` : ''
-
 const utcDate = (date: Date) => date.toISOString().slice(0, 10)
 
 const costRangeBounds = (days: number, now = new Date()) => {
@@ -39,9 +37,6 @@ const costRangeBounds = (days: number, now = new Date()) => {
   from.setUTCDate(from.getUTCDate() - (days - 1))
   return { from: utcDate(from), to: utcDate(now) }
 }
-
-const tokenCount = (aggregate?: CostAggregate) =>
-  (aggregate?.prompt_tokens ?? 0) + (aggregate?.completion_tokens ?? 0) + (aggregate?.cache_read_tokens ?? 0) + (aggregate?.cache_write_tokens ?? 0)
 
 // Crew rows arrive keyed by project folder; the Crew list supplies names.
 const crewProjectId = (workspacePath: string) => {
@@ -114,7 +109,6 @@ export default function CostsOverview() {
 
   const total = data?.total
   const maxProviderCost = Math.max(...providerRows.map(row => row.usage.total_cost_usd), 0)
-  const unpricedCalls = total?.unpriced_call_count ?? 0
   const costSources = [
     (total?.provider_actual_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.provider_actual_cost_usd ?? 0)} provider-reported` : '',
     (total?.subscription_shadow_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.subscription_shadow_cost_usd ?? 0)} subscription-equivalent estimate` : '',
@@ -127,7 +121,7 @@ export default function CostsOverview() {
         <div>
           <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Costs</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-            Recorded AI usage by user, workflow, Crew, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
+            Recorded AI usage by user, workflow, Crew, Code workspace, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -176,9 +170,9 @@ export default function CostsOverview() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: 'Tracked cost', value: overviewCurrency(total?.total_cost_usd ?? 0) },
-              { label: 'Unpriced LLM calls', value: unpricedCalls.toLocaleString() },
-              { label: 'LLM calls', value: (total?.call_count ?? 0).toLocaleString() },
-              { label: 'Tokens', value: formatTokens(tokenCount(total)) },
+              { label: 'Input tokens', value: formatTokens(inputTokens(total)) },
+              { label: 'Output tokens', value: formatTokens(total?.completion_tokens ?? 0) },
+              { label: 'Cached input', value: formatTokens((total?.cache_read_tokens ?? 0) + (total?.cache_write_tokens ?? 0)) },
             ].map(card => (
               <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
                 <div className="text-xs text-gray-500 dark:text-gray-400">{card.label}</div>
@@ -188,8 +182,9 @@ export default function CostsOverview() {
           </div>
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
             <span className="font-medium text-gray-900 dark:text-gray-100">How to read this: </span>
+            Cached input is included in input tokens.{' '}
             {costSources.length > 0 ? costSources.join(' · ') : (total?.total_cost_usd ?? 0) > 0 ? 'Recorded cost source unavailable' : 'No priced usage recorded'}.
-            {unpricedCalls > 0 && ` ${unpricedLabel(unpricedCalls)} have no price and are left out of the tracked amount: the provider did not report a cost and there is no rate for that model (for example Cursor Composer). Their tokens are still counted.`}
+            {total && ` ${pricingCoverageText(total)}`}
             {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription-equivalent estimates are not your subscription bill.'}
           </div>
 
@@ -216,9 +211,9 @@ export default function CostsOverview() {
                         style={{ width: `${maxProviderCost > 0 ? Math.max(2, (row.usage.total_cost_usd / maxProviderCost) * 100) : 0}%` }}
                       />}
                     </div>
-                    <span className="text-right tabular-nums text-gray-900 dark:text-gray-100" title={unpricedLabel(row.usage.unpriced_call_count)}>
+                    <span className="text-right tabular-nums text-gray-900 dark:text-gray-100" title={pricingCoverageText(row.usage)}>
                       {costLabel(row.usage)}
-                      {(row.usage.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] text-gray-500 dark:text-gray-400">{unpricedLabel(row.usage.unpriced_call_count)}</span>}
+                      {(row.usage.unpriced_call_count ?? 0) > 0 && <span className="block text-[11px] text-gray-500 dark:text-gray-400">Incomplete cost</span>}
                     </span>
                   </div>
                 ))}

@@ -26,10 +26,11 @@ const (
 )
 
 type costOverviewItem struct {
-	ID      string `json:"id"`
-	Kind    string `json:"kind"`
-	Name    string `json:"name"`
-	OwnerID string `json:"owner_id,omitempty"`
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	OwnerID    string `json:"owner_id,omitempty"`
+	OwnerEmail string `json:"owner_email,omitempty"`
 	costledger.WorkflowAggregate
 	ByUser []*costOverviewActor `json:"by_user,omitempty"`
 	ByBot  []*costOverviewBot   `json:"by_bot,omitempty"`
@@ -63,8 +64,16 @@ type costOverviewBot struct {
 	costledger.BotAggregate
 }
 
+type costOverviewMCPUser struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email,omitempty"`
+	costledger.MCPAggregate
+}
+
 type costOverviewMCP struct {
-	Server string `json:"server"`
+	ByUser []*costOverviewMCPUser `json:"by_user,omitempty"`
+	Server string                 `json:"server"`
 	costledger.MCPAggregate
 }
 
@@ -175,6 +184,49 @@ func mergeUserAggregate(target *costledger.UserAggregate, source *costledger.Use
 	mergeAggregateMap(target.ByModel, source.ByModel)
 }
 
+func mergeMCPUsers(target *costOverviewMCP, users map[string]*costledger.MCPAggregate) {
+	for id, usage := range users {
+		if usage == nil {
+			continue
+		}
+		var actor *costOverviewMCPUser
+		for _, existing := range target.ByUser {
+			if existing.ID == id {
+				actor = existing
+				break
+			}
+		}
+		if actor == nil {
+			actor = &costOverviewMCPUser{ID: id, Name: costOverviewUserName(id), Email: costOverviewOwnerEmail(id)}
+			target.ByUser = append(target.ByUser, actor)
+		}
+		actor.Calls += usage.Calls
+		actor.UnpricedCalls += usage.UnpricedCalls
+		actor.RecordedCostUSD += usage.RecordedCostUSD
+	}
+	sort.Slice(target.ByUser, func(i, j int) bool {
+		if target.ByUser[i].Calls != target.ByUser[j].Calls {
+			return target.ByUser[i].Calls > target.ByUser[j].Calls
+		}
+		return target.ByUser[i].ID < target.ByUser[j].ID
+	})
+}
+
+func costOverviewOwnerEmail(userID string) string {
+	if userID == "" {
+		return ""
+	}
+	if user := directoryUserFor(userID, "", ""); user != nil {
+		if email := strings.TrimSpace(user.Email); email != "" {
+			return email
+		}
+		if strings.Contains(user.Username, "@") {
+			return strings.TrimSpace(user.Username)
+		}
+	}
+	return ""
+}
+
 func costOverviewUserName(userID string) string {
 	if userID == "" {
 		return "Unattributed"
@@ -228,7 +280,7 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 		}
 		item, exists := items[id]
 		if !exists {
-			item = &costOverviewItem{ID: id, Kind: kind, Name: name, OwnerID: ownerID}
+			item = &costOverviewItem{ID: id, Kind: kind, Name: name, OwnerID: ownerID, OwnerEmail: costOverviewOwnerEmail(ownerID)}
 			items[id] = item
 		}
 		mergeWorkflowAggregate(&item.WorkflowAggregate, aggregate)
@@ -315,6 +367,7 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 			bucket.Calls += aggregate.Calls
 			bucket.UnpricedCalls += aggregate.UnpricedCalls
 			bucket.RecordedCostUSD += aggregate.RecordedCostUSD
+			mergeMCPUsers(bucket, aggregate.ByUser)
 			if itemServers[root] == nil {
 				itemServers[root] = make(map[string]*costOverviewMCP)
 			}
@@ -326,6 +379,7 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 			local.Calls += aggregate.Calls
 			local.UnpricedCalls += aggregate.UnpricedCalls
 			local.RecordedCostUSD += aggregate.RecordedCostUSD
+			mergeMCPUsers(local, aggregate.ByUser)
 		}
 	}
 	for _, user := range users {

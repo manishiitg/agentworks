@@ -365,3 +365,63 @@ func TestLedgerAppendAndSummarizeViaWorkspaceAPI(t *testing.T) {
 		t.Fatalf("SortedDates() len = %d, want 2", len(summary.SortedDates()))
 	}
 }
+
+func TestInputTokensCountCacheOnceAcrossMixedProviders(t *testing.T) {
+	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	// Historical Muse, inclusive structured CLI, exclusive native CLI, and
+	// old exclusive Anthropic input must normalize before merging providers.
+	entries := []Entry{
+		{Provider: "muse-cli", PromptTokens: 100, CacheReadTokens: 80},
+		{Provider: "claude-code", PromptTokens: 200, CacheReadTokens: 120, CacheWriteTokens: 30, OperationMetadata: map[string]interface{}{"prompt_tokens_include_cache": true}},
+		{Provider: "codex-cli", PromptTokens: 40, CacheReadTokens: 60, OperationMetadata: map[string]interface{}{"prompt_tokens_include_cache": false}},
+		{Provider: "anthropic", PromptTokens: 10, CacheReadTokens: 20, CacheWriteTokens: 5},
+	}
+	for i, entry := range entries {
+		entry.EventID = fmt.Sprintf("input-%d", i)
+		entry.Timestamp = time.Now().UTC()
+		entry.WorkflowID = "Workflow/test"
+		entry.UserID = "alice"
+		entry.ModelID = entry.Provider
+		entry.LLMCallCount = 1
+		entry.CompletionTokens = 7
+		entry.BillingBasis = "token_estimate"
+		entry.TotalCostUSD = 0.1
+		if err := ledger.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Total.InputTokens != 435 || summary.Total.PromptTokens != 350 || summary.Total.CompletionTokens != 28 {
+		t.Fatalf("unexpected normalized usage: %+v", summary.Total)
+	}
+	if math.Abs(summary.Total.TotalCostUSD-0.4) > 1e-9 {
+		t.Fatal("normalization changed costs")
+	}
+	var merged Aggregate
+	for _, model := range summary.ByModel {
+		merged.Merge(*model)
+	}
+	if merged.InputTokens != summary.Total.InputTokens || summary.ByWorkflow["Workflow/test"].InputTokens != 435 || summary.ByWorkflowUser["Workflow/test"]["alice"].InputTokens != 435 {
+		t.Fatalf("input tokens lost in merged or attributed summaries: %+v", merged)
+	}
+}
+
+func TestMissingUsageIsASubsetOfUnpricedCalls(t *testing.T) {
+	var aggregate Aggregate
+	aggregate.add(Entry{LLMCallCount: 1, BillingBasis: "unpriced"})
+	aggregate.add(Entry{LLMCallCount: 1, BillingBasis: "unpriced", PromptTokens: 10})
+	aggregate.add(Entry{LLMCallCount: 1, BillingBasis: "provider_actual", TotalCostUSD: 0.1})
+	aggregate.add(Entry{Component: "mcp:github", BillingBasis: "unpriced"})
+	var merged Aggregate
+	merged.Merge(aggregate)
+	if merged.UnpricedCallCount != 2 || merged.MissingUsageCallCount != 1 {
+		t.Fatalf("incorrect pricing coverage: %+v", merged)
+	}
+}
