@@ -547,6 +547,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			}
 			llmOptions["reasoning_effort"] = effort
 		}
+		// No account chosen: a person who added their own account for this provider uses it
+		// (owner decision 2026-09-30). Choosing an account, the server one included, wins.
+		if strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope {
+			req.ConnectionID = ownDefaultProviderAccountID(ctx, userID, provider)
+		}
 		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: provider, ModelID: modelID, Options: llmOptions, ConnectionID: req.ConnectionID}}
 		req.LLMConfigSource = llmConfigSourceAgentProfile
 		if strings.EqualFold(strings.TrimSpace(profile.Runtime.CredentialScope), agentprofiles.CredentialScopeGlobal) {

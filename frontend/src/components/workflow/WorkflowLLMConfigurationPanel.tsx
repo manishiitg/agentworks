@@ -447,9 +447,17 @@ export default function WorkflowLLMConfigurationPanel({
     return { provider: 'pi-cli', model: row.modelId, label: row.name, section: 'published_model' }
   }, [])
 
-  const selectedConnectionID = llmConfig?.mode === 'provider_profile'
+  const explicitConnectionID = llmConfig?.mode === 'provider_profile'
     ? llmConfig.connection_id
     : llmConfig?.builder_llm?.connection_id || llmConfig?.connection_id
+  // Crew and Code with no account chosen run on the person's own signed-in account for the
+  // provider, newest first (the server does the same: ownDefaultProviderAccountID).
+  const ownDefaultConnectionID = configurationSource === 'agent_profile' && !explicitConnectionID
+    ? [...privateConnections]
+      .filter(record => record.provider === selectedProfile?.provider && accountRelation(record) === 'own' && accountUsable(record) && accountConfigured(record) !== false)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0]?.id
+    : undefined
+  const selectedConnectionID = explicitConnectionID || ownDefaultConnectionID
   // The selected user account, usable here or not (kept for its name).
   const selectedAccountRecord = selectedConnectionID && !selectedConnectionID.startsWith('global:')
     ? privateConnections.find(record => record.id === selectedConnectionID && record.provider === selectedProfile?.provider)
