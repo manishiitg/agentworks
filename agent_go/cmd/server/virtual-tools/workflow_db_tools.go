@@ -300,6 +300,17 @@ func parseManagedMigrationStatements(script string) ([]string, error) {
 // CreateWorkflowDBToolRegistry creates one implementation shared by Builder,
 // managed background agents and workflow execution steps. Availability is
 // narrowed later from trusted role/db_access configuration.
+// errWorkflowDBWriteGrantMissing is the refusal for a write from a session
+// without the read-write DB grant. It says whose problem this is: the grant is
+// set by the platform, so a caller cannot fix it (and must not try to work
+// around it), only report it.
+func errWorkflowDBWriteGrantMissing(op, sessionID, access string) error {
+	return fmt.Errorf("workflow database %s denied for session %q: explicit db_access=read-write is required (effective value %q). "+
+		"This is a platform permission problem, not something the caller can fix or work around: this session was not granted "+
+		"database write access. Stop and report it as a platform issue (session %q, workflow database write grant missing)",
+		op, sessionID, access, sessionID)
+}
+
 func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string) WorkflowDBToolRegistry {
 	if strings.TrimSpace(workspaceURL) == "" {
 		workspaceURL = getWorkspaceAPIURL()
@@ -397,7 +408,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 			return "", err
 		}
 		if access := strings.TrimSpace(cfg.Env[workflowDBAccessEnv]); access != "read-write" {
-			return "", fmt.Errorf("workflow database mutation denied for session %q: explicit db_access=read-write is required (effective value %q)", sessionID, access)
+			return "", errWorkflowDBWriteGrantMissing("mutation", sessionID, access)
 		}
 		dbPath, err := resolveWorkflowDBPathFromConfig(sessionID, cfg)
 		if err != nil {
@@ -457,7 +468,7 @@ func CreateWorkflowDBToolRegistry(workspaceURL, userID, fallbackSessionID string
 			return "", err
 		}
 		if access := strings.TrimSpace(cfg.Env[workflowDBAccessEnv]); access != "read-write" {
-			return "", fmt.Errorf("workflow database migration denied for session %q: explicit db_access=read-write is required (effective value %q)", sessionID, access)
+			return "", errWorkflowDBWriteGrantMissing("migration", sessionID, access)
 		}
 		filename := strings.TrimSpace(fmt.Sprint(args["migration_file"]))
 		if filename == "" || filename == "<nil>" {
