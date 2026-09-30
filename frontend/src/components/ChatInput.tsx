@@ -2,6 +2,7 @@ import { referenceTag, removeReferenceTags, textMentionsReference } from '../uti
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../utils/workspacePaneChat'
 import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
 import { NativeTerminalToolbar } from './NativeTerminalToolbar'
+import { useTerminalFocusMode } from './TerminalFocusLayout'
 import { routeForQueuedMessage, splitQueuedMessages } from '../utils/queuedMessageDelivery'
 import { askAIDisplayText } from '../utils/askAIMessage'
 import { resolvePiModelGroup } from '../utils/llmDisplay'
@@ -454,6 +455,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
+  const terminalFocus = useTerminalFocusMode()
   // Store subscriptions
   const {
     agentMode,
@@ -3094,6 +3096,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           }}
           onAttach={openAttachmentPicker}
           onToggleComposer={toggleTerminalComposer}
+          focused={terminalFocus.focused}
+          onToggleFocus={terminalFocus.available ? terminalFocus.toggle : undefined}
           onReturnToChat={() => chooseViewMode(activeTabId!, 'formatted')}
         />
       )}

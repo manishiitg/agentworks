@@ -1748,6 +1748,12 @@
 .git-gutter-modified { border-left: 3px solid #3b82f6; margin-left: 3px; }
 .git-gutter-deleted { border-bottom: 2px solid #ef4444; margin-left: 3px; width: 6px !important; }
 
+/* Terminal focus only hides navigation chrome inside its owning workspace.
+   The panes stay mounted, and the toolbar's auto grid row collapses to zero. */
+[data-terminal-focus="true"] [data-terminal-focus-chrome] {
+  display: none;
+}
+
 /* xterm draws its own scrollbar instead of a browser-native one. */
 .runloop-raw-xterm .xterm-scrollable-element > .scrollbar > .slider {
   border-radius: 999px;

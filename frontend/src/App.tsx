@@ -13,6 +13,7 @@ import { activateTab } from "./utils/activateTab";
 import { Loader2 } from "lucide-react";
 import { WorkflowLayout } from "./components/workflow";
 import { ModePresetBar } from "./components/ModePresetBar";
+import { TerminalFocusLayout } from './components/TerminalFocusLayout'
 import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useChatStore } from "./stores";
 import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
@@ -937,7 +938,7 @@ function App() {
         <>
         <UpdateProgressToast />
         <GlobalHumanFeedbackPrompt />
-        <div className="h-screen bg-background flex">
+        <TerminalFocusLayout className="h-screen bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
           {/* AgentWorks contains Automations and Activity. The former left
               sidebar was removed; its controls now live in the top bar
               (ModePresetBar → WorkspaceTopBarControls). */}
@@ -977,7 +978,7 @@ function App() {
             </div>
           </div>
 
-        </div>
+        </TerminalFocusLayout>
 
         </>
         )}

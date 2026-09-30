@@ -20,6 +20,7 @@ vi.mock('./providers/CodingProvidersPanel', () => ({ default: () => null }))
 vi.mock('../commands/user-commands', () => ({ loadAndRegisterUserCommands: vi.fn().mockResolvedValue(undefined) }))
 
 import { ChatInput } from './ChatInput'
+import { TerminalFocusLayout } from './TerminalFocusLayout'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
@@ -49,6 +50,11 @@ describe('terminal toolbar shared tools', () => {
   let root: Root
   let client: QueryClient
   const send = vi.fn(async () => true)
+  const renderComposer = (tabId?: string, enabled = true) => root.render(<QueryClientProvider client={client}>
+    <TerminalFocusLayout tabId={tabId} enabled={enabled} className="h-screen">
+      <ChatInput tabId={tabId} onSubmit={send} onStopStreaming={vi.fn()} />
+    </TerminalFocusLayout>
+  </QueryClientProvider>)
   beforeEach(async () => {
     useModeStore.setState({ selectedModeCategory: 'workflow' })
     useLLMStore.setState({ providerManifestLoaded: true, llmConfigLocked: false })
@@ -59,7 +65,7 @@ describe('terminal toolbar shared tools', () => {
     vi.spyOn(agentApi, 'uploadPlannerFile').mockResolvedValue({ data: { file_path: 'Workflow/project/example.txt' } } as never)
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     host = document.createElement('div'); document.body.append(host); root = createRoot(host)
-    await act(async () => root.render(<QueryClientProvider client={client}><ChatInput onSubmit={send} onStopStreaming={vi.fn()} /></QueryClientProvider>))
+    await act(async () => renderComposer())
   })
   afterEach(async () => {
     await act(async () => root?.unmount())
@@ -130,5 +136,56 @@ describe('terminal toolbar shared tools', () => {
       expect((focus.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'A-session' })
       expect(useChatStore.getState().getTab('A')?.viewMode).toBe('terminal')
     } finally { window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
+  })
+
+  it('toggles focus without remounting the composer, and restores normal layout on return to chat', async () => {
+    const original = textarea()
+    await act(async () => button('Enter focus mode').click())
+    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
+    expect(button('Exit focus mode').getAttribute('aria-pressed')).toBe('true')
+    expect(textarea()).toBe(original)
+    expect(textarea().value).toBe('review this file')
+    expect(send).not.toHaveBeenCalled()
+    await act(async () => button('Exit focus mode').click())
+    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
+    await act(async () => button('Enter focus mode').click())
+    await act(async () => [...toolbar().querySelectorAll('button')].find(node => node.textContent === 'Return to chat')!.click())
+    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
+    expect(textarea()).toBe(original)
+    expect(textarea().value).toBe('review this file')
+    await act(async () => useChatStore.getState().setTabViewMode('A', 'terminal'))
+    expect(button('Enter focus mode').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it.each(['tab', 'session', 'close'])('does not carry focus mode to a changed %s', async change => {
+    await act(async () => button('Enter focus mode').click())
+    await act(async () => {
+      const state = useChatStore.getState()
+      if (change === 'tab') useChatStore.setState({ activeTabId: 'B' })
+      if (change === 'session') useChatStore.setState({ chatTabs: { ...state.chatTabs, A: { ...state.chatTabs.A, sessionId: 'replacement' } } })
+      if (change === 'close') useChatStore.setState({ chatTabs: { B: state.chatTabs.B }, activeTabId: null })
+    })
+    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('focuses the scoped project conversation even when the globally active tab differs', async () => {
+    await act(async () => renderComposer('B'))
+    await act(async () => button('Enter focus mode').click())
+    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
+    expect(useChatStore.getState().activeTabId).toBe('A')
+    await act(async () => useChatStore.getState().setTabViewMode('A', 'formatted'))
+    expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
+    await act(async () => useChatStore.getState().setTabViewMode('B', 'formatted'))
+    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
+  })
+
+  it('restores navigation on global pages and does not resume focus when returning', async () => {
+    await act(async () => button('Enter focus mode').click())
+    await act(async () => renderComposer(undefined, false))
+    expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
+    expect(button('Exit focus mode')).toBeNull()
+    await act(async () => renderComposer())
+    expect(button('Enter focus mode').getAttribute('aria-pressed')).toBe('false')
   })
 })

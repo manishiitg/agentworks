@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
 import SchedulesPage from '../../components/SchedulesPage'
 import AdminPages from '../../components/AdminPages'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
@@ -1076,7 +1077,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   return (
     <ProjectProductProvider value={product}>
-    <div className="flex h-screen min-h-0 flex-col bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 flex-col bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1365,7 +1366,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
           )}
         </div>
       </div>
-    </div>
+    </TerminalFocusLayout>
     </ProjectProductProvider>
   )
 }

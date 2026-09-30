@@ -587,7 +587,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div data-terminal-focus-chrome="header" className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
           {/* Product and current automation */}
           <div className="flex min-w-0 items-center gap-3">
