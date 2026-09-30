@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleAlert,
+  HelpCircle,
   DollarSign,
   Loader2,
   RefreshCw,
@@ -21,6 +22,7 @@ import {
 import { CODING_PROVIDER_GUIDES, DEFAULT_CODING_PROVIDER_GUIDE } from './codingProviderGuides'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
+import WorkflowWalkthrough from '../workflow/WorkflowWalkthrough'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { ProviderSetupAction, ProviderSetupSession } from '../../services/llm-config-api'
 
@@ -126,6 +128,20 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState<'provider' | 'costs'>('provider')
+  const [showWalkthrough, setShowWalkthrough] = useState(false)
+  const [walkthroughOpenToken, setWalkthroughOpenToken] = useState(0)
+  const openWalkthrough = useCallback(() => {
+    setWalkthroughOpenToken(token => token + 1)
+    setShowWalkthrough(true)
+  }, [])
+  useEffect(() => {
+    if (!isOpen) {
+      setShowWalkthrough(false)
+      return
+    }
+    window.addEventListener('open-providers-walkthrough', openWalkthrough)
+    return () => window.removeEventListener('open-providers-walkthrough', openWalkthrough)
+  }, [isOpen, openWalkthrough])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guidedSession, setGuidedSession] = useState<ProviderSetupSession | null>(null)
@@ -167,7 +183,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !showWalkthrough) {
         if (guidedSession?.status === 'running') {
           void llmConfigService.cancelProviderSetup(guidedSession.id).catch(() => undefined)
         }
@@ -180,7 +196,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', closeOnEscape)
     }
-  }, [guidedSession, isOpen, onClose, embedded])
+  }, [guidedSession, isOpen, onClose, embedded, showWalkthrough])
 
   const orderedProviders = useMemo(() => {
     const order = new Map(providerOrder.map((id, index) => [id, index]))
@@ -236,6 +252,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
           if (!embedded && event.target === event.currentTarget) closePanel()
         }}
       >
+        <WorkflowWalkthrough isOpen={isOpen && showWalkthrough} surface="providers" openToken={walkthroughOpenToken} onClose={() => setShowWalkthrough(false)} />
         <div
           role={embedded ? 'region' : 'dialog'}
           aria-modal={embedded ? undefined : true}
@@ -257,6 +274,9 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               <div className="mb-1 flex min-h-8 items-center justify-between gap-1 pl-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available providers</span>
                 <div className="flex shrink-0 items-center gap-0.5">
+                  <button type="button" onClick={openWalkthrough} aria-label="Providers help & walkthrough" title="Help & walkthrough" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
                   {view === 'provider' && <button
                     type="button"
                     onClick={refresh}
@@ -281,7 +301,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   <Loader2 className="h-4 w-4 animate-spin" /> Checking the server…
                 </div>
               ) : (
-                <div className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
+                <div data-tour="providers-list" className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible">
                   {orderedProviders.map(provider => (
                     <button
                       type="button"
@@ -308,6 +328,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Usage</div>
               <button
                 type="button"
+                data-tour="providers-costs"
                 onClick={() => setView('costs')}
                 aria-pressed={view === 'costs'}
                 className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors md:mt-0 ${
@@ -368,7 +389,9 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                     </div>
                   </div>
 
-                  <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} />
+                  <div data-tour="provider-accounts">
+                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} />
+                  </div>
 
                   {selectedProvider.deprecated && selectedProvider.deprecation_reason && (
                     <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">

@@ -198,7 +198,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   }))
 
   const openWorkflowWalkthrough = useCallback((surface: WalkthroughSurface = currentWalkthroughSurface) => {
-    if (showProviders) useLLMStore.getState().setShowLLMModal(false)
+    if (showProviders) {
+      window.dispatchEvent(new Event('open-providers-walkthrough'))
+      return
+    }
     evaluatedAutoWalkthroughRef.current[surface] = true
     setWalkthroughSurface(surface)
     setWorkflowWalkthroughOpenToken(token => token + 1)

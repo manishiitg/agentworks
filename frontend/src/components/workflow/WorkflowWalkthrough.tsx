@@ -13,7 +13,7 @@ type WalkthroughStep = {
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
   selector: '[aria-label="Switch product"]',
   title: 'Choose a workspace',
-  body: 'Use Goals for repeatable work with a success metric. Use Crew for a specialist teammate that remembers an ongoing project. Switch between them here.',
+  body: 'Use Goals for repeatable work with a success metric, Crew for a specialist teammate that remembers a project, and Code for a private workspace to write, research, analyse or build. Switch between them here.',
 }
 
 const OVERVIEW_STEPS: WalkthroughStep[] = [
@@ -46,7 +46,7 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Set up the models and coding agents your automations can use.',
+    body: 'Connect your coding provider accounts here. Choose which provider and account an automation uses in its Runs on setting.',
   },
   {
     selector: '[data-tour="active-work-switcher"]',
@@ -138,7 +138,7 @@ const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect the models and coding agents your automations can use.',
+    body: 'Add your provider login or key here, or use an account shared with you. Choose the automation’s provider and account through Runs on when creating it or in Setup later.',
   },
 ]
 
@@ -167,7 +167,7 @@ const EMPTY_CREW_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect a model or coding agent for your Crew to use.',
+    body: 'Add your provider login or key here, or use an account shared with you. Choose your Crew’s provider and account through Runs on when creating it or in Setup later.',
   },
 ]
 
@@ -228,12 +228,12 @@ const EMPTY_CODE_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="crew-create"]',
     title: 'Create a workspace',
-    body: 'Give it a name. Once it opens, a separate guide shows you around.',
+    body: 'Give it a name and use Runs on to choose the coding provider and account it will use. Once it opens, a separate guide shows you around.',
   },
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Connect a model or coding agent for your workspaces to use, or use one an admin shared with you.',
+    body: 'Add your own provider login or key, or use an account shared with you. Choose it in Runs on when creating a workspace; you can change it later in Setup.',
   },
   {
     selector: '[data-tour="global-mcp"]',
@@ -252,6 +252,11 @@ const CODE_STEPS: WalkthroughStep[] = [
     title: 'Your private workspace',
     body: 'Chat with the agent, keep your files, and connect your own apps here. Only you and the people you share it with can open it; administrators and reviewers can view it read-only.',
     example: 'Ask it to research a topic, then turn the notes into a document.',
+  },
+  {
+    selector: '[data-tour="crew-selector"]',
+    title: 'Current workspace',
+    body: 'Use the name menu to open another workspace or create a new one. Each workspace keeps its own chats, files and connections.',
   },
   {
     selector: '[data-tour="crew-chat"]',
@@ -281,7 +286,34 @@ const CODE_STEPS: WalkthroughStep[] = [
   {
     selector: '[data-tour="global-providers"]',
     title: 'Providers',
-    body: 'Choose which model or coding agent this workspace uses.',
+    body: 'Manage provider logins and keys here. Add my account creates a private account unless you share it. Select the workspace’s provider and account in Setup; Costs shows recorded spend across your work.',
+  },
+]
+
+const PROVIDERS_STEPS: WalkthroughStep[] = [
+  {
+    title: 'Connect the account your work runs on',
+    body: 'Providers manages coding agent logins and keys. Goals, Crew and Code select a provider and account through Runs on when you create them, or in their setup later.',
+  },
+  {
+    selector: '[data-tour="providers-list"]',
+    title: 'Choose a provider',
+    body: 'Select a coding provider to see its accounts. Connected means it is ready; Needs authentication means it needs a login or key; Not installed means its runtime needs installing.',
+  },
+  {
+    selector: '[data-tour="provider-accounts"]',
+    title: 'Your accounts and shared accounts',
+    body: 'Add my account signs in your own login or saves your key. It stays private unless you share it. Shared with you lists accounts someone has granted you; the server account is managed by an administrator.',
+  },
+  {
+    selector: '[data-tour="providers-costs"]',
+    title: 'Costs across your work',
+    body: 'Open Costs to review recorded spend by provider, account and work. This is measured run cost; your provider subscription and remaining plan allowance are separate.',
+  },
+  {
+    selector: '[aria-label="Refresh provider status"]',
+    title: 'Refresh connection status',
+    body: 'After signing in or installing a provider, refresh its status here. Then return to your workspace and choose its provider and account.',
   },
 ]
 
@@ -293,6 +325,7 @@ const STEPS_BY_SURFACE: Record<WalkthroughSurface, WalkthroughStep[]> = {
   crew: CREW_STEPS,
   'empty-code': EMPTY_CODE_STEPS,
   code: CODE_STEPS,
+  providers: PROVIDERS_STEPS,
 }
 
 const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: string; aria: string }> = {
@@ -303,6 +336,7 @@ const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: str
   crew: { product: 'Crew', section: 'Workspace', aria: 'Crew workspace walkthrough' },
   'empty-code': { product: 'Code', section: 'Getting started', aria: 'Empty Code walkthrough' },
   code: { product: 'Code', section: 'Workspace', aria: 'Code workspace walkthrough' },
+  providers: { product: 'Providers', section: 'Accounts and costs', aria: 'Providers walkthrough' },
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)

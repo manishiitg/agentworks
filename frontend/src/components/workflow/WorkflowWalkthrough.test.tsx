@@ -93,7 +93,8 @@ describe('Context walkthroughs', () => {
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Choose a workspace')
       expect(dialog.textContent).toContain('repeatable work with a success metric')
-      expect(dialog.textContent).toContain('specialist teammate that remembers an ongoing project')
+      expect(dialog.textContent).toContain('specialist teammate that remembers a project')
+      expect(dialog.textContent).toContain('Code for a private workspace')
     } finally {
       await act(async () => root.unmount())
       host.remove()
@@ -164,7 +165,7 @@ describe('Context walkthroughs', () => {
   })
 
   it('guides the open Code workspace with its own words, not Crew’s', async () => {
-    for (const tour of ['crew-chat', 'chat-input-box', 'chat-send-controls', 'work-tools', 'crew-workspace']) addTarget(tour)
+    for (const tour of ['crew-selector', 'crew-chat', 'chat-input-box', 'chat-send-controls', 'work-tools', 'crew-workspace', 'global-providers']) addTarget(tour)
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -173,11 +174,13 @@ describe('Context walkthroughs', () => {
       const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
       expect(dialog.textContent).toContain('Your private workspace')
       expect(dialog.textContent).not.toContain('Crew')
-      for (const title of ['Work together in chat', 'Describe the work', 'Attach and send', 'Workspace tools']) {
+      for (const title of ['Current workspace', 'Work together in chat', 'Describe the work', 'Attach and send', 'Workspace tools', 'Workspace pane', 'Providers']) {
         await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
         expect(dialog.textContent).toContain(title)
         expect(dialog.textContent).not.toContain('Crew')
       }
+      expect(dialog.textContent).toContain('Add my account')
+      expect(dialog.textContent).toContain('Costs shows recorded spend')
     } finally {
       await act(async () => root.unmount())
       host.remove()

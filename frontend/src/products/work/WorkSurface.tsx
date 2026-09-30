@@ -1085,9 +1085,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
         reduced
         walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
         walkthroughReady={!sessionsLoading && !creating && !error}
-        // The guided tour is Crew's (identity, templates, automation); a Code
-        // never opens it on its own.
-        walkthroughPaused={createOpen || deleteCandidate !== null || !product.hasIdentity}
+        // Both products have their own tour; only active dialogs pause it.
+        walkthroughPaused={createOpen || deleteCandidate !== null}
       />
       {inspectOpen ? <AdminCodeInspector onClose={() => setInspectOpen(false)} /> : null}
       {createOpen && !product.hasIdentity ? (
