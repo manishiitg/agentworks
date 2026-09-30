@@ -260,6 +260,11 @@ var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": t
 // call; a browser never reaches them, not even an admin's.
 var workspaceProxyRefusedRoutes = map[string]bool{
 	"api/audit/code-admin/append": true,
+	// Shell execution. Without a folder_guard in the body the workspace service runs the command
+	// unconfined from the workspace root, and the proxy attaches the service token itself, so any
+	// logged-in user could run commands as the server account and read other users' chats. The
+	// UI never calls it; the agent server reaches it directly, not through this proxy.
+	"api/execute": true,
 }
 
 func workspaceProxyJSONHasServerOnlyField(node any) bool {

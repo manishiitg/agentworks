@@ -283,6 +283,8 @@ func TestWorkspaceProxyCrossUserBlock(t *testing.T) {
 		{"body folder create", proxyRequest("POST", "/api/wp/api/folders", `{"folder_path":"_users/owner/Chats/evil"}`)},
 		{"body move destination", proxyRequest("POST", "/api/wp/api/documents/a/move", `{"source_path":"Chats/a","destination_path":"_users/owner/Chats/a"}`)},
 		{"body guard paths", proxyRequest("POST", "/api/wp/api/execute", `{"command":"ls","folder_guard":{"write_paths":["_users/owner/Chats"]}}`)},
+		{"shell execution is server-only", proxyRequest("POST", "/api/wp/api/execute", `{"command":"ls"}`)},
+		{"shell execution with a guard is server-only", proxyRequest("POST", "/api/wp/api/execute", `{"command":"ls","folder_guard":{"enabled":true,"read_paths":["Chats"]}}`)},
 	}
 	verdict := func(req *http.Request) (int, string) {
 		status, detail, cleanup := workspaceProxyCrossUserBlock(req, "reader")
@@ -306,7 +308,6 @@ func TestWorkspaceProxyCrossUserBlock(t *testing.T) {
 		{"own explicit file", proxyRequest("GET", "/api/wp/api/documents/_users/reader/Chats/x", "")},
 		{"shared workflow file", proxyRequest("GET", "/api/wp/api/documents/Workflow/acme/workflow.json", "")},
 		{"own query folder", proxyRequest("GET", "/api/wp/api/documents?folder=Chats&max_depth=1", "")},
-		{"command text mentioning users is not a path", proxyRequest("POST", "/api/wp/api/execute", `{"command":"echo _users/owner/Chats"}`)},
 		{"patch text mentioning users is not a path", proxyRequest("PUT", "/api/wp/api/documents/Chats/note.md", `{"content":"see _users/owner for details"}`)},
 	}
 	for _, tt := range allowedTargets {

@@ -13,6 +13,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-09-30 — Browsers can no longer call the shell-execute route through the proxy
+- Found from a pasted Slack message: a logged-in user could `POST /api/wp/api/execute`
+  with only `{"command": …}`. The workspace service runs a command with no `folder_guard`
+  unconfined from the workspace root (`workspace/handlers/shell.go`, the "non-isolated"
+  branch), the proxy adds the service token itself, and the proxy only inspects path fields,
+  not command text. Any user could therefore run commands as the shared server account and
+  read other users' chats and files, or delete them. Logged: his calls returned 200 at
+  16:35-16:36 on excellence. Whether anyone used it to read or delete anything is not known.
+- `api/execute` is now in `workspaceProxyRefusedRoutes` (server-only). The UI never called
+  it and the agent server reaches the workspace service directly. The test that allowed
+  shell text through the proxy now asserts it is refused. Code:
+  `agent_go/cmd/server/workspace_proxy.go`.
+- Still open: the workspace service itself runs an unguarded command when a request has no
+  `folder_guard`; only the proxy stands in front of it. Other routes that accept a command
+  were not audited. Not deployed.
+
 ### 2026-09-30 — Each rootless release keeps the source it was built from
 - `deploy/rootless-linux/build-and-activate.sh` copies the three repos into
   `<release>/source/<repo>` (no `.git`, `node_modules` or `dist`) right after writing
