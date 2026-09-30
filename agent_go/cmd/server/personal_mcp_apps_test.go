@@ -81,11 +81,13 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	}
 
 	// Before the app exists, Connect still asks for a client.
-	before := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
+	ownerStore := placeMCPStoreID("owner", codePrivacyOwnerRoot)
+	otherStore := placeMCPStoreID("other", "_users/other/Chats/Code/projects/theirs")
+	before := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/app-c0de0001","catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
 	if before.Code != http.StatusOK {
 		t.Fatalf("add = %d %s", before.Code, before.Body.String())
 	}
-	if rec := personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", map[string]string{"name": "gmail"}); !strings.Contains(rec.Body.String(), "needs_client_id") {
+	if rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"}); !strings.Contains(rec.Body.String(), "needs_client_id") {
 		t.Fatalf("connect without an app = %s", rec.Body.String())
 	}
 
@@ -108,15 +110,15 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 
 	// The server added before the app existed now connects with no client
 	// entered: it reads the app live.
-	rec := personalRoute(api, (*StreamingAPI).handleConnectPersonalMCP, http.MethodPost, "/x", `{}`, "owner", map[string]string{"name": "gmail"})
+	rec := personalRoute(api, (*StreamingAPI).handleConnectPlaceMCP, http.MethodPost, "/x?workspace_path=Chats/Code/projects/app-c0de0001", `{}`, "owner", map[string]string{"name": "gmail"})
 	if !strings.Contains(rec.Body.String(), "client_id=965.apps.googleusercontent.com") || !strings.Contains(rec.Body.String(), "access_type=offline") {
 		t.Fatalf("connect with the app = %s", rec.Body.String())
 	}
 	// A new server records the app, and another person's Connect works too.
-	if r := personalRoute(api, (*StreamingAPI).handleAddPersonalMCP, http.MethodPost, "/x", `{"catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
+	if r := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/theirs","catalog":"GoogleDrive","name":"drive"}`, "other", nil); r.Code != http.StatusOK {
 		t.Fatalf("other add = %d %s", r.Code, r.Body.String())
 	}
-	if _, cfg, err := personalMCPServerConfig("other", "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
+	if _, cfg, err := personalMCPServerConfig(otherStore, "drive"); err != nil || cfg.OAuth.ClientID != "965.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-shared-secret" {
 		t.Fatalf("other's config = %+v %v", cfg.OAuth, err)
 	}
 
@@ -124,14 +126,14 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := put("google", `{"client_id":"new.apps.googleusercontent.com","client_secret":"GOCSPX-rotated"}`); code != http.StatusOK {
 		t.Fatalf("rotate = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig("other", "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
+	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "new.apps.googleusercontent.com" || cfg.OAuth.ClientSecret != "GOCSPX-rotated" {
 		t.Fatalf("rotation did not reach the person: %+v", cfg.OAuth)
 	}
 	// A client the person entered for their own app wins.
-	if err := writePersonalMCPClient("owner", "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
+	if err := writePersonalMCPClient(ownerStore, "gmail", registeredClient{ClientID: "mine.apps.googleusercontent.com", ClientSecret: "GOCSPX-mine"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, cfg, _ := personalMCPServerConfig("owner", "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
+	if _, cfg, _ := personalMCPServerConfig(ownerStore, "gmail"); cfg.OAuth.ClientID != "mine.apps.googleusercontent.com" {
 		t.Fatalf("own client lost to the deployment app: %+v", cfg.OAuth)
 	}
 
@@ -139,7 +141,7 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	if code := personalRoute(api, (*StreamingAPI).handlePutMCPApp, http.MethodDelete, "/x", "", "owner", map[string]string{"key": "google"}).Code; code != http.StatusOK {
 		t.Fatalf("delete = %d", code)
 	}
-	if _, cfg, _ := personalMCPServerConfig("other", "drive"); cfg.OAuth.ClientID != "" {
+	if _, cfg, _ := personalMCPServerConfig(otherStore, "drive"); cfg.OAuth.ClientID != "" {
 		t.Fatalf("removed app still resolves: %+v", cfg.OAuth)
 	}
 }
@@ -304,5 +306,55 @@ func TestSetMCPAppCommandRefusesRootAndUnknownKeys(t *testing.T) {
 	}
 	if err := run("google", 1000); err != nil {
 		t.Fatalf("the right key failed: %v", err)
+	}
+}
+
+// The admin's shared (platform) connect uses the deployment's sign-in app
+// too: no client-ID prompt once the app exists.
+func TestSharedConnectUsesSignInApp(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	api, _ := newCodePrivacyFixture(t)
+	withPersonalMCPRoot(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	catalog := `{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`
+	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api.mcpConfigPath = catalogPath
+	api.logger = loggerv2.NewNoop()
+
+	_, discovery, err := api.beginOAuthFlow("admin", "", "GoogleGmail", "https://example.com/api/oauth/callback", "", "", nil)
+	if err != nil || discovery == nil || discovery.Status != "needs_client_id" {
+		t.Fatalf("without an app the shared connect asks for a client: %+v %v", discovery, err)
+	}
+	if err := writeMCPApp("google", mcpApp{ClientID: "app-id", ClientSecret: "app-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	start, discovery, err := api.beginOAuthFlow("admin", "", "GoogleGmail", "https://example.com/api/oauth/callback", "", "", nil)
+	if err != nil || discovery != nil || start == nil || !strings.Contains(start.AuthURL, "client_id=app-id") {
+		t.Fatalf("with the app the shared connect goes straight to sign-in: start=%+v discovery=%+v err=%v", start, discovery, err)
+	}
+}
+
+// The Sign-in apps card manages only Google and GitHub (owner decision 2026-09-30): a
+// provider that merely has no automatic registration, such as Slack or Atlassian, gets no
+// card. Its connector still works if the person brings their own OAuth app.
+func TestSignInAppsCoverOnlyGoogleAndGitHub(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	servers := map[string]mcpclient.MCPServerConfig{
+		"GoogleGmail": {URL: "https://gmailmcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
+		"GoogleDrive": {URL: "https://drivemcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
+		"GitHub":      {URL: "https://api.githubcopilot.com/mcp/", OAuth: &oauth.OAuthConfig{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"}},
+		"Slack":       {URL: "https://mcp.slack.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://slack.com/oauth/v2_user/authorize", TokenURL: "https://slack.com/api/oauth.v2.user.access"}},
+		"Atlassian":   {URL: "https://mcp.atlassian.com/v1/sse", OAuth: &oauth.OAuthConfig{AuthURL: "https://auth.atlassian.com/authorize", TokenURL: "https://auth.atlassian.com/oauth/token"}},
+	}
+	var keys []string
+	for _, group := range mcpAppGroupsFor(servers) {
+		keys = append(keys, group.Key)
+	}
+	if strings.Join(keys, ",") != "github,google" {
+		t.Fatalf("sign-in app cards = %v, want only github and google", keys)
 	}
 }

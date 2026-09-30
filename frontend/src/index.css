@@ -1742,3 +1742,8 @@
   border-radius: 999px;
   background: transparent;
 }
+
+/* Git change markers in the read-only code view's gutter. */
+.git-gutter-added { border-left: 3px solid #10b981; margin-left: 3px; }
+.git-gutter-modified { border-left: 3px solid #3b82f6; margin-left: 3px; }
+.git-gutter-deleted { border-bottom: 2px solid #ef4444; margin-left: 3px; width: 6px !important; }

@@ -869,7 +869,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                     {[
                       ['Minimize Workspace', 'Ctrl+6'],
                       ['Toggle Auto-scroll', 'Ctrl+7'],
-                      ...(!reduced ? [['New Chat', 'Ctrl+N']] : []),
                     ].map(([label, key]) => (
                       <div key={key} className="flex items-center justify-between py-1">
                         <span className="text-sm text-gray-600 dark:text-gray-300">{label}</span>

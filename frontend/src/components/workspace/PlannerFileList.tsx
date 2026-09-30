@@ -1,11 +1,13 @@
 import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { FileText, Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, Image, MoreHorizontal, Move, Download, Archive, CheckSquare, Edit2, Link, Check } from 'lucide-react'
+import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, Archive, CheckSquare, Edit2, Link, Check } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { copyToClipboard } from '../../utils/textUtils'
+import { FileTypeIcon } from './fileTypeIcon'
+import { useWorkspaceGitStore, type GitDecoration } from '../../stores/useWorkspaceGitStore'
 import {
   flattenVisiblePlannerFiles,
   WORKSPACE_SCROLL_TO_FILE_EVENT,
@@ -49,7 +51,17 @@ interface PlannerFileListProps {
 }
 
 const VIRTUALIZE_FILE_COUNT = 200
-const FILE_ROW_HEIGHT = 40
+
+// VS Code-style source-control marks: a letter and a colour per status.
+const GIT_MARKS: Record<GitDecoration['status'], { letter: string; text: string; title: string }> = {
+  modified: { letter: 'M', text: 'text-amber-500', title: 'Modified' },
+  added: { letter: 'A', text: 'text-emerald-500', title: 'Added' },
+  untracked: { letter: 'U', text: 'text-emerald-500', title: 'Untracked' },
+  deleted: { letter: 'D', text: 'text-destructive', title: 'Deleted' },
+  renamed: { letter: 'R', text: 'text-sky-500', title: 'Renamed' },
+  conflict: { letter: '!', text: 'text-destructive', title: 'Merge conflict' },
+}
+const FILE_ROW_HEIGHT = 28
 const FILE_ROW_OVERSCAN = 8
 
 export default function PlannerFileList({
@@ -88,8 +100,13 @@ export default function PlannerFileList({
   scrollContainerRef,
 }: PlannerFileListProps) {
   const scrollToFile = useWorkspaceStore(state => state.scrollToFile)
+  const openFilePath = useWorkspaceStore(state => state.showFileContent ? state.selectedFile?.path ?? null : null)
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   const [openActionsPath, setOpenActionsPath] = useState<string | null>(null)
+  // Keyboard cursor in the tree (VS Code style): arrows move, Enter opens.
+  const [focusedPath, setFocusedPath] = useState<string | null>(null)
+  const gitFileStatus = useWorkspaceGitStore(state => state.fileStatus)
+  const gitChangedDirs = useWorkspaceGitStore(state => state.changedDirs)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0, listTop: 0 })
   const visibleRows = useMemo(
@@ -194,22 +211,41 @@ export default function PlannerFileList({
     const isActionMenuOpen = openActionsPath === actionMenuPath
     
     const isSelected = selectedFiles.has(file.filepath)
+    const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
+    const isFocused = focusedPath === file.filepath
+    const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
+    const gitMark = file.type === 'folder' ? undefined : gitFileStatus.get(gitKey)
+    const gitFolderStatus = file.type === 'folder' ? gitChangedDirs.get(gitKey) : undefined
+    const gitStyle = gitMark ? GIT_MARKS[gitMark.status] : gitFolderStatus ? GIT_MARKS[gitFolderStatus] : undefined
+    const hasActionMenu = file.type === 'folder'
+      ? (!hideRootActions || depth > 0) && !!(onCreateFolder || onFolderUpload || onFolderMove)
+      : !!(onFileMove || onFileDownload)
 
     return (
-      <div key={file.filepath} className="h-10 select-none">
+      <div key={file.filepath} className="group h-7 select-none">
         <div
           className={`
-            flex h-9 items-center gap-2 p-2 rounded-md transition-colors
+            flex h-7 items-center gap-1.5 rounded-sm px-2 transition-colors
             ${isSelectionMode ? 'cursor-default' : isClickable ? 'cursor-pointer hover:bg-muted' : 'cursor-default'}
-            ${isHighlighted ? 'bg-primary/10 border border-primary/40' : ''}
+            ${isOpenFile ? 'bg-primary/15 hover:bg-primary/20' : ''}
+            ${isFocused ? 'ring-1 ring-inset ring-primary/60' : ''}
+            ${isHighlighted ? 'bg-primary/10 ring-1 ring-inset ring-primary/40' : ''}
             ${isInContext ? 'bg-emerald-500/10 border-l-2 border-emerald-500' : ''}
             ${isSelected && isSelectionMode ? 'bg-primary/10' : ''}
           `}
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          style={{ paddingLeft: `${depth * 12 + 6}px` }}
+          aria-current={isOpenFile ? 'true' : undefined}
           data-filepath={file.filepath}
           data-original-filepath={file.originalFilepath || undefined}
           data-highlighted={isHighlighted ? 'true' : 'false'}
+          onContextMenu={(event) => {
+            if (isSelectionMode || !hasActionMenu) return
+            event.preventDefault()
+            setFocusedPath(file.filepath)
+            setOpenActionsPath(actionMenuPath)
+          }}
           onClick={() => {
+            setFocusedPath(file.filepath)
             if (isSelectionMode && onToggleFileSelection) {
               onToggleFileSelection(file)
             } else {
@@ -234,26 +270,25 @@ export default function PlannerFileList({
           )}
           
           {/* File/Folder Icon with expansion indicator */}
-          <div className="flex-shrink-0">
-            {file.type === 'folder' ? (
-              isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )
-            ) : file.is_image ? (
-              <Image className="w-4 h-4 text-muted-foreground" />
-            ) : (
-              <FileText className="w-4 h-4 text-muted-foreground" />
-            )}
+          <div className="flex w-4 flex-shrink-0 justify-center">
+            {file.type === 'folder' && (isExpanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />)}
           </div>
+          <FileTypeIcon name={fileName} folder={file.type === 'folder'} open={isExpanded} image={file.is_image} />
 
           {/* File Name - with reserved space for icons */}
-          <div className="flex-1 min-w-0 max-w-[calc(100%-80px)]">
-            <span className="text-sm font-medium truncate block text-foreground">
+          <div className="flex-1 min-w-0">
+            <span className={`block truncate text-[13px] ${gitStyle ? gitStyle.text : isOpenFile ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
               {fileName}
             </span>
           </div>
+          {gitMark && gitStyle && (
+            <span title={`${gitStyle.title}${gitMark?.staged ? ' (staged)' : ''}`} className={`w-3 shrink-0 text-center text-[11px] font-semibold ${gitStyle.text}`}>{gitStyle.letter}</span>
+          )}
+          {gitFolderStatus && (
+            <span title="Contains changes" aria-label="Contains changes" className={`h-1.5 w-1.5 shrink-0 rounded-full bg-current ${GIT_MARKS[gitFolderStatus].text}`} />
+          )}
 
           {/* Action buttons container - compact space */}
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -367,8 +402,8 @@ export default function PlannerFileList({
                         Rename
                       </button>
                     )}
-                    {/* Export/Import Backup - Show for any folder */}
-                    {file.type === 'folder' && onExportBackup && onImportBackup && (
+                    {/* Export/Import Backup - top-level folder only */}
+                    {file.type === 'folder' && depth === 0 && onExportBackup && onImportBackup && (
                       <>
                         <div className="border-t border-border my-1"></div>
                         <button
@@ -595,7 +630,52 @@ export default function PlannerFileList({
     )
   }
 
-  if (loading) {
+  const ensureRowVisible = (rowIndex: number) => {
+    const container = scrollContainerRef?.current
+    if (!container) return
+    const rowTop = viewport.listTop + rowIndex * FILE_ROW_HEIGHT
+    if (rowTop < container.scrollTop) container.scrollTop = rowTop
+    else if (rowTop + FILE_ROW_HEIGHT > container.scrollTop + container.clientHeight) {
+      container.scrollTop = rowTop + FILE_ROW_HEIGHT - container.clientHeight
+    }
+  }
+
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isSelectionMode || visibleRows.length === 0) return
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    let index = visibleRows.findIndex(row => row.file.filepath === focusedPath)
+    if (index < 0) index = Math.max(0, visibleRows.findIndex(row => row.file.filepath === openFilePath || row.file.originalFilepath === openFilePath))
+    const row = visibleRows[index]
+    const isFolder = row.file.type === 'folder'
+    const isOpen = forceExpandFolders || expandedFolders.has(row.file.filepath)
+    let next = index
+    switch (event.key) {
+      case 'ArrowDown': next = Math.min(visibleRows.length - 1, index + 1); break
+      case 'ArrowUp': next = Math.max(0, index - 1); break
+      case 'Home': next = 0; break
+      case 'End': next = visibleRows.length - 1; break
+      case 'ArrowRight':
+        if (isFolder && !isOpen) { onFolderClick(row.file); return }
+        if (isFolder) next = Math.min(visibleRows.length - 1, index + 1)
+        break
+      case 'ArrowLeft': {
+        if (isFolder && isOpen) { onFolderClick(row.file); return }
+        const parent = row.file.filepath.split('/').slice(0, -1).join('/')
+        const parentIndex = visibleRows.findIndex(candidate => candidate.file.filepath === parent)
+        if (parentIndex >= 0) next = parentIndex
+        break
+      }
+      case 'Enter':
+        if (isFolder) onFolderClick(row.file)
+        else onFileClick(row.file)
+        return
+    }
+    setFocusedPath(visibleRows[next].file.filepath)
+    ensureRowVisible(next)
+  }
+
+  if (loading && files.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -645,7 +725,11 @@ export default function PlannerFileList({
     <TooltipProvider>
       <div
         ref={listRef}
-        className={shouldVirtualize ? 'relative' : ''}
+        role="tree"
+        aria-label="Files"
+        tabIndex={0}
+        onKeyDown={handleTreeKeyDown}
+        className={`outline-none ${shouldVirtualize ? 'relative' : ''}`}
         style={shouldVirtualize ? { height: visibleRows.length * FILE_ROW_HEIGHT } : undefined}
       >
         {renderedRows.map((row, renderedIndex) => {

@@ -13,12 +13,21 @@ import { isConversationContinuityNotice } from '../components/ConversationContin
 
 export type ConversationItem = {
   id: string
-  role: 'user' | 'assistant' | 'progress' | 'reasoning' | 'error' | 'notification' | 'continuity' | 'background'
+  role: 'user' | 'assistant' | 'progress' | 'reasoning' | 'error' | 'notification' | 'continuity' | 'background' | 'question'
   content: string
   timestamp?: string
   assistantUpdate?: boolean
   usage?: ConversationUsage
   failure?: ProductChatFailure
+  codingAgentQuestion?: CodingAgentQuestionPrompt
+}
+
+export type CodingAgentQuestionPrompt = {
+  provider: string
+  promptId: string
+  state: 'pending' | 'answered' | 'interrupted'
+  questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
+  answers: Array<{ id: string; selectedLabels: string[] }>
 }
 
 export type ConversationUsage = {
@@ -132,6 +141,7 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
 	let lastAssistantContent = ''
 	let completedAssistantAwaitingUsage: ConversationItem | undefined
 	const pendingFrontendUserEchoes = new Map<string, number>()
+	const pendingCodingAgentQuestions = new Map<string, ConversationItem>()
 	const pushUnique = (item: ConversationItem) => {
 		const previous = items.at(-1)
 		if (previous?.role === item.role && previous.content === item.content) return
@@ -175,6 +185,48 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
     }
 
     if (isChildExecution(event, payload)) continue
+
+    if (event.type === 'coding_agent_question') {
+      const provider = firstText(payload.provider)
+      const promptId = firstText(payload.prompt_id)
+      if (!promptId) continue
+      const questionKey = `${provider}:${promptId}`
+      if ((payload.kind === 'requested' || payload.kind === 'user_input_prompt_requested') && Array.isArray(payload.questions)) {
+        const questions = payload.questions.map((value) => {
+          const q = asRecord(value) || {}
+          return {
+            id: firstText(q.id), header: firstText(q.header), question: firstText(q.question), multiSelect: q.multi_select === true || q.multiSelect === true,
+            minSelections: typeof q.min_selections === 'number' ? q.min_selections : undefined,
+            maxSelections: typeof q.max_selections === 'number' ? q.max_selections : undefined,
+            options: Array.isArray(q.options) ? q.options.map((option) => {
+              const o = asRecord(option) || {}
+              return { label: firstText(o.label), description: firstText(o.description) }
+            }).filter((option) => option.label) : [],
+          }
+        }).filter((question) => question.id && question.question && question.options.length)
+        if (!questions.length) continue
+        const item: ConversationItem = {
+          id: event.id, role: 'question', content: questions.map((q) => q.question).join(' · '), timestamp: event.timestamp,
+          codingAgentQuestion: { provider, promptId, state: 'pending', questions, answers: [] },
+        }
+        items.push(item)
+        pendingCodingAgentQuestions.set(questionKey, item)
+      } else if (payload.kind === 'settled' || payload.kind === 'user_input_prompt_settled') {
+        const item = pendingCodingAgentQuestions.get(questionKey)
+        if (item?.codingAgentQuestion) {
+          const answers = Array.isArray(payload.answers) ? payload.answers.map((value) => {
+            const answer = asRecord(value) || {}
+            const selectedLabels = Array.isArray(answer.selected_labels)
+              ? answer.selected_labels.filter((label): label is string => typeof label === 'string')
+              : [firstText(answer.selected_label)].filter(Boolean)
+            return { id: firstText(answer.id), selectedLabels }
+          }) : []
+          item.codingAgentQuestion = { ...item.codingAgentQuestion, state: payload.outcome === 'answered' ? 'answered' : 'interrupted', answers }
+          pendingCodingAgentQuestions.delete(questionKey)
+        }
+      }
+      continue
+    }
 
     if (event.type === 'coding_agent_background_task') {
       const kind = firstText(payload.kind)

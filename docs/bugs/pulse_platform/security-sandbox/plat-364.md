@@ -2,9 +2,11 @@
 
 # PLAT-364 — Coding CLIs and the tmux socket are outside the sandbox
 
+> **See also [PLAT-371](plat-371.md):** the instruction files and cleanup the CLIs write into a shared project folder (and the destructive startup cleanup) are a separate data-loss fix; it does not change the confinement plan here.
+
 | Coordination | Value |
 |---|---|
-| State | tmux socket fixed and deployed on RTS (ab6bb0b4f); CLI confinement (native reads) open |
+| State | tmux socket fixed and deployed on RTS (ab6bb0b4f); CLI confinement planned (see Plan, 2026-09-29): lock proven on RTS |
 | Date | 2026-09-28 |
 | Owner | security-sandbox |
 | Related | [PLAT-362](plat-362.md) D1 (shared `/tmp`, tmux socket) and its native-read note; [remote workspace server plan](../../../core/remote_workspace_server_plan.md) (agents run on the laptop); GitHub #235 (agy review, M6) |
@@ -111,3 +113,170 @@ This closes the file side of PLAT-362 D1, but not the tmux socket (item 2).
 - A sandboxed shell cannot list, capture or type into another session's tmux
   pane.
 - A normal turn, login, resume, MCP bridge, browser and skills still work.
+
+## Plan (2026-09-29): lock every CLI, then Full CLI on Code
+
+### What we know now
+
+- **The read leak is real, on both servers.** "Native agent tools" is on by
+  default, and each CLI's own read tool is not bound to its folder.
+  - Mac, Muse 1.4.1: `read_file` read a sibling folder's file and `/etc/hosts`.
+  - RTS, Claude: `Read` returned another folder's file.
+  - A model may refuse a request that *sounds* like another user's file (it did
+    on excellence), but nothing stops a neutrally worded or prompt-injected
+    request.
+- **No CLI is sandboxed today.**
+  - Live Muse processes on excellence: `NoNewPrivs: 0`,
+    `HOME=/srv/agents/home` for everyone.
+  - Each process only *starts* in its Code/Crew/workflow folder.
+  - The shared home holds every user's CLI history and the login.
+- **The lock works (RTS, 2026-09-29, scratch folders, live chats untouched).**
+  Claude run with `video-studio-landlock-runner`, write grant = its folder plus
+  a private home:
+
+  | Probe | Today | Under the lock |
+  |---|---|---|
+  | own folder | read | read |
+  | other folder | read | `EACCES: permission denied` |
+  | `/etc/hostname` | read | read (system files are read-only by design) |
+  | shell: other folder / real `~/.claude` | allowed | Permission denied |
+
+  - Claude needed nothing beyond the launcher's system baseline.
+  - Its login (`CLAUDE_CODE_OAUTH_TOKEN`) came from the environment.
+  - The launcher `exec`s the command, so tmux still sees the CLI as the pane
+    process.
+- **Host support.**
+  - Both servers already have the launcher.
+  - Excellence: kernel 6.8, unprivileged user namespaces allowed.
+  - RTS restricts user namespaces (`apparmor_restrict_unprivileged_userns=1`).
+    Its `video-studio-userns` AppArmor profile covers only
+    `video-studio-workspace`, so a CLI started in a tmux pane gets Landlock but
+    **no private `/tmp`** (the tmux socket stays reachable) until that profile
+    also covers the launcher. That is a root/deploy change.
+- **Shared CLI launch.**
+  - Claude, Cursor, Muse, Pi and agy build their launch command through
+    multi-llm-provider-go `internal/shelllaunch.CommandWithScopedEnv`, the one
+    place to add the launcher.
+  - Codex launches separately.
+
+### Decisions (user, 2026-09-29)
+
+- **Native agent tools stay on.** Turning them off is not acceptable; the
+  current risk is accepted until the lock ships.
+- **Full CLI goes to Code first.** It is an extra setting on Code's Agent tools
+  switch (Off / Native agent tools / Full CLI), off by default. It widens later.
+- **No approvals for native writes inside the folder.** The lock is the
+  boundary; backups and versions still snapshot the folder.
+- **Keep both tool sets in Full CLI.**
+  - The CLI's own Bash, Write and Edit are added.
+  - Our `execute_shell_command` and patch/write tools stay; they carry
+    secrets, protected-file checks and the remote workspace.
+  - Hiding our generic tools in Code is a possible later tweak, not part of
+    this plan.
+- **Shared accounts must work,** including accounts added with a CLI login
+  (`claude login`, `cursor-agent login`) and then shared.
+
+### Phase 1: lock every CLI (closes today's read leak)
+
+Every coding CLI starts under the launcher, in every mode, for every chat type.
+
+- **Grants:**
+
+  | Access | Paths |
+  |---|---|
+  | Write | the chat's folder (Code, Crew, workflow; plus its `.sandbox-cache`) and a **private CLI home** per folder: `<folder>/.sandbox-cache/cli-home/<cli>` holding the CLI's config, sessions and caches |
+  | Read-only | the launcher's system baseline, the CLI install, skills folders the chat is given |
+  | Nothing | other users' folders, the shared account home, the server's data |
+
+- **Per chat type:**
+  - Code and Crew: their folder, plus Crew co-owner/shared-root and attached
+    places.
+  - Builder: the workflow folder.
+  - Plain chats: their chat folder.
+  - Workflow steps: the step's folder guard, as today.
+- **Launch:** `CommandWithScopedEnv` wraps the argv as
+  `runner --config <policy> -- <absolute CLI path> …`. The policy file comes
+  from the server, like the shell tool's. Codex gets the same wrap in its own
+  launcher. The launcher needs an absolute program path (`claude` alone fails
+  with ENOENT).
+- **Private `/tmp`:**
+  - Excellence: the launcher enters its own user and mount namespaces from
+    inside the pane (it cannot use the server's clone flags there).
+  - RTS: extend `video-studio-userns` to the launcher path through the deploy
+    config.
+  - Until then, report "Landlock without private /tmp" in sandbox health.
+- **Server-side readers follow the move.** Transcript tailing, completion,
+  resume, the Muse question watcher and Codex rollout sync read the private
+  home instead of the shared one. The first turn of an existing chat starts a
+  fresh CLI session carrying the recent dialogue, as a tools-switch change does.
+- **Probes:** provider-usage checks (`/tmp/agentworks-provider-usage-*`) get
+  their own scratch folder under the launcher, or stay exempt.
+- **Grant lists:** from `strace -f -e trace=file` of a real turn per CLI on
+  RTS. Auto-updaters stay off (they write to the install folder).
+- **Order:** Claude on RTS, Muse on excellence, then Cursor, Codex, Pi, agy.
+- **Acceptance, live per CLI:**
+  - A native read and a shell read of another folder, the shared home and the
+    tmux socket are refused.
+  - A normal turn, resume, the MCP bridge, skills, subagents, browser and
+    package installs still work.
+
+### Phase 2: CLI-login accounts under the lock
+
+A CLI-login credential lives in the account home and refreshes itself; Claude
+and Codex rotate refresh tokens.
+
+- **Rule:** one credential, everything else private.
+  - Each private home gets a window to **that one file only**, never a copy,
+    so a refresh anywhere is seen everywhere, as with today's shared home.
+  - The window is a link plus a Landlock grant on the file if the CLI rewrites
+    it in place, or a single-file bind mount (needs the namespaces) if it
+    writes a new file and renames it.
+  - A spike on RTS decides per CLI which writer it is.
+- **Env-token accounts need no window.** Example: RTS Claude and Cursor today.
+- **Acceptance:** two chats on one shared CLI-login account run and refresh
+  concurrently without logging each other out, and neither can list the
+  other's sessions.
+
+### Phase 3: login proxy (shared logins cannot be copied)
+
+Any process can read its own environment and the files it is given, so a
+locked CLI can still read its login (today: Claude `Read` on
+`/proc/self/environ`; with Full CLI, the shell).
+
+- **Fix:** point the CLI at a server-side proxy (`ANTHROPIC_BASE_URL` for
+  Claude; Codex has a base URL too; Cursor and Muse to be checked).
+  - The proxy adds the real credential.
+  - The CLI holds only a per-session key that works nowhere else.
+- **It also gives:** per-user usage and a per-session cutoff.
+- **Until it ships:** sharing an account means its users could copy its login.
+  Say so in the share dialog.
+
+### Phase 4: Full CLI on Code
+
+The Code switch gains **Full CLI**, available only where Phase 1's lock is
+active (Linux servers). Elsewhere it falls back to Native agent tools and the
+switch says why.
+
+- **What each CLI gets:**
+
+  | CLI | Full CLI |
+  |---|---|
+  | Claude | Bash, Write, Edit, MultiEdit |
+  | Codex | `workspace-write` sandbox |
+  | Cursor | write and shell hooks lifted |
+  | Muse | shell and write allowed |
+
+- **Our tools stay** (see Decisions).
+- **Network stays open.** Landlock is file-only, and the CLI needs the model
+  API and package registries.
+- **Acceptance, live:**
+  - Full CLI edits and installs inside the folder.
+  - It cannot write or read outside.
+  - It cannot reach another session's tmux pane.
+  - Our tools still work alongside.
+
+### Later
+
+- macOS/desktop: Seatbelt, the same grants.
+- Widen Full CLI past Code.
+- Network egress control, if needed.

@@ -13,16 +13,19 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // Place connections (docs/design/personal_mcp_attach.md): someone who can
-// edit a workflow or Crew adds an MCP server there with their own login (their
-// Gmail, Drive, GitHub, ...). It then works there like any other MCP server:
-// every chat and run of that workflow or Crew uses it, including schedules,
-// triggers, calls and Slack channels. The person accepts that when adding it.
-// It belongs to that one place: it never shows in their Code or anywhere else.
+// edit a workflow, or who owns a Crew or a Code, adds an MCP server there with
+// their own login (their Gmail, Drive, GitHub, ...). It then works there like
+// any other MCP server: every chat and run of that workflow, Crew or Code
+// uses it, including schedules, triggers, calls and Slack channels. The
+// person accepts that when adding it. It belongs to that one place: it never
+// shows anywhere else. A Code is a place like a Crew (there is no separate
+// "personal" kind of MCP connection).
 //
 // Storage reuses the personal store (catalog add, sign-in apps, sealed
 // tokens) under a store id per (person, place), so a Crew's Gmail login is
@@ -53,8 +56,8 @@ func personalMCPAttachmentsPath() (string, error) {
 	return filepath.Join(root, personalMCPAttachmentsFile), nil
 }
 
-// cleanAttachRoot normalizes a workflow or Crew root. It returns "" for any
-// path that is not one: a Code keeps its per-person servers instead.
+// cleanAttachRoot normalizes a workflow, Crew or Code root. It returns "" for
+// any path that is not one.
 func cleanAttachRoot(raw string) string {
 	root := strings.Trim(strings.TrimSpace(raw), "/")
 	if root == "" || strings.ContainsAny(root, "\\\x00") || path.Clean(root) != root {
@@ -71,13 +74,19 @@ func cleanAttachRoot(raw string) string {
 		return root
 	case len(segments) == 2 && segments[0] == crewSharedRootName:
 		return root
-	case len(segments) == 6 && segments[0] == "_users" && segments[2] == "Chats" && segments[3] == "Work" && segments[4] == "projects":
+	case len(segments) == 6 && segments[0] == "_users" && segments[2] == "Chats" && (segments[3] == "Work" || segments[3] == "Code") && segments[4] == "projects":
 		return root
 	}
 	return ""
 }
 
-// placeRootOf returns the workflow or Crew root a path lies in (a run
+// isCodePlaceRoot reports whether a cleaned place root is a Code.
+func isCodePlaceRoot(root string) bool {
+	segments := strings.Split(root, "/")
+	return len(segments) == 6 && segments[0] == "_users" && segments[3] == "Code"
+}
+
+// placeRootOf returns the workflow, Crew or Code root a path lies in (a run
 // folder or file inside it included), or "".
 func placeRootOf(raw string) string {
 	segments := strings.Split(strings.Trim(strings.TrimSpace(raw), "/"), "/")
@@ -91,11 +100,12 @@ func placeRootOf(raw string) string {
 }
 
 // attachRootForCaller maps the workspace path the UI sends to the stored
-// root: a caller's own Crew arrives in its logical form
-// (Chats/Work/projects/<id>), which is their _users tree.
+// root: a caller's own Crew or Code arrives in its logical form
+// (Chats/Work/projects/<id>, Chats/Code/projects/<id>), which is their
+// _users tree.
 func attachRootForCaller(userID, raw string) string {
 	raw = strings.Trim(strings.TrimSpace(raw), "/")
-	if strings.HasPrefix(raw, "Chats/Work/projects/") {
+	if strings.HasPrefix(raw, "Chats/Work/projects/") || strings.HasPrefix(raw, "Chats/Code/projects/") {
 		raw = "_users/" + sanitizeUserIDForPath(userID) + "/" + raw
 	}
 	return cleanAttachRoot(raw)
@@ -138,9 +148,9 @@ func userClaimsForDirectoryID(userID string) *UserClaims {
 }
 
 // personalMCPCanAttach reports whether userID may add connections to root:
-// they must be able to edit that workflow or own that Crew. It is checked on
-// add and again on every use, so losing edit access stops their connection
-// there at once.
+// they must be able to edit that workflow, or own that Crew or Code. It is
+// checked on add and again on every use, so losing edit access stops their
+// connection there at once.
 func personalMCPCanAttach(ctx context.Context, userID, root string) bool {
 	root = cleanAttachRoot(root)
 	if root == "" || strings.TrimSpace(userID) == "" {
@@ -153,6 +163,10 @@ func personalMCPCanAttach(ctx context.Context, userID, root string) bool {
 	if strings.HasPrefix(root, "Workflow/") {
 		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
 		return level == WorkflowAccessOwner || level == WorkflowAccessWrite
+	}
+	if isCodePlaceRoot(root) {
+		// A Code lives in its owner's tree; only the owner connects there.
+		return strings.HasPrefix(root, "_users/"+sanitizeUserIDForPath(userID)+"/")
 	}
 	ref, ok := resolveCrewPath(ctx, userID, root)
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner
@@ -220,7 +234,7 @@ func personalMCPAttachmentsFor(root string) ([]personalMCPAttachment, error) {
 	return list, nil
 }
 
-// attachedMCPServersForRoot is the runtime side: a workflow's or Crew's own
+// attachedMCPServersForRoot is the runtime side: a workflow's, Crew's or Code's own
 // connections as ordinary server names plus complete configs, for any chat or
 // run there. A connection whose owner can no longer edit root is skipped.
 func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpclient.RuntimeOverrides) {
@@ -256,7 +270,7 @@ func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpc
 func placeMCPRoot(w http.ResponseWriter, userID, raw string) (string, bool) {
 	root := attachRootForCaller(userID, raw)
 	if root == "" {
-		writeAgentProfileError(w, http.StatusBadRequest, "workspace_path must be a workflow or a Crew")
+		writeAgentProfileError(w, http.StatusBadRequest, "workspace_path must be a workflow, a Crew or a Code")
 		return "", false
 	}
 	return root, true
@@ -354,12 +368,8 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 		writeAgentProfileError(w, http.StatusForbidden, "you can add connections only where you can edit")
 		return
 	}
-	// Credential headers come from personal secrets, which a place has no
-	// UI for yet: sign-in (OAuth) and open servers only.
-	if len(request.Headers) > 0 {
-		writeAgentProfileError(w, http.StatusBadRequest, "servers with API-key headers can't be added here yet; use one with sign-in")
-		return
-	}
+	// Credential headers are built from the adder's own personal secrets
+	// (Setup > Secrets), resolved when the connection is made.
 	store := placeMCPStoreID(userID, root)
 	saved, status, err := api.addPersonalMCP(r.Context(), store, request.personalMCPServer, request.Catalog)
 	if err != nil {
@@ -439,18 +449,45 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 		return
 	}
 	name := mux.Vars(r)["name"]
-	store := placeMCPStoreID(owner, root)
-	if err := forgetPlaceMCP(owner, name, root); err != nil {
+	if err := removePlaceMCP(owner, name, root); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	log.Printf("[PLACE_MCP] %s removed %s (added by %s) from %s", userID, name, owner, root)
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
+}
+
+// removePlaceMCP removes owner's connection from root with its login.
+func removePlaceMCP(owner, name, root string) error {
+	store := placeMCPStoreID(owner, root)
+	if err := forgetPlaceMCP(owner, name, root); err != nil {
+		return err
 	}
 	if err := removePersonalMCPServer(store, name); err != nil {
 		log.Printf("[PLACE_MCP] remove %s from %s: %v", name, root, err)
 	}
 	closePersonalMCPConnection(store, name)
 	_ = forgetPersonalMCPLogin(store, name)
-	log.Printf("[PLACE_MCP] %s removed %s (added by %s) from %s", userID, name, owner, root)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"removed": name})
+	return nil
+}
+
+// forgetPlaceConnections removes every connection of a deleted workflow, Crew
+// or Code, with their logins.
+func forgetPlaceConnections(root string) {
+	root = cleanAttachRoot(root)
+	if root == "" {
+		return
+	}
+	attachments, err := personalMCPAttachmentsFor(root)
+	if err != nil {
+		log.Printf("[PLACE_MCP] connections of deleted %s: %v", root, err)
+		return
+	}
+	for _, a := range attachments {
+		if err := removePlaceMCP(a.Owner, a.Server, root); err != nil {
+			log.Printf("[PLACE_MCP] remove %s from deleted %s: %v", a.Server, root, err)
+		}
+	}
 }
 
 // errPlaceMCPUnavailable is returned by the bridge for a personal-shaped
@@ -459,4 +496,24 @@ var errPlaceMCPUnavailable = fmt.Errorf("this MCP connection is not available he
 
 func init() {
 	workshop.PlaceMCPServers = attachedMCPServersForRoot
+}
+
+// projectSecretValue reads one secret of a workflow, Crew or Code from the
+// shared project secret store (the same store Setup > Secrets writes).
+func (api *StreamingAPI) projectSecretValue(root, name string) (string, error) {
+	if api.chatStore == nil {
+		return "", fmt.Errorf("project secrets are unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	secrets, err := api.chatStore.ListWorkflowSecrets(ctx, chathistory.SharedWorkflowSecretsUserID, root)
+	if err != nil {
+		return "", err
+	}
+	for _, secret := range secrets {
+		if secret.Name == name {
+			return decryptSharedWorkflowSecret(root, secret)
+		}
+	}
+	return "", fmt.Errorf("this connection needs the secret %q; add it under Setup > Secrets", name)
 }

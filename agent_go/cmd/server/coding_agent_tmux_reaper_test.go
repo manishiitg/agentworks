@@ -290,7 +290,7 @@ func TestCleanupConflictingPiCLIInteractiveSessionsClosesManualSameWorkingDir(t 
 	gotArgs := stubTerminalTmuxCommand(t)
 	stubOwnedTmuxSession(t, api, tmuxSession)
 
-	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test")
+	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", true)
 
 	if closed != 1 {
 		t.Fatalf("closed = %d, want 1", closed)
@@ -335,7 +335,7 @@ func TestCleanupConflictingPiCLIInteractiveSessionsStopsRunningManualSameWorking
 	gotArgs := stubTerminalTmuxCommand(t)
 	stubOwnedTmuxSession(t, api, tmuxSession)
 
-	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test")
+	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", true)
 
 	if closed != 1 {
 		t.Fatalf("closed = %d, want 1", closed)
@@ -377,7 +377,7 @@ func TestCleanupConflictingPiCLIInteractiveSessionsPreservesForeignOwner(t *test
 	}
 	t.Cleanup(func() { runTerminalTmuxOutputCommand = oldOutput })
 
-	if closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test"); closed != 0 {
+	if closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", true); closed != 0 {
 		t.Fatalf("closed = %d, want 0", closed)
 	}
 	if len(*gotArgs) != 0 {
@@ -404,7 +404,7 @@ func TestCleanupConflictingPiCLIInteractiveSessionsKeepsCronSameWorkingDir(t *te
 
 	gotArgs := stubTerminalTmuxCommand(t)
 
-	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test")
+	closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", true)
 
 	if closed != 0 {
 		t.Fatalf("closed = %d, want 0", closed)
@@ -442,7 +442,7 @@ func TestCleanupConflictingPiCLIInteractiveSessionsPreservesUntrackedTmux(t *tes
 		runTerminalTmuxOutputCommand = oldOutput
 	})
 
-	closed := api.cleanupConflictingPiCLIInteractiveSessions("new-chat-session", workingDir, "test")
+	closed := api.cleanupConflictingPiCLIInteractiveSessions("new-chat-session", workingDir, "test", true)
 
 	if closed != 0 {
 		t.Fatalf("closed = %d, want 0", closed)
@@ -662,5 +662,44 @@ func TestIsCodingAgentTmuxSessionNameRecognizesEveryRegisteredProvider(t *testin
 	}
 	if isCodingAgentTmuxSessionName("some-unrelated-tmux-session") {
 		t.Error("expected an unrelated tmux session name to not be recognized as a coding-agent session")
+	}
+}
+
+// A Pi CLI in the middle of a turn in the same folder is kept; the new
+// session waits for it (issue #213, C7).
+func TestCleanupConflictingPiCLIInteractiveSessionsKeepsBusyUnlessStuck(t *testing.T) {
+	now := time.Now()
+	store := terminals.NewStore()
+	oldSessionID := "crew-main-chat"
+	newSessionID := "crew-function-call"
+	tmuxSession := "mlp-pi-cli-int-busy-conflict"
+	workingDir := "/tmp/workspace-docs/_users/u/Chats/Work/projects/beta"
+	store.HandleEvent(oldSessionID, codingAgentTmuxReaperChunkEvent(now, oldSessionID, "main:"+oldSessionID, tmuxSession))
+	store.HandleEvent(oldSessionID, codingAgentTmuxStatusLineEvent(now, oldSessionID, tmuxSession, workingDir))
+	cancelCalled := false
+	api := &StreamingAPI{
+		terminalStore:    store,
+		activeSessions:   map[string]*ActiveSessionInfo{oldSessionID: {SessionID: oldSessionID, Status: "running"}},
+		agentCancelFuncs: map[string]context.CancelFunc{oldSessionID: func() { cancelCalled = true }},
+		sessionBusy:      map[string]bool{oldSessionID: true},
+	}
+	stubTerminalTmuxCommand(t)
+	stubOwnedTmuxSession(t, api, tmuxSession)
+
+	if busy := api.busyConflictingPiCLISession(newSessionID, workingDir); busy != oldSessionID {
+		t.Fatalf("busy session = %q, want %q", busy, oldSessionID)
+	}
+	if closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", false); closed != 0 || cancelCalled {
+		t.Fatalf("a running turn was closed (closed=%d cancel=%v)", closed, cancelCalled)
+	}
+	// Past the wait limit the busy session is treated as stuck and closed.
+	orig := piCLIConflictWait
+	piCLIConflictWait = 0
+	t.Cleanup(func() { piCLIConflictWait = orig })
+	if stuck := api.waitForBusyPiCLISessions(context.Background(), newSessionID, workingDir); !stuck {
+		t.Fatal("expected the wait to report the busy session as stuck")
+	}
+	if closed := api.cleanupConflictingPiCLIInteractiveSessions(newSessionID, workingDir, "test", true); closed != 1 || !cancelCalled {
+		t.Fatalf("a stuck session must still be closed (closed=%d cancel=%v)", closed, cancelCalled)
 	}
 }

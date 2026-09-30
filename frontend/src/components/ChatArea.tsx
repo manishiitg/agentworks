@@ -23,16 +23,14 @@ import { SessionStopButton } from './SessionStopButton'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest } from './useTranscriptScroll'
 import { MainAgentTerminal } from './MainAgentTerminal'
-import { placeViewKey, rememberedPlaceViewMode } from '../utils/placeViewMode'
+import { placeViewKey } from '../utils/placeViewMode'
 import { WorkflowModeHandler, type WorkflowModeHandlerRef } from './workflow'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useAppStore, useLLMStore, useMCPStore, useChatStore, useGlobalPresetStore } from '../stores'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
-import { useModeStore, type ModeCategory } from '../stores/useModeStore'
+import { useModeStore } from '../stores/useModeStore'
 import { PreviousChatHistoryPanel } from './PreviousChatHistoryPanel'
 import { resolveChatSurface, resolveWorkflowChatSurface } from './resolveChatSurface'
-import { PresetSelectionOverlay } from './PresetSelectionOverlay'
-import { ModeSwitchDialog } from './ui/ModeSwitchDialog'
 import type { ChatTab } from '../stores/useChatStore'
 
 import { appendTimelineAndApplyConfirmations, hydrateTabEvents, restoreSession } from '../utils/sessionRestore'
@@ -65,6 +63,7 @@ import {
 import { activateTab } from '../utils/activateTab'
 import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
+import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
@@ -656,9 +655,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const activeTab = useChatStore(state =>
     targetTabId ? state.chatTabs[targetTabId] : undefined
   )
-  // Open each tab in the view (chat or terminal) the person last chose for
-  // its Crew, Code or workflow. Applied once per tab and place, so an
-  // automatic fallback to chat (terminal unavailable) is never fought.
+  // Every Crew, Code or workflow opens in the chat view (user, 2026-09-29):
+  // the terminal is a choice for the moment, not remembered. Applied once per
+  // tab and place, so switching to the terminal afterwards is never fought.
   const activePlaceViewKey = placeViewKey(activeTab)
   const appliedPlaceViewRef = useRef(new Set<string>())
   useEffect(() => {
@@ -666,9 +665,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const appliedKey = `${activeTab.tabId}|${activePlaceViewKey}`
     if (appliedPlaceViewRef.current.has(appliedKey)) return
     appliedPlaceViewRef.current.add(appliedKey)
-    const remembered = rememberedPlaceViewMode(activeTab)
-    if (remembered && remembered !== normalizeEventViewMode(activeTab.viewMode)) {
-      useChatStore.getState().setTabViewMode(activeTab.tabId, remembered)
+    if (normalizeEventViewMode(activeTab.viewMode) !== 'formatted') {
+      useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per tab and place
   }, [activeTab?.tabId, activePlaceViewKey])
@@ -972,6 +970,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
   ), [activeSessionId, displayEvents, olderHistory.events, olderHistory.sessionId])
+  // A question only locks the composer while its turn is running. One left
+  // without a settled record (crash, restart) must not lock the chat again on
+  // every reload; the server's "no longer open" answer also releases it.
+  const [closedCodingAgentQuestions, setClosedCodingAgentQuestions] = useState<ReadonlySet<string>>(() => new Set())
+  const pendingCodingAgentChoice = useMemo(() => isStreaming && buildCleanConversationItems(transcriptEvents).some(
+    (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
+  ), [isStreaming, transcriptEvents, closedCodingAgentQuestions])
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.
@@ -1080,10 +1085,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   }, [selectedModeCategory, activeWorkflowPreset, activeTab?.metadata?.isOrganizationAssistant])
 
   // Use currentPresetServers from props (passed from App.tsx when preset is selected)
-
-  // State for preset selection overlay
-  const [showPresetSelection, setShowPresetSelection] = useState(false)
-  const [pendingModeCategory, setPendingModeCategory] = useState<Exclude<ModeCategory, null> | null>(null)
 
   // State for session restoration loading
   const [isRestoringChatSessions, setIsRestoringChatSessions] = useState(false)
@@ -1215,96 +1216,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Resume a previous chat from the landing "Previous chats" panel. The same
   // resume path is used anywhere else that needs to restore a multi-agent chat.
   const handleResumePreviousChat = useResumePreviousChat()
-
-  // State for mode switch dialog
-  const [showModeSwitchDialog, setShowModeSwitchDialog] = useState(false)
-  const [pendingModeSwitch, setPendingModeSwitch] = useState<Exclude<ModeCategory, null> | null>(null)
-
-
-  // Handle mode selection from dropdown
-  // Handle mode switching with preset selection for Workflow
-  const handleModeSwitchWithPreset = (category: Exclude<ModeCategory, null>) => {
-    if (category === 'multi-agent') {
-      // Multi-agent mode doesn't need preset selection
-      // Clear any active presets when switching to multi-agent mode
-      clearActivePreset('workflow')
-      switchMode(category)
-    } else {
-      // Workflow mode - always show preset selection when switching between modes
-      // Clear the current mode's preset first
-      if (selectedModeCategory === 'workflow') {
-        clearActivePreset('workflow')
-      }
-
-      // Check if target mode already has a preset
-      const activePreset = getActivePreset(category)
-
-      if (activePreset) {
-        // Preset already selected, switch mode directly
-        switchMode(category)
-      } else {
-        // No preset selected, show preset selection overlay
-        setPendingModeCategory(category)
-        setShowPresetSelection(true)
-      }
-    }
-  }
-
-  // Switch mode function
-  const switchMode = (category: Exclude<ModeCategory, null>) => {
-    const { setModeCategory, getAgentModeFromCategory } = useModeStore.getState()
-    const { setAgentMode } = useAppStore.getState()
-
-    setModeCategory(category)
-
-    // Set the corresponding agent mode using centralized mapping
-    const agentModeToSet = getAgentModeFromCategory(category) as AgentMode
-    setAgentMode(agentModeToSet)
-  }
-
-  // Handle preset selection from overlay
-  const handlePresetSelected = (presetId: string) => {
-    if (pendingModeCategory) {
-      // Now switch to the mode
-      switchMode(pendingModeCategory)
-
-      // Apply the preset after mode switch (this will also set the active preset ID)
-      setTimeout(() => {
-        const result = applyPreset(presetId, pendingModeCategory)
-        if (!result.success) {
-          logger.error('ChatArea', 'Failed to apply preset:', result.error)
-        }
-      }, 100)
-
-      // Close overlay
-      setShowPresetSelection(false)
-      setPendingModeCategory(null)
-    }
-  }
-
-  // Handle preset selection overlay close
-  const handlePresetSelectionClose = () => {
-    setShowPresetSelection(false)
-    setPendingModeCategory(null)
-  }
-
-
-  // Handle mode switch dialog confirmation
-  const handleModeSwitchConfirm = () => {
-    if (pendingModeSwitch) {
-      handleModeSwitchWithPreset(pendingModeSwitch)
-      // Clear backend session and reset UI after mode switch
-      handleNewChat()
-    }
-    setShowModeSwitchDialog(false)
-    setPendingModeSwitch(null)
-  }
-
-  // Handle mode switch dialog cancellation
-  const handleModeSwitchCancel = () => {
-    setShowModeSwitchDialog(false)
-    setPendingModeSwitch(null)
-  }
 
   // Add ref for auto-scrolling
   const chatContentRef = useRef<HTMLDivElement>(null)
@@ -3258,7 +3169,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             tabSessionId,
             { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
           )
-        : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery })
+        : await agentApi.startQuery(requestPayload, tabSessionId, { identity, submissionId: receipt.id, submittedAtClientTime, queuedDelivery: options?.queuedDelivery, attendedChat: true })
       recordChatSubmissionTelemetry('api_acknowledged', response.session_id || tabSessionId, receipt.id, {
         tabId: currentTab.tabId,
         elapsedMS: performance.now() - submittedAtPerformanceMS,
@@ -3723,30 +3634,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   return (
     <div className="flex flex-col h-full min-w-0" data-testid="chat-area-container">
-      {/* Preset Selection Overlay */}
-      {showPresetSelection && pendingModeCategory && (
-        <PresetSelectionOverlay
-          isOpen={showPresetSelection}
-          onClose={handlePresetSelectionClose}
-          onPresetSelected={handlePresetSelected}
-          modeCategory={pendingModeCategory}
-          setCurrentQuery={setCurrentQuery}
-        />
-      )}
-
-      {/* Mode Switch Dialog */}
-      {showModeSwitchDialog && pendingModeSwitch && (
-        <ModeSwitchDialog
-          isOpen={showModeSwitchDialog}
-          onCancel={handleModeSwitchCancel}
-          onConfirm={handleModeSwitchConfirm}
-          currentModeCategory={selectedModeCategory}
-          newModeCategory={pendingModeSwitch}
-        />
-      )}
-
-
-
       {/* Chat Content - Separated to prevent input re-renders.
           In terminal mode the inner pane owns its own scrolling
           (the rail + log scroll independently), so this wrapper
@@ -3821,6 +3708,19 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
             landingContent={landingContent}
             onRetryLastMessage={retryLastProductMessage}
+            onAnswerCodingAgentQuestion={async (provider, promptId, answers, auto) => {
+              if (!activeSessionId) throw new Error('The coding agent session is no longer active')
+              try {
+                await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
+              } catch (cause) {
+                const detail = codingAgentQuestionErrorText(cause)
+                if (/no longer pending|unavailable/i.test(detail)) {
+                  setClosedCodingAgentQuestions((current) => new Set(current).add(promptId))
+                  throw new Error('This question is no longer open. You can keep chatting.')
+                }
+                throw new Error(detail || 'Could not submit this choice. Refresh and try again.')
+              }
+            }}
             onSubmitQuery={(query) => submitQueryWithQuery(query)}
           />
         ) : selectedModeCategory === 'workflow' ? (
@@ -3867,7 +3767,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
@@ -3931,7 +3831,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
@@ -3975,6 +3875,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           showProductTerminalControl={showProductTerminalControl}
           showNewChatAction={showNewChatAction}
           placeholderOverride={composerPlaceholder}
+          pendingNativeChoice={pendingCodingAgentChoice}
         />
       )}
 
@@ -3998,3 +3899,9 @@ const ChatArea = ChatAreaInner
 ChatArea.displayName = 'ChatArea'
 
 export default ChatArea
+
+function codingAgentQuestionErrorText(cause: unknown): string {
+  const data = (cause as { response?: { data?: unknown } })?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  return cause instanceof Error ? cause.message : ''
+}

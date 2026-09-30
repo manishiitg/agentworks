@@ -304,3 +304,14 @@ func landlockLauncherPreflight(runner string) error {
 	cmd.Env = BuildSafeEnvironment()
 	return cmd.Run()
 }
+
+// CLILandlockRunner returns the Landlock launcher when this host can confine
+// a coding CLI with it (Landlock ABI present and the launcher preflight
+// passes), for the agent server to start CLIs under the same launcher.
+func CLILandlockRunner() (string, bool) {
+	if capability := CurrentSandboxCapability(); !capability.Available || capability.Backend != "landlock" {
+		return "", false
+	}
+	runner, err := landlockRunnerPath()
+	return runner, err == nil
+}

@@ -382,6 +382,18 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 		api.logger.Info(fmt.Sprintf("Using user-provided client_id for %s: %s", serverName, clientID))
 	}
 
+	// No client entered and none configured: use the deployment's sign-in app
+	// for this provider (Google, GitHub, Slack, ...) when an admin set one up,
+	// so the shared connect is one click like a personal one.
+	if clientID == "" && serverConfig.OAuth != nil && strings.TrimSpace(serverConfig.OAuth.ClientID) == "" {
+		if key := mcpAppKeyIndex(config.MCPServers)[serverName]; key != "" {
+			if app, appErr := readMCPApp(key); appErr == nil && app != nil {
+				serverConfig.OAuth.ClientID, serverConfig.OAuth.ClientSecret, serverConfig.OAuth.ClientSecretFile = app.ClientID, app.ClientSecret, ""
+				api.logger.Info(fmt.Sprintf("Using the %s sign-in app for platform server %s", key, serverName))
+			}
+		}
+	}
+
 	// The oauth block is the sole authority. Its absence means the server is
 	// open, not that endpoints need discovering. Probing here is what used to
 	// report false positives: a well-known lookup built from scheme+host alone

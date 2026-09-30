@@ -77,7 +77,7 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 			if o.Default != (o.ID == "codex-cli") {
 				t.Errorf("%s/%s: default=%t, want Codex as the only default", p.ID, o.ID, o.Default)
 			}
-			wantModels := []string{"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"}
+			wantModels := []string{"gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra"}
 			if o.ID == "claude-code" {
 				wantModels = []string{"claude-sonnet-5-5", "claude-opus-5-5"}
 			} else if o.ID == "agy-cli" {

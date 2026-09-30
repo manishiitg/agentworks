@@ -80,14 +80,14 @@ func applyInstallationProductDefault(profile *agentprofiles.Profile) {
 // project.
 func profileWithProductDefault(ctx context.Context, profile agentprofiles.Profile) agentprofiles.Profile {
 	defaults, err := effectiveProductDefaults(ctx)
-	if err != nil || len(defaults) == 0 {
-		return profile
-	}
-	if value, ok := defaults[strings.ToLower(strings.TrimSpace(profile.Product))]; ok {
+	if value, ok := defaults[strings.ToLower(strings.TrimSpace(profile.Product))]; err == nil && ok {
 		options := append([]agentprofiles.ProviderOption(nil), profile.Runtime.ProviderOptions...)
 		profile.Runtime.ProviderOptions = options
 		applyProductDefaultToProfile(&profile, value, false)
+		return profile
 	}
+	// Nothing saved: start on a provider that works for everyone here.
+	applyDynamicProductDefault(ctx, &profile)
 	return profile
 }
 
@@ -118,7 +118,10 @@ func productDefaultWorkflowLLMConfig(ctx context.Context) *workflowtypes.PresetL
 	defaults, _ := effectiveProductDefaults(ctx)
 	value, ok := defaults[productWorkflows]
 	if !ok || value.Provider == "" || value.Model == "" {
-		return nil
+		// Nothing saved: a provider that works for everyone, if any.
+		if value, ok = dynamicWorkflowDefault(ctx); !ok {
+			return nil
+		}
 	}
 	return &workflowtypes.PresetLLMConfig{SchemaVersion: 2, Mode: workflowtypes.LLMConfigModeExplicit, BuilderLLM: &workflowtypes.AgentLLMConfig{Provider: value.Provider, ModelID: value.Model}}
 }

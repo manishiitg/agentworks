@@ -1,8 +1,11 @@
 import { sharedLink } from '../utils/sharedLinks'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, Download, Edit, FileText, Github, Link, Loader2, MoreHorizontal, Save, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, GitCommitHorizontal, GitCompare, Github, History, Link, Loader2, MoreHorizontal } from 'lucide-react'
 import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
+import { FileBreadcrumbs, FileTabs } from './workspace/FileTabs'
+import { repoForPath, useWorkspaceGitStore } from '../stores/useWorkspaceGitStore'
+import { useGitLineChanges } from '../hooks/useGitLineChanges'
 import { MarkdownRenderer, MermaidDiagram } from './ui/MarkdownRenderer'
 import { CsvRenderer } from './ui/CsvRenderer'
 import { HtmlRenderer } from './ui/HtmlRenderer'
@@ -10,12 +13,8 @@ import { ConversationRenderer, isConversationJSON } from './ui/ConversationRende
 import { DiffRenderer } from './ui/DiffRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from './ui/RenderedContentSearch'
 import LazyModalFallback from './ui/LazyModalFallback'
-import ConfirmationDialog from './ui/ConfirmationDialog'
 import { useWorkspaceStore, useChatStore } from '../stores'
 import { useAuthStore } from '../stores/useAuthStore'
-import { agentApi } from '../services/api'
-import type { FileVersion } from '../services/api-types'
-import { isValidJSON } from '../utils/event-helpers'
 import { prepareDomForPdfExport } from '../utils/pdfExport'
 import { convertToSlackMarkdown } from '../utils/slackMarkdown'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
@@ -25,14 +24,12 @@ import {
   AUDIO_MIME_TYPES,
   VIDEO_MIME_TYPES,
   isAudioPath,
-  isOfficeOrPdfPath,
   isTallSurfacePath,
   isVideoPath,
   mimeForExtension,
 } from '../utils/fileTypes'
 
 const FileEditor = lazy(() => import('./workspace/FileEditor'))
-const FileRevisionsModal = lazy(() => import('./workspace/FileRevisionsModal'))
 const PushToGistDialog = lazy(() => import('./workspace/PushToGistDialog'))
 const XlsxRenderer = lazy(() => import('./ui/XlsxRenderer').then(module => ({ default: module.XlsxRenderer })))
 const DocxRenderer = lazy(() => import('./ui/DocxRenderer').then(module => ({ default: module.DocxRenderer })))
@@ -86,12 +83,6 @@ const CopyIcon = () => (
 const SlackIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.163 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.163 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.163 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1-2.52-2.523 2.527 2.527 0 0 1 2.52-2.52h6.315A2.528 2.528 0 0 1 24 15.163a2.528 2.528 0 0 1-2.522 2.523h-6.315z"/>
-  </svg>
-)
-
-const HistoryIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 )
 
@@ -172,7 +163,7 @@ function PaneActionsMenu({ actions }: { actions: PaneAction[] }) {
 /**
  * File viewer/editor body: images, video, audio, PDF/XLSX/DOCX, CSV, HTML,
  * Mermaid, conversation logs, JSON, diffs, and markdown (with inline editing,
- * save+commit, revision history, PDF export, and Gist push). Reads everything
+ * save+commit, PDF export, and Gist push). Reads everything
  * from `useWorkspaceStore` (selectedFile, fileContent, showFileContent, ...).
  *
  * It fills whatever box it's given. The workspace pane's Files view swaps
@@ -190,17 +181,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent,
     showFileContent,
     setShowFileContent,
-    setFileContent,
-    setLoadingFileContent,
-    showRevisionsModal,
-    setShowRevisionsModal,
-    isEditMode,
-    setIsEditMode,
-    editedContent,
-    setEditedContent,
-    isSaving,
-    getHasUnsavedChanges,
-    saveFile,
     binaryFileData,
   } = useWorkspaceStore(useShallow(state => ({
     selectedFile: state.selectedFile,
@@ -208,17 +188,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     loadingFileContent: state.loadingFileContent,
     showFileContent: state.showFileContent,
     setShowFileContent: state.setShowFileContent,
-    setFileContent: state.setFileContent,
-    setLoadingFileContent: state.setLoadingFileContent,
-    showRevisionsModal: state.showRevisionsModal,
-    setShowRevisionsModal: state.setShowRevisionsModal,
-    isEditMode: state.isEditMode,
-    setIsEditMode: state.setIsEditMode,
-    editedContent: state.editedContent,
-    setEditedContent: state.setEditedContent,
-    isSaving: state.isSaving,
-    getHasUnsavedChanges: state.getHasUnsavedChanges,
-    saveFile: state.saveFile,
     binaryFileData: state.binaryFileData,
   })))
 
@@ -231,12 +200,7 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     binaryFileData,
   )
 
-  const [commitMessage, setCommitMessage] = useState('')
-  const [showCommitDialog, setShowCommitDialog] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const [isRestoring, setIsRestoring] = useState(false)
   const addToast = useChatStore(state => state.addToast)
-  const [pendingConfirm, setPendingConfirm] = useState<'discard-changes' | 'save-large-file' | 'close-viewer' | null>(null)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [showPushToGistDialog, setShowPushToGistDialog] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
@@ -245,9 +209,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const [failedImagePath, setFailedImagePath] = useState<string | null>(null)
   const markdownContentRef = useRef<HTMLDivElement>(null)
   const selectedFilePathLower = selectedFile?.path?.toLowerCase() || ''
-  const isOfficeOrPdf = isOfficeOrPdfPath(selectedFilePathLower)
-  // Edit is hidden for binary documents and for code files (code is written by the agent).
-  const canEdit = !isOfficeOrPdf && !isCodeFile(selectedFile?.path || '')
   // Parsed once per render: the dispatch below used to re-parse the whole
   // file up to four times (search gate, conversation check, JSON check).
   const parsedJsonContent: unknown = useMemo(() => {
@@ -260,7 +221,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
   const isRenderedMarkdownSearchAvailable = (
     showFileContent &&
     !loadingFileContent &&
-    !isEditMode &&
     !!fileContent &&
     !fileContent.startsWith('data:image/') &&
     !isCodeFile(selectedFile?.path || '') &&
@@ -278,21 +238,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     contentKey: `${selectedFile?.path || ''}:${fileContent.length}`,
     enabled: isRenderedMarkdownSearchAvailable,
   })
-
-  // Initialize editedContent when entering edit mode
-  useEffect(() => {
-    if (isEditMode && editedContent === '' && fileContent) {
-      setEditedContent(fileContent)
-    }
-  }, [isEditMode, fileContent, editedContent, setEditedContent])
-
-  // Handle edit mode toggle
-  const handleEdit = useCallback(() => {
-    if (!canEdit) return
-    setEditedContent(fileContent)
-    setIsEditMode(true)
-    setSaveError(null)
-  }, [canEdit, fileContent, setEditedContent, setIsEditMode])
 
   // Handle download
   const handleDownload = useCallback(() => {
@@ -316,139 +261,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     // Give the browser time to start reading the download before releasing it.
     if (!isImageDataUrl) setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }, [selectedFile, fileContent, binaryFileData, loadingFileContent])
-
-  // Handle cancel edit
-  const handleCancelEdit = useCallback(() => {
-    if (getHasUnsavedChanges()) {
-      setPendingConfirm('discard-changes')
-    } else {
-      setEditedContent('')
-      setIsEditMode(false)
-      setSaveError(null)
-    }
-  }, [getHasUnsavedChanges, setEditedContent, setIsEditMode])
-
-  const confirmPendingAction = useCallback(() => {
-    if (pendingConfirm === 'discard-changes') {
-      setEditedContent('')
-      setIsEditMode(false)
-      setSaveError(null)
-    } else if (pendingConfirm === 'save-large-file') {
-      setShowCommitDialog(true)
-    } else if (pendingConfirm === 'close-viewer') {
-      setEditedContent('')
-      setIsEditMode(false)
-      setShowFileContent(false)
-    }
-    setPendingConfirm(null)
-  }, [pendingConfirm, setEditedContent, setIsEditMode, setShowFileContent])
-
-  // Handle save
-  const handleSave = useCallback(async () => {
-    // Validate JSON if it's a JSON file
-    if (selectedFile?.path?.toLowerCase().endsWith('.json') || isValidJSON(editedContent)) {
-      try {
-        JSON.parse(editedContent)
-      } catch {
-        setSaveError('Invalid JSON. Please fix the syntax errors before saving.')
-        return
-      }
-    }
-
-    // Check file size (warn if > 1MB)
-    if (editedContent.length > 1024 * 1024) {
-      setPendingConfirm('save-large-file')
-      return
-    }
-
-    setShowCommitDialog(true)
-  }, [selectedFile?.path, editedContent])
-
-  // Handle save with commit message
-  const handleSaveWithCommit = async () => {
-    setSaveError(null)
-    const result = await saveFile(commitMessage || undefined)
-    if (result.success) {
-      setShowCommitDialog(false)
-      setCommitMessage('')
-      setSaveError(null)
-    } else {
-      setSaveError(result.error || 'Failed to save file')
-      // Keep dialog open on error
-    }
-  }
-
-  // Handle restore version
-  const handleRestoreVersion = useCallback(async (version: FileVersion) => {
-    if (!selectedFile) {
-      addToast('No file selected', 'error')
-      return
-    }
-
-    setIsRestoring(true)
-
-    try {
-      // Call restore API
-      const response = await agentApi.restoreFileVersion(
-        selectedFile.path,
-        version.commit_hash,
-        `Restore to version ${version.commit_hash.substring(0, 8)}: ${version.commit_message}`
-      )
-
-      if (response.success) {
-        // Reload file content after successful restore
-        setLoadingFileContent(true)
-        try {
-          const contentResponse = await agentApi.getPlannerFileContent(selectedFile.path)
-          if (contentResponse.success && contentResponse.data) {
-            let processedContent = contentResponse.data.content
-
-            // Process the content to convert escaped newlines to actual newlines
-            processedContent = processedContent
-              .replace(/\\n/g, '\n')
-              .replace(/\\t/g, '\t')
-              .replace(/\\r/g, '\r')
-
-            // Check if this is a JSON file
-            const extensionIsJson = selectedFile.path.toLowerCase().endsWith('.json')
-            const contentIsJson = isValidJSON(processedContent)
-
-            if (extensionIsJson || contentIsJson) {
-              try {
-                const parsed = JSON.parse(processedContent)
-                processedContent = JSON.stringify(parsed, null, 2)
-              } catch {
-                // Keep original content if JSON parsing fails
-              }
-            }
-
-            setFileContent(processedContent)
-
-            // Exit edit mode if we were in it
-            if (isEditMode) {
-              setIsEditMode(false)
-              setEditedContent('')
-            }
-          }
-        } catch (err) {
-          console.error('Failed to reload file content after restore:', err)
-          // Still close modal even if reload fails
-        } finally {
-          setLoadingFileContent(false)
-        }
-
-        // Close modal on success
-        setShowRevisionsModal(false)
-      } else {
-        addToast(response.message || 'Failed to restore file version', 'error')
-      }
-    } catch (error) {
-      console.error('Failed to restore file version:', error)
-      addToast(error instanceof Error ? error.message : 'Failed to restore file version', 'error')
-    } finally {
-      setIsRestoring(false)
-    }
-  }, [selectedFile, isEditMode, setIsEditMode, setEditedContent, setFileContent, setLoadingFileContent, setShowRevisionsModal, addToast])
 
   // Handle export to PDF
   const handleExportPdf = useCallback(async () => {
@@ -503,47 +315,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     }
   }, [selectedFile, addToast])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    if (!showFileContent) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // The viewer sits next to the chat; only act on shortcuts typed while
-      // focus is inside the viewer.
-      const active = document.activeElement
-      if (!(active instanceof Node) || !rootRef.current?.contains(active)) return
-      // Ctrl+S or Cmd+S: Save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        if (isEditMode && getHasUnsavedChanges()) {
-          handleSave()
-        }
-      }
-      // Ctrl+E or Cmd+E: Toggle edit mode
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault()
-        if (isEditMode) {
-          handleCancelEdit()
-        } else {
-          handleEdit()
-        }
-      }
-      // Esc: leave edit mode, confirming first when there are unsaved
-      // changes. Skipped while the commit dialog is open (it handles its
-      // own Escape) so the two dialogs don't stack.
-      if (e.key === 'Escape' && isEditMode && !showCommitDialog) {
-        if (getHasUnsavedChanges()) {
-          setPendingConfirm('discard-changes')
-        } else {
-          handleCancelEdit()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showFileContent, showCommitDialog, isEditMode, getHasUnsavedChanges, handleSave, handleEdit, handleCancelEdit])
-
   const copyContent = useCallback(async () => {
     if (!fileContent) return
     if (await copyToClipboard(fileContent)) {
@@ -573,35 +344,32 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
     })
   }, [selectedFile?.path])
 
-  const canShowRevisions = !isOfficeOrPdf
   const isMarkdownFile = selectedFilePathLower.endsWith('.md') || selectedFilePathLower.endsWith('.markdown')
   // PDF, video, and HTML surfaces fill the pane.
   const isTallSurface = isTallSurfacePath(selectedFile?.path || '')
   const tallSurfaceClass = 'h-full min-h-0'
 
+  const gitWorkspacePath = useWorkspaceGitStore(state => state.workspacePath)
+  const gitRepos = useWorkspaceGitStore(state => state.repos)
+  const gitFile = selectedFile?.path && gitWorkspacePath ? repoForPath(gitWorkspacePath, gitRepos, selectedFile.path) : null
+  const gitFileChanged = !!gitFile && gitFile.repo.files.some(entry => entry.path === gitFile.file)
+
+  const gitLineChanges = useGitLineChanges(selectedFile?.path, fileContent)
+
   const paneActions: PaneAction[] = [
     { key: 'copy', label: contentCopied ? 'Copied!' : 'Copy content', icon: <CopyIcon />, onSelect: () => { void copyContent() } },
     { key: 'slack', label: slackCopied ? 'Copied!' : 'Copy as Slack format', icon: <SlackIcon />, onSelect: () => { void copyAsSlack() } },
     { key: 'share', label: shareCopied ? 'Copied!' : 'Copy share link', icon: <Link className="w-4 h-4" />, onSelect: copyShareLink },
-    ...(canShowRevisions ? [{ key: 'revisions', label: 'File revisions', icon: <HistoryIcon />, onSelect: () => setShowRevisionsModal(true) }] : []),
+    ...(gitFile ? [
+      ...(gitFileChanged ? [{ key: 'git-changes', label: 'View changes (git)', icon: <GitCompare className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'diff', repo: gitFile.repo.root, file: gitFile.file }) }] : []),
+      { key: 'git-blame', label: 'Git blame', icon: <GitCommitHorizontal className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'blame', repo: gitFile.repo.root, file: gitFile.file }) },
+      { key: 'git-history', label: 'File history (git)', icon: <History className="w-4 h-4" />, onSelect: () => useWorkspaceGitStore.getState().openPanel({ kind: 'history', repo: gitFile.repo.root, file: gitFile.file }) },
+    ] : []),
     ...(isMarkdownFile ? [
       { key: 'pdf', label: isExportingPdf ? 'Exporting…' : 'Export as PDF', icon: isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <PdfIcon />, onSelect: () => { void handleExportPdf() }, disabled: isExportingPdf },
       { key: 'gist', label: 'Push to GitHub Gist', icon: <Github className="w-4 h-4" />, onSelect: () => setShowPushToGistDialog(true) },
     ] : []),
   ]
-
-  // Prevent navigation with unsaved changes
-  useEffect(() => {
-    if (!showFileContent || !getHasUnsavedChanges()) return
-
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [showFileContent, getHasUnsavedChanges])
 
   return (
     <>
@@ -611,20 +379,15 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         data-ui-file-path={selectedFile?.path || undefined}
         data-ui-file-ready={showFileContent && !loadingFileContent ? 'true' : 'false'}
       >
+        <FileTabs />
         <WorkspaceViewHeader
           icon={FileText}
-          helpTopic="File"
+          showWalkthrough={false}
           title={selectedFile?.path ? (
             <span className="inline-flex max-w-full items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  if (getHasUnsavedChanges()) {
-                    setPendingConfirm('close-viewer')
-                  } else {
-                    setShowFileContent(false)
-                  }
-                }}
+                onClick={() => setShowFileContent(false)}
                 aria-label="Back to files"
                 title="Back to files"
                 className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -634,54 +397,17 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
               <span className="truncate">{selectedFile.path.split('/').pop() || selectedFile.path}</span>
             </span>
           ) : 'File'}
-          subtitle={selectedFile?.path ? <span title={selectedFile.path}>{selectedFile.path}</span> : undefined}
-          context={getHasUnsavedChanges() && (
-            <span className="text-[10px] text-amber-500" title="Unsaved changes">●</span>
-          )}
+          subtitle={selectedFile?.path ? <FileBreadcrumbs path={selectedFile.path} /> : undefined}
           actions={<>
-            {!isEditMode ? (
-              <div className="flex items-center gap-0.5">
-                {canEdit && (
-                  <button onClick={handleEdit} className={ICON_BUTTON_CLASS} title="Edit file (Ctrl+E)">
-                    <Edit className="w-4 h-4" />
-                  </button>
-                )}
-                <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
-                  <Download className="w-4 h-4" />
-                </button>
-                {isRenderedMarkdownSearchAvailable && (
-                  <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
-                )}
-                <PaneActionsMenu actions={paneActions} />
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={handleCancelEdit}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                  title="Cancel edit (Esc)"
-                  disabled={isSaving}
-                >
-                  <X className="w-4 h-4" />
-                  Cancel
-                </button>
-                {getHasUnsavedChanges() && (
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Save file (Ctrl+S)"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Save
-                  </button>
-                )}
-              </>
-            )}
+            <div className="flex items-center gap-0.5">
+              <button onClick={handleDownload} disabled={loadingFileContent || !selectedFile} className={`${ICON_BUTTON_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`} title="Download file">
+                <Download className="w-4 h-4" />
+              </button>
+              {isRenderedMarkdownSearchAvailable && (
+                <RenderedContentSearchButton search={renderedContentSearch} className={ICON_BUTTON_CLASS} />
+              )}
+              <PaneActionsMenu actions={paneActions} />
+            </div>
             {headerAction}
           </>}
         />
@@ -689,81 +415,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         {isRenderedMarkdownSearchAvailable && (
           <RenderedContentSearchBar search={renderedContentSearch} />
         )}
-
-        {/* Save Error Message */}
-        {saveError && (
-          <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/20">
-            <p className="text-sm text-destructive">{saveError}</p>
-          </div>
-        )}
-
-        {/* Commit Message Dialog */}
-        {showCommitDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-card rounded-md shadow-md border border-border p-6 w-full max-w-md">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Save File
-              </h3>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Commit Message (optional)
-                </label>
-                <input
-                  type="text"
-                  value={commitMessage}
-                  onChange={(e) => setCommitMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSaveWithCommit()
-                    } else if (e.key === 'Escape') {
-                      setShowCommitDialog(false)
-                      setCommitMessage('')
-                    }
-                  }}
-                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  placeholder="Enter commit message..."
-                  autoFocus
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowCommitDialog(false)
-                    setCommitMessage('')
-                  }}
-                  className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveWithCommit}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-sm text-primary-foreground bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Discard-changes / large-file confirmations */}
-        <ConfirmationDialog
-          isOpen={pendingConfirm !== null}
-          onClose={() => setPendingConfirm(null)}
-          onConfirm={confirmPendingAction}
-          title={pendingConfirm === 'save-large-file' ? 'Save large file?' : 'Discard changes?'}
-          message={
-            pendingConfirm === 'save-large-file'
-              ? 'This file is larger than 1MB. Continue saving?'
-              : 'You have unsaved changes. They will be lost.'
-          }
-          confirmText={pendingConfirm === 'save-large-file' ? 'Save' : 'Discard'}
-          cancelText="Cancel"
-          type="warning"
-          ignoreWorkspaceAutoCollapse
-        />
 
         {/* Scrollable Content */}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -793,25 +444,13 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
                   )}
                   <p className="text-sm text-muted-foreground mt-2">Image file</p>
                 </div>
-              ) : isEditMode ? (
-                <div className="h-full overflow-hidden">
-                  <Suspense fallback={<FileSurfaceFallback />}>
-                    <FileEditor
-                      value={editedContent}
-                      filepath={selectedFile?.path || ''}
-                      readOnly={false}
-                      onChange={(value) => setEditedContent(value || '')}
-                      height="100%"
-                    />
-                  </Suspense>
-                </div>
               ) : (selectedFile?.path && isCodeFile(selectedFile.path) && !/\.html?$/i.test(selectedFile.path)) ? (
                 <div className="h-full overflow-hidden">
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <FileEditor
                       value={fileContent}
                       filepath={selectedFile.path}
-                      readOnly={true}
+                      lineChanges={gitLineChanges}
                       height="100%"
                     />
                   </Suspense>
@@ -971,29 +610,6 @@ export function FileContentViewerBody({ headerAction }: { headerAction?: React.R
         </Suspense>
       )}
 
-      {/* File Revisions Modal */}
-      {showRevisionsModal && (
-        <Suspense fallback={<LazyModalFallback label="Loading file history..." />}>
-          <FileRevisionsModal
-            isOpen
-            onClose={() => {
-              setShowRevisionsModal(false)
-            }}
-            filepath={selectedFile?.path || ''}
-            onRestoreVersion={handleRestoreVersion}
-          />
-        </Suspense>
-      )}
-
-      {/* Restore Loading Overlay */}
-      {isRestoring && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-md shadow-md border border-border p-6 flex flex-col items-center gap-4">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <p className="text-foreground">Restoring file version...</p>
-          </div>
-        </div>
-      )}
     </>
   )
 }

@@ -24,26 +24,20 @@ interface WorkspaceState {
   // Selected file and content
   selectedFile: {name: string, path: string} | null
   setSelectedFile: (file: {name: string, path: string} | null) => void
+  // Recently opened files, shown as viewer tabs (most recent last).
+  openTabs: {name: string, path: string}[]
+  closeTab: (path: string) => void
+  /** Drop tabs (and the open file) that belong to another workspace. */
+  pruneOpenTabs: (workspacePath: string) => void
   fileContent: string
   setFileContent: (content: string) => void
   loadingFileContent: boolean
   setLoadingFileContent: (loading: boolean) => void
   showFileContent: boolean
   setShowFileContent: (show: boolean) => void
-  showRevisionsModal: boolean
-  setShowRevisionsModal: (show: boolean) => void
   binaryFileData: ArrayBuffer | null
   setBinaryFileData: (data: ArrayBuffer | null) => void
   
-  // Edit mode state
-  isEditMode: boolean
-  setIsEditMode: (isEdit: boolean) => void
-  editedContent: string
-  setEditedContent: (content: string) => void
-  isSaving: boolean
-  setIsSaving: (saving: boolean) => void
-  getHasUnsavedChanges: () => boolean
-  saveFile: (commitMessage?: string) => Promise<{success: boolean; error?: string}>
   
   // Upload Dialog
   uploadDialog: {
@@ -173,14 +167,11 @@ const initialState = {
   error: null,
   searchQuery: '',
   selectedFile: null,
+  openTabs: [],
   fileContent: '',
   loadingFileContent: false,
   showFileContent: false,
-  showRevisionsModal: false,
   binaryFileData: null,
-  isEditMode: false,
-  editedContent: '',
-  isSaving: false,
   uploadDialog: {
     isOpen: false,
     isLoading: false,
@@ -255,6 +246,11 @@ function setFileTreeCacheEntry(key: string, entry: FileTreeCacheEntry) {
 // Tracks in-flight fetchFiles requests to deduplicate concurrent calls for the same folder/depth
 let inflightFetch: { key: string; promise: Promise<void> } | null = null
 let fetchAttemptSequence = 0
+const MAX_OPEN_TABS = 10
+// The tree request whose result is on screen. A refresh of that same tree
+// (or a lazy subfolder load inside it) keeps the rows visible instead of
+// swapping them for a spinner; only a different tree shows loading.
+let shownTreeKey: string | null = null
 const latestFetchAttemptByKey = new Map<string, number>()
 
 function describeWorkspaceFetchError(err: unknown): { message: string; details: Record<string, unknown> } {
@@ -315,60 +311,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       
       // Selected file and content
-      setSelectedFile: (file) => set({ selectedFile: file }),
+      setSelectedFile: (file) => set(state => {
+        if (!file) return { selectedFile: null }
+        if (state.openTabs.some(tab => tab.path === file.path)) return { selectedFile: file }
+        return { selectedFile: file, openTabs: [...state.openTabs, file].slice(-MAX_OPEN_TABS) }
+      }),
+      closeTab: (path) => set(state => ({ openTabs: state.openTabs.filter(tab => tab.path !== path) })),
+      pruneOpenTabs: (workspacePath) => set(state => {
+        const root = workspacePath.replace(/^\/+|\/+$/g, '')
+        const inside = (path: string) => { const clean = path.replace(/^\/+/, ''); return clean === root || clean.startsWith(`${root}/`) }
+        const openTabs = state.openTabs.filter(tab => inside(tab.path))
+        const keepsFile = !state.selectedFile || inside(state.selectedFile.path)
+        if (openTabs.length === state.openTabs.length && keepsFile) return {}
+        return keepsFile
+          ? { openTabs }
+          : { openTabs, selectedFile: null, showFileContent: false, fileContent: '', binaryFileData: null }
+      }),
       setFileContent: (content) => set({ fileContent: content }),
       setLoadingFileContent: (loading) => set({ loadingFileContent: loading }),
       setShowFileContent: (show) => set({ showFileContent: show }),
-      setShowRevisionsModal: (show) => set({ showRevisionsModal: show }),
       setBinaryFileData: (data) => set({ binaryFileData: data }),
       
-      // Edit mode state
-      setIsEditMode: (isEdit) => set({ isEditMode: isEdit }),
-      setEditedContent: (content) => set({ editedContent: content }),
-      setIsSaving: (saving) => set({ isSaving: saving }),
-      getHasUnsavedChanges: () => {
-        const state = get()
-        return state.editedContent !== state.fileContent && state.isEditMode
-      },
-      saveFile: async (commitMessage?: string) => {
-        const state = get()
-        if (!state.selectedFile) {
-          return { success: false, error: 'No file selected' }
-        }
-        
-        set({ isSaving: true })
-        try {
-          const response = await agentApi.updatePlannerFile(
-            state.selectedFile.path,
-            state.editedContent,
-            commitMessage
-          )
-          
-          if (response.success) {
-            set({
-              fileContent: state.editedContent,
-              editedContent: '',
-              isEditMode: false,
-              isSaving: false
-            })
-            // Refresh file list after a manual save — bypass cache so the tree reflects
-            // any filesystem-level changes immediately.
-            const activeFolder = get().activeFolder
-            await get().fetchFiles(
-              activeFolder ?? undefined,
-              activeFolder ? { force: true } : { force: true, maxDepth: 2 }
-            )
-            return { success: true }
-          } else {
-            set({ isSaving: false })
-            return { success: false, error: response.message || 'Failed to save file' }
-          }
-        } catch (error) {
-          set({ isSaving: false })
-          const errorMessage = error instanceof Error ? error.message : 'Failed to save file'
-          return { success: false, error: errorMessage }
-        }
-      },
       
       // Upload Dialog
       setUploadDialog: (dialog) => set((state) => ({
@@ -637,6 +600,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
 
           const index = buildFileIndex(processedFiles)
+          shownTreeKey = requestKey
           set({ files: processedFiles, fileIndex: index, needsRefresh: false, error: null })
         }
 
@@ -665,7 +629,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         const promise = (async () => {
           try {
-            set({ loading: true, error: null })
+            const activeNow = get().activeFolder
+            const isSubfolderLoad = !!(effectiveFolder && activeNow && effectiveFolder !== activeNow && effectiveFolder.startsWith(activeNow + '/'))
+            const quiet = get().files.length > 0 && (shownTreeKey === requestKey || isSubfolderLoad)
+            set(quiet ? { error: null } : { loading: true, error: null })
             const response = await agentApi.getPlannerFiles(effectiveFolder, -1, options?.maxDepth)
             if (response.success && response.data) {
               const allFiles = response.data
@@ -916,6 +883,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       
       // Reset all state
       resetWorkspaceState: () => {
+        shownTreeKey = null
         clearFileTreeCache()
         if (scheduledRefreshTimeout) {
           clearTimeout(scheduledRefreshTimeout)

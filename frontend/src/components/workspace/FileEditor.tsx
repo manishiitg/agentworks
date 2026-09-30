@@ -1,8 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useCallback, useState } from 'react'
 import Editor from '@monaco-editor/react'
-import type { OnChange, OnMount } from '@monaco-editor/react'
+import type { OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { useTheme } from '../../hooks/useTheme'
+import type { GitLineChanges } from '../../utils/gitDiffLines'
 
 let pythonFormattingProviderRegistered = false
 
@@ -40,21 +41,22 @@ const formatPythonCode = (value: string): string => {
 interface FileEditorProps {
   value: string
   filepath: string
-  readOnly?: boolean
-  onChange?: (value: string) => void
   height?: string
   onMount?: (editor: editor.IStandaloneCodeEditor) => void
+  /** Git change markers for the gutter (green added, blue modified, red deleted). */
+  lineChanges?: GitLineChanges
 }
 
 export const FileEditor: React.FC<FileEditorProps> = ({
   value,
   filepath,
-  readOnly = false,
-  onChange,
   height = '100%',
-  onMount
+  onMount,
+  lineChanges,
 }) => {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+  const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null)
+  const [editorReady, setEditorReady] = useState(false)
   const { theme } = useTheme()
 
   // Detect language from file extension
@@ -91,7 +93,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
   }
 
   const language = getLanguage(filepath)
-  const displayValue = readOnly && language === 'python'
+  const displayValue = language === 'python'
     ? formatPythonCode(value)
     : value
 
@@ -105,6 +107,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
+    setEditorReady(true)
 
     if (!pythonFormattingProviderRegistered) {
       monaco.languages.registerDocumentFormattingEditProvider('python', {
@@ -135,8 +138,8 @@ export const FileEditor: React.FC<FileEditorProps> = ({
       folding: true,
       scrollBeyondLastLine: false,
       automaticLayout: true,
-      formatOnPaste: !readOnly,
-      formatOnType: !readOnly
+      formatOnPaste: false,
+      formatOnType: false
     })
 
     if (onMount) {
@@ -144,11 +147,24 @@ export const FileEditor: React.FC<FileEditorProps> = ({
     }
   }
 
-  const handleChange: OnChange = (value) => {
-    if (onChange && value !== undefined) {
-      onChange(value)
-    }
-  }
+  // Git change markers in the gutter.
+  useEffect(() => {
+    const instance = editorRef.current
+    if (!instance || !editorReady) return
+    const decorate = (lines: number[], className: string) => lines.map(line => ({
+      range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+      options: { isWholeLine: true, linesDecorationsClassName: className },
+    }))
+    const next = lineChanges
+      ? [
+        ...decorate(lineChanges.added, 'git-gutter-added'),
+        ...decorate(lineChanges.modified, 'git-gutter-modified'),
+        ...decorate(lineChanges.deleted, 'git-gutter-deleted'),
+      ]
+      : []
+    if (decorationsRef.current) decorationsRef.current.set(next)
+    else decorationsRef.current = instance.createDecorationsCollection(next)
+  }, [lineChanges, editorReady])
 
   // Expose a best-effort formatter to parent consumers.
   const formatDocument = useCallback(() => {
@@ -192,18 +208,17 @@ export const FileEditor: React.FC<FileEditorProps> = ({
         language={language}
         value={displayValue}
         theme={getMonacoTheme(theme)}
-        onChange={handleChange}
         onMount={handleEditorDidMount}
         options={{
-          readOnly,
+          readOnly: true,
           minimap: { enabled: true },
           wordWrap: 'on',
           lineNumbers: 'on',
           folding: true,
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          formatOnPaste: !readOnly,
-          formatOnType: !readOnly,
+          formatOnPaste: false,
+          formatOnType: false,
           fontSize: 14,
           fontFamily: 'Menlo, Monaco, "Courier New", monospace',
           tabSize: 2,

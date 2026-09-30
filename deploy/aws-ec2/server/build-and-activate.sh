@@ -202,6 +202,20 @@ if test -e "$tools_dir/lib/node_modules/@earendil-works/pi-coding-agent"; then
 fi
 test -x "$tools_dir/bin/claude"
 echo "claude: $("$tools_dir/bin/claude" --version)"
+# One managed copy. The services resolve claude from PATH, so the managed one must be
+# the one that wins, and no system copy should exist: an old /usr/bin/claude ignores
+# AGENTS.md (where the session prompt is carried) and ran silently for hours on
+# 2026-09-25. Remove strays with: sudo npm uninstall -g @anthropic-ai/claude-code
+resolved_claude="$(PATH="$tools_dir/bin:/usr/local/bin:/usr/bin:/bin" command -v claude)"
+if test "$resolved_claude" != "$tools_dir/bin/claude"; then
+  echo "claude resolves to $resolved_claude, not the managed $tools_dir/bin/claude" >&2
+  exit 1
+fi
+for stale in /usr/bin/claude /usr/local/bin/claude /usr/bin/pi /usr/local/bin/pi; do
+  if test -e "$stale"; then
+    echo "WARNING: system copy $stale exists; it is a silent fallback with an old version. Remove it (sudo npm uninstall -g @anthropic-ai/claude-code @earendil-works/pi-coding-agent)." >&2
+  fi
+done
 # CLIs that WORKFLOW shells need (aws, ntn, git) are NOT installed here: the
 # sandbox those shells run in cannot read this tool prefix (strict env,
 # HOME=/tmp, system read roots only). They are installed system-wide as root
@@ -254,6 +268,22 @@ if ! printf '%s' "$preflight_reply" | jq -e '.is_error == false' >/dev/null 2>&1
       exit 1 ;;
   esac
 fi
+# The session prompt reaches Claude through AGENTS.md (instruction-only projection), so
+# prove THIS claude reads it: a Claude that ignores AGENTS.md would run every session
+# without its system prompt, with no error. A capped account skips the check with a warning.
+probe_dir="$(mktemp -d)"
+printf 'The project codeword is WALRUS-7. Report it if asked.\n' > "$probe_dir/AGENTS.md"
+probe_reply="$(cd "$probe_dir" && CLAUDE_CODE_OAUTH_TOKEN="$token" claude -p --output-format json 'What is the project codeword from your project instructions? If none, say NONE.' </dev/null || true)"
+rm -rf "$probe_dir"
+probe_result="$(printf '%s' "$probe_reply" | jq -r '.result // empty' 2>/dev/null || true)"
+case "$probe_result" in
+  *WALRUS-7*) ;;
+  *"session limit"*|*"usage limit"*|*"rate limit"*|*"Rate limit"*|*"capacity"*)
+    echo "WARNING: AGENTS.md read check skipped, the Claude account is capped right now (${probe_result})." >&2 ;;
+  *)
+    echo "This claude ($("$tools_dir/bin/claude" --version)) does not read AGENTS.md, so sessions would start without their system prompt: ${probe_result:-no reply}" >&2
+    exit 1 ;;
+esac
 REMOTE_PREFLIGHT
 # Carry the previous release's hashed frontend assets into the new one. A tab
 # opened before the swap still lazy-imports chunks by their old hashed names on

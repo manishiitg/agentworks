@@ -44,37 +44,9 @@ func TestPersonalMCPServersAreRemotePublicAndSecretFree(t *testing.T) {
 	}
 }
 
-// Switches are per person and per Code; removing a server clears them.
-func TestPersonalMCPEnablementIsPerPersonAndCode(t *testing.T) {
-	withPersonalMCPRoot(t)
-	codeX, codeY := "_users/alice/Chats/Code/projects/x", "_users/alice/Chats/Code/projects/y"
-	if _, err := addPersonalMCPServer("alice", personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := setPersonalMCPEnabled("bob", codeX, "deepwiki", true); err == nil {
-		t.Fatal("bob switched on a server he does not have")
-	}
-	if err := setPersonalMCPEnabled("alice", codeX, "deepwiki", true); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := personalMCPEnabled("alice", codeX); len(got) != 1 {
-		t.Fatalf("x = %v", got)
-	}
-	for _, check := range []struct{ user, code string }{{"alice", codeY}, {"bob", codeX}} {
-		if got, _ := personalMCPEnabled(check.user, check.code); len(got) != 0 {
-			t.Fatalf("%s in %s = %v", check.user, check.code, got)
-		}
-	}
-	if err := removePersonalMCPServer("alice", "deepwiki"); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := personalMCPEnabled("alice", codeX); len(got) != 0 {
-		t.Fatalf("switch survived removal: %v", got)
-	}
-}
-
-// Personal secrets are write-only, per person, and bound to their owner:
-// a ciphertext copied into another person's store does not open.
+// Legacy personal secrets (read only by the migration) are per person and
+// bound to their owner: a ciphertext copied into another person's store does
+// not open.
 func TestPersonalSecretsAreBoundToTheirOwner(t *testing.T) {
 	root := withPersonalMCPRoot(t)
 	if err := setPersonalSecret("alice", "LINEAR_API_KEY", "lin_secret"); err != nil {
@@ -97,39 +69,43 @@ func TestPersonalSecretsAreBoundToTheirOwner(t *testing.T) {
 	if _, err := personalSecretValue("bob", "LINEAR_API_KEY"); err == nil {
 		t.Fatal("a copied ciphertext opened in another person's store")
 	}
-	if names, _ := listPersonalSecretNames("alice"); len(names) != 1 || names[0] != "LINEAR_API_KEY" {
-		t.Fatalf("names = %v", names)
-	}
 }
 
-// Header values come from the person's own secrets at connect time; the
-// config is public-only, and its token file is sealed at rest.
-func TestPersonalMCPServerConfigResolvesOwnSecretsAndSealsTokens(t *testing.T) {
+// Header values come from the place's own project secrets at connect time;
+// the config is public-only, and its token file is sealed at rest.
+func TestPlaceMCPServerConfigResolvesProjectSecretsAndSealsTokens(t *testing.T) {
 	withPersonalMCPRoot(t)
-	if err := setPersonalSecret("alice", "KEY", "abc123"); err != nil {
-		t.Fatal(err)
+	root := "_users/alice/Chats/Code/projects/x"
+	store := placeMCPStoreID("alice", root)
+	previous := projectSecretReader
+	t.Cleanup(func() { projectSecretReader = previous })
+	projectSecretReader = func(gotRoot, name string) (string, error) {
+		if gotRoot != root || name != "KEY" {
+			return "", os.ErrNotExist
+		}
+		return "abc123", nil
 	}
-	if _, err := addPersonalMCPServer("alice", personalMCPServer{Name: "svc", URL: "https://mcp.example.com/mcp",
+	if _, err := addPersonalMCPServer(store, personalMCPServer{Name: "svc", URL: "https://mcp.example.com/mcp",
 		Headers: map[string]personalMCPHeader{"Authorization": {Secret: "KEY", Format: "Bearer {}"}},
 		OAuth:   &oauth.OAuthConfig{AuthURL: "https://example.com/authorize", TokenURL: "https://example.com/token"}}); err != nil {
 		t.Fatal(err)
 	}
-	internal, cfg, err := personalMCPServerConfig("alice", "svc")
+	internal, cfg, err := personalMCPServerConfig(store, "svc")
 	if err != nil || !cfg.PublicOnly || cfg.Headers["Authorization"] != "Bearer abc123" || !strings.HasSuffix(internal, "__svc") {
 		t.Fatalf("config = %s %+v %v", internal, cfg, err)
 	}
-	if bobName := personalMCPInternalName("bob", "svc"); bobName == internal || !strings.HasSuffix(bobName, "__svc") {
-		t.Fatalf("internal names collide: %s %s", internal, bobName)
+	if other := personalMCPInternalName(placeMCPStoreID("alice", "_users/alice/Chats/Code/projects/y"), "svc"); other == internal || !strings.HasSuffix(other, "__svc") {
+		t.Fatalf("internal names collide: %s %s", internal, other)
 	}
-	store := oauth.NewTokenStore(cfg.OAuth.TokenFile)
-	if err := store.Save(&oauth2.Token{AccessToken: "tok-alice"}); err != nil {
+	store2 := oauth.NewTokenStore(cfg.OAuth.TokenFile)
+	if err := store2.Save(&oauth2.Token{AccessToken: "tok-alice"}); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(cfg.OAuth.TokenFile)
 	if bytes.Contains(raw, []byte("tok-alice")) || json.Valid(raw) {
 		t.Fatalf("token file is plaintext: %s", raw)
 	}
-	if loaded, err := store.Load(); err != nil || loaded.AccessToken != "tok-alice" {
+	if loaded, err := store2.Load(); err != nil || loaded.AccessToken != "tok-alice" {
 		t.Fatalf("load = %+v %v", loaded, err)
 	}
 	other := filepath.Join(t.TempDir(), "platform.json")

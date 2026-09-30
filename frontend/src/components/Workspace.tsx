@@ -1,18 +1,17 @@
 import { useEffect, useCallback, useRef, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Plus, Upload, FolderPlus, ChevronDown, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Files, Search, RefreshCw } from 'lucide-react'
+import { Upload, FolderPlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react'
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
-import { isValidJSON } from '../utils/event-helpers'
+import { openWorkspaceFile } from '../utils/openWorkspaceFile'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
 import MoveFileDialog from './workspace/MoveFileDialog'
 import RenameFileDialog from './workspace/RenameFileDialog'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import ImportProgressDialog from './ui/ImportProgressDialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
-import { WorkspaceViewHeader } from './workflow/WorkspaceViewHeader'
-import { WorkspaceViewIconButton } from './workflow/WorkspaceViewIconButton'
+import { ExplorerHeader } from './workspace/ExplorerHeader'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
@@ -108,6 +107,9 @@ export default function Workspace({
   // Get mode-specific file context and handlers
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const authUser = useAuthStore(state => state.user)
+  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
+  // The managed-files eye (product.json, .git, node_modules) is for admins.
+  const canShowManagedFiles = !isMultiUserMode || authUser?.is_admin === true
   const currentUserFolder = `_users/${authUser?.id || 'default'}`
   const showWorkflowsOverview = useAppStore(state => state.showWorkflowsOverview)
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
@@ -216,11 +218,9 @@ export default function Workspace({
     highlightedFile,
     setSelectedFile,
     setFileContent,
-    setLoadingFileContent,
     setShowFileContent,
     fetchFiles,
     setActiveFolder,
-    setBinaryFileData,
     needsRefresh,
     setNeedsRefresh
   } = useWorkspaceStore(useShallow(state => ({
@@ -254,11 +254,9 @@ export default function Workspace({
     highlightedFile: state.highlightedFile,
     setSelectedFile: state.setSelectedFile,
     setFileContent: state.setFileContent,
-    setLoadingFileContent: state.setLoadingFileContent,
     setShowFileContent: state.setShowFileContent,
     fetchFiles: state.fetchFiles,
     setActiveFolder: state.setActiveFolder,
-    setBinaryFileData: state.setBinaryFileData,
     needsRefresh: state.needsRefresh,
     setNeedsRefresh: state.setNeedsRefresh,
   })))
@@ -884,107 +882,11 @@ export default function Workspace({
 
   }, [activeFolder, selectedModeCategory, scopedWorkspacePath])
 
-  // Check if a file is a viewable binary format that we can render inline.
-  const isViewableBinaryFile = (fileName: string): boolean => {
-    const ext = fileName.split('.').pop()?.toLowerCase() || ''
-    return ['xls', 'xlsx', 'docx', 'pdf', 'webm', 'mp4', 'mov', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'flac', 'opus'].includes(ext)
-  }
-
-  // Handle file click - fetch content and show in chat area
+  // Handle file click - load it into the shared viewer
   const handleFileClick = async (file: PlannerFile) => {
-    if (file.type !== 'folder') {
-      // Reconstruct the original full path if we're in workflow mode with filtered files
-      const fullFilePath = getOriginalFilePath(file)
-      const fileName = fullFilePath.split('/').pop() || fullFilePath
-
-      try {
-        setLoadingFileContent(true)
-
-        setSelectedFile({ name: fileName, path: fullFilePath })
-
-        // For viewable binary files, fetch as raw binary so the main viewer can render them.
-        if (isViewableBinaryFile(fileName)) {
-          const response = await wsRawApi.get(
-            `/api/documents/${encodeURIComponent(fullFilePath)}`,
-            { params: { download: 'true' }, responseType: 'arraybuffer' }
-          )
-          setBinaryFileData(response.data as ArrayBuffer)
-          setFileContent('') // Clear text content
-          setShowFileContent(true)
-          return
-        }
-
-        // Clear binary data when viewing text files
-        setBinaryFileData(null)
-
-        // Use the reconstructed full filepath for the API call
-        const response = await wsFileApi.getFileContent(fullFilePath)
-
-        if (response.success && response.data) {
-          if (response.data.is_binary && !response.data.is_image) {
-            const size = typeof response.data.size === 'number' ? ` (${response.data.size.toLocaleString()} bytes)` : ''
-            setError(`File "${fileName}" is a binary file${size} and cannot be viewed in the editor.`)
-            setLoadingFileContent(false)
-            setShowFileContent(false)
-            return
-          }
-
-          const content = response.data.content ?? ''
-          let processedContent = typeof content === 'string'
-            ? content
-            : String(content)
-          let isJsonFile = false
-          let formattedJson = null
-
-          // Check if this is an image file
-          if (response.data.is_image && processedContent && processedContent.startsWith('data:image/')) {
-            // For images, the content is already base64 encoded data URL
-            // No processing needed for images
-          } else {
-            // Process the content to convert escaped newlines to actual newlines
-            // Only process if content is a non-empty string
-            if (processedContent && typeof processedContent === 'string') {
-              // Check if this is a JSON file (by extension OR content) BEFORE escape replacement
-              // The \\n replacement corrupts JSON strings that contain literal \n escape sequences
-              const extensionIsJson = file.filepath.toLowerCase().endsWith('.json')
-              const contentIsJson = !extensionIsJson && isValidJSON(processedContent)
-              isJsonFile = extensionIsJson || contentIsJson
-
-              if (isJsonFile) {
-                // For JSON files, parse directly (the content already has proper escapes)
-                try {
-                  const parsed = JSON.parse(processedContent)
-                  formattedJson = JSON.stringify(parsed, null, 2)
-                } catch (parseError) {
-                  console.warn('Failed to parse JSON file:', parseError)
-                  formattedJson = null
-                }
-              } else {
-                // For non-JSON files, convert escaped newlines to actual newlines
-                processedContent = processedContent
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\t/g, '\t')
-                  .replace(/\\r/g, '\r')
-              }
-            }
-          }
-
-          // Store both original content and formatted JSON (if applicable)
-          setFileContent(processedContent || '')
-          if (formattedJson) {
-            setFileContent(formattedJson)
-          }
-          setShowFileContent(true)
-        } else {
-          setError(response.message || 'Failed to load file content')
-        }
-      } catch (err) {
-        console.error('Failed to fetch file content:', err)
-        setError(err instanceof Error ? err.message : 'Failed to fetch file content')
-      } finally {
-        setLoadingFileContent(false)
-      }
-    }
+    if (file.type === 'folder') return
+    // Reconstruct the original full path if we're in workflow mode with filtered files
+    await openWorkspaceFile(getOriginalFilePath(file))
   }
 
   // Handle folder click - only folders are clickable now
@@ -1919,72 +1821,73 @@ export default function Workspace({
   return (
     <TooltipProvider>
       <div data-tour="workspace-open" data-testid="workspace-panel" className="flex flex-col h-full bg-background">
-      {/* Header */}
-        <WorkspaceViewHeader
-          icon={Files}
+      {/* Header: VS Code-style Explorer */}
+        <ExplorerHeader
           title={title}
-          helpTopic="Files"
-          context={isSelectionMode && (
+          titleAction={headerAction}
+          leading={isSelectionMode ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <label className="flex items-center cursor-pointer relative">
-                  <input
-                    type="checkbox"
-                    checked={areAllFilesSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  {selectedFiles.size > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                      {selectedFiles.size}
-                    </span>
-                  )}
+                <label className="relative flex cursor-pointer items-center px-1">
+                  <input type="checkbox" checked={areAllFilesSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-primary" />
                 </label>
               </TooltipTrigger>
-              <TooltipContent>
-                <p>Select All</p>
-              </TooltipContent>
+              <TooltipContent><p>Select All</p></TooltipContent>
             </Tooltip>
-          )}
-          actions={<>
-            {isSelectionMode && (
-              <>
-                {selectedFiles.size > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={handleBulkDelete}
-                        disabled={loading || bulkDeleteDialog.isLoading}
-                        className="p-2 text-destructive hover:text-destructive disabled:opacity-50 relative"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-                          {selectedFiles.size}
-                        </span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Delete {selectedFiles.size} selected file{selectedFiles.size !== 1 ? 's' : ''}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+          ) : undefined}
+          toolbar={isSelectionMode ? (
+            <>
+              {selectedFiles.size > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
-                      onClick={toggleSelectionMode}
-                      className="p-2 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="w-4 h-4" />
+                    <button onClick={handleBulkDelete} disabled={loading || bulkDeleteDialog.isLoading} aria-label="Delete selected files" className="relative rounded p-1 text-destructive hover:bg-muted disabled:opacity-50">
+                      <Trash2 className="h-4 w-4" />
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-4 text-destructive-foreground">{selectedFiles.size}</span>
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Exit selection mode</p>
-                  </TooltipContent>
+                  <TooltipContent><p>Delete {selectedFiles.size} selected file{selectedFiles.size !== 1 ? 's' : ''}</p></TooltipContent>
                 </Tooltip>
-              </>
-            )}
-
-              {hideManagedEntriesByDefault && !isSelectionMode && (
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={toggleSelectionMode} aria-label="Exit selection mode" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Exit selection mode</p></TooltipContent>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={handleUploadClick} disabled={loading} aria-label="Upload file" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><Upload className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Upload file</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => handleCreateFolder()} disabled={loading} aria-label="New folder" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><FolderPlus className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>New folder</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => fetchFiles(activeFolder, { force: true })} disabled={loading} aria-label="Refresh files" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Refresh</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={() => setExpandedFolders(new Set())} aria-label="Collapse all folders" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><ChevronsDownUp className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Collapse all</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={toggleSelectionMode} aria-label="Select files" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><CheckSquare className="h-4 w-4" /></button>
+                </TooltipTrigger>
+                <TooltipContent><p>Select files</p></TooltipContent>
+              </Tooltip>
+              {hideManagedEntriesByDefault && canShowManagedFiles && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -1992,86 +1895,16 @@ export default function Workspace({
                       onClick={() => setShowHiddenFiles(current => !current)}
                       aria-pressed={showHiddenFiles}
                       aria-label={showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}
-                      className={`p-2 transition-colors ${showHiddenFiles
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground'}`}
+                      className={`rounded p-1 transition-colors hover:bg-muted ${showHiddenFiles ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                     >
                       {showHiddenFiles ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}</p>
-                  </TooltipContent>
+                  <TooltipContent><p>{showHiddenFiles ? 'Hide internal files' : 'Show hidden files'}</p></TooltipContent>
                 </Tooltip>
               )}
-
-              {/* Combined Actions Dropdown - Hidden in selection mode */}
-              {!isSelectionMode && (
-                <div className="relative actions-dropdown">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => setShowActionsDropdown(!showActionsDropdown)}
-                        disabled={loading}
-                        className="p-2 text-muted-foreground hover:text-foreground disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Add files or folders</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  {/* Dropdown Menu */}
-                  {showActionsDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-card border border-border rounded-md shadow-md z-50">
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          handleUploadClick()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <Upload className="w-4 h-4" />
-                        Upload File
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleCreateFolder()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <FolderPlus className="w-4 h-4" />
-                        Create Folder
-                      </button>
-                      <div className="border-t border-border my-1"></div>
-                      <button
-                        onClick={() => {
-                          toggleSelectionMode()
-                          setShowActionsDropdown(false)
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                        Select Files
-                      </button>
-                    </div>
-                  </div>
-                  )}
-                </div>
-              )}
-
-              {headerAction}
-              {!isSelectionMode && (
-                <WorkspaceViewIconButton label="Refresh files" onClick={() => fetchFiles(activeFolder, { force: true })} disabled={loading} spinning={loading} />
-              )}
-
             </>
-          }
+          )}
         />
 
       {/* Content */}
@@ -2095,15 +1928,15 @@ export default function Workspace({
           {/* Search sits in the content, below the header line */}
           <div className="shrink-0 px-2 pt-2">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-muted-foreground" />
+              <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
               <input
                 type="text"
-                placeholder="Search files and folders..."
+                placeholder="Filter files"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full rounded-md border border-input bg-transparent py-1.5 pl-10 pr-10 text-sm leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="block w-full rounded-md border border-input bg-transparent py-1 pl-8 pr-8 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
               {searchQuery && (
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">

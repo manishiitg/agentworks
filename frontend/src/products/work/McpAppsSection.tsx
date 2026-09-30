@@ -12,10 +12,11 @@ const errorText = (cause: unknown, fallback: string) => {
 
 /**
  * Sign-in apps, for admins (docs/design/code_private_mcp.md, "Sign-in apps").
- * Google, GitHub, Slack and a few others have no automatic app registration,
- * so people are asked for an OAuth client ID and secret. An admin sets one app
- * up per provider here, once; everyone's Connect then goes straight to the
- * provider's consent screen and signs in as themselves.
+ * Google and GitHub have no automatic app registration, so people are asked for an
+ * OAuth client ID and secret. An admin sets one app up per provider here, once;
+ * everyone's Connect then goes straight to the provider's consent screen and signs in
+ * as themselves. Only these two are listed (the product focuses on Google apps and
+ * GitHub); the server decides which providers appear (mcpAppFocusKeys).
  */
 export function McpAppsSection() {
   const [apps, setApps] = useState<McpAppGroup[]>([])

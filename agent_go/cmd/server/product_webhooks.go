@@ -645,6 +645,9 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	if !claimed {
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Duplicate: true, Status: existing.Status}, nil
 	}
+	if crewCallsCrewConversation(match) {
+		match.Trigger.Message = crewCallMessage(match.Trigger.Message, match.GuestCallerID == "")
+	}
 	message := ""
 	if peerCall {
 		// Different editors share the Code's files, but have private chats.
@@ -662,6 +665,13 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	job := productScheduleJob{UserID: match.UserID, GuestCallerID: match.GuestCallerID, Profile: match.Profile, ProjectID: match.Manifest.ID, ProjectTitle: match.Manifest.displayTitle(), WorkspacePath: match.Binding.WorkspacePath, ManifestPath: match.Binding.ManifestPath, AutomationKind: "trigger", Schedule: productschedule.Schedule{ID: match.Trigger.ID, Name: match.Trigger.Name, Enabled: true, Isolated: match.Trigger.ownConversation(), Messages: []string{message}}}
 	if peerCall {
 		job.PeerSourceID = match.Trigger.Caller.ID
+	}
+	// A Crew calling another Crew (user decision 2026-09-29, issue #213 C1):
+	// same owner, the turn runs in the called Crew's own chat; a different
+	// owner's call runs in a chat of its own for that calling person.
+	if crewCallsCrewConversation(match) {
+		job.Schedule.Isolated = match.GuestCallerID != ""
+		job.ConversationKey = match.GuestCallerID
 	}
 	functionCallID := ""
 	if match.Trigger.IsInternal() && strings.HasPrefix(deliveryID, "fn-") {
@@ -937,4 +947,26 @@ func (s *ProductScheduleService) getProductWebhookRun(w http.ResponseWriter, r *
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(productWebhookRunStatusDTO(entry))
+}
+
+// crewCallsCrewConversation reports a Crew-to-Crew internal call, whose
+// conversation follows the owners (crewCallConversationKey), not the
+// trigger's stored run destination.
+func crewCallsCrewConversation(match *productWebhookMatch) bool {
+	if match == nil || !match.Trigger.IsInternal() || match.Trigger.Caller == nil {
+		return false
+	}
+	caller := match.Trigger.Caller
+	return strings.EqualFold(strings.TrimSpace(caller.Type), triggerCallerCrew) &&
+		!strings.EqualFold(strings.TrimSpace(caller.ProfileID), codeproduct.ProfileID) &&
+		match.Profile.ID != codeproduct.ProfileID
+}
+
+// crewCallIsolatedKey is the conversation key of a cross-owner Crew call:
+// one chat per trigger and calling person.
+func crewCallIsolatedKey(triggerID, guestCallerID string) string {
+	if strings.TrimSpace(guestCallerID) == "" {
+		return triggerID
+	}
+	return triggerID + ":" + sanitizeUserIDForPath(guestCallerID)
 }

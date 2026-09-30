@@ -1,5 +1,7 @@
 # Crews at a shared root (`Crew/<id>`)
 
+> **Update 2026-09-30:** "Run mode" readers and guest calls now share one Crew prompt with the owner; the reader role is a block in front of each message, enforced by tools and folder guards, and refusals name `submit_crew_suggestion`. A guest call is a reader. See [project instruction files](project_instruction_files.md), [PLAT-371](../bugs/pulse_platform/security-sandbox/plat-371.md).
+
 Status: design, 2026-09-26. Not started.
 
 ## Problem

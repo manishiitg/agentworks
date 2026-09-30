@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -65,6 +66,49 @@ func codingAgentRequestAllowsPersistentInteractive(req *QueryRequest) bool {
 		return false
 	}
 	return strings.TrimSpace(req.SessionKind) == ""
+}
+
+// codingAgentRequestHasAttendingUser reports whether a person is watching this
+// chat in AgentWorks and can answer a coding CLI's native multiple-choice
+// question (PLAT-354). This is narrower than persistence: a scheduler keeps the
+// native session alive (KeepNativeSessionAlive) but nobody is there to answer,
+// so its questions must be auto-answered or the run waits forever. Bot
+// conversations are excluded too: the question card is only in AgentWorks,
+// not in the Slack or WhatsApp thread.
+// attendedChatHeader is sent only by the builder chat composer when a
+// person submits a message. It is an allow-list: schedules, bots, webhooks,
+// Crew calls, workflow runs and API clients never send it, so any new
+// automated path auto-answers native questions by default.
+const attendedChatHeader = "X-AgentWorks-Attended-Chat"
+
+func requestFromAttendedChat(r *http.Request) bool {
+	return r != nil && strings.TrimSpace(r.Header.Get(attendedChatHeader)) == "1"
+}
+
+func codingAgentRequestHasAttendingUser(req *QueryRequest, sessionID string) bool {
+	if req == nil {
+		return false
+	}
+	if strings.TrimSpace(req.ParentSessionID) != "" || strings.TrimSpace(req.SessionKind) != "" || req.IsAutoNotification {
+		return false
+	}
+	if strings.TrimSpace(req.BotPlatform) != "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.TriggeredBy)), "bot:") {
+		return false
+	}
+	// Only the builder chat shows question cards (user, 2026-09-29). Product
+	// chats (Code, Crew, Video Studio, ...) run on a server-stamped agent
+	// profile and auto-answer like every automated path.
+	if strings.TrimSpace(req.AgentProfileID) != "" {
+		return false
+	}
+	// "Make interactive" hands a schedule session to the user on purpose.
+	if req.UserInteractiveContinuation {
+		return true
+	}
+	if req.KeepNativeSessionAlive {
+		return false
+	}
+	return !isScheduledSessionIdentity(sessionID, req.TriggeredBy)
 }
 
 func codingAgentClaudeCodeChatTransport(provider string) string {

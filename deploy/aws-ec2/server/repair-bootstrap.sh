@@ -14,7 +14,9 @@ curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin nodejs
 systemctl enable --now docker
-npm install -g agent-browser@latest @anthropic-ai/claude-code@latest @earendil-works/pi-coding-agent@latest
+# claude and pi are managed per user under ~/.local by the deploy and the cli-update timer; never
+# install them system-wide (an old root copy silently wins when the managed one is missing).
+npm install -g agent-browser@latest
 id -u video-studio >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/video-studio --shell /usr/sbin/nologin video-studio
 bash "$script_dir/../../common/install-rootless-docker.sh" video-studio
 runuser -u video-studio -- env HOME=/var/lib/video-studio npx --yes hyperframes@0.8.6 browser ensure

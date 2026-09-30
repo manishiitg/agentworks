@@ -15,13 +15,13 @@ const codexManifest: ProviderManifestEntry = {
   usable: true,
   requires_api_key: false,
   supports_dynamic_models: false,
-  default_model_id: 'gpt-6-sol',
+  default_model_id: 'gpt-6.1-sol',
   default_tier_models: {
-    builder: { provider: 'codex-cli', model_id: 'gpt-6-sol', options: { reasoning_effort: 'high' } },
-    high: { provider: 'codex-cli', model_id: 'gpt-6-sol', options: { reasoning_effort: 'xhigh' } },
-    medium: { provider: 'codex-cli', model_id: 'gpt-6-sol', options: { reasoning_effort: 'medium' } },
+    builder: { provider: 'codex-cli', model_id: 'gpt-6.1-sol', options: { reasoning_effort: 'high' } },
+    high: { provider: 'codex-cli', model_id: 'gpt-6.1-sol', options: { reasoning_effort: 'xhigh' } },
+    medium: { provider: 'codex-cli', model_id: 'gpt-6.1-sol', options: { reasoning_effort: 'medium' } },
     low: { provider: 'codex-cli', model_id: 'gpt-6-luna', options: { reasoning_effort: 'medium' } },
-    maintenance: { provider: 'codex-cli', model_id: 'gpt-6-sol', options: { reasoning_effort: 'high' } },
+    maintenance: { provider: 'codex-cli', model_id: 'gpt-6.1-sol', options: { reasoning_effort: 'high' } },
   },
   models: [],
   capabilities: [],
@@ -37,7 +37,7 @@ describe('resolveDelegationMainModel', () => {
 
     expect(resolveDelegationMainModel(config, [codexManifest])).toEqual({
       provider: 'codex-cli',
-      model_id: 'gpt-6-sol',
+      model_id: 'gpt-6.1-sol',
       options: { reasoning_effort: 'high' },
     })
   })

@@ -63,7 +63,7 @@ export function ReportDocumentSwitcher({ workspacePath, active, onOpen }: {
   const copyShareLink = async (path: string) => {
     const currentUserId = useAuthStore.getState().user?.id || ''
     const publicWorkspacePath = publicWorkspacePathForUser(workspacePath, currentUserId)
-    const uid = publicWorkspacePath.startsWith('Chats/Work/projects/')
+    const uid = publicWorkspacePath.startsWith('Chats/Work/projects/') || publicWorkspacePath.startsWith('Chats/Code/projects/')
       ? currentUserId
       : ''
     const url = sharedReportLink(window.location.origin, publicWorkspacePath, path, uid)

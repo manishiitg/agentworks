@@ -14,6 +14,38 @@ function event(id: string, type: string, data: Record<string, unknown>, extra: P
 }
 
 describe('buildCleanConversationItems', () => {
+  it('shows native options and settles the same coding-agent choice', () => {
+    const requested = event('q1', 'coding_agent_question', {
+      provider: 'muse-cli', kind: 'requested', prompt_id: 'prompt-1',
+      questions: [{ id: 'scope', header: 'Scope', question: 'Choose a scope', options: [{ label: 'One', description: 'Small' }, { label: 'Two', description: 'Wide' }] }],
+    })
+    const pending = buildCleanConversationItems([requested])
+    expect(pending[0].codingAgentQuestion).toEqual(expect.objectContaining({ provider: 'muse-cli', state: 'pending', promptId: 'prompt-1' }))
+    const settled = buildCleanConversationItems([requested, event('q2', 'coding_agent_question', {
+      provider: 'muse-cli', kind: 'settled', prompt_id: 'prompt-1', outcome: 'answered', answers: [{ id: 'scope', selected_labels: ['Two'] }],
+    })])
+    expect(settled).toHaveLength(1)
+    expect(settled[0].codingAgentQuestion).toEqual(expect.objectContaining({ state: 'answered', answers: [{ id: 'scope', selectedLabels: ['Two'] }] }))
+  })
+
+  it('preserves Claude multi-select questions in the shared choice contract', () => {
+    const items = buildCleanConversationItems([event('claude-q', 'coding_agent_question', {
+      provider: 'claude-code', kind: 'requested', prompt_id: 'toolu_123',
+      questions: [{ id: 'question-1', header: 'Scope', question: 'Which areas?', multi_select: true, options: [{ label: 'API' }, { label: 'UI' }] }],
+    })])
+    expect(items[0].codingAgentQuestion).toEqual(expect.objectContaining({
+      provider: 'claude-code', promptId: 'toolu_123',
+      questions: [expect.objectContaining({ multiSelect: true })],
+    }))
+  })
+
+  it('keeps earlier Muse question events readable after the shared event change', () => {
+    const items = buildCleanConversationItems([
+      event('old-request', 'coding_agent_question', { provider: 'muse-cli', kind: 'user_input_prompt_requested', prompt_id: 'old-prompt', questions: [{ id: 'color', question: 'Color?', options: [{ label: 'Blue' }] }] }),
+      event('old-settle', 'coding_agent_question', { provider: 'muse-cli', kind: 'user_input_prompt_settled', prompt_id: 'old-prompt', outcome: 'answered', answers: [{ id: 'color', selected_label: 'Blue' }] }),
+    ])
+    expect(items[0].codingAgentQuestion?.answers).toEqual([{ id: 'color', selectedLabels: ['Blue'] }])
+  })
   it('keeps Muse background updates after the foreground answer in journal order', () => {
     const items = buildCleanConversationItems([
       event('task-start', 'coding_agent_background_task', { kind: 'task_backgrounded', task_id: 'task-a' }),

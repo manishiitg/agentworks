@@ -181,15 +181,15 @@ func TestCodeReviewerSeesEveryCodesCost(t *testing.T) {
 	}
 }
 
-// Inspection lists each person's own servers switched on in the Code (name,
-// URL without its query, signed-in state), audited; never to a member.
-func TestCodeInspectionListsPersonalServers(t *testing.T) {
+// Inspection lists the Code's MCP connections and who added each (name, URL
+// without its query, signed-in state), audited; never to a member.
+func TestCodeInspectionListsConnections(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
 	withPersonalMCPRoot(t)
-	if _, err := addPersonalMCPServer("owner", personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
+	if _, err := addPersonalMCPServer(placeMCPStoreID("owner", codePrivacyOwnerRoot), personalMCPServer{Name: "deepwiki", URL: "https://mcp.deepwiki.com/mcp?key=secret"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := setPersonalMCPEnabled("owner", codePrivacyOwnerRoot, "deepwiki", true); err != nil {
+	if err := recordPlaceMCP("owner", "deepwiki", codePrivacyOwnerRoot); err != nil {
 		t.Fatal(err)
 	}
 	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}

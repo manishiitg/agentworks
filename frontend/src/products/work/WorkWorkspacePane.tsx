@@ -337,18 +337,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-          headerAction={<AskAIButton
-            workspacePath={workspacePath}
-            message={`Help me with this ${noun} project's files. Explain what they do in plain words; this ${noun} is read-only for me, so do not offer to change anything.`}
-            onAsk={async message => { await ask(message) }}
-            iconOnly
-          />}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" headerAction={<AskAIButton
-          workspacePath={workspacePath}
-          message={`Help me with this ${noun} project's files. Ask what I want to find, understand, or change.`}
-          onAsk={async message => { await ask(message) }}
-          iconOnly
-        />} /></Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" /></Suspense>)}
         {view === 'share' && <CodeSharePanel projectId={projectId} workspacePath={workspacePath} />}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}

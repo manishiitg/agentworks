@@ -204,6 +204,8 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 type SessionShellConfig struct {
 	WorkflowPath      string   // Owning workflow for live capability reconciliation
 	WorkflowReadOnly  bool     // Current workflow turn cannot receive attached-folder write grants
+	CrewReader        bool     // Current turn is a read-only Crew reader (or a guest call): mutating Crew tools are refused
+	ReadOnlyAccess    bool     // The signed-in caller has read-only access to this session's target (not merely a pinned Run turn)
 	WorkingDir        string   // Default working directory (relative to workspace-docs)
 	FolderGuardSet    bool     // An explicit guard exists; empty capabilities must fail closed
 	ReadPaths         []string // Folder guard read paths for Isolator
@@ -234,6 +236,26 @@ type SessionShellConfig struct {
 func SetSessionWorkflowPath(sessionID, workflowPath string) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.WorkflowPath = strings.Trim(strings.TrimSpace(workflowPath), "/")
+	})
+}
+
+// SetSessionReadOnlyAccess records, on every turn, whether the caller's own access to
+// the session's Crew or workflow is read-only. The native terminal is refused for such a
+// session: it lets a person type straight into the coding CLI, which skips the read-only
+// notice the server puts in front of a reader's messages. A pinned Run turn on an owner's
+// session (a guest call) is not read-only access and does not set this.
+func SetSessionReadOnlyAccess(sessionID string, readOnly bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.ReadOnlyAccess = readOnly
+	})
+}
+
+// SetSessionCrewReader marks whether the session's current turn is a read-only
+// Crew reader, so the bridge can answer a call to a mutating Crew tool with the
+// mode instead of "not found". It is refreshed on every turn.
+func SetSessionCrewReader(sessionID string, crewReader bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.CrewReader = crewReader
 	})
 }
 

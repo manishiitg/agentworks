@@ -218,14 +218,18 @@ type liveAttachSocketHarness struct {
 	tmuxSession string
 }
 
-func newLiveAttachSocketHarness(t *testing.T, name string, respond func(string) liveattach.Reply) *liveAttachSocketHarness {
+func newLiveAttachSocketHarness(t *testing.T, name string, respond func(string) liveattach.Reply, owners ...string) *liveAttachSocketHarness {
 	t.Helper()
 	fake := installFakeAttach(t, respond)
 	store := terminals.NewStore()
 	sessionID := "session-" + name
-	terminalID := sessionID + ":main:" + sessionID
+	owner := "main:" + sessionID
+	if len(owners) > 0 {
+		owner = owners[0]
+	}
+	terminalID := sessionID + ":" + owner
 	tmuxSession := "tmux-" + name
-	store.HandleEvent(sessionID, terminalRouteChunkEvent(sessionID, "main:"+sessionID, tmuxSession, "pane", 1))
+	store.HandleEvent(sessionID, terminalRouteChunkEvent(sessionID, owner, tmuxSession, "pane", 1))
 	api := &StreamingAPI{terminalStore: store, liveAttach: newLiveAttachManager()}
 	// Hijacked handlers outlive httptest's Close; wait for them so a lingering
 	// handler never reads a tunable the next test is rewriting.
@@ -343,11 +347,9 @@ func TestHandleTerminalStreamReseedsOnSameSocket(t *testing.T) {
 	}
 }
 
-// TestHandleTerminalStreamRefusesInputFrames pins the display-only socket:
-// binary input, `input`/`key` frames and unparsable or unknown JSON never reach
-// the pane. Only `resize` is acted on.
-func TestHandleTerminalStreamRefusesInputFrames(t *testing.T) {
-	h := newLiveAttachSocketHarness(t, "refuse-input", widthTrackingResponder(nil, nil))
+// Workflow child diagnostics remain display-only even with native main input.
+func TestHandleTerminalStreamRefusesChildInputFrames(t *testing.T) {
+	h := newLiveAttachSocketHarness(t, "refuse-input", widthTrackingResponder(nil, nil), "workflow-step:debug")
 	var mu sync.Mutex
 	var tmuxCalls []string
 	record := func(args []string) {
@@ -371,9 +373,10 @@ func TestHandleTerminalStreamRefusesInputFrames(t *testing.T) {
 		mt   int
 		data string
 	}{
-		{websocket.BinaryMessage, "rm -rf /\r"},
+		{websocket.BinaryMessage, "native-input\r"},
 		{websocket.TextMessage, `{"type":"input","text":"typed","submit":true}`},
 		{websocket.TextMessage, `{"type":"key","key":"Enter"}`},
+		{websocket.TextMessage, `{"type":"paste","text":"native paste"}`},
 		{websocket.TextMessage, `not json at all`},
 		{websocket.TextMessage, `{"type":"bogus","text":"x"}`},
 		{websocket.TextMessage, `{"type":"resize","cols":91,"rows":30}`},

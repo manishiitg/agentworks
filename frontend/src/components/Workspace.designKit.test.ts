@@ -10,7 +10,6 @@ const FILES_SURFACE = [
   'src/components/workspace/RenameFileDialog.tsx',
   'src/components/workspace/CreateFolderDialog.tsx',
   'src/components/workspace/PushToGistDialog.tsx',
-  'src/components/workspace/FileRevisionsModal.tsx',
   'src/components/ui/ImportProgressDialog.tsx',
   'src/components/ui/ConfirmationDialog.tsx',
   'src/components/FileContextDisplay.tsx',
@@ -32,20 +31,26 @@ const BANNED_PALETTE = [
 ]
 
 describe('Files design kit', () => {
-  it('keeps the Files header on the shared standard with Ask AI left of refresh', () => {
+  it('keeps the Explorer header VS Code-style: title, Open Editors, then the folder toolbar', () => {
     const workspace = readFileSync('src/components/Workspace.tsx', 'utf8')
+    const header = readFileSync('src/components/workspace/ExplorerHeader.tsx', 'utf8')
 
-    expect(workspace).toContain('<WorkspaceViewHeader')
-    expect(workspace).toContain('label="Refresh files"')
-    expect(workspace.indexOf('{headerAction}')).toBeLessThan(workspace.indexOf('label="Refresh files"'))
+    expect(workspace).toContain('<ExplorerHeader')
+    for (const label of ['Upload file', 'New folder', 'Refresh files', 'Collapse all folders', 'Select files']) {
+      expect(workspace).toContain(`aria-label="${label}"`)
+    }
+    // The agent action sits with the title, the toolbar icons on the folder row.
+    expect(header.indexOf('Explorer')).toBeLessThan(header.indexOf('<OpenEditors />'))
+    expect(header.indexOf('<OpenEditors />')).toBeLessThan(header.indexOf('{toolbar}'))
+    expect(header).toContain('Open Editors')
   })
 
-  it('keeps search in the content below the header line, not inside the header', () => {
+  it('keeps the filter in the content below the header, not inside it', () => {
     const workspace = readFileSync('src/components/Workspace.tsx', 'utf8')
 
     expect(workspace).not.toContain('below={')
     expect(workspace).toContain('Search sits in the content, below the header line')
-    expect(workspace).toContain('placeholder="Search files and folders..."')
+    expect(workspace).toContain('placeholder="Filter files"')
   })
 
   it('routes feedback through kit toasts and dialogs, never hand-rolled fixed popups', () => {
@@ -54,8 +59,9 @@ describe('Files design kit', () => {
       expect(source).not.toContain('fixed bottom-4 right-4')
       expect(source).not.toContain('window.confirm')
       expect(source).toContain('addToast')
-      expect(source).toContain('<ConfirmationDialog')
     }
+    // The viewer is read-only now; the tree's destructive actions still confirm.
+    expect(readFileSync('src/components/Workspace.tsx', 'utf8')).toContain('<ConfirmationDialog')
   })
 
   it('keeps the Files surface on kit tokens (emerald/amber carry success/warning)', () => {
@@ -107,7 +113,9 @@ describe('Files design kit', () => {
     const viewer = readFileSync('src/components/FileContentViewer.tsx', 'utf8')
 
     expect(viewer).not.toContain('exportProgress')
-    expect(viewer).toContain('if (!canEdit) return')
+    // Viewer only: no edit mode (people ask the agent to change files).
+    expect(viewer).not.toContain('isEditMode')
+    expect(viewer).not.toContain('handleSave')
     expect(viewer).not.toContain('navigator.clipboard.writeText')
     expect(viewer).toContain("Couldn't load this image")
     expect(viewer).toContain('parsedJsonContent')

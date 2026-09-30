@@ -46,6 +46,9 @@ interface SkillsManagerPanelProps {
   libraryReadOnly?: boolean
   /** Shown instead of Import when the library is read-only. */
   libraryReadOnlyHint?: string
+  /** Show only the skills this workflow, Crew or Code uses: no library, no
+   * search, no import. Skills are added by asking the agent. */
+  selectedOnly?: boolean
 }
 
 export default function SkillsManagerPanel({
@@ -66,6 +69,7 @@ export default function SkillsManagerPanel({
   splitSelectionGroups = false,
   libraryReadOnly = false,
   libraryReadOnlyHint,
+  selectedOnly = false,
 }: SkillsManagerPanelProps) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [internalQuery, setInternalQuery] = useState('')
@@ -169,6 +173,41 @@ export default function SkillsManagerPanel({
       ))}
     </div>
   )
+
+  if (selectedOnly) {
+    const used = visibleSkills.filter(skill => (selectedSkills || []).includes(skill.folder_name))
+    // A selected skill that is not in the loaded list must never be invisible.
+    const missing = (selectedSkills || []).filter(name => !skills.some(skill => skill.folder_name === name))
+    return (
+      <div className="flex flex-col gap-2">
+        {headerAction && <div className="flex justify-end">{headerAction}</div>}
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
+            <AlertCircle className="w-4 h-4" />
+            <span>Error: {error}</span>
+          </div>
+        )}
+        {isLoading && skills.length === 0 ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-gray-500 dark:text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Loading skills...</span>
+          </div>
+        ) : used.length === 0 && missing.length === 0 ? (
+          <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">{emptySelectionText}</p>
+        ) : (
+          <>
+            {used.length > 0 && renderSkillList(used)}
+            {missing.map(name => (
+              <div key={name} className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm dark:border-gray-700">
+                <span className="font-medium text-foreground">{name}</span>
+                <button type="button" onClick={() => onToggleSkill?.(name)} disabled={readOnly} className="text-xs text-primary hover:underline disabled:opacity-50">Remove</button>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`${manageOwnScroll ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col'} ${compact ? 'gap-2' : 'gap-3'}`}>

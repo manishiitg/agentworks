@@ -198,6 +198,12 @@ func RegisterFeatureSkills(profileID, productName string) error {
 	}
 	bindings := make([]agentprofiles.SkillFileBinding, 0, len(productSkills))
 	for _, binding := range productSkills {
+		// A product whose MCP feature is personal-scope (a Code) has no
+		// platform-wide connections to describe: it gets the connections text
+		// under the same skill name (code-mcp).
+		if binding.Name == "work-mcp" && profileID != "work" {
+			binding.Path = "skills/work-mcp-connections/SKILL.md"
+		}
 		binding.Name = agentprofiles.FeatureSkillName(profileID, binding.Name)
 		binding.Description = render(binding.Description)
 		bindings = append(bindings, binding)

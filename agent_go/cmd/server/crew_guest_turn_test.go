@@ -47,8 +47,8 @@ func TestCrewGuestCallerForTurnOnlyNarrowsTheOwnersTurn(t *testing.T) {
 	if got := crewGuestCallerForTurn(workflow, "alice"); got != "" {
 		t.Fatalf("non-Crew turn = %q", got)
 	}
-	if prompt := crewGuestSystemPrompt("bob"); !strings.Contains(prompt, crewSuggestionToolName) || !strings.Contains(prompt, "Change nothing") {
-		t.Fatalf("guest prompt: %s", prompt)
+	if prompt := crewSessionModeNotice("_users/alice/Chats/Work/projects/x", false); !strings.Contains(prompt, crewSuggestionToolName) || !strings.Contains(prompt, "Change nothing") {
+		t.Fatalf("reader prompt used for a guest: %s", prompt)
 	}
 }
 

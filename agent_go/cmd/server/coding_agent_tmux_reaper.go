@@ -284,7 +284,9 @@ func closeCodingAgentTmuxSessionByName(tmuxSession, reason string) bool {
 // rejects concurrent sessions in one directory when their MCP bridge configs
 // differ; multi-agent chats intentionally share _users/<user>/Chats, so a
 // completed app session whose tmux process is still alive can block new chats.
-func (api *StreamingAPI) cleanupConflictingPiCLIInteractiveSessions(currentSessionID, workingDir, reason string) int {
+// closeBusy also closes a session mid-turn: only after waiting for it ran
+// out (it is likely stuck).
+func (api *StreamingAPI) cleanupConflictingPiCLIInteractiveSessions(currentSessionID, workingDir, reason string, closeBusy bool) int {
 	if api == nil || api.terminalStore == nil {
 		return 0
 	}
@@ -316,6 +318,14 @@ func (api *StreamingAPI) cleanupConflictingPiCLIInteractiveSessions(currentSessi
 		}
 		lease, leased := registry.GetByTerminal(snapshot.TerminalID)
 		if !leased || lease.ProcessState == terminalleases.ProcessClosed {
+			continue
+		}
+		// Never close a Pi CLI that is in the middle of a turn: that killed a
+		// Crew's running chat when a function call started in the same
+		// folder (issue #213, C7). The caller waits for it to finish first.
+		if !closeBusy && api.conversationTurnOccupied(snapshot.SessionID) {
+			log.Printf("[PI_CLI_CONFLICT] Keeping busy Pi CLI session %s tmux=%s while starting %s",
+				snapshot.SessionID, tmuxSession, currentSessionID)
 			continue
 		}
 		ownershipCtx, ownershipCancel := context.WithTimeout(context.Background(), terminalTmuxActionTimeout)
@@ -428,4 +438,63 @@ func cleanCodingAgentWorkingDir(path string) string {
 		return ""
 	}
 	return filepath.Clean(path)
+}
+
+// busyConflictingPiCLISession returns another session running a Pi CLI turn
+// in workingDir, or "" when none is: a new Pi session there waits for it
+// instead of closing it mid-turn.
+func (api *StreamingAPI) busyConflictingPiCLISession(currentSessionID, workingDir string) string {
+	if api == nil || api.terminalStore == nil {
+		return ""
+	}
+	targetWorkingDir := cleanCodingAgentWorkingDir(workingDir)
+	if targetWorkingDir == "" {
+		return ""
+	}
+	for _, snapshot := range api.terminalStore.ListRaw("") {
+		if snapshot.SessionID == strings.TrimSpace(currentSessionID) || !snapshot.Active {
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(snapshot.TmuxSession), "mlp-pi-cli") || !codingAgentSnapshotIsMainAgent(snapshot) {
+			continue
+		}
+		if !sameCodingAgentWorkingDir(codingAgentSnapshotWorkingDir(snapshot), targetWorkingDir) {
+			continue
+		}
+		if api.conversationTurnOccupied(snapshot.SessionID) {
+			return snapshot.SessionID
+		}
+	}
+	return ""
+}
+
+// piCLIConflictWait bounds how long a new Pi session waits for another
+// session's running turn in the same folder; a var so tests can shorten it.
+var piCLIConflictWait = 15 * time.Minute
+
+// waitForBusyPiCLISessions blocks until no other Pi CLI turn runs in
+// workingDir, ctx ends, or the wait limit passes. It reports whether a busy
+// session is still there after the limit (likely stuck: close it).
+func (api *StreamingAPI) waitForBusyPiCLISessions(ctx context.Context, currentSessionID, workingDir string) bool {
+	deadline := time.Now().Add(piCLIConflictWait)
+	logged := false
+	for {
+		busy := api.busyConflictingPiCLISession(currentSessionID, workingDir)
+		if busy == "" {
+			return false
+		}
+		if !logged {
+			log.Printf("[PI_CLI_CONFLICT] %s waits for %s to finish its turn in %s", currentSessionID, busy, workingDir)
+			logged = true
+		}
+		if time.Now().After(deadline) {
+			log.Printf("[PI_CLI_CONFLICT] %s stopped waiting for %s after %s", currentSessionID, busy, piCLIConflictWait)
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(2 * time.Second):
+		}
+	}
 }

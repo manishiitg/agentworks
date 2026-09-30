@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -191,15 +192,24 @@ func (api *StreamingAPI) workflowChatNativeAgentTools(ctx context.Context, req Q
 	return err == nil && found && manifest != nil && manifest.Capabilities.NativeAgentToolsEnabled()
 }
 
-// plainChatNativeAgentTools reports whether an AgentWorks chat with no
-// workflow and no product profile runs with native agent tools: on for
-// every turn type (owner decision 2026-09-29), off for read-only principals.
-func plainChatNativeAgentTools(req QueryRequest, readOnly bool) bool {
-	mode := strings.TrimSpace(req.AgentMode)
-	if readOnly || mode == "workflow_phase" || mode == "workflow" || strings.TrimSpace(req.AgentProfileID) != "" {
-		return false
-	}
-	return !strings.HasPrefix(strings.Trim(strings.TrimSpace(req.SelectedFolder), "/"), "Workflow/")
+// errRetiredGeneralChat is the refusal for a request that names neither a
+// workflow nor a product: there is no general-purpose chat, only workflows,
+// Crews and Code.
+var errRetiredGeneralChat = errors.New("there is no general chat; start a chat in a workflow, a Crew or a Code")
+
+// isRetiredGeneralChat reports whether req is an interactive multi-agent chat
+// with no workflow, Crew or Code behind it. Bots, schedules, triggers, child
+// sessions and auto-notifications are not interactive chats and are not refused.
+func isRetiredGeneralChat(req *QueryRequest, profile *resolvedAgentProfile, sessionID string) bool {
+	return req != nil && profile == nil &&
+		req.AgentMode == "multi-agent" &&
+		!req.IsAutoNotification &&
+		strings.TrimSpace(req.BotPlatform) == "" &&
+		strings.TrimSpace(req.TriggeredBy) == "" &&
+		strings.TrimSpace(req.ParentSessionID) == "" &&
+		strings.TrimSpace(req.SessionKind) == "" &&
+		strings.TrimSpace(req.AgentProfileID) == "" &&
+		!isScheduledSessionIdentity(sessionID, req.TriggeredBy)
 }
 
 // External Builder intentionally has no cross-workflow context or filesystem

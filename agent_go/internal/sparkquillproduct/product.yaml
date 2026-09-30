@@ -126,7 +126,7 @@ profile:
         label: Codex
         provider: codex-cli
         model_id: gpt-6-luna
-        models: [gpt-6-luna, gpt-6-sol, gpt-6-astra]
+        models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: medium
@@ -259,7 +259,7 @@ profiles:
           label: Codex
           provider: codex-cli
           model_id: gpt-6-luna
-          models: [gpt-6-luna, gpt-6-sol, gpt-6-astra]
+          models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]
           reasoning_efforts: [low, medium, high]
           options:
             reasoning_effort: high

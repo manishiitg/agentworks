@@ -14,6 +14,10 @@ export interface ChatRequestContext {
   continuation?: boolean
   identity?: number
   queuedDelivery?: boolean
+  /** A person typed this in the builder chat composer; only then may a
+   *  coding agent's native question wait for them. Product chats and every
+   *  automated path auto-answer. */
+  attendedChat?: boolean
 }
 
 function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {}) {
@@ -27,6 +31,7 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
       ...(context.queuedDelivery ? { 'X-Queued-Chat-Delivery': 'true' } : {}),
+      ...(context.attendedChat ? { 'X-AgentWorks-Attended-Chat': '1' } : {}),
     },
   }
 }
@@ -1518,6 +1523,15 @@ export const agentApi = {
     return response.data
   },
 
+  submitCodingAgentQuestion: async (sessionId: string, provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[] }>, auto = false): Promise<void> => {
+    await api.post(`/api/sessions/${sessionId}/coding-agent-question/answer`, {
+      provider,
+      prompt_id: promptId,
+      auto,
+      answers: answers.map((answer) => ({ id: answer.id, selected_labels: answer.selectedLabels })),
+    }, { headers: { 'X-Session-ID': sessionId } })
+  },
+
 
   // Human Feedback Management
   // Submit human feedback response
@@ -2176,22 +2190,6 @@ export const agentApi = {
 
   searchDocuments: async (params: { query: string; search_type?: string; folder?: string; limit?: number }) => {
     const response = await workspaceApi.get('/api/search', { params })
-    return response.data
-  },
-
-  // File Version History API
-  getFileVersions: async (filepath: string, limit: number = 10) => {
-    const response = await workspaceApi.get(`/api/versions/${encodeURIComponent(filepath)}`, {
-      params: { limit }
-    })
-    return response.data
-  },
-
-  restoreFileVersion: async (filepath: string, commitHash: string, commitMessage?: string) => {
-    const response = await workspaceApi.post(`/api/restore/${encodeURIComponent(filepath)}`, {
-      commit_hash: commitHash,
-      commit_message: commitMessage
-    })
     return response.data
   },
 

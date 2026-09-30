@@ -8,7 +8,6 @@ import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
-import { PersonalMcpSection } from './PersonalMcpSection'
 import { PlaceMcpSection } from './PlaceMcpSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -17,7 +16,6 @@ import { useMCPStore } from '../../stores/useMCPStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
-import { crewTemplates } from './crewTemplates'
 
 export type WorkIntegrationTab = 'apps' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -42,8 +40,9 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 }
 
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
-// the person's own connections only (PersonalMcpSection); the always-on MCP
-// "Connect" tab is hidden, and Google is reached through MCP servers only.
+// the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
+// the always-on MCP "Connect" tab is hidden, and Google is reached through MCP
+// servers only.
 const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'gmail'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
@@ -121,7 +120,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
     <div className="flex flex-col gap-3">
       {/* A Crew's own connections with someone's login. A shared Crew
           arrives under its owner's _users/ path: viewers see, never add. */}
-      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} />
+      <PlaceMcpSection workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
       {needsConnecting.length > 0 && (
         <div data-testid="work-mcp-needs-connecting" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
           <div className="flex items-center gap-2 font-medium">
@@ -236,7 +235,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, projectTemplates, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
+export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange }: {
   workspacePath: string
   projectId: string
   projectTitle: string
@@ -258,7 +257,6 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
-  const templates = crewTemplates.filter(item => projectTemplates.some(installed => installed.id === item.id && installed.version === item.version))
 
   const toggleSkill = async (folderName: string) => {
     const next = selectedSkills.includes(folderName)
@@ -297,7 +295,11 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         tabs={{ value: activeTab, onChange: (value: string) => setTab(value as WorkIntegrationTab), options: visibleTabs, ariaLabel: 'Integrations' }}
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'apps' && product.profileId === 'code' && <PersonalMcpSection projectId={projectId} onAsk={onAsk} />}
+        {activeTab === 'apps' && product.profileId === 'code' && (
+          // A Code is a place like a Crew: its connections are its own, added
+          // by its owner (a shared Code arrives under the owner's _users/ path).
+          <PlaceMcpSection workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
+        )}
         {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody
           tabId={tabId}
           projectId={projectId}
@@ -305,31 +307,16 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
         />}
-        {activeTab === 'skills' && <div className="space-y-3">
-          {templates.map(template => <div key={template.id} className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <p className="text-xs font-semibold text-foreground">Included with {template.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">These skills live in this {product.noun}’s files and are selected only for this {product.noun}.</p>
-            {template.selectedSkills.map(skill => <div key={skill} className="mt-2 flex items-center justify-between gap-2 text-xs">
-              <span className="font-medium text-foreground">{skill}</span>
-              <button type="button" onClick={() => { void toggleSkill(skill) }} className="rounded-md border border-border px-2 py-1 font-semibold text-primary hover:bg-primary/10">
-                {selectedSkills.includes(skill) ? 'Selected · remove' : 'Select skill'}
-              </button>
-            </div>)}
-          </div>)}
-          <SkillsManagerPanel
-            compact
-            manageOwnScroll={false}
-            workspacePath={workspacePath}
-            selectedSkills={selectedSkills}
-            onToggleSkill={folderName => { void toggleSkill(folderName) }}
-            selectionLabel="Skills for this project"
-            emptySelectionText="No project skills yet — pick one below."
-            selectionScopeLabel="project"
-            libraryReadOnly={product.profileId === 'code'}
-            libraryReadOnlyHint="Ask the agent to install or create a skill; it stays private to this workspace."
-          />
-          {product.profileId === 'code' ? <p className="text-xs text-muted-foreground">Skills you add here stay in this workspace’s skills/ folder: ask the agent to install or create one. The shared library above is read-only from a Code.</p> : null}
-        </div>}
+        {activeTab === 'skills' && <SkillsManagerPanel
+          compact
+          selectedOnly
+          manageOwnScroll={false}
+          workspacePath={workspacePath}
+          selectedSkills={selectedSkills}
+          onToggleSkill={folderName => { void toggleSkill(folderName) }}
+          selectionScopeLabel="project"
+          emptySelectionText={`No skills are used in this ${product.noun} yet. Ask the agent to add or create one.`}
+        />}
         {activeTab === 'slack' && <WorkflowBotsPanel
           workspacePath={workspacePath}
           fixedChannel="slack"

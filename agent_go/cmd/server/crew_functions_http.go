@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
 	"sort"
 	"strings"
@@ -49,8 +50,10 @@ type crewFunctionCallView struct {
 	FinishedAt     *time.Time             `json:"finished_at,omitempty"`
 }
 
-// recentCrewFunctionCalls returns the latest calls made to one Crew.
-func recentCrewFunctionCalls(targetID string) []crewFunctionCallView {
+// recentCrewFunctionCalls returns the latest calls made to one Crew. A call
+// to a Code (a private same-owner peer call) is shown only to the person who
+// made it: the Code's owner never sees an editor's private runs (#246 review).
+func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallView {
 	crewFunctionCalls.Lock()
 	calls := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
 	for _, call := range crewFunctionCalls.m {
@@ -61,6 +64,10 @@ func recentCrewFunctionCalls(targetID string) []crewFunctionCallView {
 	for _, call := range calls {
 		call.mu.Lock()
 		if call.TargetKind != triggerCallerCrew || call.TargetID != strings.TrimSpace(targetID) {
+			call.mu.Unlock()
+			continue
+		}
+		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != strings.TrimSpace(requesterID) {
 			call.mu.Unlock()
 			continue
 		}
@@ -108,7 +115,7 @@ func (s *ProductScheduleService) listCrewFunctionsHTTP(w http.ResponseWriter, r 
 		views = append(views, functionView{crewFunction: fn, Implicit: !declared})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(target.CrewID)})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"functions": views, "calls": recentCrewFunctionCalls(target.CrewID, GetUserIDFromContext(r.Context()))})
 }
 
 func (s *ProductScheduleService) deleteCrewFunctionHTTP(w http.ResponseWriter, r *http.Request) {

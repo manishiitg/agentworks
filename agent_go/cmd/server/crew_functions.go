@@ -1520,6 +1520,12 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if !ok || !codeRoleFor(ctx, userID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
 				return nil, caller, fmt.Errorf("private Code access denied")
 			}
+			// Every editor of a shared Code has the same Code root, so a call
+			// made from it belongs to the person who made it, not to every
+			// editor (#246 review M1).
+			if call.CallerProfileID == codeproduct.ProfileID && call.UserID != userID {
+				return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
+			}
 			isCodeSource := crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 			if isCodeSource && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 				return nil, caller, fmt.Errorf("private Code access denied")

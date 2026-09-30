@@ -710,12 +710,12 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 
 							if isPathBlockedWrite(cleanedPath) {
 								log.Printf("[%s] Blocked WRITE to '%s' (cleaned: '%s') for tool %s — path is under a blocked-write prefix (%v)", logPrefix, pathStr, cleanedPath, toolNameCopy, blockedWritePrefixes)
-								return "", fmt.Errorf("access denied: '%s' is under a blocked-write prefix (%v) — this folder is read-only even though its parent is writable", pathStr, blockedWritePrefixes)
+								return "", fmt.Errorf("access denied: '%s' is under a blocked-write prefix (%v) — this folder is read-only even though its parent is writable%s", pathStr, blockedWritePrefixes, readOnlyRefusalHint(ctx))
 							}
 
 							if !isPathAllowed(cleanedPath) {
 								log.Printf("[%s] Blocked WRITE to '%s' (cleaned: '%s') for tool %s - allowed folders: %v", logPrefix, pathStr, cleanedPath, toolNameCopy, allowedWriteFolders)
-								return "", fmt.Errorf("access denied: cannot write to '%s' (allowed write folders: %v)", pathStr, allowedWriteFolders)
+								return "", fmt.Errorf("access denied: cannot write to '%s' (allowed write folders: %v)%s", pathStr, allowedWriteFolders, readOnlyRefusalHint(ctx))
 							}
 						}
 					}

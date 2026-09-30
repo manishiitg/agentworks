@@ -103,6 +103,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			PersistentPi:                      config.PiPersistentInteractiveSession,
 			PersistentMuse:                    config.MusePersistentInteractiveSession,
 			PersistentAgy:                     config.AgyPersistentInteractiveSession,
+			UserAnswersNativeQuestions:        config.CodingAgentUserAnswersNativeQuestions,
 			CursorBridgeTools:                 config.CursorBridgeToolsMode,
 			AgentToolsMode:                    config.CodingAgentToolsMode,
 			ApprovalsMode:                     config.CodingAgentApprovalsMode,
@@ -318,9 +319,12 @@ type LLMAgentConfig struct {
 	PiPersistentInteractiveSession         bool
 	MusePersistentInteractiveSession       bool
 	AgyPersistentInteractiveSession        bool
-	CursorBridgeToolsMode                  bool
-	CodingAgentToolsMode                   string
-	CodingAgentApprovalsMode               string
+	// CodingAgentUserAnswersNativeQuestions: a person attends this chat and can
+	// answer the coding CLI's native questions; otherwise they are auto-answered.
+	CodingAgentUserAnswersNativeQuestions bool
+	CursorBridgeToolsMode                 bool
+	CodingAgentToolsMode                  string
+	CodingAgentApprovalsMode              string
 	// BridgeRoutingInstructionsOverride replaces mcpagent's generic
 	// bridge-only preamble. Product profiles with native coding tools use an
 	// empty override because their own prompt explains the product tools.
@@ -710,6 +714,41 @@ func (w *LLMAgentWrapper) AddObserver(observer mcpagent.AgentEventListener) erro
 		return errors.New("observer cannot be nil")
 	}
 	w.observers = append(w.observers, observer)
+	return nil
+}
+
+// UpgradeCodingAgentToolsToFull turns a hybrid ("Native agent tools") chat
+// into Full CLI before the Agent is finalized. mcpagent applies Full CLI only
+// when the CLI is confined by the Landlock launcher. It reports whether the
+// mode changed; any other mode is left alone.
+func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return false, errors.New("agent definition is already finalized")
+	}
+	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+		return false, nil
+	}
+	w.runtime.Coding.AgentToolsMode = "full"
+	return true, nil
+}
+
+// SetCLISecurityPolicy replaces the coding CLI's launch policy before the
+// immutable Agent is finalized (the chat's folder guard is known only after
+// the wrapper is built).
+func (w *LLMAgentWrapper) SetCLISecurityPolicy(policy *llmtypes.CLISecurityPolicy) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return errors.New("agent definition is already finalized")
+	}
+	if policy == nil {
+		w.runtime.Coding.CLISecurityPolicy = nil
+		return nil
+	}
+	copyPolicy := policy.Clone()
+	w.runtime.Coding.CLISecurityPolicy = &copyPolicy
 	return nil
 }
 

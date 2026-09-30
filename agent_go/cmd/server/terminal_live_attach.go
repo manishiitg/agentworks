@@ -14,12 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxinput"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/liveattach"
@@ -36,8 +38,8 @@ import (
 // GET /api/terminals/{id}/stream upgrades to a WebSocket that attaches one
 // `tmux -CC attach` control-mode client per tmux session, parses %output into
 // the live pane byte stream, and applies browser resize frames back to the
-// session. The socket is display-only: it never carries input (chat live input
-// reaches tmux over its own endpoints).
+// session. Main-agent panes accept native keyboard input;
+// child panes accept resize frames only.
 //
 // All tmux commands the transport needs (resize-window, the capture-pane
 // backfill, the cursor query) are written to the control client's OWN stdin
@@ -54,6 +56,12 @@ const (
 	// closed, the WebSocket closes, and the frontend reconnects and re-seeds);
 	// silently dropping individual chunks would tear escape sequences.
 	liveAttachSubBuffer = 256
+	// Bound bytes as well as frame count: control-mode output can produce a
+	// multi-megabyte frame, so 256 slots alone could retain a gigabyte per viewer.
+	liveAttachSubMaxBytes = 16 * 1024 * 1024
+	// A browser that stops reading must not leave the writer and input reader
+	// alive indefinitely. The frontend recovers by reconnecting with a seed.
+	liveAttachWriteTimeout = 10 * time.Second
 	// liveAttachScannerInitial is the initial control-line scan buffer; it grows
 	// up to liveattach.MaxControlLineBytes for large %output bursts.
 	liveAttachScannerInitial = 1 << 16
@@ -116,6 +124,15 @@ var signalLiveAttachPaneProcess = func(pid int) error {
 // always on (the RUNLOOP_TERMINAL_LIVE_ATTACH feature flag was removed).
 func liveAttachEnabled() bool {
 	return true
+}
+
+type liveAttachViewerContextKey struct{}
+
+func checkLiveAttachInputOwner(ctx context.Context) error {
+	if viewer, ok := ctx.Value(liveAttachViewerContextKey{}).(*liveAttachViewer); ok && viewer.wasSuperseded() {
+		return fmt.Errorf("terminal opened in another window")
+	}
+	return nil
 }
 
 // newLiveAttachManagerIfEnabled always creates the manager (live-attach is the
@@ -191,8 +208,9 @@ func leadingInt(s string) (int, string, bool) {
 // shared by that session's WebSocket viewers (the product constraint is a
 // single viewer per terminal, but the manager is written to tolerate more).
 type liveAttachManager struct {
-	mu       sync.Mutex
-	sessions map[string]*liveAttachStream
+	mu              sync.Mutex
+	sessions        map[string]*liveAttachStream
+	nativeObservers map[string]*nativeTerminalObserver
 }
 
 func newLiveAttachManager() *liveAttachManager {
@@ -237,8 +255,8 @@ const (
 	liveAttachPingInterval = 25 * time.Second
 	liveAttachPongWait     = 60 * time.Second
 	liveAttachWriteWait    = 10 * time.Second
-	// The browser only ever sends small resize frames.
-	liveAttachReadLimitBytes = 64 << 10
+	// Keyboard frames and native paste share the bounded connection.
+	liveAttachReadLimitBytes = 4 << 20
 )
 
 // Periodic checks while a socket is attached (package vars so tests can shorten
@@ -270,7 +288,8 @@ type liveAttachFrame struct {
 // correctly; the product rule is one viewer per terminal, and this type carries
 // the eviction bookkeeping that enforces it.
 type liveAttachViewer struct {
-	ch chan liveAttachFrame
+	ch           chan liveAttachFrame
+	pendingBytes atomic.Int64
 
 	mu sync.Mutex
 	// superseded records that this viewer was evicted by a newer one, so the
@@ -554,9 +573,17 @@ func (st *liveAttachStream) broadcast(b []byte) {
 		watchers = append(watchers, watcher)
 	}
 	for v := range st.subs {
-		select {
-		case v.ch <- liveAttachFrame{data: cp}:
-		default:
+		queued := false
+		if v.pendingBytes.Load()+int64(len(cp)) <= liveAttachSubMaxBytes {
+			v.pendingBytes.Add(int64(len(cp)))
+			select {
+			case v.ch <- liveAttachFrame{data: cp}:
+				queued = true
+			default:
+				v.pendingBytes.Add(-int64(len(cp)))
+			}
+		}
+		if !queued {
 			delete(st.subs, v)
 			close(v.ch)
 			dropped = true
@@ -966,7 +993,7 @@ func (st *liveAttachStream) captureSeedThen(cols, rows int, finish func(history,
 						return // stream dying; the seed waiter unblocks via st.done
 					}
 				}
-				cursorCmd, sendErr = st.sendCommand(fmt.Sprintf("display-message -p -t %s '#{cursor_x},#{cursor_y}'", st.tmuxSession), nil)
+				cursorCmd, sendErr = st.sendCommand(fmt.Sprintf("display-message -p -t %s '#{cursor_x},#{cursor_y}|#{alternate_on},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{mouse_utf8_flag},#{scroll_region_upper},#{scroll_region_lower},#{origin_flag},#{wrap_flag},#{insert_flag}'", st.tmuxSession), nil)
 				if sendErr != nil {
 					return
 				}
@@ -1156,7 +1183,7 @@ func (st *liveAttachStream) reseedViewer(ctx context.Context, viewer *liveAttach
 		// Marker and seed are queued together or not at all. Only the scanner
 		// goroutine (this one) sends on viewer channels, and it holds st.mu, so
 		// the free-capacity check cannot race another send.
-		if cap(viewer.ch)-len(viewer.ch) < 2 {
+		if cap(viewer.ch)-len(viewer.ch) < 2 || viewer.pendingBytes.Load()+int64(len(marker)+len(seed)) > liveAttachSubMaxBytes {
 			delete(st.subs, viewer)
 			close(viewer.ch)
 			last := len(st.subs) == 0 && st.seeding == 0 && len(st.outputWatchers) == 0
@@ -1168,6 +1195,7 @@ func (st *liveAttachStream) reseedViewer(ctx context.Context, viewer *liveAttach
 			resultCh <- fmt.Errorf("viewer buffer full at reseed")
 			return
 		}
+		viewer.pendingBytes.Add(int64(len(marker) + len(seed)))
 		viewer.ch <- liveAttachFrame{data: marker, text: true}
 		viewer.ch <- liveAttachFrame{data: seed}
 		st.mu.Unlock()
@@ -1259,19 +1287,86 @@ func buildLiveAttachSeed(history, screen, cursor liveattach.Reply) []byte {
 
 	// SGR reset so attributes from the last history line can't bleed into the
 	// screen paint (each capture-pane -e line re-establishes its own colors).
+	modes := liveAttachSeedModes(cursor)
+	if len(modes) > 0 && modes[0] == "1" {
+		b = append(b, []byte("\x1b[?1049h")...)
+	}
+	for _, mode := range [][2]int{{1, 25}, {2, 1}, {4, 1000}, {5, 1002}, {6, 1003}, {7, 1006}, {8, 1005}} {
+		index, code := mode[0], mode[1]
+		if index < len(modes) && (modes[index] == "0" || modes[index] == "1") {
+			if index >= 4 && modes[index] == "0" {
+				continue
+			} // RIS already disabled these.
+			final := "l"
+			if modes[index] == "1" {
+				final = "h"
+			}
+			b = append(b, []byte(fmt.Sprintf("\x1b[?%d%s", code, final))...)
+		}
+	}
+	if len(modes) > 3 {
+		if modes[3] == "1" {
+			b = append(b, []byte("\x1b=")...)
+		} else if modes[3] == "0" {
+			b = append(b, []byte("\x1b>")...)
+		}
+	}
 	b = append(b, []byte("\x1b[0m")...)
 	if !screen.Err {
 		b = append(b, []byte(strings.Join(screen.Lines, "\r\n"))...)
 	}
-
+	// Paint the capture with the reset's full-screen region, normal origin and
+	// replace mode. Only then restore the TUI's region/modes for future output;
+	// enabling these first would scroll or insert the captured cells incorrectly.
+	regionUpper := 0
+	if len(modes) > 10 {
+		upper, upperErr := strconv.Atoi(modes[9])
+		lower, lowerErr := strconv.Atoi(modes[10])
+		if upperErr == nil && lowerErr == nil && upper >= 0 && lower > upper && lower < liveAttachMaxRows {
+			regionUpper = upper
+			b = append(b, []byte(fmt.Sprintf("\x1b[%d;%dr", upper+1, lower+1))...)
+		}
+	}
+	for _, mode := range [][2]int{{11, 6}, {12, 7}, {13, 4}} {
+		index, code := mode[0], mode[1]
+		if index >= len(modes) || (modes[index] != "0" && modes[index] != "1") {
+			continue
+		}
+		private, final := "?", "l"
+		if code == 4 {
+			private = "" // Insert mode is an ANSI mode, not a DEC private mode.
+		}
+		if modes[index] == "1" {
+			final = "h"
+		}
+		b = append(b, []byte(fmt.Sprintf("\x1b[%s%d%s", private, code, final))...)
+	}
 	if x, y, ok := parseLiveAttachCursor(cursor); ok {
+		if len(modes) > 11 && modes[11] == "1" {
+			y = max(0, y-regionUpper) // CUP is relative to the restored origin.
+		}
 		b = append(b, []byte(fmt.Sprintf("\x1b[%d;%dH", y+1, x+1))...)
 	}
 	return b
 }
 
+func liveAttachSeedModes(cursor liveattach.Reply) []string {
+	if cursor.Err || len(cursor.Lines) == 0 {
+		return nil
+	}
+	_, modes, ok := strings.Cut(cursor.Lines[0], "|")
+	if !ok {
+		return nil
+	}
+	return strings.Split(modes, ",")
+}
+
 // parseLiveAttachCursor reads the "#{cursor_x},#{cursor_y}" reply.
 func parseLiveAttachCursor(cursor liveattach.Reply) (int, int, bool) {
+	if len(cursor.Lines) > 0 {
+		first, _, _ := strings.Cut(cursor.Lines[0], "|")
+		cursor.Lines = []string{first}
+	}
 	return parseLiveAttachPair(cursor)
 }
 
@@ -1419,8 +1514,7 @@ func (st *liveAttachStream) runControlMode(ctx context.Context) {
 // liveAttachUpgrader upgrades the request to a WebSocket. Authentication and
 // session ownership are enforced by the route's AuthMiddleware +
 // requireAccessibleTerminal before the upgrade. Browser-origin checks are an
-// additional CSRF/WS-hijacking backstop: the stream is display-only, but it
-// still exposes pane output and can resize the window.
+// additional CSRF/WS-hijacking backstop for pane output and native input.
 func (api *StreamingAPI) liveAttachUpgrader() websocket.Upgrader {
 	return websocket.Upgrader{
 		ReadBufferSize:  4096,
@@ -1516,6 +1610,10 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer st.unsubscribe(viewer)
+	connCtx = context.WithValue(connCtx, liveAttachViewerContextKey{}, viewer)
+	if terminalSnapshotIsMainAgent(snapshot) {
+		api.ensureNativeTerminalObserver(snapshot)
+	}
 	transcript := &liveAttachTranscript{}
 	persistTranscript := func() {
 		api.persistLiveAttachTranscript(snapshot.TerminalID, transcript.content())
@@ -1524,6 +1622,7 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 	// Every close goes through here once, so the first reason wins (a
 	// dedicated code must not be replaced by the writer's generic going-away).
 	// WriteControl and Close are safe to call concurrently with the writer.
+	var writeMu sync.Mutex
 	var closeOnce sync.Once
 	closeWith := func(code int, text string) {
 		closeOnce.Do(func() {
@@ -1539,8 +1638,9 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 	if len(seed) > 0 {
 		transcript.append(seed)
 		persistTranscript()
-		_ = conn.SetWriteDeadline(time.Now().Add(liveAttachWriteWait))
-		_ = conn.WriteMessage(websocket.BinaryMessage, seed)
+		if err := writeLiveAttachMessage(conn, websocket.BinaryMessage, seed, liveAttachWriteTimeout); err != nil {
+			return
+		}
 	}
 	defer persistTranscript()
 
@@ -1553,16 +1653,20 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 	// blank/stale "connected" stream.
 	go func() {
 		defer persistTranscript()
+		defer conn.Close()
+		defer connCancel()
 		for f := range viewer.ch {
+			viewer.pendingBytes.Add(-int64(len(f.data)))
 			messageType := websocket.BinaryMessage
 			if f.text {
 				messageType = websocket.TextMessage
 			} else {
 				transcript.append(f.data)
 			}
-			_ = conn.SetWriteDeadline(time.Now().Add(liveAttachWriteWait))
-			if err := conn.WriteMessage(messageType, f.data); err != nil {
-				_ = conn.Close()
+			writeMu.Lock()
+			err := writeLiveAttachMessage(conn, messageType, f.data, liveAttachWriteTimeout)
+			writeMu.Unlock()
+			if err != nil {
 				return
 			}
 		}
@@ -1646,44 +1750,98 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 	}
 	repaint()
 
-	// Reader. The socket is DISPLAY-ONLY: the app's xterm is disableStdin and
-	// all typing reaches tmux through chat live input (POST .../input), which
-	// routes it and keeps the chat in sync. The only frame accepted here is a
-	// JSON `resize` text frame, optionally with reseed:true+epoch (an in-band
-	// re-seed at the new width on this same socket). Binary frames, `input`,
-	// `key`, and unparsable/unknown JSON are dropped, never typed into the pane.
-	loggedRefused := false
+	// Reader: WebSocket -> tmux, via the EXISTING input path.
+	//   binary frame -> raw byte passthrough (send-keys -H)
+	//   text frame   -> JSON control: resize | paste
+	//
+	// Main-agent Terminal mode writes raw keys here. Paste uses tmux's native
+	// bracketed-paste handling because capture-pane cannot recover that mode.
 	for {
 		mt, data, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(liveAttachPongWait))
-		frame, ok := parseLiveAttachResizeFrame(mt, data)
-		if !ok {
-			if !loggedRefused {
-				loggedRefused = true
-				log.Printf("[live-attach] terminal=%s session=%s refused non-resize frame (display-only socket); further refusals not logged", snapshot.TerminalID, snapshot.TmuxSession)
-			}
+		if viewer.wasSuperseded() {
 			continue
 		}
 		if !accessAllowed(false) {
 			revokeAccess()
 			break
 		}
-		if !frame.Reseed {
-			st.setSize(frame.Cols, frame.Rows)
-			continue
-		}
-		if err := st.reseedViewer(connCtx, viewer, frame.Cols, frame.Rows, frame.Epoch); err != nil {
-			// No marker was queued; the client falls back to reconnecting.
-			if connCtx.Err() == nil && !st.isDone() {
+		if frame, ok := parseLiveAttachResizeFrame(mt, data); ok {
+			if !frame.Reseed {
+				st.setSize(frame.Cols, frame.Rows)
+			} else if err := st.reseedViewer(connCtx, viewer, frame.Cols, frame.Rows, frame.Epoch); err != nil && connCtx.Err() == nil && !st.isDone() {
 				log.Printf("[live-attach] reseed terminal=%s session=%s: %v", snapshot.TerminalID, snapshot.TmuxSession, err)
 			}
 			continue
 		}
+		// Child diagnostics accept geometry changes only.
+		if !terminalSnapshotIsMainAgent(snapshot) {
+			continue
+		}
+		switch mt {
+		case websocket.BinaryMessage:
+			if viewer.wasSuperseded() {
+				continue
+			}
+			// A Ctrl+C with an empty native draft requests interruption. Capture
+			// the current turn before writing, so a late acknowledgement cannot
+			// accidentally stop a newer retained turn.
+			var interrupt func()
+			if len(data) == 1 && data[0] == 0x03 && !tmuxinput.Default.HasInteractiveDraft(snapshot.TmuxSession) {
+				if session, ok := mcpagent.LookupSession(snapshot.SessionID); ok {
+					interrupt = session.PrepareNativeInterrupt()
+				}
+			}
+			if err := api.liveAttachRawInput(connCtx, snapshot.TmuxSession, data, st); err != nil {
+				writeMu.Lock()
+				writeErr := writeLiveAttachInputError(conn, "Terminal input delivery failed. Check the terminal before retrying: "+err.Error())
+				writeMu.Unlock()
+				if writeErr != nil {
+					return
+				}
+			} else if interrupt != nil {
+				go interrupt()
+			}
+		case websocket.TextMessage:
+			if viewer.wasSuperseded() {
+				continue
+			}
+			var control struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(data, &control) == nil && control.Type == "paste" {
+				if err := api.liveAttachNativePaste(connCtx, snapshot.TmuxSession, control.Text); err != nil {
+					writeMu.Lock()
+					writeErr := writeLiveAttachInputError(conn, "Terminal paste failed. Check the terminal before retrying: "+err.Error())
+					writeMu.Unlock()
+					if writeErr != nil {
+						return
+					}
+				}
+			}
+		}
 		repaint()
 	}
+}
+
+// Caller holds the connection's write mutex once concurrent forwarding starts.
+func writeLiveAttachMessage(conn *websocket.Conn, messageType int, payload []byte, timeout time.Duration) error {
+	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+		return err
+	}
+	return conn.WriteMessage(messageType, payload)
+}
+
+func writeLiveAttachInputError(conn *websocket.Conn, message string) error {
+	payload, err := json.Marshal(map[string]string{"type": "input_error", "message": message})
+	if err != nil {
+		return err
+	}
+	return writeLiveAttachMessage(conn, websocket.TextMessage, payload, liveAttachWriteTimeout)
 }
 
 func (api *StreamingAPI) resolveLiveAttachTerminal(w http.ResponseWriter, r *http.Request) (terminals.Snapshot, bool) {
@@ -1840,6 +1998,96 @@ type liveAttachResizeFrame struct {
 	Rows   int    `json:"rows"`
 	Reseed bool   `json:"reseed"`
 	Epoch  int    `json:"epoch"`
+}
+
+// liveAttachRawInputChunkBytes bounds how many input bytes go into a single
+// `send-keys -H` argv. Each byte becomes its own two-character argument, so an
+// unchunked paste would build an argv of len(data) entries and fail at ARG_MAX
+// (or the platform's per-argument limits) instead of reaching the pane. All
+// chunks run inside ONE broker transaction, so a split payload can still never
+// interleave with other input.
+const liveAttachRawInputChunkBytes = 512
+
+// liveAttachRawInput forwards raw terminal input bytes faithfully via
+// `send-keys -H` (hex), so Enter (0d), Ctrl-C (03), arrows, and pastes all pass
+// through. Reuses the existing tmux exec helper.
+func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession string, data []byte, streams ...*liveAttachStream) error {
+	if len(data) == 0 {
+		return nil
+	}
+	cctx, cancel := context.WithTimeout(ctx, terminalTmuxActionTimeout)
+	defer cancel()
+	priority := tmuxinput.PriorityNormal
+	// A lone ESC and Ctrl-C are interrupts. Arrow/navigation keys are multi-byte
+	// escape sequences and must retain normal FIFO ordering.
+	if len(data) == 1 && (data[0] == 0x03 || data[0] == 0x1b) {
+		priority = tmuxinput.PriorityInterrupt
+	}
+	_, err := tmuxinput.Default.Do(cctx, tmuxinput.Request{
+		SessionID:        tmuxSession,
+		Source:           "terminal-live-raw",
+		Priority:         priority,
+		BypassReadiness:  true,
+		InteractiveInput: true,
+	}, func(ctx context.Context) error {
+		if err := checkLiveAttachInputOwner(ctx); err != nil {
+			return err
+		}
+		tmuxinput.Default.NoteInteractiveInput(tmuxSession, data)
+		for start := 0; start < len(data); start += liveAttachRawInputChunkBytes {
+			end := start + liveAttachRawInputChunkBytes
+			if end > len(data) {
+				end = len(data)
+			}
+			chunk := data[start:end]
+			args := make([]string, 0, len(chunk)+4)
+			args = append(args, "send-keys", "-t", tmuxSession, "-H")
+			for _, b := range chunk {
+				args = append(args, fmt.Sprintf("%02x", b))
+			}
+			if len(streams) > 0 && streams[0] != nil {
+				// Reuse the attached control client: avoid spawning a tmux process
+				// for every keystroke, while keeping the broker's transaction order.
+				cmd, err := streams[0].sendCommand(fmt.Sprintf("send-keys -t %q -H %s", tmuxSession, strings.Join(args[4:], " ")), nil)
+				if err != nil {
+					return err
+				}
+				select {
+				case reply := <-cmd.done:
+					if reply.Err {
+						return fmt.Errorf("tmux rejected input: %s", strings.Join(reply.Lines, "\n"))
+					}
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			} else if err := runTerminalTmuxCommand(ctx, "", args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("[live-attach] raw input session=%s: %v", tmuxSession, err)
+	}
+	return err
+}
+
+func (api *StreamingAPI) liveAttachNativePaste(ctx context.Context, tmuxSession, text string) error {
+	if text == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, terminalTmuxActionTimeout)
+	defer cancel()
+	_, err := tmuxinput.Default.Do(ctx, tmuxinput.Request{
+		SessionID: tmuxSession, Source: "terminal-native-paste", BypassReadiness: true, InteractiveInput: true,
+	}, func(ctx context.Context) error {
+		if err := checkLiveAttachInputOwner(ctx); err != nil {
+			return err
+		}
+		tmuxinput.Default.NoteInteractivePaste(tmuxSession)
+		return pasteTerminalTextUnserialized(ctx, tmuxSession, text, false)
+	})
+	return err
 }
 
 // parseLiveAttachResizeFrame accepts a JSON `resize` text frame and nothing

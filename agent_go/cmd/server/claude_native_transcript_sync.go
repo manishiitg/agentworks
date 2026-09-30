@@ -479,7 +479,23 @@ func builderConversationMessagesFromLLMTypes(messages []llmtypes.MessageContent)
 // builder session. ok is false when the provider has no reader or no
 // transcript could be found; callers then leave the persisted record as-is.
 func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir string, accountHome ...string) (messages []builderConversationMessage, maxTimestamp time.Time, transcriptPath string, ok bool, err error) {
+	messages, maxTimestamp, transcriptPath, ok, err = nativeTranscriptMessagesForRuntimeUncapped(provider, nativeSessionID, workingDir, accountHome...)
+	return filterNativeContinuityMessages(messages), maxTimestamp, transcriptPath, ok, err
+}
+
+// Input observation needs the full user sequence to distinguish repeated
+// prompts even when the persisted chat's bounded window is full.
+func nativeTranscriptMessagesForRuntimeUncapped(provider, nativeSessionID, workingDir string, accountHome ...string) (messages []builderConversationMessage, maxTimestamp time.Time, transcriptPath string, ok bool, err error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "agy-cli":
+		if nativeSessionID == "" {
+			return nil, time.Time{}, "", false, nil
+		}
+		transcript, found, err := agycli.ReadNativeTranscript(nativeSessionID, accountHome...)
+		if err != nil || !found {
+			return nil, time.Time{}, "", false, err
+		}
+		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
 	case "claude-code":
 		if nativeSessionID == "" || workingDir == "" {
 			return nil, time.Time{}, "", false, nil
@@ -489,7 +505,7 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 			return nil, time.Time{}, "", false, err
 		}
 		messages, maxTimestamp, err = readNewClaudeTranscriptMessages(transcriptPath, time.Time{})
-		messages = filterNativeContinuityMessages(messages)
+		messages = filterNativeContinuityMessagesUncapped(messages)
 		return messages, maxTimestamp, transcriptPath, err == nil, err
 	case "codex-cli":
 		if nativeSessionID == "" {
@@ -500,7 +516,7 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 			return nil, time.Time{}, "", false, err
 		}
 		messages, maxTimestamp, err = readCodexTranscriptMessages(transcriptPath)
-		messages = filterNativeContinuityMessages(messages)
+		messages = filterNativeContinuityMessagesUncapped(messages)
 		return messages, maxTimestamp, transcriptPath, err == nil, err
 	case "cursor-cli":
 		if nativeSessionID == "" || workingDir == "" {
@@ -510,7 +526,7 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 		if err != nil || !found {
 			return nil, time.Time{}, "", false, err
 		}
-		return filterNativeContinuityMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
 	case "pi-cli":
 		if nativeSessionID == "" || workingDir == "" {
 			return nil, time.Time{}, "", false, nil
@@ -519,7 +535,7 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 		if err != nil || !found {
 			return nil, time.Time{}, "", false, err
 		}
-		return filterNativeContinuityMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
 	case "muse-cli":
 		if nativeSessionID == "" {
 			return nil, time.Time{}, "", false, nil
@@ -532,34 +548,28 @@ func nativeTranscriptMessagesForRuntime(provider, nativeSessionID, workingDir st
 		if err != nil || !found {
 			return nil, time.Time{}, "", false, err
 		}
-		return filterNativeContinuityMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
-	case "agy-cli":
-		if nativeSessionID == "" {
-			return nil, time.Time{}, "", false, nil
-		}
-		transcript, found, err := agycli.ReadNativeTranscript(nativeSessionID, accountHome...)
-		if err != nil || !found {
-			return nil, time.Time{}, "", false, err
-		}
-		return filterNativeContinuityMessages(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
+		return filterNativeContinuityMessagesUncapped(builderConversationMessagesFromLLMTypes(transcript.Messages)), transcript.UpdatedAt, transcript.Path, true, nil
 	}
 	return nil, time.Time{}, "", false, nil
 }
 
 func filterNativeContinuityMessages(messages []builderConversationMessage) []builderConversationMessage {
+	filtered := filterNativeContinuityMessagesUncapped(messages)
+	if len(filtered) > maxPersistedChatHistoryMessages {
+		filtered = filtered[len(filtered)-maxPersistedChatHistoryMessages:]
+	}
+	return filtered
+}
+
+func filterNativeContinuityMessagesUncapped(messages []builderConversationMessage) []builderConversationMessage {
 	filtered := make([]builderConversationMessage, 0, len(messages))
 	for _, message := range messages {
+		message = stripSessionModeFromMessage(message)
 		text := strings.TrimSpace(builderConversationMessageText(message))
 		if strings.HasPrefix(text, "[AGENTWORKS CONVERSATION CONTINUITY]") || strings.HasPrefix(text, "[WORKFLOW CHAT HANDOFF]") {
 			continue
 		}
 		filtered = append(filtered, message)
-	}
-	// The canonical transcript is capped at this same message count. Keeping a
-	// larger native prefix cannot restore anything visible, while the LCS merge
-	// matrix would otherwise grow with an unbounded provider transcript.
-	if len(filtered) > maxPersistedChatHistoryMessages {
-		filtered = filtered[len(filtered)-maxPersistedChatHistoryMessages:]
 	}
 	return filtered
 }

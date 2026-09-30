@@ -116,11 +116,8 @@ function ReportBody({ workspacePath }: { workspacePath: string | null }) {
   )
 }
 
-function FilesBody({ workspacePath }: { workspacePath: string | null }) {
-  return <FileWorkspacePane
-    hideManagedEntriesByDefault
-    headerAction={<AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage('files')} iconOnly />}
-  />
+function FilesBody() {
+  return <FileWorkspacePane hideManagedEntriesByDefault />
 }
 
 function InspectorBody({ workspacePath, presetQueryId }: { workspacePath: string | null; presetQueryId: string | null }) {
@@ -749,7 +746,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           </div>
         }
       >
-        <FilesBody workspacePath={workspacePath} />
+        <FilesBody />
       </Suspense>
     )
   } else {

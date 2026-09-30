@@ -185,8 +185,8 @@ export const useAppStore = create<AppState>()(
         agentMode: state.agentMode,
         workspaceMinimized: state.workspaceMinimized,
         workspaceMinimizedByMode: state.workspaceMinimizedByMode,
-        showWorkflowsOverview: state.showWorkflowsOverview,
-        showSchedulesOverview: state.showSchedulesOverview,
+        // showWorkflowsOverview / showSchedulesOverview are not persisted: a reload
+        // (or a sign-in) lands on the person's product, not on the last global page.
         selectedPresetId: state.selectedPresetId,
         useCodeExecutionMode: state.useCodeExecutionMode,
         lastSelectedSkills: state.lastSelectedSkills,
@@ -195,17 +195,14 @@ export const useAppStore = create<AppState>()(
         // File context is now mode-specific: multi-agent tabs have their own, workflow uses preset
       }),
       // Drop legacy `delegationMode` persisted from v2 and add per-mode workspace state.
-      version: 7,
+      version: 8,
       migrate: (persistedState: unknown, _version: number) => {
         const state = persistedState as Record<string, unknown>
         delete state.delegationMode
         delete state.lastSelectedSubAgents
-        if (state.showWorkflowsOverview === undefined) {
-          state.showWorkflowsOverview = false
-        }
-        if (state.showSchedulesOverview === undefined) {
-          state.showSchedulesOverview = false
-        }
+        // Global pages (Activity, Schedules) never survive a reload; older builds persisted them.
+        state.showWorkflowsOverview = false
+        state.showSchedulesOverview = false
         if (!state.workspaceMinimizedByMode || typeof state.workspaceMinimizedByMode !== 'object') {
           const legacyWorkspaceMinimized = Boolean(state.workspaceMinimized)
           state.workspaceMinimizedByMode = {

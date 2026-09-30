@@ -24,18 +24,20 @@ func (r *personalMCPToolRegistrar) RegisterCustomToolWithTimeout(name, descripti
 	return r.RegisterCustomTool(name, description, params, exec, category)
 }
 
-// The Code agent connects the person's own server from chat: it is added as
-// theirs, switched on in this Code, and a provider that needs their own OAuth
-// app is sent to the MCPs tab (no secret in chat). Nothing reaches another
-// person.
-func TestManageMyMCPServersActsForThePinnedPersonOnly(t *testing.T) {
+// The Code agent connects a server to this Code from chat: it is added with
+// the owner's login as the Code's own connection, and a provider that needs
+// their own OAuth app is sent to the MCP tab (no secret in chat). Only the
+// Code's owner connects, and nothing reaches another Code.
+func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	withPersonalMCPRoot(t)
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{mcpConfigPath: catalogPath, logger: loggerv2.NewNoop()}
 	codeRoot := "_users/owner/Chats/Code/projects/c0de"
+	otherCode := "_users/owner/Chats/Code/projects/other"
 	reg := &personalMCPToolRegistrar{}
 	if err := api.registerPersonalMCPTool(reg, "owner", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
 		t.Fatal(err)
@@ -48,25 +50,40 @@ func TestManageMyMCPServersActsForThePinnedPersonOnly(t *testing.T) {
 		}
 		return out
 	}
-	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"GoogleGmail"`) || !strings.Contains(out, `"your_servers":[]`) {
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"GoogleGmail"`) || !strings.Contains(out, `"this_code_has":[]`) || !strings.Contains(out, `"you_can_connect":true`) {
 		t.Fatalf("list = %s", out)
 	}
 	out := call(map[string]interface{}{"action": "connect", "catalog": "GoogleGmail"})
-	if !strings.Contains(out, "MCPs") || !strings.Contains(out, "api/oauth/callback") {
+	if !strings.Contains(out, "MCP") || !strings.Contains(out, "api/oauth/callback") {
 		t.Fatalf("connect = %s", out)
 	}
-	if enabled, _ := personalMCPEnabled("owner", codeRoot); len(enabled) != 1 || enabled[0] != "googlegmail" {
-		t.Fatalf("enabled = %v", enabled)
+	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "googlegmail" || attached[0].Owner != "owner" {
+		t.Fatalf("attachments = %+v", attached)
 	}
-	if servers, _ := listPersonalMCPServers("other"); len(servers) != 0 {
-		t.Fatalf("other got servers: %v", servers)
+	if attached, _ := personalMCPAttachmentsFor(otherCode); len(attached) != 0 {
+		t.Fatalf("connection reached another Code: %+v", attached)
 	}
-	call(map[string]interface{}{"action": "disable", "name": "googlegmail"})
-	if enabled, _ := personalMCPEnabled("owner", codeRoot); len(enabled) != 0 {
-		t.Fatalf("still enabled: %v", enabled)
+	if servers, _ := listPersonalMCPServers("owner"); len(servers) != 0 {
+		t.Fatalf("connection stored in the person's own store: %v", servers)
+	}
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"googlegmail"`) {
+		t.Fatalf("list after connect = %s", out)
 	}
 	call(map[string]interface{}{"action": "remove", "name": "googlegmail"})
-	if servers, _ := listPersonalMCPServers("owner"); len(servers) != 0 {
-		t.Fatalf("not removed: %v", servers)
+	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 0 {
+		t.Fatalf("not removed: %+v", attached)
+	}
+	if servers, _ := listPersonalMCPServers(placeMCPStoreID("owner", codeRoot)); len(servers) != 0 {
+		t.Fatalf("server not removed: %v", servers)
+	}
+
+	// Someone who is not the Code's owner (a participant of a shared Code)
+	// can list but not connect.
+	guest := &personalMCPToolRegistrar{}
+	if err := api.registerPersonalMCPTool(guest, "guest", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guest.exec(context.Background(), map[string]interface{}{"action": "connect", "catalog": "GoogleGmail"}); err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("a non-owner connected to the Code: %v", err)
 	}
 }

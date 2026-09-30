@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"net/http"
 	"os"
@@ -139,6 +140,12 @@ func (api *StreamingAPI) mainTerminalForSession(w http.ResponseWriter, r *http.R
 		return terminals.Snapshot{}, false
 	}
 	sessionID := strings.TrimSpace(mux.Vars(r)["session_id"])
+	if sessionID != "" && api.terminalDeniedForCaller(r, sessionID) {
+		// A distinct status so the UI can say why and go back to the chat, instead of
+		// showing "terminal not started" as it does for a 404.
+		http.Error(w, "The terminal is only available to owners and editors", http.StatusForbidden)
+		return terminals.Snapshot{}, false
+	}
 	if sessionID == "" || !api.canAccessTerminalSession(r, sessionID) {
 		http.Error(w, "Main terminal not found", http.StatusNotFound)
 		return terminals.Snapshot{}, false
@@ -1666,6 +1673,37 @@ func isWorkflowPlanStepType(stepType string) bool {
 	}
 }
 
+// terminalDeniedForReadOnlyAccess reports whether the caller is looking at their OWN session
+// and their access to its Crew or workflow is read-only (a Crew reader, a read-only login).
+//
+// Why they get no terminal: the terminal lets a person type straight into the coding CLI.
+// A read-only user's messages normally go through the server, which puts the read-only
+// notice in front of them and explains refusals; typing in the terminal skips that, so the
+// model would not know the session is read-only. Tools and folder guards still block any
+// change, but the terminal is meant for owners and editors, so it is refused for read-only
+// access on the server (the UI flag alone could be bypassed). Owners, editors, admins
+// viewing someone else's session, and a guest call on an owner's session are unaffected.
+func terminalDeniedForReadOnlyAccess(sessionID, callerID, sessionOwnerID string) bool {
+	if strings.TrimSpace(callerID) == "" || sanitizeUserIDForPath(callerID) != sanitizeUserIDForPath(sessionOwnerID) {
+		return false
+	}
+	cfg := common.GetSessionShellConfig(strings.TrimSpace(sessionID))
+	return cfg != nil && cfg.ReadOnlyAccess
+}
+
+// terminalDeniedForCaller applies terminalDeniedForReadOnlyAccess to a request's session.
+func (api *StreamingAPI) terminalDeniedForCaller(r *http.Request, sessionID string) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	callerID := GetUserIDFromContext(r.Context())
+	if active, ok := api.getActiveSession(sessionID); ok {
+		return terminalDeniedForReadOnlyAccess(sessionID, callerID, active.UserID)
+	}
+	if api.eventStore != nil {
+		return terminalDeniedForReadOnlyAccess(sessionID, callerID, api.eventStore.GetSessionOwner(sessionID))
+	}
+	return false
+}
+
 func (api *StreamingAPI) canAccessTerminalSession(r *http.Request, sessionID string) bool {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -1673,6 +1711,11 @@ func (api *StreamingAPI) canAccessTerminalSession(r *http.Request, sessionID str
 	}
 
 	currentUserID := GetUserIDFromContext(r.Context())
+	// Every terminal route (metadata, stream, input, keys, live attach) comes through here,
+	// so a read-only user is refused in one place. See terminalDeniedForReadOnlyAccess.
+	if api.terminalDeniedForCaller(r, sessionID) {
+		return false
+	}
 	activeSession, exists := api.getActiveSession(sessionID)
 	if exists {
 		if sessionVisibleTo(activeSession.UserID, GetUserFromContext(r.Context())) {

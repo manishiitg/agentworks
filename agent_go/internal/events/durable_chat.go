@@ -20,6 +20,7 @@ var durableChatEventTypes = map[string]bool{
 	"blocking_human_feedback":      true,
 	"context_cancelled":            true, //nolint:misspell // Wire contract.
 	"coding_agent_background_task": true,
+	"coding_agent_question":        true,
 	"conversation_end":             true,
 	"conversation_error":           true,
 	"conversation_resumed":         true,
