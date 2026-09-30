@@ -13,6 +13,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-09-30 — Each rootless release keeps the source it was built from
+- `deploy/rootless-linux/build-and-activate.sh` copies the three repos into
+  `<release>/source/<repo>` (no `.git`, `node_modules` or `dist`) right after writing
+  `SOURCE_REVISIONS`. Confida, SparkQuill and excellence get it; RTS uses
+  `deploy/aws-ec2/` and is unchanged. Requested by the owner after the excellence
+  release folders were deleted on 2026-09-30.
+- It lives inside the release, so it is pruned with it and is **not** a backup: a wipe of
+  `/srv/<product>` removes it too (only `data` and `state` survived). It is owned by the
+  shared service account, so any process running as that account can read, change or
+  delete it, and confined CLIs get no grant to it. Measured on this checkout: about
+  380 MB per release before a server clone's smaller tracked-only tree.
+- Not deployed yet.
+
 ### 2026-09-30 — Local linked-runtime qualification is partial; step searches name `output`
 - Real local CLI fixtures passed artifact discovery, linked reads, authoritative
   writes through admitted tools, native resume and cleanup for Claude, Codex,

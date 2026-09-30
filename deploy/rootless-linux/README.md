@@ -28,7 +28,9 @@ per-product configuration. Video Studio and Dominion have their own cases in
    stale copy cached on the triggering machine.
 3. `build-and-activate.sh` builds the four Go binaries and the frontend,
    assembles a new immutable release under `/srv/<product>/releases/<rev>-<timestamp>/`
-   (with a `SOURCE_REVISIONS` file recording the exact commit of every repo),
+   (with a `SOURCE_REVISIONS` file recording the exact commit of every repo, and
+   the source of all three repos under `source/`, without `.git`, dependency or
+   build folders, pruned with the release),
    waits for the current release to drain in-flight turns, swaps the
    `current` symlink, restarts the three systemd units, verifies the
    running processes actually received the expected environment, health
