@@ -189,3 +189,26 @@ func TestPrivateGmailConnectionsTakeNoCredentialPaths(t *testing.T) {
 		t.Fatal("an unrelated dir counted as referenced")
 	}
 }
+
+// Connecting the same Google account again in a Code (to change its access) replaces the older
+// connection; another Code, another person, another account or a shared connection is kept.
+func TestPrivateDuplicatesOfSameAccountInSameCode(t *testing.T) {
+	code := "_users/alice/Chats/Code/projects/app-1"
+	g := &GmailService{config: &GmailConfig{Connections: []GmailConnection{
+		{ID: "old", Email: "Alice@example.com", ScopeWorkspace: code, OwnerID: "alice"},
+		{ID: "new", Email: "alice@example.com", ScopeWorkspace: code, OwnerID: "alice"},
+		{ID: "other-code", Email: "alice@example.com", ScopeWorkspace: "_users/alice/Chats/Code/projects/app-2", OwnerID: "alice"},
+		{ID: "other-account", Email: "work@example.com", ScopeWorkspace: code, OwnerID: "alice"},
+		{ID: "shared", Email: "alice@example.com"},
+	}}}
+	var got []string
+	for _, c := range g.PrivateDuplicatesOf("new") {
+		got = append(got, c.ID)
+	}
+	if strings.Join(got, ",") != "old" {
+		t.Fatalf("duplicates = %v, want [old]", got)
+	}
+	if dup := g.PrivateDuplicatesOf("shared"); len(dup) != 0 {
+		t.Fatalf("a shared connection replaced private ones: %v", dup)
+	}
+}

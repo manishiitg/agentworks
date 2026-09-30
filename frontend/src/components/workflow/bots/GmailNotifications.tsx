@@ -14,6 +14,7 @@ import { READ_ONLY_TITLE } from '../../../hooks/useCanWriteWorkflow'
 import { AskAIButton } from '../AskAIButton'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
+import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import { GmailSetupGuide } from './GmailSetupGuide'
 
 // ── Email notifications (account-wide, shared by every workflow) ──────────
@@ -375,7 +376,17 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 {newClientParseError && <StatusBanner tone="error">{newClientParseError}</StatusBanner>}
 
                 {gmailConnections.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No sending accounts yet — add one below.</p>
+                  <p className="text-xs text-muted-foreground">{platformConnect ? 'No Google account connected yet.' : 'No sending accounts yet — add one below.'}</p>
+                ) : platformConnect ? (
+                  <GoogleAccountList
+                    connections={gmailConnections}
+                    busyId={gmailConnectionsBusy}
+                    readOnly={readOnly}
+                    onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
+                    onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
+                    onReconnect={conn => connectGmailAccount(conn.id)}
+                    onRemove={conn => handleRemoveMailbox(conn)}
+                  />
                 ) : (
                   <ul className="space-y-2">
                     {gmailConnections.map(conn => (

@@ -1092,3 +1092,27 @@ func (g *GmailService) AutoDefaultRecipientIfMissing(ctx context.Context) (bool,
 	}
 	return true, nil
 }
+
+// PrivateDuplicatesOf lists the other private connections of the same Code and person that are
+// signed in as the same Google account as id. Connecting an account again (for example to change
+// its access) creates a new connection; once it is signed in, these older ones are replaced by it,
+// so one Google account is listed once per Code.
+func (g *GmailService) PrivateDuplicatesOf(id string) []GmailConnection {
+	cfg := g.GetConfig()
+	conn, ok := findGmailConnection(cfg, id)
+	if !ok || !conn.IsPrivate() || strings.TrimSpace(conn.Email) == "" {
+		return nil
+	}
+	var out []GmailConnection
+	for _, other := range cfg.Connections {
+		if other.ID == conn.ID || !other.IsPrivate() {
+			continue
+		}
+		if strings.Trim(other.ScopeWorkspace, "/") == strings.Trim(conn.ScopeWorkspace, "/") &&
+			strings.TrimSpace(other.OwnerID) == strings.TrimSpace(conn.OwnerID) &&
+			strings.EqualFold(strings.TrimSpace(other.Email), strings.TrimSpace(conn.Email)) {
+			out = append(out, other.Clone())
+		}
+	}
+	return out
+}
