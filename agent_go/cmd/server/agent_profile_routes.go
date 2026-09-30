@@ -706,6 +706,17 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			api.sessionWorkspaceMu.RUnlock()
 			preferredSessionVerifiedForWorkspace = activeWorkspace != "" && normalizeConversationWorkspace(activeWorkspace) == normalizeConversationWorkspace(binding.WorkspacePath)
 		}
+		if !preferredSessionVerifiedForWorkspace {
+			// A session's history is only saved when its turn ends, so a follow-up sent while
+			// the first turn still runs (or a session that has not saved yet) has no history to
+			// verify against. The server's own registry entry for this very slot, bound to this
+			// project, is the same proof.
+			if current, found, _, historyErr := defaultProductConversationRegistryStore().history(r.Context(), userID, profile, binding); historyErr == nil && found &&
+				strings.TrimSpace(current.SessionID) == candidate &&
+				normalizeConversationWorkspace(current.WorkspacePath) == normalizeConversationWorkspace(binding.WorkspacePath) {
+				preferredSessionVerifiedForWorkspace = true
+			}
+		}
 		if isProjectProfileID(profile.ID) && !preferredSessionVerifiedForWorkspace {
 			return ProductConversationRecord{}, fmt.Errorf("conversation continuity conflict: requested session is not verified in this project")
 		}

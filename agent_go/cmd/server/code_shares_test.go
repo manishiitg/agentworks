@@ -234,3 +234,27 @@ func TestCodeBotTurnsAreDirectMessageOnly(t *testing.T) {
 		t.Fatalf("an editor's Slack DM was refused: %v", err)
 	}
 }
+
+// A shared-Code editor's follow-up sent while the session is still active (its turn has not ended,
+// so no chat history is saved yet) is accepted: the registry entry for their own slot, bound to
+// this project, verifies the session. It used to fail with "conversation continuity conflict".
+func TestSharedCodeFollowUpBeforeHistoryIsSaved(t *testing.T) {
+	api, profile := newCodePrivacyFixture(t)
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
+	req := profileRouteRequest(http.MethodPost, "/", nil, "other")
+	first, err := api.resolveAgentProfileConversation(req, profile, "c0de0001-0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.activeSessions = map[string]*ActiveSessionInfo{first.SessionID: {SessionID: first.SessionID, UserID: "other"}}
+	follow := profileRouteRequest(http.MethodPost, "/", nil, "other")
+	follow.Header.Set("X-Session-ID", first.SessionID)
+	follow.Header.Set("X-Conversation-Continuation", "true")
+	again, err := api.resolveAgentProfileConversation(follow, profile, "c0de0001-0000")
+	if err != nil {
+		t.Fatalf("follow-up while the first turn runs: %v", err)
+	}
+	if again.SessionID != first.SessionID {
+		t.Fatalf("follow-up went to %q, want %q", again.SessionID, first.SessionID)
+	}
+}
