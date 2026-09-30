@@ -139,6 +139,7 @@ export function useTranscriptScroll(
   const focusAnchor = useRef<ReadingAnchor | undefined>(undefined)
   const restoreFrame = useRef<number | null>(null)
   const mounted = useRef(false)
+  const blankCheck = useRef<number | null>(null)
   const [controller] = useState(() => new TranscriptScrollController(
     saved.following,
     () => {
@@ -148,16 +149,16 @@ export function useTranscriptScroll(
       // Stop once we reach the physical end. scrollToIndex retries while rows
       // are measured; starting that process on each resize can fight itself.
       if (bottom - element.scrollTop > 1) virtuoso.current?.scrollTo({ top: bottom, behavior: 'auto' })
-      // The bottom is read from the page before the list re-measures a new or replaced row
-      // (a sent message swapped for the server's copy shrinks it), so the scroller can land
-      // where Virtuoso has drawn no rows: a blank transcript until the person scrolls.
-      requestAnimationFrame(() => {
-        if (!transcriptBlank(element)) return
-        element.dispatchEvent(new Event('scroll'))
-        requestAnimationFrame(() => {
-          if (transcriptBlank(element)) virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
-        })
-      })
+      // Blank-transcript recovery: the bottom is read before the list re-measures a new or
+      // replaced row, so the scroller can land where Virtuoso drew no rows. Virtuoso draws
+      // rows a frame or two after a scroll, so only act on a blank that persists, once at a
+      // time, and only while still following the latest message.
+      if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
+      blankCheck.current = window.setTimeout(() => {
+        blankCheck.current = null
+        if (!saved.following || !transcriptBlank(element)) return
+        virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
+      }, 350)
     },
     (value) => { saved.following = value; setFollowing(value) },
   ))
@@ -284,6 +285,8 @@ export function useTranscriptScroll(
     return () => {
       remember()
       mounted.current = false
+      if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
+      blankCheck.current = null
       observer.disconnect()
       controller.cancelPending()
       cancelRestore()
