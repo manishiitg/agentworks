@@ -110,8 +110,8 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   if (normalizedCode === 'account_change_requires_new_conversation' || /account change requires a new conversation|started on a different account/i.test(raw)) {
     return {
       code: 'account_change_requires_new_conversation',
-      title: 'Start a new chat to use this account',
-      message: 'This chat started on a different account than the one this project now uses. Click New chat to continue with the new account, or switch the project back to the account this chat started on (Models).',
+      title: 'This chat cannot switch accounts',
+      message: 'This chat started on a different account than the one this project now uses, and a chat cannot switch accounts. Switch the project back to the account this chat started on (Models), or ask an administrator to reset this chat.',
       provider,
       retryable: false,
       technicalDetails,

@@ -8,8 +8,8 @@ describe('account change refusal', () => {
       normalizeProductChatFailure('account change requires a new conversation'),
     ]) {
       expect(failure.code).toBe('account_change_requires_new_conversation')
-      expect(failure.title).toBe('Start a new chat to use this account')
-      expect(failure.message).toContain('New chat')
+      expect(failure.title).toBe('This chat cannot switch accounts')
+      expect(failure.message).toContain('Switch the project back')
       expect(failure.retryable).toBe(false)
     }
   })

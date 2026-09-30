@@ -885,7 +885,7 @@ func validateAgentProfileHandler() http.HandlerFunc {
 // errAccountChangeNeedsNewConversation: a conversation keeps the provider account it started on
 // (its CLI history lives under that account), so moving it to another account means a new chat.
 // The text says what to do; the code lets the app offer it.
-var errAccountChangeNeedsNewConversation = errors.New("This chat started on a different account than the one this project now uses. Click New chat to continue with the new account, or switch the project back to the account this chat started on (Models).")
+var errAccountChangeNeedsNewConversation = errors.New("This chat started on a different account than the one this project now uses, and a chat cannot switch accounts. Switch the project back to the account this chat started on (Models), or ask an administrator to reset this chat.")
 
 const accountChangeNeedsNewConversationCode = "account_change_requires_new_conversation"
 
