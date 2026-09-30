@@ -5,6 +5,12 @@ before changing behaviour it covers; add an entry (newest first) when you make
 or reverse a decision, and move an open issue to a decision once it is settled.
 Each entry says what was decided, why, and where it lives in the code.
 
+Design references for the linked runtime decisions:
+
+- [Crew Run/Builder roles and private project links](design/project_instruction_files.md#crew-linked-runtimes).
+- [Workflow Run/Builder project links, permissions and resume](design/workflow_shared_folder_plan.md).
+- [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
+
 ## Decisions
 
 ### 2026-09-30 — Workflow steps link their own iteration output into private runtimes
