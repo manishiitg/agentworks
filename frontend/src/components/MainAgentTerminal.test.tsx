@@ -15,12 +15,17 @@ vi.mock('../services/api', () => ({
 }))
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 vi.mock('./TerminalCenter', () => ({
-  LiveAttachXtermPane: ({ interactive, terminalId }: { interactive: boolean; terminalId: string }) => <div data-testid="live-terminal" data-terminal={terminalId} data-interactive={String(interactive)} />,
+  LiveAttachXtermPane: ({ interactive, terminalId, contentRef }: { interactive: boolean; terminalId: string; contentRef: React.Ref<HTMLDivElement> }) => (
+    <div ref={contentRef} data-testid="live-terminal" data-terminal={terminalId} data-interactive={String(interactive)}>
+      <textarea className="xterm-helper-textarea" />
+    </div>
+  ),
   StaticXtermPane: () => <div data-testid="static-terminal" />,
   RAW_XTERM_THEMES: { dark: {} },
 }))
 
 import { MainAgentTerminal, MAIN_AGENT_TERMINAL_MIN_WIDTH_PX } from './MainAgentTerminal'
+import { requestMainTerminalFocus } from '../utils/mainTerminalFocus'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -31,6 +36,34 @@ afterEach(() => {
 })
 
 describe('MainAgentTerminal sizing', () => {
+  it('returns toolbar focus only to the matching writable terminal and removes the listener on unmount', async () => {
+    getMainTerminal.mockResolvedValue({ terminal_id: 'terminal', tmux_session: 'tmux', active: true })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    const elsewhere = document.createElement('button'); document.body.append(elsewhere)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="session" />))
+      const textarea = host.querySelector('textarea')!
+      const focus = vi.spyOn(textarea, 'focus')
+      elsewhere.focus()
+      requestMainTerminalFocus('another-session')
+      requestMainTerminalFocus(null)
+      expect(document.activeElement).toBe(elsewhere)
+      expect(focus).not.toHaveBeenCalled()
+      requestMainTerminalFocus('session')
+      expect(document.activeElement).toBe(textarea)
+      await act(async () => root.render(<MainAgentTerminal sessionId="session" readOnly />))
+      focus.mockClear()
+      elsewhere.focus()
+      requestMainTerminalFocus('session')
+      expect(document.activeElement).toBe(elsewhere)
+      expect(focus).not.toHaveBeenCalled()
+      await act(async () => root.render(<MainAgentTerminal sessionId="session" />))
+      await act(async () => root.unmount())
+      requestMainTerminalFocus('session')
+      expect(focus).not.toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove(); elsewhere.remove() }
+  })
+
   it('says the live view has not started instead of switching back to the chat', async () => {
     getMainTerminal.mockRejectedValue({ response: { status: 404 } })
     const onUnavailable = vi.fn()
