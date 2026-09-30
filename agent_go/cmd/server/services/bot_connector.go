@@ -2479,6 +2479,13 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		msg.PresetWorkflow = nil
 	}
 
+	// Timing of the steps before the agent starts, so a slow bot turn shows which step was slow.
+	botStart := time.Now()
+	botStep := func(step string) {
+		if elapsed := time.Since(botStart); elapsed > 2*time.Second {
+			log.Printf("[BOT_TIMING] %s: %s after the message reached the bot manager", step, elapsed.Round(100*time.Millisecond))
+		}
+	}
 	sessionID := newBotSessionID(msg.Platform)
 	if len(resumeSessionID) > 0 && resumeSessionID[0] != "" {
 		sessionID = resumeSessionID[0]
@@ -2571,7 +2578,9 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 	applyBotRequestMetadata(active, queryReq)
 	m.sessions[threadID.Key()] = active
 	m.mu.Unlock()
+	botStep("before saving the session binding")
 	m.persistBotSessionBinding(active, startedAt)
+	botStep("session binding saved")
 
 	// Long-running indicator: if the agent hasn't replied within ~10s, layer an
 	// hourglass reaction on top of the "eyes" ack so the user knows the bot is
@@ -2716,6 +2725,9 @@ func (m *BotConversationManager) runSession(active *activeBotSession, queryReq m
 		cancel()
 	})
 
+	if elapsed := time.Since(active.LastActivity); elapsed > 2*time.Second {
+		log.Printf("[BOT_TIMING] before starting the event filter: %s after the session was created", elapsed.Round(100*time.Millisecond))
+	}
 	if m.eventSubscriber != nil {
 		log.Printf("[BOT_MANAGER] Starting event filter goroutine for session %s", sessionID)
 		go active.eventFilter.Start(sessionCtx, m.eventSubscriber, sessionID)
