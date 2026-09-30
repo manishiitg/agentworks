@@ -450,15 +450,3 @@ func (api *StreamingAPI) nativeTerminalFinalResponse(tmuxSession string) string 
 	defer o.mu.Unlock()
 	return o.lastAssistant
 }
-
-func (api *StreamingAPI) hasNativeTerminalDraft(sessionID string) bool {
-	if api.terminalStore == nil {
-		return false
-	}
-	for _, snapshot := range api.terminalStore.ListRaw(sessionID) {
-		if terminalSnapshotIsMainAgent(snapshot) && tmuxinput.Default.HasInteractiveDraft(snapshot.TmuxSession) {
-			return true
-		}
-	}
-	return false
-}

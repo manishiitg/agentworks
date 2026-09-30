@@ -25,7 +25,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxinput"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -10201,12 +10200,8 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 	if api == nil || strings.TrimSpace(message) == "" {
 		return false
 	}
-	if api.hasNativeTerminalDraft(sessionID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusLocked)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "terminal_draft_active", "message": tmuxinput.ErrInteractiveDraft.Error()})
-		return true
-	}
+	// Text typed in the CLI's own composer does not block a chat send: only the person who owns the
+	// chat can reach that terminal, and the refusal (423) was a false alarm for real users.
 	detached := r.WithContext(context.WithoutCancel(r.Context()))
 	detached.Header = r.Header.Clone()
 	recorded := &internalResponseCapture{header: http.Header{}}
