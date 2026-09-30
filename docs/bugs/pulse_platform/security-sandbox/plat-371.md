@@ -103,6 +103,24 @@ silent fallback (the deploy script already records it running for hours on 2026-
   whose version cannot be read, gets the prompt through `--system-prompt-file` and no
   `AGENTS.md` carrier (a duplicate at worst, never a gap).
 
+## Read-only sessions: notice for channels, no terminal (2026-09-30)
+
+- **Slack/WhatsApp channel routes.** A Slack channel route with a read grant runs as the Crew's
+  owner but read-only (`botRouteProfileAccessForRequest` returns `Read` unless the grant is
+  `owner`). The reader notice used to fire only when the caller was not the owner, so it missed
+  these turns even though tools and guards treated them as read-only. `crewSessionModeForTurn`
+  now follows whether the TURN is read-only, and a channel turn's notice says the conversation
+  is a shared chat channel.
+- **No terminal for read-only access.** Native terminal typing goes straight to the CLI and skips
+  the notice, so the terminal is refused for a caller looking at their own session with read-only
+  access (a Crew reader, a read-only login, a read-only channel route) and kept for owners and
+  editors. Enforced in `canAccessTerminalSession` (every terminal route), with a 403 "only
+  available to owners and editors" from the main-terminal route, which `MainAgentTerminal` shows
+  once before returning to the chat. The mark is set per turn (`SetSessionReadOnlyAccess`,
+  `access == WorkflowAccessRead`), so a guest call on an owner's session is not affected.
+  An owner or editor cannot be put in read-only mode, so their terminal is untouched. Verified
+  live: reader 403 on the metadata and stream routes, owner 200, cross-user 404.
+
 ## Evidence
 
 Unit tests in all three repos. Real CLIs: Claude 2.1.284 and Codex 0.159 both read

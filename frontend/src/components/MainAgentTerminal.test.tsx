@@ -51,6 +51,24 @@ describe('MainAgentTerminal sizing', () => {
     }
   })
 
+  it('tells a read-only user the terminal is for owners and editors and returns to the chat', async () => {
+    getMainTerminal.mockRejectedValue({ response: { status: 403 } })
+    const onUnavailable = vi.fn()
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<MainAgentTerminal sessionId="session-1" onUnavailable={onUnavailable} />))
+      await act(async () => Promise.resolve())
+      expect(host.textContent).toContain('only available to owners and editors')
+      expect(host.querySelector('[data-testid="main-agent-terminal-not-started"]')).toBeNull()
+      expect(onUnavailable).toHaveBeenCalledTimes(1)
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
   it('keeps a connected terminal mounted when a metadata poll fails', async () => {
     vi.useFakeTimers()
     getMainTerminal.mockResolvedValueOnce({ terminal_id: 'terminal', tmux_session: 'tmux', active: true })

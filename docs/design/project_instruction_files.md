@@ -71,7 +71,13 @@ non-owner chatting in the Crew, or a guest call into the owner's Crew) is read-o
   `submit_crew_suggestion` (a workflow run: `submit_workflow_suggestion`). Hidden tools
   stay out of the catalog; the bridge answers a call to one with the message instead of
   "not found".
-- The owner does not need a way to chat in Run mode.
+- The notice follows whether the TURN is read-only, not who the caller is: a Slack or WhatsApp
+  channel route with a read grant runs as the Crew's owner but read-only, and gets it too
+  (worded for a shared channel).
+- **No terminal for read-only access.** Typing in the native terminal skips the notice, so a
+  caller looking at their own read-only session gets no terminal (403 from the main-terminal
+  route, refused on every terminal route); owners and editors keep it.
+- The owner does not need a way to chat in Run mode (an owner or editor is never read-only).
 - Code has no reader prompt; its shared participants are governed by the Code share
   rules.
 

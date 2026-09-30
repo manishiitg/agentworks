@@ -21,9 +21,11 @@ const (
 	sessionModeSplit = "\n\n[USER MESSAGE]\n"
 )
 
-// crewSessionModeNotice is the block for a read-only reader of a Crew (a
-// non-owner chatting in it, or a guest call into the owner's Crew).
-func crewSessionModeNotice(crewRoot string) string {
+// crewSessionModeNotice is the block for a read-only reader of a Crew: a non-owner
+// chatting in it, a guest call into the owner's Crew, or a read-only Slack/WhatsApp
+// channel route. shared is true for a chat channel, where several people write to one
+// conversation, so the "this conversation is yours alone" line is left out.
+func crewSessionModeNotice(crewRoot string, shared bool) string {
 	owner := ""
 	if ownerID, ok := crewProjectOwnerID(crewRoot); ok {
 		owner = crewOwnerDisplayName(ownerID)
@@ -32,11 +34,15 @@ func crewSessionModeNotice(crewRoot string) string {
 	if owner != "" {
 		who = owner + "'s"
 	}
+	scope := "This conversation is the current user's alone. "
+	if shared {
+		scope = "This is a shared chat channel: several people write to this conversation. "
+	}
 	return sessionModeOpen + "\nYou are a read-only reader of " + who + " Crew. " +
 		"Inspect freely (files, briefs, configuration, schedules, triggers, run history) and run the Crew's attached workflow triggers when asked. " +
 		"Change nothing: no file, shell, database, schedule, trigger, selection, identity, folder or bot changes; mutation tools are not available, so do not work around that. " +
 		"If the user wants something changed, offer it to the owner with `" + crewSuggestionToolName + "` (their request in their words). " +
-		"This conversation is the current user's alone. Never print secret values.\n" + sessionModeClose
+		scope + "Never print secret values.\n" + sessionModeClose
 }
 
 // withSessionMode puts the notice in front of a message. It is idempotent for
@@ -77,42 +83,21 @@ func sessionModeFromContext(ctx context.Context) string {
 	return notice
 }
 
-// crewSessionModeForTurn is the notice for this turn, or "" for an owner.
-func crewSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile) string {
+// crewSessionModeForTurn is the notice for this turn, or "" for an owner or editor.
+//
+// It follows whether the TURN is read-only, not who the caller is: a Slack or WhatsApp
+// channel route with a read grant runs as the Crew's OWNER (the route belongs to them)
+// but with read-only access, so "the caller is not the owner" would miss it, while tools
+// and folder guards already treat it as read-only. A non-owner reader and a guest call
+// are read-only turns too; they are also matched directly as a belt-and-braces check.
+func crewSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
 	if resolvedProfile == nil || !isProjectProfileID(resolvedProfile.Definition.ID) {
 		return ""
 	}
-	if isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
-		return crewSessionModeNotice(req.SelectedFolder)
+	if readOnly || isCrewReaderTurn(req, currentUserID) || crewGuestCallerForTurn(req, currentUserID) != "" {
+		return crewSessionModeNotice(req.SelectedFolder, strings.TrimSpace(req.BotPlatform) != "")
 	}
 	return ""
-}
-
-// stripSessionModeFromMessage removes the block from a message read back from a
-// CLI's own transcript, so the user's text is what is kept and shown.
-func stripSessionModeFromMessage(message builderConversationMessage) builderConversationMessage {
-	if len(message.Parts) == 0 || !strings.HasPrefix(strings.TrimSpace(message.Parts[0].Text), sessionModeOpen) {
-		return message
-	}
-	parts := append([]builderConversationPart(nil), message.Parts...)
-	parts[0].Text = stripSessionMode(parts[0].Text)
-	message.Parts = parts
-	return message
-}
-
-// readOnlyRefusalHint is appended to a refused write in a read-only session so
-// the model explains the limit and offers the change to the owner instead of
-// retrying or working around it.
-func readOnlyRefusalHint(ctx context.Context) string {
-	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
-	if cfg == nil || !cfg.WorkflowReadOnly {
-		return ""
-	}
-	tool := crewSuggestionToolName
-	if strings.TrimSpace(cfg.WorkflowPath) != "" {
-		tool = "submit_workflow_suggestion"
-	}
-	return ". This session is read-only, so this change is not possible: do not work around it. Offer it to the owner with `" + tool + "` (the user's request in their words)"
 }
 
 var readerDeniedToolNames = func() map[string]struct{} {
@@ -204,4 +189,31 @@ func annotateReadOnlyShellResult(body []byte, hint string) []byte {
 		return body
 	}
 	return encoded
+}
+
+// stripSessionModeFromMessage removes the block from a message read back from a
+// CLI's own transcript, so the user's text is what is kept and shown.
+func stripSessionModeFromMessage(message builderConversationMessage) builderConversationMessage {
+	if len(message.Parts) == 0 || !strings.HasPrefix(strings.TrimSpace(message.Parts[0].Text), sessionModeOpen) {
+		return message
+	}
+	parts := append([]builderConversationPart(nil), message.Parts...)
+	parts[0].Text = stripSessionMode(parts[0].Text)
+	message.Parts = parts
+	return message
+}
+
+// readOnlyRefusalHint is appended to a refused write in a read-only session so
+// the model explains the limit and offers the change to the owner instead of
+// retrying or working around it.
+func readOnlyRefusalHint(ctx context.Context) string {
+	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
+	if cfg == nil || !cfg.WorkflowReadOnly {
+		return ""
+	}
+	tool := crewSuggestionToolName
+	if strings.TrimSpace(cfg.WorkflowPath) != "" {
+		tool = "submit_workflow_suggestion"
+	}
+	return ". This session is read-only, so this change is not possible: do not work around it. Offer it to the owner with `" + tool + "` (the user's request in their words)"
 }

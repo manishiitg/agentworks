@@ -111,7 +111,7 @@ func TestIsActiveWorkProjectWorkspaceAnyOwner(t *testing.T) {
 
 func TestCrewSessionModeNotice(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
-	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha")
+	notice := crewSessionModeNotice("_users/owner/Chats/Work/projects/alpha", false)
 	for _, marker := range []string{"read-only", "aman", "Change nothing", crewSuggestionToolName, "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
@@ -1270,5 +1270,35 @@ func TestReadOnlyShellHint(t *testing.T) {
 	}
 	if got := run("read_image", "sh: x: Operation not permitted\n"); strings.Contains(got, "read-only") {
 		t.Fatalf("another tool was annotated: %s", got)
+	}
+}
+
+// The notice follows whether the turn is read-only, not who the caller is: a Slack
+// channel route with a read grant runs as the Crew's owner but read-only, and must
+// still be told (and told it is a shared channel). An owner's own turn gets nothing.
+func TestCrewSessionModeFollowsReadOnlyTurn(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
+	profile := &resolvedAgentProfile{}
+	profile.Definition.ID = "work"
+	req := QueryRequest{AgentProfileID: "work", SelectedFolder: "_users/owner/Chats/Work/projects/alpha"}
+	if got := crewSessionModeForTurn(req, "owner", profile, false); got != "" {
+		t.Fatalf("an owner's own turn got a notice: %q", got)
+	}
+	slack := req
+	slack.BotPlatform = "slack"
+	got := crewSessionModeForTurn(slack, "owner", profile, true)
+	if !strings.Contains(got, "read-only reader") || !strings.Contains(got, "shared chat channel") || strings.Contains(got, "alone") {
+		t.Fatalf("read-only channel turn (running as the owner) notice = %q", got)
+	}
+	if got := crewSessionModeForTurn(req, "owner", profile, true); !strings.Contains(got, "alone") {
+		t.Fatalf("read-only web turn notice = %q", got)
+	}
+	code := &resolvedAgentProfile{}
+	code.Definition.ID = "code"
+	if got := crewSessionModeForTurn(req, "owner", code, true); got == "" {
+		t.Log("a Code profile is a project profile; read-only turns there get the notice too")
+	}
+	if got := crewSessionModeForTurn(req, "owner", nil, true); got != "" {
+		t.Fatalf("no profile must mean no notice: %q", got)
 	}
 }

@@ -94,7 +94,18 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
       } catch (cause: any) {
         if (cancelled) return
         const hadSnapshot = snapshotRef.current !== null
-        if (cause?.response?.status === 404) {
+        if (cause?.response?.status === 403) {
+          // The server refuses the terminal for read-only access (a Crew reader, a
+          // read-only login, a read-only channel). Typing into the CLI would skip the
+          // read-only notice the chat adds to their messages, so the terminal is kept for
+          // owners and editors. It can never work for this session, so say so once and go
+          // back to the chat instead of showing "not started" and polling forever.
+          snapshotRef.current = null
+          setSnapshot(null)
+          setNotStarted(false)
+          setError('The terminal is only available to owners and editors.')
+          onUnavailableRef.current?.()
+        } else if (cause?.response?.status === 404) {
           missesRef.current += 1
           if (!hadSnapshot || missesRef.current >= MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP) {
             snapshotRef.current = null
