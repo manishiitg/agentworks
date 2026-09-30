@@ -17,7 +17,8 @@ const catalogMock = vi.hoisted(() => ({
   ] as { name: string; catalog: string; sign_in: boolean; needs_client: boolean; group?: string }[],
 }))
 vi.mock('../../api/placeMcp', () => ({ placeMcpApi: placeMock }))
-vi.mock('../../api/personalMcp', () => ({ personalMcpApi: { catalog: vi.fn(async () => catalogMock.entries) } }))
+const catalogFn = vi.hoisted(() => vi.fn())
+vi.mock('../../api/personalMcp', () => ({ personalMcpApi: { catalog: catalogFn } }))
 vi.mock('../../api/secrets', () => ({ secretsApi: { listWorkflowSecrets: vi.fn(async () => [{ name: 'LINEAR_KEY' }]) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
@@ -25,8 +26,9 @@ vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 import { PlaceMcpSection } from './PlaceMcpSection'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+catalogFn.mockImplementation(async () => catalogMock.entries)
 const cleanups: (() => void)[] = []
-afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
+afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogFn.mockImplementation(async () => catalogMock.entries); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
 
 async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w') {
   const host = document.createElement('div'); document.body.append(host)
@@ -122,4 +124,25 @@ it('adds a server that is not listed, with an API-key header from the project se
   expect(placeMock.add).toHaveBeenCalledWith('Chats/Work/projects/p1', {
     name: 'linear', url: 'https://mcp.linear.app/mcp', headers: { Authorization: { secret: 'LINEAR_KEY', format: 'Bearer {}' } },
   })
+})
+
+// A connector list that fails to load must say so and offer a retry (it used to sit on
+// "Loading…" forever, which looks like there is nothing to connect); an empty list says that.
+it('reports a failed connector list with a retry, and an empty one plainly', async () => {
+  catalogFn.mockRejectedValueOnce(new Error('network'))
+  const host = await render(true, 'Code', 'Chats/Code/projects/p1')
+  await openPicker(host)
+  await settle()
+  expect(host.textContent).toContain('Could not load the list of connectors')
+  expect(host.textContent).not.toContain('Loading…')
+  catalogMock.entries = [{ name: 'linear', catalog: 'Linear', sign_in: true, needs_client: false }]
+  await act(async () => { button(host, 'Retry').click() })
+  await settle()
+  expect(host.textContent).not.toContain('Could not load the list of connectors')
+  expect(host.textContent).toContain('Linear')
+  catalogMock.entries = []
+  const empty = await render(true, 'Crew', 'Chats/Work/projects/p2')
+  await openPicker(empty)
+  await settle()
+  expect(empty.textContent).toContain('No connectors with sign-in are set up on this server')
 })

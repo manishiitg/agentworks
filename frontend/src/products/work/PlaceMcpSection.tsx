@@ -36,6 +36,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const [servers, setServers] = useState<PlaceMcpServer[]>([])
   const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
+  // idle -> loading -> ready | failed. An empty list must say which: a load that failed or came
+  // back empty used to show "Loading…" forever, which looks like there is nothing to connect.
+  const [catalogState, setCatalogState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
   const [secrets, setSecrets] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -72,10 +75,15 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   }, [workspacePath])
 
   useEffect(() => { void refresh() }, [refresh])
+  const loadCatalog = useCallback(() => {
+    setCatalogState('loading')
+    void personalMcpApi.catalog()
+      .then(list => { setCatalog(list.filter(entry => entry.sign_in)); setCatalogState('ready') })
+      .catch(() => { setCatalog([]); setCatalogState('failed') })
+  }, [])
   useEffect(() => {
-    if (!picking || catalog.length > 0) return
-    void personalMcpApi.catalog().then(list => setCatalog(list.filter(entry => entry.sign_in))).catch(() => setCatalog([]))
-  }, [picking, catalog.length])
+    if (picking && catalogState === 'idle') loadCatalog()
+  }, [picking, catalogState, loadCatalog])
   // API-key servers name a secret of this project (Setup > Secrets).
   useEffect(() => {
     if (!showCustom) return
@@ -262,7 +270,16 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search connectors" aria-label="Search connectors" className="pl-9" />
           </div>
-          {catalog.length === 0 && <span className="text-xs text-muted-foreground">Loading…</span>}
+          {catalogState === 'loading' && <span className="text-xs text-muted-foreground">Loading…</span>}
+          {catalogState === 'failed' && (
+            <div role="alert" className="flex items-center gap-2 text-xs text-destructive">
+              Could not load the list of connectors.
+              <Button variant="outline" size="sm" onClick={loadCatalog}>Retry</Button>
+            </div>
+          )}
+          {catalogState === 'ready' && catalog.length === 0 && (
+            <span className="text-xs text-muted-foreground">No connectors with sign-in are set up on this server. You can still add a server that is not listed below.</span>
+          )}
 
           {[...groups.keys()].filter(group => matches(providerGroupLabel(group)) || (groups.get(group) ?? []).some(entry => matches(entry.catalog))).map(group => {
             const label = providerGroupLabel(group)
