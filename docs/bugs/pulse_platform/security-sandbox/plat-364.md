@@ -283,7 +283,8 @@ switch says why.
 
 ## Full CLI on a local machine, and macOS Seatbelt (deferred), 2026-09-30
 
-- **Local Full CLI (built).** Full CLI needs the Linux Landlock launcher, so it never applied on a
+- **Local Full CLI (built; on by default in `agent_go/run_server_with_logging.sh`, set
+  `AGENTWORKS_CLI_FULL_UNCONFINED=off` to keep hybrid).** Full CLI needs the Linux Landlock launcher, so it never applied on a
   Mac. `AGENTWORKS_CLI_FULL_UNCONFINED=on` now turns it on without a lock for a person's own
   single-user machine: Claude gets its own Bash, Write and Edit with no permission prompts,
   running with the person's own rights, so only its working directory limits it. The server
@@ -291,6 +292,9 @@ switch says why.
   chat that already has Native agent tools on. mcpagent mode `full_unconfined`
   (`fullCLIEnabled`), wrapper `UpgradeCodingAgentToolsToFullUnconfined`. A local test tool, not
   a boundary: an injected page can make the agent run anything the person can.
+  Codex (mcpagent `3789b0b`): Full gives it the `workspace-write` sandbox. The same commit fixes
+  hybrid Codex, which never got its shell or subagents: a per-turn bridge-only shell disable in
+  `conversation.go` was unioned with the hybrid flags. Muse has no Full mode yet.
 - **macOS Seatbelt confinement (deferred).** The faithful version on a Mac is the same
   folder-only lock through `sandbox-exec`, which the platform shell tool already uses. It is
   deferred: single-user local has no cross-user risk, and the remaining risk is prompt injection
