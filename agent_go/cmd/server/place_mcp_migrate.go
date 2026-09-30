@@ -55,22 +55,22 @@ func (api *StreamingAPI) migrateCodePersonalMCP() {
 }
 
 func (api *StreamingAPI) migrateCodePersonalMCPFor(ctx context.Context, person string) (int, error) {
-	dir, err := personalMCPDir(person)
+	dir, err := placeMCPDir(person)
 	if err != nil {
 		return 0, err
 	}
 	enabled := map[string][]string{}
-	personalMCPMu.Lock()
-	err = readPersonalMCPJSON(filepath.Join(dir, "enabled.json"), &enabled)
-	personalMCPMu.Unlock()
+	placeMCPMu.Lock()
+	err = readPlaceMCPJSON(filepath.Join(dir, "enabled.json"), &enabled)
+	placeMCPMu.Unlock()
 	if err != nil || len(enabled) == 0 {
 		return 0, err
 	}
-	servers, err := listPersonalMCPServers(person)
+	servers, err := listPlaceMCPServers(person)
 	if err != nil {
 		return 0, err
 	}
-	byName := map[string]personalMCPServer{}
+	byName := map[string]placeMCPServer{}
 	for _, server := range servers {
 		byName[server.Name] = server
 	}
@@ -83,7 +83,7 @@ func (api *StreamingAPI) migrateCodePersonalMCPFor(ctx context.Context, person s
 	moved := 0
 	for _, raw := range roots {
 		root := cleanAttachRoot(raw)
-		if root == "" || !personalMCPCanAttach(ctx, person, root) {
+		if root == "" || !placeMCPCanAttach(ctx, person, root) {
 			log.Printf("[MCP_MIGRATE] %s: not moving connections switched on in %s (not their own Code; connections belong to a Code's owner)", person, raw)
 			continue
 		}
@@ -110,15 +110,15 @@ func (api *StreamingAPI) migrateCodePersonalMCPFor(ctx context.Context, person s
 
 // moveCodeConnection copies one server, its login (when withLogin) and its
 // header secrets to the Code's own place store, then attaches it.
-func (api *StreamingAPI) moveCodeConnection(ctx context.Context, person, fromDir string, server personalMCPServer, root string, withLogin bool) error {
+func (api *StreamingAPI) moveCodeConnection(ctx context.Context, person, fromDir string, server placeMCPServer, root string, withLogin bool) error {
 	store := placeMCPStoreID(person, root)
-	existing, _ := listPersonalMCPServers(store)
+	existing, _ := listPlaceMCPServers(store)
 	for _, have := range existing {
 		if have.Name == server.Name {
 			return recordPlaceMCP(person, server.Name, root) // already moved
 		}
 	}
-	toDir, err := personalMCPDir(store)
+	toDir, err := placeMCPDir(store)
 	if err != nil {
 		return err
 	}
@@ -127,18 +127,18 @@ func (api *StreamingAPI) moveCodeConnection(ctx context.Context, person, fromDir
 			return err
 		}
 	}
-	if _, err := addPersonalMCPServer(store, server); err != nil {
+	if _, err := addPlaceMCPServer(store, server); err != nil {
 		return err
 	}
 	if withLogin {
 		files := [][2]string{
-			{personalMCPTokenFile(fromDir, person, server.Name), personalMCPTokenFile(toDir, store, server.Name)},
-			{personalMCPClientFile(fromDir, person, server.Name), personalMCPClientFile(toDir, store, server.Name)},
+			{placeMCPTokenFile(fromDir, person, server.Name), placeMCPTokenFile(toDir, store, server.Name)},
+			{placeMCPClientFile(fromDir, person, server.Name), placeMCPClientFile(toDir, store, server.Name)},
 		}
-		if group := personalMCPGroupOf(fromDir, person, server); group != "" {
-			files = append(files, [2]string{personalMCPGroupTokenFile(fromDir, group), personalMCPGroupTokenFile(toDir, group)})
-			if scopes := readPersonalMCPGroupConsent(fromDir)[group]; len(scopes) > 0 {
-				if err := recordPersonalMCPGroupConsent(toDir, group, scopes); err != nil {
+		if group := placeMCPGroupOf(fromDir, person, server); group != "" {
+			files = append(files, [2]string{placeMCPGroupTokenFile(fromDir, group), placeMCPGroupTokenFile(toDir, group)})
+			if scopes := readPlaceMCPGroupConsent(fromDir)[group]; len(scopes) > 0 {
+				if err := recordPlaceMCPGroupConsent(toDir, group, scopes); err != nil {
 					return err
 				}
 			}

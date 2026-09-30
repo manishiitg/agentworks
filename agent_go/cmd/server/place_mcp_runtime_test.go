@@ -12,13 +12,13 @@ import (
 func connectCodeForTest(t *testing.T, owner, root, name string) string {
 	t.Helper()
 	store := placeMCPStoreID(owner, root)
-	if _, err := addPersonalMCPServer(store, personalMCPServer{Name: name, URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
+	if _, err := addPlaceMCPServer(store, placeMCPServer{Name: name, URL: "https://mcp.deepwiki.com/mcp"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := recordPlaceMCP(owner, name, root); err != nil {
 		t.Fatal(err)
 	}
-	internal, _, err := personalMCPServerConfig(store, name)
+	internal, _, err := placeMCPServerConfig(store, name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func connectCodeForTest(t *testing.T, owner, root, name string) string {
 // handed to the platform catalog; a non-Code session is left to the other
 // scopes.
 func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	api := &StreamingAPI{}
 	ctx := context.Background()
@@ -100,7 +100,7 @@ func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
 // and the agent see), for that Code only.
 func TestCodeBridgeResolvesPlainConnectionNames(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	ctx := context.Background()
 	internal := connectCodeForTest(t, "owner", codePrivacyOwnerRoot, "deepwiki")

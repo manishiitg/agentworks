@@ -11,16 +11,16 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-type personalMCPToolRegistrar struct {
+type placeMCPToolRegistrar struct {
 	exec func(context.Context, map[string]interface{}) (string, error)
 }
 
-func (r *personalMCPToolRegistrar) RegisterCustomTool(_ string, _ string, _ map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ string) error {
+func (r *placeMCPToolRegistrar) RegisterCustomTool(_ string, _ string, _ map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ string) error {
 	r.exec = exec
 	return nil
 }
 
-func (r *personalMCPToolRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ time.Duration, category string) error {
+func (r *placeMCPToolRegistrar) RegisterCustomToolWithTimeout(name, description string, params map[string]interface{}, exec func(context.Context, map[string]interface{}) (string, error), _ time.Duration, category string) error {
 	return r.RegisterCustomTool(name, description, params, exec, category)
 }
 
@@ -29,7 +29,7 @@ func (r *personalMCPToolRegistrar) RegisterCustomToolWithTimeout(name, descripti
 // their own OAuth app is sent to the MCP tab (no secret in chat). Only the
 // Code's owner connects, and nothing reaches another Code.
 func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"AcmeMail":{"url":"https://mcp.acme.example/mcp","protocol":"http","oauth":{"auth_url":"https://auth.acme.example/oauth/authorize","token_url":"https://auth.acme.example/oauth/token"}}}}`), 0o600); err != nil {
@@ -38,8 +38,8 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	api := &StreamingAPI{mcpConfigPath: catalogPath, logger: loggerv2.NewNoop()}
 	codeRoot := "_users/owner/Chats/Code/projects/c0de"
 	otherCode := "_users/owner/Chats/Code/projects/other"
-	reg := &personalMCPToolRegistrar{}
-	if err := api.registerPersonalMCPTool(reg, "owner", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
+	reg := &placeMCPToolRegistrar{}
+	if err := api.registerPlaceMCPTool(reg, "owner", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
 		t.Fatal(err)
 	}
 	call := func(args map[string]interface{}) string {
@@ -57,30 +57,30 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	if !strings.Contains(out, "MCP") || !strings.Contains(out, "api/oauth/callback") {
 		t.Fatalf("connect = %s", out)
 	}
-	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "acmemail" || attached[0].Owner != "owner" {
+	if attached, _ := placeMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "acmemail" || attached[0].Owner != "owner" {
 		t.Fatalf("attachments = %+v", attached)
 	}
-	if attached, _ := personalMCPAttachmentsFor(otherCode); len(attached) != 0 {
+	if attached, _ := placeMCPAttachmentsFor(otherCode); len(attached) != 0 {
 		t.Fatalf("connection reached another Code: %+v", attached)
 	}
-	if servers, _ := listPersonalMCPServers("owner"); len(servers) != 0 {
+	if servers, _ := listPlaceMCPServers("owner"); len(servers) != 0 {
 		t.Fatalf("connection stored in the person's own store: %v", servers)
 	}
 	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"acmemail"`) {
 		t.Fatalf("list after connect = %s", out)
 	}
 	call(map[string]interface{}{"action": "remove", "name": "acmemail"})
-	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 0 {
+	if attached, _ := placeMCPAttachmentsFor(codeRoot); len(attached) != 0 {
 		t.Fatalf("not removed: %+v", attached)
 	}
-	if servers, _ := listPersonalMCPServers(placeMCPStoreID("owner", codeRoot)); len(servers) != 0 {
+	if servers, _ := listPlaceMCPServers(placeMCPStoreID("owner", codeRoot)); len(servers) != 0 {
 		t.Fatalf("server not removed: %v", servers)
 	}
 
 	// Someone who is not the Code's owner (a participant of a shared Code)
 	// can list but not connect.
-	guest := &personalMCPToolRegistrar{}
-	if err := api.registerPersonalMCPTool(guest, "guest", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
+	guest := &placeMCPToolRegistrar{}
+	if err := api.registerPlaceMCPTool(guest, "guest", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := guest.exec(context.Background(), map[string]interface{}{"action": "connect", "catalog": "AcmeMail"}); err == nil || !strings.Contains(err.Error(), "owner") {

@@ -11,12 +11,12 @@ import (
 
 func legacyEnabled(t *testing.T, person, root string) []string {
 	t.Helper()
-	dir, err := personalMCPDir(person)
+	dir, err := placeMCPDir(person)
 	if err != nil {
 		t.Fatal(err)
 	}
 	enabled := map[string][]string{}
-	if err := readPersonalMCPJSON(dir+"/enabled.json", &enabled); err != nil {
+	if err := readPlaceMCPJSON(dir+"/enabled.json", &enabled); err != nil {
 		t.Fatal(err)
 	}
 	return enabled[cleanCodeRoot(root)]
@@ -28,7 +28,7 @@ func legacyEnabled(t *testing.T, person, root string) []string {
 // someone else's Code is left alone; nothing is deleted from the old store; a
 // second run changes nothing.
 func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	chat, err := chathistory.NewFilesystemStore(t.TempDir())
 	if err != nil {
@@ -43,18 +43,18 @@ func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
 	codeY := "_users/alice/Chats/Code/projects/y"
 	bobs := "_users/bob/Chats/Code/projects/z"
 
-	gmail := personalMCPServer{Name: "gmail", URL: "https://mcp.example.com/gmail", OAuth: &oauth.OAuthConfig{AuthURL: "https://example.com/authorize", TokenURL: "https://example.com/token"}}
-	keyed := personalMCPServer{Name: "keyed", URL: "https://mcp.example.com/keyed", Headers: map[string]personalMCPHeader{"Authorization": {Secret: "API_KEY", Format: "Bearer {}"}}}
-	for _, server := range []personalMCPServer{gmail, keyed} {
-		if _, err := addPersonalMCPServer("alice", server); err != nil {
+	gmail := placeMCPServer{Name: "gmail", URL: "https://mcp.example.com/gmail", OAuth: &oauth.OAuthConfig{AuthURL: "https://example.com/authorize", TokenURL: "https://example.com/token"}}
+	keyed := placeMCPServer{Name: "keyed", URL: "https://mcp.example.com/keyed", Headers: map[string]placeMCPHeader{"Authorization": {Secret: "API_KEY", Format: "Bearer {}"}}}
+	for _, server := range []placeMCPServer{gmail, keyed} {
+		if _, err := addPlaceMCPServer("alice", server); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := setPersonalSecret("alice", "API_KEY", "sk-legacy"); err != nil {
 		t.Fatal(err)
 	}
-	dir, _ := personalMCPDir("alice")
-	if err := oauth.NewTokenStore(personalMCPTokenFile(dir, "alice", "gmail")).Save(&oauth2.Token{AccessToken: "tok-alice"}); err != nil {
+	dir, _ := placeMCPDir("alice")
+	if err := oauth.NewTokenStore(placeMCPTokenFile(dir, "alice", "gmail")).Save(&oauth2.Token{AccessToken: "tok-alice"}); err != nil {
 		t.Fatal(err)
 	}
 	for root, names := range map[string][]string{codeX: {"gmail", "keyed"}, codeY: {"gmail"}, bobs: {"keyed"}} {
@@ -77,14 +77,14 @@ func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
 	}
 
 	// The login came along to the first Code, sealed for its new path.
-	_, cfg, err := personalMCPServerConfig(placeMCPStoreID("alice", codeX), "gmail")
+	_, cfg, err := placeMCPServerConfig(placeMCPStoreID("alice", codeX), "gmail")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if loaded, err := oauth.NewTokenStore(cfg.OAuth.TokenFile).Load(); err != nil || loaded.AccessToken != "tok-alice" {
 		t.Fatalf("login in Code x = %+v %v", loaded, err)
 	}
-	_, cfgY, err := personalMCPServerConfig(placeMCPStoreID("alice", codeY), "gmail")
+	_, cfgY, err := placeMCPServerConfig(placeMCPStoreID("alice", codeY), "gmail")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
 	}
 
 	// The header server's secret is now the Code's own project secret.
-	_, keyedCfg, err := personalMCPServerConfig(placeMCPStoreID("alice", codeX), "keyed")
+	_, keyedCfg, err := placeMCPServerConfig(placeMCPStoreID("alice", codeX), "keyed")
 	if err != nil || keyedCfg.Headers["Authorization"] != "Bearer sk-legacy" {
 		t.Fatalf("header server = %+v %v", keyedCfg.Headers, err)
 	}
@@ -109,7 +109,7 @@ func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
 	if got := legacyEnabled(t, "alice", bobs); len(got) != 1 {
 		t.Fatalf("someone else's Code lost its switch: %v", got)
 	}
-	if old, _ := listPersonalMCPServers("alice"); len(old) != 2 {
+	if old, _ := listPlaceMCPServers("alice"); len(old) != 2 {
 		t.Fatalf("the old store changed: %+v", old)
 	}
 	again, err := api.migrateCodePersonalMCPFor(ctx, "alice")

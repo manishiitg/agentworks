@@ -44,7 +44,7 @@ func TestPlaceRootOfAndCleanAttachRoot(t *testing.T) {
 // access or when removed.
 func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	_, api := readAccessRouterWithAPI(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	ctx := context.Background()
 	do := func(handler http.HandlerFunc, method, target, user, body string, vars map[string]string) *httptest.ResponseRecorder {
@@ -58,7 +58,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 		return rec
 	}
 
-	if !personalMCPCanAttach(ctx, "alice", "Workflow/w") || personalMCPCanAttach(ctx, "bob", "Workflow/w") || personalMCPCanAttach(ctx, "bob", "Workflow/shared") {
+	if !placeMCPCanAttach(ctx, "alice", "Workflow/w") || placeMCPCanAttach(ctx, "bob", "Workflow/w") || placeMCPCanAttach(ctx, "bob", "Workflow/shared") {
 		t.Fatal("only people who can edit a workflow may add connections to it")
 	}
 
@@ -71,7 +71,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	// alice adds her own server to Workflow/w (stored directly: the add route
 	// probes the URL over the network).
 	store := placeMCPStoreID("alice", "Workflow/w")
-	if _, err := addPersonalMCPServer(store, personalMCPServer{Name: "gmail", URL: "https://mcp.example.com/mcp", Transport: "http"}); err != nil {
+	if _, err := addPlaceMCPServer(store, placeMCPServer{Name: "gmail", URL: "https://mcp.example.com/mcp", Transport: "http"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := recordPlaceMCP("alice", "gmail", "Workflow/w"); err != nil {
@@ -83,7 +83,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	if len(names) != 1 || overrides[names[0]].Server == nil || overrides[names[0]].Server.URL != "https://mcp.example.com/mcp" {
 		t.Fatalf("workflow connections = %v %+v", names, overrides)
 	}
-	if names[0] == personalMCPInternalName("alice", "gmail") {
+	if names[0] == placeMCPInternalName("alice", "gmail") {
 		t.Fatal("a place connection must not share the name of alice's own store")
 	}
 	if other, _ := attachedMCPServersForRoot(ctx, "Workflow/shared"); len(other) != 0 {
@@ -91,7 +91,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	}
 
 	// It is stored under the place, never in alice's own store.
-	if own, _ := listPersonalMCPServers("alice"); len(own) != 0 {
+	if own, _ := listPlaceMCPServers("alice"); len(own) != 0 {
 		t.Fatalf("place connection listed in alice's own store: %+v", own)
 	}
 
@@ -121,7 +121,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	if names, _ := attachedMCPServersForRoot(ctx, "Workflow/w"); len(names) != 0 {
 		t.Fatalf("removed connection still used: %v", names)
 	}
-	if left, _ := listPersonalMCPServers(store); len(left) != 0 {
+	if left, _ := listPlaceMCPServers(store); len(left) != 0 {
 		t.Fatalf("removed connection's server still stored: %+v", left)
 	}
 }
@@ -129,12 +129,12 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 // A connection whose owner can no longer edit the workflow stops at once.
 func TestPlaceMCPStopsWhenOwnerLosesEditAccess(t *testing.T) {
 	readAccessRouterWithAPI(t)
-	withPersonalMCPRoot(t)
+	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	// bob only reads Workflow/shared: a record naming him (planted, or left
 	// from before a demotion) grants nothing.
 	store := placeMCPStoreID("bob", "Workflow/shared")
-	if _, err := addPersonalMCPServer(store, personalMCPServer{Name: "gmail", URL: "https://mcp.example.com/mcp", Transport: "http"}); err != nil {
+	if _, err := addPlaceMCPServer(store, placeMCPServer{Name: "gmail", URL: "https://mcp.example.com/mcp", Transport: "http"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := recordPlaceMCP("bob", "gmail", "Workflow/shared"); err != nil {

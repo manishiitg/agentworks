@@ -50,7 +50,7 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 			}
 		}
 	}
-	key := strings.Trim(personalMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
+	key := strings.Trim(placeMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(catalogName), "_"), "_")
 	if len(key) > 40 {
 		key = key[:40]
 	}
@@ -300,7 +300,7 @@ func (api *StreamingAPI) handlePutMCPApp(w http.ResponseWriter, r *http.Request)
 // closePersonalConnectionsForApp drops the pooled connections of every
 // personal server that uses the app, so they reconnect with the current one.
 func (api *StreamingAPI) closePersonalConnectionsForApp(key string) {
-	root, err := personalMCPRoot()
+	root, err := mcpConnectionsRoot()
 	if err != nil {
 		return
 	}
@@ -312,8 +312,8 @@ func (api *StreamingAPI) closePersonalConnectionsForApp(key string) {
 		if !entry.IsDir() {
 			continue
 		}
-		var servers []personalMCPServer
-		if readPersonalMCPJSON(filepath.Join(root, entry.Name(), "servers.json"), &servers) != nil {
+		var servers []placeMCPServer
+		if readPlaceMCPJSON(filepath.Join(root, entry.Name(), "servers.json"), &servers) != nil {
 			continue
 		}
 		for _, server := range servers {

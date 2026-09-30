@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// registerPersonalMCPTool gives a Code chat's agent this Code's MCP
+// registerPlaceMCPTool gives a Code chat's agent this Code's MCP
 // connections (docs/design/personal_mcp_attach.md): list the catalog and the
 // Code's connections, connect one (added with the owner's own login, on for
 // this Code from the next message, sign-in link returned for them to open), or
@@ -15,7 +15,7 @@ import (
 // connection that is not this Code's. Only the Code's owner connects. OAuth
 // app secrets are never taken in chat: a provider that needs the person's own
 // app is finished in the Integrations tab.
-func (api *StreamingAPI) registerPersonalMCPTool(reg definitionToolRegistrar, person, codeRoot, redirectURI string) error {
+func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, person, codeRoot, redirectURI string) error {
 	root := cleanAttachRoot(codeRoot)
 	return reg.RegisterCustomTool("manage_my_mcp_servers",
 		"Manage this Code's MCP connections (the owner's own logins: their Gmail, Drive, GitHub, ...). "+
@@ -46,11 +46,11 @@ func (api *StreamingAPI) registerPersonalMCPTool(reg definitionToolRegistrar, pe
 			case "list":
 				return api.placeMCPToolList(ctx, person, root)
 			case "connect":
-				if !personalMCPCanAttach(ctx, person, root) {
+				if !placeMCPCanAttach(ctx, person, root) {
 					return "", fmt.Errorf("only this Code's owner can connect servers to it")
 				}
 				store := placeMCPStoreID(person, root)
-				saved, _, err := api.addPersonalMCP(ctx, store, personalMCPServer{Name: name, URL: url}, catalogName)
+				saved, _, err := api.addPlaceMCP(ctx, store, placeMCPServer{Name: name, URL: url}, catalogName)
 				if err != nil {
 					return "", err
 				}
@@ -60,7 +60,7 @@ func (api *StreamingAPI) registerPersonalMCPTool(reg definitionToolRegistrar, pe
 				if saved.OAuth == nil {
 					return fmt.Sprintf("Connected %s (no sign-in needed) to this Code. It is available from the user's next message.", saved.Name), nil
 				}
-				authURL, discovery, _, err := api.startPersonalMCPSignIn(store, saved.Name, redirectURI, nil)
+				authURL, discovery, _, err := api.startPlaceMCPSignIn(store, saved.Name, redirectURI, nil)
 				if err != nil {
 					return "", err
 				}
@@ -72,7 +72,7 @@ func (api *StreamingAPI) registerPersonalMCPTool(reg definitionToolRegistrar, pe
 				if name == "" {
 					return "", fmt.Errorf("name is required")
 				}
-				if !personalMCPCanAttach(ctx, person, root) {
+				if !placeMCPCanAttach(ctx, person, root) {
 					return "", fmt.Errorf("only this Code's owner can remove its connections")
 				}
 				if err := removePlaceMCP(person, name, root); err != nil {
@@ -85,7 +85,7 @@ func (api *StreamingAPI) registerPersonalMCPTool(reg definitionToolRegistrar, pe
 }
 
 func (api *StreamingAPI) placeMCPToolList(ctx context.Context, person, root string) (string, error) {
-	attachments, err := personalMCPAttachmentsFor(root)
+	attachments, err := placeMCPAttachmentsFor(root)
 	if err != nil {
 		return "", err
 	}
@@ -99,22 +99,22 @@ func (api *StreamingAPI) placeMCPToolList(ctx context.Context, person, root stri
 	have := []connection{}
 	for _, a := range attachments {
 		store := placeMCPStoreID(a.Owner, root)
-		servers, _ := listPersonalMCPServers(store)
+		servers, _ := listPlaceMCPServers(store)
 		for _, server := range servers {
 			if server.Name != a.Server {
 				continue
 			}
-			dir, _ := personalMCPDir(store)
+			dir, _ := placeMCPDir(store)
 			have = append(have, connection{
 				Name: server.Name, Catalog: server.Catalog, SignIn: server.OAuth != nil,
-				Connected: personalMCPServerConnected(dir, store, server), Active: personalMCPCanAttach(ctx, a.Owner, root),
+				Connected: placeMCPServerConnected(dir, store, server), Active: placeMCPCanAttach(ctx, a.Owner, root),
 			})
 		}
 	}
 	catalog := []map[string]interface{}{}
-	for _, entry := range api.personalMCPCatalog() {
+	for _, entry := range api.placeMCPCatalog() {
 		catalog = append(catalog, map[string]interface{}{"catalog": entry.Catalog, "description": entry.Description, "needs_own_oauth_app": entry.NeedsClient})
 	}
-	data, _ := json.Marshal(map[string]interface{}{"this_code_has": have, "catalog": catalog, "you_can_connect": personalMCPCanAttach(ctx, person, root)})
+	data, _ := json.Marshal(map[string]interface{}{"this_code_has": have, "catalog": catalog, "you_can_connect": placeMCPCanAttach(ctx, person, root)})
 	return string(data), nil
 }

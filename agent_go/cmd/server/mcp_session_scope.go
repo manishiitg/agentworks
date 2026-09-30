@@ -33,7 +33,7 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 	}
 	// The workflow's own connections: only the ones this place has, never
 	// anyone else's personal server.
-	if isPersonalMCPInternalName(strings.TrimSpace(server)) {
+	if isPlaceMCPInternalName(strings.TrimSpace(server)) {
 		_, overrides := attachedMCPServersForRoot(ctx, cfg.WorkspacePath)
 		if override, ok := overrides[strings.TrimSpace(server)]; ok && override.Server != nil {
 			return &executor.ResolvedMCPServer{Name: strings.TrimSpace(server), Config: *override.Server, ConnectionSessionID: "global"}, nil

@@ -1,5 +1,5 @@
 import api from '../services/api'
-import type { PersonalMcpConnectResult, PersonalMcpHeader } from './personalMcp'
+import type { PersonalMcpConnectResult, PersonalMcpHeader } from './mcpCatalog'
 
 // A Code's, Crew's or workflow's own MCP connections (docs/design/
 // personal_mcp_attach.md): added there by its owner (or, for a workflow,

@@ -18,7 +18,7 @@ const catalogMock = vi.hoisted(() => ({
 }))
 vi.mock('../../api/placeMcp', () => ({ placeMcpApi: placeMock }))
 const catalogFn = vi.hoisted(() => vi.fn())
-vi.mock('../../api/personalMcp', () => ({ personalMcpApi: { catalog: catalogFn } }))
+vi.mock('../../api/mcpCatalog', () => ({ mcpCatalogApi: { catalog: catalogFn } }))
 vi.mock('../../api/secrets', () => ({ secretsApi: { listWorkflowSecrets: vi.fn(async () => [{ name: 'LINEAR_KEY' }]) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))

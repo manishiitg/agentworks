@@ -2400,7 +2400,9 @@ func runServer(cmd *cobra.Command, args []string) {
 		api.sweepOrphanCodeSessionPins(context.Background())
 	}()
 	// The catalog of servers that can be connected, and connections of a place.
-	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePersonalMCPCatalog).Methods("GET")
+	apiRouter.HandleFunc("/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
+	// The old path, kept for a browser tab still running the previous frontend.
+	apiRouter.HandleFunc("/me/mcp/catalog", api.handlePlaceMCPCatalog).Methods("GET")
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
@@ -6390,7 +6392,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// A Code chat's agent connects the person's own MCP servers.
 			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
 				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-				if err := api.registerPersonalMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
+				if err := api.registerPlaceMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
 					sendError(fmt.Sprintf("Failed to register personal MCP tool: %v", err), true)
 					return
 				}

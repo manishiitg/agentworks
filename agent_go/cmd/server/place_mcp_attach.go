@@ -35,9 +35,9 @@ import (
 //	<state root>/personal-mcp/attachments.json
 //	  { "<workspace root>": [ { "owner": "<user id>", "server": "gmail", ... } ] }
 
-const personalMCPAttachmentsFile = "attachments.json"
+const placeMCPAttachmentsFile = "attachments.json"
 
-type personalMCPAttachment struct {
+type placeMCPAttachment struct {
 	Owner      string `json:"owner"`
 	Server     string `json:"server"`
 	AttachedAt string `json:"attached_at,omitempty"`
@@ -48,12 +48,12 @@ func placeMCPStoreID(owner, root string) string {
 	return "place:" + owner + ":" + root
 }
 
-func personalMCPAttachmentsPath() (string, error) {
-	root, err := personalMCPRoot()
+func placeMCPAttachmentsPath() (string, error) {
+	root, err := mcpConnectionsRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, personalMCPAttachmentsFile), nil
+	return filepath.Join(root, placeMCPAttachmentsFile), nil
 }
 
 // cleanAttachRoot normalizes a workflow, Crew or Code root. It returns "" for
@@ -111,24 +111,24 @@ func attachRootForCaller(userID, raw string) string {
 	return cleanAttachRoot(raw)
 }
 
-func readPersonalMCPAttachmentsLocked() (map[string][]personalMCPAttachment, error) {
-	file, err := personalMCPAttachmentsPath()
+func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
+	file, err := placeMCPAttachmentsPath()
 	if err != nil {
 		return nil, err
 	}
-	all := map[string][]personalMCPAttachment{}
-	if err := readPersonalMCPJSON(file, &all); err != nil {
+	all := map[string][]placeMCPAttachment{}
+	if err := readPlaceMCPJSON(file, &all); err != nil {
 		return nil, err
 	}
 	return all, nil
 }
 
-func writePersonalMCPAttachmentsLocked(all map[string][]personalMCPAttachment) error {
-	file, err := personalMCPAttachmentsPath()
+func writePlaceMCPAttachmentsLocked(all map[string][]placeMCPAttachment) error {
+	file, err := placeMCPAttachmentsPath()
 	if err != nil {
 		return err
 	}
-	return writePersonalMCPJSON(file, all)
+	return writePlaceMCPJSON(file, all)
 }
 
 // userClaimsForDirectoryID builds the claims access checks need (access
@@ -147,11 +147,11 @@ func userClaimsForDirectoryID(userID string) *UserClaims {
 	return claims
 }
 
-// personalMCPCanAttach reports whether userID may add connections to root:
+// placeMCPCanAttach reports whether userID may add connections to root:
 // they must be able to edit that workflow, or own that Crew or Code. It is
 // checked on add and again on every use, so losing edit access stops their
 // connection there at once.
-func personalMCPCanAttach(ctx context.Context, userID, root string) bool {
+func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 	root = cleanAttachRoot(root)
 	if root == "" || strings.TrimSpace(userID) == "" {
 		return false
@@ -174,9 +174,9 @@ func personalMCPCanAttach(ctx context.Context, userID, root string) bool {
 
 // recordPlaceMCP adds owner's server to root's index.
 func recordPlaceMCP(owner, server, root string) error {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	all, err := readPersonalMCPAttachmentsLocked()
+	placeMCPMu.Lock()
+	defer placeMCPMu.Unlock()
+	all, err := readPlaceMCPAttachmentsLocked()
 	if err != nil {
 		return err
 	}
@@ -185,15 +185,15 @@ func recordPlaceMCP(owner, server, root string) error {
 			return nil
 		}
 	}
-	all[root] = append(all[root], personalMCPAttachment{Owner: owner, Server: server, AttachedAt: time.Now().UTC().Format(time.RFC3339)})
-	return writePersonalMCPAttachmentsLocked(all)
+	all[root] = append(all[root], placeMCPAttachment{Owner: owner, Server: server, AttachedAt: time.Now().UTC().Format(time.RFC3339)})
+	return writePlaceMCPAttachmentsLocked(all)
 }
 
 // forgetPlaceMCP drops owner's server from root's index.
 func forgetPlaceMCP(owner, server, root string) error {
-	personalMCPMu.Lock()
-	defer personalMCPMu.Unlock()
-	all, err := readPersonalMCPAttachmentsLocked()
+	placeMCPMu.Lock()
+	defer placeMCPMu.Unlock()
+	all, err := readPlaceMCPAttachmentsLocked()
 	if err != nil {
 		return err
 	}
@@ -209,22 +209,22 @@ func forgetPlaceMCP(owner, server, root string) error {
 	} else {
 		all[root] = kept
 	}
-	return writePersonalMCPAttachmentsLocked(all)
+	return writePlaceMCPAttachmentsLocked(all)
 }
 
-// personalMCPAttachmentsFor lists root's connections, sorted by name.
-func personalMCPAttachmentsFor(root string) ([]personalMCPAttachment, error) {
+// placeMCPAttachmentsFor lists root's connections, sorted by name.
+func placeMCPAttachmentsFor(root string) ([]placeMCPAttachment, error) {
 	root = cleanAttachRoot(root)
 	if root == "" {
 		return nil, nil
 	}
-	personalMCPMu.Lock()
-	all, err := readPersonalMCPAttachmentsLocked()
-	personalMCPMu.Unlock()
+	placeMCPMu.Lock()
+	all, err := readPlaceMCPAttachmentsLocked()
+	placeMCPMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	list := append([]personalMCPAttachment(nil), all[root]...)
+	list := append([]placeMCPAttachment(nil), all[root]...)
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].Server != list[j].Server {
 			return list[i].Server < list[j].Server
@@ -239,7 +239,7 @@ func personalMCPAttachmentsFor(root string) ([]personalMCPAttachment, error) {
 // run there. A connection whose owner can no longer edit root is skipped.
 func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpclient.RuntimeOverrides) {
 	root = placeRootOf(root)
-	attachments, err := personalMCPAttachmentsFor(root)
+	attachments, err := placeMCPAttachmentsFor(root)
 	if err != nil {
 		log.Printf("[PLACE_MCP] connections of %s: %v", root, err)
 		return nil, nil
@@ -250,11 +250,11 @@ func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpc
 	names := make([]string, 0, len(attachments))
 	overrides := mcpclient.RuntimeOverrides{}
 	for _, a := range attachments {
-		if !personalMCPCanAttach(ctx, a.Owner, root) {
+		if !placeMCPCanAttach(ctx, a.Owner, root) {
 			log.Printf("[PLACE_MCP] skipping %s in %s: the person who added it can no longer edit it", a.Server, root)
 			continue
 		}
-		internal, cfg, err := personalMCPServerConfig(placeMCPStoreID(a.Owner, root), a.Server)
+		internal, cfg, err := placeMCPServerConfig(placeMCPStoreID(a.Owner, root), a.Server)
 		if err != nil {
 			log.Printf("[PLACE_MCP] skipping %s in %s: %v", a.Server, root, err)
 			continue
@@ -279,7 +279,7 @@ func placeMCPRoot(w http.ResponseWriter, userID, raw string) (string, bool) {
 // GET /api/mcp/place?workspace_path=: a workflow's or Crew's own connections,
 // for anyone who can read it (never tokens or secrets).
 func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Request) {
-	userID, ok := personalMCPUser(w, r)
+	userID, ok := placeMCPUser(w, r)
 	if !ok {
 		return
 	}
@@ -291,7 +291,7 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 		writeAgentProfileError(w, http.StatusForbidden, "no access to this workflow")
 		return
 	}
-	attachments, err := personalMCPAttachmentsFor(root)
+	attachments, err := placeMCPAttachmentsFor(root)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -313,8 +313,8 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 	rows := make([]row, 0, len(attachments))
 	for _, a := range attachments {
 		store := placeMCPStoreID(a.Owner, root)
-		servers, _ := listPersonalMCPServers(store)
-		var server *personalMCPServer
+		servers, _ := listPlaceMCPServers(store)
+		var server *placeMCPServer
 		for i := range servers {
 			if servers[i].Name == a.Server {
 				server = &servers[i]
@@ -323,8 +323,8 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 		if server == nil {
 			continue
 		}
-		storeDir, _ := personalMCPDir(store)
-		connected := personalMCPServerConnected(storeDir, store, *server)
+		storeDir, _ := placeMCPDir(store)
+		connected := placeMCPServerConnected(storeDir, store, *server)
 		ownerName := a.Owner
 		if dir != nil {
 			if rec := dir.byID(a.Owner); rec != nil && rec.Username != "" {
@@ -334,7 +334,7 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 		rows = append(rows, row{
 			Name: a.Server, Catalog: server.Catalog, URL: redactedURL(server.URL),
 			Owner: a.Owner, OwnerName: ownerName, Mine: a.Owner == userID, Connected: connected,
-			Active: personalMCPCanAttach(r.Context(), a.Owner, root), AddedAt: a.AttachedAt,
+			Active: placeMCPCanAttach(r.Context(), a.Owner, root), AddedAt: a.AttachedAt,
 		})
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"servers": rows})
@@ -347,12 +347,12 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	userID, ok := personalMCPUser(w, r)
+	userID, ok := placeMCPUser(w, r)
 	if !ok {
 		return
 	}
 	var request struct {
-		personalMCPServer
+		placeMCPServer
 		Catalog       string `json:"catalog"`
 		WorkspacePath string `json:"workspace_path"`
 	}
@@ -364,14 +364,14 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if !personalMCPCanAttach(r.Context(), userID, root) {
+	if !placeMCPCanAttach(r.Context(), userID, root) {
 		writeAgentProfileError(w, http.StatusForbidden, "you can add connections only where you can edit")
 		return
 	}
 	// Credential headers are built from the adder's own personal secrets
 	// (Setup > Secrets), resolved when the connection is made.
 	store := placeMCPStoreID(userID, root)
-	saved, status, err := api.addPersonalMCP(r.Context(), store, request.personalMCPServer, request.Catalog)
+	saved, status, err := api.addPlaceMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
@@ -391,7 +391,7 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	userID, ok := personalMCPUser(w, r)
+	userID, ok := placeMCPUser(w, r)
 	if !ok {
 		return
 	}
@@ -399,7 +399,7 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	if !personalMCPCanAttach(r.Context(), userID, root) {
+	if !placeMCPCanAttach(r.Context(), userID, root) {
 		writeAgentProfileError(w, http.StatusForbidden, "you can connect only where you can edit")
 		return
 	}
@@ -412,7 +412,7 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
 		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
 	}
-	authURL, discovery, status, err := api.startPersonalMCPSignIn(placeMCPStoreID(userID, root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
+	authURL, discovery, status, err := api.startPlaceMCPSignIn(placeMCPStoreID(userID, root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
@@ -432,7 +432,7 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	userID, ok := personalMCPUser(w, r)
+	userID, ok := placeMCPUser(w, r)
 	if !ok {
 		return
 	}
@@ -444,7 +444,7 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 	if owner == "" {
 		owner = userID
 	}
-	if owner != userID && !personalMCPCanAttach(r.Context(), userID, root) {
+	if owner != userID && !placeMCPCanAttach(r.Context(), userID, root) {
 		writeAgentProfileError(w, http.StatusForbidden, "only the person who added it, or someone who can edit here, can remove it")
 		return
 	}
@@ -463,11 +463,11 @@ func removePlaceMCP(owner, name, root string) error {
 	if err := forgetPlaceMCP(owner, name, root); err != nil {
 		return err
 	}
-	if err := removePersonalMCPServer(store, name); err != nil {
+	if err := removePlaceMCPServer(store, name); err != nil {
 		log.Printf("[PLACE_MCP] remove %s from %s: %v", name, root, err)
 	}
-	closePersonalMCPConnection(store, name)
-	_ = forgetPersonalMCPLogin(store, name)
+	closePlaceMCPConnection(store, name)
+	_ = forgetPlaceMCPLogin(store, name)
 	return nil
 }
 
@@ -478,7 +478,7 @@ func forgetPlaceConnections(root string) {
 	if root == "" {
 		return
 	}
-	attachments, err := personalMCPAttachmentsFor(root)
+	attachments, err := placeMCPAttachmentsFor(root)
 	if err != nil {
 		log.Printf("[PLACE_MCP] connections of deleted %s: %v", root, err)
 		return

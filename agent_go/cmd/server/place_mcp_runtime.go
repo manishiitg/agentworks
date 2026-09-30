@@ -71,7 +71,7 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 		}
 		return nil, false
 	}
-	if isPersonalMCPInternalName(server) {
+	if isPlaceMCPInternalName(server) {
 		if resolved, found := place(server); found {
 			return resolved, true, nil
 		}
@@ -101,15 +101,15 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 // placeMCPPlainName is the name a connection has without its store prefix
 // (u<32 hex>__<name> -> <name>).
 func placeMCPPlainName(internal string) string {
-	if isPersonalMCPInternalName(internal) {
+	if isPlaceMCPInternalName(internal) {
 		return internal[35:]
 	}
 	return internal
 }
 
-// isPersonalMCPInternalName reports whether name has the personal-server
+// isPlaceMCPInternalName reports whether name has the personal-server
 // shape (u<32 hex>__<name>), whoever it belongs to.
-func isPersonalMCPInternalName(name string) bool {
+func isPlaceMCPInternalName(name string) bool {
 	if len(name) < 36 || name[0] != 'u' || name[33:35] != "__" {
 		return false
 	}

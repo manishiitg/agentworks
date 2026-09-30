@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { McpAppsSection } from './McpAppsSection'
 import { parseOAuthClientJson } from './oauthClientJson'
-import { personalMcpApi, type PersonalMcpCatalogServer } from '../../api/personalMcp'
+import { mcpCatalogApi, type McpCatalogServer } from '../../api/mcpCatalog'
 import { placeMcpApi, type PlaceMcpCustomServer, type PlaceMcpServer } from '../../api/placeMcp'
 import { secretsApi } from '../../api/secrets'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -34,7 +34,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
 }) {
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const [servers, setServers] = useState<PlaceMcpServer[]>([])
-  const [catalog, setCatalog] = useState<PersonalMcpCatalogServer[]>([])
+  const [catalog, setCatalog] = useState<McpCatalogServer[]>([])
   // idle -> loading -> ready | failed. An empty list must say which: a load that failed or came
   // back empty used to show "Loading…" forever, which looks like there is nothing to connect.
   const [catalogState, setCatalogState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle')
@@ -72,7 +72,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
   useEffect(() => { void refresh() }, [refresh])
   const loadCatalog = useCallback(() => {
     setCatalogState('loading')
-    void personalMcpApi.catalog()
+    void mcpCatalogApi.catalog()
       .then(list => { setCatalog(list.filter(entry => entry.sign_in)); setCatalogState('ready') })
       .catch(() => { setCatalog([]); setCatalogState('failed') })
   }, [])
@@ -122,7 +122,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     }
   }
 
-  const add = (entry: PersonalMcpCatalogServer) => run(entry.catalog, async () => {
+  const add = (entry: McpCatalogServer) => run(entry.catalog, async () => {
     const saved = await placeMcpApi.add(workspacePath, entry.catalog)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
