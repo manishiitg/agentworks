@@ -212,6 +212,7 @@ if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
       pi)     printf "npm install -g --prefix '%s' @earendil-works/pi-coding-agent@latest >/dev/null" "$REMOTE_TOOLS" ;;
       cursor) printf "HOME='%s/home' curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://cursor.com/install | HOME='%s/home' bash" "$REMOTE_APP" "$REMOTE_APP" ;;
       muse)   printf "HOME='%s/home' MUSE_INSTALL_DIR='%s/home/.local/bin' MUSE_NO_MODIFY_PATH=1 bash -c \"curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 https://dev.meta.ai/install.sh | bash\"" "$REMOTE_APP" "$REMOTE_APP" ;;
+      agy)    printf ':' ;; # Installed and configured by the checksum-verified helper below.
       *) echo "Unknown CLI_TOOLS entry: $1" >&2; exit 1 ;;
     esac
   }
@@ -224,6 +225,11 @@ if [[ "${#CLI_TOOLS[@]}" -gt 0 ]]; then
     check_lines+="command -v '$(cli_bin_name "$cli")' >/dev/null"$'\n'
     if [[ "$cli" == codex ]]; then check_lines+="codex --version"$'\n'; fi
   done
+
+  if [[ " ${CLI_TOOLS[*]} " == *" agy "* ]]; then
+    [[ "${AGY_AUTH_MODE:-}" == gemini ]] || { echo 'Agy server installation requires AGY_AUTH_MODE=gemini' >&2; exit 1; }
+    "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS' '$REMOTE_APP/home'" < "$LOCAL_REPO_ROOT/deploy/common/install-agy.sh"
+  fi
 
   echo "==> [$PRODUCT] Installing server CLI dependencies (agent-browser, ${CLI_TOOLS[*]})"
   "${SSH[@]}" "set -euo pipefail

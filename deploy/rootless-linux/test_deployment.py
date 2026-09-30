@@ -29,7 +29,9 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         config = (ROOT / "products/confida/product.env").read_text()
         for expected in (
             "PIN_NODE_VERSION=\"24.21.0\"",
-            "CLI_TOOLS=(claude codex pi cursor muse)",
+            "CLI_TOOLS=(claude codex pi cursor muse agy)",
+            "AGY_AUTH_MODE=gemini",
+            '"AGY_ALPHA=1"',
             "COPY_PLAYBOOKS=true",
             "RUN_WORKFLOW_BUILDER_MIGRATION=true",
             "PERSIST_MCP_STATE=true",
