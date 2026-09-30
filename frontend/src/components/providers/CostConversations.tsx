@@ -14,7 +14,7 @@ function ChatPreview({ conversation }: { conversation: CostConversation }) {
   useEffect(() => {
     let cancelled = false
     setHistory(null); setError(''); setLoading(true)
-    import('../../services/api').then(({ agentApi }) => agentApi.getChatHistoryResumeConversation(conversation.session_id, conversation.workflow_id || undefined, 50, offset))
+    import('../../services/api').then(({ agentApi }) => agentApi.getChatHistoryResumeConversation(conversation.session_id, conversation.workflow_id || undefined, 50, offset, false, true))
       .then(data => { if (!cancelled) setHistory(data) })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Chat history is unavailable.') })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -26,6 +26,16 @@ function ChatPreview({ conversation }: { conversation: CostConversation }) {
     {loading && <p className="text-xs text-muted-foreground">Loading chat…</p>}
     {error && <p role="alert" className="text-xs text-red-600">Could not load chat: {error}</p>}
     {history && <>
+      <details className="mb-3 rounded border border-border p-3">
+        <summary className="cursor-pointer text-sm font-medium">System prompt</summary>
+        <p className="mt-2 text-xs text-muted-foreground">Latest saved system and developer instructions for this conversation. Earlier runs may have used different instructions. Provider internal instructions are only available if saved in this history.</p>
+        {!history.saved_prompts?.length && <p className="mt-2 text-xs text-muted-foreground">No system or developer prompt was saved for this conversation.</p>}
+        {history.saved_prompts?.map(prompt => <div key={prompt.role} className="mt-3">
+          <h6 className="text-xs font-semibold">{prompt.role === 'system' ? 'System instructions' : 'Developer instructions'}</h6>
+          <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{prompt.text}</pre>
+          {prompt.truncated && <p className="mt-1 text-xs text-muted-foreground">This saved prompt exceeds the preview limit; only the first 64 KiB is shown.</p>}
+        </div>)}
+      </details>
       {history.conversation_history.length === 0 && <p className="text-xs text-muted-foreground">No saved messages are available for this conversation.</p>}
       <div className="max-h-[32rem] overflow-auto"><Suspense fallback={<p className="text-xs">Loading messages…</p>}><ConversationRenderer content={JSON.stringify(history)} /></Suspense></div>
       <div className="mt-2 flex gap-3 text-xs">

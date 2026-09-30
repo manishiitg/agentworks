@@ -1615,6 +1615,7 @@ export interface ChatHistoryConversation {
   runtime?: ChatHistoryAgentRuntime;
   workshop_mode?: 'workshop' | 'run' | string;
   conversation_history: ChatHistoryMessage[];
+  saved_prompts?: { role: 'system' | 'developer'; text: string; truncated?: boolean }[];
   terminal_snapshots?: TerminalSnapshot[];
   ui_events?: PollingEventSchema[];
   history_pagination?: {

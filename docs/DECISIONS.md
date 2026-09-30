@@ -19,6 +19,20 @@ Each entry says what was decided, why, and where it lives in the code.
 - Muse under the lock could not write its endpoint lease (`<data>/muse/runtime`);
   granted write on that folder only (`musecli_landlock.go`).
 
+### 2026-09-30 — Costs chat previews expose the latest saved instructions
+- View chat in Costs has a collapsed System prompt section showing the latest
+  saved system and developer message separately from the paginated chat turns.
+  The authorized history GET opts in with `include_saved_prompts=1` and reads
+  the canonical archive instead of a resume snapshot that excludes prompts.
+- These are saved instructions, not regenerated prompts or an exact request
+  archive: native continuation can replace previous system messages, and
+  provider internal instructions are unavailable unless the transcript stores
+  them. Missing prompts are explicit. Each role has a 64 KiB UTF-8-safe preview
+  with truncation labelled; ordinary chat restore remains compact.
+- Existing conversation access checks apply before extraction. No agent starts
+  or deployment is performed. Code: `chat_history_routes.go`,
+  `frontend/src/components/providers/CostConversations.tsx`.
+
 ### 2026-09-30 — People can disconnect their own legacy Gmail account
 - The shared-account admin gate also blocked removal of personal connections
   created before owner IDs were recorded. Confida has an ownerless Gmail entry

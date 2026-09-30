@@ -1078,10 +1078,11 @@ export const agentApi = {
   // resume_turns query name, this GET never resumes a provider session and is
   // valid for both owners and permitted read-only viewers. Actual continuation
   // is authorized separately by the mutating restore/start endpoint.
-  getChatHistoryResumeConversation: async (sessionId: string, workspacePath?: string, resumeTurns = 100, resumeOffset = 0, includeUiEvents = false): Promise<ChatHistoryConversation> => {
+  getChatHistoryResumeConversation: async (sessionId: string, workspacePath?: string, resumeTurns = 100, resumeOffset = 0, includeUiEvents = false, includeSavedPrompts = false): Promise<ChatHistoryConversation> => {
     const params: Record<string, string> = { resume_turns: String(resumeTurns) }
     if (resumeOffset > 0) params.resume_offset = String(resumeOffset)
     if (includeUiEvents) params.include_ui_events = '1'
+    if (includeSavedPrompts) params.include_saved_prompts = '1'
     if (workspacePath) params.workspace_path = workspacePath
     const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
     return response.data
