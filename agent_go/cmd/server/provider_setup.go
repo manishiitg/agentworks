@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -723,6 +724,9 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	// Someone who does not manage the account never gets an interactive
 	// terminal: the server runs the usage command and returns its text.
 	manages := admin || (request.ConnectionID != "" && !strings.HasPrefix(request.ConnectionID, "global:") && accountOwner == caller)
+	if request.Provider == "claude-code" {
+		seedClaudeTheme(setupHome(environment))
+	}
 	session, err := api.providerSetupManager().start(GetUserIDFromContext(r.Context()), request.Provider, request.Action, request.Cols, request.Rows, environment, cleanup, request.ReplaceRunning, request.ConnectionID)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -924,4 +928,43 @@ func (api *StreamingAPI) serverAccountAvailableToCaller(ctx context.Context, cal
 		}
 	}
 	return false
+}
+
+// setupHome is the HOME the setup CLI runs with: the account's own, else the service's.
+func setupHome(environment []string) string {
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, "HOME="); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	home, _ := os.UserHomeDir()
+	return home
+}
+
+// seedClaudeTheme gives Claude a theme before the account terminal opens, so its first-run
+// "choose a theme" picker never takes over a sign-in or usage check (the chat adapter does the
+// same for chats). A theme someone already chose is kept; nothing else in the file changes.
+func seedClaudeTheme(home string) {
+	if strings.TrimSpace(home) == "" {
+		return
+	}
+	path := filepath.Join(home, ".claude.json")
+	config := map[string]interface{}{}
+	if raw, err := os.ReadFile(path); err == nil {
+		if json.Unmarshal(raw, &config) != nil {
+			return // never rewrite a file we cannot read
+		}
+	} else if !os.IsNotExist(err) {
+		return
+	}
+	if theme, _ := config["theme"].(string); strings.TrimSpace(theme) != "" {
+		return
+	}
+	config["theme"] = "dark"
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(home, 0o700)
+	_ = os.WriteFile(path, data, 0o600)
 }
