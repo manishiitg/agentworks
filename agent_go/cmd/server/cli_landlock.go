@@ -91,22 +91,10 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessio
 		}
 		return
 	}
-	policy := llmtypes.CLISecurityPolicy{Provider: provider}
-	if base != nil {
-		policy = base.Clone()
-	}
+	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base)
 	policy.Mode = llmtypes.CLISecurityModeIsolated
 	policy.LandlockRunner = runner
 	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
-	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
-	if cfg := common.GetSessionShellConfig(sessionID); cfg != nil {
-		for _, rel := range cfg.ReadPaths {
-			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, codingAgentWorkspaceWorkingDir(rel))
-		}
-		for _, rel := range cfg.WritePaths {
-			policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, codingAgentWorkspaceWorkingDir(rel))
-		}
-	}
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not attach the Landlock policy: %v", sessionID, err)
 		return
@@ -119,6 +107,33 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessio
 		}
 	}
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
+}
+
+// The final folder guard supplies project access. A Crew reader's writable
+// runtime must never promote the linked real project through an initial grant
+// or an attached folder alias. Landlock grants are additive, so dropping that
+// write authority is essential; the link is not a read-only boundary itself.
+func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) llmtypes.CLISecurityPolicy {
+	policy := llmtypes.CLISecurityPolicy{Provider: provider}
+	if base != nil {
+		policy = base.Clone()
+	}
+	cfg := common.GetSessionShellConfig(sessionID)
+	if cfg != nil && cfg.CrewReader {
+		policy.WorkspaceWritePaths = nil
+	}
+	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
+	if cfg != nil {
+		for _, rel := range cfg.ReadPaths {
+			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, codingAgentWorkspaceWorkingDir(rel))
+		}
+		if !cfg.CrewReader {
+			for _, rel := range cfg.WritePaths {
+				policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, codingAgentWorkspaceWorkingDir(rel))
+			}
+		}
+	}
+	return policy
 }
 
 func cliHomeName(provider string) string {

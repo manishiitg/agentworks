@@ -1,6 +1,11 @@
 # Workflows on the shared folder (plan, not built)
 
-Status: planned 2026-09-30. Crew and Code are built first and tested (see
+Status: planned 2026-09-30; not implemented by the Crew change. Crew now retains
+private mode directories and links its real project with `project/` instead of
+using the shared-folder design below. Workflows still use private runtimes;
+applying links to workflows is a separate decision. The earlier plan follows:
+
+Crew and Code are built first and tested (see
 `project_instruction_files_safe`: one shared prompt per folder, the reader role
 sent as an `[AGENTWORKS SESSION]` block in front of each message, and a project's
 own AGENTS.md / .claude / .cursor / .pi never overwritten or deleted). Workflows

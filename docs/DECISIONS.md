@@ -7,6 +7,38 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Crew Run and Builder use private runtimes linked to the real project
+- Reverse the shared Crew prompt/folder decision in PLAT-371. Every Crew coding
+  CLI uses a private directory keyed by user, project, chat, provider and mode.
+  Its `project/` directory link points to the authoritative Crew files; generated
+  instructions, projected skills, CLI configuration and private homes stay beside
+  the link. Directory linking preserves new files, atomic saves, renames and
+  deletes without copying or synchronizing project data. Code and workflows keep
+  their existing working-directory policies.
+- Access selects the mode: owners use Builder; readers, guest function calls and
+  downgrade-only pinned turns use Run. Run has a separate prompt and `crew-run`
+  skill, without the built-in authoring bundle or feature/setup/memory-write
+  instructions. Builder retains its feature bundle and adds `crew-builder`.
+  The per-message reader notice, denied tools, folder guards and terminal access
+  checks still enforce the current turn's restrictions.
+- The link grants no permission. Landlock grants the real project separately:
+  read/write for Builder, read-only for Run. A reader's final CLI policy drops
+  initial/attached-folder workspace write grants and allows writing only the
+  private runtime. Linux launcher tests verify read, create, edit, rename, delete
+  and denial of a nested link to an ungranted folder. This does not resolve the
+  existing confinement/host-grant issues listed below.
+- Resume requires the same private directory (including Codex's project-directory
+  override). Old native sessions launched in the shared Crew folder start fresh
+  once, using saved application history; same-mode private sessions resume across
+  restarts and day-folder rollover even after a compatible definition refresh.
+- Code: `crew_cli_runtime.go`, `pkg/cliruntime/project.go`, `cli_landlock.go`,
+  `internal/workproduct/prompts/run.md`, and mode skills. Provider skill projection
+  is tested for Claude, Codex, Cursor, Pi and Muse; all six Crew CLI runtime
+  identities are tested. Agy uses launch-context prompts and the bridge skill
+  reader; its private-home, tool-hook and prompt-input tests pass too.
+  Not deployed: authenticated live CLI qualification in
+  both modes remains required by the deployment decision below.
+
 ### 2026-09-30 — Chat jumpiness: no clear during a running turn, no doubled reply at the end
 - The live streamed text auto-cleared after 60s of silence (the code comment said 3s; it
   never was) even while a long tool call was still running, so the reply vanished and

@@ -11,6 +11,14 @@
 
 ## Problem
 
+**Crew design update (2026-09-30):** Crew now uses separate Run/Builder prompts
+and skills in private runtimes with `project/` linked to its real files. This
+supersedes the shared Crew folder/prompt decision below; Code retains the safe
+shared-folder leases. See the [current design](../../../design/project_instruction_files.md).
+The per-message reader notice and enforcement remain. Kernel tests confirm that
+Run cannot write through the link and that ungranted link targets stay denied;
+every authenticated CLI still needs live qualification before deployment.
+
 Crew and Code chats, schedules, triggers and bots all run with the project folder
 as the CLI's working directory, and several sessions can be live in it at once.
 Two layers wrote into that folder and cleaned up carelessly:

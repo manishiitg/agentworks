@@ -9,6 +9,16 @@ prompt:
   file: prompts/system-prompt.md
   variables: {}
 
+# Access chooses the mode. Builder adds these skills to its feature bundle;
+# Run replaces that bundle, while keeping the person's selected domain skills.
+chat:
+  builder:
+    prompt: {file: prompts/system-prompt.md}
+    skills: [crew-builder]
+  run:
+    prompt: {file: prompts/run.md}
+    skills: [crew-run]
+
 profile:
   id: work
   name: Crew

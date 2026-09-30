@@ -1,32 +1,47 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // RTS 2026-09-24 04:54: after a restart whose deploy changed the Work
 // definition, the latency Crew (claude-code) got "Native coding-agent
 // continuation unavailable" instead of resuming. A changed Crew definition
 // must still find the Crew's own persisted native session (in the Crew
-// project, across the day-folder rollover) and resume it.
+// private runtime, across the day-folder rollover) and resume it. Old shared
+// project sessions cannot be adopted into the private mode directory.
 func TestCrewResumesNativeSessionAfterDefinitionChangeAcrossDays(t *testing.T) {
 	t.Setenv("AGENTWORKS_ISOLATE_WORKFLOW_CLI", "false")
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	project := filepath.Join(root, "_users", "user-1", "Chats", "Work", "projects", "latency")
+	if err := os.MkdirAll(project, 0700); err != nil {
+		t.Fatal(err)
+	}
+	runtimeDir, err := crewCLIWorkingDir("_users/user-1/Chats/Work/projects/latency", "user-1", "work:project:crew-1", "claude-code", false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	write := func(day, native string) {
 		t.Helper()
 		dir := filepath.Join(project, "builder", "conversation", day)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		payload := `{"session_id":"work:project:crew-1","runtime":{"kind":"coding_agent","provider":"claude-code","resume_supported":true,"external_session_id":"` + native + `","agent_profile_key":"profile-sha256:before-deploy"}}`
-		if err := os.WriteFile(filepath.Join(dir, "session-work:project:crew-1-conversation.json"), []byte(payload), 0o644); err != nil {
+		handle := requireAgentHandle(t, testAgentWithHandle("work:project:crew-1", llmtypes.CodingProviderSessionHandle{Provider: "claude-code", WorkingDir: runtimeDir, NativeSessionID: native}))
+		payload, err := json.Marshal(map[string]interface{}{"session_id": "work:project:crew-1", "runtime": &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: "claude-code", ResumeSupported: true, ExternalSessionID: native, AgentProfileKey: "profile-sha256:before-deploy", AgentSessionHandle: handle}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "session-work:project:crew-1-conversation.json"), payload, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,7 +55,7 @@ func TestCrewResumesNativeSessionAfterDefinitionChangeAcrossDays(t *testing.T) {
 			write("2026-09-24", "native-today")
 		}
 		api := &StreamingAPI{lastAgentProfileKeyBySession: map[string]string{"work:project:crew-1": "profile-sha256:after-deploy"}}
-		ag := &mcpagent.Agent{}
+		ag := testAgentWithHandle("work:project:crew-1", llmtypes.CodingProviderSessionHandle{Provider: "claude-code", WorkingDir: runtimeDir})
 		// handleQuery resolves the Crew's SelectedFolder (logical form from the
 		// client) to its physical workspace for the native lookup.
 		workspace := productConversationRuntimeWorkspace("user-1", "Chats/Work/projects/latency")

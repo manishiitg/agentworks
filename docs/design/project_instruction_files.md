@@ -11,11 +11,32 @@ describe for shared folders.
 
 | Run | CLI working directory |
 |---|---|
-| Crew and Code chats, schedules, triggers, bots | the project's own folder (shared by every session in it) |
+| Crew chats, schedules, triggers, bots | private runtime per user/project/chat/provider/mode, with `project/` linked to the real Crew folder |
+| Code chats, schedules, triggers, bots | the project's own folder (shared by every session in it) |
 | Workflow Builder chat and workflow schedule | private per-session runtime folder outside the docs tree ([PLAT-296](../bugs/pulse_platform/security-sandbox/plat-296.md)); planned to move to the shared folder ([plan](workflow_shared_folder_plan.md)) |
 | Workflow step agents | fresh temporary folder |
 
-## Rules for a shared project folder
+## Crew linked runtimes
+
+Crew's Run and Builder prompts, generated instructions, projected skills and
+configuration live in different private runtime directories outside workspace
+documents. `project/` links the whole real Crew directory, so a new file, atomic
+save, rename or delete immediately affects authoritative project data without a
+copy/sync layer. Native tools use `project/<path>` or `cd project`; bridge tools
+keep their existing real-project-relative paths without this prefix.
+
+The project link is checked at every launch; a replacement link, file or directory
+fails launch rather than being overwritten or silently adopted. Runtime cleanup
+does not remove the linked project. The real project's instruction files and
+native CLI folders are never used as projection destinations.
+
+Landlock must grant the real target separately: Builder can read/write it, Run
+can only read it. Both can write their own runtime. Run's final policy removes
+all workspace write grants other than that runtime. A link into an ungranted
+folder remains denied. Isolation of instructions is not a replacement for these
+kernel permissions or the bridge folder guard.
+
+## Rules for projection destinations
 
 1. **Never delete what we did not create.** A project's own `AGENTS.md`,
    `.claude/`, `.cursor/`, `.pi/`, `.codex/`, `.agents/` are read, never replaced.
@@ -57,8 +78,10 @@ of each CLI (see PLAT-371).
 A Crew has two roles. The owner (Builder) has full tools. A reader (Run: a
 non-owner chatting in the Crew, or a guest call into the owner's Crew) is read-only.
 
-- **One prompt** for everyone in the folder (the Crew profile prompt plus a short
-  paragraph explaining the `[AGENTWORKS SESSION]` block).
+- **Separate prompts and skills.** Builder uses the Crew profile and feature
+  bundle plus `crew-builder`. Run uses `prompts/run.md` and `crew-run`, keeps
+  domain/project skills, and drops the platform authoring bundle and authoring
+  feature extensions. Project memory guidance becomes read-only.
 - **The reader role is a block in front of each message**
   (`crew_session_mode.go`), on the normal turn and on live input. It is stripped
   from chat history, submission records and native transcripts; the UI shows what the
@@ -77,7 +100,9 @@ non-owner chatting in the Crew, or a guest call into the owner's Crew) is read-o
 - **No terminal for read-only access.** Typing in the native terminal skips the notice, so a
   caller looking at their own read-only session gets no terminal (403 from the main-terminal
   route, refused on every terminal route); owners and editors keep it.
-- The owner does not need a way to chat in Run mode (an owner or editor is never read-only).
+- There is no new mode toggle. Trusted access selects the mode; a pinned Run
+  request or a read-only bot route can downgrade an owner's turn, never promote
+  a reader. Guest function calls always use Run.
 - Code has no reader prompt; its shared participants are governed by the Code share
   rules.
 
@@ -89,6 +114,12 @@ Crew and Code take theirs from the conversation registry: `work:project:<id>` /
 Workflows: see the [plan](workflow_shared_folder_plan.md) (native CLI session keyed
 by session id and mode).
 
+Crew native resume also checks the private runtime directory, including Codex's
+project-directory override. An old shared-folder native session or a different
+mode cannot override the new working directory: it starts fresh using saved
+application history. Same-mode private sessions keep native resume across a
+restart, day-folder rollover and compatible profile definition changes.
+
 ## Tests
 
 `pkg/projectfile` unit tests (user's file, overlap, edits during a session, stale
@@ -96,3 +127,9 @@ blocks, leases, owned files); `skillproject` (adoption, user skills);
 `mcpagent` cleanup tests (user's `.claude/.cursor/.pi/.codex/.agents` survive every
 provider start); server tests for the session block, its stripping, and the refusal
 hint. Real-CLI and server-level runs are recorded in PLAT-371.
+
+Linked Crew tests additionally cover mode-specific prompt/skills, stable private
+runtime identities for all six CLI providers, projection for Claude/Codex/Cursor/
+Pi/Muse, resume boundaries, preserving real project instructions, and Linux
+Landlock read/write/create/rename/delete permissions through the link. Live
+authenticated qualification of every CLI in both modes is required before deploy.

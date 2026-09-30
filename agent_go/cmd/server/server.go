@@ -5513,9 +5513,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError(isolationErr.Error(), true)
 				return
 			}
+		} else if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID {
+			var isolationErr error
+			chatWorkingDir, isolationErr = crewCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, currentUserIsReadOnly)
+			if isolationErr != nil {
+				sendError(isolationErr.Error(), true)
+				return
+			}
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
+		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
+		if crewReaderCLI {
+			cliWritePaths = nil
+		}
 		if chatWorkingDir != sharedChatWorkingDir {
 			cliReadPaths = append(cliReadPaths, chatWorkingDir)
 			cliWritePaths = append(cliWritePaths, chatWorkingDir)
@@ -5523,7 +5534,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 			grantRead, grantWrite, _, _ := workFolderGuardInputs(r.Context())
 			cliReadPaths = appendUniqueStrings(cliReadPaths, grantRead...)
-			cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
+			if !crewReaderCLI {
+				cliWritePaths = appendUniqueStrings(cliWritePaths, grantWrite...)
+			}
 		}
 		cliSecurityPolicy, err := api.cliSecurityStore.Resolve(
 			currentUserID,
@@ -6597,13 +6610,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
-				// Crew Run mode: readers chat under a read-only operating
-				// mode on top of the crew's own prompt. Tools and guards
-				// enforce it; the prompt states it so refusals are
-				// coherent instead of confused retries.
-				// A reader's role is not added here: every session in a Crew
-				// folder shares one prompt, and the role reaches the CLI as a
-				// block at the front of each message (crew_session_mode.go).
+				if resolvedProfile.Definition.ID == crewProfileID && chatWorkingDir != sharedChatWorkingDir {
+					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
+						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
+						return
+					}
+				}
 			} else if !isWorkflowPhase {
 				_ = llmAgent.AddInstructions(virtualtools.GetAgentWorksChatInstructionsWithUser(perUserChatsFolder, currentUserID))
 				logfWithContext(queryLogCtx, "[CHAT] Added direct-chat instructions to system prompt")
@@ -6673,6 +6685,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				Provider:                 req.Provider,
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
+				CrewReadOnly:             crewReaderCLI,
 				HasTriggerAutoNotifyTool: canTriggerAutoNotify,
 				ShellRoot:                shellRoot,
 				PerUserChatsFolder:       perUserChatsFolder,
@@ -13603,6 +13616,10 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	access, err := api.conversationTargetAccess(ctx, *req)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
+	}
+	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
+	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}
 	}
 	return resolvedProfile, access, nil
 }

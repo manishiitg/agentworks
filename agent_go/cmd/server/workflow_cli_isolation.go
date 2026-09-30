@@ -84,15 +84,19 @@ func workflowCLIWorkspaceInstructions(folder string) string {
 }
 
 func workflowCLIResumeAllowed(agent *mcpagent.Agent, runtime *ChatHistoryAgentRuntime) bool {
-	if !workflowCLIIsolationEnabled() || runtime == nil {
+	if runtime == nil {
 		return true
 	}
 	current := mcpagent.SnapshotAgentSession(agent)
 	if current == nil {
-		return false
+		// Preserve legacy non-isolated restoration for agents without a
+		// configured provider handle. Private Crew agents are constructed with
+		// their runtime cwd and always take the identity check below.
+		return !workflowCLIIsolationEnabled()
 	}
 	// Apply this only to agents constructed with a private runtime directory.
-	// Ordinary chats and existing isolated step agents keep their own policy.
+	// Crew linked runtimes use the same identity check, even when workflow
+	// isolation is disabled. Ordinary chats and step agents keep their policy.
 	if !strings.Contains(current.Provider.WorkingDir, string(os.PathSeparator)+"cli-runtimes"+string(os.PathSeparator)+"v1"+string(os.PathSeparator)) {
 		return true
 	}

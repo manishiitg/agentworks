@@ -10,11 +10,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-// A Crew has two roles, owner and reader. Both run the same profile prompt (so
-// the instruction file a CLI reads is identical for everyone sharing the
-// folder); a reader's role reaches the CLI as a short block at the front of
-// each message it is sent. Tools and folder guards enforce the role; this
-// block only tells the model what it is so refusals are coherent.
+// A Crew has two roles, owner (Builder) and reader (Run), with separate
+// prompts/skills in private linked runtimes. The per-message notice also carries
+// current restrictions into live input. Tools and folder guards enforce them.
 const (
 	sessionModeOpen  = "[AGENTWORKS SESSION]"
 	sessionModeClose = "[/AGENTWORKS SESSION]"

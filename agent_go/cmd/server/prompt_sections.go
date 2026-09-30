@@ -52,6 +52,7 @@ type promptContext struct {
 	ProfileID       string
 	HasProfile      bool
 	IsWorkflowPhase bool
+	CrewReadOnly    bool
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
@@ -150,7 +151,12 @@ var promptSections = []promptSection{
 		// root and therefore do not receive a misleading persistence promise.
 		Name:    "project-memory",
 		Applies: func(c promptContext) bool { return c.HasProfile || c.IsWorkflowPhase },
-		Build:   func(promptContext) string { return governedProjectMemoryInstructions },
+		Build: func(c promptContext) string {
+			if c.CrewReadOnly {
+				return "## Persistent project memory\n\nRead the Crew's project-root MEMORY.md when relevant, within the current folder grants. Run mode cannot update memory, instructions, or skills. In a private CLI runtime, the project memory is at project/MEMORY.md.\n"
+			}
+			return governedProjectMemoryInstructions
+		},
 	},
 	{
 		// Code only: a private coding workspace whose agent can install and run things on a server
@@ -161,7 +167,7 @@ var promptSections = []promptSection{
 	},
 	{
 		Name:    "product-features",
-		Applies: func(c promptContext) bool { return c.HasProfile && len(c.FeatureExtensions) > 0 },
+		Applies: func(c promptContext) bool { return c.HasProfile && !c.CrewReadOnly && len(c.FeatureExtensions) > 0 },
 		Build:   func(c promptContext) string { return strings.Join(c.FeatureExtensions, "\n\n") },
 	},
 	{
