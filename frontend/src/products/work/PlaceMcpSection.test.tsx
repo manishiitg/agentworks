@@ -30,11 +30,11 @@ catalogFn.mockImplementation(async () => catalogMock.entries)
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogFn.mockImplementation(async () => catalogMock.entries); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
 
-async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w') {
+async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk: (message: string) => Promise<void> = async () => undefined) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<PlaceMcpSection workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={async () => undefined} />) })
+  await act(async () => { root.render(<PlaceMcpSection workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} />) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   return host
 }
@@ -53,8 +53,9 @@ it('lists the connections with whose login they use', async () => {
   expect(host.querySelector('input[aria-label="Search connectors"]')).toBeNull()
 })
 
-it('connects a listed server with one click, no popup, and says whose login it uses', async () => {
-  const host = await render(true)
+it('Connect sends the request to the agent chat, no popup, and says whose login it uses', async () => {
+  const onAsk = vi.fn(async (_message: string) => undefined)
+  const host = await render(true, 'Crew', 'Workflow/w', onAsk)
   // The rule is a plain line on the page, not a dialog in the way.
   expect(host.textContent).toContain('uses the login of the person who added it')
   expect(host.textContent).toContain('Available')
@@ -63,7 +64,10 @@ it('connects a listed server with one click, no popup, and says whose login it u
   await act(async () => { button(host, 'GoogleDrive').click() })
   await settle()
   expect(document.body.textContent).not.toContain('with my login')
-  expect(placeMock.add).toHaveBeenCalledWith('Workflow/w', 'GoogleDrive')
+  // The chat does the connecting (and sends back any sign-in link); the screen adds nothing itself.
+  expect(onAsk).toHaveBeenCalledTimes(1)
+  expect(String(onAsk.mock.calls[0][0])).toContain('Connect GoogleDrive')
+  expect(placeMock.add).not.toHaveBeenCalled()
 })
 
 // A Code is a place like a Crew: the same screen, worded for the Code.

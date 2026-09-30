@@ -120,7 +120,14 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     }
   }
 
+  // Connect hands the request to the agent in this project's chat (the same path as "Ask the
+  // agent"): it adds the connection with the person's login and sends back the sign-in link, so
+  // the chat shows what happened and the person can adjust it in words.
   const add = (entry: McpCatalogServer) => run(entry.catalog, async () => {
+    if (onAsk) {
+      await onAsk(`Connect ${entry.catalog} to this ${placeNoun} with my login. Add it, and if it needs a sign-in give me the link. Tell me when it is connected.`)
+      return
+    }
     const saved = await placeMcpApi.add(workspacePath, entry.catalog)
     await refresh()
     if (saved.oauth) await signIn(saved.name)
