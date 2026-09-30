@@ -15,6 +15,8 @@ type LandlockPolicy struct {
 	// PrivateTmp: the launcher was started in its own user and mount
 	// namespaces and must give the command a private /tmp (Linux).
 	PrivateTmp bool `json:"private_tmp,omitempty"`
+	// PrivatePTS gives the command its own terminal devices before granting PTY access.
+	PrivatePTS bool `json:"private_pts,omitempty"`
 	// BrowserScoped: the command's own browser socket folder and profile are
 	// in WritePaths, so the shared browser folders are not granted.
 	BrowserScoped bool `json:"browser_scoped,omitempty"`
