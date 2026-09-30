@@ -7,6 +7,58 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Every CLI is qualified under the lock in both chat modes before a deploy
+- Turning the lock on for everyone exposed that only Claude and Codex had been
+  run under it. In one day Muse, Cursor and Pi each failed at start or in the
+  middle of a turn. What to check per CLI, on a real server, with the real
+  launcher (`video-studio-landlock-runner`) and `strace` when a pane dies:
+  1. starts and reaches its prompt; a prompt goes through (hooks, extensions);
+  2. resumes a chat that started before the lock (native session adoption);
+  3. mid-turn text streams and the finished reply lands (which native store the
+     server reads, and in which order);
+  4. every per-launch file it writes (markers, sockets, configs) is granted.
+- A dead pane's own output is in the agent log ("dead pane output before
+  cleanup"); npm's own log is in the private home (`.npm/_logs`).
+
+### 2026-09-30 — Resumed chats adopt their native session into the private home
+- A chat started before the lock keeps its native session in the server's or
+  account's own home; the confined CLI reads only its private home, so
+  `resume <id>` found nothing and the pane died (Muse: "Reading session log",
+  then exit). One shared step in `clisandbox.LandlockArgs`
+  (`internal/clisandbox/adopt.go`) copies only that session's files, never the
+  rest of the home, and keeps a copy that already exists. Muse, Codex and
+  Cursor use it; Claude has its own (`claudeAdoptResumedConversation`).
+- Cursor chats live under the account's `XDG_CONFIG_HOME` (the server sets one
+  on RTS) or `~/.cursor/chats`, and go to `.config/cursor/chats` in the private
+  home, where the confined Cursor reads them.
+
+### 2026-09-30 — Cursor reads the confined chat's own store first
+- `cursorChatsRoots(home)` puts the given home's `.config/cursor/chats` before
+  the server's XDG folder. The other order read a stale copy of the same chat
+  (started before the lock) and so nothing streamed mid-turn on RTS; the reply
+  only landed at turn end.
+- Code: `multi-llm-provider-go/pkg/adapters/cursorcli/cursorcli_paths.go`.
+
+### 2026-09-30 — What each CLI is granted beyond the common rules
+- **Muse:** read access to the folder of its `managed_hooks_path` (the Orca hook
+  scripts it runs on every prompt); without it every prompt failed with
+  "Prompt blocked by hook ... Permission denied".
+- **Pi:** write access to its per-launch folder (`launch-pi.sh` and its
+  siblings). Pi's injected `mlp-marker.ts` extension appends every event to
+  `markers.jsonl` there. The platform reads that log to know a turn has ended
+  and that a live message was really received, so the extension is required,
+  not optional. Read-only access made Pi exit at start with "Failed to load
+  extension ... EACCES ... markers.jsonl".
+- **Pi extension cache:** a confined Pi gets its own `tmp/extensions` folder
+  instead of the shared one in the server home (`linkSharedPiExtensionCache`).
+  The shared cache is executable code every user's Pi would load, so a writable
+  shared copy would let one user plant code in another's; and the confined Pi
+  could not write there anyway (npm exit 243). npm reinstalls into the private
+  folder in about half a second.
+- Rule of thumb: a per-launch file the CLI itself writes needs an explicit
+  write grant; a file it only reads needs a read grant. Moving `TMPDIR` off
+  `/tmp` removed the accidental grant that made some of these work.
+
 ### 2026-09-30 — Terminal mode has no app message composer
 - All typing stays in the native CLI; remove the optional composer and its
   expand/collapse control. Keep the saved chat draft for Return to chat.
@@ -112,6 +164,15 @@ Each entry says what was decided, why, and where it lives in the code.
   saved; `[BOT_TIMING]` and `[BUILDER_RESTORE_TIMING]` logs are in place to
   name the slow step (suspect: `restoreLatestBuilderConversation` reading every
   saved Builder conversation).
+- **Cursor chat text only at turn end (checked 2026-09-30).** With the store
+  order fixed, mid-turn text should stream; confirm on RTS after the deploy that
+  the chat shows Cursor's messages while the turn runs.
+- **Deploy check can fail on a stale `claude`.** `deploy/common/install-coding-clis.sh`
+  refuses when a CLI resolves outside the managed install. Confida had a stray
+  `tools/node/bin/claude` from an interrupted install (removed by hand
+  2026-09-30). The check names only the CLI, not the path it found.
+- **Muse authenticated smoke test.** Startup and resume pass under the lock;
+  a real Meta-authenticated turn with native tools is still to be run.
 - **Personal accounts per provider.** The Providers screen says "The
   installation does not allow personal accounts for this provider" when the
   provider is locked to the server's account (RTS Cursor runs on the server's
