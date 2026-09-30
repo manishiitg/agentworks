@@ -35,6 +35,9 @@ function TerminalToolButton({ label, buttonRef, children, ...props }: ButtonProp
 export function NativeTerminalToolbar({ className = '', expanded, uploading, composerId, commandsOpen = false, commandListId, commandButtonRef, focused = false, onToggleFocus, onCommands, onAttach, onToggleComposer, onReturnToChat }: NativeTerminalToolbarProps) {
   return (
     <div className={`flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground ${className}`} data-testid="native-terminal-toolbar">
+      <TerminalToolButton label="Return to chat" variant="outline" className="h-10 w-10 shrink-0 [&_svg]:size-5" onClick={onReturnToChat}>
+        <MessageSquare className="h-5 w-5" />
+      </TerminalToolButton>
       <span className="mr-auto">Type directly in the terminal</span>
       <TerminalToolButton label="Browse commands" buttonRef={commandButtonRef} variant={commandsOpen ? 'secondary' : 'ghost'} onClick={onCommands}
         disabled={uploading} aria-haspopup="listbox" aria-expanded={commandsOpen}
@@ -54,9 +57,6 @@ export function NativeTerminalToolbar({ className = '', expanded, uploading, com
           {focused ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </TerminalToolButton>
       )}
-      <TerminalToolButton label="Return to chat" variant="outline" onClick={onReturnToChat}>
-        <MessageSquare className="h-4 w-4" />
-      </TerminalToolButton>
     </div>
   )
 }
