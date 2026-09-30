@@ -2,7 +2,7 @@
   "_comment": "P0-certified CLI versions (extracted --version strings). The release runner fails when an installed CLI differs: re-run P0 with --update-certified-versions to certify the new versions, then commit this file. Every entry must stay at or above the SDK MinCLIVersion floor (see TestCertifiedCLIVersionsMeetFloors).",
   "versions": {
     "claude-code": "2.1.278",
-    "codex-cli": "0.155.1",
+    "codex-cli": "0.159.2",
     "cursor-cli": "2026.09.18",
     "muse-cli": "1.3.0",
     "pi-cli": "0.87.1",

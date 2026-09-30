@@ -197,7 +197,10 @@ func runCodingCLIWorkflowP0(t *testing.T, provider codingCLIP0Provider) {
 	}
 	t.Setenv("WORKSPACE_DOCS_PATH", wsRoot)
 
-	relWorkspace := "Workflow/_p0_cli_" + provider.name + "_" + filepath.Base(t.TempDir())
+	// t.TempDir's basename is normally "001" across separate test processes.
+	// A fresh workspace identity prevents retained server state or another P0
+	// run's cleanup from colliding with this fixture.
+	relWorkspace := fmt.Sprintf("Workflow/_p0_cli_%s_%d", provider.name, time.Now().UnixNano())
 	workspaceDisk := filepath.Join(wsRoot, relWorkspace)
 	if os.Getenv("KEEP_E2E_WORKSPACE") == "" {
 		t.Cleanup(func() { _ = os.RemoveAll(workspaceDisk) })

@@ -95,15 +95,16 @@ Example:
 		if model == "" {
 			model = defaultCodingAgentE2EModel(provider)
 		}
-		// Cursor's retained UI is the Workflow Builder. Ordinary direct chat
-		// intentionally uses structured transport and cannot certify tmux Send.
-		if provider == "cursor-cli" && client.presetQueryID == "" && client.agentMode == "simple" {
+		// General chat has been retired. Exercise every retained CLI through
+		// an isolated Workflow Builder, the supported product context that
+		// actually owns a retained tmux session.
+		if client.presetQueryID == "" && client.agentMode == "simple" {
 			docs := strings.TrimSpace(codingAgentChatE2EFlags.workspaceDocs)
 			if docs == "" {
 				docs = strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
 			}
 			if docs == "" {
-				return fmt.Errorf("Cursor retained P0 requires --workspace-docs for an isolated Workflow Builder fixture")
+				return fmt.Errorf("%s retained P0 requires --workspace-docs for an isolated Workflow Builder fixture", provider)
 			}
 			fixture, cleanup, err := createWorkflowAutoNotificationFixture(docs, false, provider, model)
 			if err != nil {
