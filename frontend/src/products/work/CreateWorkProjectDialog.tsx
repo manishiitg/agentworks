@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
+import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
 import { AlertCircle, ArrowLeft, ArrowRight, Check, FolderKanban, Loader2, Plus, Search, Sparkles, X } from 'lucide-react'
 import { crewTemplates, crewTemplateBrowseCategory, crewTemplateBrowsePath, matchesCrewTemplateSearch, type CrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 const RESULT_PAGE_SIZE = 12
 
-export function CreateWorkProjectDialog({ onClose, onCreate, submitting, error, templates = crewTemplates }: {
+export function CreateWorkProjectDialog({ onClose, onCreate, submitting, error, templates = crewTemplates, profileId = 'work' }: {
   onClose: () => void
-  onCreate: (title: string, description: string, icon?: string, templateId?: CrewTemplateId) => void | Promise<void>
+  onCreate: (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection) => void | Promise<void>
+  profileId?: string
   submitting: boolean
   error: string | null
   templates?: readonly CrewTemplate[]
@@ -15,6 +17,7 @@ export function CreateWorkProjectDialog({ onClose, onCreate, submitting, error, 
   const [description, setDescription] = useState('')
   const [icon, setIcon] = useState('')
   const [templateId, setTemplateId] = useState<CrewTemplateId | undefined>()
+  const [runsOn, setRunsOn] = useState<RunsOnSelection | undefined>()
   const [templateSearch, setTemplateSearch] = useState('')
   const [templateCategory, setTemplateCategory] = useState('all')
   const [visibleCount, setVisibleCount] = useState(RESULT_PAGE_SIZE)
@@ -52,7 +55,7 @@ export function CreateWorkProjectDialog({ onClose, onCreate, submitting, error, 
     event.preventDefault()
     const trimmedTitle = title.trim()
     if (!trimmedTitle || (templateId && !description.trim()) || submitting) return
-    void onCreate(trimmedTitle, description.trim(), icon.trim(), templateId)
+    void onCreate(trimmedTitle, description.trim(), icon.trim(), templateId, runsOn)
   }
 
   return (
@@ -147,6 +150,7 @@ export function CreateWorkProjectDialog({ onClose, onCreate, submitting, error, 
               <label className="block text-xs font-semibold text-foreground">Crew name<input autoFocus data-testid="work-create-project-name-input" value={title} onChange={event => setTitle(event.target.value)} maxLength={60} placeholder="Give your Crew a name" className="mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
             </div>
             <label className="mt-4 block text-xs font-semibold text-foreground">Purpose <span className="font-normal text-muted-foreground">{templateId ? '' : '(optional)'}</span><textarea value={description} onChange={event => setDescription(event.target.value)} maxLength={1000} rows={3} placeholder="What should this Crew member help with?" className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
+            <RunsOnPicker profileId={profileId} onChange={setRunsOn} disabled={submitting} />
             {error ? <p className="mt-3 flex items-start gap-2 text-xs text-destructive"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{error}</p> : null}
           </section>
         </div>

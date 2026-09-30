@@ -68,16 +68,22 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   }))
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection): Promise<WorkSession> {
   const template = templateId && product.hasTemplates ? getCrewTemplate(templateId) : undefined
   const options = await loadAgentProfileProviderOptions(product.profileId)
   const selected = options.find(option => option.default) || options[0]
   const reasoningEffort = typeof selected?.options?.reasoning_effort === 'string'
     ? selected.options.reasoning_effort
     : selected?.reasoning_efforts?.[0]
-  const llmConfig = selected?.provider && selected.model_id
-    ? workLLMConfigFromSelection({ provider: selected.provider, modelId: selected.model_id, reasoningEffort })
-    : undefined
+  // The create dialog's "Runs on" choice (CLI, model and account) wins over the product default.
+  const runsOnModel = runsOn?.provider
+    ? runsOn.modelId || options.find(option => option.provider === runsOn.provider)?.model_id || ''
+    : ''
+  const llmConfig = runsOn?.provider && runsOnModel
+    ? workLLMConfigFromSelection({ ...runsOn, modelId: runsOnModel })
+    : selected?.provider && selected.model_id
+      ? workLLMConfigFromSelection({ provider: selected.provider, modelId: selected.model_id, reasoningEffort })
+      : undefined
   const project = await createProductProject({
     root: product.projectsRoot,
     product: product.profileId,
