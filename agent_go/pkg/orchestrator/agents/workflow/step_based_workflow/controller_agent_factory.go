@@ -338,6 +338,24 @@ func configureWorkflowDBSession(sessionID, workspacePath, dbAccess string, direc
 	common.SetSessionFolderGuardBlockedPaths(sessionID, common.DeduplicateStrings(blocked))
 }
 
+// grantScriptBridgeSessionDB gives the session a scripted step's script calls
+// the bridge as the step's own database access. A scripted step runs its
+// script directly, under the group's MCP session (its MCP_SESSION_ID), not
+// under the step's exec session where configureWorkflowDBSession put the
+// grant. The group session copies only folder capabilities from its parent
+// (common.CopySessionFolderGuard), never the DB grant, so a script's
+// mutate_workflow_db was refused ("explicit db_access=read-write is required
+// (effective value \"\")") while its query_workflow_db worked. Direct: only the
+// grant is set; the session's path blocks stay as they are, so a script still
+// cannot open db.sqlite itself.
+func grantScriptBridgeSessionDB(sessionID, workspacePath, dbAccess string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || strings.TrimSpace(dbAccess) == "" {
+		return
+	}
+	configureWorkflowDBSession(sessionID, workspacePath, dbAccess, true)
+}
+
 // ConfigureManagedWorkflowDBSession applies the workflow database trust
 // boundary to a long-lived managed session such as the main Workflow Builder
 // chat. These sessions are configured outside this package, unlike workflow
