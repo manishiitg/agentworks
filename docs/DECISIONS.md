@@ -7,6 +7,33 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Workflow steps link their own iteration output into private runtimes
+- Extend the linked-runtime design to execution steps and step orchestrators.
+  Keep the existing per-session CLI directory identity and isolated generated
+  instructions/skills/configuration. Add `output/` pointing to the exact current
+  step artifact directory, including group, nested Agent and message-sequence
+  output overrides. Files written through it are authoritative artifacts with
+  no copying or synchronization. API models and review/learning agents do not
+  acquire an output link merely by inheriting shell environment.
+- The dedicated step session's final folder guard admits the link target.
+  Resolve existing ancestors before creating missing output directories; reject
+  mismatched or unauthorized targets, including symlink escapes. Replace inherited
+  chat workspace grants with that step's existing grants for native CLI security,
+  retaining its admitted DB/cache/KB/owning-subtree/host capabilities. Keep the
+  CLI home inside the step runtime. Links do not enable native write tools or
+  change the existing tool modes or broader sandbox limitations.
+- Same-session resume keeps cwd and link stable. An obstructing file/directory,
+  wrong target, unavailable runtime or cross-iteration rebinding fails rather
+  than overwriting content or falling back to the real workflow cwd. Session
+  cleanup removes the private link, never its output target. Closing an isolated
+  turn no longer attempts projection cleanup in its real bridge working directory.
+- Code: `pkg/orchestrator/coding_agent_output_runtime.go`, step factories and
+  mcpagent `WorkspaceRuntimeConfig.OutputDir` / `agent/isolated_output.go`.
+  Tests cover all six providers including Agy, resume and cleanup, iteration/group
+  separation, target failures and policy narrowing; a Linux Landlock test verifies
+  direct atomic output writes and denial of sibling/other-iteration mutations.
+  Not deployed; live CLI qualification remains required before deployment.
+
 ### 2026-09-30 — No public default secrets key left in the decrypt path
 - `services/workspace_config.go` still derived its decryption key from the public
   `dev-secret-change-in-production` when `AUTH_SECRET` was empty. The server already
@@ -449,6 +476,15 @@ Each entry says what was decided, why, and where it lives in the code.
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+- **Two mcpagent cleanup tests still expect deletion of unmarked provider folders
+  (confirmed 2026-09-30).** `TestAppendCodingAgentWorkingDirOptionCleansInactiveGeneratedArtifacts`
+  and `TestAppendCodingAgentWorkingDirOptionRemovesInactiveProviderDirsInWorkflow`
+  fail unchanged on `origin/main` (`fa6a186`) as well as the linked-output branch.
+  Their fixtures/whole-directory deletion expectations conflict with the current
+  cleanup safety contract. Correct that contract separately; this task does not
+  reintroduce broad deletion. Output, resume, provider-policy and safe-cleanup
+  regression tests pass.
 
 - **A Code chat's shell command started processes outside the lock (found 2026-09-30).** They ran
   as the server account with its full environment and reached the internet; shell commands also

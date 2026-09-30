@@ -14,7 +14,24 @@ describe for shared folders.
 | Crew chats, schedules, triggers, bots | private runtime per user/project/chat/provider/mode, with `project/` linked to the real Crew folder |
 | Code chats, schedules, triggers, bots | the project's own folder (shared by every session in it) |
 | Workflow Run/Builder chats, schedules and bots | private per-session/mode runtime outside the docs tree, with `project/` linked to the real workflow ([design](workflow_shared_folder_plan.md)) |
-| Workflow step agents | fresh temporary folder |
+| Workflow step execution agents | private session-stable temporary runtime with `output/` linked to this invocation's real step artifact folder |
+
+## Workflow step outputs
+
+Execution steps and step orchestrators use the same isolated session directory
+across turns. `output/` links to their resolved `STEP_OUTPUT_DIR`, scoped to the
+current iteration/group/step (including nested and message-sequence overrides).
+Native deliverables written under `output/` are real artifacts immediately;
+bridge paths and environment variables keep their existing contracts. Native
+tool modes are unchanged. Generated instructions, projected skills and CLI
+configuration stay in the private runtime. Reviews and learning agents do not
+inherit an output link from a parent's environment.
+
+The target must match the dedicated tool session and its write guard. The
+native CLI policy takes the step's workspace grants rather than the parent's
+chat grants; any admitted DB/cache/KB/subtree capabilities stay intact. Private
+CLI homes remain per step. Wrong or obstructed links fail launch. Cleaning the
+runtime removes its directory link without deleting the actual output folder.
 
 ## Crew linked runtimes
 

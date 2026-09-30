@@ -43,8 +43,11 @@ limitations remain as listed in `DECISIONS.md`.
 
 `AGENTWORKS_ISOLATE_WORKFLOW_CLI=false` remains a transitional Builder rollback.
 Run always isolates: the launcher automatically grants cwd writes, so using the
-real workflow as Run's cwd would promote read-only access. API models and step
-agents retain their existing working-directory policies.
+real workflow as Run's cwd would promote read-only access. API models retain
+their working-directory behavior. Execution steps also keep private runtimes,
+with `output/` linked to the exact invocation's iteration artifact directory;
+their dedicated guard supplies native workspace permissions. Step tool modes
+and bridge paths remain unchanged.
 
 ## Resume and verification
 

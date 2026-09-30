@@ -133,24 +133,12 @@ type OrchestratorAgentConfig struct {
 	// even when tmux would otherwise be used. Wired from the workflow
 	// step config's AgentConfigs.Transport == "structured".
 	ForceStructuredCodingAgent bool `json:"force_structured_coding_agent,omitempty"`
-	// IsolateCodingAgentWorkspace asks the coding-CLI session for this
-	// agent to run in a fresh per-call os.MkdirTemp directory instead
-	// of CodingAgentWorkingDir. Intended for workflow steps where:
-	//   - Resume is never needed (each step is a fresh conversation)
-	//   - Concurrent steps must not collide on the same workspace files
-	//   - The user's actual workflow dir must be protected from
-	//     accidental built-in writes by the model
-	//
-	// Chat agents (multi-agent + builder chat) leave this false so the
-	// CLI session continues to operate directly on the user's chosen
-	// workspace dir for the "agent edits my files" UX. The MCP bridge
-	// (configured separately) is the orchestration path for any file
-	// changes the model wants to make to the user's actual workspace.
-	//
-	// Maps to mcpagent.WithIsolatedSessionWorkspace at construction
-	// time. See docs/WORKFLOW_STEP_ISOLATION.md in multi-llm-provider-go
-	// for the full design rationale.
+	// IsolateCodingAgentWorkspace keeps generated instructions, skills and CLI
+	// state in a private, session-stable directory instead of the real workflow.
 	IsolateCodingAgentWorkspace bool `json:"isolate_coding_agent_workspace,omitempty"`
+	// CodingAgentOutputDir is the trusted step artifact directory linked as
+	// output/ inside that private runtime. It is never authored in workflow JSON.
+	CodingAgentOutputDir string `json:"-"`
 	// Context offloading configuration
 	EnableContextOffloading *bool `json:"enable_context_offloading,omitempty"` // Enable/disable context offloading (default: true if nil)
 	LargeOutputThreshold    int   `json:"large_output_threshold,omitempty"`    // Token threshold for context offloading (0 = use default: 10000)

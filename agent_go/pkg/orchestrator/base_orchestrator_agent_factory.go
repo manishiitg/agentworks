@@ -434,6 +434,9 @@ func (bo *BaseOrchestrator) CreateAndSetupStandardAgentWithConfig(
 	// Apply overwriteSystemPrompt parameter to config so callers can override default system prompt behavior
 	config.OverwriteSystemPrompt = &overwriteSystemPrompt
 	syncCodingAgentWorkingDirWithShellSession(config)
+	if err := prepareCodingAgentOutputRuntime(config); err != nil {
+		return nil, err
+	}
 	// Some callers add native, builder-owned tool definitions before this common
 	// factory prepares the workspace-tool bundle. Preserve those definitions:
 	// overwriting them here made it impossible for isolated child agents to

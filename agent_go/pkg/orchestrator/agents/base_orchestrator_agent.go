@@ -112,7 +112,8 @@ func (boa *BaseOrchestratorAgent) Initialize(ctx context.Context) error {
 		boa.config.CodingAgentWorkingDir,       // CLI coding-agent working directory
 		boa.config.CodingAgentKeepAlive,        // Keep tmux-backed coding sessions alive after completion
 		boa.config.ForceStructuredCodingAgent,  // Force structured JSON transport (step-level)
-		boa.config.IsolateCodingAgentWorkspace, // Run coding-CLI in a fresh tmp dir (workflow steps only)
+		boa.config.IsolateCodingAgentWorkspace, // Keep coding-CLI projections in a private step runtime
+		boa.config.CodingAgentOutputDir,        // Link to this invocation's real step output
 		boa.config.CLISecurityPolicy,           // Server-resolved immutable CLI security policy
 		boa.config.RuntimeOverrides,            // Runtime config overrides for MCP servers
 	)

@@ -813,20 +813,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyStepConfigToAgentConfig(config *
 		}
 	}
 
-	// Workflow steps run their coding-CLI session in a fresh os.MkdirTemp
-	// dir instead of CodingAgentWorkingDir. This eliminates file-collision
-	// risk between concurrent steps and protects the user's workflow dir
-	// from accidental writes via the model's built-in tools. The MCP
-	// bridge (configured separately) remains the orchestration path for
-	// any file changes the model wants to make to the user's actual
-	// workspace. See multi-llm-provider-go/docs/WORKFLOW_STEP_ISOLATION.md
-	// for the full design rationale.
-	//
-	// Chat code paths (multi-agent + builder chat in
-	// pkg/agentwrapper/llm_agent.go) deliberately do NOT set this flag —
-	// they need the agent to operate directly on the user's chosen
-	// workspace dir for the "agent edits my files" UX and to support
-	// CLI-native session resume tied to dir.
+	// Keep generated CLI files in a private, session-stable runtime. Execution
+	// factories separately link output/ to the exact step artifact directory;
+	// native access still follows the step's admitted permissions and tool mode.
 	config.IsolateCodingAgentWorkspace = true
 
 	effectiveTransport := hcpo.applyWorkflowTransportToAgentConfig(config, stepConfig, "workflow step")
@@ -1446,6 +1435,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 			stepExecutionPath = stepEnvOutputPathOverride
 		}
 		stepOutputAbsPath := filepath.Join(GetPromptDocsRoot(), stepExecutionPath)
+		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
+			config.CodingAgentOutputDir = stepOutputAbsPath
+		}
 		stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
 		dbAbsPath := ""
 		if directDBAccess {
@@ -1834,6 +1826,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	{
 		stepExecutionRelPath := hcpo.getOrchestratorStepExecutionPath(stepID, stepPath)
 		stepOutputAbsPath := filepath.Join(GetPromptDocsRoot(), stepExecutionRelPath)
+		if common.IsCLIProvider(config.LLMConfig.Primary.Provider) {
+			config.CodingAgentOutputDir = stepOutputAbsPath
+		}
 		stepExecutionAbsPath := stepExecutionScopeAbsPath(stepOutputAbsPath)
 		// The todo-task orchestrator now uses a dedicated MCP session for shell/file tools.
 		// Browser reuse is bound separately above, so this session override narrows

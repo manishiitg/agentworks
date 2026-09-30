@@ -152,7 +152,8 @@ func NewBaseAgent(
 	codingAgentWorkingDir string, // CLI coding-agent process working directory
 	codingAgentKeepAlive bool, // Keep tmux-backed coding-agent sessions alive after this agent completes
 	forceStructuredCodingAgent bool, // Force structured JSON transport for coding-agent CLIs (overrides tmux default)
-	isolateCodingAgentWorkspace bool, // Run the coding-CLI session in a fresh tmp dir (workflow steps only; chat keeps user dir)
+	isolateCodingAgentWorkspace bool, // Run the coding-CLI session in a private session directory
+	codingAgentOutputDir string, // Real artifact directory linked as output/ in an isolated runtime
 	cliSecurityPolicy *llmtypes.CLISecurityPolicy, // Server-resolved immutable CLI security policy
 	runtimeOverrides mcpclient.RuntimeOverrides, // Runtime config overrides for MCP servers (e.g., output directories)
 ) (*BaseAgent, error) {
@@ -193,7 +194,7 @@ func NewBaseAgent(
 			loggerv2.String("agent_name", name))
 	}
 	if isolateCodingAgentWorkspace {
-		logger.Info("🔒 Isolating coding-agent session in a fresh tmp dir (workflow-step isolation)",
+		logger.Info("🔒 Isolating coding-agent session in a private runtime",
 			loggerv2.String("agent_name", name))
 	}
 	if cliSecurityPolicy != nil {
@@ -254,6 +255,7 @@ func NewBaseAgent(
 		MCP: mcpagent.MCPRuntimeConfig{SessionID: mcpSessionID, RuntimeOverrides: runtimeOverrides},
 		Workspace: mcpagent.WorkspaceRuntimeConfig{
 			CodingAgentWorkingDir: codingAgentWorkingDir, IsolatedSession: isolateCodingAgentWorkspace,
+			OutputDir: codingAgentOutputDir,
 		},
 		Observability: mcpagent.ObservabilityRuntimeConfig{
 			Logger: logger, Tracers: []observability.Tracer{tracer}, TraceID: traceID,
