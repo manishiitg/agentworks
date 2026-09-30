@@ -41,24 +41,6 @@ func applyFullUnconfined(llmAgent *agent.LLMAgentWrapper, sessionID string) {
 	}
 }
 
-// cliLandlockExemptEnv lists coding CLIs that run without the lock, comma-separated, while they
-// are not yet certified under it. It defaults to muse-cli: its TUI exits on start inside the lock
-// (every confined launch on excellence failed 2026-09-30). Set it to "none" to lock every CLI.
-const cliLandlockExemptEnv = "AGENTWORKS_CLI_LANDLOCK_EXEMPT"
-
-func cliLandlockExempt(provider string) bool {
-	value, set := os.LookupEnv(cliLandlockExemptEnv)
-	if !set {
-		value = "muse-cli"
-	}
-	for _, entry := range strings.Split(value, ",") {
-		if entry = strings.TrimSpace(entry); entry != "" && strings.EqualFold(entry, provider) {
-			return true
-		}
-	}
-	return false
-}
-
 func cliLandlockRequested(userID, userEmail string) bool {
 	return cliRolloutRequested(cliLandlockEnv, userID, userEmail)
 }
@@ -93,10 +75,6 @@ func cliRolloutRequested(env, userID, userEmail string) bool {
 // (Landlock only adds access) — the bridge tools still enforce them.
 func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
 	if llmAgent == nil {
-		return
-	}
-	if cliLandlockExempt(provider) {
-		log.Printf("[CLI_LANDLOCK] session %s: %s runs without the lock (%s)", sessionID, provider, cliLandlockExemptEnv)
 		return
 	}
 	if !cliLandlockRequested(userID, userEmail) || strings.TrimSpace(workingDir) == "" {
