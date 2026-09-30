@@ -523,7 +523,7 @@ func (api *StreamingAPI) userWorkflowChat(ctx context.Context, userID string, ro
 	if live := api.findLiveWorkflowBuilderSession(userCtx, route.WorkflowID, workspacePath); live != nil {
 		return live.SessionID
 	}
-	restored, err := api.restoreLatestBuilderConversation(userCtx, route.WorkflowID, workspacePath)
+	restored, err := api.restoreLatestBuilderConversationLimited(userCtx, route.WorkflowID, workspacePath, slackBuilderRefreshLimit)
 	if err != nil {
 		log.Printf("[BOT_ACCESS] user %s workflow chat lookup for %s: %v", userID, route.WorkflowID, err)
 		return ""
