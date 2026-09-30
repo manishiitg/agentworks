@@ -37,6 +37,11 @@ type resolvedAgentProfile struct {
 	// (resuming the same conversation) instead of the old process answering
 	// "not registered by any connected server" (RTS 2026-09-29).
 	ChatConnections []string
+	// ChatSecrets are the names (never values) of the secrets this chat gets as SECRET_*
+	// environment variables. The coding CLI's environment is fixed when it launches, so a secret
+	// attached to the project later reaches it only through a relaunch: the names feed the
+	// session fingerprint, like ChatConnections (RTS, SDE private, GITHUB_TOKEN, 2026-09-30).
+	ChatSecrets []string
 	// APIKeys carries the project-scoped credential this resolver loaded from the
 	// encrypted per-user/workspace store. It is returned on the resolver's own
 	// result rather than handed back through req.LLMConfig so the query path can
@@ -78,12 +83,15 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	sort.Strings(servers)
 	connections := append([]string(nil), profile.ChatConnections...)
 	sort.Strings(connections)
+	secrets := append([]string(nil), profile.ChatSecrets...)
+	sort.Strings(secrets)
 	payload, err := json.Marshal(struct {
 		Definition      agentprofiles.Profile `json:"definition"`
 		SelectedServers []string              `json:"selected_servers,omitempty"`
 		IdentityKey     string                `json:"identity_key,omitempty"`
 		ChatConnections []string              `json:"chat_connections,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections})
+		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -580,7 +588,20 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey,
-		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)}, nil
+		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
+		ChatSecrets:     chatSecretNames(req)}, nil
+}
+
+// chatSecretNames lists the secrets the turn will expose to the coding CLI, by name only.
+func chatSecretNames(req *QueryRequest) []string {
+	if req == nil {
+		return nil
+	}
+	var names []string
+	for _, secret := range mergeGlobalSecrets(req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+		names = append(names, secret.Name)
+	}
+	return names
 }
 
 // chatMCPConnections are the chat's own connections, resolved exactly as the

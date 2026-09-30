@@ -31,6 +31,17 @@ func TestAgentProfileSessionKeyTracksDefinitionAndIdentity(t *testing.T) {
 	if got := agentProfileSessionKey(changedIdentity); got == key {
 		t.Fatal("profile key did not change with Crew identity")
 	}
+	// A secret attached later, or a connection whose sign-in finished, reaches a retained CLI only
+	// through a relaunch, so both are part of the key (names and state, never values).
+	withSecret := &resolvedAgentProfile{Definition: base.Definition, ChatSecrets: []string{"GITHUB_TOKEN"}}
+	if got := agentProfileSessionKey(withSecret); got == key {
+		t.Fatal("profile key did not change when a secret was attached")
+	}
+	signedOut := &resolvedAgentProfile{Definition: base.Definition, ChatConnections: []string{"u1__notion#signed-out"}}
+	signedIn := &resolvedAgentProfile{Definition: base.Definition, ChatConnections: []string{"u1__notion#signed-in"}}
+	if agentProfileSessionKey(signedOut) == agentProfileSessionKey(signedIn) {
+		t.Fatal("profile key did not change when a connection finished signing in")
+	}
 }
 
 func TestWorkspacePathsMatchForUserTreatsOnlyOwnPhysicalPathAsPublic(t *testing.T) {
