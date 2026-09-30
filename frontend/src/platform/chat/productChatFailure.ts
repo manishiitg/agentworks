@@ -5,6 +5,7 @@ export type ProductChatFailureCode =
   | 'provider_unavailable'
   | 'configuration_error'
   | 'cancelled'
+  | 'terminal_draft'
   | 'internal_error'
 
 export type ProductChatFailure = {
@@ -172,6 +173,16 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
       provider,
       retryable: false,
       technicalDetails,
+    }
+  }
+
+  // The chat refuses to send while something is typed in the CLI's own terminal composer (HTTP 423).
+  if (normalizedCode === 'terminal_draft_active' || /terminal draft/i.test(raw)) {
+    return {
+      code: 'terminal_draft',
+      title: 'Finish or clear the terminal input',
+      message: 'Something is typed in the terminal. Press Enter there to send it, or Ctrl+C to clear it, then send your message again.',
+      retryable: true,
     }
   }
 
