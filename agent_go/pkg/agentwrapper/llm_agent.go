@@ -734,6 +734,21 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
 	return true, nil
 }
 
+// UpgradeCodingAgentToolsToFullUnconfined is UpgradeCodingAgentToolsToFull without the lock: the
+// CLI runs with the person's own rights. Only the server's single-user gate calls it.
+func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFullUnconfined() (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return false, errors.New("agent definition is already finalized")
+	}
+	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+		return false, nil
+	}
+	w.runtime.Coding.AgentToolsMode = "full_unconfined"
+	return true, nil
+}
+
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the
 // immutable Agent is finalized (the chat's folder guard is known only after
 // the wrapper is built).

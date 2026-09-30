@@ -280,3 +280,22 @@ switch says why.
 - macOS/desktop: Seatbelt, the same grants.
 - Widen Full CLI past Code.
 - Network egress control, if needed.
+
+## Full CLI on a local machine, and macOS Seatbelt (deferred), 2026-09-30
+
+- **Local Full CLI (built).** Full CLI needs the Linux Landlock launcher, so it never applied on a
+  Mac. `AGENTWORKS_CLI_FULL_UNCONFINED=on` now turns it on without a lock for a person's own
+  single-user machine: Claude gets its own Bash, Write and Edit with no permission prompts,
+  running with the person's own rights, so only its working directory limits it. The server
+  refuses it when `MULTI_USER_MODE=true` (`cliFullUnconfinedAllowed`), and it only upgrades a
+  chat that already has Native agent tools on. mcpagent mode `full_unconfined`
+  (`fullCLIEnabled`), wrapper `UpgradeCodingAgentToolsToFullUnconfined`. A local test tool, not
+  a boundary: an injected page can make the agent run anything the person can.
+- **macOS Seatbelt confinement (deferred).** The faithful version on a Mac is the same
+  folder-only lock through `sandbox-exec`, which the platform shell tool already uses. It is
+  deferred: single-user local has no cross-user risk, and the remaining risk is prompt injection
+  reaching `~/.ssh` or other projects. Do it before running Full CLI on a laptop day to day, or
+  when a laptop drives a shared server's workflows (remote workspace plan). Needs a Seatbelt
+  profile per CLI derived from a real turn (as for Landlock), the same private CLI home, and
+  a certification pass per CLI.
+
