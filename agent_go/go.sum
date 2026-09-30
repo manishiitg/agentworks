@@ -177,8 +177,8 @@ github.com/manishiitg/mcpagent v1.7.12-0.20260930051030-c39b07017979 h1:MCWUNFYC
 github.com/manishiitg/mcpagent v1.7.12-0.20260930051030-c39b07017979/go.mod h1:maa6gm47B4sUjpy3OGZUoGu4JB891zQqg+PdzjsSuKs=
 github.com/manishiitg/mcpagent v1.7.12-0.20260930053714-72c499e400af h1:2lX+JHrdKnLD3E6sgJUI1A6l75pIW+VaTnexgrClV30=
 github.com/manishiitg/mcpagent v1.7.12-0.20260930053714-72c499e400af/go.mod h1:8DjLRnKuUZ2PfVX7WQQmJa00oKWsR+XdWDWCM2r9NaM=
-github.com/manishiitg/mcpagent v1.7.12-0.20260930162926-f1f165b1ebc0 h1:4pBfzsPmD1hCrDSTwYN/XQrs/Nl4Ghs8UUB2toRrLrU=
-github.com/manishiitg/mcpagent v1.7.12-0.20260930162926-f1f165b1ebc0/go.mod h1:8DjLRnKuUZ2PfVX7WQQmJa00oKWsR+XdWDWCM2r9NaM=
+github.com/manishiitg/mcpagent v1.7.12-0.20260930171547-42ad02e885ae h1:kJJ+ePQYva78pxGBEAvrr4MeWuHl13/ewVcMlNjFQH4=
+github.com/manishiitg/mcpagent v1.7.12-0.20260930171547-42ad02e885ae/go.mod h1:8DjLRnKuUZ2PfVX7WQQmJa00oKWsR+XdWDWCM2r9NaM=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20260930033959-b0f17bae049f h1:Tc0B8J9mT+Dx4icrqcKFblaJ908fE10TP/JaQsB6hE8=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20260930033959-b0f17bae049f/go.mod h1:fr7WUUOqYFzI7+2zVubwRK7GoL/tfyf2fuKzqxONOUI=
 github.com/manishiitg/multi-llm-provider-go v0.7.4-0.20260930045253-d99fa385a73f h1:FdirXHItwR2V3+elxyXL2u0C1eKsICT8I59C8y0snRs=

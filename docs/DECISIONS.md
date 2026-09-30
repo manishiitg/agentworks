@@ -13,6 +13,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-09-30 — Local linked-runtime qualification is partial; step searches name `output`
+- Real local CLI fixtures passed artifact discovery, linked reads, authoritative
+  writes through admitted tools, native resume and cleanup for Claude, Codex,
+  Cursor and Pi. Claude and Cursor native writes were denied by existing policy;
+  their bridge writes passed. Pi required its existing provider credential in
+  the managed process. Muse completed linked artifact work but resume exceeded the 150-second budget;
+  Agy stopped at sign-in. Do not call all six providers qualified.
+- Add explicit `output` search-path guidance to mcpagent's step instructions,
+  matching the `project` guidance: search from the private cwd can skip links.
+  Keep tool modes and permissions unchanged. macOS checks are not Landlock
+  certification or a production deployment gate; both-mode Linux qualification
+  remains required. Evidence and reproduction: [local report](design/local_linked_runtime_qualification.md).
+
+
 ### 2026-09-30 — Linked runtimes tell the agent to name `project` when searching
 - The `project/` link is a symlink, and search tools do not walk into a symlink they
   find: plain `rg` from the runtime folder, and Claude Code's Grep and Glob with no path,
@@ -494,6 +508,13 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+- **Remaining local linked-runtime CLI qualification (2026-09-30).** Muse's
+  integrated resume exceeded the fixture budget after linked artifact work passed; Agy's
+  private launch needs sign-in. Claude/Cursor native writes remain subject to
+  their existing restrictions. The [local report](design/local_linked_runtime_qualification.md)
+  records what actually passed; do not treat bridge writes as native-write proof.
+
 
 - **Two mcpagent cleanup tests still expect deletion of unmarked provider folders
   (confirmed 2026-09-30).** `TestAppendCodingAgentWorkingDirOptionCleansInactiveGeneratedArtifacts`
