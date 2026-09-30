@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, MessageCircle, Plus, Search, Trash2, UserRound } from 'lucide-react'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
@@ -90,6 +90,23 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refresh])
+
+  // A connection turning "connected" (sign-in finished in the other tab, or an API-key server
+  // that connected at once) is also told to the chat, through the same function as Connect, so
+  // the agent knows its tools are there from the next message. The first load only records what
+  // was already connected, so opening the screen never sends anything.
+  const connectedBefore = useRef<{ path: string; names: Set<string> } | null>(null)
+  useEffect(() => {
+    if (loading) return
+    const now = new Set(servers.filter(item => item.mine && item.active && item.connected).map(item => item.catalog || item.name))
+    const before = connectedBefore.current?.path === workspacePath ? connectedBefore.current.names : null
+    connectedBefore.current = { path: workspacePath, names: now }
+    if (!before || !onAsk) return
+    const added = [...now].filter(name => !before.has(name))
+    if (added.length > 0) {
+      void onAsk(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Confirm it is available and tell me briefly what you can do with it.`)
+    }
+  }, [servers, loading, onAsk, placeNoun, workspacePath])
 
   const mineByCatalog = useMemo(() => new Set(servers.filter(s => s.mine).map(s => s.catalog || s.name)), [servers])
 

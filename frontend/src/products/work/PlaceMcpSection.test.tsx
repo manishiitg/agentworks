@@ -151,3 +151,19 @@ it('reports a failed connector list with a retry, and an empty one plainly', asy
   await settle()
   expect(empty.textContent).toContain('No connectors with sign-in are set up on this server')
 })
+
+// A sign-in finishing in the other tab turns a connection to "connected"; the chat is told through
+// onAsk, but opening the screen with connections already connected sends nothing.
+it('tells the chat when a connection becomes connected, not on first load', async () => {
+  const listed = [{ name: 'u1__linear', catalog: 'Linear', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: false, active: true }]
+  placeMock.list.mockImplementation(async () => [...listed])
+  const onAsk = vi.fn(async (_message: string) => undefined)
+  const host = await render(true, 'Crew', 'Workflow/w', onAsk)
+  expect(onAsk).not.toHaveBeenCalled()
+  listed[0] = { ...listed[0], connected: true }
+  await act(async () => { window.dispatchEvent(new Event('focus')) })
+  await settle()
+  expect(host).toBeTruthy()
+  expect(onAsk).toHaveBeenCalledTimes(1)
+  expect(String(onAsk.mock.calls[0][0])).toContain('Linear is now connected in this Crew')
+})
