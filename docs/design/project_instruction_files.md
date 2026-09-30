@@ -47,7 +47,10 @@ Per CLI: Claude → `AGENTS.md` block; Codex, Muse → `AGENTS.md` block; Pi →
 agy → no prompt file (hooks are counted per workspace). Codex can also take the
 prompt through `-c model_instructions_file` and Claude through
 `--system-prompt-file`, but `mcpagent` turns on project-instruction-only for Claude,
-Codex and Muse, so the block is the carrier.
+Codex and Muse, so the block is the carrier. For Claude that needs a binary that reads
+`AGENTS.md` (2.1.284+; 2.1.233 does not): an older or unreadable-version binary gets the
+prompt through `--system-prompt-file` instead, and deploys keep exactly one managed copy
+of each CLI (see PLAT-371).
 
 ## Owner and reader
 

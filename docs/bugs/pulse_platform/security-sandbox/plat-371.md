@@ -79,6 +79,30 @@ restored afterwards); the `.git` marker is shared by sessions, removed by the la
 and only if it is still the directory we created (a real repository is never touched).
 Provider commit `667aeec`. Tests: `cursorcli_project_files_safety_test.go`.
 
+## One managed copy of each CLI, and old Claude (2026-09-30)
+
+With the session prompt carried only by the `AGENTS.md` block (project-instruction-only
+mode), a Claude that ignores `AGENTS.md` runs every session with no system prompt and no
+error. Claude Code 2.1.233 does not read `AGENTS.md`; 2.1.284 and 2.1.285 do (tested on
+RTS with the service token: AGENTS.md-only and a CLAUDE.md control). RTS had both a
+root-owned `/usr/bin/claude` 2.1.233 (and `pi` 0.84.2) from first provisioning and the
+managed `~/.local/bin` copies kept current by the deploy and the cli-update timer. The
+service PATH puts `~/.local/bin` first, so the managed copy won, but the old one was a
+silent fallback (the deploy script already records it running for hours on 2026-09-25).
+
+- RTS (2026-09-30): `sudo npm uninstall -g @anthropic-ai/claude-code
+  @earendil-works/pi-coding-agent`; the service now resolves claude 2.1.285, pi 0.87.1 and
+  cursor-agent only from `~/.local/bin`. The local Mac already has one copy of each CLI.
+  Excellence was not reachable to check.
+- Provisioning (`template.yaml`, `repair-bootstrap.sh`) no longer installs claude or pi
+  system-wide.
+- Deploy preflight (`build-and-activate.sh`): fails if `claude` on the service PATH is not
+  the managed one, warns on any system copy, and fails if this claude does not read
+  `AGENTS.md` (codeword probe; a capped account only warns).
+- Adapter (provider `3036cff`): in instruction-only mode a claude older than 2.1.284, or
+  whose version cannot be read, gets the prompt through `--system-prompt-file` and no
+  `AGENTS.md` carrier (a duplicate at worst, never a gap).
+
 ## Evidence
 
 Unit tests in all three repos. Real CLIs: Claude 2.1.284 and Codex 0.159 both read
