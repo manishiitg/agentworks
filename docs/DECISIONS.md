@@ -30,14 +30,21 @@ Each entry says what was decided, why, and where it lives in the code.
 ### 2026-09-30 — What a confined CLI may touch
 - Read/write: its working folder, its private home
   (`<workdir>/.sandbox-cache/cli-home/<cli>`), the folders its chat's folder
-  guard grants, and the shared `/tmp`.
+  guard grants, and explicitly granted runtime files. Providers other than
+  Muse also receive the shared `/tmp` grant.
 - `/tmp` is writable because Cursor keeps sockets at fixed `/tmp` paths
   (`cursor-askpass-*.sock`, and `/tmp/.cursor/<project>` when its home path is
   too long for a socket). Accepted as low risk; see the open issue below.
-- `/` is list-only (folder names, no file reads): Muse opens every folder from
+- Muse uses its private `TMPDIR` without the blanket shared `/tmp` grant.
+  Live echo startup and native resume pass under this narrower policy; real
+  Meta authentication and native-tool calls still need an authenticated smoke
+  test. See `docs/bugs/muse_landlock_directory_startup.md` for the regression
+  probes and their limits.
+- `/` is list-only (file and folder names, no file-content reads): Muse opens every folder from
   `/` down to its workspace at start ("Agent Definition filesystem source
   failed: IoError"). Landlock cannot grant one folder without everything below
-  it, so every folder name on the host is listable; file contents are not.
+  it, so names throughout the host are listable wherever Unix permissions
+  permit; this rule does not grant access to file contents.
   Agents are also told in their system prompt to stay in their own folder.
 - A private mount namespace per CLI (a minimal `/`, a private `/tmp`) was
   considered and deferred as heavier than needed.
@@ -82,7 +89,8 @@ Each entry says what was decided, why, and where it lives in the code.
 ## Open issues
 
 - **Shared `/tmp` between confined CLIs.** Every CLI on a server runs as the
-  same Linux user and can read and write `/tmp`: other CLIs' temp files, the
+  same Linux user. Providers other than Muse can read and write `/tmp`:
+  other CLIs' temp files, the
   workspace command scratch (`/tmp/aws-<uid>`) and the browser sockets
   (`/tmp/.agent-browser`). Landlock also does not govern `connect()` to
   Unix sockets, so the tmux socket (`/tmp/tmux-<uid>/default`) is reachable
