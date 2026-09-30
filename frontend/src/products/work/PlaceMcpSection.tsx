@@ -8,6 +8,7 @@ import { parseOAuthClientJson } from './oauthClientJson'
 import { mcpCatalogApi, type McpCatalogServer } from '../../api/mcpCatalog'
 import { placeMcpApi, type PlaceMcpCustomServer, type PlaceMcpServer } from '../../api/placeMcp'
 import { secretsApi } from '../../api/secrets'
+import { DEVELOPER_FIRST_GROUP_ORDER, GROUP_ORDER, descriptionFor, groupFor } from '../../components/connectors/catalog'
 import { groupServiceLabel, providerGroupLabel, providerGroups } from './mcpGroups'
 
 const errorText = (cause: unknown, fallback: string) => {
@@ -313,23 +314,37 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
             )
           })}
 
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {catalog.filter(entry => !mineByCatalog.has(entry.catalog) && !(entry.group && groups.has(entry.group)) && matches(entry.catalog)).map(entry => (
-              <button
-                key={entry.catalog}
-                type="button"
-                disabled={busy !== null}
-                onClick={() => { void add(entry) }}
-                className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
-              >
-                <ConnectionIcon icon={brandSlugFor(entry.catalog)} name={entry.catalog} size="xs" />
-                <span className="truncate">{entry.catalog}</span>
-                {busy === entry.catalog
-                  ? <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
-                  : <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground"><Plus className="h-3 w-3" />Connect</span>}
-              </button>
-            ))}
-          </div>
+          {/* The same shelves the old platform browser had (Payments, Customers, ...),
+              so a long list of servers stays scannable. */}
+          {(placeNoun === 'Code' ? DEVELOPER_FIRST_GROUP_ORDER : GROUP_ORDER).map(shelf => {
+            const entries = catalog.filter(entry => !mineByCatalog.has(entry.catalog) && !(entry.group && groups.has(entry.group)) && matches(entry.catalog) && groupFor(entry.catalog) === shelf.id)
+            if (entries.length === 0) return null
+            return (
+              <section key={shelf.id} data-testid={`mcp-shelf-${shelf.id}`}>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{shelf.label}</div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {entries.map(entry => (
+                    <button
+                      key={entry.catalog}
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => { void add(entry) }}
+                      className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                    >
+                      <ConnectionIcon icon={brandSlugFor(entry.catalog)} name={entry.catalog} size="xs" />
+                      <span className="min-w-0">
+                        <span className="block truncate">{entry.catalog}</span>
+                        {descriptionFor(entry.catalog) && <span className="block truncate text-xs text-muted-foreground">{descriptionFor(entry.catalog)}</span>}
+                      </span>
+                      {busy === entry.catalog
+                        ? <Loader2 className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin" />
+                        : <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Plus className="h-3 w-3" />Connect</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
 
           <div className="border-t border-border pt-3">
             {!showCustom ? (
