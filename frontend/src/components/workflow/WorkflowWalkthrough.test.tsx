@@ -84,6 +84,7 @@ describe('Context walkthroughs', () => {
   it.each(['overview', 'empty-automation', 'empty-crew'] as const)('explains when to use each product from $surface', async (surface) => {
     const switcher = addTarget('product-switcher')
     switcher.setAttribute('aria-label', 'Switch product')
+    switcher.dataset.tourProducts = 'agentworks work code'
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -94,9 +95,77 @@ describe('Context walkthroughs', () => {
       expect(dialog.textContent).toContain('Choose a workspace')
       expect(dialog.textContent).toContain('repeatable work with a success metric')
       expect(dialog.textContent).toContain('specialist teammate that remembers a project')
-      expect(dialog.textContent).toContain('Code for a private workspace')
+      expect(dialog.textContent).toContain('Code for a private coding workspace')
     } finally {
       await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('describes only products offered by the switcher', async () => {
+    const switcher = addTarget('product-switcher')
+    switcher.setAttribute('aria-label', 'Switch product')
+    switcher.dataset.tourProducts = 'agentworks work'
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="overview" onClose={() => {}} />))
+      const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
+      await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
+      expect(dialog.textContent).toContain('Goals for')
+      expect(dialog.textContent).toContain('Crew for')
+      expect(dialog.textContent).not.toContain('Code for')
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('focuses the guide, preserves page arrow keys and restores its launcher', async () => {
+    const launcher = addTarget('global-providers')
+    launcher.focus()
+    const input = document.createElement('textarea')
+    document.body.append(input)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="empty-code" onClose={() => {}} />))
+      const dialog = document.querySelector('[data-testid="workflow-walkthrough-dialog"]')!
+      expect(document.activeElement).toBe(dialog.querySelector('[data-tour-primary]'))
+      input.focus()
+      await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+      expect(dialog.textContent).toContain('What is Code for?')
+      const next = dialog.querySelector<HTMLButtonElement>('[data-tour-primary]')!
+      next.focus()
+      await act(async () => next.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+      expect(dialog.textContent).toContain('2 of 2')
+      expect(document.activeElement?.textContent).toContain('Finish')
+      await act(async () => root.render(<WorkflowWalkthrough isOpen={false} surface="empty-code" onClose={() => {}} />))
+      expect(document.activeElement).toBe(launcher)
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+      input.remove()
+    }
+  })
+
+  it('places an anchored guide using its actual height', async () => {
+    const target = addTarget('global-providers')
+    target.getBoundingClientRect = () => ({ x: 20, y: 430, left: 20, top: 430, right: 220, bottom: 460, width: 200, height: 30, toJSON: () => ({}) }) as DOMRect
+    const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 300 } as DOMRect)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkflowWalkthrough isOpen surface="empty-code" onClose={() => {}} />))
+      const dialog = document.querySelector<HTMLElement>('[data-testid="workflow-walkthrough-dialog"]')!
+      await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
+      expect(Number.parseFloat(dialog.style.top) + 300).toBeLessThanOrEqual(window.innerHeight - 12)
+    } finally {
+      await act(async () => root.unmount())
+      measure.mockRestore()
       host.remove()
     }
   })
@@ -121,7 +190,7 @@ describe('Context walkthroughs', () => {
   })
 
   it('walks a first-time Code user through the controls they can see, skipping admin-only ones', async () => {
-    for (const tour of ['crew-empty-state', 'crew-create', 'global-providers']) addTarget(tour)
+    for (const tour of ['code-empty-state', 'code-create', 'global-providers']) addTarget(tour)
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)
@@ -146,7 +215,7 @@ describe('Context walkthroughs', () => {
   })
 
   it('shows an admin the MCP and Users steps in the Code getting-started guide', async () => {
-    for (const tour of ['crew-empty-state', 'crew-create', 'global-providers', 'global-mcp', 'global-users']) addTarget(tour)
+    for (const tour of ['code-empty-state', 'code-create', 'global-providers', 'global-mcp', 'global-users']) addTarget(tour)
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)

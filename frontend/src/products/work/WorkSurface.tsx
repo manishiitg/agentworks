@@ -1136,8 +1136,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               {sessionsLoading || creating ? (
                 <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
               ) : !product.hasIdentity ? (
-                <div className="flex max-w-xl flex-col items-center px-6 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                <div data-tour="code-empty-state" className="flex max-w-xl flex-col items-center px-6 text-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 [@media(max-height:600px)]:hidden">
                     <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;/&gt;</span>
                   </div>
                   <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
@@ -1161,6 +1161,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   </div>
                   <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
                   <button
+                    data-tour="code-create"
                     type="button"
                     onClick={openCreateProject}
                     className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, X } from 'lucide-react'
 import ModalPortal from '../ui/ModalPortal'
 import type { WalkthroughSurface } from '../../utils/onboarding'
@@ -13,7 +13,20 @@ type WalkthroughStep = {
 const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
   selector: '[aria-label="Switch product"]',
   title: 'Choose a workspace',
-  body: 'Use Goals for repeatable work with a success metric, Crew for a specialist teammate that remembers a project, and Code for a private workspace to write, research, analyse or build. Switch between them here.',
+  body: 'Switch between the products available to you here.',
+}
+
+const productSwitcherBody = () => {
+  const available = document.querySelector('[aria-label="Switch product"]')?.getAttribute('data-tour-products')?.split(' ') ?? []
+  const descriptions: Record<string, string> = {
+    agentworks: 'Goals for repeatable work with a success metric',
+    work: 'Crew for a specialist teammate that remembers a project',
+    code: 'Code for a private coding workspace with files, an editor and a terminal',
+  }
+  const choices = available.map(id => descriptions[id]).filter(Boolean)
+  return choices.length > 0
+    ? `Use ${choices.join('; ')}. Switch between the products available to you here.`
+    : PRODUCT_SWITCHER_STEP.body
 }
 
 const OVERVIEW_STEPS: WalkthroughStep[] = [
@@ -217,16 +230,16 @@ const CREW_STEPS: WalkthroughStep[] = [
 const EMPTY_CODE_STEPS: WalkthroughStep[] = [
   {
     title: 'What is Code for?',
-    body: 'Code is your private workspace with an AI agent: write, research, analyse, build and automate, however you like. Your files, chats and connected apps stay yours, and you share a workspace only with people you choose.',
-    example: 'Ask it to clean up a spreadsheet, draft a report, or build and test a feature.',
+    body: 'Code gives you a private workspace with files, an editor, a terminal and a coding agent on the team server. Share it with teammates when ready. Server admins and Code reviewers have logged, read-only access.',
+    example: 'Ask the agent to build a feature, run its tests and fix a failing check.',
   },
   {
-    selector: '[data-tour="crew-empty-state"]',
+    selector: '[data-tour="code-empty-state"]',
     title: 'Your workspaces start here',
     body: 'Create a workspace to keep a piece of work’s chat, files and connections together.',
   },
   {
-    selector: '[data-tour="crew-create"]',
+    selector: '[data-tour="code-create"]',
     title: 'Create a workspace',
     body: 'Give it a name and use Runs on to choose the coding provider and account it will use. Once it opens, a separate guide shows you around.',
   },
@@ -376,6 +389,9 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   const [progress, setProgress] = useState({ surface, openToken, index: 0 })
   // A new surface must render its first step immediately, before effects run.
   const stepIndex = progress.surface === surface && progress.openToken === openToken ? progress.index : 0
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [panelMeasuredHeight, setPanelMeasuredHeight] = useState(228)
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
 
   const findStep = useCallback((startIndex: number, direction: 1 | -1) => {
@@ -451,24 +467,60 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   useEffect(() => {
     if (!isOpen) return
     updateTarget()
-    window.addEventListener('resize', updateTarget)
+    const handleResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+      updateTarget()
+    }
+    window.addEventListener('resize', handleResize)
     window.addEventListener('scroll', updateTarget, true)
     // Changing pages or opening an automation can replace tour targets without
     // causing a resize or scroll event.
     const interval = window.setInterval(updateTarget, 300)
     return () => {
-      window.removeEventListener('resize', updateTarget)
+      window.removeEventListener('resize', handleResize)
       window.removeEventListener('scroll', updateTarget, true)
       window.clearInterval(interval)
     }
   }, [isOpen, updateTarget])
 
+  // This guide allows interaction with the highlighted page control. Move
+  // focus into it on opening, but do not trap focus or hijack page arrow keys.
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const launcher = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setViewport({ width: window.innerWidth, height: window.innerHeight })
+    panelRef.current?.querySelector<HTMLButtonElement>('[data-tour-primary]')?.focus({ preventScroll: true })
+    return () => {
+      const returnTarget = launcher?.isConnected && launcher !== document.body
+        ? launcher
+        : document.querySelector<HTMLElement>('[aria-label^="Account:"]')
+      returnTarget?.focus({ preventScroll: true })
+    }
+  }, [isOpen, openToken, surface])
+
+  useLayoutEffect(() => {
+    if (!isOpen || !panelRef.current) return
+    const panel = panelRef.current
+    const measure = () => {
+      const height = panel.getBoundingClientRect().height
+      if (height > 0) setPanelMeasuredHeight(previous => previous === height ? previous : height)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [isOpen, openToken, stepIndex, surface])
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
-      if (event.key === 'ArrowLeft') goToStep(-1)
-      if (event.key === 'ArrowRight') goToStep(1)
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (!panelRef.current?.contains(event.target as Node)) return
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        goToStep(event.key === 'ArrowLeft' ? -1 : 1)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -484,36 +536,36 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
   const stepTotal = visibleIndices.length
   const isFirstVisibleStep = displayedPosition === 0
   const isLastVisibleStep = stepTotal === 0 || displayedPosition === stepTotal - 1
-  const panelWidth = Math.min(380, window.innerWidth - 24)
-  const panelHeight = Math.min(228, window.innerHeight - 24)
+  const panelWidth = Math.min(380, viewport.width - 24)
+  const panelHeight = Math.min(panelMeasuredHeight, viewport.height - 24)
   // Top-bar menus open below their triggers. Keep the guide beside them so
   // people can open the automation picker while its step is highlighted.
   const topBarTarget = targetRect && targetRect.top < 80 && targetRect.height < 80
   const panelBesideTarget = topBarTarget && (
-    targetRect.right + panelWidth + 64 <= window.innerWidth - 12 ||
+    targetRect.right + panelWidth + 64 <= viewport.width - 12 ||
     targetRect.left - panelWidth - 24 >= 12
   )
   const panelLeft = panelBesideTarget && targetRect
-    ? targetRect.right + panelWidth + 64 <= window.innerWidth - 12
+    ? targetRect.right + panelWidth + 64 <= viewport.width - 12
       ? targetRect.right + 64
       : targetRect.left - panelWidth - 24
     : targetRect
-    ? clamp(targetRect.left, 12, window.innerWidth - panelWidth - 12)
-    : clamp((window.innerWidth - panelWidth) / 2, 12, window.innerWidth - panelWidth - 12)
+    ? clamp(targetRect.left, 12, viewport.width - panelWidth - 12)
+    : clamp((viewport.width - panelWidth) / 2, 12, viewport.width - panelWidth - 12)
   const panelTop = !targetRect
-    ? window.innerHeight / 2
+    ? viewport.height / 2
     : panelBesideTarget
-    ? clamp(targetRect.bottom + 10, 12, window.innerHeight - panelHeight - 12)
-    : targetRect.bottom + panelHeight + 16 > window.innerHeight
-      ? clamp(targetRect.top - panelHeight - 14, 12, window.innerHeight - panelHeight - 12)
-      : clamp(targetRect.bottom + 14, 12, window.innerHeight - panelHeight - 12)
+    ? clamp(targetRect.bottom + 10, 12, viewport.height - panelHeight - 12)
+    : targetRect.bottom + panelHeight + 16 > viewport.height
+      ? clamp(targetRect.top - panelHeight - 14, 12, viewport.height - panelHeight - 12)
+      : clamp(targetRect.bottom + 14, 12, viewport.height - panelHeight - 12)
 
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-[10000] pointer-events-none">
         {targetRect && (
           <div
-            className="fixed rounded-xl border-2 border-primary transition-all duration-150"
+            className="fixed rounded-xl border-2 border-primary transition-all duration-150 motion-reduce:transition-none"
             style={{
               left: targetRect.left - 6,
               top: targetRect.top - 6,
@@ -524,8 +576,9 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
           />
         )}
         <div
+          ref={panelRef}
           className="fixed pointer-events-auto overflow-y-auto rounded-2xl border border-border bg-popover p-5 text-popover-foreground shadow-2xl"
-          style={{ left: panelLeft, top: panelTop, transform: targetRect ? undefined : 'translateY(-50%)', width: panelWidth, maxHeight: window.innerHeight - 24 }}
+          style={{ left: panelLeft, top: panelTop, transform: targetRect ? undefined : 'translateY(-50%)', width: panelWidth, maxHeight: viewport.height - 24 }}
           role="dialog"
           aria-label={surfaceLabel.aria}
           aria-describedby="workflow-walkthrough-description"
@@ -544,12 +597,12 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="mt-2 flex items-center justify-between gap-3" aria-live="polite" aria-atomic="true">
             <h3 className="text-base font-semibold leading-6 text-foreground">{step?.title ?? 'Explore Goals'}</h3>
             {stepTotal > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{stepNumber} of {stepTotal}</span>}
           </div>
           <p id="workflow-walkthrough-description" className="mt-2 text-sm leading-5 text-muted-foreground">
-            {step?.body ?? 'This part of the interface is still loading. You can reopen the walkthrough from your account menu.'}
+            {step === PRODUCT_SWITCHER_STEP ? productSwitcherBody() : step?.body ?? 'This part of the interface is still loading. You can reopen the walkthrough from your account menu.'}
           </p>
           {step?.example && (
             <div className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-xs leading-5 text-muted-foreground">
@@ -581,6 +634,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <button
                 onClick={onClose}
                 data-testid="workflow-walkthrough-done"
+                data-tour-primary="true"
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 Finish
@@ -589,6 +643,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
               <button
                 onClick={() => goToStep(1)}
                 data-testid="workflow-walkthrough-next"
+                data-tour-primary="true"
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 Next
