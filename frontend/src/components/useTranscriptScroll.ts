@@ -110,6 +110,22 @@ function nestedScroller(target: EventTarget | null, root: HTMLElement, delta: nu
   return false
 }
 
+/**
+ * Whether the transcript shows no message row although it has some: every row Virtuoso drew
+ * is outside the visible part of the scroller. A list with no rows at all is not blank.
+ */
+export function transcriptBlank(scroller: HTMLElement): boolean {
+  const rows = scroller.querySelectorAll<HTMLElement>('[data-transcript-key]')
+  if (rows.length === 0) return scroller.scrollHeight > scroller.clientHeight + 1
+  const view = scroller.getBoundingClientRect()
+  if (view.height <= 0) return false
+  for (const row of Array.from(rows)) {
+    const box = row.getBoundingClientRect()
+    if (box.bottom > view.top + 1 && box.top < view.bottom - 1) return false
+  }
+  return true
+}
+
 export function useTranscriptScroll(
   keys: string[],
   saved: TranscriptReadingState,
@@ -132,6 +148,16 @@ export function useTranscriptScroll(
       // Stop once we reach the physical end. scrollToIndex retries while rows
       // are measured; starting that process on each resize can fight itself.
       if (bottom - element.scrollTop > 1) virtuoso.current?.scrollTo({ top: bottom, behavior: 'auto' })
+      // The bottom is read from the page before the list re-measures a new or replaced row
+      // (a sent message swapped for the server's copy shrinks it), so the scroller can land
+      // where Virtuoso has drawn no rows: a blank transcript until the person scrolls.
+      requestAnimationFrame(() => {
+        if (!transcriptBlank(element)) return
+        element.dispatchEvent(new Event('scroll'))
+        requestAnimationFrame(() => {
+          if (transcriptBlank(element)) virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
+        })
+      })
     },
     (value) => { saved.following = value; setFollowing(value) },
   ))
