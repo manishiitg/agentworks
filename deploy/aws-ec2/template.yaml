@@ -147,7 +147,11 @@ Resources:
           apt-get update
           apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras uidmap slirp4netns fuse-overlayfs nodejs
           systemctl enable --now docker
-          npm install -g agent-browser@latest @anthropic-ai/claude-code@latest @earendil-works/pi-coding-agent@latest
+          # The coding CLIs (claude, pi) are NOT installed system-wide: an old root-owned copy
+          # silently wins when the managed one (~/.local, kept current by the deploy and
+          # the cli-update timer) goes missing, and Claude before 2.1.2xx ignores AGENTS.md,
+          # which carries the session prompt. Only agent-browser lives here.
+          npm install -g agent-browser@latest
           id -u video-studio >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/video-studio --shell /usr/sbin/nologin video-studio
           subid_start=$(awk -F: 'BEGIN { max=100000; block=65536 } NF == 3 { end=$2+$3; if (end > max) max=end } END { print int((max+block-1)/block)*block }' /etc/subuid /etc/subgid)
           grep -q '^video-studio:' /etc/subuid || usermod --add-subuids $subid_start-$((subid_start + 65535)) video-studio
