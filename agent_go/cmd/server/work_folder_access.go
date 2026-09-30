@@ -324,7 +324,7 @@ func invalidateWorkFolderSessions(ctx context.Context, identityKey, reason strin
 		}
 		for sessionID := range sessions {
 			common.SetSessionFolderGuard(sessionID, []string{}, []string{})
-			closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+			closeCodingCLIAndReleaseTurnMarkers(sessionID, reason)
 		}
 	}
 }

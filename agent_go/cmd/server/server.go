@@ -2199,6 +2199,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	// Pulse Goal Work reaches other workflows and Crews through the external API.
 	pulsePlatformAPI = api
+	runningServerAPI = api
 	// An MCP connection's header secrets are its Crew's, Code's or workflow's
 	// own project secrets (Setup > Secrets).
 	projectSecretReader = api.projectSecretValue

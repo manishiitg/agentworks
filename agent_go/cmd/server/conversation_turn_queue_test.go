@@ -275,3 +275,27 @@ func TestStopButtonReleasesTheStoppedTurnsMarkers(t *testing.T) {
 		t.Fatal("the Stop button left the conversation marked busy")
 	}
 }
+
+// Closing a chat's CLI on purpose (access or runtime configuration changed) releases its busy
+// markers, so the next message is not queued behind the turn that CLI was running.
+func TestClosingACLIOnPurposeReleasesTheTurnMarkers(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.retainedMainTurns = map[string]time.Time{"session-1": time.Now(), "session-2": time.Now()}
+	old := runningServerAPI
+	runningServerAPI = api
+	t.Cleanup(func() { runningServerAPI = old })
+	if !api.conversationTurnOccupied("session-1") {
+		t.Fatal("session-1 should be occupied before the close")
+	}
+
+	closeCodingCLIAndReleaseTurnMarkers("session-1", "code access changed")
+
+	if api.conversationTurnOccupied("session-1") {
+		t.Fatal("the chat is still marked busy after its CLI was closed")
+	}
+	if !api.conversationTurnOccupied("session-2") {
+		t.Fatal("another chat's turn was released")
+	}
+	runningServerAPI = nil
+	closeCodingCLIAndReleaseTurnMarkers("session-2", "no api") // must not panic without an API
+}

@@ -933,7 +933,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			return QueryRequest{}, err
 		}
 		if restart {
-			closeAllCodingCLIInteractiveSessionsForOwner(conversation.SessionID, "product chat: runtime configuration changed")
+			closeCodingCLIAndReleaseTurnMarkers(conversation.SessionID, "product chat: runtime configuration changed")
 		}
 	}
 	return query, nil

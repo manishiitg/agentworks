@@ -679,3 +679,18 @@ func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
 		log.Printf("[STOP] session=%s dropped %d claimed queue entr%s of the stopped turn", sessionID, dropped, map[bool]string{true: "y", false: "ies"}[dropped == 1])
 	}
 }
+
+// runningServerAPI is the server's API, set when it starts. Code that has no API handle (the access
+// and runtime-configuration changes below) uses it to release busy markers; nil (tests, CLI tools)
+// means only the CLI is closed.
+var runningServerAPI *StreamingAPI
+
+// closeCodingCLIAndReleaseTurnMarkers closes a chat's coding CLI on purpose (its access or runtime
+// configuration changed) and clears what marks the conversation busy. A turn that was running in
+// that CLI can no longer finish, so leaving its markers made every later message queue behind it.
+func closeCodingCLIAndReleaseTurnMarkers(sessionID, reason string) {
+	closeAllCodingCLIInteractiveSessionsForOwner(sessionID, reason)
+	if runningServerAPI != nil {
+		runningServerAPI.releaseStoppedSessionTurnMarkers(sessionID)
+	}
+}
