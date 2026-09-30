@@ -422,6 +422,29 @@ function failureHints(payload: Record<string, unknown>): { code?: unknown; provi
 const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry }) => {
   const [open, setOpen] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  // A cancel is something the person did, not a fault: one quiet line, not a full error card.
+  if (failure.code === 'cancelled') {
+    return (
+      <div data-testid="terminal-clear-turn-failure" className="my-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <XCircle className="h-3 w-3 shrink-0" />
+        <span>{failure.title}</span>
+        {timestamp && <span className="tabular-nums">{timestamp}</span>}
+        {failure.retryable && onRetry && (
+          <button
+            type="button"
+            disabled={retrying}
+            className="underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+            onClick={async () => {
+              setRetrying(true)
+              try { await onRetry() } finally { setRetrying(false) }
+            }}
+          >
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        )}
+      </div>
+    )
+  }
   return (
     <article data-testid="terminal-clear-turn-failure" className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
       <div className="flex items-start gap-2">
