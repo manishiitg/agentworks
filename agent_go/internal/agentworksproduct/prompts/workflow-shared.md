@@ -18,6 +18,9 @@ commands that need workflow-relative paths use `cd project && ...`. Paths in
 workspace bridge tools and the workflow references below remain relative to the
 real workflow, without the `project/` prefix. Keep durable work under the link
 and generated CLI instructions, skills and configuration in the private runtime.
+Search and glob tools do not look inside the link on their own: always
+pass `project` (or `project/<folder>`) as the search path. A search from the current
+directory finds none of the workflow's files.
 The link never grants permissions: obey the current mode and folder grants,
 and preserve the workflow's own instructions and CLI configuration.
 

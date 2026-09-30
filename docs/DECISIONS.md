@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-09-30 — Linked runtimes tell the agent to name `project` when searching
+- The `project/` link is a symlink, and search tools do not walk into a symlink they
+  find: plain `rg` from the runtime folder, and Claude Code's Grep and Glob with no path,
+  returned no workflow files; with `project` as the path (or `rg -L`) they did. A
+  `RIPGREP_CONFIG_PATH` with `--follow` fixed `rg` but not Claude Code, so it is not a fix.
+- The Crew and workflow runtime instructions and the workflow shared prompt now say to
+  always pass `project` (or `project/<folder>`) as the search path. Per-folder links would
+  not help (ripgrep skips those too). The real fix, if the prompt proves unreliable, is a
+  bind mount that makes `project/` a real directory: the launcher would need its own
+  namespace plus a host AppArmor allowance, and macOS keeps the link. Cursor, Codex, Muse,
+  Pi and Agy were not tested; each needs the same live check.
+
 ### 2026-09-30 — Workflow steps link their own iteration output into private runtimes
 - Extend the linked-runtime design to execution steps and step orchestrators.
   Keep the existing per-session CLI directory identity and isolated generated
