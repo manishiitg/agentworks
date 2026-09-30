@@ -255,7 +255,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
         <div className="mt-2 flex flex-col gap-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available</div>
           <p data-testid="mcp-google-pointer" className="text-xs leading-5 text-muted-foreground">
-            Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) are connected in the Gmail tab, not here. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Setup → Secrets; the agent uses it with git and the GitHub API.
+            Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) are connected in the Google apps tab, not here. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Setup → Secrets; the agent uses it with git and the GitHub API.
           </p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

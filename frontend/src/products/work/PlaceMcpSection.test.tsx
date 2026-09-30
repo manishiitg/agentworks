@@ -58,7 +58,7 @@ it('connects a listed server with one click, no popup, and says whose login it u
   // The rule is a plain line on the page, not a dialog in the way.
   expect(host.textContent).toContain('uses the login of the person who added it')
   expect(host.textContent).toContain('Available')
-  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('Gmail tab')
+  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('Google apps tab')
   expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('GITHUB_TOKEN')
   await act(async () => { button(host, 'GoogleDrive').click() })
   await settle()
