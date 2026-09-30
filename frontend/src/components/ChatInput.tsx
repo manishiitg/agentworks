@@ -1556,7 +1556,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [terminalToolsExpanded, setTerminalToolsExpanded] = useState(false)
-  const [terminalCommandRequested, setTerminalCommandRequested] = useState(false)
+  const [terminalCommandPalette, setTerminalCommandPalette] = useState(false)
+  const nativeCommandButtonRef = useRef<HTMLButtonElement>(null)
   const terminalComposerId = React.useId()
   useLayoutEffect(() => {
     if (terminalToolsExpanded) textareaRef.current?.focus()
@@ -1604,8 +1605,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const commandListId = `commands-${activeTabId}`
   const fileListId = `files-${activeTabId}`
 
-  const [pulseReviewPicker, setPulseReviewPicker] = useState<{ tabId: string; workspacePath: string | null | undefined; initialContext: string } | null>(null)
-  const closePulseReviewPicker = useCallback(() => setPulseReviewPicker(null), [])
+  const [pulseReviewPicker, setPulseReviewPicker] = useState<{ tabId: string; workspacePath: string | null | undefined; initialContext: string; fromTerminal?: boolean } | null>(null)
+  const closePulseReviewPicker = useCallback(() => {
+    setPulseReviewPicker(null)
+    if (pulseReviewPicker?.fromTerminal) requestMainTerminalFocus(tabSessionId)
+  }, [pulseReviewPicker, tabSessionId])
 
   // Command editor dialog state
   const [showCommandEditor, setShowCommandEditor] = useState(false)
@@ -1974,6 +1978,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     composerTriggerRef.current = null
     setShowFileDialog(false)
     setShowCommandDialog(false)
+    setTerminalCommandPalette(false)
     setShowWorkflowDialog(false)
     setShowSkillPopup(false)
     setShowServerPopup(false)
@@ -1985,7 +1990,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   useLayoutEffect(() => {
     closeComposerPickers()
     setTerminalToolsExpanded(false)
-    setTerminalCommandRequested(false)
   }, [activeTabId, terminalViewSelected, closeComposerPickers])
 
   const updateComposerPicker = useCallback((textarea: HTMLTextAreaElement) => {
@@ -2201,9 +2205,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!ctx) return
     applyWorkflowCommandRequirements(cmd)
     setPulseReviewPicker(null)
-    clearInputState()
+    if (!pulseReviewPicker.fromTerminal) clearInputState()
     cmd.execute({ ...ctx, pulseReviewFocus: focusId })
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, canWriteCommandWorkflow, clearInputState, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, isViewOnly, pulseReviewPicker])
+    if (pulseReviewPicker.fromTerminal) requestMainTerminalFocus(tabSessionId)
+  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, canWriteCommandWorkflow, clearInputState, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, isViewOnly, pulseReviewPicker, tabSessionId])
 
   const executeSlashCommandFromQuery = useCallback((trimmedQuery: string) => {
     if (!trimmedQuery.startsWith('/')) return false
@@ -2498,13 +2503,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     textareaRef.current?.focus()
   }, [inputText, showCommandDialog, closeComposerPickers])
 
-  // Open after the expanded composer is committed, so palette geometry and
-  // keyboard focus come from the visible textarea rather than a hidden box.
-  useEffect(() => {
-    if (!terminalCommandRequested || !terminalToolsExpanded) return
-    setTerminalCommandRequested(false)
-    openCommandMenu()
-  }, [terminalCommandRequested, terminalToolsExpanded, openCommandMenu])
+  // Position after the composer collapses so the picker sits above the terminal toolbar.
+  useLayoutEffect(() => {
+    if (!terminalCommandPalette || !showCommandDialog) return
+    const rect = nativeCommandButtonRef.current?.getBoundingClientRect()
+    if (rect) setCommandDialogPosition({ bottom: window.innerHeight - rect.top + 8, left: rect.left + window.scrollX })
+  }, [terminalCommandPalette, showCommandDialog])
 
   // Command selection handler - executes commands directly
   const handleCommandSelect = useCallback((command: string) => {
@@ -2514,9 +2518,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setShowCommandDialog(false)
     setCommandSearchQuery('')
 
-    // Keep context on both sides of the selected command.
+    // Terminal toolbar commands run independently of the preserved chat draft.
+    // Typed slash commands keep context on both sides of the selected command.
     const trigger = composerTriggerRef.current
-    const beforeSlash = trigger?.kind === '/'
+    const beforeSlash = terminalCommandPalette ? '' : trigger?.kind === '/'
       ? [inputText.slice(0, trigger.start), inputText.slice(trigger.end)].filter(Boolean).join(' ').trim()
       : inputText.trim()
     closeComposerPickers()
@@ -2527,10 +2532,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
     if (!cmd && findCommandAnyMode(command)) {
       addToast('This command is unavailable for your current mode or workflow access.', 'info')
+      if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
       return
     }
     if ((cmd?.source === 'builtin' || cmd?.source === 'product') && cmd.command === 'run-technical-review') {
-      setPulseReviewPicker({ tabId: activeTabId, workspacePath: commandWorkflowPath, initialContext: beforeSlash })
+      setPulseReviewPicker({ tabId: activeTabId, workspacePath: commandWorkflowPath, initialContext: beforeSlash, fromTerminal: terminalCommandPalette })
       return
     }
     const validationError = cmd ? getCommandValidationError(cmd, beforeSlash) : null
@@ -2538,7 +2544,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       addToast(validationError, 'info')
 
       // Keep the complete draft available for correction after validation fails.
-      setTimeout(() => textareaRef.current?.focus(), 0)
+      if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
+      else setTimeout(() => textareaRef.current?.focus(), 0)
       return
     }
 
@@ -2548,8 +2555,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const ctx = buildCommandContext(beforeSlash)
     if (cmd && ctx) {
-      clearInputState()
+      if (!terminalCommandPalette) clearInputState()
       cmd.execute(ctx)
+    } else if (!cmd && terminalCommandPalette) {
+      addToast('This command is no longer available.', 'info')
     } else if (!cmd && textareaRef.current) {
       const insertion = trigger?.kind === '/' ? trigger : { start: inputText.length, end: inputText.length }
       const replacement = replaceComposerTrigger(inputText, insertion, `${trigger ? '' : inputText && !/\s$/.test(inputText) ? ' ' : ''}/${command} `)
@@ -2557,13 +2566,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       setTimeout(() => textareaRef.current?.setSelectionRange(replacement.caret, replacement.caret), 0)
     }
 
-    // Focus back to textarea
-    setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, isProductProfile])
+    if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
+    else setTimeout(() => textareaRef.current?.focus(), 0)
+  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, isProductProfile])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
-    setShowCommandDialog(false)
+    closeComposerPickers()
     // Fetch full command data from API to populate editor
     commandsApi.getCommand(cmd.command, customCommandWorkspacePath).then(uc => {
       setEditingUserCommand({
@@ -2575,7 +2584,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }).catch(() => {
       addToast('Failed to load command for editing', 'error')
     })
-  }, [addToast, customCommandWorkspacePath])
+  }, [addToast, customCommandWorkspacePath, closeComposerPickers])
 
   const handleDeleteCommand = useCallback(async (cmd: CommandDefinition) => {
     try {
@@ -2590,10 +2599,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // The agent creates commands (manage_custom_commands, in every product's
   // chat): the menu asks it in this chat instead of opening a form.
   const handleCreateCommand = useCallback(() => {
-    setShowCommandDialog(false)
-    clearInputState()
+    closeComposerPickers()
+    if (!terminalCommandPalette) clearInputState()
     void onSubmit('Help me create a new custom slash command here. Ask me what it should do and when I would use it, then create it with manage_custom_commands and tell me how to run it.')
-  }, [clearInputState, onSubmit])
+    if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
+  }, [clearInputState, onSubmit, closeComposerPickers, terminalCommandPalette, tabSessionId])
 
   const handleCommandEditorClose = useCallback(() => {
     setShowCommandEditor(false)
@@ -2616,7 +2626,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }, 0)
   }, [inputText, chatFileContext, activeTabId, writeComposerText, closeComposerPickers, scrollToFile])
 
-  const handleCommandDialogClose = closeComposerPickers
+  const handleCommandDialogClose = useCallback((reason?: 'outside' | 'resize') => {
+    closeComposerPickers()
+    if (terminalCommandPalette && reason !== 'outside') requestMainTerminalFocus(tabSessionId)
+  }, [closeComposerPickers, terminalCommandPalette, tabSessionId])
   const handleFileDialogClose = closeComposerPickers
 
   const handleWorkflowSelect = useCallback((workflow: { presetId: string; label: string; workspacePath: string }) => {
@@ -3090,9 +3103,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           expanded={terminalToolsExpanded}
           uploading={isUploadingFiles}
           composerId={terminalComposerId}
+          commandsOpen={terminalCommandPalette && showCommandDialog}
+          commandListId={commandListId}
+          commandButtonRef={nativeCommandButtonRef}
           onCommands={() => {
-            setTerminalToolsExpanded(true)
-            setTerminalCommandRequested(true)
+            const wasOpen = terminalCommandPalette && showCommandDialog
+            closeComposerPickers()
+            setTerminalToolsExpanded(false)
+            if (wasOpen) {
+              requestMainTerminalFocus(tabSessionId)
+            } else {
+              dismissedTriggerRef.current = null
+              setTerminalCommandPalette(true)
+              setCommandSearchQuery('')
+              setShowCommandDialog(true)
+            }
           }}
           onAttach={openAttachmentPicker}
           onToggleComposer={toggleTerminalComposer}
@@ -3824,6 +3849,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onClose={handleCommandDialogClose}
         onSelectCommand={handleCommandSelect}
         inputRef={textareaRef}
+        standalone={terminalCommandPalette}
+        onSearchQueryChange={setCommandSearchQuery}
+        triggerRef={terminalCommandPalette ? nativeCommandButtonRef : undefined}
         listId={commandListId}
         onActiveOptionChange={setActiveComposerOption}
         searchQuery={commandSearchQuery}

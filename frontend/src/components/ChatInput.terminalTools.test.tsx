@@ -26,7 +26,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useModeStore } from '../stores/useModeStore'
 import { agentApi } from '../services/api'
-import { setUserCommands } from '../commands/registry'
+import { setProductCommands, setUserCommands } from '../commands/registry'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -69,25 +69,123 @@ describe('terminal toolbar shared tools', () => {
   })
   afterEach(async () => {
     await act(async () => root?.unmount())
-    client?.clear(); host?.remove(); setUserCommands([]); vi.restoreAllMocks(); send.mockClear()
+    client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear()
   })
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
   const textarea = () => host.querySelector<HTMLTextAreaElement>('[data-testid="chat-input-textarea"]')!
   const composer = () => document.getElementById(button('Show message composer')?.getAttribute('aria-controls') ?? button('Hide message composer').getAttribute('aria-controls')!)!
 
-  it('opens the existing command picker without changing the draft or leaving tmux', async () => {
-    await act(async () => setUserCommands([{ command: 'terminal-review', description: 'Review in this session', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => { ctx.onSubmit('review via app command') } }]))
+  it('executes from a standalone picker without opening or consuming the chat draft', async () => {
+    await act(async () => setUserCommands([{ command: 'terminal-review', description: 'Review in this session', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => { expect(ctx.beforeSlash).toBe(''); ctx.onSubmit('review via app command') } }]))
     expect(composer().hidden).toBe(true)
     await act(async () => button('Browse commands').click())
-    expect(composer().hidden).toBe(false)
+    expect(composer().hidden).toBe(true)
     expect(textarea().value).toBe('review this file')
-    expect(document.activeElement).toBe(textarea())
+    expect(document.activeElement).toBe(host.querySelector('[aria-label="Search commands"]'))
     const command = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/terminal-review'))!
     expect(command).toBeDefined()
     await act(async () => command.click())
     expect(send).toHaveBeenCalledWith('review via app command', expect.objectContaining({ sourceTabId: 'A' }))
     expect(useChatStore.getState().getTab('A')?.viewMode).toBe('terminal')
+    expect(composer().hidden).toBe(true)
+    expect(textarea().value).toBe('review this file')
+    expect(useChatStore.getState().getTabConfig('A')?.inputText).toBe('review this file')
+    expect(document.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  const clickWithMouse = (target: HTMLElement) => {
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    target.focus()
+    target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    target.click()
+  }
+
+  it.each(['button', 'Escape'])('dismisses via %s and returns focus to the originating terminal', async action => {
+    const focus = vi.fn()
+    window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus)
+    try {
+      await act(async () => clickWithMouse(button('Browse commands')))
+      expect(button('Browse commands').getAttribute('aria-expanded')).toBe('true')
+      expect(composer().hidden).toBe(true)
+      await act(async () => {
+        if (action === 'button') clickWithMouse(button('Browse commands'))
+        else document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      expect(document.querySelector('[role="listbox"]')).toBeNull()
+      expect(button('Browse commands').getAttribute('aria-expanded')).toBe('false')
+      expect(textarea().value).toBe('review this file')
+      expect(send).not.toHaveBeenCalled()
+      expect(focus).toHaveBeenCalledOnce()
+      expect((focus.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 'A-session' })
+    } finally { window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
+  })
+
+  it('searches and navigates commands with native arrow keys and Enter', async () => {
+    await act(async () => setUserCommands(['one', 'two'].map(name => ({ command: `terminal-${name}`, description: name,
+      icon: 'terminal', source: 'user' as const, modes: ['workflow' as const], execute: ctx => ctx.onSubmit(name) }))))
+    await act(async () => button('Browse commands').click())
+    const search = host.querySelector<HTMLInputElement>('[aria-label="Search commands"]')!
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      setter.call(search, 'terminal-')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(host.querySelectorAll('[role="option"]')).toHaveLength(2)
+    for (const key of ['ArrowDown', 'ArrowUp', 'ArrowDown', 'Enter']) {
+      await act(async () => search.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })))
+    }
+    expect(send).toHaveBeenCalledWith('two', expect.objectContaining({ sourceTabId: 'A' }))
+    expect(textarea().value).toBe('review this file')
+    expect(composer().hidden).toBe(true)
+  })
+
+  it('keeps the hidden draft when command validation rejects execution', async () => {
+    const execute = vi.fn()
+    await act(async () => setUserCommands([{ command: 'terminal-blocked', description: 'Blocked', icon: 'terminal',
+      source: 'user', modes: ['workflow'], validate: () => 'Missing configuration', execute }]))
+    await act(async () => button('Browse commands').click())
+    const command = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/terminal-blocked'))!
+    await act(async () => command.click())
+    expect(execute).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+    expect(textarea().value).toBe('review this file')
+    expect(composer().hidden).toBe(true)
+    expect(host.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('dismisses on outside focus without stealing focus or capturing the next input’s keys', async () => {
+    await act(async () => button('Browse commands').click())
+    const outside = document.createElement('input')
+    document.body.append(outside)
+    const focus = vi.fn()
+    window.addEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus)
+    try {
+      await act(async () => outside.focus())
+      expect(document.activeElement).toBe(outside)
+      expect(host.querySelector('[role="listbox"]')).toBeNull()
+      const key = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+      outside.dispatchEvent(key)
+      expect(key.defaultPrevented).toBe(false)
+      expect(focus).not.toHaveBeenCalled()
+      expect(send).not.toHaveBeenCalled()
+    } finally { outside.remove(); window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
+  })
+
+  it('opens a command options dialog without the composer or unrelated chat draft', async () => {
+    await act(async () => setProductCommands([{ command: 'run-technical-review', description: 'Review', icon: 'terminal',
+      source: 'product', modes: ['workflow'], execute: ctx => ctx.onSubmit('focused review') }]))
+    await act(async () => button('Browse commands').click())
+    const command = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/run-technical-review'))!
+    await act(async () => command.click())
+    expect(composer().hidden).toBe(true)
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!.value).toBe('')
+    await act(async () => document.querySelector<HTMLFormElement>('[role="dialog"]')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(send).toHaveBeenCalledWith('focused review', expect.objectContaining({ sourceTabId: 'A' }))
+    expect(textarea().value).toBe('review this file')
+    expect(composer().hidden).toBe(true)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('uploads through the scoped shared file input, keeps the draft, and sends in terminal mode', async () => {
@@ -149,7 +247,7 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => button('Exit focus mode').click())
     expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
     await act(async () => button('Enter focus mode').click())
-    await act(async () => [...toolbar().querySelectorAll('button')].find(node => node.textContent === 'Return to chat')!.click())
+    await act(async () => button('Return to chat').click())
     expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
     expect(textarea()).toBe(original)
     expect(textarea().value).toBe('review this file')

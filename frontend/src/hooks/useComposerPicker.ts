@@ -1,33 +1,35 @@
 import { useEffect, type RefObject } from 'react'
 
 export interface ComposerPickerProps {
-  inputRef?: RefObject<HTMLTextAreaElement | null>
+  inputRef?: RefObject<HTMLTextAreaElement | HTMLInputElement | null>
   listId?: string
   onActiveOptionChange?: (id: string | undefined) => void
 }
 
-/** Keep focus in the composer and dismiss only when leaving this input/popup pair. */
+/** Dismiss when leaving the input, popup, and optional toggle button. */
 export function useComposerPicker(
   isOpen: boolean,
   dialogRef: RefObject<HTMLDivElement | null>,
   inputRef: ComposerPickerProps['inputRef'],
-  onClose: () => void,
+  onClose: (reason?: 'outside' | 'resize') => void,
+  triggerRef?: RefObject<HTMLElement | null>,
 ) {
   useEffect(() => {
     if (!isOpen) return
     const dismissOutside = (event: Event) => {
       const target = event.target as Node | null
-      if (target && !dialogRef.current?.contains(target) && target !== inputRef?.current) onClose()
+      if (target && !dialogRef.current?.contains(target) && target !== inputRef?.current && !triggerRef?.current?.contains(target)) onClose('outside')
     }
-    window.addEventListener('resize', onClose)
+    const dismissOnResize = () => onClose('resize')
+    window.addEventListener('resize', dismissOnResize)
     document.addEventListener('mousedown', dismissOutside)
     document.addEventListener('focusin', dismissOutside)
     return () => {
-      window.removeEventListener('resize', onClose)
+      window.removeEventListener('resize', dismissOnResize)
       document.removeEventListener('mousedown', dismissOutside)
       document.removeEventListener('focusin', dismissOutside)
     }
-  }, [isOpen, dialogRef, inputRef, onClose])
+  }, [isOpen, dialogRef, inputRef, onClose, triggerRef])
 }
 
 export function isComposerPickerEvent(event: KeyboardEvent, inputRef: ComposerPickerProps['inputRef']) {

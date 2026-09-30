@@ -9,8 +9,11 @@ import { isPlainPickerKey } from '../utils/composerReferences'
 import { useComposerPicker, isComposerPickerEvent, type ComposerPickerProps } from '../hooks/useComposerPicker'
 
 interface CommandSelectionDialogProps extends ComposerPickerProps {
+  standalone?: boolean
+  onSearchQueryChange?: (query: string) => void
+  triggerRef?: React.RefObject<HTMLElement | null>
   isOpen: boolean
-  onClose: () => void
+  onClose: (reason?: 'outside' | 'resize') => void
   onSelectCommand: (command: string) => void
   searchQuery: string
   position: { bottom: number; left: number }
@@ -37,7 +40,8 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   workspacePath,
   onCreateCommand,
   onEditCommand,
-  onDeleteCommand, inputRef, listId, onActiveOptionChange
+  onDeleteCommand, inputRef, listId, onActiveOptionChange,
+  standalone = false, onSearchQueryChange, triggerRef
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const revision = useSyncExternalStore(subscribeCommands, getCommandRevision)
@@ -45,6 +49,12 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   const optionListId = listId ?? generatedId
   const dialogRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const pickerInputRef = standalone ? searchInputRef : inputRef
+
+  useEffect(() => {
+    if (isOpen && standalone) searchInputRef.current?.focus()
+  }, [isOpen, standalone])
 
   useEffect(() => {
     if (isOpen) {
@@ -91,14 +101,14 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
   useEffect(() => {
     if (isOpen) onActiveOptionChange?.(filteredCommands[selectedIndex] ? `${optionListId}-${selectedIndex}` : undefined)
   }, [isOpen, filteredCommands, selectedIndex, optionListId, onActiveOptionChange])
-  useComposerPicker(isOpen, dialogRef, inputRef, onClose)
+  useComposerPicker(isOpen, dialogRef, pickerInputRef, onClose, triggerRef)
 
   // Keyboard shortcuts
   useEffect(() => {
     if (!isOpen) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isComposerPickerEvent(event, inputRef) || !isPlainPickerKey(event)) return
+      if (!isComposerPickerEvent(event, pickerInputRef) || !isPlainPickerKey(event)) return
       if (event.key === 'Tab') { onClose(); return }
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -128,7 +138,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [agentProfileId, isOpen, onClose, onSelectCommand, filteredCommands, selectedIndex, searchQuery, modeCategory, workshopMode, canWriteWorkflow, inputRef])
+  }, [agentProfileId, isOpen, onClose, onSelectCommand, filteredCommands, selectedIndex, searchQuery, modeCategory, workshopMode, canWriteWorkflow, pickerInputRef])
 
   // Scroll selected item into view
   useEffect(() => {
@@ -160,6 +170,13 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
           <span className="text-sm font-medium">Commands</span>
         </div>
       </div>
+
+      {standalone && (
+        <input ref={searchInputRef} type="text" value={searchQuery} onChange={event => onSearchQueryChange?.(event.target.value)}
+          aria-label="Search commands" role="combobox" aria-autocomplete="list" aria-expanded={isOpen}
+          aria-controls={optionListId} aria-activedescendant={filteredCommands[selectedIndex] ? `${optionListId}-${selectedIndex}` : undefined}
+          placeholder="Search commands…" className="border-b border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-inset focus:ring-ring" />
+      )}
 
       {/* Command List */}
       <div
