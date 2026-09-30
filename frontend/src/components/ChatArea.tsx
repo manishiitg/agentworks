@@ -385,6 +385,8 @@ function handleLiveStreamingEvent(
   } else if (event.type === 'streaming_end' && scope.kind === 'session') {
     chatStore.clearStreamingStatus(actualSessionId)
     const sidForClear = actualSessionId
+    // Apply queued pieces first, so the snapshot is the final text and not an earlier frame.
+    useChatStore.getState().flushStreamingChunks(sidForClear)
     const textSnapshot = useChatStore.getState().streamingText[sidForClear]
     setTimeout(() => {
       const currentText = useChatStore.getState().streamingText[sidForClear]

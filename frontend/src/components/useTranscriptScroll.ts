@@ -279,7 +279,24 @@ export function useTranscriptScroll(
     scroller.addEventListener('touchstart', touchStart, { passive: true })
     scroller.addEventListener('touchmove', touchMove, { passive: true })
     scroller.addEventListener('scroll', scroll, { passive: true })
-    const observer = new ResizeObserver(layoutChanged)
+    // The chat area changes height when the message box grows or shrinks while typing. Correct the
+    // position right here, before the browser paints: waiting for the next animation frame (as
+    // layoutChanged does) drew one frame at the old offset, a small visible jump per line typed.
+    let lastHeight = scroller.clientHeight
+    const observer = new ResizeObserver(() => {
+      const height = scroller.clientHeight
+      if (height !== lastHeight) {
+        const grewBy = lastHeight - height
+        lastHeight = height
+        if (controller.following) {
+          scroller.scrollTop = Math.max(0, scroller.scrollHeight - height)
+        } else if (grewBy !== 0) {
+          // Reading back in the transcript: keep the text under the reader's eye in place.
+          scroller.scrollTop = Math.max(0, scroller.scrollTop + grewBy)
+        }
+      }
+      layoutChanged()
+    })
     observer.observe(scroller)
     if (saved.following) layoutChanged()
     return () => {
