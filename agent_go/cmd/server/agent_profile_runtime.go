@@ -584,13 +584,31 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 }
 
 // chatMCPConnections are the chat's own connections, resolved exactly as the
-// query path adds them to the turn: the Crew's or Code's attached servers.
+// query path adds them to the turn: the Crew's or Code's attached servers. Each
+// carries whether its sign-in is done: a server added but not signed in starts
+// with no tools, so the chat's retained CLI must relaunch again when the sign-in
+// finishes (same list of names, different state), not only when a server is
+// added. Without that the CLI kept the tool-less server and the agent said the
+// connection was fine but had no tools (RTS, SDE private, Notion, 2026-09-30).
 func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
 	if !isProjectProfileID(profileID) {
 		return nil
 	}
-	names, _ := attachedMCPServersForRoot(ctx, agentProfileRuntimeWorkspace(userID, selectedFolder))
-	return names
+	root := agentProfileRuntimeWorkspace(userID, selectedFolder)
+	names, _ := attachedMCPServersForRoot(ctx, root)
+	if len(names) == 0 {
+		return names
+	}
+	signedIn := placeMCPSignedInInternalNames(ctx, root)
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		if signedIn[name] {
+			out = append(out, name+"#signed-in")
+		} else {
+			out = append(out, name+"#signed-out")
+		}
+	}
+	return out
 }
 
 func profileRuntimeEventType(event any) string {

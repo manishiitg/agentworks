@@ -17,10 +17,14 @@ never appear in another one.
 - **Server names.** Connected servers appear as `u<id>__<name>`, for example
   `u3f2a...__googlegmail`. Use that exact name in tool calls. When you talk to
   the person, say "your Gmail connection" and never show the `u<id>__` id.
-- **Never say a service is available until it is.** If it is not in `list`, or
-  is not `connected`, connect it first. Its tools are available from the
-  person's next message after they sign in: the current turn keeps the tool set
-  it started with, so say so plainly instead of retrying.
+- **A connected service works right away through the API bridge.** The bridge
+  looks the connection up on every call, so a service the person just signed in
+  to is usable at once, even when its tools are not in your direct tool list
+  (that list is fixed when the chat starts). Never conclude "its tools are not
+  loaded, so I cannot"; run `manage_my_mcp_servers` with `list`, then
+  `get_api_spec` for the server and call it through the bridge. Only say a
+  service is unavailable when it is not in `list` or is not `connected`, and then
+  connect it first.
 - **Connect one.** `manage_my_mcp_servers` with `connect` and `catalog` (for
   example `GoogleGmail`), or `name` and `url` for a server that is not in the
   catalog. It returns a sign-in link for the person to open with their own
@@ -36,7 +40,6 @@ never appear in another one.
   the owner adds under **Setup > Secrets**, and the connection names it.
 - **Remove one.** `manage_my_mcp_servers` with `remove` and the connection's
   `name` deletes it and its login. Say which connection you are removing first.
-- **When a call fails.** "not available in this chat" or "not registered by any
-  connected server" means the connection was removed, its owner lost access, or
-  it was added after this turn began. Run `list`, then connect it again or ask
-  the person to send another message.
+- **When a call fails.** "not available in this chat" means the connection was
+  removed or its owner lost access. Run `list`, then connect it again. A
+  direct tool that is missing is not a failure: use the bridge.

@@ -20,6 +20,9 @@ func googleTestServer(name string, scopes ...string) placeMCPServer {
 // server's removal deletes the shared login.
 func TestPlaceMCPGroupSharesOneLogin(t *testing.T) {
 	withMCPConnectionsRoot(t)
+	// The sign-in app is read from the tokens root, which follows XDG_CONFIG_HOME; without this the
+	// test read a real app from the developer's own ~/.config.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	const user = "alice"
 	for _, s := range []placeMCPServer{googleTestServer("gmail", "gmail.readonly"), googleTestServer("drive", "drive.readonly")} {
@@ -81,6 +84,9 @@ func TestPlaceMCPGroupSharesOneLogin(t *testing.T) {
 // targets the group's login; a person's own OAuth client keeps its own login.
 func TestPlaceMCPGroupLegacyLoginAndOwnClient(t *testing.T) {
 	withMCPConnectionsRoot(t)
+	// The sign-in app is read from the tokens root, which follows XDG_CONFIG_HOME; without this the
+	// test read a real app from the developer's own ~/.config.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	const user = "bob"
 	if _, err := addPlaceMCPServer(user, googleTestServer("gmail", "gmail.readonly")); err != nil {
@@ -89,7 +95,9 @@ func TestPlaceMCPGroupLegacyLoginAndOwnClient(t *testing.T) {
 	dir, _ := placeMCPDir(user)
 	own := placeMCPTokenFile(dir, user, "gmail")
 	_ = oauth.NewTokenStore(own).Save(&oauth2.Token{AccessToken: "a"})
-	if _, cfg, _ := placeMCPServerConfig(user, "gmail"); cfg.OAuth.TokenFile != own {
+	if _, cfg, err := placeMCPServerConfig(user, "gmail"); err != nil {
+		t.Fatalf("config: %v", err)
+	} else if cfg.OAuth.TokenFile != own {
 		t.Fatalf("an existing login must keep working: %s", cfg.OAuth.TokenFile)
 	}
 	if _, cfg, _ := placeMCPServerConfigFor(user, "gmail", true); cfg.OAuth.TokenFile != placeMCPGroupTokenFile(dir, "google") {

@@ -266,6 +266,35 @@ func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpc
 	return names, overrides
 }
 
+// placeMCPSignedInInternalNames is the set of a place's attached connections (by internal
+// name) whose sign-in is done, judged the way the connections list shows "connected".
+func placeMCPSignedInInternalNames(ctx context.Context, root string) map[string]bool {
+	out := map[string]bool{}
+	root = placeRootOf(root)
+	attachments, err := placeMCPAttachmentsFor(root)
+	if err != nil {
+		return out
+	}
+	for _, a := range attachments {
+		if !placeMCPCanAttach(ctx, a.Owner, root) {
+			continue
+		}
+		store := placeMCPStoreID(a.Owner, root)
+		internal, _, err := placeMCPServerConfig(store, a.Server)
+		if err != nil {
+			continue
+		}
+		servers, _ := listPlaceMCPServers(store)
+		dir, _ := placeMCPDir(store)
+		for _, server := range servers {
+			if server.Name == a.Server {
+				out[internal] = placeMCPServerConnected(dir, store, server)
+			}
+		}
+	}
+	return out
+}
+
 // placeMCPRoot reads and checks the workspace_path of a place route.
 func placeMCPRoot(w http.ResponseWriter, userID, raw string) (string, bool) {
 	root := attachRootForCaller(userID, raw)

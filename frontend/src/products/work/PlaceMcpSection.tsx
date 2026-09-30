@@ -93,7 +93,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
 
   // A connection turning "connected" (sign-in finished in the other tab, or an API-key server
   // that connected at once) is also told to the chat, through the same function as Connect, so
-  // the agent knows its tools are there from the next message. The first load only records what
+  // the agent knows it can use it now (the API bridge resolves connections on every call). The first load only records what
   // was already connected, so opening the screen never sends anything.
   const connectedBefore = useRef<{ path: string; names: Set<string> } | null>(null)
   useEffect(() => {
@@ -104,7 +104,7 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
     if (!before || !onAsk) return
     const added = [...now].filter(name => !before.has(name))
     if (added.length > 0) {
-      void onAsk(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Confirm it is available and tell me briefly what you can do with it.`)
+      void onAsk(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now connected in this ${placeNoun}. Check it now through the API bridge (its tools may not be in your direct tool list yet, that is fine) and tell me briefly what you can do with it.`)
     }
   }, [servers, loading, onAsk, placeNoun, workspacePath])
 
