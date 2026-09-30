@@ -6,7 +6,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
-	agentprompt "github.com/manishiitg/mcpagent/agent/prompt"
 )
 
 // executeRealisticWorkshopPromptForMode covers the template plus bridge only.
@@ -56,7 +55,7 @@ func executeRealisticWorkshopPromptForMode(t *testing.T, mode string) string {
 	// for every coding CLI. It must be included in the budget: omitting it
 	// previously let the test pass while the actual CLAUDE.md could cross the
 	// provider's 40k-character limit.
-	return rendered + "\n\n" + agentprompt.GetCodeExecutionInstructions("Workflow/example")
+	return rendered + "\n\n" + BuildCodeExecutionSection(true, "Workflow/example")
 }
 
 // Template + bridge budget only. The server's production composer has its
@@ -221,12 +220,10 @@ func TestWorkshopCLIPromptUsesProjectedWorkspaceToolReference(t *testing.T) {
 		}
 	}
 	for _, routingContract := range []string{
-		"The native `api-bridge` exposes `execute_shell_command`",
+		"current runtime's declared tool and routing contract",
 		"intrinsic `read_skill`",
-		"All other workflow tools are HTTP-backed",
-		"never guess a bridge name or URL",
-		`get_api_spec(tool_name="<name>")`,
-		"$MCP_MCP",
+		"search_tools",
+		`get_api_spec(tool_name="<returned-name>")`,
 	} {
 		if !strings.Contains(prompt, routingContract) {
 			t.Fatalf("coding-CLI workshop prompt is missing bridge routing contract %q", routingContract)

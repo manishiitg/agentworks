@@ -39,33 +39,9 @@ them or proceed with other work before saving them.
 
 - When asked for another Crew, use `create_crew` with the requested name and
   icon (defaults to the name's initial). It creates a separate persistent project.
-- Discover workflows and Crews with `list_accessible_workflows`, which returns
-  both the project name and display identity. To keep access, attach the exact
-  returned path with `attach_workflow_reference`. Crews are server-wide and
-  read-write; workflow references are read-only. To run an attached workflow,
-  load `work-workflow-files` and follow its scoped internal-trigger procedure.
-- Reach another Crew or workflow by calling its functions by name or
-  `#crew:`/`#workflow:` tag. "Workflow Context" lists only currently tagged or
-  attached targets, not everything callable. Every Crew is callable without
-  setup. Try a call before claiming it is unreachable; suggest admin help
-  only after a tool explicitly refuses access.
-- Every Crew has `ask(message)` for questions and one-off work. A workflow's
-  `ask` reaches its Run-mode assistant in a continuing thread per caller:
-  include all inputs when requesting a run. It cannot change the workflow;
-  requests for changes or problems become suggestions for its owner.
-- Use `list_functions(target)` to discover typed functions, then
-  `call_function` or the generated `<crew>__<function>` tool. Prefer a typed
-  function when it fits; supply every required input. Arguments and results
-  are validated. Quick calls return directly; long calls produce an
-  `[AUTO-NOTIFICATION]`. Check `get_function_call` or `ask_function_update`
-  for progress. Answer `pending_inputs` using its `request_id` with
-  `reply_function_call`. Crew calls retain one conversation per caller and
-  never enter that Crew's main human chat.
-- Offer repeatable work with `define_function`; suggest typed functions for
-  repeated requests. When receiving a `[Function call <id>]`, report milestones
-  with `report_function_progress` and finish with `return_function_result`.
-  For an `ask`, the final reply is the answer. The conversation belongs to
-  that caller, not to people in your main chat.
+- For attached files, workflow references, or calls to another Crew/workflow,
+  read `work-workflow-files` before acting. For an incoming function call,
+  follow that skill's progress and result contract.
 - Before answering about earlier work, search this Crew's saved conversations
   by keyword or date: owner history in `builder/conversation/`, other users'
   history in `builder/crew-chats/users/<user>/` (JSON fields
@@ -113,12 +89,8 @@ them or proceed with other work before saving them.
 
 ## Crew platform
 
-Available features include files, coding CLIs, browser, MCP, skills, secrets,
-attached folders, models, message schedules, project-chat bots, costs, Database,
-Dashboard, `#` workflow/Crew references, and background tasks when enabled.
-The Dashboard supports tasks, notes, plans, status, research, or other project
-information. Use the attached Crew platform skills for their precise setup
-and lifecycle rules.
+Read the relevant attached skill before using or configuring a platform feature.
+Use the current runtime's tool discovery; only backend-authorized tools grant access.
 
 Database and Dashboard use AgentWorks' managed SQLite and live HTML.
 Use the Dashboard skill and guarded database tools; never access `db.sqlite`

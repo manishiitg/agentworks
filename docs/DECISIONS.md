@@ -13,6 +13,29 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Use live tool discovery and one owner for runtime guidance
+- AgentWorks owns product prompts, access/mode constraints and feature skills;
+  mcpagent owns dynamic tool discovery, filtering, schemas and provider routing.
+  Caller instructions are preserved. AgentWorks code-execution wrappers opt into
+  bounded `search_tools` discovery instead of the full upfront HTTP catalog;
+  native API schemas and other library consumers' legacy inventory remain.
+- Keep essential Code/Crew constraints upfront and render product-option
+  procedures into session-local skills. Use rendered skill frontmatter for the
+  shared feature bundle's descriptions. Agy gets routing and a skill-list
+  fallback until its adapter supports native skill projection. Workflow variable
+  and output rules remain AgentWorks-owned; generic HTTP guidance is mcpagent-owned.
+- HTTP discovery/schema callbacks now check the current session allowlist as well
+  as in-process turn policy, including cached schemas and error suggestions.
+  No access is granted by a skill or discovery response.
+- Same Code feature fixture shrank from 5,487 to 1,460 bytes. Live first use and
+  native resume with changed tools/skills passed on Claude, Codex and Pi; Cursor
+  reached its usage limit. Muse/Agy live discovery and total turn cost remain
+  unqualified. Existing mcpagent cleanup/API-snapshot and workflow model/path/Agy
+  gate test failures were reproduced on baseline worktrees and left open.
+  Details and controlled size evidence:
+  [progressive discovery design](design/progressive_prompt_discovery.md).
+  No application restart or deployment.
+
 ### 2026-10-01 — Prompt reduction needs discovery and clear instruction ownership
 - Investigated Code, Crew Builder/Run, workflow chat/step composition, mcpagent's
   registry/schema discovery, and native skill projection in owned worktrees.

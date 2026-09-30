@@ -39,10 +39,12 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 		"call_sub_agent",
 		"Prefer direct sub-agent tools whenever the provider exposes them.",
 		"in a bridge-only CLI session",
-		"## Code execution: calling tools over HTTP",
+		"## Code execution",
 		"{{TOOL_STRUCTURE}}",
 		"`MCP_CUSTOM` / `MCP_AUTH`",
-		"get_api_spec(tool_name=\"...\")",
+		"Use this session's declared tools and runtime routing instructions.",
+		"## Workflow execution environment",
+		"$STEP_OUTPUT_DIR",
 	}
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(prompt, snippet) {

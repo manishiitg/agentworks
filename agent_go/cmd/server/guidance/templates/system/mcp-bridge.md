@@ -12,17 +12,14 @@ is not used — call tools as LLM functions instead.
 ## Tool access — HTTP, not direct
 
 Through the bridge, MCP tools are reachable via authenticated HTTP, not
-as direct LLM tool calls. The full set of available servers and their
-tools is in the `<available_tools>` JSON block at the top of your system
-prompt. Use `get_api_spec(server_name="...", tool_name="...")` to fetch
-the parameter shape for any specific tool you intend to call.
+as direct LLM tool calls. Discover currently authorized tools with `search_tools`, then use
+`get_api_spec(tool_name="<returned-name>")` for the schema and route. If a
+keyword search misses, enumerate a group or server instead of guessing names.
 
-**Do NOT use provider-native or built-in filesystem / shell tools** —
-`Bash`, `Read`, `Write`, `read_file`, `write_file`, `list_directory`,
-`grep_search`, `glob`, `read_many_files`, `replace`, `run_shell_command`.
-They are disabled when the bridge is active. For filesystem access, use only the tools
-declared in this session (typically `execute_shell_command` for reads,
-writes, and commands; other workspace tools when explicitly available).
+Provider-native file and shell availability is determined by this session's
+runtime contract. Hybrid mode may permit native reads and searches while
+requiring bridge tools for writes. Read-only native tools do not mean the
+entire session is read-only. Invoke only declared and authorized tools.
 
 ## Environment variables (pre-set)
 
@@ -142,7 +139,7 @@ language of your choice. For reusable helpers saved to `main.py`
 ## Workflow
 
 1. Inspect the `<available_tools>` JSON block. Pick the tool you need.
-2. Call `get_api_spec(server_name="...", tool_name="...")` to get the full
+2. Call `get_api_spec(tool_name="<returned-name>")` to get the full
    parameter shape if you haven't called this tool before.
 3. Use `execute_shell_command` to write and run the code that calls the
    tool via the HTTP bridge.

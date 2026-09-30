@@ -3909,6 +3909,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if resolvedProfile != nil {
 		identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
 		resolvedProfileSkills = skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, identitySkillNames)
+		resolvedProfileSkills = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, resolvedProfileSkills)
 	}
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {

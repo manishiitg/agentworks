@@ -472,7 +472,7 @@ func buildSystemToolsSkillWithMCP(mode string, mcpManagement bool) *llmtypes.Ski
 
 ## Tool / API discovery
 
-- ` + "`get_api_spec(server_name, tool_name)`" + ` — when you do not know an MCP tool's parameters or response shape, call this first.
+- ` + "`search_tools(query)` and `get_api_spec(tool_name)`" + ` — when you do not know an MCP tool's parameters or response shape, call this first.
 - ` + "`read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/<kind>.md\"}])`" + ` — load system reference docs before deep actions (for example ` + referenceExamples + `). This intrinsic mcpagent tool works on API and coding-CLI transports; native CLI skill files are the same bundle.
 ` + proceduralGuidance + `
 ## Configuration access

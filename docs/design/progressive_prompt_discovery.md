@@ -1,8 +1,8 @@
 # Progressive prompt and tool discovery
 
-Status: investigation and recommended design, 2026-10-01. No runtime behavior is
-changed by this document. Inspected builder `7da5366df`, mcpagent `42ad02e`, and
-provider `1fef821`, in separate owned worktrees.
+Status: implemented, with partial live CLI qualification, 2026-10-01. The
+investigation below records the pre-change baseline: builder `7da5366df`,
+mcpagent `42ad02e`, and provider `1fef821`, inspected in owned worktrees.
 
 The problem is instruction ownership and discovery, not just verbosity. We
 already load skill bodies on demand, but independently author feature summaries,
@@ -10,7 +10,104 @@ product instructions, transport instructions, and a complete tool-name index.
 They overlap and sometimes disagree. Shortening each copy independently leaves
 the same maintenance problem.
 
-## What the agent receives today
+## Implementation and rollout
+
+AgentWorks owns product identity, mode/access constraints, live grants, and
+feature procedures. mcpagent owns runtime mechanics, registry filtering,
+discovery, schemas, and provider tool-mode facts. Caller base instructions and
+`AddInstructions` supplements are preserved. mcpagent generates one reserved
+`<runtime_tools>` section at the outbound boundary; arbitrary caller prose is
+not rewritten. An explicit bridge-routing override still replaces or suppresses
+that section.
+
+- AgentWorks opts Code, Crew Builder/Run, workflow Builder/Run and step wrappers
+  into `ToolRuntimeConfig.Discovery`. In code-execution mode the full tool-name
+  catalog becomes a short pointer to the live routing contract. Other mcpagent
+  consumers retain the legacy inventory by default. API native tool-calling
+  still exposes its existing schemas; this change does not hide that cost.
+- Intrinsic `search_tools` searches the Agent's current canonical registry by
+  lexical name/description/group/server matching. Results are at most 20 short
+  descriptions per page, with exact names, source, pagination and an explicit
+  `no_matches` result. Authorized group/server hints let callers enumerate when
+  synonyms miss. There is no embedding service or additional model call.
+  `get_api_spec` supplies the selected schema and existing HTTP route.
+- Both discovery and schema lookup check current context permissions and the
+  HTTP registry's session allowlist, before returning data or cached schemas.
+  HTTP callbacks lack the in-process turn context, so checking only that context
+  would reveal blocked tools. Unknown-name suggestions use the same filtering.
+  Registry isolation and existing execution authorization remain authoritative.
+- Product feature summaries become compact always-on constraints. Full legacy
+  `ResolvedFeature.PromptExtension` text remains client-visible catalog metadata,
+  not model instructions. Code peer ownership, owner-only personal MCP setup,
+  DM-only bots, Google grants, secret and database rules remain explicit.
+  Connection, calling, scheduling, bot and configuration procedures live in
+  attached skills. No grants or backend access checks are widened.
+- The shared Code/Crew feature bundle uses rendered SKILL.md frontmatter as its
+  canonical discovery description. Explicit binding overrides remain supported.
+  Current feature options render session-local skill variants without modifying
+  global builtins: Code peers, outbound-only callers, private Google accounts and
+  DM-only bots keep their procedures and restrictions. This happens before the
+  profile/skill fingerprint and attachment on each request.
+- Native skill discovery remains the primary CLI path. Agy receives an explicit
+  names/descriptions fallback and its provider routing block because its adapter
+  does not project skills. Skill bodies remain on demand through `read_skill`.
+- The generic HTTP tutorial is consolidated in mcpagent. AgentWorks retains
+  workflow-specific `VAR_*`, `SECRET_*` and step output/input environment rules.
+  The deep bridge reference follows hybrid reads rather than disabling them.
+  The personal MCP skill now reflects the existing next-message registration
+  boundary; no OAuth/backend connection timing was changed.
+
+No provider repository changes, application restart, or deployment are included.
+Existing native conversations use the current instructions/tools on subsequent
+turns once the updated application is running.
+
+## Measured evidence
+
+Byte counts below compare identical controlled fixtures, not the entire RTS
+provider request or its token count.
+
+| Fixture | Before | After |
+| --- | ---: | ---: |
+| Code base file | 3,575 | 1,684 |
+| Crew base file | 8,257 | 6,285 |
+| Same Code feature set | 5,487 | 1,460 |
+| Same 70-custom / 44-MCP tools, with the new shared routing on both sides | 5,066 | 1,388 |
+
+The tool fixture uses synthetic names and a common product-policy stub, so the
+last row isolates inventory versus discovery rather than including the old
+routing reduction. Real CLI tool definitions and native skill descriptions still
+consume context. This implementation has not measured total turn tokens or
+latency savings; discovery introduces a lookup before schema retrieval.
+
+Opt-in `TestLocalCLIDiscoverySkillsAndResume` passed on **Claude, Codex and Pi**:
+read an attached skill, find an unpredictable tool by intent, load its schema,
+execute through HTTP, and return its actual unpredictable receipt. A fresh
+Agent then resumed the native conversation with a different tool and skill
+input; the updated receipt succeeded. No fixture tool name/input/receipt appears
+in the initial system prompt. Cursor stopped at its account usage limit before
+executing a fixture tool. Muse and Agy have not been live-qualified for this
+change; Agy's prompt fallback is covered by unit tests. Do not claim all six
+providers are qualified.
+
+Full component suites passed for profile skills, Code, Crew, wrappers and agent
+sessions; server prompt/toolset checks passed. Discovery, dynamic permission
+changes, HTTP metadata permissions, schema-cache revocation, server selection,
+pagination, unmatched queries, caller instructions, dynamic skills, routing and
+native API compatibility tests passed. The remaining mcpagent Agent and workflow
+suites pass when the following pre-existing baseline failures are excluded;
+those failures were reproduced in separate unchanged baseline worktrees:
+
+- mcpagent: two inactive-provider artifact deletion assertions and
+  `TestSessionPublicMethodSurface`'s outdated method list.
+- Workflows: `TestResolveDelegationTierConfigExpandsProviderProfile`,
+  `TestWorkshopPromptShellExamplesUseAbsolutePaths` (rejects the already-shipped
+  linked `cd project` guidance), and `TestValidateStepLLMConfigEnforcesAgyAlphaGate`.
+
+Live OAuth connection onboarding, unavailable-provider qualification, and total
+turn cost remain open evidence gaps. They do not change the existing next-turn
+registration, permissions, or linked-runtime behavior.
+
+## What the agent received before this change
 
 | Layer | Source and delivery | Assessment |
 | --- | --- | --- |
@@ -66,7 +163,7 @@ before/after using identical profile, grants, tools, and provider settings; do
 not attribute unrelated profile changes to this work. No private prompt or
 credential values are included here.
 
-## Concrete drift and gaps
+## Findings from the investigation
 
 1. **Useful skill triggers are discarded.**
    `pkg/agentprofiles/skillfiles.go` strips SKILL.md frontmatter, then uses
@@ -115,7 +212,7 @@ credential values are included here.
    currently depend partly on base/feature instructions. Audit those option
    contracts before moving their summaries into skills.
 
-## Recommended ownership
+## Ownership contract
 
 Keep four things upfront: product identity, applicable mode/authorization rules,
 current workspace/grants, and a short transport contract. Keep one skill index:
@@ -156,7 +253,8 @@ Add a small intrinsic bridge tool, `search_tools`, while preserving
   another session's tools. Apply current tool, server, account, product, and
   turn authorization before returning results. Execution rechecks permission.
 - Accept intent text and optional group/server filters. Return a bounded page
-  of exact names, short descriptions, source, and relevant skill references.
+  of exact names, short descriptions and source. Skill references stay in the
+  canonical skill index, rather than being guessed from tool names.
   Include pagination and an explicit empty/unavailable result. Never return
   credentials or suggest unauthorized alternatives.
 - Begin with deterministic ranking over names, descriptions, and capability
@@ -187,7 +285,7 @@ tool-calling sessions already supply tool schemas separately; hiding those
 requires a supported deferred-tool mechanism or a discovery/execution interface
 of its own. Removing system text alone does not remove their schema cost.
 
-## Implementation order and evidence required
+## Original qualification plan
 
 1. Establish actual skill delivery for all six CLIs, especially Agy, and preserve
    separate Code, Crew Builder/Run, workflow Builder/Run, and step contracts.

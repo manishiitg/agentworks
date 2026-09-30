@@ -113,7 +113,7 @@ func TestCodeMCPIsPersonalOnly(t *testing.T) {
 		t.Fatalf("Code has no MCP skill: %v", profile.Skills)
 	}
 	guidance := strings.Join(agentprofiles.FeaturePromptExtensions(profile), "\n")
-	if !strings.Contains(guidance, "manage_my_mcp_servers") || !strings.Contains(guidance, "`code-mcp`") || strings.Contains(guidance, "platform connection setup") {
+	if !strings.Contains(guidance, "Personal MCP connections") || !strings.Contains(guidance, "Only the owner may connect") || strings.Contains(guidance, "manage_my_mcp_servers") {
 		t.Fatalf("Code's MCP guidance is not the personal one: %s", guidance)
 	}
 }
