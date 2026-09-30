@@ -1,5 +1,7 @@
 import ProviderAccounts from './ProviderAccounts'
 import CostsOverview from './CostsOverview'
+import ConversationsOverview from './ConversationsOverview'
+import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
@@ -8,6 +10,7 @@ import {
   CircleAlert,
   HelpCircle,
   DollarSign,
+  MessageSquare,
   Loader2,
   RefreshCw,
   Terminal,
@@ -129,7 +132,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [view, setView] = useState<'provider' | 'costs'>('provider')
+  const [view, setView] = useState<'provider' | 'costs' | 'chats'>('provider')
   const [showWalkthrough, setShowWalkthrough] = useState(false)
   const [walkthroughOpenToken, setWalkthroughOpenToken] = useState(0)
   const openWalkthrough = useCallback(() => {
@@ -154,6 +157,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [guidedConflictAction, setGuidedConflictAction] = useState<ProviderSetupAction | null>(null)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
+  const canReview = useCanReviewCode()
+  useEffect(() => { if (!canReview) setView('provider') }, [canReview])
   const canRunGuidedSetup = !isMultiUserMode || isAdmin
 
   const refresh = useCallback(async () => {
@@ -339,30 +344,26 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   ))}
                 </div>
               )}
-              <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Usage</div>
-              <button
-                type="button"
-                data-tour="providers-costs"
-                onClick={() => setView('costs')}
-                aria-pressed={view === 'costs'}
-                className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors md:mt-0 ${
-                  view === 'costs'
-                    ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800'
-                    : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'
-                }`}
-              >
-                <div className="flex min-h-6 items-center gap-2">
-                  <DollarSign aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">Costs</span>
-                  <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-gray-400 ${view === 'costs' ? 'text-violet-500' : ''}`} />
-                </div>
-              </button>
+              {canReview && <>
+                <div className="mb-1 mt-4 hidden px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 md:block">Review</div>
+                {([{ id: 'costs', label: 'Costs', icon: DollarSign }, { id: 'chats', label: 'Conversations', icon: MessageSquare }] as const).map(item => (
+                  <button type="button" key={item.id} data-tour={`providers-${item.id}`} onClick={() => setView(item.id)} aria-pressed={view === item.id}
+                    className={`mt-1.5 w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${view === item.id ? 'border-violet-300 bg-white shadow-sm dark:border-violet-500/50 dark:bg-gray-800' : 'border-transparent hover:border-gray-200 hover:bg-white dark:hover:border-gray-700 dark:hover:bg-gray-800/70'}`}>
+                    <div className="flex min-h-6 items-center gap-2">
+                      <item.icon aria-hidden="true" className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{item.label}</span>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                    </div>
+                  </button>
+                ))}
+              </>}
               {/* Product defaults screen removed (2026-09-30): the Runs on choice when creating a
                   workflow, Crew or Code replaces it. AGENTWORKS_PRODUCT_DEFAULTS still applies. */}
             </aside>
 
             <main className="min-h-0 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
-              {view === 'costs' && <CostsOverview />}
+              {canReview && view === 'costs' && <CostsOverview />}
+              {canReview && view === 'chats' && <ConversationsOverview />}
               {selectedProvider && <ConfirmationDialog
                 isOpen={confirmSharedSetup}
                 onClose={() => setConfirmSharedSetup(false)}

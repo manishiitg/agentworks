@@ -474,6 +474,10 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 // handleCostOverview is GET /api/cost/overview. Optional `from` and `to`
 // (YYYY-MM-DD, UTC) bound the range, as for /api/cost/summary.
 func (api *StreamingAPI) handleCostOverview(w http.ResponseWriter, r *http.Request) {
+	if !currentUserCanReviewCode(r) {
+		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		return
+	}
 	if api.costLedger == nil {
 		http.Error(w, `{"error":"cost ledger not initialized"}`, http.StatusServiceUnavailable)
 		return

@@ -32,9 +32,15 @@ var (
 	toInt                        = costobserver.ToInt
 )
 
-// handleCostSummary is the HTTP handler for GET /api/cost/summary. Optional
-// `from` and `to` query params (YYYY-MM-DD, UTC) bound the date range.
+// handleCostSummary is the HTTP handler for GET /api/cost/summary.
+// This unfiltered server-wide summary is admin-only; Code reviewers use the
+// scoped /api/cost/overview endpoint. Optional `from` and `to` query params
+// (YYYY-MM-DD, UTC) bound the date range.
 func (api *StreamingAPI) handleCostSummary(w http.ResponseWriter, r *http.Request) {
+	if !currentUserIsAdmin(r) {
+		writeWorkflowPermissionDenied(w, "admin")
+		return
+	}
 	if api.costLedger == nil {
 		http.Error(w, `{"error":"cost ledger not initialized"}`, http.StatusServiceUnavailable)
 		return

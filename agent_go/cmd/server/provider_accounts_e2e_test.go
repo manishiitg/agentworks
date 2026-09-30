@@ -487,6 +487,11 @@ func TestProviderAccountsLiveMuseUsage(t *testing.T) {
 // Bob sees only his share.
 func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	withMemoryUserDirectory(t, `{"users":[
+        {"id":"admin","username":"admin","admin":true,"can_create":true},
+        {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
+        {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
+        {"id":"carol","username":"carol","can_create":true}]}`)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
@@ -610,8 +615,8 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	if row := accountRow(costs("bob"), account.ID); row == nil || row.FullSplit || row.Name != "Removed account" || len(row.Split) != 2 {
 		t.Fatalf("former account user gained another person's history: %+v", row)
 	}
-	if row := accountRow(costs("carol"), account.ID); row != nil {
-		t.Fatalf("unrelated user sees deleted account: %+v", row)
+	if w := env.do(t, env.api.handleProviderAccountCosts, http.MethodGet, "/", "carol", nil, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user read account costs: %d %s", w.Code, w.Body.String())
 	}
 }
 

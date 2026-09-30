@@ -7,9 +7,11 @@ vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: { getProviderManifest: vi.fn(), getProviderModels: vi.fn(), startProviderSetup: vi.fn(), cancelProviderSetup: vi.fn(), getProviderConnections: vi.fn(), getProviderAccountCosts: vi.fn(async () => ({ providers: [] })), getProductDefaults: vi.fn(async () => ({})), setProductDefaults: vi.fn() },
   providerApiErrorText: (_error: unknown, fallback: string) => fallback,
 }))
+const auth = vi.hoisted(() => ({ state: { isMultiUserMode: false, isMultiUserModeChecked: true, user: null as { is_admin?: boolean; is_code_reviewer?: boolean } | null } }))
 vi.mock('../../stores/useAuthStore', () => ({
-  useAuthStore: (selector: (state: { isMultiUserMode: boolean; user: null }) => unknown) => selector({ isMultiUserMode: false, user: null }),
+  useAuthStore: (selector: (state: typeof auth.state) => unknown) => selector(auth.state),
 }))
+vi.mock('./ConversationsOverview', () => ({ default: () => <div>Conversation review content</div> }))
 
 vi.mock('./GuidedProviderTerminal', () => ({
   default: ({ session }: { session: { id: string } }) => <div data-testid="guided-terminal">Terminal {session.id}</div>,
@@ -22,6 +24,7 @@ import { CODING_PROVIDER_GUIDES } from './codingProviderGuides'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 beforeEach(() => {
+  auth.state = { isMultiUserMode: false, isMultiUserModeChecked: true, user: null }
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
   vi.mocked(llmConfigService.getProviderModels).mockImplementation(async providerId => ({
     provider: providerId,
@@ -59,6 +62,31 @@ afterEach(() => {
 })
 
 describe('CodingProvidersPanel', () => {
+  it.each(['member', 'reviewer', 'admin', 'unknown'] as const)('gates review navigation and account costs for %s', async role => {
+    auth.state = { isMultiUserMode: role !== 'unknown', isMultiUserModeChecked: role !== 'unknown', user: { is_admin: role === 'admin', is_code_reviewer: role === 'reviewer' } }
+    vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<CodingProvidersPanel isOpen embedded onClose={vi.fn()} />))
+      const canReview = role === 'admin' || role === 'reviewer'
+      expect(Boolean(host.querySelector('[data-tour="providers-costs"]'))).toBe(canReview)
+      expect(Boolean(host.querySelector('[data-tour="providers-chats"]'))).toBe(canReview)
+      expect(host.textContent?.includes('Cost by account')).toBe(canReview)
+      if (canReview) {
+        await act(async () => host.querySelector<HTMLButtonElement>('[data-tour="providers-chats"]')!.click())
+        expect(host.textContent).toContain('Conversation review content')
+        auth.state.user = {}
+        await act(async () => root.render(<CodingProvidersPanel isOpen embedded onClose={vi.fn()} />))
+        expect(host.textContent).not.toContain('Conversation review content')
+        expect(host.querySelector('[data-tour="providers-costs"]')).toBeNull()
+      } else {
+        expect(llmConfigService.getProviderAccountCosts).not.toHaveBeenCalled()
+      }
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it('offers the current account and costs walkthrough on demand and keeps Providers open', async () => {
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
     const host = document.createElement('div')

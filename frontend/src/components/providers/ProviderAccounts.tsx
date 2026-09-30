@@ -3,6 +3,7 @@ import { Users, Plus, ShieldCheck, UserRound, LogIn, Loader2, X, Share2, Lock, M
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import ProviderAccountCostsSection from './AccountCosts'
+import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import {
   llmConfigService,
@@ -90,6 +91,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   product?: string
 }) {
   const manage = !onSelect && !formOnly && !selectionOnly
+  const canReview = useCanReviewCode()
   const [connections, setConnections] = useState<ProviderConnection[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [sharingId, setSharingId] = useState<string | null>(null)
@@ -466,10 +468,10 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           />
         </section>
         {/* Cost is not part of setting up an account: collapsed, one click away. */}
-        <details className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        {canReview && <details className="mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
           <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-gray-100">Cost by account</summary>
           <div className="mt-3"><ProviderAccountCostsSection provider={provider} /></div>
-        </details>
+        </details>}
       </>
     )
   }

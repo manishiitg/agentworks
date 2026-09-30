@@ -186,6 +186,17 @@ everyone does in Code.**
   A disabled account loses it. Ticking it also enables the Code product for an
   account whose products are a restricted list, since the inspector lives in
   Code. Only an admin sets it (`/api/admin/users` is admin-only).
+- **Providers → Conversations and Costs** (user, 2026-09-30). These review
+  screens are visible only to admins and enabled Code reviewers, including
+  the provider account cost section. Conversations filters Code projects by
+  owner and chats by participant, then opens a read-only transcript through
+  the existing audited inspection APIs. Changing projects, chats or access
+  clears the previous transcript and ignores late responses. Personal Work
+  chats remain outside the Code reviewer scope. The global cost overview
+  and provider account cost APIs require reviewer/admin permission as well;
+  their existing work and account visibility filters still apply. The legacy
+  unfiltered `/api/cost/summary` is admin-only. Per-workspace cost views retain
+  their existing workspace access rules.
 - **Review over MCP / the external API** (built). Token scope `code:review`
   plus seven read-only tools: `list_code_workspaces`, `get_code_costs`,
   `list_code_files`, `read_code_file`, `list_code_chats`, `read_code_chat`,
