@@ -29,7 +29,9 @@ func TestCORSPreflightAllowsChatSendHeaders(t *testing.T) {
 	for _, name := range strings.Split(rec.Header().Get("Access-Control-Allow-Headers"), ",") {
 		allowed[strings.ToLower(strings.TrimSpace(name))] = true
 	}
-	for _, header := range []string{"X-Session-ID", "X-Conversation-Continuation", "X-Queued-Chat-Delivery", "X-Client-Submitted-At", attendedChatHeader} {
+	for _, header := range []string{"X-Session-ID", "X-Conversation-Continuation", "X-Queued-Chat-Delivery", "X-Client-Submitted-At", attendedChatHeader,
+		// The workspace client sends X-User-ID on /api/wp; without it the local Crew list failed.
+		"X-User-ID"} {
 		if !allowed[strings.ToLower(header)] {
 			t.Errorf("preflight does not allow %s", header)
 		}
