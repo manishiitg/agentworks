@@ -62,10 +62,15 @@ const optionEffort = (option: AgentProfileProviderOption) => {
  * a CLI you are not signed in to offers Sign in right here. The choice is saved with the project,
  * account included, so the first message works without visiting the Models tab.
  */
-export function RunsOnPicker({ profileId, onChange, disabled }: {
+export function RunsOnPicker({ profileId, onChange, disabled, options: givenOptions, accountsProduct = profileId }: {
+  /** Crew/Code product id; also the key for remembering the last choice ("workflow" for workflows). */
   profileId: string
   onChange: (selection: RunsOnSelection | undefined) => void
   disabled?: boolean
+  /** The CLIs to offer; when absent they are the product profile's provider options. */
+  options?: AgentProfileProviderOption[]
+  /** Product the account list is asked for; empty asks without one (workflows). */
+  accountsProduct?: string
 }) {
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
   const [records, setRecords] = useState<ProviderConnection[]>([])
@@ -73,14 +78,14 @@ export function RunsOnPicker({ profileId, onChange, disabled }: {
   const [picked, setPicked] = useState('')
 
   const refreshAccounts = useCallback(() => {
-    void llmConfigService.getProviderConnections({ product: profileId }).then(setRecords).catch(() => undefined)
-  }, [profileId])
+    void llmConfigService.getProviderConnections(accountsProduct ? { product: accountsProduct } : undefined).then(setRecords).catch(() => undefined)
+  }, [accountsProduct])
 
   useEffect(() => {
     let cancelled = false
     void Promise.all([
-      loadAgentProfileProviderOptions(profileId),
-      llmConfigService.getProviderConnections({ product: profileId }).catch(() => [] as ProviderConnection[]),
+      givenOptions ? Promise.resolve(givenOptions) : loadAgentProfileProviderOptions(profileId),
+      llmConfigService.getProviderConnections(accountsProduct ? { product: accountsProduct } : undefined).catch(() => [] as ProviderConnection[]),
     ]).then(([nextOptions, nextRecords]) => {
       if (cancelled) return
       setOptions(nextOptions.filter(option => option.provider))
@@ -88,7 +93,7 @@ export function RunsOnPicker({ profileId, onChange, disabled }: {
       setLoaded(true)
     })
     return () => { cancelled = true }
-  }, [profileId])
+  }, [profileId, givenOptions, accountsProduct])
 
   // Signing in happens on the Providers screen; pick up the new account when the person is back.
   useEffect(() => {
