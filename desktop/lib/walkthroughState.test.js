@@ -49,3 +49,14 @@ test('preload restores dismissals before rendering and forwards new choices', ()
   const packaging = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   assert.ok(packaging.build.files.includes('walkthroughState.js'));
 });
+
+test('contextual tips persist separately and reject arbitrary preference keys', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentworks-tip-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const state = createWalkthroughState(directory);
+  const tip = 'agentworks_tip_code_integrations_mcps_v1_dismissed';
+  state.dismiss(tip);
+  state.dismiss('agentworks_tip_other_integrations_mcps_v1_dismissed');
+  state.dismiss('agentworks_tip_code_../../config_v1_dismissed');
+  assert.deepEqual(createWalkthroughState(directory).getDismissed(), [tip]);
+});

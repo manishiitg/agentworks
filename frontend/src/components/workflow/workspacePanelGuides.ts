@@ -1,4 +1,4 @@
-export type WorkspacePanelSurface = 'agentworks' | 'crew'
+export type WorkspacePanelSurface = 'agentworks' | 'crew' | 'code'
 export type WorkspacePanelGroup = 'Main toolbar' | 'Ops' | 'Setup'
 
 export type WorkspacePanelGuide = {
@@ -341,6 +341,11 @@ const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly
     Ops: ['Automation Learnings', 'Backup', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
     Setup: ['Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },
+  code: {
+    'Main toolbar': ['Automation', 'Browser', 'Dashboard', 'Plan', 'Memory', 'Schedules', 'Webhooks'],
+    Ops: ['Cost Analysis', 'Database', 'File', 'Files', 'Workspace'],
+    Setup: ['Identity', 'Integrations', 'Project agent configuration', 'Access'],
+  },
   crew: {
     'Main toolbar': ['Automation', 'Browser', 'Dashboard', 'Plan', 'Memory', 'Schedules', 'Webhooks'],
     Ops: ['Cost Analysis', 'Database', 'File', 'Files', 'Workspace'],
@@ -358,7 +363,12 @@ function groupFor(surface: WorkspacePanelSurface, topic: string): WorkspacePanel
 export function getWorkspacePanelGuide(topic: string, surface: WorkspacePanelSurface = 'agentworks'): WorkspacePanelGuide {
   const key = topic.startsWith('Schedules for ') ? 'Schedules' : topic
   const parentTopic = key.split(' · ')[0]
-  const copy = TAB_GUIDES[key]?.(surface) ?? (surface === 'crew' ? CREW_GUIDES : AGENTWORKS_GUIDES)[key]
+  const copySurface = surface === 'code' ? 'crew' : surface
+  const original = TAB_GUIDES[key]?.(copySurface) ?? (copySurface === 'crew' ? CREW_GUIDES : AGENTWORKS_GUIDES)[key]
+  const codeWording = (text: string) => text.replace(/Crew member/g, 'coding workspace').replace(/Crew project/g, 'coding workspace').replace(/\bCrew\b/g, 'coding agent')
+  const copy = surface === 'code' && original
+    ? { purpose: codeWording(original.purpose), howTo: codeWording(original.howTo), steps: original.steps?.map(codeWording) }
+    : original
   const group = groupFor(surface, parentTopic)
   return copy
     ? { title: topic, surface, group, ...copy }

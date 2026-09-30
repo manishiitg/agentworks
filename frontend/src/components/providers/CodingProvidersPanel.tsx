@@ -22,6 +22,8 @@ import {
 import { CODING_PROVIDER_GUIDES, DEFAULT_CODING_PROVIDER_GUIDE } from './codingProviderGuides'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
+import { contextualGuideKey, rememberGuide } from '../../utils/onboarding'
+import { FirstVisitTip } from '../workflow/FirstVisitTip'
 import WorkflowWalkthrough from '../workflow/WorkflowWalkthrough'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { ProviderSetupAction, ProviderSetupSession } from '../../services/llm-config-api'
@@ -131,6 +133,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
   const [showWalkthrough, setShowWalkthrough] = useState(false)
   const [walkthroughOpenToken, setWalkthroughOpenToken] = useState(0)
   const openWalkthrough = useCallback(() => {
+    rememberGuide(contextualGuideKey('providers', 'Accounts'))
+    rememberGuide(contextualGuideKey('providers', 'Costs'))
     setWalkthroughOpenToken(token => token + 1)
     setShowWalkthrough(true)
   }, [])
@@ -274,9 +278,19 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
               <div className="mb-1 flex min-h-8 items-center justify-between gap-1 pl-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Available providers</span>
                 <div className="flex shrink-0 items-center gap-0.5">
+                  <FirstVisitTip
+                    topic={view === 'costs' ? 'Costs' : 'Accounts'}
+                    title={view === 'costs' ? 'Costs across your work' : 'Choose the account your work runs on'}
+                    body={view === 'costs'
+                      ? 'Review recorded spend by provider, account and workspace. Provider subscriptions and remaining plan allowance are separate.'
+                      : 'Choose a provider, then use Add my account for your own login or key. Select that provider and account through Runs on in your workspace.'}
+                    enabled={isOpen && !loading && !error && providers.length > 0 && !showWalkthrough && !guidedSession && !guidedStarting}
+                    onLearnMore={openWalkthrough}
+                  >
                   <button type="button" onClick={openWalkthrough} aria-label="Providers help & walkthrough" title="Help & walkthrough" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
                     <HelpCircle className="h-4 w-4" />
                   </button>
+                  </FirstVisitTip>
                   {view === 'provider' && <button
                     type="button"
                     onClick={refresh}

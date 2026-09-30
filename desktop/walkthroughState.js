@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const validKey = key => typeof key === 'string' &&
-  /^agentworks_(overview|empty_automation|automation|empty_crew|crew|empty_code|code|providers)_walkthrough_v\d+_dismissed$/.test(key);
+  (/^agentworks_tip_(agentworks|crew|code|providers)_[a-z0-9_]{1,80}_v\d+_dismissed$/.test(key) ||
+  /^agentworks_(overview|empty_automation|automation|empty_crew|crew|empty_code|code|providers)_walkthrough_v\d+_dismissed$/.test(key));
 
 // Renderer localStorage belongs to a localhost port. Keep desktop tour choices
 // in the app profile so changing the server/dev port does not reset them.

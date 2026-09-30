@@ -51,8 +51,10 @@ export const dismissLLMDiscoveryOnboarding = () => {
   setStorageValue(LLM_DISCOVERY_ONBOARDING_DISMISSED_KEY, 'true')
 }
 
-export const isWorkflowWalkthroughDismissed = (surface: WalkthroughSurface) => {
-  const key = WALKTHROUGH_DISMISSED_KEYS[surface]
+const rememberedGuides = new Set<string>()
+
+export const isGuideRemembered = (key: string) => {
+  if (key.startsWith('agentworks_tip_') && rememberedGuides.has(key)) return true
   if (typeof window !== 'undefined') {
     try {
       if (window.electronAPI?.isWalkthroughDismissed?.(key)) return true
@@ -62,12 +64,12 @@ export const isWorkflowWalkthroughDismissed = (surface: WalkthroughSurface) => {
   }
   if (getStorageValue(key) !== 'true') return false
   // Migrate an existing dismissal from this origin into the desktop profile.
-  dismissWorkflowWalkthrough(surface)
+  rememberGuide(key)
   return true
 }
 
-export const dismissWorkflowWalkthrough = (surface: WalkthroughSurface) => {
-  const key = WALKTHROUGH_DISMISSED_KEYS[surface]
+export const rememberGuide = (key: string) => {
+  rememberedGuides.add(key)
   setStorageValue(key, 'true')
   if (typeof window !== 'undefined') {
     try {
@@ -76,6 +78,15 @@ export const dismissWorkflowWalkthrough = (surface: WalkthroughSurface) => {
       // Browser clients and older desktop versions keep using localStorage.
     }
   }
+}
+
+export const isWorkflowWalkthroughDismissed = (surface: WalkthroughSurface) => isGuideRemembered(WALKTHROUGH_DISMISSED_KEYS[surface])
+export const dismissWorkflowWalkthrough = (surface: WalkthroughSurface) => rememberGuide(WALKTHROUGH_DISMISSED_KEYS[surface])
+
+export const contextualGuideKey = (surface: 'agentworks' | 'crew' | 'code' | 'providers', topic: string) => {
+  const stableTopic = topic.startsWith('Schedules for ') ? 'Schedules' : topic
+  const slug = stableTopic.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 80)
+  return `agentworks_tip_${surface}_${slug || 'workspace'}_v1_dismissed`
 }
 
 export const getLLMDiscoveryOnboardingState = (): LLMDiscoveryOnboardingState => {
