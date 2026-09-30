@@ -8,9 +8,9 @@ window.__APP_RUNTIME_CONFIG__ = {
   // Excellence Technologies branding (brand/: from excellencetechnologies.in).
   appName: "Excellence Technologies",
   faviconUrl: "/brand/icon.svg",
+  // The mark shows on the sign-in card only. No logoUrl / logoDarkUrl: the
+  // wide company logo no longer appears in the app's top bar.
   markUrl: "/brand/icon.svg",
-  logoUrl: "/brand/logo.svg",
-  logoDarkUrl: "/brand/logo-white.svg",
   brandColor: "#109AAA",
   enabledProductSurfaces: ["code"],
   defaultProductSurface: "code"
