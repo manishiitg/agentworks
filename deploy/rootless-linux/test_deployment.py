@@ -32,6 +32,7 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             "CLI_TOOLS=(claude codex pi cursor muse agy)",
             "AGY_AUTH_MODE=gemini",
             '"AGY_ALPHA=1"',
+            '"AGY_ALPHA_MULTI_USER=1"',
             "COPY_PLAYBOOKS=true",
             "RUN_WORKFLOW_BUILDER_MIGRATION=true",
             "PERSIST_MCP_STATE=true",

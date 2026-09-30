@@ -28,7 +28,7 @@ explicit full mode. The temporary workspace hook is restored when the session
 closes. Unconfined mode runs with the local user's host permissions; the working
 directory is not a filesystem boundary.
 
-**Rollout: local only. Do not use AGY on RTS or excellence for now.** This work
+**Initial rollout: local only. Do not use AGY on RTS or excellence for now.** This work
 does not deploy to either host, certify Linux confinement, or enable AGY for
 shared users.
 
@@ -37,6 +37,15 @@ shared users.
 AGY 1.2.14 uses the same existing Google/Gemini API key used by Pi when exported
 as `GEMINI_API_KEY`. The adapter sets `modelProvider: "gemini"` in its private
 home. The key does not need to be duplicated into global AGY settings.
+
+Confida now explicitly opts into the alpha server provider with
+`AGY_ALPHA=1`, `AGY_ALPHA_MULTI_USER=1` and
+`AGENTWORKS_CLI_LANDLOCK=on`. Publication and execution reject the
+multi-user opt-in if confinement is disabled. The managed installer verifies
+Google's release checksum and configures the service's AGY settings for
+Gemini API-key mode, using the existing service `GEMINI_API_KEY`. Other
+multi-user deployments remain gated. This opt-in does not extend the local
+certification to all Linux native tools or providers.
 
 Native subagent invocation is asynchronous. The retained completion reader
 requires both the child's completed native record and its notification in the

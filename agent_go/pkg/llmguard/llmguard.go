@@ -33,7 +33,7 @@ func CodingAgentProviders() []string {
 // vertex, bedrock, ...). Their native loop is unmaintained and no longer offered.
 func RequireCodingAgentProvider(provider string) error {
 	if normalize(provider) == "agy-cli" && !AgyAlphaEnabled() {
-		return fmt.Errorf("LLM provider %q is unavailable: AGY alpha requires AGY_ALPHA=1 in single-user mode", strings.TrimSpace(provider))
+		return fmt.Errorf("LLM provider %q is unavailable: AGY requires AGY_ALPHA=1; multi-user installations also require AGY_ALPHA_MULTI_USER=1 and AGENTWORKS_CLI_LANDLOCK=on", strings.TrimSpace(provider))
 	}
 	if IsCodingAgentProvider(provider) {
 		return nil
@@ -44,7 +44,16 @@ func RequireCodingAgentProvider(provider string) error {
 
 // AgyAlphaEnabled is the runtime gate, shared by publication and execution.
 func AgyAlphaEnabled() bool {
-	return strings.TrimSpace(os.Getenv("AGY_ALPHA")) == "1" && os.Getenv("MULTI_USER_MODE") != "true"
+	if strings.TrimSpace(os.Getenv("AGY_ALPHA")) != "1" {
+		return false
+	}
+	if os.Getenv("MULTI_USER_MODE") != "true" {
+		return true
+	}
+	// Server rollout is explicit and must retain filesystem confinement.
+	// The CLI security resolver still enforces the lock on each launch.
+	return strings.TrimSpace(os.Getenv("AGY_ALPHA_MULTI_USER")) == "1" &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_CLI_LANDLOCK")), "on")
 }
 
 // ServerDefaultConnectionPrefix marks a model that names no account, so it
