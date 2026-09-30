@@ -1,4 +1,4 @@
-import { Loader2, Maximize2, MessageSquare, Minimize2, Paperclip, Wand2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Maximize2, Minimize2, Paperclip, Wand2 } from 'lucide-react'
 import { Button, type ButtonProps } from './ui/Button'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 import type { Ref } from 'react'
@@ -33,7 +33,7 @@ export function NativeTerminalToolbar({ className = '', uploading, commandsOpen 
   return (
     <div className={`flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground ${className}`} data-testid="native-terminal-toolbar">
       <TerminalToolButton label="Return to chat" variant="outline" className="h-10 w-10 shrink-0 [&_svg]:size-5" onClick={onReturnToChat}>
-        <MessageSquare className="h-5 w-5" />
+        <ArrowLeft className="h-5 w-5" />
       </TerminalToolButton>
       <span className="mr-auto">Type directly in the terminal</span>
       <TerminalToolButton label="Browse commands" buttonRef={commandButtonRef} variant={commandsOpen ? 'secondary' : 'ghost'} onClick={onCommands}
