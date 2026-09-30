@@ -26,6 +26,16 @@ var deferredSteerHoldTimeout = 20 * time.Second
 // reply2) although the CLI ran msg1 -> reply1 -> msg2 -> reply2.
 var deferredSteerInFlightCap = 30 * time.Minute
 
+// deferredSteerQuietWindow is how long a session may go without any answer row (and with no tool
+// call running) before it counts as idle for a new steer. Answer rows that arrive after their
+// turn's end (Cursor's late transcript chunks, native transcript catch-up) mark the session
+// "in flight" with nothing left to end it, so the reply to the next message was let through above
+// the message (RTS 2026-09-30). Silence past this window means the CLI is not mid-answer.
+var deferredSteerQuietWindow = 15 * time.Second
+
+// steerNow is the clock for the quiet window (tests replace it).
+var steerNow = time.Now
+
 type pendingSteer struct {
 	event   Event
 	written bool
@@ -60,6 +70,10 @@ type steerOrdering struct {
 	mu       sync.Mutex
 	holds    map[string]*deferredSteerHold
 	inFlight map[string]bool
+	// lastAnswerAt is when the session last produced an answer row, and pendingTools how many tool
+	// calls have started without ending: together they tell a silent gap from a running answer.
+	lastAnswerAt map[string]time.Time
+	pendingTools map[string]int
 	// User rows written by a timeout; the late ack must not write them again.
 	timedOut map[string]bool
 }
@@ -70,9 +84,25 @@ func (es *EventStore) steerHoldState() *steerOrdering {
 			holds:    make(map[string]*deferredSteerHold),
 			inFlight: make(map[string]bool),
 			timedOut: make(map[string]bool),
+
+			lastAnswerAt: make(map[string]time.Time),
+			pendingTools: make(map[string]int),
 		}
 	})
 	return es.steerOrdering
+}
+
+// answerInFlightLocked reports whether the session is really mid-answer: an answer row without a
+// later end, seen recently or with a tool call still running. Callers hold s.mu.
+func (s *steerOrdering) answerInFlightLocked(sessionID string) bool {
+	if !s.inFlight[sessionID] {
+		return false
+	}
+	if s.pendingTools[sessionID] > 0 {
+		return true
+	}
+	last := s.lastAnswerAt[sessionID]
+	return last.IsZero() || steerNow().Sub(last) < deferredSteerQuietWindow
 }
 
 func steerKey(sessionID, eventID string) string { return sessionID + "\x00" + eventID }
@@ -88,7 +118,7 @@ func (es *EventStore) BeginDeferredSteer(sessionID string, user Event) {
 	defer state.mu.Unlock()
 	hold := state.holds[sessionID]
 	if hold == nil {
-		hold = &deferredSteerHold{boundaryPassed: !state.inFlight[sessionID]}
+		hold = &deferredSteerHold{boundaryPassed: !state.answerInFlightLocked(sessionID)}
 		state.holds[sessionID] = hold
 	}
 	hold.pending = append(hold.pending, &pendingSteer{event: user})
@@ -252,8 +282,21 @@ func (es *EventStore) holdForDeferredSteer(sessionID string, event Event) bool {
 	defer state.mu.Unlock()
 	if ends {
 		delete(state.inFlight, sessionID)
+		delete(state.lastAnswerAt, sessionID)
+		delete(state.pendingTools, sessionID)
 	} else {
 		state.inFlight[sessionID] = true
+		if answerRow {
+			state.lastAnswerAt[sessionID] = steerNow()
+		}
+		switch event.Type {
+		case "tool_call_start":
+			state.pendingTools[sessionID]++
+		case "tool_call_end", "tool_call_error":
+			if state.pendingTools[sessionID] > 0 {
+				state.pendingTools[sessionID]--
+			}
+		}
 	}
 	hold := state.holds[sessionID]
 	if startsTurn {
