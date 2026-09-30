@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -434,7 +435,7 @@ func TestProductTurnStillRejectsPrivateAccountChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !strings.Contains(err.Error(), "account change requires a new conversation") {
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !errors.Is(err, errAccountChangeNeedsNewConversation) {
 		t.Fatalf("shared-to-private switch should be refused, got: %v", err)
 	}
 
@@ -446,7 +447,32 @@ func TestProductTurnStillRejectsPrivateAccountChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !strings.Contains(err.Error(), "account change requires a new conversation") {
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err == nil || !errors.Is(err, errAccountChangeNeedsNewConversation) {
 		t.Fatalf("private-to-private switch should be refused, got: %v", err)
+	}
+}
+
+// A conversation that started on the shared account stays on it: the query path's "use your own
+// account by default" applies to new conversations only, so a follow-up is pinned to the server
+// account instead of silently moving under another CLI login.
+func TestExistingSharedAccountConversationStaysOnTheServerAccount(t *testing.T) {
+	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	first, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatalf("first turn: %v", err)
+	}
+	if first.ConnectionID != "" {
+		t.Fatalf("a new conversation gets the default at run time, not here: %q", first.ConnectionID)
+	}
+	conversation, err = api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	followUp, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "again", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatalf("follow-up: %v", err)
+	}
+	if followUp.ConnectionID != "global:muse-cli" {
+		t.Fatalf("follow-up connection = %q, want the server account", followUp.ConnectionID)
 	}
 }

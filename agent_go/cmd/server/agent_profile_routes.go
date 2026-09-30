@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -881,8 +882,19 @@ func validateAgentProfileHandler() http.HandlerFunc {
 	}
 }
 
+// errAccountChangeNeedsNewConversation: a conversation keeps the provider account it started on
+// (its CLI history lives under that account), so moving it to another account means a new chat.
+// The text says what to do; the code lets the app offer it.
+var errAccountChangeNeedsNewConversation = errors.New("This chat started on a different account than the one this project now uses. Click New chat to continue with the new account, or switch the project back to the account this chat started on (Models).")
+
+const accountChangeNeedsNewConversationCode = "account_change_requires_new_conversation"
+
 func writeAgentProfileError(w http.ResponseWriter, status int, message string) {
-	writeAgentProfileJSON(w, status, map[string]string{"error": message})
+	body := map[string]string{"error": message}
+	if message == errAccountChangeNeedsNewConversation.Error() {
+		body["code"] = accountChangeNeedsNewConversationCode
+	}
+	writeAgentProfileJSON(w, status, body)
 }
 
 func writeAgentProfileJSON(w http.ResponseWriter, status int, value interface{}) {
@@ -899,6 +911,13 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
+	// A conversation that started on the shared account stays there: the query path defaults a
+	// chat with no account to the person's own one, which would move it under a different CLI
+	// login while its saved history stays under the old one. Only new conversations get the default.
+	if strings.TrimSpace(query.ConnectionID) == "" && strings.TrimSpace(conversation.ConnectionID) == "" &&
+		strings.TrimSpace(conversation.Provider) != "" && strings.EqualFold(strings.TrimSpace(conversation.Provider), strings.TrimSpace(query.Provider)) {
+		query.ConnectionID = "global:" + strings.TrimSpace(query.Provider)
+	}
 	if conversation.Provider != "" && canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID) != canonicalProviderConnectionID(query.Provider, query.ConnectionID) {
 		// Only a real account change needs a new conversation: moving onto a
 		// private connection, or between private connections, must stay
@@ -908,7 +927,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		// the user out of their own chat.
 		if strings.TrimSpace(conversation.ConnectionID) != "" || strings.TrimSpace(query.ConnectionID) != "" {
 			log.Printf("[PRODUCT_CHAT] account change refused for conversation %q: bound %s/%s, requested %s/%s", conversation.ConversationKey, conversation.Provider, conversation.ConnectionID, query.Provider, query.ConnectionID)
-			return QueryRequest{}, fmt.Errorf("account change requires a new conversation")
+			return QueryRequest{}, errAccountChangeNeedsNewConversation
 		}
 	}
 	target, found, err := resolveProductResumeTarget(userID, conversation)
