@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { AlertTriangle, Server } from 'lucide-react'
 import { ToolSelectionSection } from '../../components/ToolSelectionSection'
@@ -9,6 +9,7 @@ import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { PlaceMcpSection } from './PlaceMcpSection'
 import { GoogleAccountConnect } from './GoogleAccountConnect'
+import { googleAppApi } from '../../api/googleApp'
 import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -25,7 +26,7 @@ const INTEGRATION_TABS: Array<{ value: WorkIntegrationTab; label: string }> = [
   { value: 'skills', label: 'Skills' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'gmail', label: 'Gmail' },
+  { value: 'gmail', label: 'Google apps' },
   { value: 'cli', label: 'Connect' },
 ]
 
@@ -35,7 +36,7 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
-    gmail: `Help me with this ${noun} project's Gmail. Explain the setup and ask what I want to change.`,
+    gmail: `Help me with this ${noun} project's Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides). Explain the setup and ask what I want to change.`,
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
@@ -43,7 +44,7 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
 // the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
 // the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
-// Sheets, Slides) is the Gmail tab: the Code's own private gog accounts.
+// Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
 const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
@@ -201,6 +202,13 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
+  // Whether the server has a Google app: then adding an account is one sign-in form.
+  const [googleAppReady, setGoogleAppReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void googleAppApi.status().then(status => { if (!cancelled) setGoogleAppReady(status.configured) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [tabNonce])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
   const toggleSkill = async (folderName: string) => {
@@ -281,11 +289,17 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           <>
             {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
             {isAdmin && <McpAppsSection />}
-            {/* A Code connects its owner's own Google account through the server's Google app. */}
-            {product.profileId === 'code' && !workspacePath.startsWith('_users/') && (
-              <GoogleAccountConnect workspacePath={workspacePath} onChanged={() => setTabNonce(nonce => nonce + 1)} />
-            )}
-            <WorkflowEmailPanel workspacePath={workspacePath} scopeNoun="project" onAsk={onAsk} />
+            {/* A Code connects its owner's own Google account through the server's Google app. With
+                that app the account list and the sign-in form are one place (no client file to
+                upload); without it the list keeps its own upload flow. */}
+            <WorkflowEmailPanel
+              workspacePath={workspacePath}
+              scopeNoun="project"
+              onAsk={onAsk}
+              platformConnect={googleAppReady && product.profileId === 'code' && !workspacePath.startsWith('_users/')
+                ? <GoogleAccountConnect workspacePath={workspacePath} onChanged={() => setTabNonce(nonce => nonce + 1)} />
+                : undefined}
+            />
           </>
         )}
         {activeTab === 'cli' && <CliMcpSetupPanel />}
