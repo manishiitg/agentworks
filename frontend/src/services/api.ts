@@ -791,6 +791,7 @@ export const agentApi = {
       // locally to the selected terminal before rendering.
       workingSet?: 'session' | 'all'
       durableChat?: boolean
+      syncNativeTranscript?: boolean
       beforeSequence?: number
       workspacePath?: string
     }
@@ -798,6 +799,7 @@ export const agentApi = {
     const params: Record<string, string | number> = {}
     if (options?.workingSet !== 'all') params.working_set = 'session'
     if (options?.durableChat) params.durable_chat = 1
+    if (options?.syncNativeTranscript) params.sync_native_transcript = 1
     if (options?.beforeSequence !== undefined) params.before_sequence = options.beforeSequence
     if (options?.workspacePath) params.workspace_path = options.workspacePath
 
@@ -836,6 +838,7 @@ export const agentApi = {
     return agentApi.getSessionEvents(sessionId, undefined, {
       limit: DURABLE_CHAT_FIRST_PAGE_LIMIT,
       durableChat: true,
+      syncNativeTranscript: true,
       workspacePath,
     })
   },

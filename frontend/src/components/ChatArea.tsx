@@ -42,6 +42,7 @@ import { conversationToRestoredEvents } from '../../shared/session/restore'
 import { logger } from '../utils/logger'
 
 import { useResumePreviousChat } from '../hooks/useResumePreviousChat'
+import { useFormattedTranscriptHydration } from '../hooks/useFormattedTranscriptHydration'
 import {
   determineModeFlag,
   buildLLMConfigWithApiKeys,
@@ -825,42 +826,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   const tabEvents = useChatStore((state) =>
     activeSessionId ? state.tabEvents[activeSessionId] || EMPTY_EVENTS : EMPTY_EVENTS
   )
-  const formattedTranscriptHydratedRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (activeEventViewMode !== 'formatted') return
-    const isVideoStudio = activeTab?.metadata?.agentProfileId === 'video-studio'
-    const isWorkflowChat = activeTab?.metadata?.mode === 'workflow'
-    if ((!isVideoStudio && !isWorkflowChat) || isExecutionConversationTab(activeTab)) return
-
-    const workspacePath = activeTab?.metadata?.agentProfileWorkspace ||
-      (isWorkflowChat ? getActivePreset('workflow')?.selectedFolder?.filepath : undefined)
-    if (
-      !activeSessionId ||
-      (isVideoStudio && !workspacePath) ||
-      formattedTranscriptHydratedRef.current === activeSessionId
-    ) return
-    formattedTranscriptHydratedRef.current = activeSessionId
-    void hydrateTabEvents(activeSessionId, {
-      workspacePath,
-      fallbackToChatHistory: true,
-      preferChatHistory: true,
-      includeUiEvents: true,
-    }).catch((error) => {
-      formattedTranscriptHydratedRef.current = null
-      console.error('[SessionRestore] Formatted transcript hydration failed:', error)
-    })
-  }, [
-    activeEventViewMode,
+  useFormattedTranscriptHydration(
     activeSessionId,
-    activeTab?.metadata?.agentProfileId,
-    activeTab?.metadata?.agentProfileWorkspace,
-    activeTab?.metadata?.mode,
-    activeTab?.metadata?.isExecutionRun,
-    activeTab?.metadata?.isScheduledRun,
-    activeTab?.metadata?.isBotRun,
-    activeTab?.metadata?.isViewOnly,
-    getActivePreset,
-  ])
+    activeEventViewMode === 'formatted',
+    activeTab?.metadata?.agentProfileWorkspace ||
+      (activeTab?.metadata?.mode === 'workflow' ? getActivePreset('workflow')?.selectedFolder?.filepath : undefined),
+    !isExecutionConversationTab(activeTab),
+  )
   const activeStreamingText = useChatStore((state) =>
     activeSessionId ? state.streamingText[activeSessionId] || '' : ''
   )
