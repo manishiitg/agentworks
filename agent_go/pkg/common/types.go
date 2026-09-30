@@ -204,6 +204,7 @@ func PopulateMCPBridgeShortEnv(env map[string]string) {
 type SessionShellConfig struct {
 	WorkflowPath      string   // Owning workflow for live capability reconciliation
 	WorkflowReadOnly  bool     // Current workflow turn cannot receive attached-folder write grants
+	CrewReader        bool     // Current turn is a read-only Crew reader (or a guest call): mutating Crew tools are refused
 	WorkingDir        string   // Default working directory (relative to workspace-docs)
 	FolderGuardSet    bool     // An explicit guard exists; empty capabilities must fail closed
 	ReadPaths         []string // Folder guard read paths for Isolator
@@ -234,6 +235,15 @@ type SessionShellConfig struct {
 func SetSessionWorkflowPath(sessionID, workflowPath string) {
 	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
 		cfg.WorkflowPath = strings.Trim(strings.TrimSpace(workflowPath), "/")
+	})
+}
+
+// SetSessionCrewReader marks whether the session's current turn is a read-only
+// Crew reader, so the bridge can answer a call to a mutating Crew tool with the
+// mode instead of "not found". It is refreshed on every turn.
+func SetSessionCrewReader(sessionID string, crewReader bool) {
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		cfg.CrewReader = crewReader
 	})
 }
 

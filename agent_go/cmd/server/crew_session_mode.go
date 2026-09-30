@@ -39,9 +39,11 @@ func crewSessionModeNotice(crewRoot string) string {
 		"This conversation is the current user's alone. Never print secret values.\n" + sessionModeClose
 }
 
-// withSessionMode puts the notice in front of a message. It is idempotent.
+// withSessionMode puts the notice in front of a message. It is idempotent for
+// the server's own notice only: a message that merely starts with a look-alike
+// block (typed by the user) still gets the real notice in front of it.
 func withSessionMode(notice, message string) string {
-	if notice == "" || strings.HasPrefix(strings.TrimSpace(message), sessionModeOpen) {
+	if notice == "" || strings.HasPrefix(message, notice+sessionModeSplit) {
 		return message
 	}
 	return notice + sessionModeSplit + message
@@ -124,16 +126,19 @@ var readerDeniedToolNames = func() map[string]struct{} {
 // readerDeniedToolRefusal answers a call to a mutating tool that a read-only
 // session was never given (it is not registered, so the bridge would only say
 // "not found"). It returns "" when the tool is not one of those or the session
-// is not read-only. The message names the mode and where to send the change.
+// is not a read-only Crew reader. The message names the mode and where to send
+// the change.
 func readerDeniedToolRefusal(ctx context.Context, tool string) string {
 	if _, denied := readerDeniedToolNames[strings.TrimSpace(tool)]; !denied {
 		return ""
 	}
-	hint := readOnlyRefusalHint(ctx)
-	if hint == "" {
+	// Only a Crew reader: the same tool names (perform_ui_action, secrets) are
+	// legitimate in other read-only sessions such as a workflow Run chat.
+	cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx))
+	if cfg == nil || !cfg.CrewReader {
 		return ""
 	}
-	return "The tool `" + strings.TrimSpace(tool) + "` is not available: it changes the project" + hint
+	return "The tool `" + strings.TrimSpace(tool) + "` is not available: it changes the project" + readOnlyRefusalHint(ctx)
 }
 
 // refuseReaderDeniedTool writes the refusal in the bridge's error shape and

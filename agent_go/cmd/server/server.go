@@ -3863,6 +3863,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		currentUserIsReadOnly = true
 	}
 	common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
+	common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
