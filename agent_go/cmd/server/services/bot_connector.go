@@ -2511,6 +2511,7 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 			msg.Text = m.buildQueryWithThreadHistory(msg.Text, msg.Platform, threadID)
 		}
 		req, profileSessionID, handled, err := m.profileTurn(context.Background(), workspaceUserID, msg, threadID)
+		botStep("product conversation prepared")
 		if err != nil {
 			log.Printf("[BOT_MANAGER] Profile turn failed for thread %s: %v", threadID.Key(), err)
 			if connector := m.GetConnector(msg.Platform); connector != nil {
@@ -2535,7 +2536,9 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		// sender's own chat of the workflow, the one their web Builder
 		// restores — even over a chat this thread used before, since the
 		// web's current chat is the one that counts.
-		if own := strings.TrimSpace(m.userWorkflowChat(context.Background(), workspaceUserID, *msg.PresetWorkflow)); own != "" && own != sessionID {
+		own := strings.TrimSpace(m.userWorkflowChat(context.Background(), workspaceUserID, *msg.PresetWorkflow))
+		botStep("workflow chat looked up")
+		if own != "" && own != sessionID {
 			sessionID = own
 			restoredConversationSessionID = ""
 			log.Printf("[BOT_MANAGER] %s thread %s continues user %s's workflow chat %s", msg.Platform, threadID.Key(), workspaceUserID, sessionID)
@@ -2546,8 +2549,10 @@ func (m *BotConversationManager) startNewSessionDirect(msg BotIncomingMessage, t
 		queryWithHistory := msg.Text
 		if len(resumeSessionID) == 0 || resumeSessionID[0] == "" {
 			queryWithHistory = m.buildQueryWithThreadHistory(msg.Text, msg.Platform, threadID)
+			botStep("thread history loaded")
 		}
 		queryReq = m.buildQueryRequest(queryWithHistory, workspaceUserID, msg.ChannelID, msg.PresetWorkflow, msg.Platform, botDMUserID(msg, workspaceUserID), threadID)
+		botStep("query request built")
 		addRestoredConversationSessionID(queryReq, restoredConversationSessionID)
 	}
 	if existing, _ := queryReq["session_title"].(string); strings.TrimSpace(existing) == "" && sessionTitle != "" {

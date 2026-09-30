@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -289,6 +290,7 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 		rawContent string
 		updatedAt  time.Time
 	}
+	restoreStarted := time.Now()
 	candidates := []candidate{}
 	for _, path := range paths {
 		if !isWorkflowBuilderConversationLogPath(workspacePath, path) {
@@ -339,6 +341,10 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 		}
 		return candidates[i].path > candidates[j].path
 	})
+
+	if elapsed := time.Since(restoreStarted); elapsed > 2*time.Second {
+		log.Printf("[BUILDER_RESTORE_TIMING] %s: read and refreshed %d saved conversations in %s", workspacePath, len(candidates), elapsed.Round(100*time.Millisecond))
+	}
 
 	latest := candidates[0]
 	rawEvents := builderConversationToRawEvents(latest.log)
