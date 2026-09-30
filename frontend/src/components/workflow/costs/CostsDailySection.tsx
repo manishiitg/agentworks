@@ -1,3 +1,5 @@
+import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
+import CostConversations from '../../providers/CostConversations'
 import React from 'react'
 import { inputTokens, totalTokens, tokenSummary, pricingCoverageText } from '../../../utils/costTokens'
 import type { CostAggregate } from '../../../services/api-types'
@@ -18,8 +20,8 @@ type CostsDailySectionProps = Pick<
   | 'combinedDailyCostSummaries'
   | 'dailyActivityBreakdown'
   | 'runDailyCostSummaries'
-  | 'expandedDailyDate'
-  | 'setExpandedDailyDate'
+  | 'expandedDailyDates'
+  | 'setExpandedDailyDates'
   | 'costHistory'
   | 'loadingOlder'
   | 'loadOlderCosts'
@@ -32,8 +34,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
   combinedDailyCostSummaries,
   dailyActivityBreakdown,
   runDailyCostSummaries,
-  expandedDailyDate,
-  setExpandedDailyDate,
+  expandedDailyDates,
+  setExpandedDailyDates,
   costHistory,
   loadingOlder,
   loadOlderCosts,
@@ -104,7 +106,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       </thead>
                       <tbody className="divide-y divide-border">
                         {combinedDailyCostSummaries.map(entry => {
-                          const isExpanded = expandedDailyDate === entry.date
+                          const isExpanded = expandedDailyDates.has(entry.date)
                           const categories = dailyActivityBreakdown.get(entry.date)
                           const dayUsage = scopedCosts?.by_date?.[entry.date]
                           const modelRows = buildModelCostRows({ by_model: scopedCosts?.by_date?.[entry.date]?.by_model || {} })
@@ -117,7 +119,12 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                     <span className="font-medium text-foreground">{entry.date}</span>
                                     <button
                                       type="button"
-                                      onClick={() => setExpandedDailyDate(current => current === entry.date ? null : entry.date)}
+                                      onClick={() => setExpandedDailyDates(current => {
+                                        const next = new Set(current)
+                                        if (next.has(entry.date)) next.delete(entry.date)
+                                        else next.add(entry.date)
+                                        return next
+                                      })}
                                       className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
                                       aria-expanded={isExpanded}
                                     >
@@ -152,6 +159,8 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                               {isExpanded && (
                                 <tr className="bg-muted/20">
                                   <td colSpan={projectMode ? 5 : 9} className="p-3">
+                                    {dayUsage && <CostTokenBreakdown usage={dayUsage} />}
+                                    <CostConversations rows={Object.values(dayUsage?.by_conversation || {})} />
                                     {!categories && modelRows.length === 0 && dailyRuns.length === 0 ? (
                                       <p className="text-xs text-muted-foreground">This older daily record has totals but no activity attribution.</p>
                                     ) : (

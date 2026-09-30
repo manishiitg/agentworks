@@ -1,3 +1,4 @@
+import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import React from 'react'
 import type { CostSummary } from '../../../services/api-types'
 import { pricingCoverageText } from '../../../utils/costTokens'
@@ -64,6 +65,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
             Builder {formatUSD(phaseCostSummary.totalCost)}
           </div>
         )}
+        {scopedCosts && <div className="w-full"><CostTokenBreakdown usage={scopedCosts.total} /></div>}
         {scopedCosts && pricingCoverageText(scopedCosts.total) && <div className="w-full text-muted-foreground">{pricingCoverageText(scopedCosts.total)}</div>}
         </div>
       ) : undefined}

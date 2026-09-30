@@ -1842,6 +1842,7 @@ export interface CostAggregate {
 // and adds an optional per-model breakdown for that date so clients
 // can expand a row to see which models contributed.
 export interface CostDateAggregate extends CostAggregate {
+  by_conversation?: Record<string, CostConversation>
   by_model?: Record<string, CostAggregate>
   by_scope?: Record<string, CostScopeAggregate>
   by_source_platform?: Record<string, CostAggregate>
@@ -1861,7 +1862,25 @@ export interface CostScopeAggregate extends CostAggregate {
   by_execution?: Record<string, CostExecutionAggregate>
 }
 
+export interface CostConversation extends CostAggregate {
+  source_platform?: string
+  session_id: string
+  workflow_id: string
+  user_id?: string
+  first_seen: string
+  last_seen: string
+  by_execution: Record<string, CostConversationExecution>
+}
+
+export interface CostConversationExecution extends CostAggregate {
+  scope: string
+  first_seen: string
+  last_seen: string
+  by_model?: Record<string, CostAggregate>
+}
+
 export interface CostSummary {
+  by_conversation?: Record<string, CostConversation>
   from?: string
   to?: string
   total: CostAggregate
@@ -1934,6 +1953,7 @@ export interface CostOverviewMCP {
 }
 
 export interface CostOverview {
+  by_conversation?: CostConversation[]
   from?: string
   to?: string
   total: CostOverviewAggregate

@@ -24,6 +24,40 @@ Each entry says what was decided, why, and where it lives in the code.
   `GmailNotifications.tsx`, `GoogleAccountList.tsx`. Not deployed: deploys remain
   on hold until the next batch of major fixes.
 
+### 2026-09-30 — Costs links usage to saved conversations
+- Providers Costs and each expanded workflow/Crew/Code cost date show fresh
+  input, cache reads, cache writes when present, output and the percentage of
+  total input served from cache. Total input includes the cache buckets once.
+  Headline input cards explicitly say fresh input.
+- Conversation aggregates retain actor/workspace/session identity, date,
+  execution, model and recorded USD. Providers publishes only conversations
+  whose work root passed the existing access filter. Opening chat uses the
+  existing authorized, bounded history GET; it does not start an agent.
+- Conversation details show recorded turns/agent runs rather than equating
+  ledger rows with native model requests. Daily details use that date's subset.
+  Old servers/records without conversation attribution keep the totals and
+  cannot provide a conversation link.
+- Excellence investigation: the two Muse cron conversations recorded
+  43,671,464 input (33,867,163 cache reads), 32,226 output, and $1.054609626
+  on September 30 UTC. Contributor rates already discounted cache reads:
+  $0.9804301 fresh + $0.067734326 cached + $0.0064452 output.
+- Open issue: native Muse 1.4.1 changed its developer-context temporary
+  sandbox path between scheduled runs. Many first requests reported zero
+  cache while later requests in that run reused almost all input. Growing
+  history raises input per run. These logs suggest prefix invalidation; the
+  provider does not report its cache-miss reason. No sandbox weakening or
+  fabricated discount is applied to hide the recorded fresh usage.
+- Code: `agent_go/pkg/costledger/ledger.go`, `cost_overview.go`,
+  `frontend/src/components/providers/CostConversations.tsx` and
+  `CostTokenBreakdown.tsx`.
+
+### 2026-09-30 — Daily cost dates expand independently
+- Workflow, Crew and Code cost dialogs keep a set of expanded dates, so
+  opening another day preserves already visible details for comparison.
+  Collapsing a day affects only that day.
+- Code: `frontend/src/components/workflow/costs/useCostsData.ts` and
+  `CostsDailySection.tsx`.
+
 ### 2026-09-30 — Every ledger cost surface uses normalized input
 - Extend the Providers token correction to workflow, Code and Crew cost
   dialogs, activity/execution/phase/model details, daily history and embedded

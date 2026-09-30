@@ -43,7 +43,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
   // `${routeStepId}::${routeId}`, since route_id strings can collide across
   // unrelated routing/branch steps.
   const [routeFilterByRunFolder, setRouteFilterByRunFolder] = useState<Record<string, string | null>>({})
-  const [expandedDailyDate, setExpandedDailyDate] = useState<string | null>(null)
+  const [expandedDailyDates, setExpandedDailyDates] = useState<Set<string>>(new Set())
   const [costHistory, setCostHistory] = useState<{ hasMore: boolean; nextBefore?: string } | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const loadGenerationRef = useRef(0)
@@ -65,7 +65,7 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
       setExpandedRunFolders(new Set())
       setExpandedCostModels(new Set())
       setCostViewMode({})
-      setExpandedDailyDate(null)
+      setExpandedDailyDates(new Set())
       setCostHistory(null)
       setLoadingOlder(false)
     }
@@ -528,8 +528,8 @@ export function useCostsData({ workspacePath, selectedRunFolder }: UseCostsDataA
     expandedCostModels,
     costViewMode,
     routeFilterByRunFolder,
-    expandedDailyDate,
-    setExpandedDailyDate,
+    expandedDailyDates,
+    setExpandedDailyDates,
     costHistory,
     loadingOlder,
     loadAllCosts,

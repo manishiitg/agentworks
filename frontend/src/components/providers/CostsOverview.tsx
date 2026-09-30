@@ -1,3 +1,4 @@
+import CostTokenBreakdown from './CostTokenBreakdown'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { agentApi } from '../../services/api'
@@ -170,9 +171,9 @@ export default function CostsOverview() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: 'Tracked cost', value: overviewCurrency(total?.total_cost_usd ?? 0) },
-              { label: 'Input tokens', value: formatTokens(inputTokens(total)) },
+              { label: 'Fresh input', value: formatTokens(Math.max(0, inputTokens(total) - (total?.cache_read_tokens ?? 0) - (total?.cache_write_tokens ?? 0))) },
               { label: 'Output tokens', value: formatTokens(total?.completion_tokens ?? 0) },
-              { label: 'Cached input', value: formatTokens((total?.cache_read_tokens ?? 0) + (total?.cache_write_tokens ?? 0)) },
+              { label: 'Cached input', value: formatTokens(total?.cache_read_tokens ?? 0) },
             ].map(card => (
               <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
                 <div className="text-xs text-gray-500 dark:text-gray-400">{card.label}</div>
@@ -180,6 +181,7 @@ export default function CostsOverview() {
               </div>
             ))}
           </div>
+          {total && <div className="mt-3"><CostTokenBreakdown usage={total} /></div>}
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
             <span className="font-medium text-gray-900 dark:text-gray-100">How to read this: </span>
             Cached input is included in input tokens.{' '}

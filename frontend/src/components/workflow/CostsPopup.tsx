@@ -44,8 +44,8 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
     expandedCostModels,
     costViewMode,
     routeFilterByRunFolder,
-    expandedDailyDate,
-    setExpandedDailyDate,
+    expandedDailyDates,
+    setExpandedDailyDates,
     costHistory,
     loadingOlder,
     loadAllCosts,
@@ -111,8 +111,8 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
                 combinedDailyCostSummaries={combinedDailyCostSummaries}
                 dailyActivityBreakdown={dailyActivityBreakdown}
                 runDailyCostSummaries={data.runDailyCostSummaries}
-                expandedDailyDate={expandedDailyDate}
-                setExpandedDailyDate={setExpandedDailyDate}
+                expandedDailyDates={expandedDailyDates}
+                setExpandedDailyDates={setExpandedDailyDates}
                 costHistory={costHistory}
                 loadingOlder={loadingOlder}
                 loadOlderCosts={loadOlderCosts}

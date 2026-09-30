@@ -78,15 +78,16 @@ type costOverviewMCP struct {
 }
 
 type costOverviewResponse struct {
-	From       string                           `json:"from,omitempty"`
-	To         string                           `json:"to,omitempty"`
-	Total      costledger.Aggregate             `json:"total"`
-	ByProvider map[string]*costledger.Aggregate `json:"by_provider"`
-	ByModel    map[string]*costledger.Aggregate `json:"by_model"`
-	Items      []*costOverviewItem              `json:"items"`
-	ByUser     []*costOverviewUser              `json:"by_user"`
-	ByBot      []*costOverviewBot               `json:"by_bot"`
-	ByMCP      []*costOverviewMCP               `json:"by_mcp"`
+	ByConversation []*costledger.ConversationAggregate `json:"by_conversation,omitempty"`
+	From           string                              `json:"from,omitempty"`
+	To             string                              `json:"to,omitempty"`
+	Total          costledger.Aggregate                `json:"total"`
+	ByProvider     map[string]*costledger.Aggregate    `json:"by_provider"`
+	ByModel        map[string]*costledger.Aggregate    `json:"by_model"`
+	Items          []*costOverviewItem                 `json:"items"`
+	ByUser         []*costOverviewUser                 `json:"by_user"`
+	ByBot          []*costOverviewBot                  `json:"by_bot"`
+	ByMCP          []*costOverviewMCP                  `json:"by_mcp"`
 	// IncludesOther reports whether chat/unattributed spend is in the view
 	// (admins only), so the UI can say what the total covers.
 	IncludesOther bool `json:"includes_other"`
@@ -285,6 +286,19 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 		}
 		mergeWorkflowAggregate(&item.WorkflowAggregate, aggregate)
 	}
+	for _, conversation := range summary.ByConversation {
+		root, _, _, _ := costOverviewRoot(conversation.WorkflowID)
+		if allowed[root] {
+			resp.ByConversation = append(resp.ByConversation, conversation)
+		}
+	}
+	sort.Slice(resp.ByConversation, func(i, j int) bool {
+		a, b := resp.ByConversation[i], resp.ByConversation[j]
+		if a.TotalCostUSD != b.TotalCostUSD {
+			return a.TotalCostUSD > b.TotalCostUSD
+		}
+		return a.SessionID < b.SessionID
+	})
 	for workflowID, byUser := range summary.ByWorkflowUser {
 		id, kind, name, _ := costOverviewRoot(workflowID)
 		if !allowed[id] {

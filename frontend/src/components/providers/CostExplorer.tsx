@@ -1,3 +1,5 @@
+import CostTokenBreakdown from './CostTokenBreakdown'
+import CostConversations from './CostConversations'
 import { useMemo, useState } from 'react'
 import type {
   CostAggregate,
@@ -162,6 +164,15 @@ export default function CostExplorer({ data, days, itemLabel }: {
     setSearch('')
   }
 
+  const conversations = (data.by_conversation || []).filter(row => {
+    if (selected?.user) return row.user_id === selected.user.id
+    const work = selected?.item?.id || selected?.bot?.workflow
+    if (!work) return false
+    if (selected?.bot && (row.user_id !== selected.bot.user_id || row.source_platform !== selected.bot.platform)) return false
+    if (work === 'other') return !data.items.some(item => item.id !== 'other' && (row.workflow_id === item.id || row.workflow_id.startsWith(item.id + '/')))
+    return row.workflow_id === work || row.workflow_id.startsWith(work + '/')
+  })
+
   const usage = selected?.usage
   const scopeRows = selected?.item || selected?.user
     ? Object.entries(selected.item?.by_scope || selected.user?.by_scope || {}).filter(([, value]) => value.call_count > 0 || value.total_cost_usd > 0)
@@ -223,11 +234,12 @@ export default function CostExplorer({ data, days, itemLabel }: {
         {usage ? <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label="Tracked cost" value={amountLabel(usage)} />
-            <Metric label="Input tokens" value={formatTokens(inputTokens(usage))} />
+            <Metric label="Fresh input" value={formatTokens(Math.max(0, inputTokens(usage) - (usage.cache_read_tokens ?? 0) - (usage.cache_write_tokens ?? 0)))} />
             <Metric label="Output tokens" value={formatTokens(usage.completion_tokens ?? 0)} />
-            <Metric label="Cached input" value={formatTokens((usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0))} />
+            <Metric label="Cached input" value={formatTokens(usage.cache_read_tokens ?? 0)} />
           </div>
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Cached input is included in input tokens.</p>
+          <div className="mt-3"><CostTokenBreakdown usage={usage} /></div>
+          <CostConversations key={selected.key} rows={conversations} />
           <PricingDetail usage={usage} />
           <Breakdown title="Activity" rows={scopeRows} />
           <Breakdown title="Models" rows={modelRows} />

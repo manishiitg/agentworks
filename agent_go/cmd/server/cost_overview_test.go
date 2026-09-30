@@ -21,7 +21,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	add := func(id, workflowID, scope, provider, model string, usd float64) {
 		t.Helper()
 		if err := ledger.Append(costledger.Entry{
-			EventID: id, Timestamp: ts, WorkflowID: workflowID, Scope: scope,
+			EventID: id, Timestamp: ts, WorkflowID: workflowID, Scope: scope, SessionID: "chat-" + id,
 			Provider: provider, ModelID: model, LLMCallCount: 1,
 			PromptTokens: 100, TotalCostUSD: usd, BillingBasis: "provider_actual",
 		}); err != nil {
@@ -42,6 +42,14 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	visible := func(id, kind string) bool { return id != "Workflow/secret" }
 
 	member := buildCostOverview(summary, visible, false)
+	if len(member.ByConversation) != 3 {
+		t.Fatalf("visible conversations=%d, want 3", len(member.ByConversation))
+	}
+	for _, conversation := range member.ByConversation {
+		if conversation.WorkflowID == "Workflow/secret" || conversation.SessionID == "chat-e5" || conversation.SessionID == "chat-e6" {
+			t.Fatalf("private conversation leaked: %+v", conversation)
+		}
+	}
 	if got, want := len(member.Items), 2; got != want {
 		t.Fatalf("member items = %d, want %d: %+v", got, want, member.Items)
 	}

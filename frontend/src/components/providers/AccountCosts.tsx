@@ -1,3 +1,4 @@
+import CostTokenBreakdown from './CostTokenBreakdown'
 import { useEffect, useState } from 'react'
 import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
@@ -40,6 +41,7 @@ function AccountRow({ account }: { account: ProviderAccountCost }) {
         <span className="text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{tokenText(account.total)}</span>
         <span className="w-20 text-right tabular-nums text-gray-900 dark:text-gray-100">{costText(account.total)}</span>
       </div>
+      {open && <div className="mt-2"><CostTokenBreakdown usage={account.total} /></div>}
       {open && split.length > 0 && (
         <table className="mt-2 w-full text-xs">
           <thead><tr className="text-left text-gray-500 dark:text-gray-400"><th className="py-1 pl-5 font-medium">Where</th><th className="py-1 font-medium">Person</th><th className="py-1 text-right font-medium">Input / output tokens</th><th className="py-1 text-right font-medium">Cost</th></tr></thead>

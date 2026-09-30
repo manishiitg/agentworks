@@ -192,10 +192,11 @@ func entryInputTokens(e Entry) int {
 // row.
 type DateAggregate struct {
 	Aggregate
-	ByModel          map[string]*Aggregate      `json:"by_model,omitempty"`
-	ByScope          map[string]*ScopeAggregate `json:"by_scope,omitempty"`
-	BySourcePlatform map[string]*Aggregate      `json:"by_source_platform,omitempty"`
-	WorkflowRunCount int                        `json:"workflow_run_count,omitempty"`
+	ByConversation   map[string]*ConversationAggregate `json:"by_conversation,omitempty"`
+	ByModel          map[string]*Aggregate             `json:"by_model,omitempty"`
+	ByScope          map[string]*ScopeAggregate        `json:"by_scope,omitempty"`
+	BySourcePlatform map[string]*Aggregate             `json:"by_source_platform,omitempty"`
+	WorkflowRunCount int                               `json:"workflow_run_count,omitempty"`
 	workflowRunIDs   map[string]struct{}
 }
 
@@ -219,15 +220,92 @@ type ExecutionAggregate struct {
 	ByPhase map[string]*Aggregate `json:"by_phase,omitempty"`
 }
 
+// ConversationAggregate links recorded usage to one actor's conversation in
+// one workspace. Executions are separate turns/agent runs, not model-call counts.
+type ConversationAggregate struct {
+	Aggregate
+	SessionID      string                            `json:"session_id"`
+	SourcePlatform string                            `json:"source_platform,omitempty"`
+	WorkflowID     string                            `json:"workflow_id"`
+	UserID         string                            `json:"user_id,omitempty"`
+	FirstSeen      time.Time                         `json:"first_seen"`
+	LastSeen       time.Time                         `json:"last_seen"`
+	ByExecution    map[string]*ConversationExecution `json:"by_execution"`
+}
+
+type ConversationExecution struct {
+	Aggregate
+	Scope     string                `json:"scope"`
+	FirstSeen time.Time             `json:"first_seen"`
+	LastSeen  time.Time             `json:"last_seen"`
+	ByModel   map[string]*Aggregate `json:"by_model,omitempty"`
+}
+
+func addConversationEntry(buckets map[string]*ConversationAggregate, e Entry) {
+	if strings.TrimSpace(e.SessionID) == "" {
+		return
+	}
+	key := e.WorkflowID + "\x1f" + e.UserID + "\x1f" + e.SessionID
+	if e.SourcePlatform != "" {
+		key += "\x1f" + e.SourcePlatform
+	}
+	b := buckets[key]
+	if b == nil {
+		b = &ConversationAggregate{SessionID: e.SessionID, SourcePlatform: e.SourcePlatform, WorkflowID: e.WorkflowID, UserID: e.UserID, FirstSeen: e.Timestamp, ByExecution: map[string]*ConversationExecution{}}
+		buckets[key] = b
+	}
+	b.Aggregate.add(e)
+	if e.Timestamp.Before(b.FirstSeen) {
+		b.FirstSeen = e.Timestamp
+	}
+	if e.Timestamp.After(b.LastSeen) {
+		b.LastSeen = e.Timestamp
+	}
+	executionID := firstConversationExecutionID(e)
+	turn := b.ByExecution[executionID]
+	if turn == nil {
+		turn = &ConversationExecution{Scope: e.Scope, FirstSeen: e.Timestamp, ByModel: map[string]*Aggregate{}}
+		b.ByExecution[executionID] = turn
+	}
+	turn.Aggregate.add(e)
+	if e.Timestamp.Before(turn.FirstSeen) {
+		turn.FirstSeen = e.Timestamp
+	}
+	if e.Timestamp.After(turn.LastSeen) {
+		turn.LastSeen = e.Timestamp
+	}
+	modelID := strings.TrimSpace(e.EffectiveModelID)
+	if modelID == "" {
+		modelID = e.ModelID
+	}
+	if modelID != "" {
+		if turn.ByModel[modelID] == nil {
+			turn.ByModel[modelID] = &Aggregate{}
+		}
+		turn.ByModel[modelID].add(e)
+	}
+}
+
+func firstConversationExecutionID(e Entry) string {
+	if id := strings.TrimSpace(e.ExecutionID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(e.RunID); id != "" {
+		return id
+	}
+	return e.EventID
+}
+
 // Summary is the aggregated view returned by Summarize.
 type Summary struct {
-	From             string                     `json:"from,omitempty"`
-	To               string                     `json:"to,omitempty"`
-	Total            Aggregate                  `json:"total"`
-	ByDate           map[string]*DateAggregate  `json:"by_date"`  // YYYY-MM-DD UTC
-	ByModel          map[string]*Aggregate      `json:"by_model"` // model_id
-	ByScope          map[string]*ScopeAggregate `json:"by_scope,omitempty"`
-	BySourcePlatform map[string]*Aggregate      `json:"by_source_platform,omitempty"`
+	ByConversation   map[string]*ConversationAggregate `json:"by_conversation,omitempty"`
+	From             string                            `json:"from,omitempty"`
+	To               string                            `json:"to,omitempty"`
+	Total            Aggregate                         `json:"total"`
+	ByDate           map[string]*DateAggregate         `json:"by_date"`  // YYYY-MM-DD UTC
+	ByModel          map[string]*Aggregate             `json:"by_model"` // model_id
+	ByScope          map[string]*ScopeAggregate        `json:"by_scope,omitempty"`
+	BySourcePlatform map[string]*Aggregate             `json:"by_source_platform,omitempty"`
 	// ByWorkflow keys spend by the raw workflow_id it was attributed to
 	// (a Workflow/<name> folder, a crew root, a chat folder). Events with no
 	// workflow_id land under "". Callers that present it fold subpaths and
@@ -709,6 +787,10 @@ func addEntryToExecutionBucket(bucket *ExecutionAggregate, e Entry) {
 func addEntryToSummary(summary *Summary, date string, e Entry) {
 	normalizeEntry(&e)
 	summary.Total.add(e)
+	if summary.ByConversation == nil {
+		summary.ByConversation = map[string]*ConversationAggregate{}
+	}
+	addConversationEntry(summary.ByConversation, e)
 	if summary.ByScope == nil {
 		summary.ByScope = make(map[string]*ScopeAggregate)
 	}
@@ -762,6 +844,10 @@ func addEntryToSummary(summary *Summary, date string, e Entry) {
 		summary.ByDate[date] = bucket
 	}
 	bucket.Aggregate.add(e)
+	if bucket.ByConversation == nil {
+		bucket.ByConversation = map[string]*ConversationAggregate{}
+	}
+	addConversationEntry(bucket.ByConversation, e)
 	if sourcePlatform != "" {
 		dateSourceBucket, ok := bucket.BySourcePlatform[sourcePlatform]
 		if !ok {
