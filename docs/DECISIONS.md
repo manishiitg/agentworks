@@ -98,6 +98,19 @@ Each entry says what was decided, why, and where it lives in the code.
   `agent_go/cmd/server/cost_overview.go`, `frontend/src/components/providers`.
 
 
+### 2026-09-30 — Code agents are told to keep to their own project on the shared server
+- A Code project's agent can install and run things on a server that other people's projects
+  share. One project's chat installed a browser IDE, exposed it to the internet through a
+  forwarder and browsed the server's folders (excellence). A prompt section, `code-host-safety`
+  (`prompt_sections.go`, Code product only), now tells the agent to: work inside its working
+  folder and never in `~` (a hidden private folder, so files created there are invisible to the
+  user); not look at folders or files outside it; not read environment variables or credentials
+  it was not given; not install, start or expose remote-access or hosting tools or bind to public
+  interfaces (a local dev server on `127.0.0.1` is fine); and not run harmful or unrelated tools.
+- This is a prompt-level guard only. It lowers the chance, it does not enforce anything: the lock,
+  a default-deny inbound firewall, an environment allowlist for shell commands and resource
+  limits are what enforce it, and none of those is done yet (see Open issues).
+
 ### 2026-09-30 — Typed slash commands in the browser terminal are limited to an allowlist
 - Slash commands change the CLI's own settings or run large commands, both of which the app
   offers itself. The session-switching ones (`/new`, `/clear`, `/resume`, `/fork`) leave the chat
@@ -301,6 +314,13 @@ Each entry says what was decided, why, and where it lives in the code.
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+- **A Code chat's shell command started processes outside the lock (found 2026-09-30).** They ran
+  as the server account with its full environment and reached the internet; shell commands also
+  inherit server secrets that are not on the environment denylist (`AUTH_SECRET`,
+  `ACCESS_PASSWORD`, `ADMIN_USERS`). Needs: close the way out of the lock, an environment
+  allowlist in `buildNativeEnvironment`, a default-deny inbound firewall, per-CLI resource limits,
+  and rotation of the exposed secrets. Longer term, a separate Linux account per user.
 
 - **Confinement can be skipped when the launcher is unavailable.**
   `applyCLILandlock` logs and runs the CLI unconfined when `CLILandlockRunner`
