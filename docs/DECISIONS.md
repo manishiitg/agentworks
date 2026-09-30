@@ -7,6 +7,16 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Automatic walkthroughs wait for startup to resolve
+- Wait for provider onboarding to be cleared and for the initial automation
+  manifests to load before opening a tour. Crew and Code use their existing
+  project-loading readiness flag. A saved automation initially looks empty
+  until its manifest arrives; opening that temporary screen's tour caused a
+  flash on reload before the restored screen or Providers replaced it.
+- Manual Help & walkthrough remains available during startup, and dismissal
+  preferences remain scoped to each screen in browser or Electron storage.
+- Code: `frontend/src/components/ModePresetBar.tsx`.
+
 ### 2026-09-30 — Coding CLIs run under the Landlock lock for everyone, everywhere
 - `AGENTWORKS_CLI_LANDLOCK=on` and `AGENTWORKS_CLI_FULL=on` on RTS, excellence,
   Confida and SparkQuill (service unit / `product.env`). No staged rollout, no
