@@ -66,6 +66,7 @@ const CostsPopup: React.FC<CostsPopupProps> = ({
       headerClassName={headerRowClass}
       header={
         <CostsHeader
+          scopedCosts={data.scopedCosts}
           startedAt={startedAt}
           overallSummary={overallSummary}
           aggregateSummary={aggregateSummary}

@@ -425,3 +425,38 @@ func TestMissingUsageIsASubsetOfUnpricedCalls(t *testing.T) {
 		t.Fatalf("incorrect pricing coverage: %+v", merged)
 	}
 }
+
+func TestWorkflowAllTimeInputAndCoverageMatchWindowAggregates(t *testing.T) {
+	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	for i, entry := range []Entry{
+		{Provider: "muse-cli", PromptTokens: 100, CacheReadTokens: 80},
+		{Provider: "claude-code", PromptTokens: 200, CacheReadTokens: 120, CacheWriteTokens: 30, OperationMetadata: map[string]interface{}{"prompt_tokens_include_cache": true}},
+		{Provider: "codex-cli", PromptTokens: 40, CacheReadTokens: 60, OperationMetadata: map[string]interface{}{"prompt_tokens_include_cache": false}},
+		{Provider: "anthropic", PromptTokens: 10, CacheReadTokens: 20, CacheWriteTokens: 5},
+		{Provider: "muse-cli", BillingBasis: "unpriced"},
+	} {
+		entry.EventID = fmt.Sprintf("window-%d", i)
+		entry.Timestamp = time.Date(2026, 9, 20, 10, i, 0, 0, time.UTC)
+		entry.WorkflowID = "Workflow/test"
+		entry.Scope = "chat"
+		entry.LLMCallCount = 1
+		if err := ledger.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	window, err := ledger.SummarizeWorkflow("Workflow/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	allTime, _, err := ledger.SummarizeWorkflowOverview("Workflow/test", "2026-09-01", "2026-09-30")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allTime.Total.InputTokens != 435 || allTime.Total.MissingUsageCallCount != 1 || allTime.Total.InputTokens != window.Total.InputTokens || allTime.Total.MissingUsageCallCount != window.Total.MissingUsageCallCount || allTime.ByScope["chat"].InputTokens != 435 {
+		t.Fatalf("all-time and window usage diverged: all time %+v, window %+v", allTime.Total, window.Total)
+	}
+}

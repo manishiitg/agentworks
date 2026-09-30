@@ -1,3 +1,4 @@
+import type { CostSummary } from "../../../services/api-types";
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import {
@@ -137,3 +138,17 @@ it("replays report methods called before host injection", async () => {
     "$100.00",
   );
 });
+
+it("renders normalized input/output and explains missing usage in cost reports", async () => {
+  const data = api()
+  const summary: CostSummary = {
+    total: { prompt_tokens: 100, completion_tokens: 10, reasoning_tokens: 0, cache_read_tokens: 80, cache_write_tokens: 0, call_count: 1, total_cost_usd: 0, input_tokens: 100, unpriced_call_count: 1, missing_usage_call_count: 1 },
+    by_date: {}, by_model: {}, by_scope: {},
+  }
+  data.getCosts = async () => ({ success: true, runs: [], phase_daily_costs: [], scoped_costs: summary })
+  const container = host()
+  await renderReportCosts(document, data, container)
+  expect(container.shadowRoot!.textContent).toContain("100 input · 10 output")
+  expect(container.shadowRoot!.textContent).toContain("Not priced")
+  expect(container.shadowRoot!.textContent).toContain("1 call did not report tokens or cost")
+})

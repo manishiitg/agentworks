@@ -7,6 +7,20 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Every ledger cost surface uses normalized input
+- Extend the Providers token correction to workflow, Code and Crew cost
+  dialogs, activity/execution/phase/model details, daily history and embedded
+  report widgets. Input and output replace model-call headline counts there.
+- Preserve `input_tokens` and pricing coverage when the client merges scopes
+  and executions. SQL all-time workflow totals use the same inclusion flag
+  and historical Muse fallback as per-event summaries, so opening a cost
+  dialog does not turn normalized input into zero or drop missing-usage data.
+- Existing run/phase artifacts already carry input/output separately; their
+  USD estimates and immutable raw event/token records are preserved.
+- Code: `agent_go/pkg/costledger/sqlite.go`, `frontend/src/utils/costTokens.ts`,
+  `frontend/src/utils/costActivityBreakdown.ts`, workflow `costs` components
+  and `reportWidgets/reportOperationalMetrics.ts`.
+
 ### 2026-09-30 — Costs shows input and output, with cache counted once
 - The dedicated Costs summary and its user/work/project/account breakdowns
   show input tokens, output tokens and cached input. Cache is part of input;

@@ -168,6 +168,8 @@ export interface CombinedDailyCostSummaryEntry {
   builderTokens: number
   pulseTokens: number | null
   totalTokens: number
+  totalInputTokens?: number
+  totalOutputTokens?: number
   llmDurationMS: number
   runCount: number
 }

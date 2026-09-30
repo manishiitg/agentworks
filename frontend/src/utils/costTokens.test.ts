@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import type { CostAggregate } from '../../services/api-types'
+import type { CostAggregate } from '../services/api-types'
 import { inputTokens } from './costTokens'
 
 it('uses normalized input for mixed providers and supports older Muse reports', () => {

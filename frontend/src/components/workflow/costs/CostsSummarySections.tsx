@@ -43,21 +43,21 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                         {formatUSD(phaseCostSummary.totalCost)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        {formatTokens(phaseCostSummary.totalTokens)} tokens
+                        {formatTokens(phaseCostSummary.totalInputTokens)} input · {formatTokens(phaseCostSummary.totalOutputTokens)} output
                       </div>
                     </div>
 
                     <div className="bg-card border border-border rounded-lg p-3">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Automation Builder</div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Input tokens</div>
                       <div className="text-2xl font-bold text-foreground">
-                        {formatUSD(phaseCostSummary.phaseCosts.find(phase => phase.phaseID === 'workflow-builder')?.totalCost)}
+                        {formatTokens(phaseCostSummary.totalInputTokens)}
                       </div>
                     </div>
 
                     <div className="bg-card border border-border rounded-lg p-3">
-                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">LLM Calls</div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Output tokens</div>
                       <div className="text-2xl font-bold text-foreground">
-                        {phaseCostSummary.totalLLMCalls.toLocaleString()}
+                        {formatTokens(phaseCostSummary.totalOutputTokens)}
                       </div>
                     </div>
 
@@ -75,8 +75,8 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                         <thead>
                           <tr className="text-muted-foreground border-b border-border pb-2">
                             <th className="text-left font-medium pb-2">Phase</th>
-                            <th className="text-right font-medium pb-2">Calls</th>
-                            <th className="text-right font-medium pb-2">Tokens</th>
+                            <th className="text-right font-medium pb-2">Input tokens</th>
+                            <th className="text-right font-medium pb-2">Output tokens</th>
                             <th className="text-right font-medium pb-2">Cost</th>
                           </tr>
                         </thead>
@@ -88,10 +88,10 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                                 <div className="text-[10px] text-muted-foreground font-mono">{phase.phaseID}</div>
                               </td>
                               <td className="py-2 text-right font-mono text-muted-foreground">
-                                {phase.llmCalls.toLocaleString()}
+                                {phase.inputTokens.toLocaleString()}
                               </td>
                               <td className="py-2 text-right font-mono text-muted-foreground">
-                                {(phase.inputTokens + phase.outputTokens).toLocaleString()}
+                                {phase.outputTokens.toLocaleString()}
                               </td>
                               <td className="py-2 text-right font-bold text-amber-600 dark:text-amber-400">
                                 {formatUSD(phase.totalCost)}
@@ -101,10 +101,10 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                           <tr className="bg-muted/30 font-semibold">
                             <td className="py-2 text-foreground">Total</td>
                             <td className="py-2 text-right font-mono text-muted-foreground">
-                              {phaseCostSummary.totalLLMCalls.toLocaleString()}
+                              {phaseCostSummary.totalInputTokens.toLocaleString()}
                             </td>
                             <td className="py-2 text-right font-mono text-muted-foreground">
-                              {phaseCostSummary.totalTokens.toLocaleString()}
+                              {phaseCostSummary.totalOutputTokens.toLocaleString()}
                             </td>
                             <td className="py-2 text-right font-bold text-amber-600 dark:text-amber-400">
                               {formatUSD(phaseCostSummary.totalCost)}
@@ -125,8 +125,8 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                           <tr className="text-muted-foreground border-b border-border pb-2">
                             <th className="text-left font-medium pb-2">Model</th>
                             <th className="text-right font-medium pb-2">Provider</th>
-                            <th className="text-right font-medium pb-2">Calls</th>
-                            <th className="text-right font-medium pb-2">Tokens</th>
+                            <th className="text-right font-medium pb-2">Input tokens</th>
+                            <th className="text-right font-medium pb-2">Output tokens</th>
                             <th className="text-right font-medium pb-2">Cost</th>
                           </tr>
                         </thead>
@@ -140,10 +140,10 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                                 {model.provider}
                               </td>
                               <td className="py-2 text-right font-mono text-muted-foreground">
-                                {model.llmCalls.toLocaleString()}
+                                {model.inputTokens.toLocaleString()}
                               </td>
                               <td className="py-2 text-right font-mono text-muted-foreground">
-                                {(model.inputTokens + model.outputTokens).toLocaleString()}
+                                {model.outputTokens.toLocaleString()}
                               </td>
                               <td className="py-2 text-right font-bold text-amber-600 dark:text-amber-400">
                                 {formatUSD(model.totalCost)}
@@ -178,7 +178,7 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                         {formatUSD(aggregateSummary.totalCost)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        {formatTokens(aggregateSummary.totalTokens)} tokens
+                        {formatTokens(aggregateSummary.totalInputTokens)} input · {formatTokens(aggregateSummary.totalOutputTokens)} output
                       </div>
                     </div>
 

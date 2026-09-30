@@ -250,3 +250,16 @@ describe('phaseLabel', () => {
     expect(phaseLabel('some_future_phase')).toBe('some future phase')
   })
 })
+
+it('preserves canonical input and missing usage when merging scopes and executions', () => {
+  const inclusive = { ...cost(1), input_tokens: 100, cache_read_tokens: 80, unpriced_call_count: 2, missing_usage_call_count: 1 }
+  const exclusive = { ...cost(1), input_tokens: 180, cache_read_tokens: 80 }
+  const result = buildCostActivityBreakdown({ by_scope: {
+    builder: { ...inclusive, by_execution: { one: inclusive } },
+    chat: { ...exclusive, by_execution: { two: exclusive } },
+  } })[0]
+  expect(result.total.input_tokens).toBe(280)
+  expect(result.total.unpriced_call_count).toBe(2)
+  expect(result.total.missing_usage_call_count).toBe(1)
+  expect(result.executions[0].cost.input_tokens).toBeDefined()
+})

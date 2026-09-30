@@ -97,6 +97,8 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                   const totalsRowSource = routeFilterKey
                     ? visibleStepCosts.reduce((acc, step) => ({
                         tokens: acc.tokens + step.inputTokens + step.outputTokens,
+                        inputTokens: acc.inputTokens + step.inputTokens,
+                        outputTokens: acc.outputTokens + step.outputTokens,
                         execution: acc.execution + step.execution,
                         learning: acc.learning + step.learning,
                         knowledgebase: acc.knowledgebase + step.knowledgebase,
@@ -104,10 +106,12 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                         workshop: acc.workshop + step.workshop,
                         evaluation: acc.evaluation + step.evaluation,
                         totalCost: acc.totalCost + step.totalCost,
-                      }), { tokens: 0, execution: 0, learning: 0, knowledgebase: 0, routing: 0, workshop: 0, evaluation: 0, totalCost: 0 })
+                      }), { tokens: 0, inputTokens: 0, outputTokens: 0, execution: 0, learning: 0, knowledgebase: 0, routing: 0, workshop: 0, evaluation: 0, totalCost: 0 })
                     : costSummary
                       ? {
                           tokens: costSummary.totalTokens,
+                          inputTokens: costSummary.totalInputTokens,
+                          outputTokens: costSummary.totalOutputTokens,
                           execution: costSummary.stageCosts.execution,
                           learning: costSummary.stageCosts.learning,
                           knowledgebase: costSummary.stageCosts.knowledgebase,
@@ -178,7 +182,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                               {formatUSD(costSummary.totalCost)}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              ({formatTokens(costSummary.totalTokens)})
+                              ({formatTokens(costSummary.totalInputTokens)} input · {formatTokens(costSummary.totalOutputTokens)} output)
                             </span>
                           </div>
                         </div>
@@ -268,7 +272,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                     <thead>
                                       <tr className="text-muted-foreground border-b border-border pb-2">
                                         <th className="text-left font-medium pb-2">Step</th>
-                                        <th className="text-right font-medium pb-2">Tokens</th>
+                                        <th className="text-right font-medium pb-2">Input / output</th>
                                         <th className="text-right font-medium pb-2 text-blue-500">Execution</th>
                                         <th className="text-right font-medium pb-2 text-purple-500">Learning</th>
                                         <th className="text-right font-medium pb-2 text-teal-500">KB</th>
@@ -312,7 +316,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                             </div>
                                           </td>
                                           <td className="py-2 text-right font-mono text-muted-foreground">
-                                            {(step.inputTokens + step.outputTokens).toLocaleString()}
+                                            {formatTokens(step.inputTokens)} input · {formatTokens(step.outputTokens)} output
                                           </td>
                                           <td className="py-2 text-right font-mono text-blue-600 dark:text-blue-400">
                                             {formatUSD(step.execution)}
@@ -342,7 +346,7 @@ const RunCostsSection: React.FC<RunCostsSectionProps> = ({
                                         <tr className="bg-muted/30 font-semibold">
                                           <td className="py-2 text-foreground">{routeFilterKey ? 'Total (this route)' : 'Total'}</td>
                                           <td className="py-2 text-right font-mono text-muted-foreground">
-                                            {totalsRowSource.tokens.toLocaleString()}
+                                            {formatTokens(totalsRowSource.inputTokens)} input · {formatTokens(totalsRowSource.outputTokens)} output
                                           </td>
                                           <td className="py-2 text-right font-mono text-blue-600 dark:text-blue-400">
                                             {formatUSD(totalsRowSource.execution)}

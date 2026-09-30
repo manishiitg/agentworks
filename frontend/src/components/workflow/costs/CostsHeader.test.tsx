@@ -37,7 +37,7 @@ function renderHeaderWithTotals() {
     <CostsHeader
       loading={false}
       loadAllCosts={() => Promise.resolve()}
-      overallSummary={{ totalCost: 245.6234, totalTokens: 1548130000, totalRuns: 10 }}
+      overallSummary={{ totalCost: 245.6234, totalTokens: 1548130000, totalInputTokens: 1500000000, totalOutputTokens: 48130000, totalRuns: 10 }}
       aggregateSummary={null}
       phaseCostSummary={phaseSummary}
       headerAction={<button type="button" data-testid="ask-ai">Ask AI</button>}
@@ -63,6 +63,8 @@ describe('CostsHeader', () => {
     const html = renderHeaderWithTotals()
     expect(html).toContain('$245.6234')
     expect(html).toContain('Builder $261.8748')
+    expect(html).toContain('1500.00M input')
+    expect(html).toContain('48.13M output')
     expect(html).not.toContain('text-green-')
     expect(html).not.toContain('text-amber-')
   })

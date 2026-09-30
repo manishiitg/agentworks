@@ -6,7 +6,7 @@ import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
-import { inputTokens, pricingCoverageText } from './costTokens'
+import { inputTokens, pricingCoverageText } from '../../utils/costTokens'
 import { AccountCostList } from './AccountCosts'
 
 const RANGES = [

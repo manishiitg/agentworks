@@ -1,3 +1,4 @@
+import { totalTokens } from '../../../utils/costTokens'
 import type { CostAggregate, CostSummary } from '../../../services/api-types'
 
 export type ModelCostRow = {
@@ -27,8 +28,8 @@ export function buildModelCostRows(summary?: Pick<CostSummary, 'by_model'> | nul
       agentLabel: costAgentLabel(usage.provider || '', modelId),
       usage,
     }))
-    .filter(row => row.usage.call_count > 0 || row.usage.prompt_tokens + row.usage.completion_tokens > 0 || row.usage.total_cost_usd > 0)
+    .filter(row => row.usage.call_count > 0 || totalTokens(row.usage) > 0 || row.usage.total_cost_usd > 0)
     .sort((left, right) => right.usage.total_cost_usd - left.usage.total_cost_usd ||
-      (right.usage.prompt_tokens + right.usage.completion_tokens) - (left.usage.prompt_tokens + left.usage.completion_tokens) ||
+      totalTokens(right.usage) - totalTokens(left.usage) ||
       left.modelId.localeCompare(right.modelId))
 }

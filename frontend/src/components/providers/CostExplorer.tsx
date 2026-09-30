@@ -9,7 +9,7 @@ import type {
   CostOverviewUser,
 } from '../../services/api-types'
 import { formatTokens } from '../workflow/costs/helpers'
-import { inputTokens, tokenSummary, pricingCoverageText } from './costTokens'
+import { inputTokens, tokenSummary, pricingCoverageText } from '../../utils/costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
 type Group = 'user' | 'workflow' | 'crew' | 'code' | 'product' | 'bot' | 'mcp' | 'other'

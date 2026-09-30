@@ -233,6 +233,15 @@ func (s *sqliteLedger) summarizeWorkflowTotals(workflowID string) (*Summary, err
 	}
 	const query = `
 SELECT scope,
+       COALESCE(SUM(prompt_tokens + CASE
+         WHEN json_type(operation_metadata_json, '$.prompt_tokens_include_cache') = 'true' THEN 0
+         WHEN json_type(operation_metadata_json, '$.prompt_tokens_include_cache') = 'false' THEN cache_read_tokens + cache_write_tokens
+         WHEN LOWER(TRIM(COALESCE(NULLIF(TRIM(effective_provider), ''), requested_provider))) IN ('muse-cli', 'muse_cli') THEN 0
+         ELSE cache_read_tokens + cache_write_tokens END), 0),
+       COALESCE(SUM(CASE WHEN llm_call_count > 0 AND billing_basis = 'unpriced'
+         AND prompt_tokens = 0 AND completion_tokens = 0 AND reasoning_tokens = 0
+         AND cache_read_tokens = 0 AND cache_write_tokens = 0 AND total_cost_usd = 0
+         THEN llm_call_count ELSE 0 END), 0),
        COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0),
        COALESCE(SUM(reasoning_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
        COALESCE(SUM(cache_write_tokens), 0), COALESCE(SUM(total_cost_usd), 0),
@@ -258,7 +267,7 @@ GROUP BY scope`
 		var scope string
 		var aggregate Aggregate
 		if err := rows.Scan(
-			&scope,
+			&scope, &aggregate.InputTokens, &aggregate.MissingUsageCallCount,
 			&aggregate.PromptTokens, &aggregate.CompletionTokens,
 			&aggregate.ReasoningTokens, &aggregate.CacheReadTokens,
 			&aggregate.CacheWriteTokens, &aggregate.TotalCostUSD,

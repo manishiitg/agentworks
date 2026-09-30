@@ -1,7 +1,7 @@
-import type { CostAggregate } from '../../services/api-types'
-import { formatTokens } from '../workflow/costs/helpers'
+import type { CostAggregate } from '../services/api-types'
+import { formatTokens } from '../components/workflow/costs/helpers'
 
-export const inputTokens = (usage?: CostAggregate) => {
+export const inputTokens = (usage?: Partial<CostAggregate>) => {
   if (usage?.input_tokens !== undefined) return usage.input_tokens
   // Compatibility with older servers: Muse input already contains cache.
   const cache = usage?.provider === 'muse-cli' || usage?.provider === 'muse_cli'
@@ -20,3 +20,6 @@ export const pricingCoverageText = (usage: CostAggregate) => {
     unpriced > 0 ? `${unpriced.toLocaleString()} ${unpriced === 1 ? 'call has' : 'calls have'} tokens but no price: the provider did not report a cost and no model rate is available. These tokens are included; their cost is unknown.` : '',
   ].filter(Boolean).join(' ')
 }
+
+export const totalTokens = (usage?: Partial<CostAggregate>) =>
+  inputTokens(usage) + (usage?.completion_tokens ?? 0)

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
 import { llmConfigService } from '../../services/llm-config-api'
-import { tokenSummary } from './costTokens'
+import { tokenSummary } from '../../utils/costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
 const currency = (amount: number) => {

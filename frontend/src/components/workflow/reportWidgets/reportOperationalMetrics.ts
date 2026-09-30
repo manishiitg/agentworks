@@ -1,4 +1,6 @@
+import { inputTokens, pricingCoverageText } from "../../../utils/costTokens";
 import type {
+  CostAggregate,
   CostSummary,
   WorkflowCostsResponse,
 } from "../../../services/api-types";
@@ -74,6 +76,8 @@ const money = (n: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(n);
+const recordedCost = (usage: CostAggregate) =>
+  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? "Not priced" : money(usage.total_cost_usd);
 function element<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,
@@ -195,8 +199,8 @@ export function renderReportCosts(
         period = el("article");
       total.append(
         el("p", "All-time recorded cost", "eyebrow"),
-        el("p", money(s.total.total_cost_usd), "value"),
-        el("p", `${number(s.total.call_count)} calls · USD`, "meta"),
+        el("p", recordedCost(s.total), "value"),
+        el("p", `${number(inputTokens(s.total))} input · ${number(s.total.completion_tokens)} output · USD`, "meta"),
       );
       period.append(
         el("p", "Selected window", "eyebrow"),
@@ -211,6 +215,8 @@ export function renderReportCosts(
       );
       grid.append(total, period);
       section.append(grid);
+      const coverage = pricingCoverageText(s.total);
+      if (coverage) section.append(el("p", coverage, "meta"));
       const days = Object.entries(s.by_date || {}).sort(([a], [b]) =>
         a.localeCompare(b),
       );
@@ -255,31 +261,34 @@ export function renderReportCosts(
       for (const [label, headings, rows] of [
         [
           "Daily history · selected window (UTC)",
-          ["Date", "Recorded cost", "Calls"],
+          ["Date", "Recorded cost", "Input tokens", "Output tokens"],
           [...days]
             .reverse()
             .map(([date, d]) => [
               date,
-              money(d.total_cost_usd),
-              number(d.call_count),
+              recordedCost(d),
+              number(inputTokens(d)),
+              number(d.completion_tokens),
             ]),
         ],
         [
           "Activity breakdown · all time",
-          ["Activity", "Recorded cost", "Calls"],
+          ["Activity", "Recorded cost", "Input tokens", "Output tokens"],
           Object.entries(s.by_scope || {}).map(([scope, d]) => [
             scope.replaceAll("_", " "),
-            money(d.total_cost_usd),
-            number(d.call_count),
+            recordedCost(d),
+            number(inputTokens(d)),
+              number(d.completion_tokens),
           ]),
         ],
         [
           "Model breakdown · selected window",
-          ["Model", "Recorded cost", "Calls"],
+          ["Model", "Recorded cost", "Input tokens", "Output tokens"],
           Object.entries(s.by_model || {}).map(([model, d]) => [
             model,
-            money(d.total_cost_usd),
-            number(d.call_count),
+            recordedCost(d),
+            number(inputTokens(d)),
+              number(d.completion_tokens),
           ]),
         ],
       ] as Array<[string, string[], string[][]]>) {

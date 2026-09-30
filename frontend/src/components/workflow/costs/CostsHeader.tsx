@@ -1,4 +1,6 @@
 import React from 'react'
+import type { CostSummary } from '../../../services/api-types'
+import { pricingCoverageText } from '../../../utils/costTokens'
 import { DollarSign, Coins } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatUSD, formatTokens } from './helpers'
@@ -7,6 +9,7 @@ import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
 
 type CostsHeaderProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' | 'phaseCostSummary' | 'loading' | 'loadAllCosts'> & {
+  scopedCosts?: CostSummary | null
   startedAt?: string | null
   headerAction?: React.ReactNode
 }
@@ -17,6 +20,7 @@ type CostsHeaderProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' | 
 // a strip below instead of jumbled with the actions.
 const CostsHeader: React.FC<CostsHeaderProps> = ({
   startedAt,
+  scopedCosts,
   overallSummary,
   aggregateSummary,
   phaseCostSummary,
@@ -39,11 +43,11 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
       below={overallSummary ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
         <div className="font-semibold text-foreground">
-          {formatUSD(overallSummary.totalCost)}
+          {overallSummary.totalCost === 0 && (scopedCosts?.total.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(overallSummary.totalCost)}
         </div>
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Coins className="w-3.5 h-3.5" />
-          {formatTokens(overallSummary.totalTokens)} tokens
+          {formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output
         </div>
         {aggregateSummary && (
           <div className="text-muted-foreground">
@@ -60,6 +64,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
             Builder {formatUSD(phaseCostSummary.totalCost)}
           </div>
         )}
+        {scopedCosts && pricingCoverageText(scopedCosts.total) && <div className="w-full text-muted-foreground">{pricingCoverageText(scopedCosts.total)}</div>}
         </div>
       ) : undefined}
     />
