@@ -7,6 +7,14 @@ Each entry says what was decided, why, and where it lives in the code.
 
 ## Decisions
 
+### 2026-09-30 — Agy tool calls show while the turn runs, not only at the end
+- Agy has no live tool stream; its calls are read from the conversation database.
+  They were published only once the whole turn settled, so a 4-minute Confida turn
+  showed no tools until the end. `ReadRetainedTurnStructuredProgressMessages` now
+  also publishes calls a later step follows (`agyCompletedToolCallsSince`): tools
+  run one after another, so those have finished. The newest step waits for the next
+  poll. Code: provider repo `pkg/adapters/agycli`. Not verified live yet.
+
 ### 2026-09-30 — Costs shows prompt character counts only
 - Replace the saved prompt text preview with character counts for the latest
   saved system and developer instructions, as requested. The Costs history GET
