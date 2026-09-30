@@ -336,3 +336,25 @@ func TestSharedConnectUsesSignInApp(t *testing.T) {
 		t.Fatalf("with the app the shared connect goes straight to sign-in: start=%+v discovery=%+v err=%v", start, discovery, err)
 	}
 }
+
+// The Sign-in apps card manages only Google and GitHub (owner decision 2026-09-30): a
+// provider that merely has no automatic registration, such as Slack or Atlassian, gets no
+// card. Its connector still works if the person brings their own OAuth app.
+func TestSignInAppsCoverOnlyGoogleAndGitHub(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withPersonalMCPRoot(t)
+	servers := map[string]mcpclient.MCPServerConfig{
+		"GoogleGmail": {URL: "https://gmailmcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
+		"GoogleDrive": {URL: "https://drivemcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
+		"GitHub":      {URL: "https://api.githubcopilot.com/mcp/", OAuth: &oauth.OAuthConfig{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"}},
+		"Slack":       {URL: "https://mcp.slack.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://slack.com/oauth/v2_user/authorize", TokenURL: "https://slack.com/api/oauth.v2.user.access"}},
+		"Atlassian":   {URL: "https://mcp.atlassian.com/v1/sse", OAuth: &oauth.OAuthConfig{AuthURL: "https://auth.atlassian.com/authorize", TokenURL: "https://auth.atlassian.com/oauth/token"}},
+	}
+	var keys []string
+	for _, group := range mcpAppGroupsFor(servers) {
+		keys = append(keys, group.Key)
+	}
+	if strings.Join(keys, ",") != "github,google" {
+		t.Fatalf("sign-in app cards = %v, want only github and google", keys)
+	}
+}
