@@ -1040,18 +1040,20 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		result, err := findScheduleByIDAny(r.Context(), id)
+		refused := false
+		result, err := setScheduleEnabled(r.Context(), id, true, func(workspacePath string) bool {
+			refused = !requireWorkflowOwner(w, r, workspacePath)
+			return !refused
+		}, nil)
+		if refused {
+			return
+		}
 		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
-			return
-		}
-
-		result.Manifest.Schedules[result.Index].Enabled = true
-		if err := WriteWorkflowManifest(r.Context(), result.WorkspacePath, result.Manifest); err != nil {
-			http.Error(w, "failed to write manifest: "+err.Error(), http.StatusInternalServerError)
+			if errors.Is(err, errScheduleChangeRefused) || strings.Contains(err.Error(), "not found") {
+				http.Error(w, "not found", http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
@@ -1080,20 +1082,26 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		result, err := findScheduleByIDAny(r.Context(), id)
+		refused := false
+		var state ScheduleRuntimeState
+		result, err := setScheduleEnabled(r.Context(), id, false, func(workspacePath string) bool {
+			refused = !requireWorkflowOwner(w, r, workspacePath)
+			return !refused
+		}, func(workspacePath string) {
+			if found, findErr := findScheduleByIDAny(r.Context(), id); findErr == nil {
+				state = runtimeStateForScheduleResult(svc, found, id)
+			}
+			_ = svc.RemoveWorkflowJob(workspacePath, id)
+		})
+		if refused {
+			return
+		}
 		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
-			return
-		}
-
-		state := runtimeStateForScheduleResult(svc, result, id)
-		_ = svc.RemoveWorkflowJob(result.WorkspacePath, id)
-		result.Manifest.Schedules[result.Index].Enabled = false
-		if err := WriteWorkflowManifest(r.Context(), result.WorkspacePath, result.Manifest); err != nil {
-			http.Error(w, "failed to write manifest: "+err.Error(), http.StatusInternalServerError)
+			if errors.Is(err, errScheduleChangeRefused) || strings.Contains(err.Error(), "not found") {
+				http.Error(w, "not found", http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		svc.InvalidateWorkflowManifestCache()
