@@ -23,10 +23,13 @@ auto_pull_local_checkouts() {
         GIT_TERMINAL_PROMPT=0 git -C "$repo" fetch -q origin main 2>/dev/null || { echo "⚠️  $(basename "$repo"): could not fetch origin (offline?); running as is"; continue; }
         behind="$(git -C "$repo" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
         [ "$behind" = "0" ] && continue
-        if [ "$branch" != "main" ] || [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
+        # frontend/public/runtime-config.js is rewritten by this script on every start; it is
+        # not someone's work, so it neither blocks the update nor survives it.
+        if [ "$branch" != "main" ] || [ -n "$(git -C "$repo" status --porcelain 2>/dev/null | grep -v ' frontend/public/runtime-config.js$')" ]; then
             echo "⚠️  $(basename "$repo") is $behind commit(s) behind origin/main but has uncommitted changes or is not on main; not updating it."
             continue
         fi
+        git -C "$repo" checkout -q -- frontend/public/runtime-config.js 2>/dev/null
         if git -C "$repo" merge -q --ff-only origin/main 2>/dev/null; then
             echo "⬇️  $(basename "$repo"): updated to origin/main (+$behind commits)"
             [ "$repo" = "$root" ] && updated_self=1
