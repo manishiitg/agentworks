@@ -30,6 +30,24 @@ Design references for the linked runtime decisions:
   Evidence, scope and qualification plan:
   [progressive discovery design](design/progressive_prompt_discovery.md).
 
+### 2026-09-30 — AUTH_SECRET is cached at startup and cleared from the environment
+- The server read `AUTH_SECRET` from the environment on every call, so the
+  secret stayed in the environment of every child process (agent shells, CLIs,
+  tmux). It is now read once at startup into memory (`InitAuthSecretCache`,
+  `services.CacheSecretsKey`) and cleared (`ClearAuthSecretFromEnv`); readers
+  use `GetAuthSecret`, which prefers a live env var (tests, CLI commands) and
+  falls back to the cache. Same shape as the existing bridge-token handling.
+- The workspace service never reads the secret and now unsets it at startup;
+  the native shell denylist also blocks it, so shells stay clean even if a
+  future path re-exports it. Docker shells were already allowlisted.
+- Spawn sites that pass the full parent env through (`os.Environ`/nil-`Env`
+  execs) are unchanged by this commit; they inherit a clean environment now,
+  and minimal per-site envs remain follow-up work.
+- Code: `agent_go/cmd/server/auth_middleware.go`, `server.go`,
+  `services/workspace_config.go`, `workspace/server.go`,
+  `workspace/security/environment.go`. Tests: `auth_cache_test.go`,
+  `workspace_config_key_test.go`, `environment_bridge_env_test.go`.
+
 ### 2026-09-30 — Workspace ZIP backup export/import removed
 - Removed `POST /api/workspace/export` and `POST /api/workspace/import`
   (`workspace/handlers/backup.go` deleted, routes dropped from

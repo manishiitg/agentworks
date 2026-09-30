@@ -1802,6 +1802,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := ValidateConfiguredAuthSecret(); err != nil {
 		log.Fatalf("[AUTH] FATAL: %v. Generate a random secret and add it to your deployment configuration.", err)
 	}
+	// Cache the auth secret in memory, then clear it from the environment so
+	// no child process (agent shells, CLIs, tmux panes, anything exec'd with
+	// the default env) can inherit it. All readers go through GetAuthSecret
+	// and the services key cache from here on. Mirrors the MCP token handling
+	// below, but earlier, so even startup-time spawns never see the secret.
+	InitAuthSecretCache()
+	services.CacheSecretsKey()
+	ClearAuthSecretFromEnv()
 	// Import AUTH_USERS into config/users.json and apply ADMIN_USERS once the
 	// workspace API (which stores that file) answers. Retried briefly because
 	// the workspace server usually starts in parallel with this one.

@@ -135,6 +135,9 @@ func buildNativeEnvironment() []string {
 		// mint a token for any session.
 		"MCP_SERVER_API_TOKEN":    true,
 		"MCP_BRIDGE_TOKEN_SECRET": true,
+		// The JWT signing and stored-secret encryption key: a shell holding
+		// it could forge sessions and decrypt stored secrets.
+		"AUTH_SECRET": true,
 	}
 
 	var env []string

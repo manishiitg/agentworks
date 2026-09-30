@@ -149,9 +149,28 @@ func GetDefaultUserID() string {
 	return "default"
 }
 
+// startupAuthSecret caches AUTH_SECRET in memory at boot. The env var is
+// cleared right after (ClearAuthSecretFromEnv) so child processes (agent
+// shells, CLIs, tmux) can never inherit it; see resolveBridgeTokenSecret
+// for the same pattern.
+var startupAuthSecret []byte
+
+// InitAuthSecretCache reads AUTH_SECRET into memory. Call once at server
+// startup, before ClearAuthSecretFromEnv.
+func InitAuthSecretCache() {
+	startupAuthSecret = []byte(strings.TrimSpace(os.Getenv("AUTH_SECRET")))
+}
+
+// ClearAuthSecretFromEnv removes AUTH_SECRET from the process environment so
+// spawned children cannot inherit it. Server code keeps working through the
+// startup cache in GetAuthSecret.
+func ClearAuthSecretFromEnv() {
+	os.Unsetenv("AUTH_SECRET")
+}
+
 // ValidateConfiguredAuthSecret verifies the runtime JWT/encryption secret is explicit.
 func ValidateConfiguredAuthSecret() error {
-	return ValidateAuthSecretValue(os.Getenv("AUTH_SECRET"))
+	return ValidateAuthSecretValue(string(GetAuthSecret()))
 }
 
 // ValidateAuthSecretValue verifies an AUTH_SECRET value is not empty or public.
@@ -166,9 +185,16 @@ func ValidateAuthSecretValue(secret string) error {
 	return nil
 }
 
-// GetAuthSecret returns the JWT signing secret.
+// GetAuthSecret returns the JWT signing secret: the live env var when set
+// (tests, CLI commands), else the startup cache (server after clearing).
+// The returned slice is a copy; callers must not retain or mutate it.
 func GetAuthSecret() []byte {
-	return []byte(strings.TrimSpace(os.Getenv("AUTH_SECRET")))
+	if v := strings.TrimSpace(os.Getenv("AUTH_SECRET")); v != "" {
+		return []byte(v)
+	}
+	out := make([]byte, len(startupAuthSecret))
+	copy(out, startupAuthSecret)
+	return out
 }
 
 // AuthMiddleware handles JWT authentication for API routes
