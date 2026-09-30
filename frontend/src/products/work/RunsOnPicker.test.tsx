@@ -40,7 +40,9 @@ describe('RunsOnPicker', () => {
     ]
     const { host, last } = await render()
     expect(host.querySelector('select')?.value).toBe('codex-cli')
-    expect(last()).toMatchObject({ provider: 'codex-cli', modelId: 'gpt-6', connectionId: 'mine' })
+    // A private account is never saved on the new project (others in a Crew could not use it):
+    // the server uses your own account for your own chats.
+    expect(last()).toMatchObject({ provider: 'codex-cli', modelId: 'gpt-6', connectionId: undefined })
     expect(host.textContent).toContain('your account (v@x.com)')
   })
 

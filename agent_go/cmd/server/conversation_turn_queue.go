@@ -455,6 +455,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			lock.Unlock()
 			continue
 		}
+		turns = dropStaleWaitingTurns(turns, time.Now().UTC())
 		for i := range turns {
 			turns[i].StartedAt = nil
 		}
@@ -476,6 +477,25 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			api.kickConversationTurnQueue(turn.SessionID)
 		}
 	}
+}
+
+// staleWaitingTurnAge: a message that has waited this long without ever starting was stuck behind
+// a turn that never finished; the person has almost always resent it since. Running it after a
+// restart would repeat work (excellence, 2026-09-30: the same demo-data request queued three times).
+const staleWaitingTurnAge = 30 * time.Minute
+
+// dropStaleWaitingTurns removes turns that never started and are older than staleWaitingTurnAge.
+// Turns that had started (they were running when the server stopped) are kept and run again.
+func dropStaleWaitingTurns(turns []queuedConversationTurn, now time.Time) []queuedConversationTurn {
+	kept := make([]queuedConversationTurn, 0, len(turns))
+	for _, turn := range turns {
+		if turn.StartedAt == nil && !turn.CreatedAt.IsZero() && now.Sub(turn.CreatedAt) > staleWaitingTurnAge {
+			logTurnQueue("dropping a message that waited %s without starting (session %s)", now.Sub(turn.CreatedAt).Round(time.Minute), turn.SessionID)
+			continue
+		}
+		kept = append(kept, turn)
+	}
+	return kept
 }
 
 func logTurnQueue(format string, args ...interface{}) {

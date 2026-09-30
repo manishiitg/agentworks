@@ -22,6 +22,8 @@ type Choice = {
   ready: boolean
   accountLabel: string
   connectionId?: string
+  /** A server (shared) account is set up and usable for this person. */
+  serverReady: boolean
 }
 
 const newestFirst = (a: ProviderConnection, b: ProviderConnection) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
@@ -32,13 +34,13 @@ function choiceFor(option: AgentProfileProviderOption, records: ProviderConnecti
   const provider = option.provider || option.id
   const label = option.label || provider
   const usable = records.filter(record => record.provider === provider && accountUsable(record) && accountConfigured(record))
+  const serverReady = usable.some(record => record.scope === 'global')
   const own = usable.filter(record => accountRelation(record) === 'own').sort(newestFirst)[0]
-  if (own) return { option, label, ready: true, accountLabel: `your account${own.identity ? ` (${own.identity})` : ''}`, connectionId: own.id }
+  if (own) return { option, label, ready: true, accountLabel: `your account${own.identity ? ` (${own.identity})` : ''}`, connectionId: own.id, serverReady }
   const shared = usable.filter(record => accountRelation(record).startsWith('shared')).sort(newestFirst)[0]
-  if (shared) return { option, label, ready: true, accountLabel: `shared by ${shared.owner_name || 'a teammate'}`, connectionId: shared.id }
-  const server = usable.find(record => record.scope === 'global')
-  if (server) return { option, label, ready: true, accountLabel: 'shared account' }
-  return { option, label, ready: false, accountLabel: 'not signed in' }
+  if (shared) return { option, label, ready: true, accountLabel: `shared by ${shared.owner_name || 'a teammate'}`, connectionId: shared.id, serverReady }
+  if (serverReady) return { option, label, ready: true, accountLabel: 'shared account', serverReady }
+  return { option, label, ready: false, accountLabel: 'not signed in', serverReady }
 }
 
 const optionEffort = (option: AgentProfileProviderOption) => {
@@ -52,7 +54,7 @@ const optionEffort = (option: AgentProfileProviderOption) => {
  * a CLI you are not signed in to offers Sign in right here. The choice is saved with the project,
  * account included, so the first message works without visiting the Models tab.
  */
-export function RunsOnPicker({ profileId, onChange, disabled, options: givenOptions, accountsProduct = profileId }: {
+export function RunsOnPicker({ profileId, onChange, disabled, options: givenOptions, accountsProduct = profileId, saveAccount = 'never' }: {
   /** Crew/Code product id; also the key for remembering the last choice ("workflow" for workflows). */
   profileId: string
   onChange: (selection: RunsOnSelection | undefined) => void
@@ -61,6 +63,13 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
   options?: AgentProfileProviderOption[]
   /** Product the account list is asked for; empty asks without one (workflows). */
   accountsProduct?: string
+  /**
+   * Whether the chosen account is saved on the new project. 'never' (Crew, Code): the server uses
+   * your own signed-in account for your own chats by itself, and a private account saved on a
+   * shared Crew would fail for everyone else it is not shared with. 'when-needed' (workflows, which
+   * have no such default): saved only when no shared account is usable for you.
+   */
+  saveAccount?: 'never' | 'when-needed'
 }) {
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
   const [records, setRecords] = useState<ProviderConnection[]>([])
@@ -119,9 +128,9 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
       provider: option.provider || option.id,
       modelId: option.model_id || '',
       reasoningEffort: optionEffort(option),
-      connectionId: current.connectionId,
+      connectionId: saveAccount === 'when-needed' && !current.serverReady ? current.connectionId : undefined,
     })
-  }, [current, onChange])
+  }, [current, onChange, saveAccount])
 
   if (!loaded || choices.length === 0 || !current) return null
 
@@ -144,7 +153,9 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
       {current.ready ? (
         <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-          Uses {current.accountLabel}. You can change it later in Models.
+          {saveAccount === 'never' && current.accountLabel.startsWith('your account')
+            ? `Uses ${current.accountLabel} for your chats.`
+            : `Uses ${current.accountLabel}.`} You can change it later in Models.
         </p>
       ) : (
         <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">

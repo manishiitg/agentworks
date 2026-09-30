@@ -215,3 +215,22 @@ func TestStopReleasesTheStoppedTurnsMarkers(t *testing.T) {
 		t.Fatal("another session's retained turn was released")
 	}
 }
+
+// After a restart, a message that waited over half an hour without starting is dropped instead of
+// re-run; recent waiting messages and turns that had started are kept.
+func TestRecoveryDropsStaleWaitingTurnsOnly(t *testing.T) {
+	now := time.Now().UTC()
+	started := now.Add(-2 * time.Hour)
+	turns := []queuedConversationTurn{
+		{ID: "stale-waiting", SessionID: "s", CreatedAt: now.Add(-45 * time.Minute)},
+		{ID: "recent-waiting", SessionID: "s", CreatedAt: now.Add(-5 * time.Minute)},
+		{ID: "was-running", SessionID: "s", CreatedAt: now.Add(-3 * time.Hour), StartedAt: &started},
+	}
+	var kept []string
+	for _, turn := range dropStaleWaitingTurns(turns, now) {
+		kept = append(kept, turn.ID)
+	}
+	if strings.Join(kept, ",") != "recent-waiting,was-running" {
+		t.Fatalf("kept %v, want [recent-waiting was-running]", kept)
+	}
+}
