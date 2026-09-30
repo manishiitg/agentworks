@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -2012,6 +2013,37 @@ const liveAttachRawInputChunkBytes = 512
 // `send-keys -H` (hex), so Enter (0d), Ctrl-C (03), arrows, and pastes all pass
 // through. Reuses the existing tmux exec helper.
 func (api *StreamingAPI) liveAttachRawInput(ctx context.Context, tmuxSession string, data []byte, streams ...*liveAttachStream) error {
+	if len(data) == 0 {
+		return nil
+	}
+	switch decision, erase := terminalSlashGuard.decide(tmuxSession, data); decision {
+	case slashDrop:
+		liveAttachSlashNote(streams, "Pick a slash command by typing its full name")
+		return nil
+	case slashCancel:
+		log.Printf("[live-attach] session=%s: a slash command was not allowed and its line was erased (allowed: %s)", tmuxSession, terminalSlashCommandsEnv)
+		if erase > 0 {
+			if err := api.liveAttachRawSend(ctx, tmuxSession, bytes.Repeat([]byte{0x7f}, erase), streams...); err != nil {
+				return err
+			}
+		}
+		tmuxinput.Default.ClearInteractiveDraft(tmuxSession)
+		liveAttachSlashNote(streams, "That slash command is turned off here. Use the chat")
+		return nil
+	}
+	return api.liveAttachRawSend(ctx, tmuxSession, data, streams...)
+}
+
+// liveAttachSlashNote overlays a one-line note on the top row (cursor saved and restored); the CLI's
+// next redraw clears it.
+func liveAttachSlashNote(streams []*liveAttachStream, text string) {
+	if len(streams) > 0 && streams[0] != nil {
+		streams[0].broadcast([]byte("\x1b7\x1b[1;1H\x1b[7m " + text + " \x1b[0m\x1b8"))
+	}
+}
+
+// liveAttachRawSend forwards raw terminal input bytes with no slash-command check.
+func (api *StreamingAPI) liveAttachRawSend(ctx context.Context, tmuxSession string, data []byte, streams ...*liveAttachStream) error {
 	if len(data) == 0 {
 		return nil
 	}

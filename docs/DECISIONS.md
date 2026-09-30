@@ -64,6 +64,25 @@ Each entry says what was decided, why, and where it lives in the code.
   `agent_go/cmd/server/cost_overview.go`, `frontend/src/components/providers`.
 
 
+### 2026-09-30 — Typed slash commands in the browser terminal are limited to an allowlist
+- Slash commands change the CLI's own settings or run large commands, both of which the app
+  offers itself. The session-switching ones (`/new`, `/clear`, `/resume`, `/fork`) leave the chat
+  reading a session the CLI has left, and any slash command leaves a draft the CLI never records
+  (Vaibhav, Confida: `/new`, then every chat send refused). So typing them is blocked, except
+  `/usage`, which people need.
+- The CLI's slash menu can be driven without typing a name ("/", arrow keys, Enter), so
+  `terminal_slash_guard.go` follows the line as typed: once a line starts with `/` it forwards
+  what is typed, drops arrow keys and Tab, and lets Enter through only for a full allowlisted
+  name. Otherwise it drops the Enter, erases the typed line and shows a one-line note.
+  Slash text pasted on an empty line is treated the same way.
+- The chat's own commands are pasted by the platform on a different path and are unaffected.
+- `AGENTWORKS_TERMINAL_SLASH_COMMANDS`: unset = `usage`; a comma list (`usage,status`); `none`;
+  `allow` turns the guard off. Other CLIs may name their usage command differently (Codex:
+  `/status`); add them to the list per server once checked.
+- Limits: the guard only sees the line as typed in the browser terminal. History recall (Up arrow)
+  fills the line without it noticing, so a `/` typed after a recall is treated as a command start.
+- Also on main, not deployed: a typed terminal draft no longer blocks a chat send.
+
 ### 2026-09-30 — A reply to a live message is held until the message row (all CLIs)
 - When a message is sent into a running CLI, its chat row is written when the
   CLI confirms it took the message (`watchLiveInputDurableRecording`), and the
