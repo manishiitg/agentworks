@@ -250,6 +250,16 @@ func (api *StreamingAPI) personalMCPCatalog() []personalMCPCatalogServer {
 		if netguard.CheckURL(cfg.URL, true) != nil {
 			continue
 		}
+		// Google and GitHub are not offered as MCP connectors (owner decision 2026-09-30).
+		// Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) are connected through the
+		// gog integration (the Gmail tab): Google's Workspace MCP servers are a Developer Preview
+		// that needs Google-side enrollment, while gog works with a normal OAuth client and keeps
+		// the token on the server. GitHub is a personal access token used with git and the API.
+		// An existing connection to either keeps working; new ones are not offered.
+		// (Adding the provider to mcpAppFocusKeys brings its connectors and its sign-in app card back.)
+		if key := keys[name]; (key == "google" || key == "github") && !mcpAppFocusKeys[key] {
+			continue
+		}
 		local := strings.Trim(personalMCPCatalogNameCleaner.ReplaceAllString(strings.ToLower(name), "_"), "_")
 		if len(local) > 40 {
 			local = local[:40]

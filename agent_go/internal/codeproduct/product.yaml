@@ -38,9 +38,12 @@ profile:
       # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
       # editor access or more, each in their own chat); never the shared bot
       # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
-      # No built-in Gmail (user, 2026-09-29): a Code reaches Google through
-      # MCP servers only (Google's Workspace MCP servers, global or personal).
-      options: {channels: "slack,whatsapp", dm_only: "true"}
+      # gmail: own -- Google accounts (gog: Gmail, Drive, Calendar, Docs, Sheets,
+      # Slides) connected in this Code only, private to it and usable only in its
+      # owner's chats; never the shared accounts. Restored 2026-09-30: Google's
+      # Workspace MCP servers are a Developer Preview that needs Google-side
+      # enrollment, while the gog integration works with a normal OAuth client.
+      options: {channels: "slack,whatsapp", dm_only: "true", gmail: own}
     # A schedule or webhook trigger sends one message to the Code's chat. Only
     # the Code's owner creates them, and they run as the owner (their own
     # chat, MCP connections and secrets). docs/design/code_product.md.

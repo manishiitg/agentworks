@@ -256,6 +256,9 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
       {canEdit && (
         <div className="mt-2 flex flex-col gap-3">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Available</div>
+          <p data-testid="mcp-google-pointer" className="text-xs leading-5 text-muted-foreground">
+            Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) are connected in the Gmail tab, not here. For GitHub, add a personal access token as a secret named GITHUB_TOKEN in Setup → Secrets; the agent uses it with git and the GitHub API.
+          </p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search connectors" aria-label="Search connectors" className="pl-9" />
@@ -286,15 +289,6 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
                     <div className="text-xs text-muted-foreground">One {provider} sign-in covers every service you pick.</div>
                   </div>
                 </div>
-                {group === 'google' && (
-                  // Google's Workspace MCP servers are a Developer Preview: Google refuses the sign-in (on its
-                  // own page, with a message about the preview) unless the Google Cloud project behind this
-                  // server's OAuth client is enrolled and has the MCP APIs enabled. Say so before the person
-                  // meets Google's page; the catalog descriptions already label them this way.
-                  <p data-testid="mcp-google-preview-note" className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">
-                    Google's Workspace MCP servers are in Developer Preview. If Google says the app is not supported or not registered for the preview, the Google Cloud project behind this server's sign-in app must be enrolled in Google's Workspace Developer Preview and have these services' MCP APIs enabled. That is set up by the server admin, not here.
-                  </p>
-                )}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {available.map(entry => {
                     const service = groupServiceLabel(entry.catalog, group)
@@ -366,12 +360,8 @@ export function PlaceMcpSection({ workspacePath, placeNoun, canEdit, onAsk }: {
               </div>
             )}
           </div>
-          {isAdmin && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-xs text-muted-foreground">Sign-in apps (admin)</summary>
-              <div className="mt-2"><McpAppsSection /></div>
-            </details>
-          )}
+          {/* The Sign-in apps card lists nothing unless an admin has providers set up for it. */}
+          {isAdmin && <McpAppsSection />}
         </div>
       )}
     </div>

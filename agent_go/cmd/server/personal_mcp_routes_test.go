@@ -30,7 +30,7 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	withPersonalMCPRoot(t)
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	catalog := `{"mcpServers":{
-		"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token","scopes":["https://www.googleapis.com/auth/gmail.readonly"],"extra_auth_params":{"access_type":"offline","prompt":"consent"}}},
+		"AcmeMail":{"url":"https://mcp.acme.example/mcp","protocol":"http","oauth":{"auth_url":"https://auth.acme.example/oauth/authorize","token_url":"https://auth.acme.example/oauth/token","scopes":["https://www.googleapis.com/auth/gmail.readonly"],"extra_auth_params":{"access_type":"offline","prompt":"consent"}}},
 		"Keyed":{"url":"https://mcp.example.com/mcp","headers":{"Authorization":"Bearer ${KEY}"}},
 		"Local":{"command":"npx","args":["x"]}}}`
 	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
@@ -46,7 +46,7 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	var listed struct {
 		Servers []personalMCPCatalogServer `json:"servers"`
 	}
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 || listed.Servers[0].Name != "googlegmail" || !listed.Servers[0].NeedsClient {
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &listed) != nil || len(listed.Servers) != 1 || listed.Servers[0].Name != "acmemail" || !listed.Servers[0].NeedsClient {
 		t.Fatalf("catalog = %d %s", rec.Code, rec.Body.String())
 	}
 	add := func(user, body string) *httptest.ResponseRecorder {
@@ -57,13 +57,13 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	}
 	// Only the Code's owner connects to it (a logical path is always the
 	// caller's own tree, so the owner's Code is named by its physical path).
-	if rec := add("other", `{"workspace_path":"`+root+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusForbidden {
+	if rec := add("other", `{"workspace_path":"`+root+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusForbidden {
 		t.Fatalf("another person added to the owner's Code: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("add from catalog = %d %s", rec.Code, rec.Body.String())
 	}
-	if servers, _ := listPersonalMCPServers(store); len(servers) != 1 || servers[0].Catalog != "GoogleGmail" {
+	if servers, _ := listPersonalMCPServers(store); len(servers) != 1 || servers[0].Catalog != "AcmeMail" {
 		t.Fatalf("stored servers = %+v", servers)
 	}
 	if attached, _ := personalMCPAttachmentsFor(root); len(attached) != 1 || attached[0].Owner != "owner" || attached[0].Server != "gmail" {
@@ -106,7 +106,7 @@ func TestCodeConnectionFromCatalogWithOwnClient(t *testing.T) {
 	}
 	// Adding the name again starts clean: the old client never reaches
 	// whatever the name points at now.
-	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"GoogleGmail","name":"gmail"}`); rec.Code != http.StatusOK {
+	if rec := add("owner", `{"workspace_path":"`+logical+`","catalog":"AcmeMail","name":"gmail"}`); rec.Code != http.StatusOK {
 		t.Fatalf("re-add = %d %s", rec.Code, rec.Body.String())
 	}
 	if _, cfg, err := personalMCPServerConfig(store, "gmail"); err != nil || cfg.OAuth.ClientID != "" {

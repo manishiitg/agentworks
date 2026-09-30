@@ -59,12 +59,13 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 
 var mcpAppLabels = map[string]string{"google": "Google", "github": "GitHub", "slack": "Slack"}
 
-// mcpAppFocusKeys are the only providers whose sign-in app an admin manages here. The
-// product focuses on Google apps (Gmail, Drive, Calendar, ...) and GitHub (owner
-// decision 2026-09-30); listing every provider that has no automatic registration
-// (Slack, Atlassian, ...) only added cards nobody sets up. A connector of another
-// provider still works if the person brings their own OAuth app when connecting.
-var mcpAppFocusKeys = map[string]bool{"google": true, "github": true}
+// mcpAppFocusKeys are the providers whose sign-in app an admin manages on the Sign-in apps
+// card. It is empty (owner decision 2026-09-30): Google apps are connected through the gog
+// integration (the Gmail tab, with its own Google OAuth client) and GitHub with a personal
+// access token, so no connector needs a platform sign-in app and the card lists nothing. The
+// mechanism stays (an admin app is read live at connect time); a provider is added here to
+// bring the card back for it.
+var mcpAppFocusKeys = map[string]bool{}
 
 // mcpApp is what an admin stores for one provider.
 type mcpApp struct {
@@ -206,7 +207,7 @@ func mcpAppGroupsFor(servers map[string]mcpclient.MCPServerConfig) []mcpAppGroup
 			continue // its key is shared with a server that signs in elsewhere
 		}
 		if !mcpAppFocusKeys[key] {
-			continue // only Google and GitHub sign-in apps are managed here
+			continue // no sign-in app card for this provider (see mcpAppFocusKeys)
 		}
 		group := byKey[key]
 		if group == nil {

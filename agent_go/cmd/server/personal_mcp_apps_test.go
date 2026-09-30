@@ -21,6 +21,7 @@ import (
 // app wins, the secret is sealed at rest and never returned, and only admins
 // can touch the app.
 func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
+	withMCPAppFocus(t, "google")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	api, _ := newCodePrivacyFixture(t)
 	withPersonalMCPRoot(t)
@@ -281,6 +282,7 @@ func TestStoredAppCanBeRemovedAfterItsProviderLeavesTheCatalog(t *testing.T) {
 }
 
 func TestSetMCPAppCommandRefusesRootAndUnknownKeys(t *testing.T) {
+	withMCPAppFocus(t, "google", "github")
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withPersonalMCPRoot(t)
@@ -337,24 +339,43 @@ func TestSharedConnectUsesSignInApp(t *testing.T) {
 	}
 }
 
-// The Sign-in apps card manages only Google and GitHub (owner decision 2026-09-30): a
-// provider that merely has no automatic registration, such as Slack or Atlassian, gets no
-// card. Its connector still works if the person brings their own OAuth app.
-func TestSignInAppsCoverOnlyGoogleAndGitHub(t *testing.T) {
+// withMCPAppFocus lists providers on the Sign-in apps card for one test. The card is empty by
+// default (owner decision 2026-09-30: Google through gog, GitHub with a personal access
+// token), so tests of the sign-in-app mechanism name the providers they use.
+func withMCPAppFocus(t *testing.T, keys ...string) {
+	t.Helper()
+	previous := mcpAppFocusKeys
+	mcpAppFocusKeys = map[string]bool{}
+	for _, key := range keys {
+		mcpAppFocusKeys[key] = true
+	}
+	t.Cleanup(func() { mcpAppFocusKeys = previous })
+}
+
+// By default no provider gets a Sign-in apps card, and Google and GitHub are not offered as
+// MCP connectors (Google apps are the Gmail tab / gog, GitHub is a personal access token).
+func TestNoSignInAppCardsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withPersonalMCPRoot(t)
-	servers := map[string]mcpclient.MCPServerConfig{
-		"GoogleGmail": {URL: "https://gmailmcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
-		"GoogleDrive": {URL: "https://drivemcp.googleapis.com/mcp/v1", OAuth: &oauth.OAuthConfig{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}},
-		"GitHub":      {URL: "https://api.githubcopilot.com/mcp/", OAuth: &oauth.OAuthConfig{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"}},
-		"Slack":       {URL: "https://mcp.slack.com/mcp", OAuth: &oauth.OAuthConfig{AuthURL: "https://slack.com/oauth/v2_user/authorize", TokenURL: "https://slack.com/api/oauth.v2.user.access"}},
-		"Atlassian":   {URL: "https://mcp.atlassian.com/v1/sse", OAuth: &oauth.OAuthConfig{AuthURL: "https://auth.atlassian.com/authorize", TokenURL: "https://auth.atlassian.com/oauth/token"}},
+	api, _ := newCodePrivacyFixture(t)
+	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
+	catalog := `{"mcpServers":{
+		"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}},
+		"GitHub":{"url":"https://api.githubcopilot.com/mcp/","protocol":"http","oauth":{"auth_url":"https://github.com/login/oauth/authorize","token_url":"https://github.com/login/oauth/access_token"}},
+		"Linear":{"url":"https://mcp.linear.app/mcp","protocol":"http","oauth":{"auth_url":"https://mcp.linear.app/authorize","token_url":"https://mcp.linear.app/token","registration_endpoint":"https://mcp.linear.app/register"}}}}`
+	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	var keys []string
-	for _, group := range mcpAppGroupsFor(servers) {
-		keys = append(keys, group.Key)
+	api.mcpConfigPath = catalogPath
+	api.logger = loggerv2.NewNoop()
+	if cards := api.mcpAppGroups(); len(cards) != 0 {
+		t.Fatalf("sign-in app cards = %+v, want none", cards)
 	}
-	if strings.Join(keys, ",") != "github,google" {
-		t.Fatalf("sign-in app cards = %v, want only github and google", keys)
+	var names []string
+	for _, entry := range api.personalMCPCatalog() {
+		names = append(names, entry.Catalog)
+	}
+	if strings.Join(names, ",") != "Linear" {
+		t.Fatalf("connectors offered = %v, want only Linear", names)
 	}
 }

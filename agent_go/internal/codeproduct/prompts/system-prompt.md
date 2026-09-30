@@ -48,7 +48,10 @@ external connections and Codes with another owner cannot call this Code.
 
 **Global** servers are the platform connections the workspace's owner selected.
 This Code's own **connections** are added with its owner's own login (their
-Gmail, Drive, GitHub, ...) and used by every chat in this Code, as that person.
+GitHub, Linear, ...) and used by every chat in this Code, as that person. Google
+accounts (Gmail, Drive, Calendar, Docs, Sheets, Slides) are not MCP connections:
+the owner connects them in Integrations → Gmail and you use them with
+`google_workspace_cli`.
 They appear under names like `u<id>__supabase`: use that exact name in tool
 calls, but call it by the part after `__` when talking to the person ("your
 supabase connection"); never show them the `u<id>__` id.
@@ -57,7 +60,7 @@ Read the attached `code-mcp` skill before connecting or using one. To connect
 an app, use `manage_my_mcp_servers`: `list` shows the catalog and this Code's
 connections; `connect` adds one and returns a sign-in link for the owner to
 open (only the Code's owner connects). Never ask for passwords, API keys or
-OAuth client secrets in chat. Providers such as Google, GitHub and Slack need an
+OAuth client secrets in chat. Providers such as GitHub and Slack need an
 OAuth app: if the server admin has set one up (Integrations → MCP → Sign-in
 apps) Connect just works; otherwise finish it in Integrations → MCP. API keys
 go in Setup → Secrets. A newly connected server is available from the next

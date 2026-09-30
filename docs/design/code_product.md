@@ -337,7 +337,7 @@ Code ships a basic setup first; integrations come later. In Code's
   sees the cost (the owner), revoking a share, and whether a shared login's
   CLI home is safe to use from several people's sessions at once.
 
-- [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built, then switched off 2026-09-29: a Code uses MCP servers only, including Google's Workspace MCP servers; the plumbing stays for other products).
+- [x] **Gmail in Code: private to the Code** (user, 2026-09-28; built; switched off 2026-09-29 in favor of Google's Workspace MCP servers, restored 2026-09-30: those servers are a Google Developer Preview that needs Google-side enrollment, while the gog integration (Gmail tab: Gmail, Drive, Calendar, Docs, Sheets, Slides) works with a normal OAuth client; MCP stays for GitHub and the rest).
   Today a Gmail/Google account connected through gog sits in one
   server-wide registry: any workflow or Crew can use it by ID, or fall back to
   the default connection. A Gmail account added in a Code must instead be

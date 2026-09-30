@@ -32,7 +32,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	withPersonalMCPRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
-	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}}}}`), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"AcmeMail":{"url":"https://mcp.acme.example/mcp","protocol":"http","oauth":{"auth_url":"https://auth.acme.example/oauth/authorize","token_url":"https://auth.acme.example/oauth/token"}}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{mcpConfigPath: catalogPath, logger: loggerv2.NewNoop()}
@@ -50,14 +50,14 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 		}
 		return out
 	}
-	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"GoogleGmail"`) || !strings.Contains(out, `"this_code_has":[]`) || !strings.Contains(out, `"you_can_connect":true`) {
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"AcmeMail"`) || !strings.Contains(out, `"this_code_has":[]`) || !strings.Contains(out, `"you_can_connect":true`) {
 		t.Fatalf("list = %s", out)
 	}
-	out := call(map[string]interface{}{"action": "connect", "catalog": "GoogleGmail"})
+	out := call(map[string]interface{}{"action": "connect", "catalog": "AcmeMail"})
 	if !strings.Contains(out, "MCP") || !strings.Contains(out, "api/oauth/callback") {
 		t.Fatalf("connect = %s", out)
 	}
-	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "googlegmail" || attached[0].Owner != "owner" {
+	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 1 || attached[0].Server != "acmemail" || attached[0].Owner != "owner" {
 		t.Fatalf("attachments = %+v", attached)
 	}
 	if attached, _ := personalMCPAttachmentsFor(otherCode); len(attached) != 0 {
@@ -66,10 +66,10 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	if servers, _ := listPersonalMCPServers("owner"); len(servers) != 0 {
 		t.Fatalf("connection stored in the person's own store: %v", servers)
 	}
-	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"googlegmail"`) {
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"acmemail"`) {
 		t.Fatalf("list after connect = %s", out)
 	}
-	call(map[string]interface{}{"action": "remove", "name": "googlegmail"})
+	call(map[string]interface{}{"action": "remove", "name": "acmemail"})
 	if attached, _ := personalMCPAttachmentsFor(codeRoot); len(attached) != 0 {
 		t.Fatalf("not removed: %+v", attached)
 	}
@@ -83,7 +83,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	if err := api.registerPersonalMCPTool(guest, "guest", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := guest.exec(context.Background(), map[string]interface{}{"action": "connect", "catalog": "GoogleGmail"}); err == nil || !strings.Contains(err.Error(), "owner") {
+	if _, err := guest.exec(context.Background(), map[string]interface{}{"action": "connect", "catalog": "AcmeMail"}); err == nil || !strings.Contains(err.Error(), "owner") {
 		t.Fatalf("a non-owner connected to the Code: %v", err)
 	}
 }

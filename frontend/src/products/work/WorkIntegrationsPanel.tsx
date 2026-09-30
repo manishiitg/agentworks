@@ -41,9 +41,9 @@ function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, st
 
 // Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
 // the Code's own connections (PlaceMcpSection, the same screen a Crew uses);
-// the always-on MCP "Connect" tab is hidden, and Google is reached through MCP
-// servers only.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli', 'gmail'])
+// the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
+// Sheets, Slides) is the Gmail tab: the Code's own private gog accounts.
+const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange }: {
   tabId: string

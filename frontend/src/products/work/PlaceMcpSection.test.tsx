@@ -58,6 +58,8 @@ it('connects a listed server with one click, no popup, and says whose login it u
   // The rule is a plain line on the page, not a dialog in the way.
   expect(host.textContent).toContain('uses the login of the person who added it')
   expect(host.textContent).toContain('Available')
+  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('Gmail tab')
+  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('GITHUB_TOKEN')
   await act(async () => { button(host, 'GoogleDrive').click() })
   await settle()
   expect(document.body.textContent).not.toContain('with my login')
@@ -75,7 +77,6 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   expect(host.textContent).toContain('everyone who uses this Code uses it as that person')
   await openPicker(host)
   expect(host.querySelector('[data-testid="mcp-group-google"]')).not.toBeNull()
-  expect(host.querySelector('[data-testid="mcp-google-preview-note"]')?.textContent).toContain('Developer Preview')
   await act(async () => { (host.querySelector('button[aria-label="Add Drive"]') as HTMLButtonElement).click() })
   await act(async () => { (host.querySelector('button[aria-label="Add Calendar"]') as HTMLButtonElement).click() })
   await act(async () => { button(host, 'Connect 2 services').click() })
