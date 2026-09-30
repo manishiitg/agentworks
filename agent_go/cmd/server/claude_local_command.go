@@ -34,7 +34,9 @@ func isClaudeLocalCommandRecord(text string) bool {
 
 func isClaudeLocalCommandMessage(role, text string) bool {
 	role = strings.ToLower(strings.TrimSpace(role))
-	return (role == "human" || role == "user") && isClaudeLocalCommandRecord(text)
+	// Claude also writes a background task's completion (<task-notification>…) as a user
+	// turn; it is the CLI talking to itself, not something the person sent.
+	return (role == "human" || role == "user") && (isClaudeLocalCommandRecord(text) || isProviderTaskNotification(text))
 }
 
 // Cached queries/previews may be truncated in the middle of an envelope.
