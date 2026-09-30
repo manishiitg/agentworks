@@ -298,6 +298,53 @@ done
 echo "==> [$PRODUCT] Done."
 )
 
+# --- Deploy notices in Slack -------------------------------------------------
+# A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
+# URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
+# or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
+# With neither set nothing is sent, and a failed post never fails or delays a deploy.
+deploy_notify() {
+  local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
+  [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
+  [[ -n "$url" ]] || return 0
+  local payload
+  payload="$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$1" 2>/dev/null)" || return 0
+  curl -sS -m 10 -X POST -H 'Content-type: application/json' --data "$payload" "$url" >/dev/null 2>&1 || true
+}
+
+deploy_label() {
+  case "$SERVER" in
+    rts|video-studio) echo "RTS (video.realtrainingsys.com)" ;;
+    excellence) echo "Excellence (agents.excellencetechnologies.in)" ;;
+    confida) echo "Confida (confida.agentworkshq.com)" ;;
+    *) echo "$SERVER" ;;
+  esac
+}
+
+deploy_start_notice() {
+  [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
+  local head_line
+  git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
+  head_line="$(git -C "$REPO_ROOT" log -1 --format='%h %s' origin/main 2>/dev/null | cut -c1-90)"
+  DEPLOY_NOTICE_STARTED="$(date +%s)"
+  deploy_notify ":rocket: Deploying *$(deploy_label)* now (${head_line:-main}). It restarts in a few minutes; chats reconnect on their own."
+  trap 'deploy_finish_notice $?' EXIT
+}
+
+deploy_finish_notice() {
+  local rc="$1" took=""
+  [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
+  trap - EXIT
+  if [[ "$rc" == "0" ]]; then
+    deploy_notify ":white_check_mark: *$(deploy_label)* is deployed${took}. You can carry on."
+  else
+    deploy_notify ":warning: The *$(deploy_label)* deploy finished${took} with a problem (exit $rc). It may still be on the previous release; the team is checking."
+  fi
+  return "$rc"
+}
+
+deploy_start_notice
+
 case "$SERVER" in
   rts|video-studio)
     reject_extra_arguments "$@"
