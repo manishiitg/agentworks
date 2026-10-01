@@ -13,6 +13,26 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Excellence: Docker for users runs rootless; `agents` left the root `docker` group
+
+- **Found.** `agents` (the platform account, which also runs every non-canary user's coding CLI) was in the host's
+  `docker` group, i.e. root-equivalent: any user's Code session could `docker run -v /:/host` and own the box.
+  Users really did use it (invoicing, hrms, injuryconnect stacks ran on the root daemon).
+- **Decided and done.** `agents` is out of the `docker` group and has its own rootless Docker daemon (user unit
+  `docker.service`, data under `/srv/agents/.local/share/docker`, socket `/run/user/990/docker.sock`);
+  `DOCKER_HOST` points the services at it (`product.env`, `/srv/agents/.env`). Containers of excellence users on
+  the root daemon (7: invoicing x3, hrms_db, injuryconnect x3) were stopped; their named volumes were backed
+  up to `/root/docker-backups-20261001/` on the host and kept, so users re-create their stacks (`docker compose
+  up`) in the new daemon and can ask for a restore. The other 33 containers on the root daemon belong to other
+  developers' accounts (newjoinee, node, dev83, pythonai, react) and were not touched.
+- **Not the shared installer.** `deploy/common/install-rootless-docker.sh` runs `apt-get install docker-ce ...`,
+  which can restart the root daemon (and everyone's containers); it was not used. Its final check also refuses a
+  service user in the `docker` group, which is why the group had to go first.
+- **Open.** `newjoinee` is still in the `docker` group (root-equivalent). When coding CLIs move to the user's own
+  slot account, Docker needs a per-user rootless daemon (or is unavailable), since a slot cannot reach the
+  platform's socket. Several other accounts publish databases on all interfaces (mongo, postgres, redis); not
+  checked against the firewall.
+
 ### 2026-10-01 — Relay release review: visible readers execute as the owner
 
 - Anyone with live Relay visibility can execute its published API versions and
