@@ -13,6 +13,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Excellence offers Crew and Relays (the product switcher list lives in runtime-config.js)
+
+- **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`
+  (`enabledProductSurfaces`), narrowed per account by `allowed_products` (administrators: all enabled; others:
+  their `users.json` products plus `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL`). Excellence's file said
+  `["code"]`, so Crew and Relays never appeared even for administrators. Earlier notes that `AGENT_PRODUCTS`
+  controls this were wrong: that setting is not passed to these services.
+- **Decided.** `enabledProductSurfaces: ["code", "work", "relays"]` on excellence (default stays `code`). Visible to
+  Manish and Aayush (administrators) and Vaibhav (`work`, `relays` in his list); every other account stays on
+  Code because its own list does not include them.
+
 ### 2026-10-01 — Relays (profile id `relays`) opened on Confida for everyone to test; excellence per person
 
 - **Decided.** Confida: `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL=work,code,relays`, so every account can open Relays

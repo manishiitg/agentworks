@@ -12,6 +12,8 @@ window.__APP_RUNTIME_CONFIG__ = {
   // wide company logo no longer appears in the app's top bar.
   markUrl: "/brand/icon.svg",
   brandColor: "#109AAA",
-  enabledProductSurfaces: ["code"],
+  // Code for everyone; Crew and Relays are offered by this list but each account only sees the products its own
+  // list allows (users.json `products`; administrators see all three), so they stay a few people's.
+  enabledProductSurfaces: ["code", "work", "relays"],
   defaultProductSurface: "code"
 };
