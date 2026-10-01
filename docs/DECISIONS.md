@@ -13,6 +13,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Confida slot table unreachable (incident), and image analysis login
+
+- **Incident.** After Confida's slots went live (12:00), its service could not read
+  `/etc/agentworks/confida/slots.json`: `/etc/agentworks` was `root:agents 0750` (excellence's group), so Confida's
+  service could not traverse it. In opt-in mode a table that cannot be read is an error, so every shell and
+  browser call failed for every Confida user ("No account slot for this user ... permission denied"), about
+  13 calls until it was fixed (`chmod 0751 /etc/agentworks`, search-only; the tables and per-product folders stay
+  closed to the other product, verified both ways). `provision-slots.sh` now sets that for any non-default
+  prefix. My earlier probe ran as the Confida account but never read the table, so it missed this; the probe
+  must read the slot table through the service's own path.
+- **Not from slots.** Image analysis (`read_image`) on Confida uses the workflow's chosen model
+  (claude-code/claude-sonnet-5-5); Confida has no Claude login (no token, no credentials file), so Claude shows
+  its login screen and the call times out. Fix by connecting a Claude account (Providers) or choosing a model
+  with a login for image analysis.
+
 ### 2026-10-01 — Excellence: Docker for users runs rootless; `agents` left the root `docker` group
 
 - **Found.** `agents` (the platform account, which also runs every non-canary user's coding CLI) was in the host's

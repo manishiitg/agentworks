@@ -94,6 +94,11 @@ while p not in ("/", ""):
   install -d -o root -g root -m 0755 "$(dirname "$LIBEXEC")" "$LIBEXEC"
   install -o root -g root -m 0755 "$slotctl_src" "$LIBEXEC/slotctl"
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
+  # A product's folder below /etc/agentworks is only reachable if every parent is searchable: /etc/agentworks
+  # belongs to the first product's group (excellence's agents, 0750), which would hide another product's folder
+  # from its own service ("slot table unavailable: permission denied", Confida 2026-10-01). Search-only for
+  # everyone on that one parent; each product's own folder and table stay closed to the others.
+  if [[ "$ETC" != /etc/agentworks ]]; then chmod o+x /etc/agentworks; fi
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
   "slot_prefix": "$SLOT_PREFIX",
