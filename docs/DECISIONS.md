@@ -13,6 +13,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Chat activity belongs beside the current agent turn
+- Move the composer loading indicator to the shared conversation's agent header,
+  covering Code, Crew and workflow chats. A pending turn gets a header before its
+  first text/tool event; streamed text and tool work then share that header.
+  Earlier turns keep their recorded duration and never animate for a later turn.
+- Reuse the activity monitor's session classification with immediate tab-local
+  start/completion signals. Running/background work spins, input waiting shows
+  amber, and settled or idle retained CLIs show no activity indicator. Status is
+  scoped to the displayed chat and the lifecycle refresh also works without a
+  composer in read-only run views. Provider usage and stop/steer controls remain
+  in the composer.
+- Keep the animation isolated from token updates and honor reduced motion.
+  Code: `useChatRuntimeActivity`, `chatRuntimeActivity`, and
+  `TerminalEventTranscript`. Tests cover pending/streaming/tool-only turns,
+  completion/error/cancel, background work, waiting and chat switches.
+
 ### 2026-10-01 — Project prompts use resolved host paths and honor listed folder grants
 - The project workspace map now resolves manifest-relative paths against the
   configured docs root before describing them as absolute. Existing absolute

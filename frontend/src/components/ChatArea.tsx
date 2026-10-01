@@ -1,3 +1,5 @@
+import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
+import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/sessionStreamingState'
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
@@ -461,6 +463,7 @@ function isStaleQueuedAutoNotification(message: string): boolean {
 }
 
 export interface ChatContentRendererProps {
+  runtimeActivity?: ChatRuntimeActivity
   events: PollingEvent[]
   isStreaming: boolean
   isRestoring: boolean
@@ -555,12 +558,8 @@ interface ChatAreaProps {
   // final response. The shared AgentWorks surface keeps this internal by
   // default to avoid changing its transcript density.
   showConversationUsage?: boolean
-  // Product deployments with one fixed runtime can omit a redundant badge.
+  // Product deployments can omit the composer's provider status summaries.
   hideRuntimeStatus?: boolean
-  // Show AgentWorks' compact running spinner beside the microphone. When this
-  // is enabled the model badge stays a stable status dot, so the composer never
-  // renders two activity spinners for the same turn.
-  showCompactRuntimeLoading?: boolean
   // Work reuses AgentWorks' queued-message UI and exposes an explicit Steer
   // action even though the underlying provider is a coding CLI.
   showProductSteerAction?: boolean
@@ -589,7 +588,7 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showCompactRuntimeLoading = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder} = props
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
   // every new product gets the durable transcript and normalized error UI by
@@ -810,6 +809,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Session-specific selector: only re-renders when the ACTIVE session's events change
   // (not when any other session gets events)
+  const runtimeActivity = useChatRuntimeActivity(targetTabId)
   const activeSessionId = activeTab?.sessionId
   const activeEventViewMode = normalizeEventViewMode(activeTab?.viewMode)
   const serverRuntimeDiagnosticsEnabled = useCapabilitiesStore(state => state.capabilities?.runtime_debug === true)
@@ -3671,6 +3671,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           />
         ) : EffectiveContentRenderer && selectedModeCategory !== 'workflow' ? (
           <EffectiveContentRenderer
+            runtimeActivity={runtimeActivity}
             events={transcriptEvents}
             isStreaming={activeTabBusy}
             isRestoring={multiAgentSurface === 'restoring'}
@@ -3745,6 +3746,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
+                    runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
@@ -3809,6 +3811,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
+                    runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
@@ -3844,7 +3847,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           tabId={targetTabId}
           surfaceVariant={inputVariant}
           hideRuntimeStatus={hideRuntimeStatus}
-          showCompactRuntimeLoading={showCompactRuntimeLoading}
           showProductSteerAction={showProductSteerAction}
           showProductTerminalControl={showProductTerminalControl}
           showNewChatAction={showNewChatAction}

@@ -1284,7 +1284,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                           compact
                           landingContent={<WorkNewChatGuide product={product} sharedBy={selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
                           composerPlaceholder="Describe what you want to build… (@ files, # references)"
-                          showCompactRuntimeLoading
                           showProductSteerAction
                           showProductTerminalControl
                         />

@@ -1,3 +1,5 @@
+import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
+import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
@@ -299,8 +301,8 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
 // The turn's header line: who spoke, turn, duration, time. It sits at the top
 // of the agent's block, which starts at the turn's first tool call when there
 // is one, so tool work reads as part of the reply rather than a stray chip.
-const AssistantTurnHeader: React.FC<{ event: PollingEvent; timestamp: string; label?: string; icon?: React.ReactNode }> = ({ event, timestamp, label = 'Agent', icon }) => {
-  const fields = transcriptEventPayload(event)
+const AssistantTurnHeader = memo(function AssistantTurnHeader({ event, timestamp, label = 'Agent', icon, activity }: { event?: PollingEvent; timestamp: string; label?: string; icon?: React.ReactNode; activity?: ChatRuntimeActivity }) {
+  const fields = event ? transcriptEventPayload(event) : {}
   // Only a reply event's duration describes the turn. When the header falls
   // back to the block's first tool call, that event's duration is one shell
   // command (e.g. "281ms" on a 92-second turn), so say nothing rather than
@@ -308,7 +310,7 @@ const AssistantTurnHeader: React.FC<{ event: PollingEvent; timestamp: string; la
   // internal index that disagrees between event types for the same reply
   // ("Turn 0" on tool events, "Turn 1" on llm_generation_end); it never
   // meant anything to a reader and is not shown.
-  const duration = AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && typeof fields.duration === 'number' && fields.duration > 0
+  const duration = event && AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && typeof fields.duration === 'number' && fields.duration > 0
     ? formatDurationCompact(fields.duration)
     : ''
   const metadata = [duration, timestamp].filter(Boolean).join(' · ')
@@ -320,13 +322,14 @@ const AssistantTurnHeader: React.FC<{ event: PollingEvent; timestamp: string; la
     <div data-testid="terminal-clear-assistant-header" aria-label={label} className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground [&>img]:h-4 [&>img]:w-4 [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">{mark}</span>
       {label !== 'Agent' && <span>{label}</span>}
+      {activity && <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />}
       {metadata && <>
         <span className="h-1 w-1 rounded-full bg-muted-foreground/60" />
         <span className="normal-case font-medium tracking-normal text-muted-foreground">{metadata}</span>
       </>}
     </div>
   )
-}
+})
 
 // Keep the shared AgentWorks/Work conversation rail close to the pane edge.
 // The row already supplies horizontal padding, so a second full padding step
@@ -378,18 +381,18 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
     return true
   }
   data.forEach((item, index) => {
-    if (item.kind === 'live' || isUserItem(item)) {
+    if (isUserItem(item)) {
       inTurn = false
       // User rows always show their time; still advance the label clock so
       // agent-turn grouping behaves exactly as before.
-      if (item.kind !== 'live') decideTime(item)
+      decideTime(item)
       slots.push({ agent: false, first: false, last: false, showTime: item.kind !== 'live' })
       return
     }
     const first = !inTurn
     inTurn = true
     const next = data[index + 1]
-    slots.push({ agent: true, first, last: !next || next.kind === 'live' || isUserItem(next), showTime: first && decideTime(item) })
+    slots.push({ agent: true, first, last: !next || isUserItem(next), showTime: first && decideTime(item) })
   })
   // The header carries the turn's reply metadata (turn, duration, time): the
   // turn's first reply, or its first event while there is no reply yet.
@@ -814,6 +817,8 @@ interface TerminalEventTranscriptProps {
   assistantLabel?: string
   /** A small mark identifying the turn (a product's logo); the default agent Bot glyph when unset. */
   assistantIcon?: React.ReactNode
+  /** Main chat lifecycle, scoped to this chat; never inferred from a retained terminal. */
+  runtimeActivity?: ChatRuntimeActivity
 }
 
 const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
@@ -835,6 +840,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   productRows,
   assistantLabel = 'Agent',
   assistantIcon,
+  runtimeActivity,
   readingState,
   readingKey,
 }) => {
@@ -880,12 +886,16 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     error || (isAtTranscriptStart && (hasOlder || loadingOlder) && onLoadOlder),
   )
   const listData = useMemo<TranscriptRenderItem[]>(
-    () => (streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText)
+    () => ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
+      || (runtimeActivity?.state !== undefined && runtimeActivity.state !== 'ready' && (!items.length || isUserItem(items.at(-1))))
       ? [...items, { kind: 'live' as const, key: '__live-stream__', text: streamingText, status: streamingStatus }]
       : items,
-    [items, streamingStatus, streamingText],
+    [items, streamingStatus, streamingText, runtimeActivity?.state],
   )
   const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
+  // Only the most recent turn owns the live indicator. Historical headers
+  // keep their recorded duration, even while a new turn is starting.
+  const activeTurnHeader = turnSlots.reduce((last, slot, index) => slot.first ? index : last, -1)
 
   const keys = useMemo(() => listData.map(item => item.key), [listData])
   const [pagination, setPagination] = useState(() => ({ keys, first: 1_000_000 }))
@@ -927,7 +937,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     onLoadOlder?.()
   }, [hasOlder, onLoadOlder, scroll])
 
-  if (items.length === 0 && !streamingText && !streamingStatus) {
+  if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()
     const failed = state === 'failed' || state === 'error' || state === 'stale'
     const completed = state === 'completed' || state === 'closing'
@@ -1036,10 +1046,11 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const index = absoluteIndex - firstItemIndex
           // Contain message margins inside the measured row. Collapsed margins
           // otherwise leave unmeasured space at the end of the virtual list.
-          if (item.kind === 'live') return <div className="flow-root" data-transcript-key={item.key}><LiveAssistantTranscript text={item.text} status={item.status} /></div>
           const slot = turnSlots[index]
           const testId = item.kind === 'event' ? `terminal-clear-event-${item.event.id || item.key}` : undefined
-          const body = item.kind === 'tools'
+          const body = item.kind === 'live'
+            ? <LiveAssistantTranscript text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            : item.kind === 'tools'
             ? <ToolBatch item={item} />
             : item.kind === 'thinking'
               ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} />
@@ -1065,7 +1076,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           return (
             <div data-transcript-key={item.key} data-testid={testId} className="flow-root px-2">
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
-                {slot.first && slot.header && <AssistantTurnHeader event={slot.header} timestamp={slot.showTime ? transcriptTimestamp(slot.header) : ''} label={assistantLabel} icon={assistantIcon} />}
+                {slot.first && <AssistantTurnHeader event={slot.header} timestamp={slot.showTime && slot.header ? transcriptTimestamp(slot.header) : ''} label={assistantLabel} icon={assistantIcon} activity={index === activeTurnHeader ? runtimeActivity : undefined} />}
                 {body}
               </div>
             </div>
@@ -1083,13 +1094,15 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   )
 }
 
-const LiveAssistantTranscript: React.FC<{ text: string; status: string }> = ({ text, status }) => (
+// Custom product renderers can keep their existing live-text cue until they
+// opt into the shared lifecycle indicator.
+const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWriting: boolean }> = ({ text, status, showWriting }) => (
   text ? (
-    <article data-testid="terminal-clear-live-assistant-message" className="mx-2 mt-4 mb-2 pl-1 pr-1">
+    <article data-testid="terminal-clear-live-assistant-message" className="py-1">
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer content={text} framed={false} maxHeight="none" />
       </div>
-      <span aria-label="Writing" className="mt-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+      {showWriting && <span aria-label="Writing" className="mt-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />}
     </article>
   ) : status ? (
     // Virtuoso receives this row whenever the backend has tool/status progress
