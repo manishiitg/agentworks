@@ -115,6 +115,7 @@ mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
 # slotctl: the one program the service account may run as a user's slot account. It is only built
 # here; a root-run provision-slots.sh installs it (root-owned) when the host uses slots.
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/slotctl" "$REPO_ROOT/workspace/cmd/slotctl")
+(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/slottmux" "$REPO_ROOT/workspace/cmd/slottmux")
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
 GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 
@@ -226,6 +227,14 @@ if [[ "${PERSIST_MCP_STATE:-false}" == "true" ]]; then
 fi
 
 runtime_path="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Per-user accounts: a `tmux` front-end first in PATH sends a slot's sessions to that slot's own tmux
+# server and leaves every other command to the real tmux. It lives outside the releases so its path
+# never changes; a host without slots keeps the plain PATH.
+if [[ "${SLOTS_ENABLED:-false}" == "true" ]]; then
+  install -d -m 0755 "$REMOTE_APP/slots/bin"
+  cp "$BUILD_DIR/bin/slottmux" "$REMOTE_APP/slots/bin/.tmux.new" && chmod 0755 "$REMOTE_APP/slots/bin/.tmux.new" && mv -f "$REMOTE_APP/slots/bin/.tmux.new" "$REMOTE_APP/slots/bin/tmux"
+  runtime_path="$REMOTE_APP/slots/bin:$runtime_path"
+fi
 
 # EnvironmentFile= values are applied after Environment= and therefore win
 # for duplicate variables -- a systemd drop-in setting PATH looks correct in

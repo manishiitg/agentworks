@@ -10,41 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 )
-
-// DefaultSlotctlConfig is the root-owned allow-list slotctl reads. It sits beside the launcher in a
-// world-readable folder because slotctl runs as the slot, which cannot enter /etc/agentworks.
-const DefaultSlotctlConfig = "/usr/local/libexec/agentworks/slotctl.json"
-
-// maxRequestBytes bounds a request (an environment and a sandbox policy are a few kilobytes).
-const maxRequestBytes = 8 << 20
-
-// ExecConfig is what slotctl will agree to run. It is root-owned, so the platform account cannot
-// widen it.
-type ExecConfig struct {
-	// AllowedExec lists the absolute programs a request may start; * matches one path segment.
-	AllowedExec []string `json:"allowed_exec"`
-	// AllowedCwd lists the folders a request may start in (or below).
-	AllowedCwd []string `json:"allowed_cwd"`
-}
-
-// LoadExecConfig reads the allow-list.
-func LoadExecConfig(path string) (ExecConfig, error) {
-	var cfg ExecConfig
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return cfg, err
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return cfg, fmt.Errorf("%s: %w", path, err)
-	}
-	return cfg, nil
-}
 
 func within(root, candidate string) bool {
 	root = filepath.Clean(root)
@@ -71,6 +43,16 @@ func (cfg ExecConfig) Validate(req ExecRequest) (cwd string, err error) {
 	}
 	if !allowed {
 		return "", fmt.Errorf("%s is not an allowed program", req.Argv[0])
+	}
+	if req.Argv[0] == TmuxPath {
+		// tmux for a slot: only that slot's own socket, so the request cannot reach another slot's server.
+		me, uerr := user.Current()
+		if uerr != nil || !ValidSlot(me.Username) || cfg.SlotRunRoot == "" {
+			return "", errors.New("tmux is only run as a slot account")
+		}
+		if len(req.Argv) < 4 || req.Argv[1] != "-S" || req.Argv[2] != SlotSocket(cfg.SlotRunRoot, me.Username) {
+			return "", errors.New("tmux must use this slot's own socket")
+		}
 	}
 	for _, entry := range req.Env {
 		if !strings.Contains(entry, "=") || strings.ContainsRune(entry, 0) {

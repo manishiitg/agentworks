@@ -52,6 +52,7 @@ cmd_init() {
     install -d -o "$slot" -g "$slot" -m 0700 "$HOME_DIR/slots/home/$slot"
     install -d -o "$PRODUCT" -g "$slot" -m 2770 "$HOME_DIR/slots/state/$slot" "$HOME_DIR/slots/run/$slot"
   done
+  install -d -o "$PRODUCT" -g "$PRODUCT" -m 0700 "$HOME_DIR/slots/run/.sessions"
   # Slots must be able to walk to their own files (they cannot list anything they have no access to).
   chmod 0751 "$HOME_DIR"
 
@@ -61,8 +62,10 @@ cmd_init() {
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
-  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner"],
-  "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"]
+  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux"],
+  "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"],
+  "slot_run_root": "$HOME_DIR/slots/run",
+  "slot_state_root": "$HOME_DIR/slots/state"
 }
 JSON
   install -o root -g root -m 0644 "$SLOTCTL_CONFIG.new" "$SLOTCTL_CONFIG" && rm -f "$SLOTCTL_CONFIG.new"

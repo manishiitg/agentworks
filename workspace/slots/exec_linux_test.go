@@ -133,3 +133,13 @@ func TestRunExecMakesNewFilesPrivateToTheSlotAndItsGroup(t *testing.T) {
 		t.Fatalf("new file mode %o, want 660 (no access for other accounts)", mode)
 	}
 }
+
+func TestValidateTmuxIsOnlyForTheSlotsOwnSocket(t *testing.T) {
+	// The current account is not a slot, so tmux must be refused outright.
+	root := t.TempDir()
+	cfg := ExecConfig{AllowedExec: []string{TmuxPath}, AllowedCwd: []string{root}, SlotRunRoot: root}
+	req := ExecRequest{Argv: []string{TmuxPath, "-S", SlotSocket(root, "slot01"), "new-session", "-d"}, Cwd: root}
+	if _, err := cfg.Validate(req); err == nil {
+		t.Fatal("tmux must be refused for an account that is not a slot")
+	}
+}
