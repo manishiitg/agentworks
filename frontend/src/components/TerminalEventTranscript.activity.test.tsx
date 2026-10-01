@@ -39,6 +39,57 @@ function indicators(host: HTMLElement) { return host.querySelectorAll('[data-tes
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
 describe('activity belongs to the current agent turn', () => {
+  it('keeps the header loading through idle polls and replayed older completions until the new turn ends', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const original = useChatStore.getState()
+    const oldCompletion = { ...completed, timestamp: '2026-10-01T06:59:00Z' }
+    useChatStore.setState({
+      getActiveSessions: vi.fn().mockResolvedValue([]),
+      activeSessionsCache: [{ session_id: 'chat-a', status: 'completed' } as ActiveSessionInfo],
+      chatTabs: { a: { tabId: 'a', sessionId: 'chat-a', isStreaming: true } as ChatTab },
+      tabEvents: { 'chat-a': [user] },
+    })
+    function Chat() {
+      const activity = useChatRuntimeActivity('a')
+      const events = useChatStore(state => state.tabEvents['chat-a'])
+      return <TerminalEventTranscript terminal={null} events={events} runtimeActivity={activity} />
+    }
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    cleanups.push(() => { act(() => root.unmount()); host.remove(); useChatStore.setState(original, true) })
+    await act(async () => { root.render(<Chat />) })
+    expect(indicators(host)).toHaveLength(1)
+    for (const isStreaming of [false, true, false]) {
+      await act(async () => { useChatStore.setState({
+        chatTabs: { a: { tabId: 'a', sessionId: 'chat-a', isStreaming, isCompleted: !isStreaming } as ChatTab },
+        tabEvents: { 'chat-a': [user, oldCompletion] },
+      }) })
+      expect(indicators(host)).toHaveLength(1)
+    }
+    await act(async () => { useChatStore.setState({ tabEvents: { 'chat-a': [user, oldCompletion,
+      { ...event('new-done', 'unified_completion', { final_result: 'Finished' }), timestamp: '2026-10-01T07:01:00Z' },
+    ] } }) })
+    expect(indicators(host)).toHaveLength(0)
+  })
+
+  it('renders repeated native replies on successive turns, live and after restoring the chat', async () => {
+    const turns = [1, 2, 3].map(turn => [
+      event(`user-${turn}`, 'user_message', { content: 'Which model are you using?' }),
+      { ...event(`gen-${turn}`, 'llm_generation_end', { content: 'GPT-6 (Codex).' }), execution_id: 'main:chat-a', execution_kind: 'main_agent' },
+      { ...event(`done-${turn}`, 'unified_completion', { final_result: 'GPT-6 (Codex).', status: 'completed' }), execution_id: 'main:chat-a', execution_kind: 'main_agent' },
+    ])
+    const { host, render } = await mount({ events: turns[0] })
+    const answerCount = (node: HTMLElement) => node.textContent?.match(/GPT-6 \(Codex\)\./g)?.length || 0
+    expect(answerCount(host)).toBe(1)
+    await render({ events: turns.slice(0, 2).flat() })
+    expect(answerCount(host)).toBe(2)
+    await render({ events: turns.flat() })
+    expect(answerCount(host)).toBe(3)
+    expect(headers(host)).toHaveLength(3)
+    const restored = await mount({ events: turns.flat() })
+    expect(answerCount(restored.host)).toBe(3)
+  })
+
   it('removes the actual header spinner when the turn completes while cache and tab flags remain running', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const original = useChatStore.getState()

@@ -13,6 +13,39 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Header activity stays active through stale idle polls during a new turn
+- The latest foreground user/start event keeps the chat header active until
+  its completion, even when tab flags or a session-status poll still describe
+  the previous idle/completed turn. Waiting-for-input remains distinct and
+  completion still clears stale running flags. The shared hook applies to
+  Code, Crew and workflows, including RTS's Cursor workflow chats.
+- Select the latest lifecycle event by its timestamp, using sequence to break
+  equal timestamps and arrival order when timing is unavailable. A replayed
+  older completion appended after a new message cannot settle that new turn.
+  Tests exercise the real store/hook/rendered header through repeated idle
+  polls, delayed older completion and the new completion. Code:
+  `foregroundTurnActivity`, `chatRuntimeActivity`, `useChatRuntimeActivity`.
+- During the RTS investigation, Manish's `automationtesting` request at
+  14:31:30 IST ended at 14:33:14 with Cursor `quota_exhausted` / "cursor usage
+  limit reached". This is a provider failure separate from the loading race;
+  changing the indicator does not resolve account quota.
+
+### 2026-10-01 — Identical chat replies remain visible in separate user turns
+- Excellence/Ashutosh's 14:24–14:26 IST Code messages reached Codex and each
+  received an answer. Native transcripts, server observer events and browser
+  receipt telemetry confirmed delivery. The shared transcript filter hid later
+  identical answers because it compared across the whole conversation and the
+  retained main execution ID spans multiple turns.
+- Deduplicate answer carriers only within a user turn. Each later user message
+  resets completion-card comparison; a generation answer cannot be hidden by
+  a completion in another turn. Reconcile adjacent frontend/durable user echoes
+  before comparing answers. The compact conversation projection also resets
+  its last-answer comparison on a user message. Code, Crew and workflow chats
+  use these shared projections. Regression tests cover identical native replies,
+  a turn missing its completion, and rendered live/restored transcripts. Main
+  agent lifecycle cards also supersede each other only within the user turn;
+  child lifecycle cards retain their existing execution-based collapse.
+
 ### 2026-10-01 — Providers terminals for personal accounts run under Landlock
 
 - **Found.** The Providers screen opens a terminal for a person's own provider account (sign-in, "inspect") by
@@ -953,6 +986,20 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
+- After the answered 14:26:04 IST submission, the 14:26:25 retry reused its
+  submission ID. Returning the original successful receipt without another
+  provider send is intentional idempotency, not proof of a new model turn.
+  Browser telemetry also recorded a conversation error for the original
+  response; it does not include the error text, so its cause is unconfirmed.
+- By 14:26:42 IST the main-terminal stream returned 410; a read-only tmux check
+  and subsequent lease logs confirmed the terminal no longer existed. The
+  logs inspected do not explain its exit. The existing new-message route
+  closes an idle retained session with no live terminal and resumes normally;
+  changing replay behavior or sending the user's prompt again during diagnosis
+  would risk duplicating an already-answered request. No production session
+  was modified in this investigation.
 
 ### 2026-10-01 — Generated model names can disagree with the actual runtime
 - Excellence/Ashutosh's 14:15 IST Code turn used `gpt-6.1-sol`: both the app's

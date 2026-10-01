@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
-import { foregroundTurnCompleted, isForegroundTurnCompletion } from './foregroundTurnActivity'
+import { foregroundTurnCompleted, foregroundTurnState, isForegroundTurnCompletion } from './foregroundTurnActivity'
 
 function event(type: string, fields: Partial<PollingEvent> = {}, data = {}): PollingEvent {
   return { id: type, type, timestamp: '2026-10-01T07:00:00Z', data: { type, data }, ...fields } as PollingEvent
 }
 
 describe('latest foreground turn completion', () => {
+  it('ignores a late replayed completion older than the new user message', () => {
+    const oldCompletion = event('agent_end', { timestamp: '2026-10-01T06:59:00Z' })
+    const newMessage = event('user_message', { timestamp: '2026-10-01T07:00:00Z' })
+    expect(foregroundTurnState([newMessage, oldCompletion])).toBe('running')
+    expect(foregroundTurnCompleted([newMessage, oldCompletion])).toBe(false)
+    expect(foregroundTurnState([newMessage, oldCompletion, event('unified_completion', { timestamp: '2026-10-01T07:01:00Z' })])).toBe('completed')
+  })
+
   it.each(['llm_generation_end', 'unified_completion', 'agent_end', 'conversation_end', 'conversation_error', 'context_cancelled'])('settles on %s despite trailing telemetry', type => {
     expect(foregroundTurnCompleted([event('user_message'), event(type), event('token_usage')])).toBe(true)
   })

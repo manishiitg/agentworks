@@ -15,6 +15,10 @@ function session(phase: RuntimePhase, fields: Partial<RuntimeSnapshot> = {}): Ac
 }
 
 describe('open chat runtime activity', () => {
+  it.each(['idle', 'completed', 'canceled'] as const)('keeps a new foreground turn running through stale %s status', phase => {
+    expect(chatRuntimeActivity({ foregroundTurnStarted: true, isStreaming: false, isCompleted: true }, session(phase)))
+      .toEqual({ state: 'running', label: 'running' })
+  })
   it('shows an accepted turn before the session cache refreshes', () => {
     expect(chatRuntimeActivity({ isStreaming: true }).state).toBe('running')
     expect(chatRuntimeActivity({ isStreaming: true }, session('idle')).state).toBe('running')

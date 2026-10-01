@@ -14,6 +14,19 @@ function event(id: string, type: string, data: Record<string, unknown>, extra: P
 }
 
 describe('buildCleanConversationItems', () => {
+  it('shows an identical final answer once for each user turn', () => {
+    const events = [1, 2, 3].flatMap(turn => [
+      event(`user-${turn}`, 'user_message', { content: 'Which model are you using?' }),
+      event(`gen-${turn}`, 'llm_generation_end', { content: 'GPT-6 (Codex).' }),
+      event(`done-${turn}`, 'unified_completion', { final_result: 'GPT-6 (Codex).' }),
+    ])
+    expect(buildCleanConversationItems(events).map(item => `${item.role}:${item.content}`)).toEqual([
+      'user:Which model are you using?', 'assistant:GPT-6 (Codex).',
+      'user:Which model are you using?', 'assistant:GPT-6 (Codex).',
+      'user:Which model are you using?', 'assistant:GPT-6 (Codex).',
+    ])
+  })
+
   it('shows native options and settles the same coding-agent choice', () => {
     const requested = event('q1', 'coding_agent_question', {
       provider: 'muse-cli', kind: 'requested', prompt_id: 'prompt-1',

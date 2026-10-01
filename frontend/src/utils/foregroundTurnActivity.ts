@@ -22,12 +22,29 @@ export function isForegroundTurnCompletion(event: PollingEvent): boolean {
   return getEventPayloadParts(event).innerData?.restored_intermediate_update !== true
 }
 
-export function foregroundTurnCompleted(events?: readonly PollingEvent[]): boolean {
-  if (!events) return false
-  for (let index = events.length - 1; index >= 0; index--) {
-    const event = events[index]
-    if (isForegroundTurnCompletion(event)) return true
-    if (event.type && startTypes.has(event.type) && isForegroundTurnEvent(event)) return false
+export function foregroundTurnState(events?: readonly PollingEvent[]): 'running' | 'completed' | undefined {
+  let latest: PollingEvent | undefined
+  let state: 'running' | 'completed' | undefined
+  for (const event of events || []) {
+    const completed = isForegroundTurnCompletion(event)
+    const started = event.type && startTypes.has(event.type) && isForegroundTurnEvent(event)
+    if (!completed && !started) continue
+    if (latest) {
+      // Catch-up/history can append old lifecycle events after the current
+      // optimistic message. Arrival order must not settle that newer turn.
+      const previousTime = Date.parse(latest.timestamp || '')
+      const eventTime = Date.parse(event.timestamp || '')
+      if (Number.isFinite(previousTime) && Number.isFinite(eventTime)) {
+        if (eventTime < previousTime) continue
+        if (eventTime === previousTime && event.sequence !== undefined && latest.sequence !== undefined && event.sequence < latest.sequence) continue
+      }
+    }
+    latest = event
+    state = completed ? 'completed' : 'running'
   }
-  return false
+  return state
+}
+
+export function foregroundTurnCompleted(events?: readonly PollingEvent[]): boolean {
+  return foregroundTurnState(events) === 'completed'
 }
