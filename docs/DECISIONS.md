@@ -27,6 +27,9 @@ Design references for the linked runtime decisions:
   gateway's Responses request failed with HTTP 500. Private Pi session model
   configuration/scoped credentials and a separate image-generation adapter still
   need application integration and authenticated qualification before launch.
+  Model-list routes return 404/500; only the two supplied, successfully called
+  models are confirmed. Full key-accessible inventory needs the gateway's enabled
+  deployment list/API specification, not guessed model names.
 
 ### 2026-10-01 — Citymall dedicated host: prepare an isolated service account first
 

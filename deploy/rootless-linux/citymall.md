@@ -73,3 +73,9 @@ integration must stage the non-secret model configuration in those directories,
 pass the selected connection's credential through the existing scoped provider
 key path, and qualify a real authenticated app turn before activation. Model
 pricing and exact context/output limits are not established by these checks.
+Model discovery is also unverified: `/chat/v1/models`,
+`/chat/v1/gpt-5.6-luna/models` and `/images/v1/models` returned HTTP 500;
+`/models`, `/v1/models` and `/openai/v1/models` returned HTTP 404.
+Only `gpt-5.6-luna` and `mai-image-2.6-flash` are confirmed accessible. Obtain
+the enabled-deployment list or API specification from the gateway administrator
+before claiming a complete catalog or exposing additional model choices.
