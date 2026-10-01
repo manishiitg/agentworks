@@ -143,18 +143,15 @@ func run(args []string) int {
 			return passthrough(args)
 		}
 		sock := slots.SlotSocket(cfg.SlotRunRoot, slot)
-		_, statErr := os.Stat(sock)
 		code := asSlot(cfg, slot, args, os.Environ(), os.Stdout, os.Stderr)
 		if code != 0 {
 			return code
 		}
-		if statErr != nil {
-			// A new server. tmux makes its socket owner-only, so open it to the slot's group (the
-			// platform is a member), then let the platform account talk to it (tmux only accepts its
-			// own user otherwise).
-			_ = runAsSlot(cfg, slot, []string{slots.ChmodPath, "660", sock})
-			_ = asSlot(cfg, slot, []string{"server-access", "-aw", me.Username}, []string{"PATH=/usr/bin:/bin"}, io.Discard, io.Discard)
-		}
+		// tmux makes its socket owner-only, so open it to the slot's group (the platform is a member), then
+		// let the platform account talk to it (tmux only accepts its own user otherwise). Always done:
+		// a stale socket file from an earlier server must not be taken for a configured one.
+		_ = runAsSlot(cfg, slot, []string{slots.ChmodPath, "660", sock})
+		_ = asSlot(cfg, slot, []string{"server-access", "-aw", me.Username}, []string{"PATH=/usr/bin:/bin"}, io.Discard, io.Discard)
 		remember(registry, name, slot)
 		return 0
 
