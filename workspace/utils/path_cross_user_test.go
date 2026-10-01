@@ -27,14 +27,21 @@ func crossUserFixture(t *testing.T) string {
 	return docs
 }
 
-func TestResolveUserPathDeniesAnotherUsersTree(t *testing.T) {
+// The app layer authorizes who may name another user's folder (shared Code, Crew owners, administrators),
+// so the resolver does not refuse the name; the platform's own system trees must keep resolving too.
+func TestResolveUserPathStillResolvesNamedUserAndSystemTrees(t *testing.T) {
 	docs := crossUserFixture(t)
-	for _, req := range []string{
-		"_users/bob/Chats/secret.txt", "/_users/bob/Chats/secret.txt",
-		"Chats/../_users/bob/Chats/secret.txt", "./_users/bob/Chats/secret.txt", "_users/bob",
+	if err := os.MkdirAll(filepath.Join(docs, "_users", "_system_global_secrets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ req, user string }{
+		{"_users/bob/Chats/secret.txt", "alice"},
+		{"_users/_system_global_secrets/secrets.json", "default"},
+		{"_users/_system_global_secrets/secrets.json", "alice"},
+		{"_users/alice/Chats/mine.txt", "alice"},
 	} {
-		if got, err := ResolveUserPath(docs, req, "alice"); err == nil {
-			t.Errorf("alice resolved %q to %s", req, got)
+		if _, err := ResolveUserPath(docs, tc.req, tc.user); err != nil {
+			t.Errorf("%s as %s: %v", tc.req, tc.user, err)
 		}
 	}
 }

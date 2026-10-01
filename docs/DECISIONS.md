@@ -46,13 +46,17 @@ Design references for the linked runtime decisions:
 
 ### 2026-10-01 — Review fixes: no cross-user path resolution, server secrets out of agent environments
 
-- **Decided.** `utils.ResolveUserPath` refuses another user's tree: a path under `_users/<id>/` must be
-  the requester's own, as written (`_users/bob/...` used to resolve for anyone) and after symlinks are
-  followed. `IsValidFilePath` (used by every other handler) refuses a symlink that carries a path from one
-  user's tree into another's, or from a shared folder into a user's tree. Checked first on excellence: no
-  existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`. Other
-  resolvers' call sites inherit the hop rule; handlers that take a user-supplied path without
-  `ResolveUserPath` are the next place to look.
+- **Decided.** `utils.IsValidFilePath` (behind `ResolveUserPath` and every other handler) refuses a symlink
+  that carries a path from one user's tree into another's, or from a shared folder into a user's tree: a
+  link planted in your own folder can no longer read someone else's. Checked first on excellence and RTS:
+  no existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`.
+- **Reversed the same day (RTS outage).** The first version also refused any `_users/<id>/` path whose id was
+  not the requester's. That broke RTS: the agent could not load `_users/_system_global_secrets/secrets.json`
+  at startup, never listened, and RTS was down for about 8 minutes until the release was rolled back. The
+  workspace API has no authorization of its own by design; the app server authorizes the caller and stamps
+  `X-User-ID`, and shared Code collaborators, Crew owners and administrators legitimately read another
+  user's folder, so the name check must not live there. Lesson: a change to a shared resolver needs a
+  startup check against a copy of the real data layout before a swap.
 - **Decided.** Shell commands (`security.buildNativeEnvironment`) and CLI launches
   (`llmtypes.ScopedCodingAgentEnvironmentPlan`, now also when no secret scope is declared) never inherit
   the host's server-owned secrets: `AUTH_SECRET`, `ACCESS_PASSWORD`, `AUTH_USERS`, `GLOBAL_SECRET_*`, the

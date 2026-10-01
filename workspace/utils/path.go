@@ -186,21 +186,11 @@ func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 		return "", fmt.Errorf("path %q resolves outside the workspace root", requestedPath)
 	}
 
-	// Another user's tree is never reachable: not by name, and not through a symlink that leads into it.
-	// The containment checks above only keep a path inside the one docs root, which holds every user's
-	// folder (docs/DECISIONS.md, 2026-10-01).
-	self := SanitizeUserID(userID)
-	if owner, ok := userTreeOwner(docsDir, resolved); ok && owner != self {
-		return "", fmt.Errorf("path %q is not in your folder", requestedPath)
-	}
-	if real, err := resolveExistingPathPrefix(resolved, filepath.Clean(docsDir)); err == nil {
-		if rootReal, rerr := filepath.EvalSymlinks(filepath.Clean(docsDir)); rerr == nil {
-			if owner, ok := userTreeOwner(rootReal, real); ok && owner != self {
-				return "", fmt.Errorf("path %q leads into another user's folder", requestedPath)
-			}
-		}
-	}
-
+	// Who may read a given user's tree is decided above this API (the app server authorizes the caller
+	// and stamps X-User-ID: Code collaborators, Crew owners and administrators legitimately read another
+	// user's folder), so a path is not refused for naming another user. What is refused, in
+	// IsValidFilePath, is a symlink carrying a path from one tree into another, which would let a link
+	// planted in the caller's own folder read someone else's (docs/DECISIONS.md, 2026-10-01).
 	return resolved, nil
 }
 
