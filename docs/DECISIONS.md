@@ -23,6 +23,16 @@ Design references for the linked runtime decisions:
   `agent_go/cmd/server/child_env_log.go`; temporary observability until the
   builders move to an allowlist.
 
+### 2026-10-01 — A skill with an invalid YAML header stopped the server at startup
+- `e05c52f23` made `RegisterEmbeddedSkillsRendered` parse every skill header as YAML, and
+  `server.go` stops the process on any error. The Video Studio `google-ai` skill had an unquoted
+  `: ` inside its description, so the agent exited at start (excellence, 2026-10-01, status 1,
+  502 for about 30 minutes) because AGENT_PRODUCTS was unset there and every product registers.
+  Every deploy of that `main` would have failed the same way.
+- Quoted the description, and added `TestEverySkillFrontmatterIsValidYAML` which checks every
+  `SKILL.md` in the repo, so the build fails before a deploy can. Code:
+  `agent_go/pkg/agentprofiles/skill_frontmatter_test.go`. Not done: making a bad skill non-fatal.
+
 ### 2026-10-01 — Use live tool discovery and one owner for runtime guidance
 - AgentWorks owns product prompts, access/mode constraints and feature skills;
   mcpagent owns dynamic tool discovery, filtering, schemas and provider routing.
