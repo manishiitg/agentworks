@@ -13,6 +13,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Providers terminals for personal accounts run under Landlock
+
+- **Found.** The Providers screen opens a terminal for a person's own provider account (sign-in, "inspect") by
+  starting the coding CLI directly as the platform account with only the CLI's own flags (`--sandbox
+  read-only`, `--disable-shell`, `--tools ""`) around it; Pi and Agy opened unrestricted. Any user with a
+  personal connection could therefore read other users' folders and the server's secret files through the CLI.
+- **Decided.** A personal account's terminal is confined with the same Landlock launcher and policy shape as the
+  chat CLIs, limited to the account's private HOME, the folder it starts in and the CLI's install
+  (`agent_go/cmd/server/provider_setup_confine.go`, `pkg/clilaunch` in the provider). It cannot be turned
+  off. A multi-user host that cannot confine refuses the terminal; a single-user install is unchanged.
+- **Not covered.** The server account's own terminals (admin only, service home) are unconfined, and a
+  confined terminal still has network access and the account's own login. Sign-in flows that need a local
+  callback port or another path outside the account's home may need a grant: test each provider's sign-in
+  after deploying.
+
 ### 2026-10-01 — Files bulk deletion preserves its project container
 - Excellence/Vaibhav's Files selection deleted the entire Code project folder;
   its cached project row remained, and the later project-delete request returned

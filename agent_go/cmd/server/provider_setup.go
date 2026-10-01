@@ -407,6 +407,15 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 	if !validSize {
 		cols, rows = liveAttachDefaultCols, liveAttachDefaultRows
 	}
+	// A personal account's terminal runs confined to that account's private home (provider_setup_confine.go).
+	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, bindingID != provider)
+	if confineErr != nil {
+		cancel()
+		cleanup()
+		return nil, fmt.Errorf("start %s %s: %w", provider, action, confineErr)
+	}
+	previousCleanup := cleanup
+	cleanup = func() { previousCleanup(); releaseConfinement() }
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
 		cancel()
