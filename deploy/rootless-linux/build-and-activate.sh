@@ -90,6 +90,18 @@ DEPLOY_GOWORK="$BUILD_DIR/go.work"
   printf 'multi-llm-provider-go=%s\n' "$(git -C "$WORKSPACE_ROOT/multi-llm-provider-go" rev-parse HEAD)"
 } > "$BUILD_DIR/SOURCE_REVISIONS"
 
+# Keep the exact source this release was built from beside its binaries (no .git, no
+# dependency or build folders), so the code running on the host can always be inspected there.
+# It lives in the release folder and is pruned with it; SOURCE_REVISIONS names the commits.
+echo "==> [$RELEASE_ID] Saving the source this release is built from"
+mkdir -p "$BUILD_DIR/source"
+for source_repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
+  source_dir="$WORKSPACE_ROOT/$source_repo"
+  [[ "$source_repo" == mcp-agent-builder-go ]] && source_dir="$REPO_ROOT"
+  mkdir -p "$BUILD_DIR/source/$source_repo"
+  tar -C "$source_dir" --exclude=.git --exclude=node_modules --exclude=dist -cf - . | tar -C "$BUILD_DIR/source/$source_repo" -xf -
+done
+
 echo "==> [$RELEASE_ID] Building binaries (native linux/amd64, on $(hostname))"
 # Compile the agent with cgo enabled (it links sherpa-onnx for voice/STT) and
 # an $ORIGIN/lib rpath, staging the native libraries beside the binary. The

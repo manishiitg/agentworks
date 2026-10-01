@@ -13,6 +13,217 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Audit-log spawned provider-child env names (disable via LOG_CHILD_ENV=0)
+- `providerConnectionSetupEnvironment` and `workflowProviderSetupEnvironment`
+  now emit `[CHILD_ENV]` lines showing which variable names a spawned child
+  keeps, strips and injects, plus the full sorted name list. Names only,
+  never values; a test pins that secret values cannot appear in the output.
+- On by default so the fail-open denylist surface stays visible; set
+  `LOG_CHILD_ENV=0` (or false/off/no) to disable. Lives in
+  `agent_go/cmd/server/child_env_log.go`; temporary observability until the
+  builders move to an allowlist.
+
+### 2026-10-01 — Use live tool discovery and one owner for runtime guidance
+- AgentWorks owns product prompts, access/mode constraints and feature skills;
+  mcpagent owns dynamic tool discovery, filtering, schemas and provider routing.
+  Caller instructions are preserved. AgentWorks code-execution wrappers opt into
+  bounded `search_tools` discovery instead of the full upfront HTTP catalog;
+  native API schemas and other library consumers' legacy inventory remain.
+- Keep essential Code/Crew constraints upfront and render product-option
+  procedures into session-local skills. Use rendered skill frontmatter for the
+  shared feature bundle's descriptions. Agy gets routing and a skill-list
+  fallback until its adapter supports native skill projection. Workflow variable
+  and output rules remain AgentWorks-owned; generic HTTP guidance is mcpagent-owned.
+- HTTP discovery/schema callbacks now check the current session allowlist as well
+  as in-process turn policy, including cached schemas and error suggestions.
+  No access is granted by a skill or discovery response.
+- Same Code feature fixture shrank from 5,487 to 1,460 bytes. Live first use and
+  native resume with changed tools/skills passed on Claude, Codex and Pi; Cursor
+  reached its usage limit. Muse/Agy live discovery and total turn cost remain
+  unqualified. Existing mcpagent cleanup/API-snapshot and workflow model/path/Agy
+  gate test failures were reproduced on baseline worktrees and left open.
+  Details and controlled size evidence:
+  [progressive discovery design](design/progressive_prompt_discovery.md).
+  No application restart or deployment.
+
+### 2026-10-01 — Prompt reduction needs discovery and clear instruction ownership
+- Investigated Code, Crew Builder/Run, workflow chat/step composition, mcpagent's
+  registry/schema discovery, and native skill projection in owned worktrees.
+  Skill bodies already load on demand; feature summaries and product/runtime
+  procedures still overlap. The local `get_api_spec` requires an exact tool
+  name, so removing its always-loaded name catalog first would break discovery.
+- Record the recommended design before changing runtime behavior: canonical
+  skill descriptions, one owner for transport instructions, essential mode and
+  access constraints retained once, and session-authorized tool search before
+  the full catalog is removed. This commit is investigation only.
+- Open findings: skill frontmatter triggers are replaced by Go descriptions;
+  Code connection timing and workflow hybrid-read guidance disagree across
+  documents; Agy skill projection/routing delivery needs verification; existing
+  option-specific restrictions must survive any move from summaries into skills.
+  Evidence, scope and qualification plan:
+  [progressive discovery design](design/progressive_prompt_discovery.md).
+
+### 2026-09-30 — AUTH_SECRET rotation is a scriptable offline command
+- New `server rotate-auth-secret`: re-encrypts `config/provider-api-keys.json`
+  plus every workflow secrets and provider-credentials document from the old
+  secret to the new one, then upserts the deployment's env file. Two-phase
+  all-or-nothing (decrypt everything first; any undecryptable blob aborts
+  before anything is written), timestamped 0600 backups, decrypt-with-new
+  verification, `--dry-run` for pre-flight, non-zero exit on any failure so
+  deploy scripts can gate the restart. Run it with agent, workspace, and
+  gateway stopped; sessions invalidate on restart (stateless JWT).
+- The older `rotate-provider-keys-auth-secret` keeps working unchanged and
+  now shares the provider-file rekey helper. Env paths per deploy:
+  rootless `$REMOTE_APP/.env`, AWS `/opt/video-studio/.env`, dominion
+  `/srv/dominion/.env` (all via `--env-file`). Gmail `credentials.enc` is
+  not AUTH_SECRET-derived and stays out of scope.
+- Tests: `auth_rotate_cmd_test.go` (end-to-end rekey, dry-run and wrong-old
+  write nothing, missing provider file tolerated).
+
+### 2026-09-30 — Folder-guard write paths are boundary-checked before creation
+- The shell handler pre-created every `FolderGuard.WritePaths` entry with a
+  bare `MkdirAll`, resolving relative entries against the workspace root but
+  accepting absolute paths as-is: an absolute outside path, a `..` escape, or
+  a symlink redirect created directories anywhere as the service account.
+  Each entry is now resolved exactly as the isolator resolves it and checked
+  with the working-directory containment helper; escapes fail the request
+  with 400 before anything is created.
+- Scope note: `/api/execute` is token-gated and proxy-refused, so only the
+  trusted agent server sends these configs (FolderGuard is never model-set);
+  this closes a confused-harness hole, not a remote one. A check-to-create
+  swap race remains in principle; accepted as residual (same account).
+- Tests: `shell_guard_writepath_test.go` (resolution table plus a 400-and-
+  nothing-created handler case).
+
+### 2026-09-30 — Spawned children get a minimal explicit environment
+- Every bare spawn site in `agent_go/cmd/server` (nil `cmd.Env`, which inherits
+  everything, or a raw `os.Environ()` assignment) now builds its environment
+  from `minimalChildEnv` (`child_env.go`): PATH/HOME/TMPDIR, locale, TERM and
+  other non-secret vars carried over only when set. Sites that provably need
+  more pass it explicitly: tmux commands keep `TMUX_TMPDIR` for socket
+  discovery, CLI status/model probes keep that CLI's documented API key var,
+  the provider pty keeps TERM/COLORTERM.
+- Deliberate constructions are untouched: explicit caller envs (including the
+  workflow credential injection in `workflowProviderSetupEnvironment`), the
+  per-account env in `providerConnectionSetupEnvironment`, the trigger notify
+  allowlist, and the locked-down git env. The two denylist-based builders
+  remain fail-open by design and are follow-up work, as is the mcpagent-side
+  tmux session creator, which this repo does not contain.
+- Tests: `child_env_test.go` pins the base/passthrough behavior. Full
+  `cmd/server` suite shows only 6 pre-existing failures, byte-identical with
+  and without this change (verified against the pristine base with the same
+  dependency worktrees): sales-crew catalog, delegation-tier defaults,
+  playbook catalog x2, a real-tmux keystroke-timing assertion, and workshop
+  LLM defaults. Left open; none touch process spawning.
+
+### 2026-09-30 — AUTH_SECRET is cached at startup and cleared from the environment
+- The server read `AUTH_SECRET` from the environment on every call, so the
+  secret stayed in the environment of every child process (agent shells, CLIs,
+  tmux). It is now read once at startup into memory (`InitAuthSecretCache`,
+  `services.CacheSecretsKey`) and cleared (`ClearAuthSecretFromEnv`); readers
+  use `GetAuthSecret`, which prefers a live env var (tests, CLI commands) and
+  falls back to the cache. Same shape as the existing bridge-token handling.
+- The workspace service never reads the secret and now unsets it at startup;
+  the native shell denylist also blocks it, so shells stay clean even if a
+  future path re-exports it. Docker shells were already allowlisted.
+- Spawn sites that pass the full parent env through (`os.Environ`/nil-`Env`
+  execs) are unchanged by this commit; they inherit a clean environment now,
+  and minimal per-site envs remain follow-up work.
+- Code: `agent_go/cmd/server/auth_middleware.go`, `server.go`,
+  `services/workspace_config.go`, `workspace/server.go`,
+  `workspace/security/environment.go`. Tests: `auth_cache_test.go`,
+  `workspace_config_key_test.go`, `environment_bridge_env_test.go`.
+
+### 2026-09-30 — Workspace ZIP backup export/import removed
+- Removed `POST /api/workspace/export` and `POST /api/workspace/import`
+  (`workspace/handlers/backup.go` deleted, routes dropped from
+  `workspace/server.go`) after a security review found the extraction loop
+  unsafe to keep; the private audit holds the details, not this log. The proxy
+  bulk-route entries, the `local_zip` supported strategy, and every UI caller
+  (Files tree menu, Backup popup Download ZIP, shared-folder Import) went with
+  it. The public share-link folder download is a separate endpoint and stays.
+  A router test pins both routes as 404 so a reintroduction fails loudly.
+- To restore the capability, reimplement export/import with separator-aware
+  containment, symlink resolution before create, and size/count caps, plus
+  regression tests — do not revert this commit as-is.
+- Code: `workspace/server.go`, `workspace/workspace_backup_removed_test.go`,
+  `agent_go/cmd/server/workspace_proxy_policy.go`, `workflow_backup.go`,
+  `frontend/src/services/api.ts`, `Workspace.tsx`, `PlannerFileList.tsx`,
+  `WorkflowBackupView.tsx`, `BackupPopupBody.tsx`, `SharedFolder.tsx`
+  (`ImportProgressDialog.tsx` deleted). Committed bundles under
+  `agent_go/static/` refresh on the next frontend build/deploy.
+
+### 2026-09-30 — Process-killing routes: browser ids checked, and admin-only through the proxy
+- Audit of the other workspace routes a logged-in user reaches through `/api/wp`:
+  `POST /api/browser/cleanup` ran `kill -9` on any process id in the body, so any user
+  could stop the agent, gateway or workspace service (all one account) or another user's
+  work; `{"all": true}` kills every user's chromium. `POST /api/processes/cleanup` sweeps
+  workflow processes server-wide.
+- The handler now kills only ids that are in the current browser-process list
+  (`filterBrowserPIDs`, `workspace/handlers/browser_processes.go`). The proxy makes
+  `api/browser/cleanup` and `api/processes/cleanup` admin-only (`workspaceProxyAdminOnlyRoutes`);
+  on a single-user machine everyone counts as an admin, so the top-bar runtime-health control
+  keeps working there. In multi-user mode an ordinary user's click on cleanup now gets a 403;
+  hiding those buttons for non-admins is not done.
+- Not changed, noted: `GET /api/browser/processes` and `GET /api/processes` list server
+  processes to every user; `GET /api/cdp-check` probes local ports; `POST /api/skills/cli/install`
+  runs `npx skills add <source>` by design. Not deployed.
+
+### 2026-09-30 — Browsers can no longer call the shell-execute route through the proxy
+- Found from a pasted Slack message: a logged-in user could `POST /api/wp/api/execute`
+  with only `{"command": …}`. The workspace service runs a command with no `folder_guard`
+  unconfined from the workspace root (`workspace/handlers/shell.go`, the "non-isolated"
+  branch), the proxy adds the service token itself, and the proxy only inspects path fields,
+  not command text. Any user could therefore run commands as the shared server account and
+  read other users' chats and files, or delete them. Logged: his calls returned 200 at
+  16:35-16:36 on excellence. Whether anyone used it to read or delete anything is not known.
+- `api/execute` is now in `workspaceProxyRefusedRoutes` (server-only). The UI never called
+  it and the agent server reaches the workspace service directly. The test that allowed
+  shell text through the proxy now asserts it is refused. Code:
+  `agent_go/cmd/server/workspace_proxy.go`.
+- Still open: the workspace service itself runs an unguarded command when a request has no
+  `folder_guard`; only the proxy stands in front of it. Other routes that accept a command
+  were not audited. Not deployed.
+
+### 2026-09-30 — Each rootless release keeps the source it was built from
+- `deploy/rootless-linux/build-and-activate.sh` copies the three repos into
+  `<release>/source/<repo>` (no `.git`, `node_modules` or `dist`) right after writing
+  `SOURCE_REVISIONS`. Confida, SparkQuill and excellence get it; RTS uses
+  `deploy/aws-ec2/` and is unchanged. Requested by the owner after the excellence
+  release folders were deleted on 2026-09-30.
+- It lives inside the release, so it is pruned with it and is **not** a backup: a wipe of
+  `/srv/<product>` removes it too (only `data` and `state` survived). It is owned by the
+  shared service account, so any process running as that account can read, change or
+  delete it, and confined CLIs get no grant to it. Measured on this checkout: about
+  380 MB per release before a server clone's smaller tracked-only tree.
+- Not deployed yet.
+
+### 2026-09-30 — Local linked-runtime qualification is partial; step searches name `output`
+- Real local CLI fixtures passed artifact discovery, linked reads, authoritative
+  writes through admitted tools, native resume and cleanup for Claude, Codex,
+  Cursor and Pi. Claude and Cursor native writes were denied by existing policy;
+  their bridge writes passed. Pi required its existing provider credential in
+  the managed process. Muse completed linked artifact work but resume exceeded the 150-second budget;
+  Agy stopped at sign-in. Do not call all six providers qualified.
+- Add explicit `output` search-path guidance to mcpagent's step instructions,
+  matching the `project` guidance: search from the private cwd can skip links.
+  Keep tool modes and permissions unchanged. macOS checks are not Landlock
+  certification or a production deployment gate; both-mode Linux qualification
+  remains required. Evidence and reproduction: [local report](design/local_linked_runtime_qualification.md).
+
+
+### 2026-09-30 — Linked runtimes tell the agent to name `project` when searching
+- The `project/` link is a symlink, and search tools do not walk into a symlink they
+  find: plain `rg` from the runtime folder, and Claude Code's Grep and Glob with no path,
+  returned no workflow files; with `project` as the path (or `rg -L`) they did. A
+  `RIPGREP_CONFIG_PATH` with `--follow` fixed `rg` but not Claude Code, so it is not a fix.
+- The Crew and workflow runtime instructions and the workflow shared prompt now say to
+  always pass `project` (or `project/<folder>`) as the search path. Per-folder links would
+  not help (ripgrep skips those too). The real fix, if the prompt proves unreliable, is a
+  bind mount that makes `project/` a real directory: the launcher would need its own
+  namespace plus a host AppArmor allowance, and macOS keeps the link. Cursor, Codex, Muse,
+  Pi and Agy were not tested; each needs the same live check.
+
 ### 2026-09-30 — Workflow steps link their own iteration output into private runtimes
 - Extend the linked-runtime design to execution steps and step orchestrators.
   Keep the existing per-session CLI directory identity and isolated generated
@@ -482,6 +693,13 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+- **Remaining local linked-runtime CLI qualification (2026-09-30).** Muse's
+  integrated resume exceeded the fixture budget after linked artifact work passed; Agy's
+  private launch needs sign-in. Claude/Cursor native writes remain subject to
+  their existing restrictions. The [local report](design/local_linked_runtime_qualification.md)
+  records what actually passed; do not treat bridge writes as native-write proof.
+
 
 - **Two mcpagent cleanup tests still expect deletion of unmarked provider folders
   (confirmed 2026-09-30).** `TestAppendCodingAgentWorkingDirOptionCleansInactiveGeneratedArtifacts`

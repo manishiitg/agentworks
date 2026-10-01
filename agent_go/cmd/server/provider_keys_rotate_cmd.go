@@ -2,14 +2,11 @@ package server
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -67,61 +64,8 @@ func runRotateProviderKeysAuthSecret(cmd *cobra.Command, args []string) error {
 		oldAuthSecret = string(GetAuthSecret())
 	}
 
-	encryptedBase64, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read provider key file %s: %w", filePath, err)
-	}
-
-	encryptedPayload := strings.TrimSpace(string(encryptedBase64))
-	if encryptedPayload == "" {
-		return fmt.Errorf("provider key file %s is empty", filePath)
-	}
-
-	encryptedBytes, err := base64.StdEncoding.DecodeString(encryptedPayload)
-	if err != nil {
-		return fmt.Errorf("failed to decode provider key file from base64: %w", err)
-	}
-
-	plaintext, err := decryptProviderKeysWithSecret(encryptedBytes, []byte(oldAuthSecret))
-	if err != nil {
-		return fmt.Errorf("failed to decrypt provider keys with the old AUTH_SECRET: %w", err)
-	}
-
-	var keys StoredProviderKeys
-	if err := json.Unmarshal(plaintext, &keys); err != nil {
-		return fmt.Errorf("failed to parse decrypted provider keys: %w", err)
-	}
-
-	if createBackup {
-		backupPath := fmt.Sprintf("%s.bak-%s", filePath, time.Now().UTC().Format("20060102-150405"))
-		if err := os.WriteFile(backupPath, encryptedBase64, 0600); err != nil {
-			return fmt.Errorf("failed to write backup file %s: %w", backupPath, err)
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Backed up existing encrypted provider keys to %s\n", backupPath)
-	}
-
-	reencrypted, err := encryptProviderKeysWithSecret(plaintext, []byte(newAuthSecret))
-	if err != nil {
-		return fmt.Errorf("failed to re-encrypt provider keys: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return fmt.Errorf("failed to create provider key directory: %w", err)
-	}
-	if err := os.WriteFile(filePath, []byte(base64.StdEncoding.EncodeToString(reencrypted)), 0600); err != nil {
-		return fmt.Errorf("failed to write re-encrypted provider key file: %w", err)
-	}
-
-	verificationPayload, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to re-read rotated provider key file: %w", err)
-	}
-	verificationBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(verificationPayload)))
-	if err != nil {
-		return fmt.Errorf("failed to decode rotated provider key file for verification: %w", err)
-	}
-	if _, err := decryptProviderKeysWithSecret(verificationBytes, []byte(newAuthSecret)); err != nil {
-		return fmt.Errorf("failed to verify rotated provider key file with new AUTH_SECRET: %w", err)
+	if err := rekeyProviderKeysFile(filePath, []byte(oldAuthSecret), []byte(newAuthSecret), createBackup, cmd.OutOrStdout(), false); err != nil {
+		return err
 	}
 
 	if writeEnv {
@@ -131,7 +75,6 @@ func runRotateProviderKeysAuthSecret(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Updated %s with a new AUTH_SECRET\n", envFilePath)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Re-encrypted provider keys at %s with the new AUTH_SECRET\n", filePath)
 	fmt.Fprintln(cmd.OutOrStdout(), "Restart the agent server so it loads the new AUTH_SECRET before reading provider keys again.")
 	return nil
 }

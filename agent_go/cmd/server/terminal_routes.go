@@ -55,6 +55,7 @@ func clampTerminalResize(cols, rows int) (int, int) {
 
 var runTerminalTmuxCommand = func(ctx context.Context, stdin string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "tmux", args...)
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("TMUX_TMPDIR")...)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
@@ -71,6 +72,7 @@ var runTerminalTmuxCommand = func(ctx context.Context, stdin string, args ...str
 
 var runTerminalTmuxOutputCommand = func(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "tmux", args...)
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("TMUX_TMPDIR")...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))

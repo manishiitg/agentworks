@@ -289,7 +289,7 @@ func New(ctx context.Context, cfg Config) (*Session, error) {
 	runtime := mcpagent.RuntimeConfig{
 		Model: model, MCPConfigPath: b.mcpConfigPath, ResumeHandle: cfg.SessionHandle,
 		Generation: generation,
-		Tools:      mcpagent.ToolRuntimeConfig{CodeExecution: true},
+		Tools:      mcpagent.ToolRuntimeConfig{CodeExecution: true, Discovery: true},
 		Coding:     mcpagent.CodingRuntimeConfig{Transport: cfg.Transport, BridgeRoutingInstructionsOverride: cfg.BridgeRoutingInstructions, BridgeBinary: b.bridgePath},
 		MCP:        b.runtimeMCPConfig(sessionID),
 		Workspace:  mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: cfg.WorkingDir},

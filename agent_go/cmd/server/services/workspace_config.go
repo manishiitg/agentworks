@@ -399,11 +399,35 @@ func LoadProviderKeys(ctx context.Context, workspaceURL string) (map[string]inte
 	return m, true, nil
 }
 
+// cachedSecretsKey holds the derived key after the server clears AUTH_SECRET
+// from the environment at startup. See InitAuthSecretCache.
+var cachedSecretsKey []byte
+
+// CacheSecretsKey stores the derived key for use after AUTH_SECRET is cleared
+// from the environment. Called once at server startup while the env var is
+// still set.
+func CacheSecretsKey() {
+	cachedSecretsKey = deriveSecretsKeyFromEnv()
+}
+
 // deriveSecretsKey derives the AES-256 key from AUTH_SECRET using HMAC-SHA256.
 // Must match the derivation in server/secrets_routes.go.
 // It returns nil without AUTH_SECRET: the old public default key is gone, so nothing can be
 // decrypted with a key anyone could know. Trimmed like the server's own AUTH_SECRET reader.
+// Once the server clears the env var at startup, the startup cache is used.
 func deriveSecretsKey() []byte {
+	if key := deriveSecretsKeyFromEnv(); key != nil {
+		return key
+	}
+	if len(cachedSecretsKey) == 0 {
+		return nil
+	}
+	out := make([]byte, len(cachedSecretsKey))
+	copy(out, cachedSecretsKey)
+	return out
+}
+
+func deriveSecretsKeyFromEnv() []byte {
 	secret := strings.TrimSpace(os.Getenv("AUTH_SECRET"))
 	if secret == "" {
 		return nil

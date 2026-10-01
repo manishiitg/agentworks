@@ -19,3 +19,14 @@ func TestNativeEnvironmentDropsBridgeCredentials(t *testing.T) {
 		}
 	}
 }
+
+// Agent shells never inherit AUTH_SECRET either: it signs session JWTs and
+// derives stored-secret encryption keys.
+func TestNativeEnvironmentDropsAuthSecret(t *testing.T) {
+	t.Setenv("AUTH_SECRET", "fake-auth-secret")
+	for _, kv := range buildNativeEnvironment() {
+		if strings.HasPrefix(kv, "AUTH_SECRET=") {
+			t.Error("AUTH_SECRET leaked into the agent shell environment")
+		}
+	}
+}

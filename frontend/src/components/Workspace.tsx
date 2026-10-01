@@ -9,7 +9,6 @@ import CreateFolderDialog from './workspace/CreateFolderDialog'
 import MoveFileDialog from './workspace/MoveFileDialog'
 import RenameFileDialog from './workspace/RenameFileDialog'
 import ConfirmationDialog from './ui/ConfirmationDialog'
-import ImportProgressDialog from './ui/ImportProgressDialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { ExplorerHeader } from './workspace/ExplorerHeader'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
@@ -115,7 +114,6 @@ export default function Workspace({
   const showSchedulesOverview = useAppStore(state => state.showSchedulesOverview)
   const getActiveTab = useChatStore(state => state.getActiveTab)
   const setTabConfig = useChatStore(state => state.setTabConfig)
-  const addToast = useChatStore(state => state.addToast)
   const { getActivePreset } = usePresetApplication()
 
   // Get file context based on mode: multi-agent mode uses tab config, workflow mode uses preset
@@ -152,15 +150,6 @@ export default function Workspace({
 
   // Get active workflow preset to filter workspace to selected folder
   const activeWorkflowPreset = useActiveWorkflowPreset()
-
-
-  // Export/Import backup state
-  const [isExporting, setIsExporting] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
-  const [importProgress, setImportProgress] = useState(0)
-  const [importingFileName, setImportingFileName] = useState<string>('')
-  const [importConfirm, setImportConfirm] = useState<{ file: File; fullPath: string } | null>(null)
-  const backupFileInputRef = useRef<HTMLInputElement>(null)
 
   // Multi-select state
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -1689,135 +1678,6 @@ export default function Workspace({
     closeCreateFolderDialog()
   }
 
-  // Export backup handler - accepts folder path (uses workflow folder if not provided)
-  const handleExportBackup = async (folderPath?: string) => {
-    const workspacePath = folderPath || activeWorkflowPreset?.selectedFolder?.filepath
-    if (!workspacePath) {
-      setError('No workspace folder selected')
-      return
-    }
-
-    setIsExporting(true)
-
-    try {
-      // If folderPath is provided from folder dropdown, it's already the original path
-      // Otherwise, use the workflow preset's selected folder path
-      // Only reconstruct if we're in workflow mode and the path might be adjusted
-      const fullPath = folderPath && selectedModeCategory === 'workflow' && effectiveWorkflowFolderPath
-        ? getOriginalFilePath(folderPath)
-        : workspacePath
-      const blob = await agentApi.exportWorkflowBackup(fullPath)
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-
-      // Generate filename
-      const workspaceName = fullPath.split('/').pop() || 'workspace'
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
-      link.download = `${workspaceName}-backup-${timestamp}.zip`
-
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Export failed:', error)
-      addToast(error instanceof Error ? error.message : 'Failed to export backup', 'error')
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
-  // Import backup click handler
-  const handleImportBackupClick = (folderPath?: string) => {
-    // Store the folder path in a data attribute or state for use in handleImportBackup
-    if (backupFileInputRef.current) {
-      backupFileInputRef.current.setAttribute('data-folder-path', folderPath || '')
-    }
-    backupFileInputRef.current?.click()
-  }
-
-  // Import backup handler: validates the picked file, then asks for
-  // confirmation in a kit dialog before overwriting anything.
-  const handleImportBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    // Get folder path from input's data attribute
-    const folderPath = backupFileInputRef.current?.getAttribute('data-folder-path') || ''
-    const workspacePath = folderPath || activeWorkflowPreset?.selectedFolder?.filepath
-
-    if (!workspacePath) {
-      setError('No workspace folder selected')
-      return
-    }
-
-    // Validate file type
-    if (!file.name.endsWith('.zip')) {
-      addToast('Please select a ZIP file', 'error')
-      return
-    }
-
-    // If folderPath is provided from folder dropdown, it's already the original path
-    // Otherwise, use the workflow preset's selected folder path
-    // Only reconstruct if we're in workflow mode and the path might be adjusted
-    const fullPath = folderPath && selectedModeCategory === 'workflow' && effectiveWorkflowFolderPath
-      ? getOriginalFilePath(folderPath)
-      : workspacePath
-    setImportConfirm({ file, fullPath })
-  }
-
-  const cancelImportBackup = () => {
-    setImportConfirm(null)
-    if (backupFileInputRef.current) {
-      backupFileInputRef.current.value = ''
-      backupFileInputRef.current.removeAttribute('data-folder-path')
-    }
-  }
-
-  const confirmImportBackup = async () => {
-    const pending = importConfirm
-    if (!pending) return
-    setImportConfirm(null)
-    setIsImporting(true)
-    setImportProgress(0)
-    setImportingFileName(pending.file.name)
-
-    try {
-      const result = await agentApi.importWorkflowBackup(
-        pending.fullPath,
-        pending.file,
-        true, // overwrite confirmed above
-        (progress) => setImportProgress(progress)
-      )
-
-      if (result.success) {
-        addToast(`Imported ${result.data?.files_extracted || 0} files`, 'success')
-
-        // Refresh workspace files
-        setTimeout(() => {
-          fetchFiles(activeFolder, { force: true }).catch(console.error)
-        }, 500)
-      } else {
-        addToast(result.message || 'Import failed', 'error')
-      }
-    } catch (error) {
-      console.error('Import failed:', error)
-      addToast(error instanceof Error ? error.message : 'Failed to import backup', 'error')
-    } finally {
-      setIsImporting(false)
-      setImportProgress(0)
-      setImportingFileName('')
-      // Reset file input
-      if (backupFileInputRef.current) {
-        backupFileInputRef.current.value = ''
-        backupFileInputRef.current.removeAttribute('data-folder-path')
-      }
-    }
-  }
-
   return (
     <TooltipProvider>
       <div data-tour="workspace-open" data-testid="workspace-panel" className="flex flex-col h-full bg-background">
@@ -2001,10 +1861,6 @@ export default function Workspace({
                 downloadingFilePath={downloadStatus?.path}
                 hideAddToChat={hideAddToChat || (selectedModeCategory === 'workflow' && !!effectiveWorkflowFolderPath)}
                 hideRootActions={hideRootActions}
-                onExportBackup={handleExportBackup}
-                onImportBackup={handleImportBackupClick}
-                isExporting={isExporting}
-                isImporting={isImporting}
                 isSelectionMode={isSelectionMode}
                 selectedFiles={selectedFiles}
                 onToggleFileSelection={toggleFileSelection}
@@ -2273,33 +2129,6 @@ export default function Workspace({
         isLoading={renameDialog.isLoading}
       />
 
-      {/* Hidden file input for backup import */}
-      <input
-        ref={backupFileInputRef}
-        type="file"
-        accept=".zip"
-        onChange={handleImportBackup}
-        className="hidden"
-      />
-
-      {/* Backup import confirmation; results surface as chat toasts */}
-      <ConfirmationDialog
-        isOpen={importConfirm !== null}
-        onClose={cancelImportBackup}
-        onConfirm={() => { void confirmImportBackup() }}
-        title="Restore from backup?"
-        message={`This restores files from "${importConfirm?.file.name || 'the backup'}" into "${importConfirm?.fullPath || 'the workspace'}". Existing files may be overwritten.`}
-        confirmText="Restore"
-        cancelText="Cancel"
-        type="warning"
-        ignoreWorkspaceAutoCollapse
-      />
-
-      <ImportProgressDialog
-        isOpen={isImporting}
-        progress={importProgress}
-        fileName={importingFileName}
-      />
       </div>
     </TooltipProvider>
   )

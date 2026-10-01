@@ -7,13 +7,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// SkillFileBinding is one product-owned skill: a stable name and description
-// the agent sees when deciding whether to load it, and the path to its
-// SKILL.md inside the product's own embedded filesystem.
+// SkillFileBinding names a product-owned SKILL.md in its embedded filesystem.
+// The rendered frontmatter supplies its discovery description unless Description
+// explicitly overrides it for a product variant.
 type SkillFileBinding struct {
 	Name        string
 	Description string
@@ -49,8 +51,18 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 			return fmt.Errorf("read skill %q: %w", binding.Name, err)
 		}
 		content := render(string(data))
+		description := binding.Description
 		if strings.HasPrefix(content, "---\n") {
 			if end := strings.Index(content[4:], "\n---\n"); end >= 0 {
+				var metadata struct {
+					Description string `yaml:"description"`
+				}
+				if err := yaml.Unmarshal([]byte(content[4:end+4]), &metadata); err != nil {
+					return fmt.Errorf("parse skill %q frontmatter: %w", binding.Name, err)
+				}
+				if strings.TrimSpace(description) == "" {
+					description = strings.TrimSpace(metadata.Description)
+				}
 				content = content[end+9:]
 			}
 		}
@@ -78,7 +90,7 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 		}
 		if err := skills.RegisterBuiltin(&llmtypes.Skill{
 			Name:            binding.Name,
-			Description:     binding.Description,
+			Description:     description,
 			Content:         content,
 			SupportingFiles: supportingFiles,
 			Source:          llmtypes.SkillSource{Origin: "builtin"},

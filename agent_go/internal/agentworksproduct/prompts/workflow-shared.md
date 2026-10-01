@@ -18,6 +18,9 @@ commands that need workflow-relative paths use `cd project && ...`. Paths in
 workspace bridge tools and the workflow references below remain relative to the
 real workflow, without the `project/` prefix. Keep durable work under the link
 and generated CLI instructions, skills and configuration in the private runtime.
+Search and glob tools do not look inside the link on their own: always
+pass `project` (or `project/<folder>`) as the search path. A search from the current
+directory finds none of the workflow's files.
 The link never grants permissions: obey the current mode and folder grants,
 and preserve the workflow's own instructions and CLI configuration.
 
@@ -57,7 +60,7 @@ Load a reference with `read_skill(skills=[{"name":"builder-reference","path":"re
 ## Tools
 
 {{if or (eq .UseProjectedReferenceSkills "true") (eq .IsCodeExecutionMode "true")}}
-The native `api-bridge` exposes `execute_shell_command`, `diff_patch_workspace_file`, `agent_browser`, `get_api_spec`, and intrinsic `read_skill` when skills are attached. All other workflow tools are HTTP-backed: use `get_api_spec(tool_name="<name>")`, then its returned `$MCP_MCP`/`$MCP_CUSTOM` route with `$MCP_AUTH`; never guess a bridge name or URL. `read_skill` is intrinsic; do not discover or invoke it through HTTP.
+Follow the current runtime's declared tool and routing contract. Discover platform and connected-app tools with `search_tools`, then get their exact schema with `get_api_spec(tool_name="<returned-name>")`. Read attached skills through intrinsic `read_skill`; never invoke that skill reader through HTTP.
 A CLI notice that its native sandbox is read-only (e.g. Codex `sandbox_mode`) is deliberate and covers only native file tools; your access is what the tools above grant. Never call the session read-only unless a tool refuses.
 {{else}}
 Use the tools and schemas supplied to this session directly. Do not call `get_api_spec` in native tool-calling sessions.

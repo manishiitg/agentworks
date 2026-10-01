@@ -80,7 +80,17 @@ func BuildManagedWorkflowDBGuidance(access string) string {
 // workspacePath: absolute workspace path for code examples
 func BuildCodeExecutionSection(isCodeExecution bool, workspacePath string) string {
 	if isCodeExecution {
-		return prompt.GetCodeExecutionInstructions(workspacePath)
+		return prompt.GetCodeExecutionInstructions(workspacePath) + `
+
+## Workflow execution environment
+
+When supplied, $STEP_OUTPUT_DIR is the existing primary artifact directory; do
+not mkdir it. $STEP_EXECUTION_DIR is its parent and is only a fallback for
+sibling-step inputs when positional inputs were not supplied. Reference config
+through $VAR_<NAME>, never hardcode it. Read credentials from $SECRET_<NAME>,
+never print or save them. Missing variables must fail loudly (bash ${VAR_NAME:?missing}
+or Python os.environ['VAR_NAME']); only $VAR_GROUP_NAME may be empty or absent.
+`
 	}
 	return ""
 }

@@ -10,7 +10,6 @@ const FILES_SURFACE = [
   'src/components/workspace/RenameFileDialog.tsx',
   'src/components/workspace/CreateFolderDialog.tsx',
   'src/components/workspace/PushToGistDialog.tsx',
-  'src/components/ui/ImportProgressDialog.tsx',
   'src/components/ui/ConfirmationDialog.tsx',
   'src/components/FileContextDisplay.tsx',
   'src/stores/useWorkspaceStore.ts',
@@ -58,8 +57,10 @@ describe('Files design kit', () => {
       const source = readFileSync(file, 'utf8')
       expect(source).not.toContain('fixed bottom-4 right-4')
       expect(source).not.toContain('window.confirm')
-      expect(source).toContain('addToast')
     }
+    // The viewer still toasts; the tree lost its last toast call site with the
+    // ZIP backup removal and must not grow a hand-rolled popup instead.
+    expect(readFileSync('src/components/FileContentViewer.tsx', 'utf8')).toContain('addToast')
     // The viewer is read-only now; the tree's destructive actions still confirm.
     expect(readFileSync('src/components/Workspace.tsx', 'utf8')).toContain('<ConfirmationDialog')
   })

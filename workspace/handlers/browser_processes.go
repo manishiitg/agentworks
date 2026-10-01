@@ -94,8 +94,13 @@ func KillBrowserProcesses(c *gin.Context) {
 		return
 	}
 
+	// Only a browser process may be killed here. Without this check any caller could send the
+	// id of the agent, the gateway or another user's work and stop it with kill -9.
+	current, _ := getBrowserProcesses()
+	allowed := filterBrowserPIDs(req.PIDs, current)
+
 	killed := 0
-	for _, pid := range req.PIDs {
+	for _, pid := range allowed {
 		err := exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
 		if err == nil {
 			killed++
@@ -107,6 +112,21 @@ func KillBrowserProcesses(c *gin.Context) {
 		"killed":  killed,
 		"message": fmt.Sprintf("Killed %d of %d requested processes", killed, len(req.PIDs)),
 	})
+}
+
+// filterBrowserPIDs keeps the requested ids that are in the current list of browser processes.
+func filterBrowserPIDs(requested []int, current []BrowserProcess) []int {
+	known := make(map[int]bool, len(current))
+	for _, process := range current {
+		known[process.PID] = true
+	}
+	var allowed []int
+	for _, pid := range requested {
+		if pid > 1 && known[pid] {
+			allowed = append(allowed, pid)
+		}
+	}
+	return allowed
 }
 
 // getBrowserProcesses parses ps output to find chromium processes

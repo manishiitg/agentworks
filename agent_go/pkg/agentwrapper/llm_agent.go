@@ -89,7 +89,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 		},
 		Tools: mcpagent.ToolRuntimeConfig{
 			SelectedTools: config.SelectedTools, SelectedServers: configuredServerNames(config.ServerName),
-			CodeExecution: config.UseCodeExecutionMode, ParallelExecution: config.EnableParallelToolExecution,
+			CodeExecution: config.UseCodeExecutionMode, Discovery: true, ParallelExecution: config.EnableParallelToolExecution,
 			Timeout: config.ToolTimeout, AdditionalBridge: config.AdditionalBridgeTools,
 		},
 		Context: mcpagent.ContextRuntimeConfig{

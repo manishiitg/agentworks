@@ -134,6 +134,7 @@ func StartShareTunnel(ctx context.Context, userID string, duration time.Duration
 	}
 
 	cmd := exec.CommandContext(ctx, binary, "tunnel", "--url", fmt.Sprintf("http://127.0.0.1:%d", port))
+	cmd.Env = minimalChildEnv()
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return ShareTunnelStatus{}, fmt.Errorf("tunnel stderr pipe: %w", err)

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	agentprompt "github.com/manishiitg/mcpagent/agent/prompt"
 )
 
 func authenticatedWorkflowUserPrompt(user *UserClaims) string {
@@ -33,7 +32,7 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		parts.parts = append(parts.parts, GetWorkspaceReference(ctx.ShellRoot, ctx.PerUserChatsFolder))
 	}
 	if vars["IsCodeExecutionMode"] == "true" {
-		parts.parts = append(parts.parts, agentprompt.GetCodeExecutionInstructions(vars["WorkspacePath"]))
+		parts.parts = append(parts.parts, workflow.BuildCodeExecutionSection(true, vars["WorkspacePath"]))
 	}
 	ctx.IsWorkflowPhase = true
 	ctx.WorkflowMode = vars["WorkshopMode"]

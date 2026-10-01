@@ -18,7 +18,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 		}
 	}
 
-	add("mcpagent virtual tools", "get_api_spec", "get_prompt", "get_resource")
+	add("mcpagent virtual tools", "get_api_spec", "search_tools", "get_prompt", "get_resource")
 	add("execution sub-agent/session tools", "call_sub_agent", "call_scripted_sub_agent", "call_generic_agent", "query_sub_agent", "stop_sub_agent", "get_sub_agent_conversation", "get_route_description")
 	add("conditional workspace browser tools", "agent_browser")
 	add("server secret management tools",

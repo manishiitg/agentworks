@@ -35,9 +35,8 @@ func TestResolveFeaturesProjectsOneBundleIntoExistingProfileFields(t *testing.T)
 	if !profile.UIPanels.Files || profile.Runtime.Capabilities.Browser != CapabilityPreferred {
 		t.Fatalf("feature projection omitted legacy fields: panels=%+v caps=%+v", profile.UIPanels, profile.Runtime.Capabilities)
 	}
-	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "Feature: dashboard") || !strings.Contains(got, "Feature: browser") ||
-		!strings.Contains(got, "attached `work-dashboard` skill") || !strings.Contains(got, "attached `ui-ux-pro-max` skill") || !strings.Contains(got, "attached `agent-browser` skill") {
-		t.Fatalf("prompt extensions = %q", got)
+	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "never edit SQLite") || !strings.Contains(got, "relevant attached skill") || strings.Contains(got, "Feature:") {
+		t.Fatalf("feature policies must preserve database authority without repeating skill catalogs: %q", got)
 	}
 
 	beforeTools, beforeSkills := strings.Join(profile.ToolPolicy.Enabled, ","), strings.Join(profile.Skills, ",")
@@ -120,7 +119,7 @@ func TestMemoryFeatureExposesProjectMemoryPanel(t *testing.T) {
 	if !containsString(profile.ResolvedFeatures[0].UIPanels, "memory") {
 		t.Fatalf("memory panel missing from %+v", profile.ResolvedFeatures[0].UIPanels)
 	}
-	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "project-root `MEMORY.md`") || !strings.Contains(got, "dated-entry template") || !strings.Contains(got, "custom skills") {
+	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); strings.Contains(got, "MEMORY.md") {
 		t.Fatalf("memory prompt extension = %q", got)
 	}
 }
@@ -155,8 +154,8 @@ func TestBotsProjectSharedGmailTools(t *testing.T) {
 			t.Fatalf("bots feature omitted operating skill %q: %v", skill, profile.Skills)
 		}
 	}
-	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "install_skill") || !strings.Contains(got, "https://github.com/openclaw/gogcli") {
-		t.Fatalf("bots feature does not tell the agent how to install versioned gog guidance on demand: %q", got)
+	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); strings.Contains(got, "install_skill") || strings.Contains(got, "https://github.com/openclaw/gogcli") {
+		t.Fatalf("bots feature must leave gog installation procedures in its skill: %q", got)
 	}
 }
 

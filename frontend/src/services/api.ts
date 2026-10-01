@@ -2164,36 +2164,6 @@ export const agentApi = {
     return response.data
   },
 
-  // Workspace Backup API
-  exportWorkflowBackup: async (workspacePath: string): Promise<Blob> => {
-    const response = await workspaceApi.post('/api/workspace/export', {
-      workspace_path: workspacePath
-    }, {
-      responseType: 'blob'
-    })
-    return response.data
-  },
-
-  importWorkflowBackup: async (workspacePath: string, file: File, overwrite: boolean = false, onProgress?: (progress: number) => void): Promise<{ success: boolean; message: string; data?: { workspace_path: string; files_extracted: number; extracted_files: string[] } }> => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('workspace_path', workspacePath)
-    formData.append('overwrite', overwrite.toString())
-
-    const response = await workspaceApi.post('/api/workspace/import', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          onProgress(progress)
-        }
-      },
-    })
-    return response.data
-  },
-
   searchDocuments: async (params: { query: string; search_type?: string; folder?: string; limit?: number }) => {
     const response = await workspaceApi.get('/api/search', { params })
     return response.data

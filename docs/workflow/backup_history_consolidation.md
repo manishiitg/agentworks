@@ -5,6 +5,10 @@ history↔restore linkage + auto-snapshot) deferred — needs a data model that 
 not exist yet (changelog entries are not tagged with backup commit refs, and there
 are no builder hooks for "risky bulk op").
 
+> 2026-09-30: the ZIP workspace export/import endpoints and the `local_zip`
+> strategy were removed (see `docs/DECISIONS.md`). References to them below
+> describe the pre-removal design.
+
 Implemented so far:
 - **Phase 1 — Versions removed.** Deleted `WorkflowVersionsPopup.tsx`, the toolbar
   Versions button + state, the 4 version API methods, the `WorkflowVersionMeta` type,

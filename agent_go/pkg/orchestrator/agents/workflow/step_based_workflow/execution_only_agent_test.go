@@ -25,7 +25,7 @@ func TestExecutionOnlyPromptIncludesCodeExecutionInstructions(t *testing.T) {
 	})
 
 	requiredSnippets := []string{
-		"## Code execution: calling tools over HTTP",
+		"## Code execution",
 		"Derive output paths from `os.environ['STEP_OUTPUT_DIR']` in code.",
 	}
 	for _, snippet := range requiredSnippets {

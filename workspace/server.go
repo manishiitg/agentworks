@@ -35,6 +35,10 @@ func init() {
 }
 
 func runServer(cmd *cobra.Command, args []string) {
+	// The workspace service never reads AUTH_SECRET; drop it from the
+	// environment first so agent shells and other children cannot inherit it.
+	os.Unsetenv("AUTH_SECRET")
+
 	// Get configuration
 	port := viper.GetString("port")
 	docsDir := viper.GetString("docs-dir")
@@ -215,12 +219,5 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// Document operations with filepath (catch-all route - MUST BE LAST)
 		api.Any("/documents/*filepath", handlers.HandleDocumentRequest)
-
-		// Workspace backup routes
-		workspace := api.Group("/workspace")
-		{
-			workspace.POST("/export", handlers.ExportWorkspace)
-			workspace.POST("/import", handlers.ImportWorkspace)
-		}
 	}
 }

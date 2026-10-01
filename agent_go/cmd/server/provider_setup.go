@@ -400,7 +400,7 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 		command.Dir = workDir
 	}
 	if environment == nil {
-		environment = os.Environ()
+		environment = minimalChildEnv()
 	}
 	command.Env = append(environment, "TERM=xterm-256color", "COLORTERM=truecolor")
 	cols, rows, validSize := clampLiveAttachGeometry(cols, rows)
@@ -623,6 +623,8 @@ func workflowProviderSetupEnvironment(provider string, keys *llm.ProviderAPIKeys
 	if keys == nil {
 		return nil, nil, errors.New("no workflow provider credential is configured")
 	}
+	before := os.Environ()
+	label := "workflow-setup provider=" + provider
 	switch provider {
 	case string(llm.ProviderClaudeCode):
 		if keys.ClaudeCodeOAuthToken == nil || strings.TrimSpace(*keys.ClaudeCodeOAuthToken) == "" {
@@ -633,13 +635,16 @@ func workflowProviderSetupEnvironment(provider string, keys *llm.ProviderAPIKeys
 			return nil, nil, errors.New("could not prepare the workflow Claude terminal")
 		}
 		cleanup := func() { _ = os.RemoveAll(configDir) }
-		return claudeauth.CheckEnv(os.Environ(), configDir, strings.TrimSpace(*keys.ClaudeCodeOAuthToken)), cleanup, nil
+		environment := claudeauth.CheckEnv(os.Environ(), configDir, strings.TrimSpace(*keys.ClaudeCodeOAuthToken))
+		logChildEnv(label, before, environment)
+		return environment, cleanup, nil
 	case string(llm.ProviderCursorCLI):
 		if keys.CursorCLI == nil || strings.TrimSpace(*keys.CursorCLI) == "" {
 			return nil, nil, errors.New("no Cursor API key is configured for this workflow")
 		}
 		environment := cursorauth.CheckEnv(os.Environ())
 		environment = append(environment, "CURSOR_API_KEY="+strings.TrimSpace(*keys.CursorCLI))
+		logChildEnv(label, before, environment)
 		return environment, func() {}, nil
 	default:
 		return nil, nil, fmt.Errorf("workflow-scoped terminals are not available for provider %q", provider)
@@ -678,7 +683,7 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			return
 		}
 		accountOwner = record.OwnerUserID
-		environment = providerConnectionSetupEnvironment(keys)
+		environment = providerConnectionSetupEnvironment(providerConnectionEnvLabel(request.Provider, request.ConnectionID), keys)
 	} else if !admin {
 		// The server account: signing it in or inspecting it is admin-only.
 		// Anyone it is available to may see its usage, run by the server.

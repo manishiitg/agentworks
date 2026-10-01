@@ -99,7 +99,7 @@ func (api *StreamingAPI) resolveProviderAccountTarget(ctx context.Context, id, p
 			return providerAccountTarget{}, fmt.Errorf("provider is not enabled")
 		}
 		home, _ := os.UserHomeDir()
-		return providerAccountTarget{ID: id, Provider: provider, Server: true, Env: providerConnectionSetupEnvironment(MergedProviderAPIKeys(ctx)), Home: home}, nil
+		return providerAccountTarget{ID: id, Provider: provider, Server: true, Env: providerConnectionSetupEnvironment(providerConnectionEnvLabel(provider, id), MergedProviderAPIKeys(ctx)), Home: home}, nil
 	}
 	providerConnectionsMu.Lock()
 	records, err := loadProviderConnections(ctx)
@@ -119,7 +119,7 @@ func (api *StreamingAPI) resolveProviderAccountTarget(ctx context.Context, id, p
 		if err != nil {
 			return providerAccountTarget{}, err
 		}
-		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: providerConnectionSetupEnvironment(keys), Home: keys.RuntimeEnvironment["HOME"]}, nil
+		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: providerConnectionSetupEnvironment(providerConnectionEnvLabel(record.Provider, id), keys), Home: keys.RuntimeEnvironment["HOME"]}, nil
 	}
 	return providerAccountTarget{}, fmt.Errorf("connection unavailable")
 }

@@ -29,12 +29,6 @@ const FALLBACK_SUPPORTED_STRATEGIES: WorkflowBackupStrategyInfo[] = [
     label: 'HuggingFace Hub',
     description: 'For dataset and model-style backups with revisions.',
     best_for: ['datasets', 'models', 'media']
-  },
-  {
-    id: 'local_zip',
-    label: 'Local ZIP export',
-    description: 'Manual export for moving or recovery. Not automatic.',
-    best_for: ['manual-export', 'restore']
   }
 ]
 
@@ -74,32 +68,19 @@ const WorkflowBackupView: React.FC<WorkflowBackupViewProps> = ({
     return agentApi.getWorkflowBackup(workspacePath)
   }, [workspacePath])
 
-  const exportBlob = useCallback(async () => {
-    if (!workspacePath) throw new Error('No workflow is selected')
-    return agentApi.exportWorkflowBackup(workspacePath)
-  }, [workspacePath])
-
-  const name = workspacePath?.split('/').filter(Boolean).pop() || 'workflow'
-
   return (
     <BackupPopupBody
       loadInfo={loadInfo}
       onStateLoaded={onStateLoaded}
       fallbackStrategies={FALLBACK_SUPPORTED_STRATEGIES}
-      subtitle="Remote backups and local ZIP export"
+      subtitle="Remote backups"
       emptyDestinationsText="No backup destinations yet — set one up with /backup in chat."
       destinationsHelp="Status updates automatically after each run."
       askContext={{
         workspacePath,
         strategyVerb: 'back up this workflow with',
-        exportMessage: 'Help me export this workflow as a ZIP for recovery. Explain the steps.',
       }}
       getSummary={getBackupSummary}
-      exportAction={{
-        label: 'Download ZIP',
-        filename: `${name}-backup.zip`,
-        exportBlob,
-      }}
       headerAction={headerAction}
     />
   )

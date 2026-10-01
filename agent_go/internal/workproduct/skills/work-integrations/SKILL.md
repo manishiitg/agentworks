@@ -50,3 +50,8 @@ Browser mode and CDP settings live in the project's **Browser** view. Coding
 provider and model settings live in **Setup > Models**: the provider is fixed
 after the first message because it owns native conversation state, while the
 model may still change. Use `agent-browser` for an actual browser task.
+
+For provider or model configuration exposed through tools, discover the admitted
+configuration tools and load their schemas. Never read or edit raw `config/`
+files for LLM/provider configuration. The configured provider/model is the
+runtime's identity; model self-identification does not override it.

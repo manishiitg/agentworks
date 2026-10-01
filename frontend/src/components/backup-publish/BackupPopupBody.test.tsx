@@ -28,11 +28,11 @@ async function mount(info: Record<string, unknown>, extra: Record<string, unknow
     <BackupPopupBody
       loadInfo={async () => info as never}
       fallbackStrategies={strategies as never}
-      subtitle="Remote backups and local ZIP export"
+      subtitle="Remote backups"
       emptyDestinationsText="No backup destinations yet."
       destinationsHelp="Status updates automatically."
       getSummary={() => 'No backup yet. Set one up.'}
-      askContext={{ workspacePath: 'Workflow/test', strategyVerb: 'back up this workflow with', exportMessage: 'Help me export.' }}
+      askContext={{ workspacePath: 'Workflow/test', strategyVerb: 'back up this workflow with' }}
       {...extra}
     />,
   ))
@@ -86,16 +86,14 @@ it('renders destinations without kickers or commit hashes', async () => {
   }
 })
 
-it('asks in chat to set up, per strategy, and for export', async () => {
+it('asks in chat to set up and per strategy', async () => {
   const { host, unmount } = await mount(
     { effective_state: 'healthy', config: { enabled: true, destinations: [] }, status: {} },
-    { exportAction: { label: 'Download ZIP', filename: 'w-backup.zip', exportBlob: async () => new Blob() } },
   )
   try {
     expect(askMessages).toContain('/backup')
     expect(askMessages).toContain('Help me back up this workflow with GitHub / remote Git. Explain what I need and walk me through it.')
-    expect(askMessages).toContain('Help me export.')
-    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(4)
+    expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(3)
   } finally {
     await unmount()
   }

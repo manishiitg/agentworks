@@ -32,22 +32,30 @@ var (
 )
 
 var claudeCLIAuthStatusCommand = func(ctx context.Context) ([]byte, error) {
-	return exec.CommandContext(ctx, "claude", "auth", "status").CombinedOutput()
+	cmd := exec.CommandContext(ctx, "claude", "auth", "status")
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("ANTHROPIC_API_KEY")...)
+	return cmd.CombinedOutput()
 }
 
 var codexCLIAuthStatusCommand = func(ctx context.Context) ([]byte, error) {
-	return exec.CommandContext(ctx, "codex", "login", "status").CombinedOutput()
+	cmd := exec.CommandContext(ctx, "codex", "login", "status")
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("CODEX_API_KEY")...)
+	return cmd.CombinedOutput()
 }
 
 var cursorCLIStatusJSON = func(ctx context.Context) ([]byte, error) {
-	return exec.CommandContext(ctx, "cursor-agent", "status", "--format", "json").Output()
+	cmd := exec.CommandContext(ctx, "cursor-agent", "status", "--format", "json")
+	cmd.Env = append(minimalChildEnv(), passthroughChildEnv("CURSOR_API_KEY")...)
+	return cmd.Output()
 }
 
 // agyCLIModelsCommand lists models without starting a model turn, so it is
 // cheap enough to poll from the manifest. It is auth-gated but not
 // quota-gated: a quota-exhausted login still lists models.
 var agyCLIModelsCommand = func(ctx context.Context) ([]byte, error) {
-	return exec.CommandContext(ctx, "agy", "models").CombinedOutput()
+	cmd := exec.CommandContext(ctx, "agy", "models")
+	cmd.Env = minimalChildEnv()
+	return cmd.CombinedOutput()
 }
 
 func cursorCLILoginRequiredMessage() string {

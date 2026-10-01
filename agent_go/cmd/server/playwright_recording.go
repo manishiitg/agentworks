@@ -212,6 +212,7 @@ capture:
 	encodeCtx, cancel := context.WithTimeout(rec.ctx, 5*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(encodeCtx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "concat", "-safe", "1", "-i", filepath.Join(rec.dir, "frames.txt"), "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "-filter_threads", "1", "-r", "4", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-threads", "1", "-pix_fmt", "yuv420p", "-movflags", "+faststart", filepath.Join(rec.dir, "replay.mp4"))
+	cmd.Env = minimalChildEnv()
 	err = cmd.Run()
 	for i := 0; i < count; i++ {
 		_ = os.Remove(filepath.Join(rec.dir, fmt.Sprintf("%06d.jpg", i)))
