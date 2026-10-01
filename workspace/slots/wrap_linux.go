@@ -24,6 +24,17 @@ func WrapCommand(ctx context.Context, cmd *exec.Cmd, slot string) (*exec.Cmd, er
 		return nil, fmt.Errorf("empty command")
 	}
 	req := ExecRequest{Argv: append([]string(nil), cmd.Args...), Cwd: cmd.Dir, Env: append([]string(nil), cmd.Env...)}
+	// The user's folders belong to the platform account with the slot's group, so git would refuse them as
+	// "dubious ownership". The command can only reach what its folder guard grants.
+	hasGit := false
+	for _, e := range req.Env {
+		if strings.HasPrefix(e, "GIT_CONFIG_COUNT=") {
+			hasGit = true
+		}
+	}
+	if !hasGit {
+		req.Env = append(req.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=*")
+	}
 	if cmd.SysProcAttr != nil && cmd.SysProcAttr.Cloneflags&syscall.CLONE_NEWUSER != 0 {
 		req.Userns = true
 	}
