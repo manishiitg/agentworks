@@ -429,7 +429,19 @@ fi
 
 echo "==> [$RELEASE_ID] Verifying"
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$BUILD_DIR/deployment_checks.py" running
-curl -fsS -o /dev/null -w "agent  /api/health: %{http_code}\n" "http://127.0.0.1:$AGENT_PORT/api/health"
+# The agent listens a few seconds after systemd reports it active (after a drain it can take longer): retry
+# instead of failing the deploy on "connection refused" while the new release is still starting.
+wait_for_url() {
+  local url="$1" tries=60
+  until curl -fsS -o /dev/null --max-time 5 "$url" 2>/dev/null; do
+    tries=$((tries - 1))
+    [[ "$tries" -gt 0 ]] || { echo "$url did not come up in 2 minutes" >&2; return 1; }
+    sleep 2
+  done
+}
+wait_for_url "http://127.0.0.1:$AGENT_PORT/api/health"
+echo "agent  /api/health: $(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$AGENT_PORT/api/health")"
+wait_for_url "http://127.0.0.1:$WORKSPACE_PORT/health"
 curl -fsS "http://127.0.0.1:$WORKSPACE_PORT/health"; echo
 # Not `curl -f`: whether /api/health is reachable through the gateway without
 # auth depends on its gate model (GATEWAY_DISABLE_PASSWORD_GATE in .env) --

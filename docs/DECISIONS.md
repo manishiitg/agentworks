@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Deploys reported "exit 7" although the release was fine
+
+- **Cause.** The deploy's last step probed the agent's local port once, right after the restart (after a drain the
+  agent needs a few seconds to listen): curl exit 7 = connection refused, deploy "failed" with the new release
+  already live and healthy. Seen on most deploys.
+- **Done.** `rootless-linux/build-and-activate.sh` waits up to 2 minutes for the agent and workspace health
+  endpoints before the checks. A real failure still fails the deploy, after the wait.
+
 ### 2026-10-01 — Opening a Relay from activity or the global tab opener landed on Goals
 
 - **Reported** (Confida, two users): opening Relays opens Goals. The switcher and the Relay list are correct; two
