@@ -41,6 +41,12 @@ Design references for the linked runtime decisions:
   key is configured any more; a browser login is left alone.
 - **Decided.** `server add-user` re-reads the directory after saving and redoes the add when another
   write replaced the file (no lock is shared with the running server, which also writes it).
+- **Fixed (same day).** The tmux front-end routed any session in a user's folder to that user's slot, but
+  only users with CLI-as-slot (`AGENTWORKS_SLOT_CLI_USERS`) have launch scripts the slot can read, so
+  Muse (and Codex) died at start for everyone else ("cannot open mlp-coding-agent-launch-*.sh:
+  Permission denied"). It now routes to a slot only when the command's script is in that slot's run
+  folder; otherwise the session stays on the platform's tmux. A Muse session that is not a slot's
+  keeps its launch error output under `<run root>/.sessions/launch-logs/`.
 - **Open.** Muse still prints "local session messaging unavailable: registry root: Permission denied" in
   slot sessions (it tries to `chmod 0700` platform-owned folders). Harmless, not traced.
 

@@ -204,6 +204,34 @@ func hasDelete(c slots.TmuxCommand) bool {
 	return false
 }
 
+// commandUsesSlotFolder reports whether the pane's command refers to a file in the slot's run folder.
+func commandUsesSlotFolder(c slots.TmuxCommand, runDir string) bool {
+	idx := c.ShellCommandIndex()
+	if idx < 0 {
+		return false
+	}
+	return strings.Contains(strings.Join(c.Rest[idx:], " "), runDir+"/")
+}
+
+// withLaunchLog makes the pane's program write its error output to log, for both tmux command forms.
+func withLaunchLog(c slots.TmuxCommand, args []string, log string) []string {
+	idx := c.ShellCommandIndex()
+	if idx < 0 {
+		return args
+	}
+	rest := append([]string(nil), c.Rest[:idx]...)
+	tail := c.Rest[idx:]
+	if len(tail) == 1 {
+		// one string: tmux runs it through a shell
+		rest = append(rest, "exec 2>"+shellQuote(log)+"; "+tail[0])
+	} else {
+		// several words: tmux runs them directly, so keep them as arguments of a small shell
+		rest = append(rest, "/bin/sh", "-c", "exec 2>"+shellQuote(log)+`; exec "$@"`, "slot-launch")
+		rest = append(rest, tail...)
+	}
+	return append(append(append([]string(nil), c.Prefix...), c.Subcommand), rest...)
+}
+
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func lookup(registry, session string) string {
@@ -263,26 +291,31 @@ func run(args []string) int {
 	case c.IsNewSession():
 		name, dir := c.NewSessionFlags()
 		slot := cfg.SlotForDir(dir)
+		if slot == "" && name != "" && c.NewSessionDetached() && strings.Contains(name, "muse") {
+			// Not a slot's session: Muse's launch error output is still kept (diagnostics for a Muse that
+			// dies at start), under the registry, one file per session; other CLIs are left alone.
+			dir := filepath.Join(registry, "launch-logs")
+			if os.MkdirAll(dir, 0o700) == nil {
+				sweepBuffers(dir)
+				if file := slots.SessionFile(dir, name); file != "" {
+					args = withLaunchLog(c, args, file)
+				}
+			}
+			return passthrough(args)
+		}
 		if slot == "" || name == "" || !c.NewSessionDetached() {
+			return passthrough(args)
+		}
+		// Only a launch prepared for the slot runs as the slot: its script lives in the slot's run folder.
+		// A session whose command was prepared by the platform for itself (a user whose CLIs do not run as
+		// a slot) is not readable by the slot and stays on the platform's own tmux.
+		if !commandUsesSlotFolder(c, filepath.Join(cfg.SlotRunRoot, slot)) {
 			return passthrough(args)
 		}
 		sock := slots.SlotSocket(cfg.SlotRunRoot, slot)
 		// Keep the pane's error output in the slot's run folder: a CLI that fails to start otherwise
 		// takes its reason with it when the session ends.
-		if idx := c.ShellCommandIndex(); idx >= 0 {
-			log := filepath.Join(cfg.SlotRunRoot, slot, "last-launch.stderr")
-			rest := append([]string(nil), c.Rest[:idx]...)
-			tail := c.Rest[idx:]
-			if len(tail) == 1 {
-				// one string: tmux runs it through a shell
-				rest = append(rest, "exec 2>"+shellQuote(log)+"; "+tail[0])
-			} else {
-				// several words: tmux runs them directly, so keep them as arguments of a small shell
-				rest = append(rest, "/bin/sh", "-c", "exec 2>"+shellQuote(log)+`; exec "$@"`, "slot-launch")
-				rest = append(rest, tail...)
-			}
-			args = append(append(append([]string(nil), c.Prefix...), c.Subcommand), rest...)
-		}
+		args = withLaunchLog(c, args, filepath.Join(cfg.SlotRunRoot, slot, "last-launch.stderr"))
 		code := asSlot(cfg, slot, args, slotEnv(cfg, slot), os.Stdout, os.Stderr)
 		if code != 0 {
 			return code
