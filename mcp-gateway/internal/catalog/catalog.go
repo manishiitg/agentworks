@@ -1,11 +1,12 @@
 // Package catalog serves connector templates snapshotted from the AgentWorks
-// server list. The snapshot keeps the gateway module self-contained; M1
-// re-sources it from a single canonical file.
+// server list. LoadFile reuses the host product catalog; the embedded snapshot
+// keeps the standalone gateway module self-contained.
 package catalog
 
 import (
 	_ "embed"
 	"encoding/json"
+	"os"
 	"sort"
 	"strings"
 )
@@ -29,11 +30,24 @@ type Catalog struct {
 
 // Load parses the embedded snapshot.
 func Load() (*Catalog, error) {
+	return parse(raw)
+}
+
+// LoadFile reuses the host product MCP catalog without duplicating OAuth metadata.
+func LoadFile(path string) (*Catalog, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parse(data)
+}
+
+func parse(data []byte) (*Catalog, error) {
 	var doc map[string]map[string]struct {
 		URL   string `json:"url"`
 		OAuth any    `json:"oauth"`
 	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, err
 	}
 	servers := doc["mcpServers"]

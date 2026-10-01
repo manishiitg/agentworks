@@ -1,13 +1,15 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Loader2, PlugZap, Plus, RefreshCw, Search, Server, Trash2 } from 'lucide-react'
-import { SettingsCard, SettingsCount } from '../../components/ui/SettingsCard'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, KeyRound, Loader2, MoreHorizontal, PlugZap, Plus, RefreshCw, Search, Server, Trash2 } from 'lucide-react'
+import { SettingsCard } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { Textarea } from '../../components/ui/Textarea'
+import IconPopover from '../../components/ui/IconPopover'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
+import OAuthStatusBadge from '../../components/OAuthStatusBadge'
 import { brandSlugFor } from '../../components/connectors/brandSlug'
-import { GROUP_ORDER, descriptionFor, groupFor, statusIndicator } from '../../components/connectors/catalog'
+import { GatewayToolCard } from './GatewayToolCard'
+import { descriptionFor, statusIndicator } from '../../components/connectors/catalog'
 import { useMCPStore } from '../../stores/useMCPStore'
 import { agentApi } from '../../services/api'
 import type { ToolDefinition, ToolDetail } from '../../stores/types'
@@ -20,16 +22,14 @@ import {
   listTools,
   listToolVersions,
   syncConnector,
+  setConnectorBearer,
   type GatewayConnector,
   type GatewayTool,
 } from './gatewayAdminApi'
 import { ConsoleEmpty, ConsoleError, ConsoleLoading, ConsoleStale } from './gatewayConsoleShared'
 import {
-  codeClass,
   gatewayErrorMessage,
   mergeServerRows,
-  parseMcpServersJson,
-  parseToolArgs,
   plural,
   tableClass,
   tdClass,
@@ -84,31 +84,14 @@ function matchesQuery(row: ServerRow, q: string): boolean {
   )
 }
 
-function ToolArgs({ tool }: { tool: GatewayTool }) {
-  const args = parseToolArgs(tool.InputSchema)
-  if (args === null) return <span className="text-muted-foreground">parameters not documented</span>
-  if (args.length === 0) return <span className="text-muted-foreground">takes no parameters</span>
-  return (
-    <span className="flex flex-wrap gap-1">
-      {args.map((a) => (
-        <span key={a.name} className={codeClass} title={a.description || `${a.name}: ${a.type}`}>
-          {a.name}: {a.type}
-          {a.required ? '*' : ''}
-        </span>
-      ))}
-    </span>
-  )
-}
-
-const JSON_PLACEHOLDER = `{
-  "mcpServers": {
-    "acme-notes": {
-      "url": "https://acme.example.com/mcp"
-    }
-  }
-}`
-
-export function GatewayServersPanel({ base }: { base: string }) {
+export function GatewayServersPanel({ base, standalone = false, view = 'connected', onConnected, onAddCustom, revision }: {
+  base: string
+  standalone?: boolean
+  view?: 'connected' | 'available'
+  onConnected?: () => void
+  onAddCustom?: () => Promise<void>
+  revision?: string
+}) {
   const [attempt, bump] = useAttempt()
   const { data, loading, error } = useGatewayLoader(async () => {
     const [connectors, catalog, tools] = await Promise.all([listConnectors(base), listCatalog(base), listTools(base)])
@@ -120,10 +103,11 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const agentWorksError = useMCPStore((state) => state.toolsError)
 
   useEffect(() => {
-    void refreshTools()
-  }, [refreshTools])
+    if (!standalone) void refreshTools()
+  }, [refreshTools, standalone])
 
   const [query, setQuery] = useState('')
+  useEffect(() => { setQuery(''); setSort('name') }, [view])
   const [sort, setSort] = useState<Sort>('name')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [expandedAgentWorks, setExpandedAgentWorks] = useState<Set<string>>(new Set())
@@ -133,19 +117,32 @@ export function GatewayServersPanel({ base }: { base: string }) {
   const [deleting, setDeleting] = useState<GatewayConnector | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [jsonText, setJsonText] = useState('')
-  const [jsonBusy, setJsonBusy] = useState(false)
-  const [jsonError, setJsonError] = useState<string | null>(null)
-  const [jsonNotice, setJsonNotice] = useState<string | null>(null)
-  const [customName, setCustomName] = useState('')
-  const [customUrl, setCustomUrl] = useState('')
-  const [customBusy, setCustomBusy] = useState(false)
-  const [customError, setCustomError] = useState<string | null>(null)
+  const [credentialFor, setCredentialFor] = useState<string | null>(null)
+  const [credentialValue, setCredentialValue] = useState('')
+  const [credentialBusy, setCredentialBusy] = useState(false)
+  const [chatRequestBusy, setChatRequestBusy] = useState(false)
+
+  const lastRevision = useRef(revision)
+  useEffect(() => {
+    if (revision && revision !== lastRevision.current) {
+      lastRevision.current = revision
+      bump()
+    }
+  }, [revision, bump])
+
+  async function requestCustomServer() {
+    if (!onAddCustom) return
+    setChatRequestBusy(true)
+    setActionError(null)
+    try { await onAddCustom() }
+    catch (err) { setActionError(gatewayErrorMessage(err)) }
+    finally { setChatRequestBusy(false) }
+  }
 
   const rows = useMemo(() => {
     if (!data) return []
-    return mergeServerRows(agentWorksServers(toolList), data.connectors, data.providers)
-  }, [data, toolList])
+    return mergeServerRows(standalone ? [] : agentWorksServers(toolList), data.connectors, data.providers)
+  }, [data, toolList, standalone])
 
   const toolsByConnector = useMemo(() => {
     const byId = new Map<string, GatewayTool[]>()
@@ -178,24 +175,15 @@ export function GatewayServersPanel({ base }: { base: string }) {
     [visible],
   )
 
-  const groupedConnected = useMemo(() => {
-    const byGroup = new Map<string, ServerRow[]>()
-    for (const row of connected) {
-      const group = groupFor(displayName(row))
-      const list = byGroup.get(group) ?? []
-      list.push(row)
-      byGroup.set(group, list)
-    }
-    return GROUP_ORDER.filter((g) => byGroup.has(g.id)).map((g) => ({ ...g, rows: byGroup.get(g.id) ?? [] }))
-  }, [connected])
-
   async function onAddToGateway(row: ServerRow) {
-    if (!row.catalogMatch || row.catalogMatch.OAuth) return
+    if (!row.catalogMatch) return
     setAddingKey(row.key)
     setActionError(null)
     try {
       await createConnector(base, { Provider: row.catalogMatch.Name, Label: '', Slug: '', URL: '' })
       bump()
+      if (row.catalogMatch.OAuth && !standalone) void refreshTools()
+      onConnected?.()
     } catch (err: unknown) {
       setActionError(gatewayErrorMessage(err))
     } finally {
@@ -244,91 +232,27 @@ export function GatewayServersPanel({ base }: { base: string }) {
     }
   }
 
-  async function onAddCustom() {
-    const name = customName.trim()
-    const url = customUrl.trim()
-    if (!name || !url) {
-      setCustomError('Enter a name and a server URL.')
-      return
-    }
-    if (!url.startsWith('https://') && !url.startsWith('http://127.0.0.1') && !url.startsWith('http://localhost')) {
-      setCustomError('Upstream must be https (or loopback http).')
-      return
-    }
-    setCustomBusy(true)
-    setCustomError(null)
+  async function onRotateCredential(id: string) {
+    setCredentialBusy(true)
     setActionError(null)
     try {
-      await createConnector(base, { Provider: name, Label: '', Slug: '', URL: url })
-      setCustomName('')
-      setCustomUrl('')
+      await setConnectorBearer(base, id, credentialValue.trim())
+      setCredentialValue('')
+      setCredentialFor(null)
       bump()
     } catch (err: unknown) {
-      setCustomError(gatewayErrorMessage(err))
+      setActionError(gatewayErrorMessage(err))
     } finally {
-      setCustomBusy(false)
+      setCredentialBusy(false)
     }
-  }
-
-  async function onAddJson() {
-    let parsed: ReturnType<typeof parseMcpServersJson>
-    try {
-      parsed = parseMcpServersJson(jsonText)
-    } catch (err: unknown) {
-      setJsonError(gatewayErrorMessage(err))
-      setJsonNotice(null)
-      return
-    }
-    setJsonBusy(true)
-    setJsonError(null)
-    setJsonNotice(null)
-    const added: string[] = []
-    const failed: string[] = parsed.skipped.map((s) => `${s.name} (${s.reason})`)
-    for (const server of parsed.servers) {
-      try {
-        await createConnector(base, { Provider: server.name, Label: '', Slug: '', URL: server.url })
-        added.push(server.name)
-      } catch (err: unknown) {
-        failed.push(`${server.name} (${gatewayErrorMessage(err)})`)
-      }
-    }
-    setJsonBusy(false)
-    if (added.length > 0) {
-      setJsonText('')
-      bump()
-    }
-    const parts = []
-    if (added.length > 0) parts.push(`Added ${plural(added.length, 'server')}: ${added.join(', ')}`)
-    if (failed.length > 0) parts.push(`Skipped ${plural(failed.length, 'server')}: ${failed.join('; ')}`)
-    const summary = parts.join('. ')
-    if (added.length > 0) setJsonNotice(summary)
-    else setJsonError(summary)
   }
 
   if (loading) return <ConsoleLoading label="Loading servers…" />
   if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
-  const inGateway = rows.filter((r) => r.gateway.length > 0).length
-  const stats: Array<[string, string]> = [
-    [String(connected.length), 'connected'],
-    [String(inGateway), 'in gateway'],
-    [String(data.tools.filter((tool) => tool.Status === 'active').length), 'gateway tools active'],
-    [String(data.tools.filter((tool) => tool.Status === 'quarantined').length), 'awaiting review'],
-    [String(data.providers.length), 'in catalog'],
-  ]
-
   return (
     <div className="space-y-4" data-testid="gateway-servers">
       {error && <ConsoleStale message={error} onRetry={bump} />}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg border border-border px-4 py-2.5" aria-label="Gateway overview">
-        {stats.map(([value, label]) => (
-          <p key={label} className="text-xs text-muted-foreground">
-            <span className="mr-1.5 text-base font-semibold text-foreground">{value}</span>
-            {label}
-          </p>
-        ))}
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <span className="relative min-w-52 flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -350,206 +274,181 @@ export function GatewayServersPanel({ base }: { base: string }) {
           <option value="name">Sort A–Z</option>
           <option value="tools">Sort by tools</option>
         </select>
-        <span className="text-xs text-muted-foreground">{plural(visible.length, 'server')}</span>
+        <span className="text-xs text-muted-foreground">{plural(view === 'connected' ? connected.length : available.length, 'result')}</span>
       </div>
 
       {actionError && <ConsoleError message={actionError} onRetry={bump} />}
 
-      {agentWorksError && (
+      {!standalone && agentWorksError && (
         <p className="text-xs text-destructive" role="alert">
           AgentWorks connections could not be refreshed: {agentWorksError}
           <Button variant="ghost" size="xs" onClick={() => void refreshTools()}>Retry</Button>
         </p>
       )}
 
-      <SettingsCard
+      {view === 'connected' && <SettingsCard
         icon={<PlugZap className="h-4 w-4 text-primary" />}
         title="Connected"
         ariaLabel="Connected servers"
-        count={<SettingsCount>{plural(connected.length, 'server')}</SettingsCount>}
-        description="Servers connected in AgentWorks, the gateway, or both. Expand either connection to inspect its tools."
+        count={plural(connected.length, 'server')}
       >
         {connected.length === 0 ? (
           <ConsoleEmpty>No connected servers match.</ConsoleEmpty>
         ) : (
-          <div className="space-y-4">
-            {groupedConnected.map((group) => (
-              <div key={group.id}>
-                <h4 className="mb-1 text-xs font-semibold text-foreground">{group.label}</h4>
-                <div className="overflow-x-auto">
-                  <table className={tableClass}>
-                    <thead>
-                      <tr>
-                        <th className={thClass}>Server</th>
-                        <th className={thClass}>AgentWorks</th>
-                        <th className={thClass}>Gateway</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.rows.map((row) => {
-                        const name = displayName(row)
-                        const aw = row.agentworks ? statusIndicator(row.agentworks.connection, row.agentworks.status) : null
-                        const openGateway = row.gateway.filter((connector) => expanded.has(connector.ID))
-                        const openAgentWorks = !!row.agentworks && expandedAgentWorks.has(row.key)
-                        return (
-                          <Fragment key={row.key}>
-                          <tr>
-                            <td className={tdClass}>
-                              <span className="flex items-center gap-2">
-                                <ConnectionIcon icon={brandSlugFor(name)} name={name} size="xs" />
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium text-foreground">{name}</span>
-                                  <span className="block max-w-96 truncate text-muted-foreground" title={descriptionFor(name)}>
-                                    {descriptionFor(name)}
-                                  </span>
-                                </span>
-                              </span>
-                            </td>
-                            <td className={`${tdClass} whitespace-nowrap`}>
-                              {row.agentworks && aw ? row.agentworks.connection === 'connected' ? (
-                                <span className="flex flex-col gap-1">
-                                  <button
-                                    className="inline-flex items-center gap-1.5 rounded text-left hover:bg-muted/60"
-                                    title={aw.title}
-                                    aria-expanded={expandedAgentWorks.has(row.key)}
-                                    aria-label={`${expandedAgentWorks.has(row.key) ? 'Hide' : 'Show'} AgentWorks tools on ${name}`}
-                                    onClick={() => setExpandedAgentWorks((previous) => {
-                                      const next = new Set(previous)
-                                      if (next.has(row.key)) next.delete(row.key)
-                                      else next.add(row.key)
-                                      return next
-                                    })}
-                                  >
-                                    <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedAgentWorks.has(row.key) ? 'rotate-180' : ''}`} aria-hidden />
-                                    <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
-                                    <span>{row.agentworks.status === 'not_loaded' ? 'Tools not loaded' : plural(row.agentworks.toolCount, 'tool')}</span>
-                                  </button>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5" title={aw.title}>
-                                  <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
-                                  {aw.title}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
+          <div className="space-y-3">
+            {connected.map((row) => {
+              const name = displayName(row)
+              const aw = row.agentworks ? statusIndicator(row.agentworks.connection, row.agentworks.status) : null
+              const openAgentWorks = !!row.agentworks && expandedAgentWorks.has(row.key)
+              return (
+                <article key={row.key} aria-label={`${name} server`} className="min-w-0 rounded-md border border-border">
+                  {(row.gateway.length !== 1 || row.agentworks) && <div className="flex items-start gap-2.5 px-3 pt-3">
+                    <ConnectionIcon icon={brandSlugFor(name)} name={name} size="xs" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="break-words text-sm font-semibold text-foreground">{name}</h4>
+                      {descriptionFor(name) !== 'Custom MCP server' && (
+                        <p className="mt-0.5 text-muted-foreground">{descriptionFor(name)}</p>
+                      )}
+                    </div>
+                  </div>}
+                  {row.gateway.map((c) => {
+                    const tools = toolsByConnector.get(c.ID) ?? []
+                    const needsReview = tools.filter((tool) => tool.Status === 'quarantined').length
+                    const approved = tools.filter((tool) => tool.Status === 'active').length
+                    const open = expanded.has(c.ID)
+                    return (
+                      <div key={c.ID} className="min-w-0 space-y-2.5 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex min-w-52 flex-1 items-center gap-2.5">
+                            {row.gateway.length === 1 && !row.agentworks && <ConnectionIcon icon={brandSlugFor(name)} name={name} size="xs" />}
+                            <div className="min-w-0 space-y-1">
+                              {row.gateway.length === 1 && !row.agentworks ? <h4 className="break-words text-sm font-semibold text-foreground">{name}</h4> : (
+                                <p className="font-medium">CapLayer{row.gateway.length > 1 ? ` · ${c.Label || c.Provider}${c.InstanceSlug ? ` (${c.InstanceSlug})` : ''}` : ''}</p>
                               )}
-                            </td>
-                            <td className={tdClass}>
-                              {row.gateway.length > 0 ? (
-                                <span className="flex flex-col gap-1.5">
-                                  {row.gateway.map((c) => {
-                                    const tools = toolsByConnector.get(c.ID) ?? []
-                                    const open = expanded.has(c.ID)
-                                    return (
-                                      <span key={c.ID} className="flex flex-col gap-1">
-                                        <span className="inline-flex flex-wrap items-center gap-1.5">
-                                          <button
-                                            onClick={() =>
-                                              setExpanded((prev) => {
-                                                const next = new Set(prev)
-                                                if (next.has(c.ID)) next.delete(c.ID)
-                                                else next.add(c.ID)
-                                                return next
-                                              })
-                                            }
-                                            aria-expanded={open}
-                                            aria-label={`${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${c.Label || c.Provider}`}
-                                            className="inline-flex items-center gap-1.5 rounded hover:bg-muted/60"
-                                          >
-                                            <ChevronDown
-                                              className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
-                                              aria-hidden
-                                            />
-                                            <span className={`h-2 w-2 shrink-0 rounded-full ${gatewayStatusDot(c.Status)}`} aria-hidden />
-                                            <span className={codeClass}>
-                                              {c.Label || c.Provider}
-                                              {c.InstanceSlug ? `:${c.InstanceSlug}` : ''}
-                                            </span>
-                                            <span className="whitespace-nowrap text-muted-foreground">
-                                              {plural(tools.length, 'tool')}
-                                            </span>
-                                            <span className="text-muted-foreground">· {c.Status}</span>
-                                          </button>
-                                          <Button
-                                            variant="ghost"
-                                            size="xs"
-                                            disabled={syncing === c.ID}
-                                            onClick={() => void onSync(c.ID)}
-                                            aria-label={`Sync ${c.Label || c.Provider}`}
-                                          >
-                                            {syncing === c.ID ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="xs"
-                                            onClick={() => setDeleting(c)}
-                                            aria-label={`Delete ${c.Label || c.Provider}`}
-                                          >
-                                            <Trash2 />
-                                          </Button>
-                                        </span>
-                                      </span>
-                                    )
-                                  })}
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${gatewayStatusDot(c.Status)}`} aria-hidden />
+                                  {c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status}
                                 </span>
-                              ) : row.catalogMatch?.OAuth ? (
-                                <span className="text-muted-foreground" title="Upstream OAuth is not supported by CapLayer yet">Requires OAuth · coming later</span>
-                              ) : row.catalogMatch ? (
-                                <Button
-                                  variant="outline"
-                                  size="xs"
-                                  disabled={addingKey === row.key}
-                                  onClick={() => void onAddToGateway(row)}
-                                  data-testid={`gateway-add-${row.key}`}
-                                >
-                                  {addingKey === row.key ? <Loader2 className="animate-spin" /> : <Plus />}
-                                  Connect to gateway
+                                <span aria-hidden>·</span>
+                                <span>{plural(tools.length, 'tool')}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="ml-auto flex shrink-0 items-center gap-2">
+                            <Button
+                              variant="outline" size="sm"
+                              onClick={() => setExpanded((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(c.ID)) next.delete(c.ID)
+                                else next.add(c.ID)
+                                return next
+                              })}
+                              aria-expanded={open}
+                              aria-label={`${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${c.Label || c.Provider}`}
+                            >
+                              {open ? 'Hide tools' : 'View tools'}
+                              <ChevronDown className={`transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+                            </Button>
+                            <IconPopover icon={syncing === c.ID ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />} label={`Actions for ${c.Label || c.Provider}`} panelClassName="w-52 !border-border !bg-popover !p-1">
+                              {(close) => <div className="space-y-0.5" role="group" aria-label="Server actions">
+                                <Button variant="ghost" size="sm" className="w-full justify-start" disabled={syncing === c.ID} onClick={() => { close(); void onSync(c.ID) }} aria-label={`Sync ${c.Label || c.Provider}`}>
+                                  <RefreshCw />Refresh tool list
                                 </Button>
-                              ) : (
-                                <span className="text-muted-foreground">Not in catalog</span>
-                              )}
-                            </td>
-                          </tr>
-                          {(openAgentWorks || openGateway.length > 0) && (
-                            <tr>
-                              <td colSpan={3} className={`${tdClass} bg-muted/20 px-4 py-3`}>
-                                <div className={openAgentWorks && openGateway.length > 0 ? 'grid gap-4 xl:grid-cols-2' : 'grid gap-4'}>
-                                  {openAgentWorks && row.agentworks && (
-                                    <section className="min-w-0 space-y-2" aria-label={`${name} AgentWorks tools`}>
-                                      <h5 className="font-semibold text-foreground">AgentWorks tools</h5>
-                                      <AgentWorksToolList server={row.agentworks} />
-                                    </section>
-                                  )}
-                                  {openGateway.map((connector) => (
-                                    <section key={connector.ID} className="min-w-0 space-y-2" aria-label={`${name} Gateway tools`}>
-                                      <h5 className="font-semibold text-foreground">Gateway tools · {connector.Label || connector.Provider}</h5>
-                                      <ToolList tools={toolsByConnector.get(connector.ID) ?? []} base={base} onApprove={onApprove} approving={approving} />
-                                    </section>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                          </Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+                                <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { close(); setCredentialFor(c.ID); setCredentialValue('') }}>
+                                  <KeyRound />Connection settings
+                                </Button>
+                                <div className="my-1 border-t border-border" />
+                                <Button variant="ghost" size="sm" className="w-full justify-start text-destructive hover:text-destructive" onClick={() => { close(); setDeleting(c) }}>
+                                  <Trash2 />Disconnect server
+                                </Button>
+                              </div>}
+                            </IconPopover>
+                          </div>
+                        </div>
+                        {credentialFor === c.ID && <div className="space-y-2 rounded-md border border-border p-3">
+                          <h5 className="font-semibold">Connection settings</h5>
+                          {c.OAuthServer ? <>
+                            <p className="text-muted-foreground">Sign in again to reconnect. Group permissions stay unchanged.</p>
+                            <OAuthStatusBadge serverName={c.OAuthServer} requiresOAuth connection="available" connectLabel="Sign in again"
+                              onAuthChange={valid => { if (valid) void onSync(c.ID) }} />
+                            <Button variant="ghost" size="sm" onClick={() => setCredentialFor(null)}>Close</Button>
+                          </> : <>
+                          <p className="text-muted-foreground">Update this server’s connection token.</p>
+                          <label className="block font-medium" htmlFor={`credential-${c.ID}`}>Server access token</label>
+                          <Input id={`credential-${c.ID}`} type="password" autoComplete="off" aria-label={`New bearer token for ${c.Label || c.Provider}`} placeholder="Enter a replacement token" value={credentialValue} onChange={event => setCredentialValue(event.target.value)} />
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" disabled={credentialBusy || !credentialValue.trim()} onClick={() => void onRotateCredential(c.ID)}>Update token</Button>
+                            <Button variant="ghost" size="sm" onClick={() => { setCredentialFor(null); setCredentialValue('') }}>Cancel</Button>
+                          </div>
+                          </>}
+                        </div>}
+                        {open && (
+                          <section className="min-w-0 space-y-3 border-t border-border pt-3" aria-label={`${name} Gateway tools`}>
+                            <h5 className="font-semibold text-foreground">Tools</h5>
+                            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                              {needsReview > 0 && <span>{needsReview} need review</span>}
+                              {approved > 0 && <span>{approved} approved</span>}
+                            </div>
+                            {needsReview > 0 && <p className="text-muted-foreground">Tools changed since connection. Review before approving. Group access is assigned separately.</p>}
+                            <ToolList tools={tools} base={base} onApprove={onApprove} approving={approving} />
+                          </section>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {!standalone && row.agentworks && aw && (
+                    <div className={`space-y-2 p-3 ${row.gateway.length > 0 ? 'border-t border-border' : ''}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">AgentWorks</span>
+                        <span className="inline-flex items-center gap-1.5 text-muted-foreground" title={aw.title}>
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${aw.dot}`} aria-hidden />
+                          {row.agentworks.connection === 'connected' ? 'Connected' : aw.title}
+                        </span>
+                        {row.agentworks.connection === 'connected' && <span className="text-muted-foreground">{row.agentworks.status === 'not_loaded' ? 'Tools not loaded' : plural(row.agentworks.toolCount, 'tool')}</span>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {row.agentworks.connection === 'connected' && (
+                          <Button variant="outline" size="sm" aria-expanded={openAgentWorks} aria-label={`${openAgentWorks ? 'Hide' : 'Show'} AgentWorks tools on ${name}`} onClick={() => setExpandedAgentWorks((previous) => {
+                            const next = new Set(previous)
+                            if (next.has(row.key)) next.delete(row.key)
+                            else next.add(row.key)
+                            return next
+                          })}>
+                            <ChevronDown className={`transition-transform ${openAgentWorks ? 'rotate-180' : ''}`} aria-hidden />
+                            {openAgentWorks ? 'Hide tools' : 'View tools'}
+                          </Button>
+                        )}
+                        {row.gateway.length === 0 && (row.catalogMatch?.OAuth ? (
+                          <OAuthStatusBadge serverName={row.catalogMatch.Name} requiresOAuth connection="available" reuseAuthentication connectLabel="Connect with OAuth"
+                            readOnly={addingKey === row.key} onAuthChange={valid => { if (valid) void onAddToGateway(row) }} />
+                        ) : row.catalogMatch ? (
+                          <Button variant="outline" size="sm" disabled={addingKey === row.key} onClick={() => void onAddToGateway(row)} data-testid={`gateway-add-${row.key}`}>
+                            {addingKey === row.key ? <Loader2 className="animate-spin" /> : <Plus />}Connect to gateway
+                          </Button>
+                        ) : <span className="text-muted-foreground">Use Add custom server in Available MCPs to connect it in chat.</span>)}
+                      </div>
+                      {openAgentWorks && <section className="min-w-0 border-t border-border pt-3" aria-label={`${name} AgentWorks tools`}>
+                        <h5 className="mb-2 font-semibold text-foreground">AgentWorks tools</h5>
+                        <AgentWorksToolList server={row.agentworks} />
+                      </section>}
+                    </div>
+                  )}
+                </article>
+              )
+            })}
           </div>
         )}
-      </SettingsCard>
+      </SettingsCard>}
 
-      <SettingsCard
+      {view === 'available' && <SettingsCard
           icon={<Server className="h-4 w-4 text-primary" />}
           title="Available to add"
           ariaLabel="Available servers"
-          count={<SettingsCount>{plural(available.length, 'server')}</SettingsCount>}
-          description="Known servers that are not connected anywhere yet. Add one to start governing it."
+          count={plural(available.length, 'server')}
+          description={undefined}
         >
-          {agentWorksLoading && <p className="mb-2 text-xs text-muted-foreground">Checking AgentWorks connections…</p>}
+          {!standalone && agentWorksLoading && <p className="mb-2 text-xs text-muted-foreground">Checking AgentWorks connections…</p>}
           {available.length === 0 ? <ConsoleEmpty>No servers available to add.</ConsoleEmpty> : (
           <div className="overflow-x-auto">
             <table className={tableClass}>
@@ -577,7 +476,8 @@ export function GatewayServersPanel({ base }: { base: string }) {
                       </td>
                       <td className={tdClass}>
                         {row.catalogMatch?.OAuth ? (
-                          <span className="text-muted-foreground" title="Upstream OAuth is not supported by CapLayer yet">Requires OAuth · coming later</span>
+                          <OAuthStatusBadge serverName={row.catalogMatch.Name} requiresOAuth connection="available" reuseAuthentication connectLabel="Connect with OAuth"
+                            readOnly={addingKey === row.key} onAuthChange={valid => { if (valid) void onAddToGateway(row) }} />
                         ) : row.catalogMatch ? (
                           <Button
                             variant="outline"
@@ -600,76 +500,22 @@ export function GatewayServersPanel({ base }: { base: string }) {
             </table>
           </div>
           )}
-      </SettingsCard>
+      </SettingsCard>}
 
-      <SettingsCard
-        title="Add custom servers"
-        description='Connect any Streamable-HTTP ("url") MCP server by name and URL. Only https URLs (or loopback http) can join the gateway.'
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            aria-label="Custom server name"
-            placeholder="Name (e.g. acme-notes)"
-            value={customName}
-            onChange={(e) => setCustomName(e.target.value)}
-            className="max-w-56"
-            data-testid="gateway-add-name"
-          />
-          <Input
-            aria-label="Custom server URL"
-            placeholder="https://acme.example.com/mcp"
-            value={customUrl}
-            onChange={(e) => setCustomUrl(e.target.value)}
-            className="min-w-64 flex-1 font-mono text-xs sm:max-w-md"
-            data-testid="gateway-add-url"
-          />
-          <Button size="sm" disabled={customBusy || !customName.trim() || !customUrl.trim()} onClick={() => void onAddCustom()} data-testid="gateway-add-custom-submit">
-            {customBusy && <Loader2 className="animate-spin" />}
-            Connect server
-          </Button>
-        </div>
-        {customError && (
-          <p className="text-destructive" role="alert">
-            {customError}
-          </p>
-        )}
-        <details>
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-            Advanced: import JSON
-          </summary>
-          <div className="mt-2 space-y-2">
-            <Textarea
-              aria-label="MCP servers JSON"
-              placeholder={JSON_PLACEHOLDER}
-              value={jsonText}
-              onChange={(e) => setJsonText(e.target.value)}
-              rows={6}
-              className="font-mono text-xs"
-              data-testid="gateway-add-json"
-            />
-            {jsonError && (
-              <p className="text-destructive" role="alert">
-                {jsonError}
-              </p>
-            )}
-            {jsonNotice && <p className="text-muted-foreground" role="status">{jsonNotice}</p>}
-            <div>
-              <Button size="sm" disabled={jsonBusy || !jsonText.trim()} onClick={() => void onAddJson()} data-testid="gateway-add-submit">
-                {jsonBusy && <Loader2 className="animate-spin" />}
-                Connect servers
-              </Button>
-            </div>
-          </div>
-        </details>
-      </SettingsCard>
+      {view === 'available' && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4" aria-label="Add custom server">
+        <Button variant="outline" size="sm" disabled={!onAddCustom || chatRequestBusy} onClick={() => void requestCustomServer()} data-testid="gateway-add-custom">
+          {chatRequestBusy ? <Loader2 className="animate-spin" /> : <Plus />}Add custom server
+        </Button>
+      </div>}
 
       <ConfirmationDialog
         isOpen={deleting !== null}
         onClose={() => setDeleting(null)}
         onConfirm={() => void onDelete()}
-        title="Delete connection"
-        message={`Remove "${deleting?.Label || deleting?.Provider}"? Its tools disappear from the gateway and every grant on them stops applying. You can reconnect the server later.`}
-        confirmText="Delete"
+        title="Disconnect server"
+        message={`Disconnect "${deleting?.Label || deleting?.Provider}" from CapLayer? Its tools will become unavailable, and its group permissions will be removed. Reconnecting requires assigning permissions again.`}
+        confirmText="Disconnect"
+        loadingText="Disconnecting…"
         isLoading={deleteBusy}
       />
     </div>
@@ -704,19 +550,13 @@ function ToolReviewRow({ tool, base, onApprove, approving }: {
   }
 
   return (
-    <span className="flex flex-col gap-1 py-1">
-      <span className="inline-flex flex-wrap items-center gap-1.5">
-        <span className={codeClass}>{tool.PublicName}</span>
-        <span className="text-muted-foreground">{tool.UpstreamName}</span>
-        <span className="text-xs text-muted-foreground">v{tool.Version} · {tool.Status}</span>
-      </span>
-      {tool.Description && <span className="max-w-4xl line-clamp-2 text-muted-foreground">{tool.Description}</span>}
-      <ToolArgs tool={tool} />
-      <span className="flex items-center gap-2">
+    <GatewayToolCard name={tool.UpstreamName} description={tool.Description} schema={tool.InputSchema}
+      status={tool.Status === 'quarantined' ? 'Needs review' : tool.Status === 'active' ? 'Approved' : tool.Status === 'disabled' ? 'Disabled' : tool.Status}>
+      <span className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="xs" onClick={() => open ? setOpen(false) : void openReview()}>
           {open ? 'Hide details' : 'Review details'}
         </Button>
-        {tool.Status === 'quarantined' && (
+        {open && tool.Status === 'quarantined' && (
           <Button size="xs" disabled={approving} onClick={() => void onApprove(tool)}>
             {approving && <Loader2 className="animate-spin" />}Approve v{tool.Version}
           </Button>
@@ -724,6 +564,8 @@ function ToolReviewRow({ tool, base, onApprove, approving }: {
       </span>
       {open && (
         <span className="block space-y-2 rounded-md border border-border p-2 text-xs">
+          <span className="block font-medium">MCP tool name · v{tool.Version}</span>
+          <span className="block break-all font-mono">{tool.PublicName}</span>
           {tool.Description && <><span className="block font-medium">Description</span><span className="block whitespace-pre-wrap">{tool.Description}</span></>}
           <span className="block font-medium">Current input schema</span>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{toolJSON(tool.InputSchema)}</pre>
@@ -741,7 +583,7 @@ function ToolReviewRow({ tool, base, onApprove, approving }: {
           ))}
         </span>
       )}
-    </span>
+    </GatewayToolCard>
   )
 }
 
@@ -751,13 +593,13 @@ function ToolList({ tools, base, onApprove, approving }: {
   onApprove: (tool: GatewayTool) => Promise<void>
   approving: string | null
 }) {
-  if (tools.length === 0) return <span className="ml-5 text-muted-foreground">No tools discovered yet.</span>
+  if (tools.length === 0) return <span className="text-muted-foreground">No tools discovered yet. Use Sync tools to check the server again.</span>
   return (
-    <span className="ml-5 flex flex-col gap-1 border-l border-border pl-2">
+    <div className="flex min-w-0 flex-col gap-3">
       {tools.map((t) => (
         <ToolReviewRow key={t.PublicName} tool={t} base={base} onApprove={onApprove} approving={approving === t.PublicName} />
       ))}
-    </span>
+    </div>
   )
 }
 
@@ -804,23 +646,10 @@ function AgentWorksToolList({ server }: { server: AgentWorksServer }) {
     : rawError
 
   return (
-    <span className="ml-2 flex flex-col gap-1 border-l border-border pl-2 whitespace-normal">
+    <div className="flex min-w-0 flex-col gap-3 whitespace-normal">
       {loading && <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading tools…</span>}
-      {items.map((tool) => (
-        <span key={tool.name} className="flex flex-col gap-0.5 py-0.5">
-          <span className={codeClass}>{tool.name}</span>
-          {tool.description && <span className="max-w-2xl text-muted-foreground">{tool.description}</span>}
-          {tool.parameters && Object.keys(tool.parameters).length > 0 && (
-            <span className="flex flex-wrap gap-1">
-              {Object.entries(tool.parameters).map(([name, parameter]) => (
-                <span key={name} className={codeClass} title={parameter.description || name}>
-                  {name}: {parameter.type || 'any'}{tool.required?.includes(name) ? '*' : ''}
-                </span>
-              ))}
-            </span>
-          )}
-        </span>
-      ))}
+      {items.map(tool => <GatewayToolCard key={tool.name} name={tool.name} description={tool.description}
+        rawSchema={tool.parameters ? { type: 'object', properties: tool.parameters, ...(tool.required ? { required: tool.required } : {}) } : undefined} />)}
       {!loading && !discoveryError && items.length === 0 && <span className="text-muted-foreground">No tools discovered.</span>}
       {discoveryError && (
         <span className="text-destructive" role="alert">
@@ -828,6 +657,6 @@ function AgentWorksToolList({ server }: { server: AgentWorksServer }) {
           <Button variant="ghost" size="xs" onClick={() => setAttempt((value) => value + 1)}>Retry</Button>
         </span>
       )}
-    </span>
+    </div>
   )
 }

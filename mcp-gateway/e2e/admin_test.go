@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -103,6 +102,20 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 		t.Fatalf("synced tools = %d, want 2", n)
 	}
 
+	// Connecting as admin approves initial definitions but grants no access.
+	for _, snap := range st.ListTools("w1") {
+		if snap.Status != store.StatusActive || snap.ApprovedFingerprint != snap.Fingerprint {
+			t.Fatalf("connection did not approve initial definition: %+v", snap)
+		}
+	}
+	access := fetchAccessToken(t, publicURL, testHumanToken)
+	c := dialGateway(t, publicURL+"/mcp", access)
+	callReq := mcp.CallToolRequest{}
+	callReq.Params.Name = "fake__allowed_tool"
+	if _, err := c.CallTool(ctx, callReq); err == nil {
+		t.Fatal("connecting a server granted access before group assignment")
+	}
+
 	// Group grant flows to members: create group, add u1, grant the tool.
 	if code, data := apiCall(t, "POST", publicURL+"/api/admin/groups", `{"id":"g1","name":"G One"}`); code != 201 {
 		t.Fatalf("add group: %d %s", code, data)
@@ -114,18 +127,6 @@ func TestAdminGroupsAndConnectors(t *testing.T) {
 		t.Fatalf("group grant: %d %s", code, data)
 	}
 
-	access := fetchAccessToken(t, publicURL, testHumanToken)
-	c := dialGateway(t, publicURL+"/mcp", access)
-	callReq := mcp.CallToolRequest{}
-	callReq.Params.Name = "fake__allowed_tool"
-	if _, err := c.CallTool(ctx, callReq); err == nil {
-		t.Fatal("new tool ran before admin approval despite group grant")
-	}
-	snap, _ := st.GetTool("fake__allowed_tool")
-	approval := fmt.Sprintf(`{"fingerprint":%q,"version":%d}`, snap.Fingerprint, snap.Version)
-	if code, data := apiCall(t, "POST", publicURL+"/api/admin/tools/fake__allowed_tool/approve", approval); code != 200 {
-		t.Fatalf("approve tool: %d %s", code, data)
-	}
 	if _, err := c.CallTool(ctx, callReq); err != nil {
 		t.Fatalf("group-granted call: %v", err)
 	}

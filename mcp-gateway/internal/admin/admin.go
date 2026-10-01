@@ -4,6 +4,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -23,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/setupagent"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 )
 
@@ -34,6 +36,7 @@ type Admin struct {
 	WorkspaceID string
 	HumanToken  string
 	PublicURL   string
+	SetupAgent  *setupagent.Agent
 	sessionsMu  sync.Mutex
 	sessions    map[string]time.Time
 }
@@ -206,7 +209,7 @@ func (a *Admin) SetMember(groupID, userID string, add bool) error {
 	return nil
 }
 
-func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string) (store.Connector, error) {
+func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string, oauthServer ...string) (store.Connector, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		label = provider
@@ -215,6 +218,9 @@ func (a *Admin) addConnectorRow(provider, label, slug, upstreamURL string) (stor
 		ID: newID("c"), WorkspaceID: a.WorkspaceID, Provider: provider,
 		InstanceSlug: strings.TrimSpace(slug), Label: label,
 		UpstreamURL: upstreamURL, Status: store.StatusActive,
+	}
+	if len(oauthServer) > 0 {
+		c.OAuthServer = oauthServer[0]
 	}
 	if !a.Store.AddConnectorUnique(c) {
 		return store.Connector{}, errors.New("a connector with this provider and instance name already exists")
@@ -228,13 +234,20 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 	if !ok {
 		return store.Connector{}, errors.New("unknown provider")
 	}
-	if p.OAuth {
-		return store.Connector{}, errors.New("this provider requires upstream OAuth, which the gateway does not support yet")
+	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {
+		return store.Connector{}, errors.New("this provider requires upstream OAuth; configure the shared product OAuth service")
 	}
 	if err := a.Gateway.ValidateUpstreamURL(p.URL); err != nil {
 		return store.Connector{}, err
 	}
-	c, err := a.addConnectorRow(p.Key, label, slug, p.URL)
+	oauthServer := ""
+	if p.OAuth {
+		oauthServer = p.Name
+	}
+	if strings.TrimSpace(label) == "" {
+		label = p.Name
+	}
+	c, err := a.addConnectorRow(p.Key, label, slug, p.URL, oauthServer)
 	if err != nil {
 		return store.Connector{}, err
 	}
@@ -247,6 +260,10 @@ func (a *Admin) AddConnectorFromCatalog(ctx context.Context, providerName, label
 
 // AddConnectorCustom connects an arbitrary upstream MCP URL.
 func (a *Admin) AddConnectorCustom(ctx context.Context, provider, label, slug, upstreamURL string) (store.Connector, error) {
+	return a.AddConnectorCustomWithBearer(ctx, provider, label, slug, upstreamURL, "")
+}
+
+func (a *Admin) AddConnectorCustomWithBearer(ctx context.Context, provider, label, slug, upstreamURL, bearerToken string) (store.Connector, error) {
 	key := catalog.Key(provider)
 	if key == "" {
 		return store.Connector{}, errors.New("invalid provider name")
@@ -259,6 +276,11 @@ func (a *Admin) AddConnectorCustom(ctx context.Context, provider, label, slug, u
 	if err != nil {
 		return store.Connector{}, err
 	}
+	if strings.ContainsAny(bearerToken, "\r\n") || len(bearerToken) > 8192 {
+		a.Store.DeleteConnector(c.ID)
+		return store.Connector{}, errors.New("invalid bearer token")
+	}
+	a.Store.SetConnectorBearer(c.ID, bearerToken)
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
 		return store.Connector{}, err
@@ -482,12 +504,70 @@ func (a *Admin) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
-		next(w, r)
+		if a.Store.PersistenceError() != nil {
+			writeErr(w, http.StatusServiceUnavailable, errors.New("configuration storage unavailable; repair storage and restart the gateway"))
+			return
+		}
+		if r.Method == http.MethodGet {
+			next(w, r)
+			return
+		}
+		// Do not acknowledge a configuration change before its durable write.
+		buffer := &adminResponseBuffer{header: make(http.Header), status: http.StatusOK}
+		next(buffer, r)
+		if a.Store.PersistenceError() != nil {
+			writeErr(w, http.StatusServiceUnavailable, errors.New("configuration could not be saved; repair storage and restart the gateway"))
+			return
+		}
+		for key, values := range buffer.header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		w.WriteHeader(buffer.status)
+		_, _ = w.Write(buffer.body.Bytes())
 	}
+}
+
+type adminResponseBuffer struct {
+	header      http.Header
+	status      int
+	body        bytes.Buffer
+	wroteHeader bool
+}
+
+func (b *adminResponseBuffer) Header() http.Header { return b.header }
+func (b *adminResponseBuffer) WriteHeader(status int) {
+	if !b.wroteHeader {
+		b.status = status
+		b.wroteHeader = true
+	}
+}
+func (b *adminResponseBuffer) Write(data []byte) (int, error) {
+	if !b.wroteHeader {
+		b.WriteHeader(http.StatusOK)
+	}
+	return b.body.Write(data)
 }
 
 // APIRoutes mounts the JSON admin API.
 func (a *Admin) APIRoutes(mux *http.ServeMux) {
+	a.accessRoutes(mux)
+	a.databaseRoutes(mux)
+	a.setupRoutes(mux)
+	mux.HandleFunc("/api/admin/users/sync", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct{ ID, Email string }
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&in) != nil || !validID.MatchString(in.ID) {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid product identity"))
+			return
+		}
+		a.Store.AddUser(store.User{ID: in.ID, WorkspaceID: a.WorkspaceID, Email: in.Email})
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("/api/admin/users", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var in struct {
@@ -668,7 +748,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/connectors", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var in struct {
-				Provider, Label, Slug, URL string
+				Provider, Label, Slug, URL, BearerToken string
 			}
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 				writeErr(w, 400, err)
@@ -679,7 +759,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			var c store.Connector
 			var err error
 			if in.URL != "" {
-				c, err = a.AddConnectorCustom(ctx, in.Provider, in.Label, in.Slug, in.URL)
+				c, err = a.AddConnectorCustomWithBearer(ctx, in.Provider, in.Label, in.Slug, in.URL, in.BearerToken)
 			} else {
 				c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Slug)
 			}
@@ -706,6 +786,33 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, 200, map[string]string{"status": "synced"})
+	}))
+	mux.HandleFunc("/api/admin/connectors/{id}/credential", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		c, ok := a.Store.GetConnector(r.PathValue("id"))
+		if !ok || c.WorkspaceID != a.WorkspaceID {
+			writeErr(w, http.StatusNotFound, errors.New("connector not found"))
+			return
+		}
+		var in struct{ BearerToken string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&in); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if strings.ContainsAny(in.BearerToken, "\r\n") || len(in.BearerToken) > 8192 {
+			writeErr(w, http.StatusBadRequest, errors.New("invalid bearer token"))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		if err := a.Gateway.ReplaceConnectorCredentials(ctx, c, in.BearerToken); err != nil {
+			writeErr(w, http.StatusBadGateway, errors.New("connector did not accept the replacement credential"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 	}))
 	mux.HandleFunc("/api/admin/connectors/{id}", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {

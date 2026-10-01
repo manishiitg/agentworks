@@ -4,10 +4,16 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewayServersPanel } from './GatewayServersPanel'
 import { agentApi } from '../../services/api'
+import { TooltipProvider } from '../../components/ui/tooltip'
 
 const refreshTools = vi.fn(async () => {})
 
-vi.mock('../../services/api', () => ({ agentApi: { getToolDetail: vi.fn() } }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt', agentApi: { getToolDetail: vi.fn() } }))
+
+vi.mock('../../components/OAuthStatusBadge', () => ({
+  default: ({ serverName, connectLabel, onAuthChange }: { serverName: string; connectLabel: string; onAuthChange: (valid: boolean) => void }) =>
+    <button aria-label={`OAuth ${serverName}`} onClick={() => onAuthChange(true)}>{connectLabel}</button>,
+}))
 
 vi.mock('../../stores/useMCPStore', () => ({
   useMCPStore: (selector: (state: Record<string, unknown>) => unknown) =>
@@ -42,13 +48,13 @@ describe('GatewayServersPanel', () => {
     refreshTools.mockClear()
   })
 
-  async function renderPanel(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
+  async function renderPanel(fetchMock: ReturnType<typeof vi.fn>, onAddCustom?: () => Promise<void>, view: 'connected' | 'available' = 'connected'): Promise<void> {
     vi.stubGlobal('fetch', fetchMock)
     container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
     await act(async () => {
-      root.render(<GatewayServersPanel base={BASE} />)
+      root.render(<TooltipProvider><GatewayServersPanel base={BASE} view={view} onAddCustom={onAddCustom} /></TooltipProvider>)
     })
     await act(async () => {})
   }
@@ -80,26 +86,30 @@ describe('GatewayServersPanel', () => {
     }
   }
 
-  it('centralizes AgentWorks servers and gateway connectors in one list', async () => {
+  it('shows only connected servers in the connected panel', async () => {
     await renderPanel(vi.fn(healthyFetch()))
-
-    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
-    // Notion: connected in AgentWorks (2 tools) and present in the gateway.
-    expect(container!.textContent).toContain('Notion')
-    expect(container!.textContent).toContain('2 tools')
-    expect(refreshTools).toHaveBeenCalledOnce()
     const connected = container!.querySelector('[aria-label="Connected servers"]')!
-    const available = container!.querySelector('[aria-label="Available servers"]')!
+    expect(connected.textContent).toContain('Notion')
+    expect(connected.textContent).toContain('2 tools')
     expect(connected.textContent).toContain('WorkOS')
     expect(connected.textContent).toContain('Tools not loaded')
+    expect(refreshTools).toHaveBeenCalledOnce()
+    expect(container!.querySelector('[aria-label="Available servers"]')).toBeNull()
+    expect(container!.querySelector('[data-testid="gateway-add-custom"]')).toBeNull()
+    expect(container!.textContent).toContain('2 results')
+    expect(container!.textContent).not.toContain('Linear')
+  })
+
+  it('shows only available servers and connection actions in the available panel', async () => {
+    await renderPanel(vi.fn(healthyFetch()), undefined, 'available')
+    const available = container!.querySelector('[aria-label="Available servers"]')!
+    expect(container!.querySelector('[aria-label="Connected servers"]')).toBeNull()
     expect(available.textContent).not.toContain('WorkOS')
+    expect(available.textContent).not.toContain('Notion')
     expect(available.textContent).toContain('Linear')
-    // Linear: in AgentWorks but not the gateway, with a catalog match → one-click add.
-    const add = container!.querySelector('[data-testid="gateway-add-linear"]')
-    expect(add).not.toBeNull()
-    expect(add!.textContent).toContain('Connect to gateway')
-    expect(available.textContent).toContain('Requires OAuth · coming later')
-    expect(container!.querySelector('[data-testid="gateway-add-slack"]')).toBeNull()
+    expect(available.textContent).toContain('Connect with OAuth')
+    expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Connect to gateway')
+    expect(container!.textContent).toContain('2 results')
   })
 
   it('discovers and shows tools for an AgentWorks-only connected server', async () => {
@@ -118,7 +128,8 @@ describe('GatewayServersPanel', () => {
     expect(getDetail).toHaveBeenCalledWith('WorkOS')
     expect(container!.textContent).toContain('list_users')
     expect(container!.textContent).toContain('List organization users')
-    expect(container!.textContent).toContain('org_id: string*')
+    expect(container!.querySelector('[data-tool-card="list_users"] [aria-label="Arguments for list_users"]')).not.toBeNull()
+    expect(container!.querySelector('[data-tool-card="list_users"] [aria-label="Input JSON schema"]')!.textContent).toContain('"org_id"')
   })
 
   it('explains when a connected AgentWorks server needs authorization', async () => {
@@ -137,7 +148,7 @@ describe('GatewayServersPanel', () => {
   })
 
   it('filters the list by search text', async () => {
-    await renderPanel(vi.fn(healthyFetch()))
+    await renderPanel(vi.fn(healthyFetch()), undefined, 'available')
 
     const search = container!.querySelector('[data-testid="gateway-servers-search"]') as HTMLInputElement
     await act(async () => {
@@ -176,9 +187,10 @@ describe('GatewayServersPanel', () => {
     })
     await act(async () => {})
 
-    expect(container!.textContent).toContain('notion__search')
+    expect(container!.querySelector('[data-tool-card="search"]')!.textContent).toContain('Approved')
     expect(container!.textContent).toContain('Searches notes')
-    expect(container!.textContent).toContain('q: string*')
+    expect(container!.querySelector('[data-tool-card="search"] [aria-label="Arguments for search"]')).not.toBeNull()
+    expect(container!.querySelector('[data-tool-card="search"] [aria-label="Input JSON schema"]')!.textContent).toContain('"q"')
   })
 
   it('reviews and approves the exact quarantined tool version', async () => {
@@ -197,111 +209,117 @@ describe('GatewayServersPanel', () => {
     await act(async () => { (container!.querySelector('[aria-label="Show 1 tool on Notion"]') as HTMLButtonElement).click() })
     await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Review details') as HTMLButtonElement).click() })
     await act(async () => {})
+    expect(container!.textContent).toContain('notion__search')
     expect(container!.textContent).toContain('Current input schema')
     expect(container!.textContent).toContain('Previous v1')
 
     await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent?.includes('Approve v2')) as HTMLButtonElement).click() })
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/admin/tools/notion__search/approve`, expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/tools/notion__search/approve`, expect.objectContaining({
       method: 'POST', body: JSON.stringify({ fingerprint: 'fingerprint-2', version: 2 }),
     }))
   })
 
-  it('adds custom servers from pasted mcpServers JSON', async () => {
-    const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock)
-
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
-        return Promise.resolve(jsonResponse(201, { ID: 'c9' }))
-      }
+  it('separates connection status from tool approval and labels the actions', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/api/admin/connectors')) return Promise.resolve(jsonResponse(200, {
+        connectors: [{ ID: 'local', Provider: 'localmemory', Label: 'Local test · Memory', UpstreamURL: 'http://127.0.0.1:18164/memory/mcp', Status: 'active' }],
+      }))
+      if (url.endsWith('/api/admin/tools')) return Promise.resolve(jsonResponse(200, {
+        tools: ['quarantined', 'quarantined', 'active', 'disabled'].map((Status, i) => ({
+          ConnectorID: 'local', UpstreamName: `tool_${i}`, PublicName: `localmemory__tool_${i}`, Status,
+        })),
+      }))
       return healthyFetch()(url)
     })
+    await renderPanel(fetchMock)
+    const server = container!.querySelector('[aria-label="Local test · Memory server"]')!
+    expect(server.textContent).toContain('Connected')
+    expect(server.textContent).toContain('4 tools')
+    expect(server.textContent).not.toContain('need review')
+    expect(server.textContent).not.toContain('approved')
+    expect(server.textContent).not.toContain('http://')
+    expect(server.textContent).not.toContain('AgentWorks')
+    expect(server.textContent).not.toContain('—')
+    expect(server.textContent!.match(/Local test · Memory/g)).toHaveLength(1)
+    expect([...server.querySelectorAll('button')].map(button => button.textContent)).toEqual(['View tools', ''])
+    expect(server.querySelector('[aria-label="Actions for Local test · Memory"]')).not.toBeNull()
+    expect(server.textContent).not.toContain('Credentials')
 
-    const box = container!.querySelector('[data-testid="gateway-add-json"]') as HTMLTextAreaElement
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
-        box,
-        '{"mcpServers": {"acme": {"url": "https://acme.example.com/mcp"}}}',
-      )
-      box.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => {
-      ;(container!.querySelector('[data-testid="gateway-add-submit"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {})
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/connectors`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ Provider: 'acme', Label: '', Slug: '', URL: 'https://acme.example.com/mcp' }),
-      }),
-    )
-    expect(container!.textContent).toContain('Added 1 server: acme')
+    await act(async () => { (server.querySelector('[aria-label="Show 4 tools on Local test · Memory"]') as HTMLButtonElement).click() })
+    expect(server.textContent).toContain('Needs review')
+    expect(server.textContent).toContain('2 need review')
+    expect(server.textContent).toContain('1 approved')
+    expect(server.textContent).toContain('Tools changed since connection.')
+    expect(server.textContent).toContain('Group access is assigned separately.')
+    expect(server.textContent).not.toContain('Approve v')
+    // Collapsing is local UI state and does not call the MCP server again.
+    const callsBefore = fetchMock.mock.calls.length
+    await act(async () => { (server.querySelector('[aria-label="Hide 4 tools on Local test · Memory"]') as HTMLButtonElement).click() })
+    expect(server.textContent).not.toContain('tool_0')
+    expect(fetchMock.mock.calls.length).toBe(callsBefore)
   })
 
-  it('marks OAuth-only catalog servers as unavailable until upstream auth exists', async () => {
-    await renderPanel(vi.fn(healthyFetch()))
+  it('keeps maintenance in the actions popover and disconnect behind confirmation', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock)
+    const actions = container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement
+    const action = (label: string) => [...container!.querySelectorAll('button')].find(button => button.textContent === label) as HTMLButtonElement
+    expect(action('Connection settings')).toBeUndefined()
+    await act(async () => { actions.click() })
+    expect(action('Refresh tool list')).not.toBeUndefined()
+    await act(async () => { action('Connection settings').click() })
+    expect(actions.getAttribute('aria-expanded')).toBe('false')
+    expect(container!.textContent).toContain('Server access token')
+    expect(container!.textContent).toContain('Update this server’s connection token.')
+    expect(action('Update token').disabled).toBe(true)
+    await act(async () => { action('Cancel').click() })
+    expect(container!.textContent).not.toContain('Server access token')
+    await act(async () => { actions.click() })
+    await act(async () => { action('Disconnect server').click() })
+    expect(document.body.textContent).toContain('Reconnecting requires assigning permissions again.')
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
+    await act(async () => { ([...document.body.querySelectorAll('button')].find(button => button.textContent === 'Cancel') as HTMLButtonElement).click() })
+    expect(document.body.textContent).not.toContain('Reconnecting requires assigning permissions again.')
+  })
+
+  it('uses shared sign-in for OAuth connection settings without exposing a raw credential editor', async () => {
+    const fetchMock = vi.fn((url: string) => url.endsWith('/api/admin/connectors')
+      ? Promise.resolve(jsonResponse(200, { connectors: [{ ID: 'c1', WorkspaceID: 'w1', Provider: 'notion', Label: 'Notion', Status: 'active', UpstreamURL: 'https://x/mcp', OAuthServer: 'Notion' }] }))
+      : healthyFetch()(url))
+    await renderPanel(fetchMock)
+    await act(async () => { (container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement).click() })
+    await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Connection settings') as HTMLButtonElement).click() })
+    expect(container!.textContent).toContain('Sign in again to reconnect.')
+    expect(container!.textContent).toContain('Sign in again')
+    expect(container!.querySelector('input[type="password"]')).toBeNull()
+    expect(container!.textContent).not.toContain('Update token')
+  })
+
+  it('puts custom setup after the catalog and opens chat without a connection form', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    const onAddCustom = vi.fn(async () => {})
+    await renderPanel(fetchMock, onAddCustom, 'available')
+    const footer = container!.querySelector('[aria-label="Add custom server"]')!
+    const available = container!.querySelector('[aria-label="Available servers"]')!
+    expect(available.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(container!.querySelector('[aria-label="Custom server URL"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="MCP servers JSON"]')).toBeNull()
+    const callsBefore = fetchMock.mock.calls.length
+    await act(async () => { (footer.querySelector('button') as HTMLButtonElement).click() })
+    expect(onAddCustom).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('connects OAuth catalog servers after shared authorization', async () => {
+    const fetchMock = vi.fn(healthyFetch())
+    await renderPanel(fetchMock, undefined, 'available')
 
     // Slack is in neither AgentWorks nor the gateway: it still gets a row.
     expect(container!.textContent).toContain('Slack')
     expect(container!.querySelector('[data-testid="gateway-add-slack"]')).toBeNull()
-    expect(container!.textContent).toContain('Requires OAuth · coming later')
-  })
-
-  it('adds a custom server by name and URL', async () => {
-    const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock)
-
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
-        return Promise.resolve(jsonResponse(201, { ID: 'c9' }))
-      }
-      return healthyFetch()(url)
-    })
-
-    const name = container!.querySelector('[data-testid="gateway-add-name"]') as HTMLInputElement
-    const address = container!.querySelector('[data-testid="gateway-add-url"]') as HTMLInputElement
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'acme')
-      name.dispatchEvent(new Event('input', { bubbles: true }))
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(address, 'https://acme.example.com/mcp')
-      address.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => {
-      ;(container!.querySelector('[data-testid="gateway-add-custom-submit"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {})
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/connectors`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ Provider: 'acme', Label: '', Slug: '', URL: 'https://acme.example.com/mcp' }),
-      }),
-    )
-  })
-
-  it('rejects non-https custom URLs without calling the API', async () => {
-    const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock)
-    const callsBefore = fetchMock.mock.calls.length
-
-    const name = container!.querySelector('[data-testid="gateway-add-name"]') as HTMLInputElement
-    const address = container!.querySelector('[data-testid="gateway-add-url"]') as HTMLInputElement
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'acme')
-      name.dispatchEvent(new Event('input', { bubbles: true }))
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(address, 'http://acme.example.com/mcp')
-      address.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => {
-      ;(container!.querySelector('[data-testid="gateway-add-custom-submit"]') as HTMLButtonElement).click()
-    })
-    await act(async () => {})
-
-    expect(fetchMock.mock.calls.length).toBe(callsBefore)
-    expect(container!.textContent).toContain('must be https')
+    expect(container!.textContent).toContain('Connect with OAuth')
+    await act(async () => { (container!.querySelector('[aria-label="OAuth Slack"]') as HTMLButtonElement).click() })
+    expect(fetchMock.mock.calls.some(([url, init]) => url.endsWith('/api/admin/connectors') && init?.method === 'POST' && JSON.parse(init.body as string).Provider === 'Slack')).toBe(true)
   })
 
   it('warns on stale data when a refetch fails instead of hiding it', async () => {
@@ -319,6 +337,9 @@ describe('GatewayServersPanel', () => {
       return healthyFetch()(url)
     })
     await act(async () => {
+      ;(container!.querySelector('[aria-label="Actions for Notion"]') as HTMLButtonElement).click()
+    })
+    await act(async () => {
       ;(container!.querySelector('[aria-label="Sync Notion"]') as HTMLButtonElement).click()
     })
     await act(async () => {})
@@ -331,7 +352,7 @@ describe('GatewayServersPanel', () => {
 
   it('adds an AgentWorks server to the gateway from its catalog template', async () => {
     const fetchMock = vi.fn(healthyFetch())
-    await renderPanel(fetchMock)
+    await renderPanel(fetchMock, undefined, 'available')
 
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === 'POST' && url.endsWith('/api/admin/connectors')) {
@@ -346,7 +367,7 @@ describe('GatewayServersPanel', () => {
     await act(async () => {})
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/connectors`,
+      `${BASE}/api/caplayer/api/admin/connectors`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ Provider: 'Linear', Label: '', Slug: '', URL: '' }),

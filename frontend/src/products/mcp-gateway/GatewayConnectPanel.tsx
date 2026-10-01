@@ -12,16 +12,20 @@ import { codeClass } from './gatewayConsoleUtils'
 export function GatewayConnectPanel({ base }: { base: string }) {
   const endpoint = `${base}/mcp`
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState('')
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
 
-  function onCopy() {
+  async function onCopy() {
+    setCopied(false)
+    setCopyError('')
     try {
-      void navigator.clipboard?.writeText(endpoint)
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(endpoint)
+      setCopied(true)
     } catch {
-      // Clipboard unavailable (permissions); the URL stays visible for manual copy.
+      setCopyError('Could not copy. Select the endpoint URL above and copy it manually.')
     }
-    setCopied(true)
   }
 
   async function onTest() {
@@ -47,17 +51,18 @@ export function GatewayConnectPanel({ base }: { base: string }) {
       <SettingsCard
         icon={<PlugZap className="h-4 w-4 text-primary" />}
         title="Workspace MCP endpoint"
-        description="Point any MCP client at this URL. Clients sign in through OAuth; group API keys work too."
+        description="Use OAuth or a group API key."
       >
         <p className="flex flex-wrap items-center gap-2">
           <code className="break-all rounded bg-muted px-2 py-1 font-mono text-xs" data-testid="gateway-connect-url">
             {endpoint}
           </code>
-          <Button variant="outline" size="xs" onClick={onCopy} data-testid="gateway-connect-copy">
+          <Button variant="outline" size="xs" onClick={() => void onCopy()} data-testid="gateway-connect-copy">
             {copied ? <Check /> : <Copy />}
             {copied ? 'Copied' : 'Copy'}
           </Button>
         </p>
+        {copyError && <p role="alert" className="text-destructive">{copyError}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="xs" disabled={testing} onClick={() => void onTest()} data-testid="gateway-connect-test">
             {testing && <Loader2 className="animate-spin" />}
@@ -71,17 +76,17 @@ export function GatewayConnectPanel({ base }: { base: string }) {
         </div>
       </SettingsCard>
 
-      <SettingsCard title="Connect Claude" description="Custom remote MCP connector with OAuth sign-in.">
+      <SettingsCard title="Connect Claude" description="OAuth sign-in.">
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
           <li>Paste the endpoint URL above as a custom connector.</li>
-          <li>Sign in with your gateway user when Claude asks.</li>
+          <li>Sign in with your AgentWorks account.</li>
           <li>You see only the tools your groups grant you.</li>
         </ol>
       </SettingsCard>
 
       <SettingsCard
         title="Connect with an API key"
-        description="For clients without OAuth, or for sharing access with someone outside the workspace login."
+        description="For clients without OAuth."
       >
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
           <li>Create a key on the Groups page. Copy it now — it is shown once.</li>

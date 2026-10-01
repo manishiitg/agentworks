@@ -42,8 +42,8 @@ func TestPaginatedUpstreamKeepsAllApprovedToolsOnResync(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing tool from page %d", i)
 		}
-		if _, ok := st.ApproveTool("w1", name, snap.Fingerprint, snap.Version); !ok {
-			t.Fatalf("approve %s", name)
+		if snap.Status != store.StatusActive || snap.ApprovedFingerprint != snap.Fingerprint {
+			t.Fatalf("initial connection did not approve %s: %+v", name, snap)
 		}
 	}
 	if err := gw.Resync(ctx, connector); err != nil {

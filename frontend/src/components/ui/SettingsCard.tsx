@@ -1,4 +1,11 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
+
+const UnboxedSettingsContext = createContext(false)
+
+/** Settings sections can use the surrounding pane instead of drawing another box. */
+export function SettingsCardLayout({ unboxed = false, children }: { unboxed?: boolean; children: ReactNode }) {
+  return <UnboxedSettingsContext.Provider value={unboxed}>{children}</UnboxedSettingsContext.Provider>
+}
 
 export interface SettingsCardProps {
   /** Leading icon, e.g. `<KeyRound className="h-4 w-4 text-primary" />`. */
@@ -13,6 +20,8 @@ export interface SettingsCardProps {
   children?: ReactNode
   className?: string
   ariaLabel?: string
+  /** Override the surrounding settings layout for this section. */
+  unboxed?: boolean
 }
 
 /**
@@ -22,9 +31,11 @@ export interface SettingsCardProps {
  * panes. Base text is xs with an sm title; form controls keep their own
  * sizes for hierarchy.
  */
-export function SettingsCard({ icon, title, count, actions, description, children, className, ariaLabel }: SettingsCardProps) {
+export function SettingsCard({ icon, title, count, actions, description, children, className, ariaLabel, unboxed }: SettingsCardProps) {
+  const inheritedUnboxed = useContext(UnboxedSettingsContext)
+  const isUnboxed = unboxed ?? inheritedUnboxed
   return (
-    <section aria-label={ariaLabel} className={`space-y-3 rounded-lg border border-border p-4 text-xs ${className ?? ''}`}>
+    <section aria-label={ariaLabel} className={`space-y-3 ${isUnboxed ? '' : 'rounded-lg border border-border p-4'} text-xs ${className ?? ''}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {icon}

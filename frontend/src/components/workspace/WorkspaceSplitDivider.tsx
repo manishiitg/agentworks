@@ -85,8 +85,8 @@ export function WorkspaceSplitCollapseControls({
 }
 
 type WorkspaceSplitRailProps = Omit<WorkspaceSplitDividerProps, 'children'> & {
-  previewDevice: ReportPreviewDevice
-  onPreviewDeviceChange: (device: ReportPreviewDevice) => void
+  previewDevice?: ReportPreviewDevice
+  onPreviewDeviceChange?: (device: ReportPreviewDevice) => void
   onCollapseChat: () => void
   onCollapseWorkspace: () => void
 }
@@ -104,7 +104,7 @@ export function WorkspaceSplitRail({
 }: WorkspaceSplitRailProps) {
   return (
     <WorkspaceSplitDivider {...dividerProps}>
-      {([
+      {onPreviewDeviceChange && ([
         ['mobile', Smartphone, 'Mobile preview'],
         ['tablet', Tablet, 'Tablet preview'],
         ['desktop', Laptop, 'Laptop preview'],
@@ -122,7 +122,7 @@ export function WorkspaceSplitRail({
           <Icon className="h-3 w-3" />
         </button>
       ))}
-      <span className="h-px w-3 bg-border" />
+      {onPreviewDeviceChange && <span className="h-px w-3 bg-border" />}
       <WorkspaceSplitCollapseControls
         onCollapseChat={onCollapseChat}
         onCollapseWorkspace={onCollapseWorkspace}

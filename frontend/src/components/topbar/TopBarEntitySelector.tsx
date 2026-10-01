@@ -9,8 +9,8 @@ type TopBarEntitySelectorProps = {
   open: boolean
   onToggle: () => void
   onClose: () => void
-  onAdd: () => void
-  addLabel: string
+  onAdd?: () => void
+  addLabel?: string
   addTitle?: string
   addDisabled?: boolean
   addTestId?: string
@@ -86,7 +86,7 @@ export function TopBarEntitySelector({
           {badge}
         </button>
         {middleControl}
-        <button
+        {onAdd && addLabel && <button
           type="button"
           data-testid={addTestId}
           aria-label={addLabel}
@@ -96,7 +96,7 @@ export function TopBarEntitySelector({
           className="border-l border-gray-200 px-2 py-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-slate-700 dark:hover:text-gray-200"
         >
           <Plus className="h-3 w-3" />
-        </button>
+        </button>}
       </div>
       {open && (
         <div className="preset-dropdown absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">

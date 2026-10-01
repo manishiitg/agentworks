@@ -1291,6 +1291,9 @@ if [ "$WITH_WORKSPACE" = true ]; then
     mkdir -p "$WORKSPACE_DOCS_PATH"
     WORKSPACE_DOCS_PATH="$(cd "$WORKSPACE_DOCS_PATH" && pwd)"
     export WORKSPACE_DOCS_PATH
+    # The local installation has one owner. Keep CapLayer's configuration
+    # database in its chat project; service secrets stay in GATEWAY_STATE_DIR.
+    export GATEWAY_WORKSPACE_DIR="${GATEWAY_WORKSPACE_DIR:-${WORKSPACE_DOCS_PATH}/_users/default/Chats/CapLayer}"
     export WORKSPACE_API_URL="${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}"
     if [ -z "${WORKSPACE_API_TOKEN:-}" ]; then
         WORKSPACE_API_TOKEN="$(/usr/bin/openssl rand -hex 32 2>/dev/null || uuidgen | tr -d '-')"

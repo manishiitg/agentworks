@@ -73,7 +73,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
           <a className="text-xs text-primary underline" href={`${base}${auditPath(filter, undefined, 'json')}`}>Export JSON</a>
         </div>
       </div>
-      <SettingsCard title="Usage history" description="Counts across all matching calls, including calls beyond the audit table limit.">
+      <SettingsCard title="Usage history" description="All matching calls.">
         <div className="grid gap-2 sm:grid-cols-4">
           {([['Calls', data.usage.Total], ['Allowed', data.usage.Allowed], ['Denied', data.usage.Denied], ['Upstream errors', data.usage.UpstreamErrors]] as const).map(([label, count]) => (
             <div key={label} className="rounded-md border border-border px-3 py-2">
@@ -101,7 +101,7 @@ export function GatewayAuditPanel({ base }: { base: string }) {
         icon={<ScrollText className="h-4 w-4 text-primary" />}
         title="Audit log"
         count={<SettingsCount>{plural(events.length, 'event')}</SettingsCount>}
-        description="Gateway call metadata, newest first. Group keys identify the key and group, not the person holding it."
+        description="Newest first. Group keys identify the group, not the individual."
         actions={
           <select
             aria-label="Event limit"

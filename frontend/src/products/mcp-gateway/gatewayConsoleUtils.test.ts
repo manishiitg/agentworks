@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { formatDateTime, mergeServerRows, normalizeServerKey, parseMcpServersJson, parseToolArgs, plural, slugifyId } from './gatewayConsoleUtils'
 import type { GatewayConnector, GatewayProvider } from './gatewayAdminApi'
 
@@ -120,3 +120,5 @@ describe('mergeServerRows', () => {
     expect(rows[0].catalogMatch?.Name).toBe('Linear')
   })
 })
+
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt' }))

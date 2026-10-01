@@ -46,6 +46,16 @@ describe('GatewayConnectPanel', () => {
     expect(container!.textContent).toContain('Connect with an API key')
   })
 
+  it('does not report Copied when clipboard access is rejected', async () => {
+    await renderPanel(vi.fn())
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Denied'))
+    await act(async () => {
+      ;(container!.querySelector('[data-testid="gateway-connect-copy"]') as HTMLButtonElement).click()
+    })
+    expect(container!.textContent).toContain('Could not copy')
+    expect(container!.querySelector('[data-testid="gateway-connect-copy"]')!.textContent).toBe('Copy')
+  })
+
   it('reports reachable when the probe answers 401 with the OAuth challenge', async () => {
     await renderPanel(vi.fn().mockResolvedValue(challengeResponse()))
 
@@ -68,3 +78,5 @@ describe('GatewayConnectPanel', () => {
     expect(container!.textContent).toContain('Endpoint unreachable')
   })
 })
+
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt' }))

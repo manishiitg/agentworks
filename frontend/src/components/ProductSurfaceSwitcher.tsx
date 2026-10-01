@@ -16,6 +16,8 @@ import { cn } from '../lib/utils'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
+  /** The gateway's independent build has no AgentWorks app router. */
+  standalone?: boolean
 }
 
 // Product marks can render any element; callers only rely on the common
@@ -37,7 +39,7 @@ const products: Array<{
   { id: 'mcp-gateway', label: 'CapLayer', description: 'Governed access to tools for every AI agent', icon: CapLayerMark },
 ]
 
-export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProps) {
+export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
   const setProductSurface = useProductSurfaceStore((state) => state.setProductSurface)
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
@@ -47,14 +49,15 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
   const gatewayUrl = gatewayAdminUrl()
   // The gateway renders inside the app like any other surface, but only
   // exists when a gateway URL is configured for this deployment.
-  const visibleProducts = useMemo(() => products.filter(
-    (product) => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null),
-  ), [visibleProductIDs, gatewayUrl])
-  const currentProduct = visibleProducts.find((product) => product.id === productSurface) ?? visibleProducts[0] ?? products[0]
+  const visibleProducts = useMemo(() => standalone
+    ? products.filter(product => product.id === 'mcp-gateway')
+    : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
+  [visibleProductIDs, gatewayUrl, standalone])
+  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
 
   useEffect(() => {
-    if (productSurface === 'mcp-gateway') {
+    if (standalone || productSurface === 'mcp-gateway') {
       document.title = 'CapLayer'
       const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
       if (favicon) favicon.href = '/caplayer.svg'
@@ -62,10 +65,11 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
     }
     document.title = 'AgentWorks'
     applyRuntimeBranding(window.__APP_RUNTIME_CONFIG__ as Parameters<typeof applyRuntimeBranding>[0])
-  }, [productSurface])
+  }, [productSurface, standalone])
 
   const activateProduct = (product: ProductSurface) => {
     setOpen(false)
+    if (standalone) return
     setProductSurface(product)
     if (product !== 'agentworks') return
 
@@ -113,7 +117,7 @@ export function ProductSurfaceSwitcher({ className }: ProductSurfaceSwitcherProp
       {open ? (
         <div role="menu" aria-label="Products" className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
           {visibleProducts.map((product) => {
-            const active = productSurface === product.id
+            const active = (standalone ? 'mcp-gateway' : productSurface) === product.id
             const Icon = product.icon
             return (
               <button

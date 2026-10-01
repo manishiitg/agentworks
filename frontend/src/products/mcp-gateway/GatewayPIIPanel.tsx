@@ -68,7 +68,8 @@ export function GatewayPIIPanel({ base }: { base: string }) {
       {error && <ConsoleStale message={error} onRetry={bump} />}
       {actionError && <ConsoleError message={actionError} onRetry={bump} />}
       <SettingsCard icon={<ShieldCheck className="h-4 w-4 text-primary" />} title="PII policy"
-        description="Deterministic regex and checksum checks. By default, email and US phone numbers are masked; SSNs, valid credit cards, and known API key formats are blocked. Text and structured JSON are inspected; opaque results are blocked.">
+        description="Regex and checksum detection.">
+        <details className="mb-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Default protection</summary><p className="mt-2">Email and US phone numbers are masked. SSNs, valid credit cards and known API keys are blocked. Text and JSON are inspected; opaque results are blocked.</p></details>
         <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-3">
             <select aria-label="Data type" className={selectClass} value={rule.DataType} onChange={e => setRule(current => ({ ...current, DataType: e.target.value }))}>
@@ -108,7 +109,7 @@ export function GatewayPIIPanel({ base }: { base: string }) {
           )}
         </div>
       </SettingsCard>
-      <SettingsCard title="Test a sample" description="Samples are inspected on demand and are not saved in audit history. Detection is best effort, not a guarantee.">
+      <SettingsCard title="Test a sample" description="Samples are not saved. Detection is best effort.">
         <div className="space-y-2">
           <Textarea aria-label="PII sample" value={sample} onChange={e => setSample(e.target.value)} rows={3} placeholder="Paste a sample value" />
           <select aria-label="Sample direction" className={selectClass} value={sampleDirection} onChange={e => setSampleDirection(e.target.value)}>
@@ -118,7 +119,7 @@ export function GatewayPIIPanel({ base }: { base: string }) {
           {testResult && <pre className="whitespace-pre-wrap break-all rounded border border-border p-2 text-xs">{testResult}</pre>}
         </div>
       </SettingsCard>
-      <SettingsCard title="Pending reviews" description="Approval permits one matching retry by the same caller. The gateway never replays a tool call itself.">
+      <SettingsCard title="Pending reviews" description="Approval allows one retry by the same caller.">
         {data.reviews.filter(review => review.Status === 'pending').length === 0 ? <ConsoleEmpty>No pending PII reviews.</ConsoleEmpty> : (
           <div className="space-y-2">
             {data.reviews.filter(review => review.Status === 'pending').map(review => <div key={review.ID} className="flex flex-wrap items-center gap-2 border-t border-border py-2 text-xs">

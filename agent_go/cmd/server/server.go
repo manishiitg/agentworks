@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
@@ -2086,6 +2087,19 @@ func runServer(cmd *cobra.Command, args []string) {
 			}
 		}
 	}
+	if productEnabled("mcp-gateway") && strings.TrimSpace(os.Getenv("CAPLAYER_SERVICE_URL")) != "" {
+		profile := caplayerproduct.BuiltinAgentProfile()
+		profile.Product = "mcp-gateway"
+		if err := profileRegistry.RegisterProfile(profile); err != nil {
+			log.Fatalf("Failed to register CapLayer profile: %v", err)
+		}
+		if err := registerCapLayerDatabaseTools(profileRegistry); err != nil {
+			log.Fatalf("Failed to register CapLayer database tools: %v", err)
+		}
+		if err := caplayerproduct.RegisterRuntime(profileRegistry, capLayerAgentAccess); err != nil {
+			log.Fatalf("Failed to register CapLayer tools: %v", err)
+		}
+	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
 			log.Fatalf("Failed to register Work skills: %v", err)
@@ -2320,6 +2334,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
+	apiRouter.PathPrefix("/caplayer/").HandlerFunc(api.handleCapLayerAdmin)
+	router.HandleFunc("/internal/caplayer/oauth-token", api.handleCapLayerOAuthToken).Methods("POST")
 
 	// Authentication API routes (public - no auth required, handled by AuthMiddleware)
 	apiRouter.HandleFunc("/auth/register", api.handleRegister).Methods("POST", "OPTIONS")
@@ -5617,6 +5633,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer toolGate.logSurface(sessionID)
 		platformBridgeTools := []string{}
+		if resolvedProfile != nil {
+			// Profile-declared native tools still pass normal registration and
+			// admission checks. This does not enable a general shell bridge.
+			platformBridgeTools = append(platformBridgeTools, resolvedProfile.Definition.Runtime.BridgeTools...)
+		}
 		if toolGate.Admit("read_image") {
 			platformBridgeTools = append(platformBridgeTools, "read_image")
 		}
@@ -6702,6 +6723,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
 				promptCtx.NativeCodingTools = strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.AgentTools.Mode), "hybrid")
+				promptCtx.WorkspaceFilesDisabled = !promptCtx.NativeCodingTools && !toolGate.Allows("execute_shell_command") && !toolGate.Allows("diff_patch_workspace_file")
 				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
 			}
 			if len(req.WorkflowContextPaths) > 0 {

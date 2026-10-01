@@ -5,7 +5,7 @@ import { createRequestCoalescer } from './requestCoalescer'
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 
 declare module 'axios' {
-  interface AxiosRequestConfig { chatIdentityGeneration?: number }
+  interface AxiosRequestConfig { chatIdentityGeneration?: number; skipSessionContext?: boolean }
 }
 
 export interface ChatRequestContext {
@@ -626,7 +626,7 @@ api.interceptors.request.use((config) => {
   config.headers = config.headers || {}
 
   // Only add session ID if not already provided
-  if (config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
+  if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
     config.headers['X-Session-ID'] = getSessionId()
   }
 
@@ -1193,7 +1193,7 @@ export const agentApi = {
   resolveAgentProfileConversation: async (
     profileId: string,
     request: AgentProfileConversationRequest,
-    existingSessionId?: string,
+    existingSessionId?: string | null,
   ): Promise<AgentProfileConversationResponse> => {
     // Opening a project resolves its canonical chat. An unrelated active tab's
     // session must not become a continuation candidate (shared Code returned 422).
@@ -1202,7 +1202,7 @@ export const agentApi = {
     const response = await api.post(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation`,
       request,
-      { headers },
+      { headers, skipSessionContext: existingSessionId === null },
     )
     return response.data
   },

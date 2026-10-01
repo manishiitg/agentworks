@@ -37,6 +37,10 @@ interface OAuthStatusBadgeProps {
   /** The current user can't change workflow state: connect/disconnect and
    * the credential dialogs' submit buttons disable. */
   readOnly?: boolean;
+  /** Reuse a platform sign-in before starting a new authorization flow. */
+  reuseAuthentication?: boolean;
+  connectLabel?: string;
+  confirmationMessage?: string;
 }
 
 export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
@@ -46,6 +50,9 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   onAuthChange,
   variant = 'label',
   readOnly = false,
+  reuseAuthentication = false,
+  connectLabel = 'Connect',
+  confirmationMessage,
 }) => {
   const canManagePlatformMCP = useAuthStore(state =>
     state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
@@ -62,6 +69,17 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   const [loading, setLoading] = useState(false);
   const [hasOAuth, setHasOAuth] = useState<boolean | null>(null);
   const prevTokenValidRef = useRef<boolean | null>(null);
+  const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loginGenerationRef = useRef(0);
+  const stopLoginPoll = () => {
+    if (loginPollRef.current !== null) clearInterval(loginPollRef.current);
+    if (loginTimeoutRef.current !== null) clearTimeout(loginTimeoutRef.current);
+    loginPollRef.current = null;
+    loginTimeoutRef.current = null;
+    loginGenerationRef.current++;
+  };
+  useEffect(() => () => stopLoginPoll(), [serverName]);
 
   // Connection ownership when supplied, token validity otherwise.
   const isConnected = connectionDriven ? connection === 'connected' : tokenValid;
@@ -125,15 +143,25 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
   }, [serverName, requiresOAuth, connectionDriven, checkTokenStatus]);
 
   const handleLogin = async (clientId?: string, clientSecret?: string) => {
+    if (reuseAuthentication && !clientId) {
+      setLoading(true);
+      try {
+        const status = await oauthApi.getOAuthStatus(serverName);
+        if (status.valid) { onAuthChange?.(true); setLoading(false); return; }
+      } catch { /* The existing sign-in flow reports actionable setup errors. */ }
+      setLoading(false);
+    }
     if (!clientId && !window.confirm(
-      `Connect ${serverName} as a shared AgentWorks connection? All users, Work projects, workflows, chats, and schedules will be able to use this authenticated account.`,
+      confirmationMessage ?? `Connect ${serverName} as a shared AgentWorks connection? All users, Work projects, workflows, chats, and schedules will be able to use this authenticated account.`,
     )) return;
+    stopLoginPoll();
+    const generation = loginGenerationRef.current;
     setLoading(true);
     console.log(`[OAuthStatusBadge] Starting OAuth login for ${serverName}${clientId ? ' with client_id' : ''}`);
     try {
       // Start OAuth flow and get authorization URL
       const response = await oauthApi.startOAuthFlow(serverName, clientId, clientSecret);
-      console.log(`[OAuthStatusBadge] OAuth flow response for ${serverName}:`, response);
+      if (generation !== loginGenerationRef.current) return;
 
       // Check if the server needs a client_id
       if ('status' in response && response.status === 'needs_client_id') {
@@ -153,22 +181,25 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
 
       // Poll for completion
       let pollCount = 0;
-      const pollInterval = setInterval(async () => {
+      let polling = false;
+      loginPollRef.current = setInterval(async () => {
+        if (polling) return;
+        polling = true;
         pollCount++;
         try {
           console.log(`[OAuthStatusBadge] Polling OAuth status for ${serverName} (attempt ${pollCount})`);
           const status = await oauthApi.getOAuthStatus(serverName);
-          console.log(`[OAuthStatusBadge] Poll result for ${serverName}:`, status);
+          if (generation !== loginGenerationRef.current) return;
           if (status.valid) {
             console.log(`[OAuthStatusBadge] OAuth completed for ${serverName}!`);
-            clearInterval(pollInterval);
+            stopLoginPoll();
             const wasInvalid = prevTokenValidRef.current === false || prevTokenValidRef.current === null;
             setTokenValid(true);
             setLoading(false);
             prevTokenValidRef.current = true;
             notify(`Connected ${serverName} across AgentWorks`, 'success');
-            // Only trigger refresh if transitioning from invalid to valid
-            if (wasInvalid) {
+            // Connection-driven callers also need completion after reauthorization.
+            if (wasInvalid || connectionDriven) {
               console.log(`[OAuthStatusBadge] Triggering onAuthChange for ${serverName}`);
               onAuthChange?.(true);
             }
@@ -176,13 +207,13 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
         } catch (err) {
           console.log(`[OAuthStatusBadge] Poll error for ${serverName}:`, err);
           // Still waiting
-        }
+        } finally { polling = false; }
       }, 2000);
 
       // Stop polling after 5 minutes
-      setTimeout(() => {
+      loginTimeoutRef.current = setTimeout(() => {
         console.log(`[OAuthStatusBadge] Polling timeout for ${serverName}`);
-        clearInterval(pollInterval);
+        stopLoginPoll();
         setLoading(false);
       }, 5 * 60 * 1000);
     } catch (error) {
@@ -516,7 +547,7 @@ export const OAuthStatusBadge: React.FC<OAuthStatusBadgeProps> = ({
                 <span>Connecting...</span>
               </>
             ) : (
-              <span>Connect</span>
+              <span>{connectLabel}</span>
             )}
           </button>
         </div>

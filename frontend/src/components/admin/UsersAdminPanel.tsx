@@ -35,6 +35,7 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
 
 const PRODUCT_LABELS: Record<string, string> = {
   agentworks: 'Goals',
+  'mcp-gateway': 'CapLayer',
   work: 'Crew',
   code: 'Code',
   'video-studio': 'Video Studio',
@@ -153,7 +154,7 @@ const UsersAdminPanel: React.FC = () => {
       <SettingsCard
         icon={<UserPlus className="h-4 w-4 text-primary" />}
         title="Add a user"
-        description="Add someone by email. There is no password: they sign in with SSO (for example Google) using this address, and the account keeps the role and products you set here. They show as Invited until their first sign-in."
+        description="Invite by email. Users sign in with SSO."
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -212,7 +213,7 @@ const UsersAdminPanel: React.FC = () => {
         icon={<Users className="h-4 w-4 text-primary" />}
         title="Accounts"
         count={`${sorted.length} ${sorted.length === 1 ? 'account' : 'accounts'}`}
-        description="Everyone who can open this deployment, and what each account may do. A creator owns what they create; an editor may edit assigned workflows but cannot create new ones; a viewer only sees shared workflows. Product boxes decide which surfaces an account may open. A Code reviewer (any role) reviews every Code workspace's cost, chats and files, read-only, and every view is audited."
+        description="Manage roles and product access."
       >
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">

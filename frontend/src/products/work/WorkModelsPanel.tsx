@@ -24,6 +24,8 @@ export function WorkModelsPanel({
   projectLLMConfig,
   onRuntimeChange,
   hideHeader,
+  profileId,
+  profileVersion,
 }: {
   tabId: string
   workspacePath: string
@@ -31,11 +33,15 @@ export function WorkModelsPanel({
   projectLLMConfig?: PresetLLMConfig
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   hideHeader?: boolean
+  profileId?: string
+  profileVersion?: number
 }) {
   // The provider options of this project's own product: a Code asks the Code
   // profile. Asking Crew's left a Code-only member (Excellence) with no
   // providers at all (issue #252).
   const product = useProjectProduct()
+  const effectiveProfileId = profileId ?? product.profileId
+  const effectiveProfileVersion = profileVersion ?? product.profileVersion
   const tab = useChatStore(state => state.chatTabs[tabId])
   const events = useChatStore(state => tab?.sessionId ? state.tabEvents[tab.sessionId] : undefined)
   const activeRuntime = useChatStore(state => tab?.sessionId
@@ -69,11 +75,11 @@ export function WorkModelsPanel({
 
   useEffect(() => {
     let cancelled = false
-    void loadAgentProfileProviderOptions(product.profileId, product.profileVersion).then(loaded => {
+    void loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion).then(loaded => {
       if (!cancelled) setOptions(loaded)
     })
     return () => { cancelled = true }
-  }, [product.profileId, product.profileVersion])
+  }, [effectiveProfileId, effectiveProfileVersion])
 
   useEffect(() => {
     if (!providerManifestLoaded) void loadProviderManifest()
@@ -83,14 +89,14 @@ export function WorkModelsPanel({
     setRefreshing(true)
     try {
       const [loaded] = await Promise.all([
-        loadAgentProfileProviderOptions(product.profileId, product.profileVersion),
+        loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion),
         loadProviderManifest(),
       ])
       setOptions(loaded)
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest, product.profileId, product.profileVersion])
+  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion])
 
   const modelCatalog = useMemo(
     () => providerManifest.flatMap(provider => provider.models || []),

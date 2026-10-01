@@ -65,3 +65,21 @@ func TestNoRedirectAndBoundedBody(t *testing.T) {
 		t.Fatal("default dial accepted loopback HTTP")
 	}
 }
+
+func TestManagedBearerIsSentOnlyToConfiguredUpstream(t *testing.T) {
+	seen := ""
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	client := safeHTTPClient(DialOptions{AllowPrivate: true, BearerToken: "central-secret"})
+	resp, err := client.Get(target.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if seen != "Bearer central-secret" {
+		t.Fatalf("managed bearer missing: %q", seen)
+	}
+}

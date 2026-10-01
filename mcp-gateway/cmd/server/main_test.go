@@ -112,3 +112,29 @@ func TestValidateExposure(t *testing.T) {
 		t.Fatal("reverse-proxied public alpha endpoint should fail")
 	}
 }
+
+func TestStandaloneUsesProductAccountService(t *testing.T) {
+	for _, raw := range []string{"", "http://example.com", "https://user:secret@example.com", "https://example.com?token=secret"} {
+		if _, err := productAPIBase(raw); err == nil {
+			t.Errorf("accepted invalid account API %s", raw)
+		}
+	}
+	for _, raw := range []string{"http://127.0.0.1:8000", "https://accounts.example.com"} {
+		if _, err := productAPIBase(raw); err != nil {
+			t.Errorf("rejected account API %s: %v", raw, err)
+		}
+	}
+}
+
+func TestGatewayConfigurationLivesInChatWhenConfigured(t *testing.T) {
+	t.Setenv("GATEWAY_WORKSPACE_DIR", "/workspace/Chats/CapLayer")
+	path, key := gatewayConfigurationPaths("/private/gateway")
+	if path != "/workspace/Chats/CapLayer/db/gateway.sqlite" || key != "/private/gateway/gateway.sqlite.key" {
+		t.Fatalf("unexpected paths: %s %s", path, key)
+	}
+	t.Setenv("GATEWAY_WORKSPACE_DIR", "")
+	path, _ = gatewayConfigurationPaths("/private/gateway")
+	if path != "/private/gateway/gateway.sqlite" {
+		t.Fatal("standalone location changed")
+	}
+}

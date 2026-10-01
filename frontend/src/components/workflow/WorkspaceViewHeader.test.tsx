@@ -93,6 +93,25 @@ describe('WorkspaceViewHeader', () => {
     expect(bare).toContain('>Costs<')
   })
 
+  it('leaves no empty header when hidden without controls', () => {
+    expect(renderToStaticMarkup(<WorkspaceViewHeader title="Connected MCPs" icon={Activity} hideHeader />)).toBe('')
+  })
+
+  it('retains actions and tabs when the title header is hidden', () => {
+    const html = renderToStaticMarkup(<WorkspaceViewHeader
+      title="People" icon={Activity} subtitle="Manage people" hideHeader
+      actions={<button type="button">Refresh people</button>}
+      tabs={{ value: 'users', onChange: () => {}, options: [{ value: 'users', label: 'Users' }, { value: 'groups', label: 'Groups' }], ariaLabel: 'People tabs' }}
+    />)
+    expect(html).not.toContain('<h2')
+    expect(html).not.toContain('Manage people')
+    expect(html).not.toContain('Walkthrough: People')
+    expect(html).toContain('Refresh people')
+    expect(html).toContain('People tabs')
+    expect(html).toContain('>Users<')
+    expect(html).toContain('>Groups<')
+  })
+
   it('lets a nested toolbar own the walkthrough without duplicating it', () => {
     const html = renderToStaticMarkup(<WorkspaceViewHeader title="Browser" showWalkthrough={false} actions={<button type="button">Toolbar actions</button>} />)
     expect(html).not.toContain('Walkthrough: Browser')

@@ -4,7 +4,7 @@ import {
   attachGroupServer,
   createConnector,
   createGroupKey,
-  createUser,
+  createGroup,
   detachGroupServer,
   getGrants,
   getUsage,
@@ -17,6 +17,8 @@ import {
   revokeGroupKey,
   setGrant,
 } from './gatewayAdminApi'
+
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt' }))
 
 const BASE = 'http://127.0.0.1:18161'
 
@@ -34,7 +36,7 @@ describe('gatewayAdminApi', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { Total: 3, ByDay: [] }))
     vi.stubGlobal('fetch', fetchMock)
     await expect(getUsage(BASE, { group: 'g1' })).resolves.toMatchObject({ Total: 3 })
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/admin/usage?group=g1`, expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/usage?group=g1`, expect.anything())
   })
   it('lists connectors from the admin API', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { connectors: [{ ID: 'c1' }] }))
@@ -42,19 +44,19 @@ describe('gatewayAdminApi', () => {
 
     await expect(listConnectors(BASE)).resolves.toEqual({ connectors: [{ ID: 'c1' }] })
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/connectors`,
+      `${BASE}/api/caplayer/api/admin/connectors`,
       expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) }),
     )
   })
 
-  it('creates users with the gateway field names', async () => {
+  it('creates tool-access groups with the gateway field names', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'u9' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(createUser(BASE, 'u9', 'u9@example.com')).resolves.toEqual({ id: 'u9' })
+    await expect(createGroup(BASE, 'u9', 'Engineering')).resolves.toEqual({ id: 'u9' })
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/users`,
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ ID: 'u9', Email: 'u9@example.com' }) }),
+      `${BASE}/api/caplayer/api/admin/groups`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ ID: 'u9', Name: 'Engineering' }) }),
     )
   })
 
@@ -64,7 +66,7 @@ describe('gatewayAdminApi', () => {
 
     await createConnector(BASE, { Provider: 'notion', Label: 'Notion', Slug: '', URL: '' })
     expect(fetchMock).toHaveBeenLastCalledWith(
-      `${BASE}/api/admin/connectors`,
+      `${BASE}/api/caplayer/api/admin/connectors`,
       expect.objectContaining({ body: JSON.stringify({ Provider: 'notion', Label: 'Notion', Slug: '', URL: '' }) }),
     )
   })
@@ -78,8 +80,8 @@ describe('gatewayAdminApi', () => {
 
     await expect(getGrants(BASE, { user: 'u1' })).resolves.toEqual(['notion__search'])
     await expect(getGrants(BASE, { group: 'g1' })).resolves.toEqual(['linear__list'])
-    expect(fetchMock).toHaveBeenNthCalledWith(1, `${BASE}/api/admin/grants?user=u1`, expect.anything())
-    expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/api/admin/grants?group=g1`, expect.anything())
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${BASE}/api/caplayer/api/admin/grants?user=u1`, expect.anything())
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${BASE}/api/caplayer/api/admin/grants?group=g1`, expect.anything())
   })
 
   it('sets grants with exactly one subject key', async () => {
@@ -88,7 +90,7 @@ describe('gatewayAdminApi', () => {
 
     await setGrant(BASE, { user: 'u1' }, 'notion__search', true)
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/admin/grants`,
+      `${BASE}/api/caplayer/api/admin/grants`,
       expect.objectContaining({
         body: JSON.stringify({ user_id: 'u1', tool: 'notion__search', grant: true }),
       }),
@@ -107,11 +109,11 @@ describe('gatewayAdminApi', () => {
     await attachGroupServer(BASE, 'g1', 'c1')
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      `${BASE}/api/admin/groups/g1/servers`,
+      `${BASE}/api/caplayer/api/admin/groups/g1/servers`,
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ connector_id: 'c1' }) }),
     )
     await detachGroupServer(BASE, 'g1', 'c1')
-    expect(fetchMock).toHaveBeenNthCalledWith(3, `${BASE}/api/admin/groups/g1/servers/c1`, expect.objectContaining({ method: 'DELETE' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, `${BASE}/api/caplayer/api/admin/groups/g1/servers/c1`, expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('renames groups and manages their API keys', async () => {
@@ -126,13 +128,13 @@ describe('gatewayAdminApi', () => {
     await renameGroup(BASE, 'g1', 'New name')
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      `${BASE}/api/admin/groups/g1`,
+      `${BASE}/api/caplayer/api/admin/groups/g1`,
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'New name' }) }),
     )
     await expect(listGroupKeys(BASE, 'g1')).resolves.toEqual({ keys: [{ ID: 'key_1' }] })
     await expect(createGroupKey(BASE, 'g1', 'share')).resolves.toEqual({ ID: 'key_2', Token: 'gwk_x' })
     await revokeGroupKey(BASE, 'g1', 'key_2')
-    expect(fetchMock).toHaveBeenNthCalledWith(4, `${BASE}/api/admin/groups/g1/keys/key_2`, expect.objectContaining({ method: 'DELETE' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(4, `${BASE}/api/caplayer/api/admin/groups/g1/keys/key_2`, expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('lists members and audit events', async () => {

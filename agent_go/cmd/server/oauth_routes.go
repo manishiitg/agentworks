@@ -595,7 +595,10 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		// Exchange code for token
 		api.logger.Info(fmt.Sprintf("🔄 Exchanging authorization code for token for %s (redirect_uri: %s, token_url: %s)",
 			serverName, oauthMgr.GetRedirectURI(), oauthMgr.GetTokenURL()))
+		mutex := platformMCPOAuthMutex(serverName)
+		mutex.Lock()
 		token, err := oauthMgr.ExchangeCodeForToken(ctx, code)
+		mutex.Unlock()
 		if err != nil {
 			api.logger.Error(fmt.Sprintf("❌ Failed to exchange code for token for %s: %v", serverName, err), err)
 			api.notifyOAuthFlowOutcome(sessionID, serverName, false, fmt.Sprintf("token exchange failed: %v", err))
@@ -738,6 +741,10 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 	api.logger.Info(fmt.Sprintf("📋 OAuth status check for %s - Config: AuthURL=%s, TokenURL=%s, TokenFile=%s",
 		serverName, serverConfig.OAuth.AuthURL, serverConfig.OAuth.TokenURL, serverConfig.OAuth.TokenFile))
 
+	mutex := platformMCPOAuthMutex(serverName)
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	// Get token status - this also attempts token refresh if expired
 	oauthMgr := oauth.NewManager(serverConfig.OAuth, api.logger)
 
@@ -745,13 +752,13 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	accessToken, err := oauthMgr.GetAccessToken(ctx)
+	_, err = oauthMgr.GetAccessToken(ctx)
 	tokenRefreshed := err == nil
 
 	if err != nil {
 		api.logger.Info(fmt.Sprintf("⚠️ OAuth token refresh failed for %s: %v", serverName, err))
 	} else {
-		api.logger.Info(fmt.Sprintf("✅ OAuth token valid/refreshed for %s (token prefix: %s...)", serverName, accessToken[:min(20, len(accessToken))]))
+		api.logger.Info(fmt.Sprintf("✅ OAuth token valid/refreshed for %s", serverName))
 	}
 
 	valid, expiresIn, _ := oauthMgr.GetTokenStatus()
@@ -817,7 +824,11 @@ func (api *StreamingAPI) handleOAuthLogout(w http.ResponseWriter, r *http.Reques
 
 	// Logout removes the shared platform token.
 	oauthMgr := oauth.NewManager(serverConfig.OAuth, api.logger)
-	if err := oauthMgr.Logout(); err != nil {
+	mutex := platformMCPOAuthMutex(req.ServerName)
+	mutex.Lock()
+	err = oauthMgr.Logout()
+	mutex.Unlock()
+	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to logout from %s: %v", req.ServerName, err), err)
 		http.Error(w, fmt.Sprintf("Failed to logout: %v", err), http.StatusInternalServerError)
 		return

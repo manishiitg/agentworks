@@ -27,6 +27,8 @@ type Client struct {
 type DialOptions struct {
 	// AllowPrivate is for an explicitly configured private-network deployment.
 	AllowPrivate bool
+	BearerToken  string
+	AccessToken  func(context.Context) (string, error)
 }
 
 const maxResponseBytes = 2 << 20
@@ -96,9 +98,25 @@ func (b *limitedBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-type boundedTransport struct{ base http.RoundTripper }
+type boundedTransport struct {
+	base        http.RoundTripper
+	bearerToken string
+	accessToken func(context.Context) (string, error)
+}
 
 func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	token := t.bearerToken
+	if t.accessToken != nil {
+		var err error
+		token, err = t.accessToken(req.Context())
+		if err != nil || token == "" {
+			return nil, errors.New("shared OAuth authorization required; reconnect the server")
+		}
+	}
+	if token != "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -135,7 +153,7 @@ func safeHTTPClient(opts DialOptions) *http.Client {
 		},
 	}
 	return &http.Client{
-		Transport:     boundedTransport{base: base},
+		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, accessToken: opts.AccessToken},
 		Timeout:       30 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

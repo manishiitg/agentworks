@@ -27,6 +27,7 @@ import { usePendingDecisionState } from '../hooks/usePendingDecisionCount'
 import { useDefaultHumanActionsView } from '../hooks/useDefaultHumanActionsView'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
+import { WorkspaceToolbarFrame } from '../../workspace/WorkspaceToolbarFrame'
 import { WorkspaceToolbarGroup } from '../../workspace/WorkspaceToolbarGroup'
 import { ReportDocumentSwitcher } from '../ReportDocumentSwitcher'
 import { WorkflowActivityButton } from '../../topbar/WorkflowActivityButton'
@@ -390,7 +391,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
 
           {/* One continuous pill: frequent tools | compact menus. */}
           {(workspacePath || canWriteWorkflow) && (
-          <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
+          <WorkspaceToolbarFrame>
           {/* Views and Ops toggle; Setup stays permanently expanded. */}
           {workspacePath && (
             <WorkspaceToolbarGroup
@@ -494,7 +495,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             </div>
           </WorkspaceToolbarGroup>
         )}
-          </div>
+          </WorkspaceToolbarFrame>
           )}
 
         </TooltipProvider>

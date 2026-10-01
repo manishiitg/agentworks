@@ -16,8 +16,8 @@ Live upstreams: Context7 is the full read-only call target. DeepWiki and Microso
 | A4 | Other MCPs | Connect and discover DeepWiki and Microsoft Learn | Valid reachable servers expose tool snapshots; failures include the upstream reason. |
 | B1 | Browser startup | Open embedded CapLayer on this branch | Servers, Tools, Groups, Users, Audit, PII and Connect sections render. |
 | B2 | Browser auth | Open console without token, then sign in with local admin token | Unauthorized request prompts for token; correct token loads data; no loopback bypass. |
-| B3 | Browser connect | Add Context7 from catalog, inspect server and tool list | Server shows connected; discovered tools appear individually as pending review. |
-| B4 | Browser review | Approve a Context7 tool and resync | Approved status persists through resync if schema is unchanged. |
+| B3 | Browser connect | Add Context7 from catalog, inspect server and tool list | Server shows connected; initial discovered tools are approved automatically, with no user/group access granted. |
+| B4 | Browser review | Resync a connected tool | Initial approval persists through resync if schema is unchanged. |
 | B5 | Browser grants | Grant one approved tool to a local user or group | Only that tool becomes visible to that principal. |
 | B6 | Browser audit | Make a call and inspect Audit | Decision, outcome, identity, tool and timestamp are shown without raw arguments. |
 | C1 | Default deny | Try an unapproved or ungranted tool | Hidden from `tools/list`; direct call denied and audited. |
@@ -28,7 +28,7 @@ Live upstreams: Context7 is the full read-only call target. DeepWiki and Microso
 | C6 | Security | Probe admin without token, unsafe URL/query, private egress, public bind | Each fails closed by default. OAuth-only catalog servers cannot be added as working connectors. |
 | C7 | Stability | Concurrent resync/remove; bounded audit and review queues | No leaked active connector; queues stay within limits. |
 | C8 | Pagination | Upstream returns multiple `tools/list` pages | All pages are discovered before the gateway disables missing tools. |
-| D1 | Restart | Restart local gateway | Document current alpha limit: governance data in memory is lost; do not use for a shared deployment. |
+| D1 | Restart | Restart local gateway | Users, groups, memberships, assignments, approved tool fingerprints, drafts, published policies and revoked-policy denial survive restart from SQLite. Call audits and PII review queues remain ephemeral. |
 
 ## Execution record
 
@@ -61,7 +61,7 @@ The in-app browser could not be automated in this run. When its browser policy p
 2. Read the local test token from `/tmp/caplayer-pr228-local/admin-token` and enter it. Expect the Servers section. Do not copy the token into the test report.
 3. Under connected servers, expand Context7, DeepWiki and Microsoft Learn. Expect 2, 3 and 3 discovered tools respectively. Context7 `resolve-library-id` is approved; the others are pending review.
 4. Open each CapLayer section (Servers, Tools, Groups, Users, Audit, PII and Connect). Confirm loading states finish, counts match the API, and no section shows a blank or broken panel.
-5. Add one new catalog server if desired, expand it, approve one tool, resync, and confirm its approval survives. Avoid OAuth-only providers; they should say that upstream OAuth is not supported yet.
+5. Add one new catalog server if desired, expand it, confirm initial tools are approved without granting access, then resync and confirm approval survives. Avoid OAuth-only providers; they should say that upstream OAuth is not supported yet.
 6. In Connect, select “Send test request.” Expect an OAuth challenge and a reachable result. In PII, test `alice@example.com` and a test SSN; expect mask and block. Confirm Audit labels decisions and outcomes without showing tool arguments.
 
 The Codex browser tool rejected reopening its pre-existing crashed tab with: “The browser URL policy blocks this action. The requested URL protocol is not allowed.” No workaround or alternate browser surface was used.
@@ -84,3 +84,62 @@ This plan validates a single-user loopback alpha. Team internet testing needs in
 | Browser visual walkthrough | Blocked | The Codex in-app browser previously refused reopening its crashed local tab under URL policy. B1-B6 remain unverified visually; API and component tests cover their underlying paths. |
 
 The broad-suite failures and browser gap mean this is not a clean full-product test pass. Keep PR #228 unmerged until the desired merge gate is clear and the visual walkthrough has been completed.
+
+
+## Shared UI review pass — 2026-09-30
+
+See [the complete UI review](../docs/reviews/caplayer-ui-review-2026-09-30.md) for findings, fixes, reference components and remaining boundaries. This pass verified the shared Chat tab, right workspace toolbar, default composer, transcript, model selection, all section navigation, People subtabs, pane resizing/collapse, and a phone breakpoint. The standalone build, 86 focused frontend tests and gateway Go tests passed. Browser checks used the real local gateway for navigation/PII/endpoint probing and a separate explicitly labelled model fixture for chat rendering; no live provider or external connector result is claimed by this pass.
+
+### Shared product account regression
+
+- CapLayer opens with the existing account; local single-user mode does not prompt for a token.
+- People → Users uses the full product editor and includes CapLayer in the enabled product list.
+- Product JWTs reach only the product API proxy; upstream requests use the server's service secret.
+- Anonymous and non-admin management requests cannot reach the gateway; central role revocation removes access.
+- Group membership accepts only active central IDs and synchronizes the identity binding before granting membership.
+- Service authentication failures return deployment errors, without an authentication retry loop.
+- Standalone runtime config exposes only public API URLs and requires an existing product account service.
+
+## Complete shared application correction — 2026-09-30
+
+This supersedes the primitive-only chat verification above. CapLayer now boots the full shared application and renders actual `ModePresetBar`, `ChatArea`, `ChatInput`, and the complete `ProductWorkspaceShell` also used by Crew/Code. Its registered profile uses durable product conversations and the shared provider catalog.
+
+- Production build and 13 frontend files / 86 tests passed.
+- CapLayer/profile/administrator product-server tests and the gateway Go suite passed.
+- A real local Claude chat inspected the empty gateway inventory through the registered narrow tool; no draft or policy was published.
+- Rendered Crew comparison confirmed the shared composer and runtime controls. Code's header was checked, but this isolated instance has no Code workspace.
+- The broad product-server selection retains two workflow prompt-size failures; it is not a full-product pass.
+- Keep the preview open at `http://127.0.0.1:18162/caplayer.html`. See the updated UI review for architecture, evidence and remaining enterprise/bundle limits.
+
+
+## Initial connection approval contract — 2026-09-30
+
+An admin connecting a server approves the initial tool list. Group/tool assignment remains the separate access decision. Later syncs quarantine new or changed definitions; unchanged tools keep their approval. Historical results above describe the earlier manual initial-approval behavior. `TestAdminConnectionApprovesInitialToolsAndStillRequiresGroupAccess` covers initial approval, default denial, a read-only group grant, unchanged sync, and later changed/new tool rejection. The existing admin API/OAuth test now verifies deny-before-grant and allow-after-group-grant without an intervening approval request.
+
+## Durable configuration and group access regression
+
+- Save a tool assignment to an empty local test group, restart with the same state directory, and verify both the stored assignment and effective permission inventory. Do not broaden real employee access for this test.
+- Remove from group clears that connector's direct group assignments, existing server grant, and draft/published rules atomically. Other groups/connectors remain usable. Retrying stale drafts/publish must not restore removed access. Restart and verify removal remains effective.
+- Force a configuration write failure: no unsaved state is visible, the admin API returns 503, and subsequent MCP authorization denies. Repair/restart loads the last committed state.
+- Missing/wrong encryption key or malformed database must fail startup; do not silently create an empty permission database. A second store opening the same state directory must fail before serving stale permissions.
+- UI: no whole-server assignment control, no per-tool Permissions dropdown, no new-chat header button. Inline Arguments expands the full JSON schema across the tool row. Per-tool Ask AI retains shared confirmation behavior. Mobile/Tablet/Laptop controls use the shared split rail.
+
+
+## CapLayer project SQL tools
+
+- Describe the public schema with `query_workflow_db`; read groups and raw tool schemas. Attempt a write through the query tool; require rejection by the SQL guard and SQLite query-only mode.
+- Through `mutate_workflow_db`, atomically edit a group, add a valid member and tool grant; verify live authorization and persistence after restart. Remove the grant and verify immediate denial.
+- Reject foreign workspaces, arbitrary file paths, DDL, ATTACH, stacked SQL, writes to credentials/tool approvals/published policies, and quoted-CTE attempts to disguise a protected target.
+- Reject an invalid member or fingerprint and verify that the entire batch rolls back with no memory change. Validation failures must not latch storage errors.
+- Edit a draft and verify its automatic version increment. Reject stale publication and attempts to bypass a governed policy using direct grants.
+- Delete a group and verify membership/grant cleanup, revoked policy history, and retained denial tombstones.
+- Reject non-admin/currently-disabled callers and tools invoked outside the CapLayer chat project. Verify trusted actor/service identity and exact shared workflow tool names.
+- Modify a metadata row outside the gateway owner in a test database; verify revision invalidation and denial until restart.
+- In the local browser, ask the agent to query, rename an empty test group, verify the name, restore it, and query again. Verify actual SQL tool events and refreshed UI without permission changes.
+
+
+## Console recovery and shared composer
+
+- After a healthy Access load, make group/member/permission reads fail in the test backend. Require one pane-level warning and one Retry action, retained old data with a stale warning, and recovery of all sections after service restoration. Duplicate failures/callbacks must be deduplicated.
+- Verify no group or per-tool Ask AI icons remain. Advanced permissions can still be described in chat.
+- In CapLayer's common composer, open Model and reasoning effort. Verify provider, model and reasoning choices; select a different model, verify its label, and restore the original. Model availability must use product profile identity rather than composer styling.

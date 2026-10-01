@@ -12,7 +12,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +28,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/setupagent"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
@@ -77,12 +80,12 @@ func validatePublicURL(raw, humanToken string) error {
 }
 
 func validateExposure(bind, publicURL string) error {
-	// This release has one static OAuth human and in-memory governance. Keep
-	// the alpha on the same machine until per-user login and durable storage
-	// are available. This check cannot detect an independently configured
+	// This release has one static OAuth human and local governance. Keep
+	// the alpha on the same machine until individual MCP OAuth identity and
+	// production deployment requirements are implemented. This check cannot detect an independently configured
 	// reverse proxy, which operators must keep private.
 	if !loopbackURL(publicURL) {
-		return errors.New("public CapLayer is unavailable until per-user sign-in and durable governance storage are configured")
+		return errors.New("public CapLayer is unavailable until individual MCP sign-in and production deployment requirements are configured")
 	}
 	ip := net.ParseIP(bind)
 	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) {
@@ -163,14 +166,28 @@ func run() error {
 	human := mcpoauth.User{ID: "u1", Username: "m0", Email: "m0@example.com", Provider: "m0-static"}
 
 	cat, err := catalog.Load()
+	if path := strings.TrimSpace(os.Getenv("GATEWAY_CATALOG_PATH")); path != "" {
+		cat, err = catalog.LoadFile(path)
+	}
 	if err != nil {
 		return err
 	}
 	log.Printf("gateway: catalog has %d providers", len(cat.Providers))
 
-	st := store.NewMemoryStore()
+	databasePath, keyPath := gatewayConfigurationPaths(stateDir)
+	if err := store.MigrateSQLiteConfiguration(filepath.Join(stateDir, "gateway.sqlite"), databasePath, keyPath); err != nil {
+		return fmt.Errorf("relocate gateway configuration: %w", err)
+	}
+	st, err := store.NewSQLiteStoreWithKey(databasePath, keyPath)
+	if err != nil {
+		return fmt.Errorf("load gateway configuration: %w", err)
+	}
+	defer st.Close()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "m0"})
 	st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
+	if err := st.EnableSQLWorkspace("w1"); err != nil {
+		return fmt.Errorf("initialize project SQL tables: %w", err)
+	}
 	if os.Getenv("GATEWAY_DEMO") != "" {
 		seedDemo(st)
 	}
@@ -180,17 +197,43 @@ func run() error {
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1", Keys: st},
 		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: allowPrivateUpstreams})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-	if upstreamURL != "" && upstreamURL != "none" {
-		st.AddConnector(store.Connector{
-			ID: "c1", WorkspaceID: "w1", Provider: catalog.Key(provider),
-			Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
-		})
-		c, _ := st.GetConnector("c1")
-		if err := gw.AddConnector(ctx, c); err != nil {
+	if productURL := strings.TrimSpace(os.Getenv("GATEWAY_PRODUCT_URL")); productURL != "" {
+		resolve, err := upstream.SharedOAuth(productURL, humanToken)
+		if err != nil {
 			return err
 		}
+		gw.SetSharedOAuth(resolve)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	newInitialConnector := false
+	if upstreamURL != "" && upstreamURL != "none" {
+		if _, exists := st.GetConnector("c1"); !exists {
+			newInitialConnector = true
+			st.AddConnector(store.Connector{
+				ID: "c1", WorkspaceID: "w1", Provider: catalog.Key(provider),
+				Label: provider, UpstreamURL: upstreamURL, Status: store.StatusActive,
+			})
+		}
+	}
+	for _, c := range st.ListConnectors("w1") {
+		if c.Status != store.StatusActive {
+			continue
+		}
+		var reconnectErr error
+		if c.ID == "c1" && newInitialConnector {
+			reconnectErr = gw.AddConnector(ctx, c)
+		} else {
+			reconnectErr = gw.Resync(ctx, c)
+		}
+		if err := reconnectErr; err != nil {
+			// An unavailable upstream must not discard saved permissions.
+			log.Printf("gateway: could not reconnect %s: %v", c.ID, err)
+		}
+	}
+	if err := st.PersistenceError(); err != nil {
+		return err
 	}
 	for _, name := range grants {
 		name = strings.TrimSpace(name)
@@ -210,9 +253,44 @@ func run() error {
 		Store: st, Gateway: gw, Catalog: cat,
 		WorkspaceID: "w1", HumanToken: humanToken, PublicURL: publicURL,
 	}
+	if endpoint := os.Getenv("CAPLAYER_AGENT_API_URL"); endpoint != "" {
+		u, err := url.Parse(endpoint)
+		if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && !loopbackURL(endpoint)) {
+			return errors.New("CAPLAYER_AGENT_API_URL must be HTTPS or a loopback HTTP endpoint")
+		}
+		adm.SetupAgent = &setupagent.Agent{Endpoint: endpoint, APIKey: os.Getenv("CAPLAYER_AGENT_API_KEY"), Model: os.Getenv("CAPLAYER_AGENT_MODEL"), AvailableModels: strings.Split(os.Getenv("CAPLAYER_AGENT_MODELS"), ",")}
+	}
 	mux := gw.Handler()
 	adm.APIRoutes(mux)
 	adm.UIRoutes(mux)
+	if staticDir := os.Getenv("CAPLAYER_STATIC_DIR"); staticDir != "" {
+		productAPI, err := productAPIBase(os.Getenv("CAPLAYER_PRODUCT_API_URL"))
+		if err != nil {
+			return err
+		}
+		if info, err := os.Stat(filepath.Join(staticDir, "caplayer.html")); err != nil || info.IsDir() {
+			return errors.New("CAPLAYER_STATIC_DIR must contain caplayer.html")
+		}
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, "/caplayer.html", http.StatusTemporaryRedirect)
+		})
+		mux.Handle("GET /caplayer.html", http.FileServer(http.Dir(staticDir)))
+		mux.HandleFunc("GET /caplayer-config.js", func(w http.ResponseWriter, r *http.Request) {
+			config, _ := json.Marshal(map[string]any{"apiBaseUrl": productAPI, "workspaceApiBaseUrl": productAPI + "/api/wp", "gatewayUrl": publicURL, "enabledProductSurfaces": []string{"mcp-gateway"}})
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(append(append([]byte("window.__APP_RUNTIME_CONFIG__="), config...), ';'))
+		})
+		mux.Handle("GET /assets/", http.FileServer(http.Dir(staticDir)))
+	}
 
 	log.Printf("gateway: listening on %s:%s (upstream %s)", bind, port, upstreamURL)
 	return http.ListenAndServe(net.JoinHostPort(bind, port), admin.LocalhostCORS(mux))
@@ -239,4 +317,24 @@ func seedDemo(st *store.MemoryStore) {
 	st.AddGroup(store.Group{ID: "support", WorkspaceID: "w1", Name: "Support"})
 	st.AddMember("eng", "alice")
 	st.AddMember("support", "bob")
+}
+
+// The standalone UI uses the same product account service, never a gateway
+// token login. Only this public API URL is exposed in its runtime config.
+func productAPIBase(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(raw), "/"))
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !(u.Scheme == "http" && loopbackURL(u.String()))) {
+		return "", errors.New("CAPLAYER_PRODUCT_API_URL must be the existing product API base URL (HTTPS or loopback)")
+	}
+	return u.String(), nil
+}
+
+// The launcher supplies the actual CapLayer project folder. Standalone callers
+// without a workspace retain the established state-directory location.
+func gatewayConfigurationPaths(stateDir string) (string, string) {
+	path := filepath.Join(stateDir, "gateway.sqlite")
+	if root := strings.TrimSpace(os.Getenv("GATEWAY_WORKSPACE_DIR")); root != "" {
+		path = filepath.Join(root, "db", "gateway.sqlite")
+	}
+	return path, filepath.Join(stateDir, "gateway.sqlite.key")
 }

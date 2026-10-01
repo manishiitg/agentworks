@@ -9,7 +9,7 @@ interface IconPopoverProps {
   icon: React.ReactNode
   /** Accessible label, also shown as the trigger tooltip. */
   label: string
-  children: React.ReactNode
+  children: React.ReactNode | ((close: () => void) => React.ReactNode)
   /** Side the panel anchors to relative to the trigger. */
   align?: 'left' | 'right'
   badge?: React.ReactNode
@@ -64,6 +64,7 @@ export default function IconPopover({
             data-testid={dataTestid}
             onClick={() => setOpen(prev => !prev)}
             aria-label={label}
+            aria-expanded={open}
             className={`relative ${iconButtonClass} ${open ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200' : ''}`}
           >
             {icon}
@@ -77,7 +78,7 @@ export default function IconPopover({
         <div
           className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2 ${panelClassName} max-h-[75vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[60] p-3`}
         >
-          {children}
+          {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
     </div>

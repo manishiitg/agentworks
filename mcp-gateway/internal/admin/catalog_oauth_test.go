@@ -8,7 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 )
 
-func TestOAuthCatalogProviderIsNotOfferedAsConnectable(t *testing.T) {
+func TestOAuthCatalogProviderRequiresSharedOAuthService(t *testing.T) {
 	cat, err := catalog.Load()
 	if err != nil {
 		t.Fatal(err)

@@ -38,8 +38,8 @@ describe('WorkWorkspaceToolbar', () => {
     const source = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
 
     expect(source).toContain('useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)')
-    expect(source).toContain('data-ui-workspace={selected.workspacePath}')
-    expect(source).toContain('data-ui-view={workPresentationView(workspaceView)}')
+    expect(source).toContain("'data-ui-workspace': selected.workspacePath")
+    expect(source).toContain("'data-ui-view': workPresentationView(workspaceView)")
     expect(source).toContain('data-ui-view-mounted')
     expect(source).toContain("report: 'dashboard'")
     expect(source).toContain("memory: 'memory'")
@@ -48,7 +48,7 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("bots: 'mcp'")
     expect(source).toContain("email: 'mcp'")
     expect(source).toContain('landingContent={<WorkNewChatGuide product={product} sharedBy={')
-    expect(source).toContain('This is the persistent conversation for this {product.noun} project.')
+    expect(source).toContain('This is the persistent conversation for this ${product.noun} project.')
   })
 
   it('keeps a saved Crew view ahead of the content-based landing view', () => {

@@ -51,6 +51,7 @@ type Gateway struct {
 	oauth           *mcpoauth.Server
 	mcp             *server.MCPServer
 	upstreamOptions upstream.DialOptions
+	sharedOAuth     func(context.Context, string, string) (string, error)
 	schemas         sync.Map // approved fingerprint -> compiled input schema
 }
 
@@ -121,6 +122,11 @@ func (g *Gateway) validateArguments(snap store.ToolSnapshot, args map[string]any
 	return actual.(*jsonschema.Schema).Validate(args)
 }
 
+// ValidateArguments is shared by live calls and admin simulations.
+func (g *Gateway) ValidateArguments(snap store.ToolSnapshot, args map[string]any) error {
+	return g.validateArguments(snap, args)
+}
+
 // New builds the gateway MCP server. Call SyncTools before serving.
 func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.Client, oauthSrv *mcpoauth.Server, options ...upstream.DialOptions) *Gateway {
 	g := &Gateway{store: st, auth: a, upstreams: ups, oauth: oauthSrv}
@@ -161,7 +167,7 @@ func (g *Gateway) SyncTools(ctx context.Context, workspaceID string) error {
 		if c.Status != store.StatusActive {
 			continue
 		}
-		if err := g.syncConnector(ctx, c); err != nil {
+		if err := g.syncConnector(ctx, c, false); err != nil {
 			return err
 		}
 	}
@@ -181,7 +187,37 @@ func (g *Gateway) ValidateUpstreamURL(raw string) error {
 	return err
 }
 
-func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
+// The host owns authorization, encrypted storage and refresh. The gateway
+// binds the shared identity to this connector's exact upstream URL.
+func (g *Gateway) SetSharedOAuth(resolve func(context.Context, string, string) (string, error)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sharedOAuth = resolve
+}
+
+func (g *Gateway) HasSharedOAuth() bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.sharedOAuth != nil
+}
+
+func (g *Gateway) connectorOptions(c store.Connector) (upstream.DialOptions, error) {
+	opts := g.upstreamOptions
+	opts.BearerToken = g.store.ConnectorBearer(c.ID)
+	if c.OAuthServer != "" {
+		g.mu.RLock()
+		resolve := g.sharedOAuth
+		g.mu.RUnlock()
+		if resolve == nil {
+			return opts, fmt.Errorf("shared OAuth service is not configured")
+		}
+		opts.BearerToken = ""
+		opts.AccessToken = func(ctx context.Context) (string, error) { return resolve(ctx, c.OAuthServer, c.UpstreamURL) }
+	}
+	return opts, nil
+}
+
+func (g *Gateway) syncConnector(ctx context.Context, c store.Connector, approveInitial bool) error {
 	up, ok := g.upstreamFor(c.ID)
 	if !ok {
 		return fmt.Errorf("connector %s (%s): no upstream session", c.ID, c.Label)
@@ -198,6 +234,12 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 		schema := schemaBytes(t)
 		outputSchema := outputSchemaBytes(t)
 		annotations, _ := json.Marshal(t.Annotations)
+		// Connecting a new MCP explicitly trusts this initial discovery. Later
+		// background/admin syncs must still quarantine new or changed definitions.
+		status := ""
+		if approveInitial {
+			status = store.StatusActive
+		}
 		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
 			ConnectorID:  c.ID,
 			WorkspaceID:  c.WorkspaceID,
@@ -210,6 +252,7 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 			Annotations:  annotations,
 			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema, []byte(t.Title), outputSchema, annotations),
 			DiscoveredAt: time.Now().UTC(),
+			Status:       status,
 		})
 		seen[snap.PublicName] = true
 		g.register(snap, t)
@@ -221,20 +264,28 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 }
 
 // AddConnector dials a new upstream instance and syncs its tools while
-// serving. The connector row must already exist in the store.
+// serving. A new connector's initial tool definitions are approved by this
+// explicit configuration action. Approval grants no user/group access. An
+// existing connector with snapshots keeps the normal change-review behavior.
+// The connector row must already exist in the store.
 func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 	defer g.lockConnector(c.ID)()
 	if _, ok := g.upstreamFor(c.ID); ok {
 		return fmt.Errorf("connector %s already connected", c.ID)
 	}
-	up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, g.upstreamOptions)
+	opts, err := g.connectorOptions(c)
+	if err != nil {
+		return err
+	}
+	up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, opts)
 	if err != nil {
 		return err
 	}
 	g.mu.Lock()
 	g.upstreams[c.ID] = up
 	g.mu.Unlock()
-	if err := g.syncConnector(ctx, c); err != nil {
+	approveInitial := len(g.store.ListToolsForConnector(c.ID)) == 0
+	if err := g.syncConnector(ctx, c, approveInitial); err != nil {
 		g.mu.Lock()
 		delete(g.upstreams, c.ID)
 		g.mu.Unlock()
@@ -253,7 +304,11 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 	}
 	c = current
 	if _, ok := g.upstreamFor(c.ID); !ok {
-		up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, g.upstreamOptions)
+		opts, err := g.connectorOptions(c)
+		if err != nil {
+			return err
+		}
+		up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, opts)
 		if err != nil {
 			return err
 		}
@@ -261,7 +316,46 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 		g.upstreams[c.ID] = up
 		g.mu.Unlock()
 	}
-	return g.syncConnector(ctx, c)
+	return g.syncConnector(ctx, c, false)
+}
+
+// ReplaceConnectorCredentials atomically swaps a tested new upstream session.
+// The previous session remains in service if authentication or discovery fails.
+func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Connector, bearer string) error {
+	defer g.lockConnector(c.ID)()
+	current, ok := g.store.GetConnector(c.ID)
+	if !ok || current.WorkspaceID != c.WorkspaceID || current.Status != store.StatusActive {
+		return fmt.Errorf("connector is not active")
+	}
+	if current.OAuthServer != "" {
+		return fmt.Errorf("OAuth credentials are managed by the shared product sign-in flow")
+	}
+	opts := g.upstreamOptions
+	opts.BearerToken = bearer
+	newUp, err := upstream.DialWithOptions(ctx, current.UpstreamURL, opts)
+	if err != nil {
+		return err
+	}
+	if _, err := newUp.Discover(ctx); err != nil {
+		newUp.Close()
+		return err
+	}
+	g.mu.Lock()
+	old := g.upstreams[c.ID]
+	g.upstreams[c.ID] = newUp
+	g.mu.Unlock()
+	if err := g.syncConnector(ctx, current, false); err != nil {
+		g.mu.Lock()
+		g.upstreams[c.ID] = old
+		g.mu.Unlock()
+		newUp.Close()
+		return err
+	}
+	g.store.SetConnectorBearer(c.ID, bearer)
+	if old != nil {
+		old.Close()
+	}
+	return nil
 }
 
 // RemoveConnector disconnects an instance and drops its snapshots. The MCP
@@ -357,6 +451,9 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	}
 	if err := g.validateArguments(current, args); err != nil {
 		return deny(fmt.Errorf("arguments do not match approved tool schema"))
+	}
+	if err := policy.AuthorizeArguments(g.store, id, current, args); err != nil {
+		return deny(err)
 	}
 	rules := g.store.ListPIIRules(id.WorkspaceID)
 	scope := pii.Scope{WorkspaceID: id.WorkspaceID, GroupIDs: groups, ConnectorID: snap.ConnectorID, PublicName: snap.PublicName, Direction: pii.Input}

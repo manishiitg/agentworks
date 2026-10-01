@@ -22,7 +22,7 @@ function isolatedRuntimeConfigMiddleware() {
     setHeader(name: string, value: string): void
     end(body?: string): void
   }, next: () => void) => {
-    if (!isolatedRuntimeConfigPath || req.url?.split('?', 1)[0] !== '/runtime-config.js') {
+    if (!isolatedRuntimeConfigPath || !['/runtime-config.js', '/caplayer-config.js'].includes(req.url?.split('?', 1)[0] ?? '')) {
       next()
       return
     }

@@ -11,6 +11,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func profileRouteRequest(method, target string, body []byte, userID string) *http.Request {
@@ -480,5 +482,83 @@ func TestExistingSharedAccountConversationStaysOnTheServerAccount(t *testing.T) 
 	}
 	if followUp.ConnectionID != "global:muse-cli" {
 		t.Fatalf("follow-up connection = %q, want the server account", followUp.ConnectionID)
+	}
+}
+
+// The registry selection and a durable Send target are independent. A switch
+// must retire the old target and force the new-turn path, preserving chat ID.
+func TestProductRuntimeSwitchRetiresDurableSession(t *testing.T) {
+	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "first", Engine: "codex-cli"}, conversation); err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startRegisteredTestTmuxSession(t, conversation.SessionID, "model-switch-test")
+	query, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "switch", Engine: "muse-cli"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !query.DisableLiveInputDelivery {
+		t.Fatal("model switch still eligible for retained live delivery")
+	}
+	if _, exists := mcpagent.LookupSession(conversation.SessionID); exists {
+		t.Fatal("old durable session still registered")
+	}
+	rebound, err := api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebound.SessionID != conversation.SessionID {
+		t.Fatal("switch replaced the conversation")
+	}
+	// Simulate a prior version that saved Muse but retained a Claude session.
+	startRegisteredTestTmuxSession(t, rebound.SessionID, "stale-provider-test")
+	retry, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "retry", Engine: "muse-cli"}, rebound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !retry.DisableLiveInputDelivery {
+		t.Fatal("stale actual runtime was not retired on retry")
+	}
+	unchanged, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "same", Engine: "muse-cli"}, rebound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.DisableLiveInputDelivery {
+		t.Fatal("unchanged selection needlessly disables warm delivery")
+	}
+}
+
+func TestProductSameProviderModelSwitchRetiresDurableSession(t *testing.T) {
+	api, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	// Declare two permitted models without relying on a global catalog fixture.
+	profile.Runtime.ProviderOptions[0].Models = []string{"model-a", "model-b"}
+	profile.Runtime.ProviderOptions[0].ModelID = "model-a"
+	first, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "first", Engine: "muse-cli", ModelID: "model-a"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err = api.resolveAgentProfileConversation(req, profile, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := testAgentWithHandle(conversation.SessionID, llmtypes.CodingProviderSessionHandle{Provider: first.Provider, Model: first.ModelID, Transport: llmtypes.CodingProviderTransportTmux, TmuxSession: "same-provider-switch", Status: llmtypes.CodingProviderSessionStatusIdle})
+	session, err := agent.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close(); _ = agent.Close() })
+	switched, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "switch", Engine: "muse-cli", ModelID: "model-b"}, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if switched.ModelID != "model-b" || !switched.DisableLiveInputDelivery {
+		t.Fatalf("switch = %+v", switched)
+	}
+	if _, exists := mcpagent.LookupSession(conversation.SessionID); exists {
+		t.Fatal("old model's durable session survived")
 	}
 }

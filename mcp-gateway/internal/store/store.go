@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/pii"
 )
 
@@ -42,6 +43,7 @@ type Connector struct {
 	InstanceSlug string // e.g. "acme" (empty while single instance)
 	Label        string
 	UpstreamURL  string
+	OAuthServer  string // shared product OAuth identity; never an access/refresh token
 	Status       string
 }
 
@@ -144,6 +146,16 @@ type AuditSummary struct {
 	ByTool         []UsageBucket
 }
 
+type PolicyEvent struct {
+	At          time.Time `json:"at"`
+	Actor       string    `json:"actor"`
+	Action      string    `json:"action"`
+	PackageID   string    `json:"package_id"`
+	Version     int       `json:"version"`
+	GroupID     string    `json:"group_id,omitempty"`
+	ConnectorID string    `json:"connector_id,omitempty"`
+}
+
 // Fingerprint returns a stable snapshot fingerprint for quarantine diffing.
 func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...[]byte) string {
 	h := sha256.New()
@@ -162,20 +174,26 @@ func Fingerprint(upstreamName, description string, inputSchema []byte, extra ...
 // MemoryStore is the M0 Store implementation. All methods are safe for
 // concurrent use.
 type MemoryStore struct {
-	mu           sync.RWMutex
-	workspaces   map[string]Workspace
-	users        map[string]User
-	groups       map[string]Group
-	members      map[string]map[string]bool // group ID -> user IDs
-	connectors   map[string]Connector
-	tools        map[string]ToolSnapshot   // by PublicName (unique per workspace in M0)
-	toolVersions map[string][]ToolSnapshot // previous definitions for review
-	grants       map[string]map[string]bool
-	groupGrants  map[string]map[string]bool // group ID -> public names
+	mu              sync.RWMutex
+	persistence     *sqlitePersistence
+	workspaces      map[string]Workspace
+	users           map[string]User
+	groups          map[string]Group
+	members         map[string]map[string]bool // group ID -> user IDs
+	connectors      map[string]Connector
+	connectorBearer map[string]string         // never returned in connector API responses
+	tools           map[string]ToolSnapshot   // by PublicName (unique per workspace in M0)
+	toolVersions    map[string][]ToolSnapshot // previous definitions for review
+	grants          map[string]map[string]bool
+	groupGrants     map[string]map[string]bool // group ID -> public names
 	// groupServers attaches whole connectors to groups (AWS-style): every
 	// tool of the connector, including tools discovered later.
 	groupServers    map[string]map[string]bool // group ID -> connector IDs
-	apiKeys         map[string]APIKey          // by SHA-256 of token
+	packageDrafts   map[string]access.Package
+	packageLive     map[string]access.Package
+	governedTools   map[string]map[string]bool // workspace -> names ever governed by a live package
+	policyEvents    map[string][]PolicyEvent
+	apiKeys         map[string]APIKey // by SHA-256 of token
 	audit           []AuditEvent
 	auditStart      int // oldest event in the bounded ring after it fills
 	piiRules        map[string]pii.Rule
@@ -185,31 +203,36 @@ type MemoryStore struct {
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		workspaces:   map[string]Workspace{},
-		users:        map[string]User{},
-		groups:       map[string]Group{},
-		members:      map[string]map[string]bool{},
-		connectors:   map[string]Connector{},
-		tools:        map[string]ToolSnapshot{},
-		toolVersions: map[string][]ToolSnapshot{},
-		grants:       map[string]map[string]bool{},
-		groupGrants:  map[string]map[string]bool{},
-		groupServers: map[string]map[string]bool{},
-		apiKeys:      map[string]APIKey{},
-		piiRules:     map[string]pii.Rule{},
-		piiReviews:   map[string]PIIReview{},
+		workspaces:      map[string]Workspace{},
+		users:           map[string]User{},
+		groups:          map[string]Group{},
+		members:         map[string]map[string]bool{},
+		connectors:      map[string]Connector{},
+		connectorBearer: map[string]string{},
+		tools:           map[string]ToolSnapshot{},
+		toolVersions:    map[string][]ToolSnapshot{},
+		grants:          map[string]map[string]bool{},
+		groupGrants:     map[string]map[string]bool{},
+		groupServers:    map[string]map[string]bool{},
+		packageDrafts:   map[string]access.Package{},
+		packageLive:     map[string]access.Package{},
+		governedTools:   map[string]map[string]bool{},
+		policyEvents:    map[string][]PolicyEvent{},
+		apiKeys:         map[string]APIKey{},
+		piiRules:        map[string]pii.Rule{},
+		piiReviews:      map[string]PIIReview{},
 	}
 }
 
 func (s *MemoryStore) AddWorkspace(w Workspace) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	s.workspaces[w.ID] = w
 }
 
 func (s *MemoryStore) AddUser(u User) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	s.users[u.ID] = u
 }
 
@@ -235,7 +258,7 @@ func (s *MemoryStore) ListUsers(workspaceID string) []User {
 
 func (s *MemoryStore) AddGroup(g Group) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	s.groups[g.ID] = g
 }
 
@@ -261,7 +284,7 @@ func (s *MemoryStore) ListGroups(workspaceID string) []Group {
 
 func (s *MemoryStore) AddMember(groupID, userID string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	if s.members[groupID] == nil {
 		s.members[groupID] = map[string]bool{}
 	}
@@ -270,7 +293,7 @@ func (s *MemoryStore) AddMember(groupID, userID string) {
 
 func (s *MemoryStore) RemoveMember(groupID, userID string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	delete(s.members[groupID], userID)
 }
 
@@ -302,7 +325,7 @@ func (s *MemoryStore) MembersOf(groupID string) []string {
 
 func (s *MemoryStore) AddConnector(c Connector) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	s.connectors[c.ID] = c
 }
 
@@ -319,7 +342,7 @@ func ConnectorNamespacePrefix(provider, slug string) string {
 // so comparing provider and slug as separate fields is insufficient.
 func (s *MemoryStore) AddConnectorUnique(c Connector) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	want := ConnectorNamespacePrefix(c.Provider, c.InstanceSlug)
 	for _, existing := range s.connectors {
 		if existing.WorkspaceID == c.WorkspaceID && ConnectorNamespacePrefix(existing.Provider, existing.InstanceSlug) == want {
@@ -342,8 +365,10 @@ func (s *MemoryStore) GetConnector(id string) (Connector, bool) {
 // must not become active again when that connector discovers its tools.
 func (s *MemoryStore) DeleteConnector(id string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
+	workspaceID := s.connectors[id].WorkspaceID
 	delete(s.connectors, id)
+	delete(s.connectorBearer, id)
 	names := make(map[string]bool)
 	for name, t := range s.tools {
 		if t.ConnectorID == id {
@@ -375,6 +400,171 @@ func (s *MemoryStore) DeleteConnector(id string) {
 			delete(s.piiReviews, reviewID)
 		}
 	}
+	for packageID, p := range s.packageDrafts {
+		kept := make([]access.ToolRule, 0, len(p.Rules))
+		for _, rule := range p.Rules {
+			if !names[rule.PublicName] {
+				kept = append(kept, rule)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.packageDrafts, packageID)
+		} else if len(kept) != len(p.Rules) {
+			p.Rules = kept
+			p.Version++
+			s.packageDrafts[packageID] = access.Clone(p)
+		}
+	}
+	for packageID, p := range s.packageLive {
+		kept := make([]access.ToolRule, 0, len(p.Rules))
+		for _, rule := range p.Rules {
+			if !names[rule.PublicName] {
+				kept = append(kept, rule)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.packageLive, packageID)
+		} else if len(kept) != len(p.Rules) {
+			p.Rules = kept
+			p.Version++
+			s.packageLive[packageID] = access.Clone(p)
+		}
+	}
+	for name := range names {
+		delete(s.governedTools[workspaceID], name)
+	}
+}
+
+func (s *MemoryStore) SetConnectorBearer(id, token string) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	if token == "" {
+		delete(s.connectorBearer, id)
+	} else {
+		s.connectorBearer[id] = token
+	}
+}
+
+func (s *MemoryStore) ConnectorBearer(id string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.connectorBearer[id]
+}
+
+// SavePackageDraft keeps edits separate from the published runtime policy.
+func (s *MemoryStore) SavePackageDraft(p access.Package, expectedVersion int) (access.Package, bool) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	current := 0
+	if previous, ok := s.packageDrafts[p.ID]; ok {
+		current = previous.Version
+	} else if previous, ok := s.packageLive[p.ID]; ok {
+		current = previous.Version
+	}
+	if current != expectedVersion {
+		return access.Package{}, false
+	}
+	p.Version = current + 1
+	p.Status = "draft"
+	s.packageDrafts[p.ID] = access.Clone(p)
+	return access.Clone(p), true
+}
+
+func (s *MemoryStore) GetPackageDraft(workspaceID, id string) (access.Package, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.packageDrafts[id]
+	return access.Clone(p), ok && p.WorkspaceID == workspaceID
+}
+
+// PublishPackage requires the exact draft version that was validated.
+func (s *MemoryStore) PublishPackage(workspaceID, id string, version int) (access.Package, bool) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	p, ok := s.packageDrafts[id]
+	if !ok || p.WorkspaceID != workspaceID || p.Version != version {
+		return access.Package{}, false
+	}
+	p.Status = "published"
+	if s.governedTools[workspaceID] == nil {
+		s.governedTools[workspaceID] = map[string]bool{}
+	}
+	for _, rule := range p.Rules {
+		s.governedTools[workspaceID][rule.PublicName] = true
+	}
+	s.packageLive[id] = access.Clone(p)
+	delete(s.packageDrafts, id)
+	return access.Clone(p), true
+}
+
+// RevokePackage leaves a tombstone so legacy grants cannot silently regain
+// access to tools that were governed by this package.
+func (s *MemoryStore) RevokePackage(workspaceID, id string) (access.Package, bool) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	p, ok := s.packageLive[id]
+	if !ok || p.WorkspaceID != workspaceID || p.Status != "published" {
+		return access.Package{}, false
+	}
+	p.Status = "revoked"
+	p.Version++
+	s.packageLive[id] = access.Clone(p)
+	delete(s.packageDrafts, id)
+	return access.Clone(p), true
+}
+
+func (s *MemoryStore) ListPackages(workspaceID string) []access.Package {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []access.Package{}
+	for _, p := range s.packageLive {
+		if p.WorkspaceID == workspaceID {
+			out = append(out, access.Clone(p))
+		}
+	}
+	for _, p := range s.packageDrafts {
+		if p.WorkspaceID == workspaceID {
+			out = append(out, access.Clone(p))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].ID < out[j].ID || (out[i].ID == out[j].ID && out[i].Status < out[j].Status)
+	})
+	return out
+}
+
+func (s *MemoryStore) PolicyForTool(workspaceID, publicName string) ([]access.Package, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []access.Package{}
+	for _, p := range s.packageLive {
+		if p.WorkspaceID != workspaceID {
+			continue
+		}
+		for _, rule := range p.Rules {
+			if rule.PublicName == publicName {
+				out = append(out, access.Clone(p))
+				break
+			}
+		}
+	}
+	return out, s.governedTools[workspaceID][publicName]
+}
+
+func (s *MemoryStore) AppendPolicyEvent(workspaceID string, event PolicyEvent) {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	events := append(s.policyEvents[workspaceID], event)
+	if len(events) > 10000 {
+		events = append([]PolicyEvent(nil), events[len(events)-10000:]...)
+	}
+	s.policyEvents[workspaceID] = events
+}
+
+func (s *MemoryStore) ListPolicyEvents(workspaceID string) []PolicyEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]PolicyEvent{}, s.policyEvents[workspaceID]...)
 }
 
 // ListToolsForConnector returns snapshots for one connector.
@@ -408,7 +598,7 @@ func (s *MemoryStore) ListConnectors(workspaceID string) []Connector {
 // fingerprint on a known tool quarantines it until admin review.
 func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	prev, known := s.tools[t.PublicName]
 	if !known {
 		t.Version = 1
@@ -446,7 +636,7 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 // changes its definition makes the approval fail rather than approve new code.
 func (s *MemoryStore) ApproveTool(workspaceID, publicName, fingerprint string, version int) (ToolSnapshot, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	t, ok := s.tools[publicName]
 	if !ok || t.WorkspaceID != workspaceID || t.Status != StatusQuarantined || t.Fingerprint != fingerprint || t.Version != version {
 		return ToolSnapshot{}, false
@@ -473,7 +663,7 @@ func (s *MemoryStore) ListToolVersions(workspaceID, publicName string) []ToolSna
 // UpsertToolSnapshot revives it.
 func (s *MemoryStore) DisableMissingTools(connectorID string, present map[string]bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	for name, t := range s.tools {
 		if t.ConnectorID == connectorID && !present[name] && t.Status != StatusDisabled {
 			if t.Status == StatusActive && t.ApprovedFingerprint == "" {
@@ -507,7 +697,7 @@ func (s *MemoryStore) ListTools(workspaceID string) []ToolSnapshot {
 
 func (s *MemoryStore) AddGrant(g Grant) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	if s.grants[g.UserID] == nil {
 		s.grants[g.UserID] = map[string]bool{}
 	}
@@ -516,7 +706,7 @@ func (s *MemoryStore) AddGrant(g Grant) {
 
 func (s *MemoryStore) RevokeGrant(userID, publicName string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	delete(s.grants[userID], publicName)
 }
 
@@ -528,7 +718,7 @@ func (s *MemoryStore) HasGrant(userID, publicName string) bool {
 
 func (s *MemoryStore) AddGroupGrant(g GroupGrant) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	if s.groupGrants[g.GroupID] == nil {
 		s.groupGrants[g.GroupID] = map[string]bool{}
 	}
@@ -537,7 +727,7 @@ func (s *MemoryStore) AddGroupGrant(g GroupGrant) {
 
 func (s *MemoryStore) RevokeGroupGrant(groupID, publicName string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	delete(s.groupGrants[groupID], publicName)
 }
 
@@ -567,7 +757,7 @@ func (s *MemoryStore) GroupGrantsFor(groupID string) []string {
 
 func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	if s.groupServers[groupID] == nil {
 		s.groupServers[groupID] = map[string]bool{}
 	}
@@ -576,8 +766,80 @@ func (s *MemoryStore) AddGroupServerGrant(groupID, connectorID string) {
 
 func (s *MemoryStore) RevokeGroupServerGrant(groupID, connectorID string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	delete(s.groupServers[groupID], connectorID)
+}
+
+// RemoveGroupConnectorAccess atomically removes this group's server grant,
+// individual tool grants, and matching draft/live rules. Other connectors and
+// groups keep their access. Existing governance tombstones remain in place.
+func (s *MemoryStore) RemoveGroupConnectorAccess(workspaceID, groupID, connectorID, actor string) bool {
+	s.mu.Lock()
+	defer s.persistUnlock()
+	g, groupOK := s.groups[groupID]
+	c, connectorOK := s.connectors[connectorID]
+	if !groupOK || !connectorOK || g.WorkspaceID != workspaceID || c.WorkspaceID != workspaceID {
+		return false
+	}
+	delete(s.groupServers[groupID], connectorID)
+	names := map[string]bool{}
+	for name, tool := range s.tools {
+		if tool.WorkspaceID == workspaceID && tool.ConnectorID == connectorID {
+			names[name] = true
+			delete(s.groupGrants[groupID], name)
+		}
+	}
+	ids := map[string]bool{}
+	for _, records := range []map[string]access.Package{s.packageDrafts, s.packageLive} {
+		for id, p := range records {
+			if p.WorkspaceID != workspaceID || p.GroupID != groupID {
+				continue
+			}
+			for _, rule := range p.Rules {
+				if names[rule.PublicName] {
+					ids[id] = true
+					break
+				}
+			}
+		}
+	}
+	for id := range ids {
+		version := s.packageLive[id].Version
+		if draft := s.packageDrafts[id]; draft.Version > version {
+			version = draft.Version
+		}
+		version++ // Invalidates any review or publish request made before removal.
+		for _, records := range []map[string]access.Package{s.packageDrafts, s.packageLive} {
+			p, ok := records[id]
+			if !ok {
+				continue
+			}
+			p = access.Clone(p)
+			kept := []access.ToolRule{}
+			for _, rule := range p.Rules {
+				if !names[rule.PublicName] {
+					kept = append(kept, rule)
+				}
+			}
+			p.Rules, p.Version = kept, version
+			if len(kept) == 0 {
+				if p.Status == "draft" {
+					delete(records, id)
+					continue
+				}
+				p.Status = "revoked"
+			}
+			records[id] = p
+		}
+		s.policyEvents[workspaceID] = append(s.policyEvents[workspaceID], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: "remove_server_from_group", PackageID: id, Version: version, GroupID: groupID, ConnectorID: connectorID})
+	}
+	if len(ids) == 0 {
+		s.policyEvents[workspaceID] = append(s.policyEvents[workspaceID], PolicyEvent{At: time.Now().UTC(), Actor: actor, Action: "remove_server_from_group", GroupID: groupID, ConnectorID: connectorID})
+	}
+	if len(s.policyEvents[workspaceID]) > 10000 {
+		s.policyEvents[workspaceID] = append([]PolicyEvent(nil), s.policyEvents[workspaceID][len(s.policyEvents[workspaceID])-10000:]...)
+	}
+	return true
 }
 
 // HasServerGrant reports whether any of the user's groups is attached to
@@ -610,7 +872,7 @@ func (s *MemoryStore) GroupHasServer(groupID, connectorID string) bool {
 // RenameGroup changes a group's display name.
 func (s *MemoryStore) RenameGroup(groupID, name string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	if g, ok := s.groups[groupID]; ok {
 		g.Name = name
 		s.groups[groupID] = g
@@ -630,7 +892,7 @@ type APIKey struct {
 
 func (s *MemoryStore) AddAPIKey(k APIKey) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	hash := tokenHash(k.Token)
 	k.Token = ""
 	s.apiKeys[hash] = k
@@ -666,7 +928,7 @@ func (s *MemoryStore) ListAPIKeys(groupID string) []APIKey {
 // RevokeAPIKey deletes a key by ID. It reports whether one existed.
 func (s *MemoryStore) RevokeAPIKey(groupID, id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	for token, k := range s.apiKeys {
 		if k.GroupID == groupID && k.ID == id {
 			delete(s.apiKeys, token)
@@ -859,13 +1121,13 @@ func (s *MemoryStore) SummarizeAudit(f AuditFilter) AuditSummary {
 
 func (s *MemoryStore) PutPIIRule(rule pii.Rule) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	s.piiRules[rule.ID] = rule
 }
 
 func (s *MemoryStore) DeletePIIRule(workspaceID, id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer s.persistUnlock()
 	rule, ok := s.piiRules[id]
 	if !ok || rule.WorkspaceID != workspaceID {
 		return false

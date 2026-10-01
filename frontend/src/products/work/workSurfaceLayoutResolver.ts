@@ -49,3 +49,10 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background row-start-2 ${chatOpen ? 'md:col-start-2' : 'col-start-1'}`,
   }
 }
+
+/** Keep both panes usable while honoring the resize rail's 15–85% bounds. */
+export function clampWorkSplitRatio(ratio: number, width: number): number {
+  const minPaneWidth = 240
+  const minRatio = Math.max(0.15, Math.min(0.5, minPaneWidth / Math.max(width, minPaneWidth * 2)))
+  return Math.max(minRatio, Math.min(Math.min(0.85, 1 - minRatio), ratio))
+}

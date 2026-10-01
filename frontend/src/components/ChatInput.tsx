@@ -11,10 +11,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { Send, Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
+import { Wand2, Loader2, Globe, Layers, X, History, Server, Download, Paperclip, Terminal, Plus } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
-import { Textarea } from './ui/Textarea'
+import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import FileSelectionDialog from './FileSelectionDialog'
@@ -1635,32 +1635,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Auto-resize textarea based on content
   const adjustTextareaHeight = useCallback(() => {
-    if (textareaRef.current) {
-      const textarea = textareaRef.current
-      // Product surfaces start one line shorter (36px vs 40px) to stay compact
-      // when empty, but still grow with real wrapped content rather than
-      // scrolling it off-screen horizontally.
-      const floor = isProductSurface ? 36 : 40
-      // Fast path: the box is already at its floor and the content fits (no
-      // vertical overflow). There is nothing to grow or shrink, so DON'T flip
-      // height to 'auto' — that forced reflow is what jitters the flex column and
-      // fires the terminal's ResizeObserver on every keystroke, even a single
-      // character that needs no growth at all.
-      if (textarea.style.height === `${floor}px` && textarea.scrollHeight <= textarea.clientHeight) {
-        return
-      }
-      // Reset height to auto to get correct scrollHeight
-      textarea.style.height = 'auto'
-      // Calculate new height (min = floor, max 100px)
-      // scrollHeight includes padding, so we get the exact content height
-      const newHeight = Math.min(Math.max(textarea.scrollHeight, floor), 100)
-      const newHeightPx = `${newHeight}px`
-      // Only write when it actually changes so an unchanged height never leaves a
-      // pending style mutation / extra layout pass.
-      if (textarea.style.height !== newHeightPx) {
-        textarea.style.height = newHeightPx
-      }
-    }
+    if (textareaRef.current) resizeChatComposerTextarea(textareaRef.current, isProductSurface)
   }, [isProductSurface])
 
   // Preset draft sync belongs only to interactive product composers.
@@ -3109,7 +3084,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   return (
     <TooltipProvider>
-      <div className={isProductSurface ? 'border-t border-border bg-background py-1.5 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]' : 'space-y-1'} data-product-chat-input={isProductSurface || undefined}>
+      <ChatComposerBand product={isProductSurface}>
       {nativeTerminalTools && (
         <NativeTerminalToolbar
           className={inputPadX}
@@ -3260,18 +3235,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       {/* Input Form */}
       {/* The transcript above ends with its own margin; keep the band's top
           padding small so the last message and the composer read as one column. */}
-      <div data-tour="chat-input-area" data-testid="tour-chat-input-area" className={`${inputPadX} ${isProductSurface ? 'py-1.5' : 'pt-1 pb-2'}`}>
-        <form onSubmit={handleSubmit} className={isProductSurface ? 'relative' : 'relative space-y-1'}>
-          {/* The mic's banner (download progress, "Listening" with the live
-              transcript) portals here, in normal flow directly above the
-              composer box, so it can never be clipped by a container. */}
-          <div ref={setMicBannerHost} className="empty:hidden" />
-          <div className={isProductSurface
-            // Keep the customer composer visually steady while events stream.
-            // The former ring-4 plus catch-all `transition` made a harmless
-            // focus hand-off look like a pulsing purple border on redraws.
-            ? 'space-y-0.5 rounded-2xl border border-border bg-card px-1.5 py-0.5 shadow-sm transition-colors duration-150 focus-within:border-ring'
-            : 'space-y-1 rounded-xl border border-slate-700/80 bg-[#101513] p-1.5 shadow-sm transition focus-within:border-slate-500'}>
+      <ChatComposerArea product={isProductSurface} className={inputPadX}>
+        <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<div ref={setMicBannerHost} className="empty:hidden" />}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
                 The product surface used to collapse this to a bare "N messages
@@ -3325,7 +3290,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 per-keystroke height='auto' reflow that would otherwise resize the
                 terminal on single-line typing; only a real wrap grows it. */}
             <div>
-            <Textarea
+            <ChatComposerTextarea
+              product={isProductSurface}
               data-tour="chat-input-box"
               ref={textareaRef}
               value={inputText}
@@ -3348,9 +3314,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               onDrop={handleTextareaDrop}
               rows={isProductSurface ? 1 : undefined}
               placeholder={placeholder}
-              className={`${isProductSurface ? '!min-h-[32px] max-h-[100px] !border-0 !bg-transparent !px-1.5 !py-1 text-sm text-foreground !shadow-none focus-visible:!ring-0 placeholder:text-sm placeholder:text-muted-foreground' : '!min-h-[36px] max-h-[100px] !border-0 !bg-transparent !py-1.5 !px-2 text-xs !shadow-none focus-visible:!ring-0 placeholder:text-xs'} resize-none overflow-y-auto leading-[1.3] ${
-                isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : ''
-              }`}
+              className={isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
               disabled={inputDisabled}
               data-testid="chat-input-textarea"
             />
@@ -3360,7 +3324,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 Drop files to upload and attach to this chat
               </div>
             )}
-            <div className="flex justify-between items-center">
+<ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
                 {showNewChatAction && onNewChat ? (
                   <Button
@@ -3454,7 +3418,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                           onStart={requestNewConversation}
                         />
                       )}
-                      {isProductSurface && engineGroups.some((g) => g.models.length > 0) && (
+                      {isProductProfile && agentProfileId !== 'caplayer' && engineGroups.some((g) => g.models.length > 0) && (
                         <ModelReasoningControl
                           engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id, models: g.models }))}
                           currentEngineId={currentEngine}
@@ -3803,17 +3767,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {showStopButton ? stopButton : (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button
+                            <ChatComposerSendButton
+                              product={isProductSurface}
                               type="button"
                               onClick={handleSendButtonClick}
                               disabled={submitButtonDisabled}
-                              size="icon"
-                              className={isProductSurface ? 'h-7 w-7 bg-violet-600 p-0 text-white hover:bg-violet-500' : 'h-7 w-7 p-0'}
                               data-testid="chat-submit-button"
                               aria-label={nativeTerminalTools ? "Send to terminal" : "Send message"}
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                            </Button>
+                            />
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>
@@ -3836,9 +3797,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     </div>
                 </div>
               )}
-            </div>
-          </div>
-        </form>
+            </ChatComposerControls>
+        </ChatComposerForm>
         <input
           ref={fileUploadInputRef}
           type="file"
@@ -3847,7 +3807,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           className="hidden"
           disabled={isUploadingFiles}
         />
-      </div>
+      </ChatComposerArea>
       
       </div>
 
@@ -3960,10 +3920,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         />
       )}
       <CodingProvidersPanel
-        isOpen={showModels}
+        isOpen={agentProfileId !== 'caplayer' && showModels}
         onClose={() => closeDialog('models')}
       />
-      </div>
+      </ChatComposerBand>
     </TooltipProvider>
   )
 }

@@ -300,7 +300,7 @@ func (api *StreamingAPI) lookupAgentProfileDefinition(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	return &resolvedAgentProfile{Definition: profile}, nil
@@ -328,7 +328,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err != nil {
 		return nil, err
 	}
-	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) {
+	if !userAllowedProduct(GetUserFromContext(ctx), profile.Product) || !canUseCapLayerProfile(ctx, profile.ID) {
 		return nil, fmt.Errorf("you don't have access to the %q product", profile.Product)
 	}
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal

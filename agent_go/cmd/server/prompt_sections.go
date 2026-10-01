@@ -48,11 +48,13 @@ type promptSection struct {
 // value the caller did not intend to expose, and so `Applies` stays a pure
 // function of stated inputs rather than of whatever happened to be in scope.
 type promptContext struct {
-	Provider        string
-	ProfileID       string
-	HasProfile      bool
-	IsWorkflowPhase bool
-	CrewReadOnly    bool
+	// Narrow tool profiles must not promise file access or project memory.
+	WorkspaceFilesDisabled bool
+	Provider               string
+	ProfileID              string
+	HasProfile             bool
+	IsWorkflowPhase        bool
+	CrewReadOnly           bool
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
@@ -130,7 +132,7 @@ var promptSections = []promptSection{
 		// Compact folder listing with absolute paths and access levels. One of
 		// three variants; every session gets exactly one.
 		Name:    "workspace-map",
-		Applies: func(promptContext) bool { return true },
+		Applies: func(c promptContext) bool { return !c.WorkspaceFilesDisabled },
 		Build: func(c promptContext) string {
 			switch {
 			case c.IsWorkflowPhase:
@@ -149,8 +151,9 @@ var promptSections = []promptSection{
 		// Product and workflow sessions share one visible project-level memory
 		// contract regardless of provider. Plain unscoped chats have no project
 		// root and therefore do not receive a misleading persistence promise.
-		Name:    "project-memory",
-		Applies: func(c promptContext) bool { return c.HasProfile || c.IsWorkflowPhase },
+		Name: "project-memory",
+
+		Applies: func(c promptContext) bool { return !c.WorkspaceFilesDisabled && (c.HasProfile || c.IsWorkflowPhase) },
 		Build: func(c promptContext) string {
 			if c.CrewReadOnly {
 				return "## Persistent project memory\n\nRead the Crew's project-root MEMORY.md when relevant, within the current folder grants. Run mode cannot update memory, instructions, or skills. In a private CLI runtime, the project memory is at project/MEMORY.md.\n"

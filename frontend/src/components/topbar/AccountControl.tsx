@@ -71,10 +71,10 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
         >
           <div className="px-2 py-1.5 mb-1 border-b border-gray-200 dark:border-slate-700">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
-            {isMultiUserMode && user.email && user.username !== user.email && (
+            {isMultiUserMode && user?.email && user.username !== user.email && (
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
             )}
-            <p className="text-xs text-gray-500 dark:text-gray-400">AgentWorks v{APP_VERSION}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
           </div>
           {onOpenWalkthrough && <button type="button" role="menuitem" className={itemClass} onClick={() => {
             setOpen(false)
@@ -90,7 +90,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             <Keyboard className="h-4 w-4 text-muted-foreground" />
             Keyboard shortcuts
           </button>}
-          <NotificationsControl menuItem />
+          {<NotificationsControl menuItem />}
           <div role="separator" className="my-1 border-t border-border" />
           {isMultiUserMode && <button
             type="button"

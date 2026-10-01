@@ -15,6 +15,10 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(all, ['dominion'])).toEqual(['dominion'])
     expect(selectableProducts(all, ['video-studio'])).toEqual(['video-studio'])
   })
+  it('offers CapLayer only when the server and deployment enable it', () => {
+    expect(selectableProducts([...all, 'mcp-gateway'], ['agentworks', 'work', 'mcp-gateway'])).toEqual(['agentworks', 'work', 'mcp-gateway'])
+    expect(selectableProducts(all, ['mcp-gateway'])).toEqual([])
+  })
   it('offers nothing the server does not host', () => {
     expect(selectableProducts(['code'], ['agentworks', 'code'])).toEqual(['code'])
     expect(selectableProducts([], ['code'])).toEqual([])

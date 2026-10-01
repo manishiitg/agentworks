@@ -23,6 +23,7 @@ import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
+import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
 import McpControl from './topbar/McpControl'
@@ -158,7 +159,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const [pendingDuplicatePreset, setPendingDuplicatePreset] = useState<{ id: string; label: string } | null>(null)
   const [duplicatingPreset, setDuplicatingPreset] = useState(false)
   const [llmDiscoveryReady, setLLMDiscoveryReady] = useState(() => getLLMDiscoveryOnboardingState() === 'cleared')
-  const workflowPresetsLoaded = useGlobalPresetStore(state => state.workflowPresetsLoaded)
   // The persisted preset ID arrives before its manifest. Until the initial
   // fetch finishes, an existing automation looks like an empty workspace.
   const walkthroughStartupReady = walkthroughReady && (productWalkthroughSurface !== undefined || workflowPresetsLoaded)
@@ -598,10 +598,9 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <div data-terminal-focus-chrome="header" className="flex-shrink-0 border-b border-border bg-muted px-4 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
+      <ProductTopBar>
           {/* Product and current automation */}
-          <div className="flex min-w-0 items-center gap-3">
+          <ProductTopBarMain>
             <RuntimeBrandLogo className="mr-1" />
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             <ProductSurfaceSwitcher className="mr-1" />
@@ -761,11 +760,11 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 return null
               })()}
             </div>
-          </div>
+          </ProductTopBarMain>
 
           {/* Right: icons */}
           <TooltipProvider delayDuration={400}>
-            <div className="flex shrink-0 items-center gap-2">
+            <ProductTopBarActions>
               <GlobalActivityMonitor />
 
               <ProvidersControl />
@@ -816,10 +815,9 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 onOpenShortcuts={reduced ? undefined : () => setShowShortcuts(true)}
               />
 
-            </div>
+            </ProductTopBarActions>
           </TooltipProvider>
-        </div>
-      </div>
+      </ProductTopBar>
 
       {/* Keyboard Shortcuts & Tips Modal */}
       {showShortcuts && (

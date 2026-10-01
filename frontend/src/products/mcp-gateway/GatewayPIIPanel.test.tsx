@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewayPIIPanel } from './GatewayPIIPanel'
 
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18161', getAuthToken: () => 'product-jwt' }))
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const BASE = 'http://127.0.0.1:18161'
 const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body } as Response)
@@ -35,7 +37,7 @@ describe('GatewayPIIPanel', () => {
       sample.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Test policy') as HTMLButtonElement).click() })
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/admin/pii/test`, expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/pii/test`, expect.objectContaining({ method: 'POST' }))
     expect(container.textContent).toContain('[REDACTED:email]')
   })
 })

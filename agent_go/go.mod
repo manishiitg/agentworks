@@ -41,9 +41,6 @@ replace github.com/manishiitg/coding-agent-loop/workspace => ../workspace
 
 replace github.com/manishiitg/coding-agent-loop/mcpoauth => ./pkg/mcpoauth
 
-// Keep the multi-llm-provider checkout until its in-flight work is tagged.
-replace github.com/manishiitg/multi-llm-provider-go => ../../multi-llm-provider-go
-
 require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.18.2 // indirect

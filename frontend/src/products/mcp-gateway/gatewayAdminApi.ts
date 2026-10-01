@@ -1,3 +1,5 @@
+import { getApiBaseUrl, getAuthToken } from '../../services/api'
+
 /**
  * Typed client for the MCP Gateway admin API (`/api/admin/*`).
  *
@@ -22,6 +24,7 @@ export interface GatewayConnector {
   InstanceSlug: string
   Label: string
   UpstreamURL: string
+  OAuthServer?: string
   Status: string
 }
 
@@ -111,6 +114,30 @@ export interface GatewayAPIKey {
   LastUsedAt: string
 }
 
+export interface GatewayAccessCondition {
+  path: string
+  op: 'equals' | 'matches'
+  value: string
+}
+
+export interface GatewayAccessPackage {
+  id: string
+  workspace_id: string
+  group_id: string
+  name: string
+  status: 'draft' | 'published' | 'revoked'
+  version: number
+  rules: { public_name: string; fingerprint: string; conditions: GatewayAccessCondition[] }[]
+}
+
+export interface GatewayPolicyEvent {
+  at: string
+  actor: string
+  action: string
+  package_id: string
+  version: number
+}
+
 export class GatewayApiError extends Error {
   status: number
 
@@ -123,26 +150,11 @@ export class GatewayApiError extends Error {
 
 export const GATEWAY_AUTH_REQUIRED_EVENT = 'caplayer-admin-auth-required'
 
-function tokenKey(base: string): string {
-  return `caplayer-admin-token:${base}`
-}
-
-export function gatewayAdminToken(base: string): string {
-  try { return sessionStorage.getItem(tokenKey(base)) ?? '' } catch { return '' }
-}
-
-export function setGatewayAdminToken(base: string, token: string): void {
-  try {
-    if (token) sessionStorage.setItem(tokenKey(base), token)
-    else sessionStorage.removeItem(tokenKey(base))
-  } catch { /* Private browsing may block storage; the request will fail closed. */ }
-}
-
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   let resp: Response
   try {
-    const token = gatewayAdminToken(base)
-    resp = await fetch(`${base}${path}`, {
+    const token = getAuthToken()
+    resp = await fetch(`${getApiBaseUrl()}/api/caplayer${path}`, {
       ...init,
       headers: { Accept: 'application/json', ...(init?.headers ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     })
@@ -158,7 +170,6 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
   }
   if (!resp.ok) {
     if (resp.status === 401 && typeof window !== 'undefined') {
-      setGatewayAdminToken(base, '')
       window.dispatchEvent(new CustomEvent(GATEWAY_AUTH_REQUIRED_EVENT, { detail: base }))
     }
     const detail =
@@ -180,10 +191,6 @@ function post<T>(base: string, path: string, body: unknown): Promise<T> {
 
 export function listUsers(base: string): Promise<{ users: GatewayUser[] }> {
   return request(base, '/api/admin/users')
-}
-
-export function createUser(base: string, id: string, email: string): Promise<{ id: string }> {
-  return post(base, '/api/admin/users', { ID: id, Email: email })
 }
 
 export function listGroups(base: string): Promise<{ groups: GatewayGroup[] }> {
@@ -240,16 +247,24 @@ export function detachGroupServer(base: string, groupId: string, connectorId: st
   })
 }
 
+export function removeGroupServerAccess(base: string, groupId: string, connectorId: string): Promise<void> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/servers/${encodeURIComponent(connectorId)}/access`, { method: 'DELETE' })
+}
+
 export function listConnectors(base: string): Promise<{ connectors: GatewayConnector[] }> {
   return request(base, '/api/admin/connectors')
 }
 
-export function createConnector(base: string, input: { Provider: string; Label: string; Slug: string; URL: string }): Promise<GatewayConnector> {
+export function createConnector(base: string, input: { Provider: string; Label: string; Slug: string; URL: string; BearerToken?: string }): Promise<GatewayConnector> {
   return post(base, '/api/admin/connectors', input)
 }
 
 export function syncConnector(base: string, id: string): Promise<{ status: string }> {
   return post(base, `/api/admin/connectors/${encodeURIComponent(id)}/sync`, {})
+}
+
+export function setConnectorBearer(base: string, id: string, bearerToken: string): Promise<{ status: string }> {
+  return post(base, `/api/admin/connectors/${encodeURIComponent(id)}/credential`, { BearerToken: bearerToken })
 }
 
 export function deleteConnector(base: string, id: string): Promise<void> {
@@ -350,4 +365,36 @@ export function approvePIIReview(base: string, id: string): Promise<{ status: st
 
 export function listCatalog(base: string): Promise<{ providers: GatewayProvider[] }> {
   return request(base, '/api/admin/catalog')
+}
+
+export function listAccessPackages(base: string): Promise<{ packages: GatewayAccessPackage[] }> {
+  return request(base, '/api/admin/access/packages')
+}
+
+export function listAccessHistory(base: string): Promise<{ events: GatewayPolicyEvent[] }> {
+  return request(base, '/api/admin/access/history')
+}
+
+export function publishAccessPackage(base: string, id: string, version?: number): Promise<GatewayAccessPackage> {
+  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/publish`, version === undefined ? {} : { version })
+}
+
+export function revokeAccessPackage(base: string, id: string): Promise<GatewayAccessPackage> {
+  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/revoke`, {})
+}
+
+export function simulateAccessPackage(base: string, id: string, publicName: string, args: Record<string, unknown>): Promise<{ allowed: boolean }> {
+  return post(base, `/api/admin/access/packages/${encodeURIComponent(id)}/simulate`, { public_name: publicName, arguments: args })
+}
+
+export interface GatewayGroupPermission {
+  public_name: string
+  allowed: boolean
+  governed: boolean
+  source: '' | 'tool' | 'server' | 'policy'
+  assigned: boolean
+}
+
+export function listGroupPermissions(base: string, groupId: string): Promise<{ permissions: GatewayGroupPermission[] }> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/permissions`)
 }
