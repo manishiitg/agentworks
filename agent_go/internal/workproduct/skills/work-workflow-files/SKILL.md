@@ -1,9 +1,46 @@
 ---
 name: work-workflow-files
-description: Read and interpret attached folders or read-only AgentWorks workflow references in {{product}}, invoke an attached workflow through its {{product}}-scoped internal trigger, and securely link files from the active {{product}} project. Use when the user asks what an attached workflow contains, wants it run, requests data or Dashboards from it, compares files across workflows, or asks for a share link to a {{product}} project file or folder.
+description: Read authorized tagged or attached Crew/workflow files, Dashboards and schedules; manage durable references; call another agent's functions; and link files from the active {{product}} project. Read before discovering, attaching, reading or invoking referenced projects.
 ---
 
-# Use attached workflows
+# Use tagged and attached projects
+
+## Tagged Crew files, Dashboards and schedules
+
+A picker selection such as `#crew:<name>` or `#workflow:<name>` names the
+exact folder listed in this message's reference context. These are project
+references, never Slack channels. The tag attaches access to the existing
+folder for this message; it does not copy files into the current project or
+make a permanent connection. A typed name alone is not a filesystem grant.
+
+Resolve each listed path against `$WORKSPACE_DOCS_PATH`, never the CLI's
+current working directory. Read only the exact authorized folder; do not
+probe its parent or scan other projects. A denied parent listing does not
+prove that the attached child is inaccessible: check an exact listed file.
+Runtime grants and tool refusals determine access. A tag never overrides
+ownership, product availability or sandbox restrictions. Projects are private
+by default; do not promise access to another owner's files.
+
+For a tagged Crew:
+
+- Start with `product.json` and `workflow.json` for identity, capabilities,
+  schedule definitions and durable references. Then read relevant `code/`
+  or other files on demand.
+- Read Dashboard source in `db/reports/`, commonly `index.html`, and query
+  its database read-only when needed. The Dashboard stays in the Crew's UI;
+  attaching it does not replace the current project's Dashboard. The current
+  project's `get_report_link` tool does not target another Crew: ask that Crew
+  for its Dashboard link when needed.
+- Schedule definitions live in `workflow.json`. For current enablement, next
+  run or latest run status, call the Crew's `ask` function and request its
+  `list_project_schedules` result. Your own `list_project_schedules` tool is
+  bound to this project, not the tagged Crew.
+- Edit only when the user requests it and the runtime grants write access.
+  A referenced Crew's whole `db/` subtree is read-only, including Dashboard
+  HTML and database sidecars. Its `builder/` subtree (chat history and chat
+  state) is blocked even when both projects have the same owner. Do not try
+  another tool or path to bypass either restriction; ask the Crew to do
+  authorized work in its own project instead.
 
 ## Share an active {{product}} project file or folder
 
@@ -39,15 +76,15 @@ Resolve the authorized root before reading:
   supplied in attached context. `list_accessible_workflows` returns separate
   `workflows` and `crews` lists; every entry includes its project `name` and
   display `identity` (`name` and `icon`), and each Crew also its `owner`.
-  Crews are shared: any Crew on the server can be attached. Use the exact
+  Discovery does not itself grant file access. Use the exact authorized
   returned path; never guess a project path or scan unattached projects.
 - For a host folder, call `list_work_folders` and use its
   `$WORK_FOLDER_<ALIAS>` variable. Do not inspect the parent directory.
 - Workflow references and host folders are read-only unless a host-folder
   grant explicitly says `read_write`. Never edit a referenced workflow.
   Execution is allowed only through the trigger procedures below.
-- Crew references (tagged or attached, any owner) are read-write: you may
-  edit another Crew's files when the user asks, as you would your own.
+- Crew references follow the effective runtime grants and the restrictions
+  above. Never infer write access from a Crew's name or discovery result.
 
 A `#` workflow selection applies only to that message. For durable access to a
 workflow or another Crew, use
@@ -90,14 +127,22 @@ Crews, workflows and external tools (MCP, the `agentworks` CLI) call each other
 in one way: **functions**. That works in every direction (Crew→Crew,
 Crew→workflow, workflow→Crew, workflow→workflow). The user usually tags the
 target as `#crew:<name>` or `#workflow:<name>`; those tags are references,
-never Slack channels. Targets are any Crew on the server and workflows the
-user owns or can edit. Every Crew is callable with no setup.
+never Slack channels. Call only targets accessible to the current user.
+Function-call authorization and folder access are separate: a callable target
+does not automatically grant access to its files.
+
+Code may call accessible Crews/workflows and explicitly declared functions
+on other Codes owned by the same account. Only same-owner Codes and the
+owner's authorized Crews/workflows can call a private Code; other owners,
+shared readers/editors and external connections cannot. Codes do not appear
+in the public Crew/MCP catalog. When tools allow it, Code may define its own
+functions and answer authorized incoming calls using the result contract below.
 
 **Where calls run.** Each caller has one continuing conversation with each
 Crew it calls, created on the first call. Follow-up calls land in the same
 conversation, so the target remembers earlier calls from you. Calls never run
-in the target's main chat, which is for people. A workflow target runs its plan
-with the call's arguments.
+in the target's main chat, which is for people. A typed workflow function runs
+its declared route with the call's arguments; `ask` talks to its Run assistant.
 
 ### Functions
 
@@ -176,10 +221,11 @@ folders can contain large run histories and caches.
 | `runs/run_index.json` and `runs/iteration-*` | Run metadata, logs, and per-step execution outputs. Select the relevant/latest run instead of crawling all runs. |
 | `reports/` | Published or user-scoped Dashboard artifacts, when present. |
 
-Folders such as `builder/`, `planning/`, `config/`, `costs/`, `evaluation/`,
+For workflow references, folders such as `builder/`, `planning/`, `config/`, `costs/`, `evaluation/`,
 `pulse/`, `scores/`, `soul/`, `backup/`, `versions/`, hidden provider folders,
 and `tool_output_folder/` are platform/runtime state. Inspect them only when the
-user's question specifically requires diagnostics, history, or architecture.
+user's question specifically requires diagnostics, history, or architecture
+and the runtime permits it. A referenced Crew's `builder/` stays blocked.
 
 For an attached workflow database, use a read-only shell query such as
 `sqlite3 -readonly "$root/db/db.sqlite" ...`. The {{product}} project's

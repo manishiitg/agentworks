@@ -6772,11 +6772,29 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
 			}
 			if len(req.WorkflowContextPaths) > 0 {
+				referenceSkillName := "work-workflow-files"
+				if resolvedProfile != nil {
+					referenceSkillName = agentprofiles.FeatureSkillName(resolvedProfile.Definition.ID, referenceSkillName)
+				} else {
+					// Workflow chats have no project profile to attach feature skills.
+					// Supply the same canonical reference guide before pointing to it.
+					referenceSkills := skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, []string{referenceSkillName})
+					if len(referenceSkills) == 0 {
+						sendError("Project reference guidance is unavailable", true)
+						return
+					}
+					for _, referenceSkill := range referenceSkills {
+						if err := llmAgent.AttachSkill(referenceSkill); err != nil {
+							sendError(fmt.Sprintf("Failed to attach project reference guidance: %v", err), true)
+							return
+						}
+					}
+				}
 				promptPaths := req.authorizedWorkflowContextReadPaths
 				if len(promptPaths) == 0 {
 					promptPaths = req.WorkflowContextPaths
 				}
-				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs))
+				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs), referenceSkillName)
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))

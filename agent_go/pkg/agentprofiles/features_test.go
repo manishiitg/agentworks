@@ -135,7 +135,10 @@ func TestWorkflowReferencesProjectScopedCrewInvocationTools(t *testing.T) {
 		}
 	}
 	if got := strings.Join(FeaturePromptExtensions(profile), "\n"); !strings.Contains(got, "Crew-scoped secretless internal trigger") || !strings.Contains(got, "public webhook triggers") {
-		t.Fatalf("workflow-reference guidance does not preserve the invocation boundary: %q", got)
+		t.Fatalf("workflow-reference constraints must preserve the invocation boundary: %q", got)
+	}
+	if got := profile.ResolvedFeatures[0].PromptExtension; !strings.Contains(got, "work-workflow-files") || strings.Contains(got, "call_function") {
+		t.Fatalf("feature metadata must route procedures to its skill: %q", got)
 	}
 }
 

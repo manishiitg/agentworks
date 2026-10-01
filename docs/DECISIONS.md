@@ -13,6 +13,49 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Preserve MCP images through the coding CLI bridge
+
+- RTS/Manish's `sde private` Code chat used Claude and Jam's video tools;
+  the agent reported text describing frames but could not see their pixels.
+  The executor's text-only conversion discarded MCP image blocks and the
+  stdio bridge reconstructed only a text result. Native file tools cannot
+  open an image which was never delivered or saved.
+- Keep the legacy HTTP `result` text and add optional `images` carrying the
+  original MIME type/base64 payload. The bridge returns valid images as native
+  MCP image blocks and saves exact bytes as 0600 files under its parent-selected
+  session `tool_output_folder`. Return paths for native image/file tools or
+  `read_image`; do not dump base64 into the text transcript. This uses the
+  existing sandbox/output-directory grant and adds no folder authority.
+- Bound inline images to 512 KiB total to preserve the stdio response budget;
+  larger images use the exact saved file. Local files are capped at 20 MiB per
+  image. Invalid payloads and save failures are reported explicitly; valid
+  inline images survive a local-file save failure. Source: mcpagent
+  `executor`, `cmd/mcpbridge`. A real executor → HTTP → stdio MCP test covers
+  Jam-shaped mixed and image-only results, exact bytes and private file modes.
+- The fix must be deployed and the CLI's bridge restarted before a retained
+  session gets it. No RTS deployment or live conversation restart was done
+  during this investigation.
+
+### 2026-10-01 — Tagged project procedures belong in the reference skill
+
+- Keep the dynamic prompt to exact typed tags/folder paths, effective runtime
+  authority and a pointer to the attached reference skill. Detailed path
+  resolution, inspection, schedules, Dashboard links, durable attachments and
+  function-call procedures live in one shared `work-workflow-files` template.
+  Product rendering gives Code its `code-workflow-files` name; workflow chats
+  receive the canonical guide when they have references. Feature constraints
+  continue to state the always-on authorization boundaries.
+- Remove claims that any owner's Crew files are shared and advice to read a
+  referenced Crew's blocked `builder/`. A tag and a callable function do not
+  override privacy. Reference files follow actual grants; referenced Crew
+  `db/` is read-only and `builder/` is blocked. Schedule definitions are in
+  `workflow.json`; a caller requests live schedule status or the target's
+  Dashboard link through that target's `ask`, rather than using tools bound
+  to the caller's own project.
+- Code: `instructions.go`, `server.go`, feature metadata and the shared skill.
+  Tests keep typed labels/exact roots, verify product-specific skill pointers,
+  and preserve the feature tool surfaces and invocation constraints.
+
 ### 2026-10-01 — Slotted commands were not stopped by a timeout, cancel or kill
 
 - **Found (tested on Confida, then on a server with the real code path).** The platform stops a shell command by
