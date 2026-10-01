@@ -61,6 +61,30 @@ describe('flattenVisiblePlannerFiles', () => {
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 describe('PlannerFileList Work controls', () => {
+  it('keeps the project root and identity metadata out of bulk selection', async () => {
+    const toggle = vi.fn()
+    const files = [file('project', 'folder', [file('project/app.ts'), file('project/product.json')])]
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<TooltipProvider><PlannerFileList
+        files={files} loading={false} error={null}
+        onFolderClick={() => undefined} onFileClick={() => undefined}
+        onFileDelete={() => undefined} onFolderDelete={() => undefined}
+        onRetry={() => undefined} expandedFolders={new Set(['project'])}
+        chatFileContext={[]} addFileToContext={() => undefined}
+        hideRootActions protectedRootPath="project" isSelectionMode onToggleFileSelection={toggle}
+      /></TooltipProvider>))
+      expect((host.querySelector('[aria-label="Select project"]') as HTMLInputElement).disabled).toBe(true)
+      expect((host.querySelector('[aria-label="Select product.json"]') as HTMLInputElement).disabled).toBe(true)
+      await act(async () => (host.querySelector('[data-filepath="project"]') as HTMLElement).click())
+      expect(toggle).not.toHaveBeenCalled()
+      await act(async () => (host.querySelector('[aria-label="Select app.ts"]') as HTMLInputElement).click())
+      expect(toggle).toHaveBeenCalledWith(files[0].children![0])
+    } finally {
+      await act(async () => root.unmount()); host.remove()
+    }
+  })
   it('can hide send-to-chat everywhere and actions on the project root only', async () => {
     const files = [file('my-project', 'folder', [file('my-project/frontend', 'folder')])]
     const host = document.createElement('div')

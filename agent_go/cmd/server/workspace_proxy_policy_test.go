@@ -55,6 +55,21 @@ func TestWorkspaceProxyPolicy(t *testing.T) {
 		// The caller's own tree is untouched by these rules.
 		{"bob", http.MethodPut, "/api/wp/api/documents/Chats/notes.md", map[string]any{"content": "x"}, true},
 		{"bob", http.MethodGet, "/api/wp/api/documents", nil, true},
+		// Code deletion belongs to its lifecycle route, not raw Files operations.
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code?confirm=true", nil, false},
+		{"root", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/_users/alice/Chats/Code/projects/test-code?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/files?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/files?confirm=true", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", nil, false},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/app.ts", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/documents/Chats/Code/projects/test-code/files", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/code?confirm=true", nil, true},
+		{"alice", http.MethodDelete, "/api/wp/api/folders/Chats/Code/projects/test-code/code/files?confirm=true", nil, true},
+		{"alice", http.MethodPut, "/api/wp/api/documents/Chats/Code/projects/test-code/workflow.json", map[string]any{"content": "{}"}, true},
+		{"alice", http.MethodGet, "/api/wp/api/documents/Chats/Code/projects/test-code/product.json", nil, true},
 	} {
 		var body []byte
 		if tc.body != nil {

@@ -469,6 +469,15 @@ describe('createWorkSession', () => {
 })
 
 describe('deleteWorkSession', () => {
+  it('allows cached project cleanup when Files already removed the project', async () => {
+    deleteAgentProfileProject.mockRejectedValueOnce({ response: { status: 404 } })
+    await expect(deleteWorkSession({ product: 'code', id: 'gone-code' } as WorkSession)).resolves.toBeUndefined()
+  })
+  it.each([403, 409, 500])('keeps deletion errors visible for status %s', async status => {
+    const error = { response: { status } }
+    deleteAgentProfileProject.mockRejectedValueOnce(error)
+    await expect(deleteWorkSession({ product: 'code', id: 'existing-code' } as WorkSession)).rejects.toBe(error)
+  })
   it('deletes the authenticated durable Crew project through its profile', async () => {
     const session = parseSessionManifest(JSON.stringify({
       schema_version: 1,

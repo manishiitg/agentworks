@@ -32,6 +32,7 @@ import {
   adjustFilePathsRecursive
 } from '../utils/workspacePathUtils'
 import { useIterationExpansion } from './workspace/useIterationExpansion'
+import { isProtectedWorkspaceEntry, workspaceSelectionItems } from '../utils/workspaceSelection'
 
 interface WorkspaceProps {
   /** Restrict the reusable Files experience to one trusted workspace root. */
@@ -103,6 +104,7 @@ export default function Workspace({
   title = 'Workspace',
   headerAction,
 }: WorkspaceProps) {
+  const protectedRootPath = hideRootActions ? scopedWorkspacePath : undefined
   // Get mode-specific file context and handlers
   const selectedModeCategory = useModeStore(state => state.selectedModeCategory)
   const authUser = useAuthStore(state => state.user)
@@ -894,24 +896,32 @@ export default function Workspace({
 
   // Handle file delete
   const handleFileDelete = (file: PlannerFile) => {
+    if (isProtectedWorkspaceEntry(file, protectedRootPath)) {
+      setError('The workspace root and project metadata cannot be deleted from Files. Use the project delete action to remove the workspace.')
+      return
+    }
     openDeleteDialog(file)
   }
 
   // Handle folder delete
   const handleFolderDelete = (folder: PlannerFile) => {
-    openDeleteDialog(folder)
+    handleFileDelete(folder)
   }
 
   // Handle delete all contents in folder
   const handleDeleteAllFilesInFolder = (folder: PlannerFile) => {
+    if (isProtectedWorkspaceEntry(folder, protectedRootPath)) {
+      setError('Select the workspace contents to delete files. Use the project delete action to remove the workspace.')
+      return
+    }
     openDeleteAllFilesDialog(folder)
   }
 
   // Helper function to collect only top-level file paths (not recursive)
   // API handles recursive deletion automatically, so we only need to select top-level items
   const collectTopLevelFilePaths = useCallback((files: PlannerFile[]): string[] => {
-    return files.map(file => file.filepath)
-  }, [])
+    return workspaceSelectionItems(files, protectedRootPath).map(file => file.filepath)
+  }, [protectedRootPath])
 
   // Toggle selection mode
   const toggleSelectionMode = useCallback(() => {
@@ -930,6 +940,7 @@ export default function Workspace({
   // Toggle file selection - only select/unselect the item itself (not children)
   // API handles recursive deletion automatically, so we don't need to select children
   const toggleFileSelection = useCallback((file: PlannerFile) => {
+    if (isProtectedWorkspaceEntry(file, protectedRootPath)) return
     setSelectedFiles(prev => {
       const newSet = new Set(prev)
       const filePath = file.filepath
@@ -943,13 +954,14 @@ export default function Workspace({
       }
       return newSet
     })
-  }, [])
+  }, [protectedRootPath])
 
   // Select file and enter selection mode
   // If it's a folder with children, enter selection mode without pre-selecting the folder itself
   // (to prevent accidentally deleting the entire folder when user only wants to select children)
   // If it's a file or leaf folder, pre-select it
   const selectFileAndEnterSelectionMode = useCallback((file: PlannerFile) => {
+    if (isProtectedWorkspaceEntry(file, protectedRootPath)) return
     setIsSelectionMode(true)
     if (file.type === 'folder' && file.children && file.children.length > 0) {
       // Don't pre-select parent folders — user likely wants to select items inside
@@ -957,7 +969,7 @@ export default function Workspace({
     } else {
       setSelectedFiles(new Set([file.filepath]))
     }
-  }, [])
+  }, [protectedRootPath])
 
   // Select/Deselect all visible files (top-level only, not recursive)
   // API handles recursive deletion automatically, so we only need to select top-level items
@@ -1001,10 +1013,10 @@ export default function Workspace({
     const selected: PlannerFile[] = []
     selectedFiles.forEach(path => {
       const file = findFileByPath(filteredFiles, path)
-      if (file) selected.push(file)
+      if (file && !isProtectedWorkspaceEntry(file, protectedRootPath)) selected.push(file)
     })
     return selected
-  }, [selectedFiles, filteredFiles])
+  }, [selectedFiles, filteredFiles, protectedRootPath])
 
   // Handle bulk delete
   const handleBulkDelete = useCallback(() => {
@@ -1031,6 +1043,7 @@ export default function Workspace({
       // This prevents accidentally deleting more than intended.
       const allPaths = new Set(bulkDeleteDialog.items.map(item => getOriginalFilePath(item)))
       const itemsToDelete = bulkDeleteDialog.items.filter(item => {
+        if (isProtectedWorkspaceEntry(item, protectedRootPath)) return false
         const itemPath = getOriginalFilePath(item)
         // Check if any ancestor of this item is also in the selection
         const parts = itemPath.split('/')
@@ -1089,6 +1102,7 @@ export default function Workspace({
   // Confirm delete
   const confirmDelete = async () => {
     if (!deleteDialog.item) return
+    if (isProtectedWorkspaceEntry(deleteDialog.item, protectedRootPath)) return
 
     setDeleteDialog({ isLoading: true })
 
@@ -1143,6 +1157,7 @@ export default function Workspace({
   // Confirm delete all contents
   const confirmDeleteAllFiles = async () => {
     if (!deleteAllFilesDialog.folder) return
+    if (isProtectedWorkspaceEntry(deleteAllFilesDialog.folder, protectedRootPath)) return
 
     setDeleteAllFilesDialog({ isLoading: true })
 
@@ -1689,7 +1704,7 @@ export default function Workspace({
             <Tooltip>
               <TooltipTrigger asChild>
                 <label className="relative flex cursor-pointer items-center px-1">
-                  <input type="checkbox" checked={areAllFilesSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-primary" />
+                  <input type="checkbox" aria-label="Select all files" checked={areAllFilesSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-primary" />
                 </label>
               </TooltipTrigger>
               <TooltipContent><p>Select All</p></TooltipContent>
@@ -1835,6 +1850,7 @@ export default function Workspace({
                 </div>
               ) : null}
               <PlannerFileList
+                protectedRootPath={protectedRootPath}
                 files={filteredFiles}
                 loading={loading}
                 error={error}

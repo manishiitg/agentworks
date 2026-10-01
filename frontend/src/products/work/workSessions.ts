@@ -140,7 +140,13 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
   if (session.shared) throw new Error('Shared Crew projects can only be deleted by their owner.')
-  await agentApi.deleteAgentProfileProject(session.product, session.id)
+  try {
+    await agentApi.deleteAgentProfileProject(session.product, session.id)
+  } catch (cause) {
+    // A folder removed outside the project action is already gone. Let the
+    // caller finish closing its tabs and clearing the cached project entry.
+    if ((cause as { response?: { status?: number } })?.response?.status !== 404) throw cause
+  }
 }
 
 export function sharedProjectToWorkSession(row: SharedProjectSummary, product: ProjectProductConfig = CREW_PRODUCT): WorkSession {

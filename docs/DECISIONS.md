@@ -13,6 +13,24 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Files bulk deletion preserves its project container
+- Excellence/Vaibhav's Files selection deleted the entire Code project folder;
+  its cached project row remained, and the later project-delete request returned
+  "project not found". A scoped pane's Select all now selects its displayed
+  contents, preserving the root and `product.json`/`workflow.json`. Protected
+  entries cannot be checked or passed to its delete handlers. This shared Files
+  behavior also applies to other panes that hide their scoped root actions.
+- The browser workspace proxy refuses deletion or clearing of Code roots and
+  their parent containers, and deletion of Code identity manifests, including
+  for admins. Normal Code content deletion and manifest reads/updates remain
+  allowed. Delete Code stops work and uses the existing project lifecycle
+  endpoint to clean up its durable chat and connections.
+- A project-delete 404 lets the frontend finish clearing an already-missing
+  owned project's cached row and tabs. Permission, active-work and server
+  errors still surface, and shared-project deletion remains refused. Code:
+  `workspaceSelection`, `Workspace`, `PlannerFileList`,
+  `workspace_proxy_policy.go`, and `deleteWorkSession`.
+
 ### 2026-10-01 — Slots on the RTS host: one shared build step, opt-in mode, SSM provisioning
 
 - **Decided.** Every deployment builds and installs slots through one shared script, `deploy/common/slots.sh`
