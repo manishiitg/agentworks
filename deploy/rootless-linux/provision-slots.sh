@@ -23,7 +23,7 @@ SLOT_COUNT="${SLOT_COUNT:-50}"
 LIBEXEC=/usr/local/libexec/agentworks
 ETC=/etc/agentworks
 TABLE="$ETC/slots.json"
-SLOTCTL_CONFIG="$ETC/slotctl.json"
+SLOTCTL_CONFIG="$LIBEXEC/slotctl.json"
 SUDOERS=/etc/sudoers.d/agentworks-slots
 
 [[ $EUID -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
@@ -94,6 +94,8 @@ user_tree() { printf '%s/_users/%s' "$DOCS" "$1"; }
 cmd_assign() {
   local user_id="${1:-}" slot="${2:-}"
   [[ "$user_id" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "usage: assign <user-id> [slotNN]" >&2; exit 2; }
+  [[ -z "$slot" || "$slot" =~ ^slot[0-9]{2,3}$ ]] || { echo "usage: assign <user-id> [slotNN]: $slot is not a slot name" >&2; exit 2; }
+  [[ $# -le 2 ]] || { echo "usage: assign <user-id> [slotNN]" >&2; exit 2; }
   [[ -f "$TABLE" ]] || { echo "Run init first." >&2; exit 1; }
   slot="$(python3 - "$TABLE" "$user_id" "$slot" "$SLOT_COUNT" <<'PY'
 import json, os, sys, fcntl

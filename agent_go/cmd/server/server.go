@@ -52,6 +52,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -1686,6 +1687,8 @@ func init() {
 }
 
 func runServer(cmd *cobra.Command, args []string) {
+	// With per-user accounts, what the server creates must stay writable by the user's slot group.
+	slots.ApplyServiceUmask()
 	// Standard-library logs are emitted from many downstream packages that do
 	// not accept a logger. Enforce stable username/workflow keys at the process
 	// boundary and enrich session-tagged lines from the request registry.

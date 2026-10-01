@@ -17,8 +17,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// DefaultSlotctlConfig is the root-owned allow-list slotctl reads.
-const DefaultSlotctlConfig = "/etc/agentworks/slotctl.json"
+// DefaultSlotctlConfig is the root-owned allow-list slotctl reads. It sits beside the launcher in a
+// world-readable folder because slotctl runs as the slot, which cannot enter /etc/agentworks.
+const DefaultSlotctlConfig = "/usr/local/libexec/agentworks/slotctl.json"
 
 // maxRequestBytes bounds a request (an environment and a sandbox policy are a few kilobytes).
 const maxRequestBytes = 8 << 20
