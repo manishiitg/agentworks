@@ -1,6 +1,8 @@
 package slots
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -89,5 +91,30 @@ func TestNewSessionDetached(t *testing.T) {
 		if got := ParseTmux(strings.Fields(args)).NewSessionDetached(); got != want {
 			t.Fatalf("%q: detached %v, want %v", args, got, want)
 		}
+	}
+}
+
+func TestSlotForDirRecognisesAUsersOwnTree(t *testing.T) {
+	root := t.TempDir()
+	table := filepath.Join(root, "slots.json")
+	if err := os.WriteFile(table, []byte(`{"slots":{"slot04":"user-a"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := ExecConfig{SlotStateRoot: root + "/state", SlotRunRoot: root + "/run", DocsRoot: root + "/docs", SlotTable: table}
+	for dir, want := range map[string]string{
+		root + "/docs/_users/user-a/Chats/Code/projects/p": "slot04",
+		root + "/state/slot07/x":                           "slot07",
+		root + "/run/slot02":                               "slot02",
+		root + "/docs/_users/user-b/Chats/x":               "", // a user without a slot
+		root + "/docs/Workflow/shared":                     "",
+		root + "/docs/_users":                              "",
+		root + "/docs/_users/../_users/user-a/x":           "slot04",
+	} {
+		if got := cfg.SlotForDir(dir); got != want {
+			t.Fatalf("SlotForDir(%q) = %q, want %q", dir, got, want)
+		}
+	}
+	if (ExecConfig{}).SlotForDir(root+"/docs/_users/user-a/x") != "" {
+		t.Fatal("with no docs root configured nothing is a user tree")
 	}
 }

@@ -143,3 +143,14 @@ func TestValidateTmuxIsOnlyForTheSlotsOwnSocket(t *testing.T) {
 		t.Fatal("tmux must be refused for an account that is not a slot")
 	}
 }
+
+func TestRunExecFileIsOnlyForASlotsOwnRunFolder(t *testing.T) {
+	cfg, root := testConfig(t)
+	cfg.SlotRunRoot = root
+	devnull, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	defer devnull.Close()
+	// This test account is not a slot, so a request file must be refused whatever it names.
+	if code := RunExecFile(filepath.Join(root, "x.json"), devnull, devnull, devnull, cfg); code != 126 {
+		t.Fatalf("a non-slot account must be refused, got %d", code)
+	}
+}

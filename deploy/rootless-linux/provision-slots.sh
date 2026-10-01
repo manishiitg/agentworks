@@ -65,7 +65,9 @@ cmd_init() {
   "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux"],
   "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
-  "slot_state_root": "$HOME_DIR/slots/state"
+  "slot_state_root": "$HOME_DIR/slots/state",
+  "docs_root": "$DOCS",
+  "slot_table": "$TABLE"
 }
 JSON
   install -o root -g root -m 0644 "$SLOTCTL_CONFIG.new" "$SLOTCTL_CONFIG" && rm -f "$SLOTCTL_CONFIG.new"
@@ -77,7 +79,7 @@ Defaults:$PRODUCT !requiretty
 Defaults:$PRODUCT env_reset
 Defaults:$PRODUCT secure_path="/usr/bin:/bin"
 Runas_Alias AGENTWORKS_SLOTS = $names
-$PRODUCT ALL=(AGENTWORKS_SLOTS) NOPASSWD: $LIBEXEC/slotctl exec
+$PRODUCT ALL=(AGENTWORKS_SLOTS) NOPASSWD: $LIBEXEC/slotctl exec, $LIBEXEC/slotctl exec --request-file *
 SUDO
   visudo -cf "$SUDOERS.new" >/dev/null || { echo "sudoers did not validate; nothing installed." >&2; rm -f "$SUDOERS.new"; exit 1; }
   install -o root -g root -m 0440 "$SUDOERS.new" "$SUDOERS" && rm -f "$SUDOERS.new"

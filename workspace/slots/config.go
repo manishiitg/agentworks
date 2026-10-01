@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // DefaultSlotctlConfig is the root-owned allow-list slotctl reads. It sits beside the launcher in a
@@ -27,6 +28,11 @@ type ExecConfig struct {
 	// SlotStateRoot holds each slot's runtime folders (<root>/<slot>/...). The tmux front-end sends a
 	// session started inside one of them to that slot's tmux server.
 	SlotStateRoot string `json:"slot_state_root,omitempty"`
+	// DocsRoot is the workspace folder whose _users/<user id>/ trees belong to slots; SlotTable is the
+	// root-owned file mapping user ids to slots. Together they let a launch in a user's own folder be
+	// recognised as that user's slot launch.
+	DocsRoot  string `json:"docs_root,omitempty"`
+	SlotTable string `json:"slot_table,omitempty"`
 }
 
 // TmuxPath is the tmux the launcher will run for a slot.
@@ -75,4 +81,30 @@ func RunDirFor(slot string) (string, error) {
 		return "", fmt.Errorf("no run folder for slot %q", slot)
 	}
 	return filepath.Join(cfg.SlotRunRoot, slot), nil
+}
+
+// SlotForDir returns the slot a folder belongs to: a folder in a slot's state or run area, or in a
+// user's own tree <docs root>/_users/<user id>/ when that user holds a slot.
+func (cfg ExecConfig) SlotForDir(dir string) string {
+	if slot := SlotOfDir(cfg.SlotStateRoot, dir); slot != "" {
+		return slot
+	}
+	if slot := SlotOfDir(cfg.SlotRunRoot, dir); slot != "" {
+		return slot
+	}
+	if cfg.DocsRoot == "" || cfg.SlotTable == "" {
+		return ""
+	}
+	prefix := filepath.Join(filepath.Clean(cfg.DocsRoot), "_users") + string(filepath.Separator)
+	clean := filepath.Clean(dir)
+	if !strings.HasPrefix(clean, prefix) {
+		return ""
+	}
+	userID := strings.SplitN(strings.TrimPrefix(clean, prefix), string(filepath.Separator), 2)[0]
+	table, err := LoadTable(cfg.SlotTable)
+	if err != nil {
+		return ""
+	}
+	slot, _ := table.SlotFor(userID)
+	return slot
 }

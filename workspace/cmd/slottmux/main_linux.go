@@ -124,7 +124,7 @@ func run(args []string) int {
 	switch {
 	case c.IsNewSession():
 		name, dir := c.NewSessionFlags()
-		slot := slots.SlotOfDir(cfg.SlotStateRoot, dir)
+		slot := cfg.SlotForDir(dir)
 		if slot == "" || name == "" || !c.NewSessionDetached() {
 			return passthrough(args)
 		}

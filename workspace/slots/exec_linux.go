@@ -99,6 +99,39 @@ func RunExec(stdin io.Reader, stdout, stderr *os.File, cfg ExecConfig) int {
 		fmt.Fprintln(stderr, "slotctl: could not read the request")
 		return 125
 	}
+	return runBody(body, nil, stdout, stderr, cfg)
+}
+
+// RunExecFile is RunExec for a request left in a file, so the program keeps the caller's standard
+// input (a coding CLI reads its prompt there). The file must be a regular file inside this slot's
+// own run folder; it is removed once read.
+func RunExecFile(path string, childStdin *os.File, stdout, stderr *os.File, cfg ExecConfig) int {
+	me, err := user.Current()
+	if err != nil || !ValidSlot(me.Username) || cfg.SlotRunRoot == "" {
+		fmt.Fprintln(stderr, "slotctl: request files are only read as a slot account")
+		return 126
+	}
+	dir := filepath.Join(cfg.SlotRunRoot, me.Username)
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || !within(dir, clean) {
+		fmt.Fprintln(stderr, "slotctl: refused: the request file must be inside this slot's run folder")
+		return 126
+	}
+	info, err := os.Lstat(clean)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxRequestBytes {
+		fmt.Fprintln(stderr, "slotctl: refused: the request file is not a plain file of a sensible size")
+		return 126
+	}
+	body, err := os.ReadFile(clean)
+	_ = os.Remove(clean)
+	if err != nil {
+		fmt.Fprintln(stderr, "slotctl: could not read the request file")
+		return 125
+	}
+	return runBody(body, childStdin, stdout, stderr, cfg)
+}
+
+func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg ExecConfig) int {
 	var req ExecRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		fmt.Fprintln(stderr, "slotctl: malformed request")
@@ -116,6 +149,7 @@ func RunExec(stdin io.Reader, stdout, stderr *os.File, cfg ExecConfig) int {
 	cmd.Dir = cwd
 	cmd.Env = req.Env
 	cmd.Stdout, cmd.Stderr = stdout, stderr
+	cmd.Stdin = childStdin
 	if req.Userns {
 		cmd.SysProcAttr = namespaceAttr()
 	}
