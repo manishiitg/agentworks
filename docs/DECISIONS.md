@@ -59,12 +59,14 @@ Design references for the linked runtime decisions:
 
 ### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
 
-- **Decided.** Excellence offers Crew (`work`) next to Code (`AGENT_PRODUCTS="code,work"`). Who sees it is
-  still decided by each account's product list (`users.json` `products`): administrators have every
-  product, everyone else only what they are given. Vaibhav now has `code` and `work`; the other
-  accounts stay on `code`. Crew projects are private to their owner (project sharing is off).
-- **Decided.** A single-product deployment used to refuse a Claude turn with no token by itself
-  (`isSingleProductServerDeployment`); with two products that safety net is off. Code is private to
+- **Decided.** Crew (`work`) on excellence is given per person, not to everyone: administrators (every
+  product) and anyone whose `users.json` `products` lists it. Vaibhav now has `code` and `work`; the other
+  accounts stay on `code`. `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL` stays `code`. (`AGENT_PRODUCTS` in
+  `product.env` is not passed to this deployment's services, so it gates nothing; an earlier edit of it to
+  `code,work` had no effect and was reverted.) Crew projects are private to their owner (project sharing is off).
+- **Decided.** A single-product deployment refuses a Claude turn with no token by itself
+  (`isSingleProductServerDeployment`); a multi-product or unset `AGENT_PRODUCTS` (excellence, Confida) never had
+  that safety net. Code is private to
   each person and signs in with their own CLI login, so on a multi-user server a Code turn with no token
   is still refused (`claudeCodeTokenMissingForSingleProductDeployment`), instead of falling back to the
   platform account's own CLI login. Other products on the server keep the shared-server behavior.
