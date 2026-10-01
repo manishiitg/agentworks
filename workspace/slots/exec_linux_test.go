@@ -154,3 +154,12 @@ func TestRunExecFileIsOnlyForASlotsOwnRunFolder(t *testing.T) {
 		t.Fatalf("a non-slot account must be refused, got %d", code)
 	}
 }
+
+func TestValidateChmodIsOnlyForAnAccountThatIsASlot(t *testing.T) {
+	root := t.TempDir()
+	cfg := ExecConfig{AllowedExec: []string{ChmodPath}, AllowedCwd: []string{root}, SlotRunRoot: root}
+	req := ExecRequest{Argv: []string{ChmodPath, "660", SlotSocket(root, "slot01")}, Cwd: root}
+	if _, err := cfg.Validate(req); err == nil {
+		t.Fatal("chmod must be refused for an account that is not a slot")
+	}
+}

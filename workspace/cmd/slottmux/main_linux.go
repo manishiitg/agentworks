@@ -58,6 +58,20 @@ func asSlot(cfg slots.ExecConfig, slot string, tmuxArgs []string, env []string, 
 	return exitCode(cmd.Run())
 }
 
+// runAsSlot runs an allowed program (not tmux) as the slot through sudo and slotctl.
+func runAsSlot(cfg slots.ExecConfig, slot string, argv []string) int {
+	body, err := json.Marshal(slots.ExecRequest{Argv: argv, Cwd: filepath.Join(cfg.SlotRunRoot, slot), Env: []string{"PATH=/usr/bin:/bin"}})
+	if err != nil {
+		return 127
+	}
+	sudo := slots.SudoArgv(slot)
+	cmd := exec.Command(sudo[0], sudo[1:]...)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Dir = "/"
+	cmd.Stdin = bytes.NewReader(body)
+	return exitCode(cmd.Run())
+}
+
 func onSocket(sock string, args []string) []string {
 	c := slots.ParseTmux(args)
 	out := append([]string{}, c.Prefix...)
@@ -135,7 +149,10 @@ func run(args []string) int {
 			return code
 		}
 		if statErr != nil {
-			// A new server: let the platform account talk to it (tmux only accepts its own user otherwise).
+			// A new server. tmux makes its socket owner-only, so open it to the slot's group (the
+			// platform is a member), then let the platform account talk to it (tmux only accepts its
+			// own user otherwise).
+			_ = runAsSlot(cfg, slot, []string{slots.ChmodPath, "660", sock})
 			_ = asSlot(cfg, slot, []string{"server-access", "-aw", me.Username}, []string{"PATH=/usr/bin:/bin"}, io.Discard, io.Discard)
 		}
 		remember(registry, name, slot)

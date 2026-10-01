@@ -1679,6 +1679,7 @@ func init() {
 
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(rotateAuthSecretCmd)
+	ServerCmd.AddCommand(addUserCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)

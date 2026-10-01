@@ -38,6 +38,9 @@ type ExecConfig struct {
 // TmuxPath is the tmux the launcher will run for a slot.
 const TmuxPath = "/usr/bin/tmux"
 
+// ChmodPath is the chmod slotctl may run, only to open a slot's own tmux socket to its group.
+const ChmodPath = "/usr/bin/chmod"
+
 // SlotSocket is the tmux socket of a slot under a run root.
 func SlotSocket(runRoot, slot string) string { return filepath.Join(runRoot, slot, "tmux.sock") }
 

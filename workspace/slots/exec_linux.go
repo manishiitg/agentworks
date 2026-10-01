@@ -54,6 +54,17 @@ func (cfg ExecConfig) Validate(req ExecRequest) (cwd string, err error) {
 			return "", errors.New("tmux must use this slot's own socket")
 		}
 	}
+	if req.Argv[0] == ChmodPath {
+		// Only "chmod 660 <this slot's own tmux socket>": tmux makes its socket owner-only, and the
+		// platform (in the slot's group) needs group access to drive the terminal.
+		me, uerr := user.Current()
+		if uerr != nil || !ValidSlot(me.Username) || cfg.SlotRunRoot == "" {
+			return "", errors.New("chmod is only run as a slot account")
+		}
+		if len(req.Argv) != 3 || req.Argv[1] != "660" || req.Argv[2] != SlotSocket(cfg.SlotRunRoot, me.Username) {
+			return "", errors.New("chmod may only open this slot's own tmux socket to its group")
+		}
+	}
 	for _, entry := range req.Env {
 		if !strings.Contains(entry, "=") || strings.ContainsRune(entry, 0) {
 			return "", errors.New("malformed environment entry")

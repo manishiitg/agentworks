@@ -2,6 +2,7 @@
 # Per-user Linux accounts ("slots") for a rootless product host. Run as root ON the host:
 #
 #   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- init'            < deploy/rootless-linux/provision-slots.sh
+#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- adduser <email> [role] [products]' < deploy/rootless-linux/provision-slots.sh
 #   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- assign <user-id>' < deploy/rootless-linux/provision-slots.sh
 #
 # What it sets up (idempotent):
@@ -62,7 +63,7 @@ cmd_init() {
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
-  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux"],
+  "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod"],
   "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
   "slot_state_root": "$HOME_DIR/slots/state",
@@ -138,6 +139,22 @@ PY
   echo "$user_id -> $slot (tree $tree is group $slot, closed to everyone else)"
 }
 
+# Add a person (an account an administrator provisions) and give them a slot, in one step. Signing in
+# never creates an account. The account is created by the server's own `add-user` command with the
+# service environment, so it has the same shape as one made in the Users panel.
+cmd_adduser() {
+  local email="${1:-}" role="${2:-editor}" products="${3:-code}"
+  [[ "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo "usage: adduser <email> [admin|creator|editor|viewer] [products]" >&2; exit 2; }
+  [[ "$role" =~ ^(admin|creator|editor|viewer)$ ]] || { echo "role must be admin, creator, editor or viewer" >&2; exit 2; }
+  [[ "$products" =~ ^[a-z0-9_,-]+$ ]] || { echo "products must be a comma-separated list like code" >&2; exit 2; }
+  [[ -x "$HOME_DIR/current/bin/$PRODUCT-agent" ]] || { echo "No $PRODUCT-agent in $HOME_DIR/current/bin." >&2; exit 1; }
+  local out id
+  out="$(runuser -u "$PRODUCT" -- env HOME="$HOME_DIR/home" bash -c 'set -a; . "$1/.env"; set +a; exec "$1/current/bin/$2-agent" server add-user --email "$3" --role "$4" --products "$5"' _ "$HOME_DIR" "$PRODUCT" "$email" "$role" "$products")"
+  printf '%s\n' "$out" | tail -1
+  id="$(printf '%s' "$out" | tail -1 | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["id"])')"
+  cmd_assign "$id"
+}
+
 cmd_release() {
   local user_id="${1:-}"
   [[ -n "$user_id" ]] || { echo "usage: release <user-id>" >&2; exit 2; }
@@ -167,7 +184,8 @@ cmd_status() {
 case "${1:-}" in
   init) cmd_init ;;
   assign) shift; cmd_assign "$@" ;;
+  adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac
