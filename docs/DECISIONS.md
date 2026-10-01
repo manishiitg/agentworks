@@ -13,6 +13,34 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Scoped Files views show one workspace root above its contents
+- Rebuild a single scoped tree from the document API's mixture of nested
+  children and flat siblings before shortening display paths. Merge folders
+  and files once, including contents-only responses; do not render the root
+  beside its children or show entries outside the requested scope.
+- Compare case-preserving paths after removing boundary slashes and converting
+  only the signed-in user's own physical prefix to its public API path. Keep
+  full API paths for file actions and project-root/manifest deletion protection.
+  Code and Crew use this shared scoped Files view. Code: `scopedWorkspaceTree`,
+  `Workspace`. Tests cover root ordering, duplicate entries, path variants,
+  nested contents, hidden folders, foreign paths and rendered bulk deletion.
+- Ashutosh's screenshot shows `unknown2-0-8079bd2f` beside `code` and `db`.
+  Local fixtures reproduce this layout with the previous exact-path fallback;
+  the precise live response/path variant is not yet captured.
+
+### 2026-10-01 — A closed main terminal does not imply an inactivity timeout
+- The raw terminal's recovery banner now says the terminal is no longer
+  running, without attributing every exit to inactivity. Excellence logs show
+  both idle-backstop cleanup and unexpected pane exits; the terminal snapshot
+  does not establish a cause for this banner.
+- "Back to chat" switches the existing chat to its formatted view. It does
+  not send a prompt or relaunch the CLI; the next new chat message uses the
+  existing resume path. The project folder, saved conversation and final
+  terminal output remain available. Code: `MainAgentTerminal`, `ChatArea`.
+- User decision: pin the recovery notice and button below the final output,
+  at the bottom of the terminal pane where people expect to type. The footer
+  does not shrink into the output and is announced as a status notice.
+
 ### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
 
 - **Decided.** Excellence offers Crew (`work`) next to Code (`AGENT_PRODUCTS="code,work"`). Who sees it is
@@ -26,6 +54,7 @@ Design references for the linked runtime decisions:
   platform account's own CLI login. Other products on the server keep the shared-server behavior.
 - **Open.** Excellence keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
   Crew templates and any playbook-backed feature in a first Crew test.
+
 
 ### 2026-10-01 — Header activity stays active through stale idle polls during a new turn
 - The latest foreground user/start event keeps the chat header active until

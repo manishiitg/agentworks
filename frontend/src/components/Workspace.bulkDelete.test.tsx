@@ -26,7 +26,8 @@ vi.mock('./ui/ConfirmationDialog', () => ({ default: ({ isOpen, onConfirm }: { i
   isOpen ? <button onClick={onConfirm}>Confirm deletion</button> : null
 ) }))
 
-it('bulk deletes Code contents without deleting the project root or its metadata', async () => {
+it.each(['Chats/Code/projects/test-code', '/Chats/Code/projects/test-code///', '_users/alice/Chats/Code/projects/test-code'])('bulk deletes Code contents without deleting the project root or its metadata for %s', async scopedPath => {
+  vi.clearAllMocks()
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const original = [useWorkspaceStore.getState(), useModeStore.getState(), useCapabilitiesStore.getState(), useAuthStore.getState()] as const
   const path = 'Chats/Code/projects/test-code'
@@ -36,18 +37,19 @@ it('bulk deletes Code contents without deleting the project root or its metadata
   useCapabilitiesStore.setState({ fetchCapabilities: vi.fn().mockResolvedValue(undefined) })
   useWorkspaceStore.setState({
     loading: false, error: null, searchQuery: '', needsRefresh: false, highlightedFile: null, fetchFiles,
-    files: [{ filepath: path, type: 'folder', children: [
+    files: [{ filepath: `${path}/code`, type: 'folder', children: [{ filepath: `${path}/code/index.ts`, type: 'file' }] }, { filepath: path, type: 'folder', children: [
       { filepath: `${path}/product.json`, type: 'file' },
       { filepath: `${path}/workflow.json`, type: 'file' },
       { filepath: `${path}/app.ts`, type: 'file' },
       { filepath: `${path}/code`, type: 'folder', children: [{ filepath: `${path}/code/index.ts`, type: 'file' }] },
     ] }],
-    expandedFolders: new Set(),
+    expandedFolders: new Set(['test-code']),
   })
   const host = document.createElement('div'); document.body.appendChild(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<Workspace scopedWorkspacePath={path} hideRootActions hiddenRootFolders={['product.json', 'workflow.json']} hideAddToChat />))
+    await act(async () => root.render(<Workspace scopedWorkspacePath={scopedPath} hideRootActions hiddenRootFolders={['product.json', 'workflow.json']} hideAddToChat />))
+    expect(Array.from(host.querySelectorAll('[data-filepath]')).map(row => row.getAttribute('data-filepath'))).toEqual(['test-code', 'code', 'app.ts'])
     const click = async (selector: string) => {
       const target = host.querySelector<HTMLElement>(selector)
       expect(target).not.toBeNull()
@@ -60,7 +62,7 @@ it('bulk deletes Code contents without deleting the project root or its metadata
     await act(async () => (Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Confirm deletion')!).click())
     expect(agentApi.deletePlannerFile).toHaveBeenCalledExactlyOnceWith(`${path}/app.ts`)
     expect(agentApi.deletePlannerFolder).toHaveBeenCalledExactlyOnceWith(`${path}/code`)
-    expect(fetchFiles).toHaveBeenLastCalledWith(path, { force: true })
+    expect(fetchFiles).toHaveBeenLastCalledWith(scopedPath, { force: true })
     expect(host.querySelector('[aria-label="Delete selected files"]')).toBeNull()
   } finally {
     await act(async () => root.unmount()); host.remove()
