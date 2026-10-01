@@ -257,3 +257,27 @@ Expanded the actual shared-chat profile prompt and embedded `caplayer-access` sk
 - Verification: TypeScript build and 38 tests across four focused suites passed. Browser verification confirmed catalog/connected separation, matching group/server cards and expandable JSON schema. No grants, membership or servers were modified. Screenshot: `/tmp/caplayer-mcp-panels-20261001.jpg`; local browser and services remain open.
 
 - After previewing Connected MCPs without its title bar, enabled shared `WorkspaceViewHeader hideHeader` across all CapLayer sections. The option defaults to false for other callers, hides title/icon/subtitle/context and automatic walkthrough, and retains explicit actions, tabs and below content. Headers with no remaining controls render nothing. People keeps its Users/Groups tabs. TypeScript and 22 focused shared-header/surface tests passed; verified People, Available MCPs and Access locally. Screenshot: `/tmp/caplayer-all-hidden-headers-20261001.jpg`.
+
+### Headerless settings layout
+
+Removed the outer SettingsCard border and padding when the surrounding CapLayer pane has `hideHeader=true`. The shared `SettingsCardLayout` supplies this option without changing other product defaults. Group selection, server and tool cards retain their individual boundaries. TypeScript and 21 focused group/surface tests passed; browser verification confirmed the Groups section has no outer box.
+
+## OAuth credential security audit (2026-10-01)
+
+Committed the current implementation as `378b0202b`, then merged `origin/main` at `6802950ef` as `46af2ce3d`. The only conflict was in `agent_go/go.sum`; retained both sets of dependency checksums and the newer upstream MCP-agent version. The pre-commit secret scan passed on both commits.
+
+### Verified protections
+
+- Platform token and OAuth-client files under the configured MCP tokens root are sealed with AES-256-GCM and path-bound additional authenticated data. Client secrets move out of the JSON config overlay into the sealed client file. Personal MCP credentials use a separate path-bound namespace.
+- Checked local files without exposing credential values: `Notion.client.json` and `Local OAuth Memory.json` were not plaintext JSON and both had mode `0600`; the token root and `_platform` directory had mode `0700`. No Notion token existed at inspection time, so its authorization was incomplete.
+- The latest main caches `AUTH_SECRET` in server memory and clears its environment variable at startup. Child-process helpers pass an explicit minimal environment; the child-environment audit records names, not values.
+- The CapLayer OAuth broker requires the server service credential, rejects browser Origin headers and requires the exact configured upstream URL. It returns only the short-lived access token, uses `Cache-Control: no-store`, serializes refreshes and observes token deletion. The browser/admin inventory does not receive the upstream credential.
+- Post-merge TypeScript and 44 focused frontend tests passed. Focused backend sealing, auth-cache, child-environment, rotation and broker tests passed.
+
+### Remaining findings
+
+1. **Shared connection ownership bypasses CapLayer groups.** Connecting from CapLayer uses the platform OAuth flow and publishes a shared AgentWorks connection. A user able to select that shared connector elsewhere can use it through the normal product path without CapLayer group restrictions. Encryption protects stored credentials but does not enforce gateway-only use. Reuse the authorization implementation with separate CapLayer ownership before treating group policies as the organization's access boundary.
+2. **AUTH_SECRET rotation does not cover OAuth credentials.** OAuth token/client encryption derives its key from AUTH_SECRET, but `rotate-auth-secret` currently rotates provider keys and workflow secret documents only. It does not enumerate platform/personal OAuth files. Changing the secret through this command can leave those credentials unreadable and require reauthorization. Add complete OAuth rekeying or refuse rotation when uncovered stores exist.
+3. **Legacy plaintext migration is not fail closed.** Startup logs an error from `sealPlainPlatformCredentials` and continues; the platform sealer also accepts legacy plaintext JSON. A failed migration can leave usable plaintext credentials on disk. Custom token-file paths outside the claimed roots are likewise not covered by this sealer. Enforce an approved credential root and refuse insecure legacy state, or disable affected connections until migration succeeds.
+
+This audit covers the merged source, automated tests and local file metadata. It does not verify a running Linux deployment. The already-running local backend has not been rebuilt/restarted with the newly merged environment-hardening changes.
