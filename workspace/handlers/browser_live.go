@@ -72,6 +72,9 @@ func browserSocketDirs(session string) []string {
 	if own := browserconfig.SocketDirForSession(session); own != browserconfig.SocketRoot {
 		dirs = append([]string{own}, dirs...)
 	}
+	if own := browserconfig.SandboxSocketDir(session); own != "" {
+		dirs = append(dirs, own)
+	}
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 		dirs = append([]string{filepath.Join(runtimeDir, "agent-browser")}, dirs...)
 	}

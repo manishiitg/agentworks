@@ -40,6 +40,39 @@ func IsUserSession(session string) bool { return userSession.MatchString(session
 // managed browser got its own folder; the global shared browser still does.
 const SocketRoot = "/tmp/.agent-browser"
 
+// SandboxSocketDir is where a managed browser's socket folder lands on the host when its daemon was started from
+// inside a coding CLI's sandbox: that sandbox's private /tmp is the workspace's shared tmp folder, so
+// /tmp/.agent-browser/o/<owner> there is <docs>/tmp/.agent-browser/o/<owner> here. Without it the live view and the
+// cleanup look only in the host /tmp, find no stream, and the live view reconnects forever ("Browser restarted").
+// Empty when the session is not managed or the docs folder is unknown.
+func SandboxSocketDir(session string) string {
+	own := SocketDirForSession(session)
+	if own == SocketRoot {
+		return ""
+	}
+	docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
+	if docs == "" {
+		docs = strings.TrimSpace(os.Getenv("DOCS_DIR"))
+	}
+	if docs == "" || !filepath.IsAbs(docs) {
+		return ""
+	}
+	return filepath.Join(docs, "tmp", strings.TrimPrefix(own, "/tmp/"))
+}
+
+// SandboxSocketDirs lists every owner folder under <docs>/tmp/.agent-browser/o (see SandboxSocketDir).
+func SandboxSocketDirs() []string {
+	docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
+	if docs == "" {
+		docs = strings.TrimSpace(os.Getenv("DOCS_DIR"))
+	}
+	if docs == "" || !filepath.IsAbs(docs) {
+		return nil
+	}
+	owners, _ := filepath.Glob(filepath.Join(docs, "tmp", strings.TrimPrefix(SocketRoot, "/tmp/"), "o", "*"))
+	return owners
+}
+
 var managedOwner = regexp.MustCompile(`(workflow|project|session|user|guest|workspace)-([a-f0-9]{16})--browser$`)
 
 // SocketDirForSession is the socket folder of one managed browser: one per

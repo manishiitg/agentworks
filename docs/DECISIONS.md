@@ -13,6 +13,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Live browser stuck on "Browser restarted — reconnecting…" (RTS, Code project)
+
+- **Found.** The browser of a Code project is started by the coding CLI inside its sandbox. The sandbox's private
+  `/tmp` is the workspace's shared tmp folder, so the browser's socket folder and `.stream` file land in
+  `<docs>/tmp/.agent-browser/o/<owner>/` on the host. The platform looked only in the host `/tmp`, found no stream, the
+  live view's socket closed and the page reconnected forever. The browser itself ran fine (port listening, daemon up).
+- **Done.** `browserconfig.SandboxSocketDir/SandboxSocketDirs` and their use in the live-stream lookup and the
+  session cleanup / pid lookup (`WORKSPACE_DOCS_PATH`/`DOCS_DIR`). Test: `browserconfig/sandbox_socket_test.go`.
+- **Not verified in a browser** until deployed to RTS; the `.stream` file and listening port were seen on the host.
+
 ### 2026-10-01 — Builder configures Gmail triggers; panes show read-only state
 
 - **Decided.** Incoming Gmail setup belongs to Builder tools (`get_gmail_trigger`,
