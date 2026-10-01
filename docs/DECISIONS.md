@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Relays (profile id `relays`) opened on Confida for everyone to test; excellence per person
+
+- **Decided.** Confida: `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL=work,code,relays`, so every account can open Relays
+  for testing (the feature landed on `main` today; it was not in any live build before this deploy). Excellence:
+  Relays only for Aayush (administrator, every product) and Vaibhav (`relays` added to his `users.json` products);
+  excellence's available-to-all list stays `code`. RTS is unchanged. To close it again on Confida, remove `relays` from
+  that list and redeploy.
+
 ### 2026-10-01 — read_image over the CLI bridge runs on the session's own account
 
 - **Found (Confida, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
