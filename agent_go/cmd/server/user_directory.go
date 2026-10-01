@@ -562,35 +562,19 @@ func isConfiguredAdmin(rec *UserRecord) bool {
 	return admins[strings.ToLower(rec.Username)] || (rec.Email != "" && admins[strings.ToLower(rec.Email)])
 }
 
-// externalAuthEmailAllowed applies an optional exact email allowlist to every
-// OAuth provider. An empty list preserves existing deployments; a configured
-// list also rejects providers that do not return a verified email address.
-func externalAuthEmailAllowed(email string) bool {
-	raw := strings.TrimSpace(os.Getenv("AUTH_ALLOWED_EMAILS"))
-	if raw == "" {
-		return true
-	}
+// externalAuthIdentityApproved decides who may complete an SSO sign-in: a person an administrator
+// added to the user directory (by email), or an email named in ADMIN_USERS so the first
+// administrator can bootstrap their own record. Nobody else is admitted, and a sign-in never
+// creates an account for a stranger. AUTH_ALLOWED_EMAILS no longer admits anyone: accounts are
+// provisioned by an administrator (each will also carry its slot; see the private slot plan).
+// Disabled records are deliberately returned here so the callback can produce its specific
+// disabled-account rejection after linking the external identity.
+func externalAuthIdentityApproved(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
 		return false
 	}
-	for _, candidate := range strings.Split(raw, ",") {
-		if strings.ToLower(strings.TrimSpace(candidate)) == email {
-			return true
-		}
-	}
-	return false
-}
-
-// externalAuthIdentityApproved treats an account explicitly provisioned in
-// the user directory as approved even when a deployment also carries the
-// legacy AUTH_ALLOWED_EMAILS gate. Admin-created accounts are already the
-// workspace's durable admission list; requiring operators to duplicate every
-// invited email in an environment variable makes a valid invitation unusable.
-// Disabled records are deliberately returned here so the callback can produce
-// its specific disabled-account rejection after linking the external identity.
-func externalAuthIdentityApproved(email string) bool {
-	if externalAuthEmailAllowed(email) {
+	if adminUsernamesFromEnv()[email] {
 		return true
 	}
 	dir, err := loadUserDirectory()
@@ -681,6 +665,8 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		}
 		return dir.byID(recordID)
 	}
+	// No record: only a configured administrator may create their own, to bootstrap. Everyone else
+	// must have been added by an administrator, so a first sign-in never creates an account.
 	now := time.Now().UTC().Format(time.RFC3339)
 	rec := UserRecord{
 		ID:        userID,
@@ -691,16 +677,17 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if isConfiguredAdmin(&rec) {
-		rec.Admin = true
-		rec.CanCreate = true
+	if !isConfiguredAdmin(&rec) {
+		return nil
 	}
+	rec.Admin = true
+	rec.CanCreate = true
 	dir.Users = append(dir.Users, rec)
 	if err := saveUserDirectory(dir); err != nil {
 		log.Printf("[USERS] cannot record SSO user %s: %v", ext.Username, err)
 		return nil
 	}
-	log.Printf("[USERS] created SSO user %s via %s (admin=%v, can_create=%v)", ext.Username, ext.Provider, rec.Admin, rec.CanCreate)
+	log.Printf("[USERS] bootstrapped configured admin %s via %s", ext.Username, ext.Provider)
 	return dir.byID(userID)
 }
 
@@ -724,11 +711,6 @@ type userAdminView struct {
 	Invited   bool   `json:"invited"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
-	// InviteEmail is what happened to the invitation email on creation
-	// (sent, not_configured, exists or failed); empty when none was asked for.
-	InviteEmail  string `json:"invite_email,omitempty"`
-	InviteDetail string `json:"invite_detail,omitempty"`
-	SignInURL    string `json:"sign_in_url,omitempty"`
 }
 
 func viewOf(rec UserRecord) userAdminView {
@@ -790,7 +772,7 @@ func (api *StreamingAPI) handleAdminListUsers(w http.ResponseWriter, r *http.Req
 		out = append(out, viewOf(u))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
-	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs(), "invite_emails": userInviteEmailsAvailable()})
+	writeUsersJSON(w, http.StatusOK, map[string]any{"users": out, "products": knownProductIDs()})
 }
 
 // userWriteRequest is the body for create and update. Pointer fields are
@@ -806,9 +788,6 @@ type userWriteRequest struct {
 	Products     *[]string `json:"products"`
 	CodeReviewer *bool     `json:"code_reviewer"`
 	Disabled     *bool     `json:"disabled"`
-	// Invite: email the new person an invitation (create only; the person was
-	// added by email, without a password).
-	Invite bool `json:"invite,omitempty"`
 }
 
 // applyRoleWrite stamps a requested role after validating it. An explicit
@@ -931,15 +910,7 @@ func (api *StreamingAPI) handleAdminCreateUser(w http.ResponseWriter, r *http.Re
 		return
 	}
 	log.Printf("[USERS] %s created user %s (role=%s products=%v code_reviewer=%v)", GetUserIDFromContext(r.Context()), rec.Username, roleForRecord(&rec), rec.Products, rec.CodeReviewer)
-	view := viewOf(rec)
-	if req.Invite {
-		// Adding the person has already succeeded: an email problem is
-		// reported, never a reason to fail.
-		result := api.invitePerson(r.Context(), r, rec, GetUserIDFromContext(r.Context()))
-		view.InviteEmail, view.InviteDetail, view.SignInURL = result.Status, result.Detail, publicBaseURL(r)
-		log.Printf("[USERS] invitation email for %s: %s", rec.Username, result.Status)
-	}
-	writeUsersJSON(w, http.StatusCreated, view)
+	writeUsersJSON(w, http.StatusCreated, viewOf(rec))
 }
 
 // PUT /api/admin/users/{id}

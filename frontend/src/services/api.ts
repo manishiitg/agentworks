@@ -2752,11 +2752,6 @@ export interface AdminUser {
   invited?: boolean
   created_at?: string
   updated_at?: string
-  /** On creation with `invite`: what happened to the invitation email. */
-  invite_email?: 'sent' | 'not_configured' | 'exists' | 'failed'
-  invite_detail?: string
-  /** The address people open this deployment at (for the copied invitation). */
-  sign_in_url?: string
 }
 
 export interface AdminUserWrite {
@@ -2770,8 +2765,6 @@ export interface AdminUserWrite {
   products?: string[]
   code_reviewer?: boolean
   disabled?: boolean
-  /** Create only: email the new person an invitation. */
-  invite?: boolean
 }
 
 export interface AuthResponse {
@@ -2936,16 +2929,12 @@ export const authApi = {
   },
 
   // --- account management (config/users.json; admins only) ---
-  listAdminUsers: async (): Promise<{ users: AdminUser[]; products: string[]; invite_emails?: boolean }> => {
+  listAdminUsers: async (): Promise<{ users: AdminUser[]; products: string[] }> => {
     const response = await api.get('/api/admin/users')
     return response.data
   },
   createAdminUser: async (user: AdminUserWrite): Promise<AdminUser> => {
     const response = await api.post('/api/admin/users', user)
-    return response.data
-  },
-  inviteAdminUser: async (id: string): Promise<{ invite_email: NonNullable<AdminUser['invite_email']>; invite_detail?: string; sign_in_url?: string }> => {
-    const response = await api.post(`/api/admin/users/${encodeURIComponent(id)}/invite`)
     return response.data
   },
   updateAdminUser: async (id: string, patch: AdminUserWrite): Promise<AdminUser> => {

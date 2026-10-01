@@ -13,6 +13,23 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Accounts are added by an administrator only; invitations and automatic sign-up are gone
+- Removed the invitation email (`POST /api/admin/users/{id}/invite`, the Supabase invite call, the
+  `invite` option on create, the Resend and Copy-invitation controls, `USER_INVITE_EMAILS`).
+  Adding a person in the Users panel still creates their account (role, products); the panel now
+  just says to ask them to sign in with Google using that address.
+- A sign-in never creates an account any more. `externalAuthIdentityApproved` admits only an
+  address already in the user directory, or one named in `ADMIN_USERS` so the first administrator
+  can bootstrap their own record. `ensureDirectoryUserForExternal` creates a record only for such a
+  configured administrator; the OAuth callback answers 403 "has not been added by an administrator"
+  to anyone else. `AUTH_ALLOWED_EMAILS` no longer admits anybody (it used to, and the first sign-in
+  then created the account).
+- Why: per-user accounts ("slots", private plan) need an administrator-provisioned user before
+  anyone can sign in. Existing users already have records and are unaffected. Anyone who was only
+  in `AUTH_ALLOWED_EMAILS` and never signed in must now be added by an administrator.
+- Left: `SUPABASE_SERVICE_ROLE_KEY` on excellence was only needed for the invite email and can be
+  dropped from its `.env` later; the password and bot-route sign-in paths are unchanged. Not deployed.
+
 ### 2026-10-01 — Keep prompt contracts upfront and load procedures through skills
 - System prompts retain role, access/mode limits, live workspace/grants, secret
   safety, discovery and core memory rules. Skills own operating procedures,
