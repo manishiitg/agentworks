@@ -13,6 +13,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
+
+- **Decided.** Excellence offers Crew (`work`) next to Code (`AGENT_PRODUCTS="code,work"`). Who sees it is
+  still decided by each account's product list (`users.json` `products`): administrators have every
+  product, everyone else only what they are given. Vaibhav now has `code` and `work`; the other
+  accounts stay on `code`. Crew projects are private to their owner (project sharing is off).
+- **Decided.** A single-product deployment used to refuse a Claude turn with no token by itself
+  (`isSingleProductServerDeployment`); with two products that safety net is off. Code is private to
+  each person and signs in with their own CLI login, so on a multi-user server a Code turn with no token
+  is still refused (`claudeCodeTokenMissingForSingleProductDeployment`), instead of falling back to the
+  platform account's own CLI login. Other products on the server keep the shared-server behavior.
+- **Open.** Excellence keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
+  Crew templates and any playbook-backed feature in a first Crew test.
+
 ### 2026-10-01 — Header activity stays active through stale idle polls during a new turn
 - The latest foreground user/start event keeps the chat header active until
   its completion, even when tab flags or a session-status poll still describe
