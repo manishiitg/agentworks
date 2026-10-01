@@ -1674,6 +1674,7 @@ func init() {
 	viper.BindPFlags(ServerCmd.Flags())
 
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
+	ServerCmd.AddCommand(rotateAuthSecretCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)

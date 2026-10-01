@@ -53,6 +53,23 @@ Design references for the linked runtime decisions:
   Evidence, scope and qualification plan:
   [progressive discovery design](design/progressive_prompt_discovery.md).
 
+### 2026-09-30 — AUTH_SECRET rotation is a scriptable offline command
+- New `server rotate-auth-secret`: re-encrypts `config/provider-api-keys.json`
+  plus every workflow secrets and provider-credentials document from the old
+  secret to the new one, then upserts the deployment's env file. Two-phase
+  all-or-nothing (decrypt everything first; any undecryptable blob aborts
+  before anything is written), timestamped 0600 backups, decrypt-with-new
+  verification, `--dry-run` for pre-flight, non-zero exit on any failure so
+  deploy scripts can gate the restart. Run it with agent, workspace, and
+  gateway stopped; sessions invalidate on restart (stateless JWT).
+- The older `rotate-provider-keys-auth-secret` keeps working unchanged and
+  now shares the provider-file rekey helper. Env paths per deploy:
+  rootless `$REMOTE_APP/.env`, AWS `/opt/video-studio/.env`, dominion
+  `/srv/dominion/.env` (all via `--env-file`). Gmail `credentials.enc` is
+  not AUTH_SECRET-derived and stays out of scope.
+- Tests: `auth_rotate_cmd_test.go` (end-to-end rekey, dry-run and wrong-old
+  write nothing, missing provider file tolerated).
+
 ### 2026-09-30 — Folder-guard write paths are boundary-checked before creation
 - The shell handler pre-created every `FolderGuard.WritePaths` entry with a
   bare `MkdirAll`, resolving relative entries against the workspace root but
