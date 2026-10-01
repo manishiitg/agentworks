@@ -121,7 +121,7 @@ func TestProviderConnectionSetupEnvironmentIsAccountScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys.RuntimeEnvironment = map[string]string{"HOME": "/account-B/home", "CODEX_HOME": "/account-B/codex"}
-	env := strings.Join(providerConnectionSetupEnvironment(keys), "\n")
+	env := strings.Join(providerConnectionSetupEnvironment("test", keys), "\n")
 	if strings.Contains(env, "global-codex-key") || strings.Contains(env, "global-muse-key") || !strings.Contains(env, "CODEX_HOME=/account-B/codex") {
 		t.Fatal("setup inherited a global identity or lost account paths")
 	}

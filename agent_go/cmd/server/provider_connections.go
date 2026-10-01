@@ -270,7 +270,8 @@ func (api *StreamingAPI) withConnectionResolver(keys *llm.ProviderAPIKeys, scope
 // The HTTP handlers for provider accounts live in provider_account_routes.go.
 
 // Remove ambient CLI credentials before applying this connection's identity.
-func providerConnectionSetupEnvironment(keys *llm.ProviderAPIKeys) []string {
+func providerConnectionSetupEnvironment(label string, keys *llm.ProviderAPIKeys) []string {
+	before := os.Environ()
 	blocked := map[string]bool{"ANTHROPIC_API_KEY": true, "ANTHROPIC_AUTH_TOKEN": true, "CLAUDE_CODE_OAUTH_TOKEN": true, "OPENAI_API_KEY": true, "CODEX_API_KEY": true, "CURSOR_API_KEY": true, "META_API_KEY": true, "PI_CODING_AGENT_DIR": true}
 	env := []string{}
 	for _, entry := range os.Environ() {
@@ -287,6 +288,7 @@ func providerConnectionSetupEnvironment(keys *llm.ProviderAPIKeys) []string {
 			env = append(env, name+"="+*value)
 		}
 	}
+	logChildEnv(label, before, env)
 	return env
 }
 

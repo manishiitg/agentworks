@@ -13,6 +13,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Audit-log spawned provider-child env names (disable via LOG_CHILD_ENV=0)
+- `providerConnectionSetupEnvironment` and `workflowProviderSetupEnvironment`
+  now emit `[CHILD_ENV]` lines showing which variable names a spawned child
+  keeps, strips and injects, plus the full sorted name list. Names only,
+  never values; a test pins that secret values cannot appear in the output.
+- On by default so the fail-open denylist surface stays visible; set
+  `LOG_CHILD_ENV=0` (or false/off/no) to disable. Lives in
+  `agent_go/cmd/server/child_env_log.go`; temporary observability until the
+  builders move to an allowlist.
+
 ### 2026-10-01 — Use live tool discovery and one owner for runtime guidance
 - AgentWorks owns product prompts, access/mode constraints and feature skills;
   mcpagent owns dynamic tool discovery, filtering, schemas and provider routing.
