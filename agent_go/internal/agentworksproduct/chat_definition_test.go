@@ -51,9 +51,9 @@ func TestChatDefinitions(t *testing.T) {
 	for _, mode := range []string{"builder", "run"} {
 		prompt := ChatPromptTemplate(mode)
 		for _, want := range []string{
-			"Workflow-producing schedules are sequential by default",
-			"resource/file list does not prove overlap safe",
-			"receiving explicit human approval",
+			"Producing schedules also default to sequential",
+			"Separate iteration folders do not isolate shared state",
+			"parallel schedules require explicit human approval",
 		} {
 			if !strings.Contains(prompt, want) {
 				t.Errorf("%s prompt missing schedule parallel-risk contract %q", mode, want)

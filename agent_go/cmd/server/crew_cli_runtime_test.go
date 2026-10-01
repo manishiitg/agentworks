@@ -117,7 +117,7 @@ func TestCrewRunSharedSectionsExcludeAuthoringGuidance(t *testing.T) {
 		if strings.Contains(text, "Configure the Crew") == readOnly {
 			t.Fatalf("authoring feature instructions in wrong mode: %s", text)
 		}
-		if readOnly && (!strings.Contains(text, "Run mode cannot update memory") || strings.Contains(text, "dated-entry")) {
+		if readOnly && (!strings.Contains(text, "cannot update memory") || strings.Contains(text, "dated-entry")) {
 			t.Fatalf("Run received memory-writing instructions: %s", text)
 		}
 	}

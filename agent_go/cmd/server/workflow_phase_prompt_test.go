@@ -51,8 +51,8 @@ func TestAssembledWorkflowPrompt(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Logf("Complete server prompt: %d bytes (mode=%s projected=%s UI=%v)", len(got), mode, projected, ui)
-					if len(got) > 24000 {
-						t.Fatalf("assembled prompt is %d bytes; move static detail into scoped skills (ceiling 24000)", len(got))
+					if len(got) > 15000 {
+						t.Fatalf("assembled prompt is %d bytes; move static detail into scoped skills (ceiling 15000)", len(got))
 					}
 					for _, section := range []string{"## CURRENT MODE:", "## CURRENT STATE", "## Workspace\n", "## Referenced workflow evidence", "## Granted runtime access", "## Capability inventory", "## Browser\n", notifications, secrets} {
 						if strings.Count(got, section) != 1 {

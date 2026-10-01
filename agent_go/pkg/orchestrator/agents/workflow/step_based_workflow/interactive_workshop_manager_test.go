@@ -75,13 +75,17 @@ func TestInteractiveWorkshopPromptDocumentsMessageSequenceRouteReuse(t *testing.
 	// message-sequence as one of several per-step-type deep-dive skills.
 	// The agent reaches the full pattern catalog by loading the skill.
 	inlineMustContain := []string{
-		"message-sequence",
-		`builder-reference/references/plan-design.md`,
+		"references/workflow-chat.md",
 	}
 	for _, snippet := range inlineMustContain {
 		if !strings.Contains(prompt, snippet) {
 			t.Errorf("expected workshop prompt (builder) to contain inline snippet %q", snippet)
 		}
+	}
+
+	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
+	if err != nil || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "message-sequence") {
+		t.Fatal("workflow operations must route to plan design and message sequences")
 	}
 
 	// Detailed pattern content lives in the .md doc.
@@ -109,8 +113,7 @@ func TestOptimizerPromptDocumentsMessageSequenceRoutePatterns(t *testing.T) {
 	// "Planning steps" section that names message-sequence (and the
 	// other per-step-type skills) as deep-dive entry points.
 	inlineMustContain := []string{
-		"message-sequence",
-		`builder-reference/references/plan-design.md`,
+		"references/workflow-chat.md",
 	}
 	for _, snippet := range inlineMustContain {
 		if !strings.Contains(prompt, snippet) {

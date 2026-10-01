@@ -13,6 +13,36 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Keep prompt contracts upfront and load procedures through skills
+- System prompts retain role, access/mode limits, live workspace/grants, secret
+  safety, discovery and core memory rules. Skills own operating procedures,
+  examples, formats and troubleshooting; tool schemas own argument shapes.
+  Skill descriptions retain explicit action triggers. No authorization is added.
+- AgentWorks owns mode-specific `project-memory` procedures, Crew Builder
+  history/coding guidance and Workflow chat operations references. Run gets
+  retrieval/execution guidance without authoring procedures. `MEMORY.md` remains
+  the only facts store; the managed memory skill is a procedure, not another store.
+  Current secret names remain live context; provider details load from the
+  admitted capability tool.
+- mcpagent owns the on-demand `runtime-http-tools` skill for progressive CLI/code
+  execution. The runtime block owns discovery; redundant available-tools
+  reminders are removed. Legacy inline mechanics and that skill share one source. Native API
+  schemas remain intact; Agy retains its skill-list fallback. The linked CLI may
+  `cd project`; bridge shell calls use absolute paths.
+- Readable Code snapshots drive the real query handler through finalized agent
+  assembly and inspect its outbound composer before any model turn. External
+  state is mocked; runtime policy and tool registration are production paths.
+  This replaces reconstruction that missed Code's resolved native-tool mode.
+  Capture also found a browser pointer to unattached builder-reference; Code/
+  Crew chat pointers now name their attached agent-browser skill.
+- Controlled server fixtures reduce Code by 21%, Crew Builder by 40% and workflow
+  chats by roughly 39–40%. Crew Run was already compact and adds about 500 bytes
+  of shared memory constraints. Live first use and changed-skill native resume
+  pass on Claude and Codex. Pi currently lacks local Google auth; Cursor/Muse/Agy,
+  complete business flows, total turn cost and latency remain unqualified.
+  Details: [prompt discovery design](design/progressive_prompt_discovery.md).
+  Existing unrelated suite failures remain open. No restart or deployment.
+
 ### 2026-10-01 — Audit-log spawned provider-child env names (disable via LOG_CHILD_ENV=0)
 - `providerConnectionSetupEnvironment` and `workflowProviderSetupEnvironment`
   now emit `[CHILD_ENV]` lines showing which variable names a spawned child

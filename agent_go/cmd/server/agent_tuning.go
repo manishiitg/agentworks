@@ -76,7 +76,7 @@ func buildSecretNamesPrompt(secrets []struct {
 	}
 	var secretNames []string
 	for _, s := range secrets {
-		secretNames = append(secretNames, "- `SECRET_"+s.Name+"` → accessible as `os.environ[\"SECRET_"+s.Name+"\"]` in Python or `$SECRET_"+s.Name+"` in bash")
+		secretNames = append(secretNames, "`SECRET_"+s.Name+"`")
 	}
-	return "\n## Secrets\n\nThe following secrets are available as environment variables in your available coding-agent shell tool. Do NOT ask the user for these values — read them from the environment.\n\n" + strings.Join(secretNames, "\n")
+	return "\n## Secrets\n\nAvailable in the authorized shell environment: " + strings.Join(secretNames, ", ") + ". Use injected references; never ask for, print, log or save values.\n"
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 )
 
 // The system prompt is assembled from independent sections, each with its own
@@ -53,6 +54,7 @@ type promptContext struct {
 	HasProfile      bool
 	IsWorkflowPhase bool
 	CrewReadOnly    bool
+	MemoryReadOnly  bool
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
@@ -87,26 +89,6 @@ type promptContext struct {
 	// product.yaml. They extend the product prompt; they never replace it.
 	FeatureExtensions []string
 }
-
-const governedProjectMemoryInstructions = `## Persistent project memory
-
-- Use the project root MEMORY.md as the one durable memory store shared by every chat, schedule, bot, webhook-triggered task, and background task in this project. Keep memory visible in the normal project file browser. Do not create another memory file, memory folder, memory index, or memory skill.
-- Provider-native instruction and memory surfaces are not alternate stores. Never create, update, or invoke Claude auto-memory, Cursor Memories, Cursor rules, Codex AGENTS.md, or any provider memory tool to retain learned project information. AgentWorks may temporarily project this system prompt through a provider instruction file; do not edit that file. Persist learned information only in the project-root MEMORY.md.
-- Before saying project-specific information is unknown or starting new research, read MEMORY.md when it exists. When remembered information materially affects the answer, mention MEMORY.md so the user can inspect it.
-- Save stable, verified information likely to help future work without waiting for the user to repeat a request. Keep the file concise and reverse chronological using this Markdown shape (newest entry first):
-
-  # Project Memory
-
-  ## YYYY-MM-DD — Topic
-  - **Summary:** One sentence stating the durable fact, preference, or decision.
-  - **Details:** Only the context future work needs.
-  - **Source:** Where it was verified and the verification date, when that matters.
-  - **Related skill:** ` + "`skills/<skill-name>/SKILL.md`" + ` when an applicable project-local skill exists.
-
-  Omit fields that add no value. Keep bullets short, use one topic per dated heading, and update or merge an existing topic instead of appending a duplicate. Replace or remove stale entries when newer evidence contradicts them. Do not turn MEMORY.md into a raw activity log.
-- Never create or update a skill as a side effect of learning something. Skills change only when the user explicitly asks to create, import, install, or change one.
-- Do not save guesses, transient status, raw conversation, credentials, secret values, or sensitive personal information unless the user explicitly asks for it to be retained. Never turn unverified research into memory. Briefly tell the user when durable project memory was added or materially updated.
-- Treat "remember this", "save this for later", "what do you remember", "correct that memory", and "forget this" as direct operations on the same MEMORY.md file.`
 
 // codeHostSafetyInstructions are the rules for a Code project's agent. A Code project is a shared
 // server that other people's projects also run on; its agent may write code, install packages and
@@ -152,10 +134,7 @@ var promptSections = []promptSection{
 		Name:    "project-memory",
 		Applies: func(c promptContext) bool { return c.HasProfile || c.IsWorkflowPhase },
 		Build: func(c promptContext) string {
-			if c.CrewReadOnly {
-				return "## Persistent project memory\n\nRead the Crew's project-root MEMORY.md when relevant, within the current folder grants. Run mode cannot update memory, instructions, or skills. In a private CLI runtime, the project memory is at project/MEMORY.md.\n"
-			}
-			return governedProjectMemoryInstructions
+			return instructions.ProjectMemoryPrompt(c.MemoryReadOnly || c.CrewReadOnly || (c.IsWorkflowPhase && c.WorkflowMode == "run"))
 		},
 	},
 	{

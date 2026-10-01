@@ -109,13 +109,10 @@ var allKinds = map[string]kindMeta{
 // Modes use the same workshop mode strings as allKinds. "workshop" is the
 // unified editable mode; "run" is constrained runtime; "reporting"
 // is the report-only surface.
-// Reference docs are content that used to be inlined in the workshop system
-// prompt and is now loaded on demand. We intentionally do NOT migrate tool
-// catalogs (TOOLS REFERENCE, Special Workspace Tools / media-tools, Browser
-// Automation) because the LLM only sees tools through the MCP bridge — the
-// prose catalog IS the agent's primary tool-discovery surface, and lazy-loading
-// would create a bootstrap problem.
+// References own procedures and examples. Prompts retain mode/authorization
+// boundaries and live context; tool discovery uses the current runtime registry.
 var referenceKinds = map[string]kindMeta{
+	"workflow-chat":       {Group: "system", Description: "Workflow chat procedures: runtime grounding, route/input selection, execution and notifications, Builder design/review flow, schedules and channel handling. Read before any workflow platform action.", Modes: []string{"workshop", "run"}},
 	"step-system-prompts": {Group: "system", Description: "Canonical runtime system prompt source for execution and orchestrator steps, including managed DB guidance. Read alongside step-description before authoring: these platform rules are supplied by the runtime, so descriptions should add only task-specific requirements. Conditions/placeholders are resolved per run; get_step_prompts shows a saved run.", Modes: []string{"workshop"}, RawTemplate: true},
 	// Workflow-scoped reference docs (workshop / run modes).
 	"code-authoring":        {Group: "system", Description: "Detailed main.py authoring rules and patterns (env access, sys.argv contract, data authenticity, patching discipline)", Modes: []string{"workshop"}},

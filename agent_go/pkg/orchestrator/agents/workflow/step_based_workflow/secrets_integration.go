@@ -1,7 +1,6 @@
 package step_based_workflow
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -21,19 +20,9 @@ func BuildWorkflowSecretPrompt(secrets []orchestrator.SecretEntry) string {
 		return ""
 	}
 
-	var parts []string
-	parts = append(parts, `
-## Secrets
-
-The following secret names are available for this task. Their raw values are intentionally hidden from the prompt and logs.
-Read secrets only from the injected environment inside execute_shell_command. Never print, echo, or hardcode secret values.
-
-Use the secret name shown below to access the corresponding injected env var at runtime.
-`)
-
-	for _, s := range secrets {
-		parts = append(parts, fmt.Sprintf("- `%s`", s.Name))
+	names := make([]string, 0, len(secrets))
+	for _, secret := range secrets {
+		names = append(names, "`"+secret.Name+"`")
 	}
-
-	return strings.Join(parts, "\n")
+	return "\n## Secrets\n\nAvailable secret names: " + strings.Join(names, ", ") + ". Read values only from the authorized injected environment; never ask for, print, echo, log, save or hardcode them.\n"
 }

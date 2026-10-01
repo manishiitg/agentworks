@@ -405,6 +405,9 @@ type StreamingAPI struct {
 	// internalAgentToolsModeDecided lets tests see the agent-tools mode a
 	// turn decided (after provider-account rules) and stop the turn there.
 	internalAgentToolsModeDecided func(sessionID, mode string) bool
+	// internalPreparedAgent captures the finalized production assembly in tests.
+	// Returning true ends the request before any turn or model invocation.
+	internalPreparedAgent func(context.Context, *mcpagent.Agent) bool
 	// internalSteerTransportReady lets gate tests observe steer
 	// readiness without a real CLI registry. Production dispatch
 	// checks the provider's interactive-session registration.
@@ -3911,6 +3914,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
 		resolvedProfileSkills = skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, identitySkillNames)
 		resolvedProfileSkills = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, resolvedProfileSkills)
+		resolvedProfileSkills = append(resolvedProfileSkills, browserinstructions.ProjectMemorySkill(currentUserIsReadOnly))
 	}
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
@@ -6685,6 +6689,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			if resolvedProfile != nil && !isWorkflowPhase {
+				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly)); err != nil {
+					sendError(fmt.Sprintf("Failed to attach project memory guidance: %v", err), true)
+					return
+				}
+			}
+
 			// 3. INSTRUCTION SECTIONS — workspace map, capabilities, workflow
 			//    context, channel formatting, browser pointer, reference docs,
 			//    grants, and the CLI tool environment. Each is a named section
@@ -6696,18 +6707,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
 				CrewReadOnly:             crewReaderCLI,
+				MemoryReadOnly:           currentUserIsReadOnly,
 				HasTriggerAutoNotifyTool: canTriggerAutoNotify,
 				ShellRoot:                shellRoot,
 				PerUserChatsFolder:       perUserChatsFolder,
 				WorkflowPhaseFolder:      workflowPhaseFolder,
 				ProfileWorkspace:         agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
 				CapabilitySection:        buildLLMCapabilityPromptSection(r.Context()),
-				// The snapshot instructs the agent to call these. The gate is the
-				// authority on whether it can, so ask it rather than assuming.
-				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities") ||
-					toolGate.Admit("set_provider_auth"),
-				ChannelFormatting: buildChannelFormattingInstructions(req.BotPlatform),
-				GrantSections:     resolvedGrants.PromptSections,
+				// Capability details are loaded through this tool, so do not
+				// advertise its pointer merely because auth setup is admitted.
+				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),
+				ChannelFormatting:     buildChannelFormattingInstructions(req.BotPlatform),
+				GrantSections:         resolvedGrants.PromptSections,
 			}
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
@@ -6729,7 +6740,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatBrowserCfg := buildChatBrowserConfig(req)
 			if chatBrowserCfg.HasAgentBrowser {
 				browserPrompt := "\n## Browser\n\nThis session has a browser tool configured (mode=" + chatBrowserCfg.Mode + "). " +
-					"CDP availability is live state and is not stored in this prompt. Before first use, call `agent_browser(command=\"status\", session=\"default\")` and follow its `effective_mode` and authorized endpoints. Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for tab, file, and safety rules. "
+					"CDP availability is live state and is not stored in this prompt. Before first use, call `agent_browser(command=\"status\", session=\"default\")` and follow its `effective_mode` and authorized endpoints. Read the attached `agent-browser` skill for tab, file, and safety rules. "
 				if chatBrowserCfg.Mode == "auto" || chatBrowserCfg.Mode == "cdp" {
 					_, endpointGuidance := cdpPromptEndpoints(chatBrowserCfg.CdpPorts, chatBrowserCfg.CdpPort)
 					browserPrompt += endpointGuidance + " These endpoints are configured candidates; live status is authoritative.\n"
@@ -7098,6 +7109,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// assembler. UI guidance follows the same caller policy as registration.
 				activeForPrompt, _ := api.getActiveSession(sessionID)
 				promptCtx.WorkflowMode = phaseTemplateVars["WorkshopMode"]
+				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly || promptCtx.WorkflowMode == "run")); err != nil {
+					sendError(fmt.Sprintf("Failed to attach workflow memory guidance: %v", err), true)
+					return
+				}
 				promptCtx.WorkflowUIAvailable = workflowUICallerAllowed(workflowPhaseID, sessionID, req, activeForPrompt)
 				// Workflow browser configuration is authoritative; do not add the
 				// generic chat browser pointer as well.
@@ -7214,6 +7229,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// turn can run. Finalization constructs the sole live Agent instance.
 		if err := llmAgent.FinalizeDefinition(streamCtx); err != nil {
 			sendError(fmt.Sprintf("Failed to finalize agent definition: %v", err), true)
+			return
+		}
+
+		if api.internalPreparedAgent != nil && api.internalPreparedAgent(streamCtx, llmAgent.GetUnderlyingAgent()) {
+			_ = llmAgent.Close()
 			return
 		}
 
