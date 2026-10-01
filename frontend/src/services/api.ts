@@ -1667,7 +1667,13 @@ export const agentApi = {
     }
   },
 
-  // --- Gmail (outbound-only) feedback channel ---
+  // --- Gmail notifications and incoming conversations ---
+
+  getGmailInboundRoute: async (workspacePath: string): Promise<import('./api-types').GmailInboundState> => {
+    return (await api.get('/api/gmail-inbound/route', { params: { workspace_path: workspacePath } })).data
+  },
+
+
 
   getGmailFeedbackConfig: async (): Promise<GmailConfigResponse> => {
     const apiResponse = await api.get('/api/human-feedback/gmail/config', { timeout: 10000 })

@@ -3,6 +3,7 @@ import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { activateTab } from './activateTab'
 import { isScheduledSession } from './workflowSessionKinds'
+import { workflowSurfaceForPreset } from './workflowNavigation'
 import { isScheduledWorkflowSession, openCanonicalActivitySession } from './workflowSessionRestore'
 
 const normalizedPath = (value?: string | null): string => (value || '')
@@ -53,7 +54,7 @@ export function openGlobalTab(tabId: string): boolean {
     surfaces.setSelectedWorkProjectId(workProjectIdForTab(tab))
     surfaces.setProductSurface('work')
   } else {
-    surfaces.setProductSurface('agentworks')
+    surfaces.setProductSurface(workflowSurfaceForPreset(tab.metadata?.presetQueryId))
   }
   return activateTab(tabId)
 }
@@ -116,6 +117,6 @@ async function openGlobalActivitySessionInner(
     if (tab) activateTab(tab.tabId)
     return
   }
-  useProductSurfaceStore.getState().setProductSurface('agentworks')
+  useProductSurfaceStore.getState().setProductSurface(workflowSurfaceForPreset(tab?.metadata?.presetQueryId))
   await openCanonicalActivitySession(session, options)
 }

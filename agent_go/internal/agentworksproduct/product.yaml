@@ -222,6 +222,7 @@ chat:
       - list_executions
       - list_approved_fixer_decisions
       - list_gmail_connections
+      - get_gmail_trigger
       - list_mcp_servers
       - list_schedules
       - list_secrets
@@ -265,6 +266,7 @@ chat:
       - uninstall_skill
       - update_step
       - update_gmail_connection_grants
+      - manage_gmail_trigger
       - update_schedule
       - update_slack_bot_route_permission
       - update_step_config

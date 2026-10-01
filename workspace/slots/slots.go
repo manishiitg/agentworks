@@ -24,6 +24,9 @@ import (
 	"time"
 )
 
+// StopGrace is how long a slotted command gets to leave after a stop signal before everything it started is killed.
+const StopGrace = 2 * time.Second
+
 const (
 	// EnvEnabled turns the feature on ("on").
 	EnvEnabled = "AGENTWORKS_SLOTS"

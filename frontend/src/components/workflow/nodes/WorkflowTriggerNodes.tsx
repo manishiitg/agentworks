@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { CalendarClock, GitBranch, RefreshCw, Settings, Webhook } from 'lucide-react'
+import { Mail, CalendarClock, GitBranch, RefreshCw, Settings, Webhook } from 'lucide-react'
 import type { WorkflowTriggerNodeData } from '../hooks/usePlanToFlow'
 import { describeCron } from '../../scheduler/scheduleRuns/cron'
 import { formatLocalScheduleTime } from '../../scheduler/scheduleRuns/helpers'
@@ -10,21 +10,23 @@ export const WorkflowTriggerNode = memo(({ data }: NodeProps) => {
   const { job, routeSummary, active, onSelect, onSettings } = data as WorkflowTriggerNodeData
   if (!job) return null
   const webhook = job.schedule_type === 'webhook'
-  const Icon = webhook ? Webhook : CalendarClock
-  const cadence = webhook ? 'On request' : job.schedule_type === 'calendar' ? `${job.calendar_items?.length || 0} calendar dates` : describeCron(job.cron_expression)
+  const gmail = job.kind === 'gmail'
+  const Icon = gmail ? Mail : webhook ? Webhook : CalendarClock
+  const cadence = gmail ? 'On incoming email' : webhook ? 'On request' : job.schedule_type === 'calendar' ? `${job.calendar_items?.length || 0} calendar dates` : describeCron(job.cron_expression)
   const accent = webhook ? 'border-sky-500/35 bg-sky-500/10 text-sky-600 dark:text-sky-300' : 'border-amber-500/35 bg-amber-500/10 text-amber-600 dark:text-amber-300'
-  return <article className={`nodrag nopan flex h-[236px] w-[288px] flex-col overflow-hidden rounded-2xl border bg-gradient-to-br p-3 text-card-foreground shadow-md backdrop-blur-sm ${webhook ? 'from-sky-500/10 via-card to-card' : 'from-amber-500/10 via-card to-card'} ${active ? 'border-primary ring-2 ring-primary/30' : 'border-border/80'}`} aria-label={`${webhook ? 'Webhook' : 'Schedule'}: ${job.name}`}>
+  return <article className={`nodrag nopan flex h-[236px] w-[288px] flex-col overflow-hidden rounded-2xl border bg-gradient-to-br p-3 text-card-foreground shadow-md backdrop-blur-sm ${webhook ? 'from-sky-500/10 via-card to-card' : 'from-amber-500/10 via-card to-card'} ${active ? 'border-primary ring-2 ring-primary/30' : 'border-border/80'}`} aria-label={`${gmail ? 'Gmail' : webhook ? 'Webhook' : 'Schedule'}: ${job.name}`}>
     <div className="flex min-w-0 items-start gap-2.5">
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${accent}`}><Icon className="h-4 w-4" /></span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><span>{webhook ? 'Webhook event' : 'Scheduled event'}</span><span className={`ml-auto h-2 w-2 rounded-full ${job.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} aria-hidden="true" /><span className="normal-case tracking-normal">{job.enabled ? 'Active' : 'Paused'}</span></div>
+        <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"><span>{gmail ? 'Gmail event' : webhook ? 'Webhook event' : 'Scheduled event'}</span><span className={`ml-auto h-2 w-2 rounded-full ${job.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} aria-hidden="true" /><span className="normal-case tracking-normal">{job.enabled ? 'Active' : 'Paused'}</span></div>
         <h3 className="mt-0.5 truncate text-sm font-semibold" title={job.name}>{job.name}</h3>
       </div>
     </div>
     <div className="mt-3 rounded-xl border border-border/70 bg-background/55 px-2.5 py-2">
       <p className="truncate text-xs font-medium" title={cadence}>{cadence}</p>
       {!webhook && <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{job.enabled ? `Next: ${formatLocalScheduleTime(job.next_run_at)}` : 'Schedule paused'} · {job.timezone || 'UTC'}</p>}
-      {webhook && <div className="mt-1 max-h-10 overflow-auto"><WebhookEndpoint id={job.id} name={job.name} /></div>}
+      {gmail && <p className="mt-1 break-all text-[10px] font-mono select-all">{job.gmail?.address}</p>}
+      {webhook && !gmail && <div className="mt-1 max-h-10 overflow-auto"><WebhookEndpoint id={job.id} name={job.name} /></div>}
     </div>
     <div className="mt-2 flex min-w-0 items-start gap-2 px-1">
       <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

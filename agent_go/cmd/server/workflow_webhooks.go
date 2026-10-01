@@ -136,6 +136,7 @@ type workflowWebhookResponse struct {
 	Kind             string                          `json:"kind,omitempty"`
 	Caller           *triggerCaller                  `json:"caller,omitempty"`
 	Function         *WorkflowFunctionSpec           `json:"function,omitempty"`
+	Gmail            *WorkflowGmailTriggerConfig     `json:"gmail,omitempty"`
 }
 
 type workflowWebhookRequest struct {
@@ -156,9 +157,9 @@ type workflowWebhookRequest struct {
 }
 
 // IsInternalTrigger reports whether the schedule is invokable only through
-// internal dispatch (no public URL): a caller binding or a function.
+// internal dispatch (no public URL): a caller binding, function, or Gmail source.
 func (s WorkflowSchedule) IsInternalTrigger() bool {
-	return s.ScheduleType == "webhook" && (isInternalTriggerKind(s.Kind) || isFunctionTriggerKind(s.Kind))
+	return s.ScheduleType == "webhook" && (isInternalTriggerKind(s.Kind) || isFunctionTriggerKind(s.Kind) || s.IsGmailTrigger())
 }
 
 func validateWebhookSchedule(s WorkflowSchedule) error {
@@ -168,10 +169,17 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 		}
 		return nil
 	}
-	if kind := strings.TrimSpace(s.Kind); kind != "" && !isInternalTriggerKind(kind) && !isFunctionTriggerKind(kind) {
-		return errors.New("webhook kind must be \"internal\" or \"function\"")
+	if kind := strings.TrimSpace(s.Kind); kind != "" && !isInternalTriggerKind(kind) && !isFunctionTriggerKind(kind) && !s.IsGmailTrigger() {
+		return errors.New("webhook kind must be internal, function or gmail")
 	}
-	if isFunctionTriggerKind(s.Kind) {
+	if s.Gmail != nil && !s.IsGmailTrigger() {
+		return errors.New("Gmail settings require kind=gmail")
+	}
+	if s.IsGmailTrigger() {
+		if s.Gmail == nil || s.Gmail.ConnectionID == "" || s.Gmail.Address == "" || s.Caller != nil || s.Function != nil || s.Webhook == nil || s.Webhook.EncryptedSecret != "" || s.Webhook.AuthMode != "" {
+			return errors.New("Gmail triggers require a mailbox binding and issue no webhook secret")
+		}
+	} else if isFunctionTriggerKind(s.Kind) {
 		if err := validateWorkflowFunctionSpec(s.Function); err != nil {
 			return err
 		}
@@ -230,6 +238,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 		path = ""
 	}
 	out := workflowWebhookResponse{ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, GroupNames: s.GroupNames, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	out.Gmail = s.Gmail
 	if s.Webhook != nil {
 		out.StepID = s.Webhook.StepID
 		out.InputMode = s.Webhook.InputMode
@@ -487,6 +496,10 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "workspace_path is required", 400)
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(req.Kind), "gmail") {
+		http.Error(w, "Use manage_gmail_trigger in Builder chat to configure Gmail", 400)
+		return
+	}
 	if !requireWorkflowOwner(w, r, req.WorkspacePath) {
 		return
 	}
@@ -524,6 +537,10 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	}
 	if id != "" && index < 0 {
 		http.Error(w, "API trigger not found", 404)
+		return
+	}
+	if index >= 0 && manifest.Schedules[index].IsGmailTrigger() {
+		http.Error(w, "Use manage_gmail_trigger in Builder chat to configure Gmail", 400)
 		return
 	}
 	cfg := &WorkflowWebhookConfig{AuthMode: req.AuthMode}
@@ -703,6 +720,10 @@ func (s *SchedulerService) deleteWorkflowWebhook(w http.ResponseWriter, r *http.
 	for i, sched := range manifest.Schedules {
 		if sched.ID != id || sched.ScheduleType != "webhook" {
 			continue
+		}
+		if sched.IsGmailTrigger() {
+			http.Error(w, "Use manage_gmail_trigger in Builder chat to disable Gmail", 400)
+			return
 		}
 		manifest.Schedules = append(manifest.Schedules[:i], manifest.Schedules[i+1:]...)
 		if err = WriteWorkflowManifest(r.Context(), path, manifest); err != nil {
@@ -925,6 +946,9 @@ func findInternalWorkflowTrigger(manifest *WorkflowManifest, triggerID string) (
 			return nil, ErrInternalTriggerNotFound
 		}
 		if !sched.IsInternalTrigger() {
+			return nil, ErrInternalTriggerNotBound
+		}
+		if sched.IsGmailTrigger() {
 			return nil, ErrInternalTriggerNotBound
 		}
 		if !sched.Enabled {

@@ -12,6 +12,7 @@ export interface ProductAPITrigger {
   secret?: string
   run_destination: 'crew_chat' | 'isolated'
   kind?: string
+  gmail?: { connection_id: string; address: string; reply: boolean }
   caller?: { type: string; id: string; profile_id?: string }
 }
 

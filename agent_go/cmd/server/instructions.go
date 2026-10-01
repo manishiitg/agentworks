@@ -726,7 +726,7 @@ func workflowContextLabels(refs []workflowContextRef) map[string]string {
 // buildWorkflowContextPromptWithLabels lists each reference under the typed
 // tag the user saw (#crew:<label> / #workflow:<label>), with its kind derived
 // from the path, so the agent never mistakes a reference for a Slack channel.
-func buildWorkflowContextPromptWithLabels(paths []string, labels map[string]string) string {
+func buildWorkflowContextPromptWithLabels(paths []string, labels map[string]string, skillNames ...string) string {
 	if len(paths) == 0 {
 		return ""
 	}
@@ -750,8 +750,12 @@ func buildWorkflowContextPromptWithLabels(paths []string, labels map[string]stri
 	if len(references) == 0 {
 		return ""
 	}
+	skillName := "work-workflow-files"
+	if len(skillNames) > 0 && skillNames[0] != "" {
+		skillName = skillNames[0]
+	}
 	return "\n## Workflow Context\n\n" +
-		"The following exact AgentWorks workflow and Crew folders are reference context for this message. Workflow folders are read-only: read only the files needed and do not modify or execute them. Crew folders (any owner) are shared read-write: you may read and, when the user asks, edit their files. The coding CLI starts inside another working directory, so resolve each listed path from the workspace root—for shell calls use `$WORKSPACE_DOCS_PATH/<listed-path>/...`, not `<listed-path>/...` relative to the current directory. Do not list or probe the parent `Workflow/` directory or the parent of an attached Crew: that parent is intentionally not granted, and failure to list that parent does not mean the attached child folder is inaccessible. Verify access against an exact listed folder or file before reporting it unavailable. Start with `workflow.json`, `product.json`, `MEMORY.md`, `soul/soul.md`, `planning/plan.json`, `planning/step_config.json`, `code/`, `db/`, or `builder/conversation/` when relevant, and inspect other files on demand. Treat the files as the source of truth rather than relying on a copied prompt snapshot. A `#crew:<name>` or `#workflow:<name>` tag (or an older bare `#Name`) in the user's message refers to the matching entry below; it is never a Slack channel. Slack channels are always exact IDs like `C1234567890`, never `#name`, so do not offer Slack setup for such a tag. When the user asks to connect to, call, or send work to a tagged Crew or workflow, call one of its functions (`list_functions`, then `call_function` or the generated `<name>__<function>` tool); every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its assistant, which starts runs with the right variables itself), and a workflow's typed functions check required inputs before anything runs, if available. This list is only what is tagged or attached for this message, not everything you can reach: a Crew or workflow missing from it is not a lost permission, so call it by name with `call_function` (or find it with `list_accessible_workflows`) before calling it unavailable.\n\n" +
+		fmt.Sprintf("These exact folders are authorized reference context for this message. Before discovering, attaching, reading or invoking referenced projects, read the attached `%s` skill. Use the listed roots and the runtime's effective access grants.\n\n", skillName) +
 		strings.Join(references, "\n") + "\n"
 }
 

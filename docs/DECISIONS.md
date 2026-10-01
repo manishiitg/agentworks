@@ -13,6 +13,233 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Builder configures Gmail triggers; panes show read-only state
+
+- **Decided.** Incoming Gmail setup belongs to Builder tools (`get_gmail_trigger`,
+  `manage_gmail_trigger`), not a manual UI form. Email and Triggers show the same
+  persisted address, target binding, readiness and activity, with only copy/refresh.
+  Public management POST is removed; the shared Google-authenticated ingress remains.
+- **Workflow binding.** A Gmail trigger is a `kind=gmail` webhook schedule without
+  a public per-trigger endpoint or secret. Builder discovers saved routes/groups
+  and stores the exact target. Each incoming message executes that binding through
+  the existing durable trigger pipeline and isolated run folders, including email
+  replies. Crew/Code retain continuing email chats. Legacy unbound workflow email
+  chats remain until explicitly configured with Builder. One address per owner/target
+  is retained, and disabling preserves it. Deleted/invalid bindings fail closed.
+- **Guidance and authority.** Shared Crew/Code skill and workflow `gmail-inbound`
+  reference teach account/read-consent setup, route selection, operator Pub/Sub
+  prerequisites and verification. Route changes require an interactive owner;
+  email, bot, scheduled and external-token callers cannot configure their routing.
+- **Open.** Live RTS/Google testing still requires operator provisioning and deployment;
+  none is performed here. This retains the private single-server SQLite queue and
+  owner-only sender policy. Workflow trigger replies start new runs rather than
+  continuing a conversational assistant, because the owner chose deterministic routing.
+
+### 2026-10-01 — Deploys reported "exit 7" although the release was fine
+
+- **Cause.** The deploy's last step probed the agent's local port once, right after the restart (after a drain the
+  agent needs a few seconds to listen): curl exit 7 = connection refused, deploy "failed" with the new release
+  already live and healthy. Seen on most deploys.
+- **Done.** `rootless-linux/build-and-activate.sh` waits up to 2 minutes for the agent and workspace health
+  endpoints before the checks. A real failure still fails the deploy, after the wait.
+
+### 2026-10-01 — Opening a Relay from activity or the global tab opener landed on Goals
+
+- **Reported** (Confida, two users): opening Relays opens Goals. The switcher and the Relay list are correct; two
+  navigation paths forced the Goals surface for every workflow tab (`openGlobalTab`, and the activity-session
+  fallback). Not reproduced in a browser: the fix is by reading the code, so confirm on Confida after the deploy.
+- **Done.** `workflowSurfaceForPreset` (a Relay maps to Relays, else Goals) is used by both. Test:
+  `workflowSurfaceForPreset.test.ts`. Still forcing Goals by design: the Quick Switcher and Schedules open
+  the workflow afterwards, which sets the right surface.
+
+### 2026-10-01 — Gmail incoming email uses a shared, opt-in receiver across deployments
+
+- **Decided.** Link each owned Crew, Workflow, or Code to a connected Gmail mailbox and assign a stable
+  plus-tagged address. A Gmail conversation creates an isolated app chat; replies continue it. V1 accepts
+  only the owner's directory email with Gmail sender authentication (or the mailbox's own Sent message).
+  Shared readers cannot configure routes; Code retains its private Google account scope. Optional final
+  responses use notification sending, with Auto-Submitted and the route address in Reply-To.
+- **Implementation.** `pkg/gmailinbound` persists cursors, notifications and deduplicated deliveries in private
+  server SQLite state. Four sync workers and two delivery workers serve all mailboxes through existing gog
+  credentials. Watch renewal is daily, reconciliation is every five minutes, and expired cursors recover with
+  an overlapping scan. A restart marks in-flight work uncertain instead of repeating external side effects.
+  Agent execution uses the existing internal conversation dispatcher, project bindings and access checks.
+- **Rollout.** Configuration maps named OAuth clients to topics, plus an exact HTTPS audience and verified
+  Pub/Sub service-account email. One topic per OAuth project and one subscription per deployment lets a
+  mailbox serve multiple deployments. RTS is first (AWS `./deploy.sh rts`); Hetzner uses the same gateway
+  code. No cloud provisioning, deployment, or service restart is included in this change. Operator guide:
+  `docs/gmail-inbound.md`.
+- **Open.** Live Google/RTS testing still needs the actual OAuth project ID, topic/IAM/subscription setup,
+  reconnect/read consent and real incoming mail. External senders/delegated sender policies, arbitrary
+  vanity addresses, distributed worker leases, manual delivery replay UI and guaranteed exactly-once tool
+  side effects are outside V1. Queue limits and 30-day body retention are documented in the operator guide.
+
+### 2026-10-01 — Docker for slotted users: a private rootless Docker per slot (all deployments)
+
+- **Found.** A command run as a slot inherited the platform account's `DOCKER_HOST` (its rootless socket, in a folder
+  only that account can open) and had no Docker of its own: "permission denied while trying to connect to the docker
+  API". Sessions whose coding CLI runs as the platform account still had Docker, one shared daemon in which every
+  user could see and stop everyone's containers.
+- **Decided.** Docker is part of the shared slot setup, not a host's one-off: `provision-slots.sh docker [slotNN ...]`
+  gives each slot (all assigned ones by default) its own rootless daemon (user unit, linger, subuid/subgid, a socket
+  in the slot's own `/run/user/<uid>`), sets `slot_docker` in the slotctl config, and `assign` enables it for each new
+  slot automatically once the host uses it (`init` keeps the flag). The platform then replaces `DOCKER_HOST` with
+  the slot's own socket for commands run as a slot (`slots.WithSlotDocker`, builder; `slotfs.WithSlotDocker`, provider,
+  for CLIs run as a slot); a host without `slot_docker` is unchanged. Users cannot see or stop each other's containers.
+- **Costs to know per host.** Each slot keeps its own images and volumes under its home (disk) and a running daemon
+  is roughly 100-150 MB (memory): a small host (RTS, 4 GB) should enable it only for the slots that need it
+  (`docker slot03`). Rootless Docker needs unprivileged user namespaces (the script refuses on a host whose AppArmor
+  restricts them unless `FORCE_DOCKER=1`) and `docker-ce-rootless-extras`/`uidmap`. Published ports are host-wide:
+  two users publishing the same host port still collide (the port-limit plan is separate).
+- **Not applied yet.** The shared Hetzner host (excellence, Confida) is at 97% disk (15 GB free) with 59 GB of unused
+  images in the root Docker daemon (other developers' accounts); applying per-slot Docker waits for that headroom.
+  Tests: `slots/docker_env_linux_test.go`, `internal/slotfs` (provider).
+
+### 2026-10-01 — Preserve MCP images through the coding CLI bridge
+
+- RTS/Manish's `sde private` Code chat used Claude and Jam's video tools;
+  the agent reported text describing frames but could not see their pixels.
+  The executor's text-only conversion discarded MCP image blocks and the
+  stdio bridge reconstructed only a text result. Native file tools cannot
+  open an image which was never delivered or saved.
+- Keep the legacy HTTP `result` text and add optional `images` carrying the
+  original MIME type/base64 payload. The bridge returns valid images as native
+  MCP image blocks and saves exact bytes as 0600 files under its parent-selected
+  session `tool_output_folder`. Return paths for native image/file tools or
+  `read_image`; do not dump base64 into the text transcript. This uses the
+  existing sandbox/output-directory grant and adds no folder authority.
+- Bound inline images to 512 KiB total to preserve the stdio response budget;
+  larger images use the exact saved file. Local files are capped at 20 MiB per
+  image. Invalid payloads and save failures are reported explicitly; valid
+  inline images survive a local-file save failure. Source: mcpagent
+  `executor`, `cmd/mcpbridge`. A real executor → HTTP → stdio MCP test covers
+  Jam-shaped mixed and image-only results, exact bytes and private file modes.
+- The fix must be deployed and the CLI's bridge restarted before a retained
+  session gets it. No RTS deployment or live conversation restart was done
+  during this investigation.
+
+### 2026-10-01 — Tagged project procedures belong in the reference skill
+
+- Keep the dynamic prompt to exact typed tags/folder paths, effective runtime
+  authority and a pointer to the attached reference skill. Detailed path
+  resolution, inspection, schedules, Dashboard links, durable attachments and
+  function-call procedures live in one shared `work-workflow-files` template.
+  Product rendering gives Code its `code-workflow-files` name; workflow chats
+  receive the canonical guide when they have references. Feature constraints
+  continue to state the always-on authorization boundaries.
+- Remove claims that any owner's Crew files are shared and advice to read a
+  referenced Crew's blocked `builder/`. A tag and a callable function do not
+  override privacy. Reference files follow actual grants; referenced Crew
+  `db/` is read-only and `builder/` is blocked. Schedule definitions are in
+  `workflow.json`; a caller requests live schedule status or the target's
+  Dashboard link through that target's `ask`, rather than using tools bound
+  to the caller's own project.
+- Code: `instructions.go`, `server.go`, feature metadata and the shared skill.
+  Tests keep typed labels/exact roots, verify product-specific skill pointers,
+  and preserve the feature tool surfaces and invocation constraints.
+
+### 2026-10-01 — Slotted commands were not stopped by a timeout, cancel or kill
+
+- **Found (tested on Confida, then on a server with the real code path).** The platform stops a shell command by
+  signalling its process group (a hard kill). A slotted command's processes belong to another Linux account, so the
+  signal stopped only `sudo`: after the kill the command (and anything it started) was still running (2 `sleep`
+  processes before the kill, 2 after). Timeouts, cancelled chats and "stop process" left slotted commands running.
+- **Decided and done.** (1) `slotctl exec` starts the program in its own process group and, on SIGTERM/SIGINT/SIGHUP,
+  signals the whole group and kills it after `slots.StopGrace` (2 s). (2) The wrapped command's cancel is a graceful
+  SIGTERM that `sudo` relays (a hard kill of `sudo` cannot be relayed), with a last-resort delay. (3)
+  `killShellCommandProcessGroup` does the same for a wrapped command (`slots.IsWrapped`). The "stop process" path
+  (`terminateProcessGroup`) already sends SIGTERM first and now works through (1). Normal exit does not kill
+  background processes a command started (as before). `slotctl` is root-installed from the release by
+  `provision-slots.sh init`, so each host needs that re-run after the deploy that carries this.
+- **Tests.** `slots/exec_linux_test.go: TestRunExecStopSignalReachesTheWholeProcessGroup` (run on a Linux host).
+
+### 2026-10-01 — Citymall AI gateway works through Pi's existing Chat Completions transport
+
+- Live gateway calls passed chat, streaming, inline vision and image generation;
+  isolated installed Pi CLI calls returned a Hindi greeting and read a test file
+  through the native tool with the explicit off-to-none mapping. Stage a non-secret
+  Pi custom-provider template (`products/citymall/pi-models.json`), with the key
+  supplied as `CITYMALL_API_KEY` from Citymall's own protected environment.
+- **Open:** function tools require `reasoning_effort=none`; the default fails.
+  Map Pi's off thinking level explicitly to `none` in the template; without that
+  mapping the CLI omits the field and native tool calls still fail.
+  The existing Azure adapter chooses Responses for every GPT-5 name and this
+  gateway's Responses request failed with HTTP 500. Private Pi session model
+  configuration/scoped credentials and a separate image-generation adapter still
+  need application integration and authenticated qualification before launch.
+  Model-list routes return 404/500; only the two supplied, successfully called
+  models are confirmed. Full key-accessible inventory needs the gateway's enabled
+  deployment list/API specification, not guessed model names.
+
+### 2026-10-01 — Citymall dedicated host: prepare an isolated service account first
+
+- The supplied EC2 host (`52.66.201.227`, Ubuntu 26.04, 2 CPUs/4 GB RAM) is fresh.
+  Prepare `/srv/citymall` under an unprivileged `citymall` account with a persistent
+  user manager, workspace directories, native/Python/browser prerequisites and
+  Confida's checksum-pinned Node runtime. Generate new persistent secrets; never
+  borrow another customer's logins, credentials or data. Code:
+  `deploy/rootless-linux/setup-citymall-host.sh`; runbook: `citymall.md` beside it.
+- **Open:** domain, enabled products, sign-in configuration and initial admin
+  need to be chosen before adding a deploy target and activating the application.
+  Base preparation does not start a public site or application services. Also
+  size the first build for the 4 GB host and verify its namespace sandbox before
+  activation; the shared deployment defaults assume a larger machine.
+
+### 2026-10-01 — Slotted shell commands lost their per-call environment (401 from the tools gateway)
+
+- **Incident (Confida, Vaibhav's workflow session).** A shell command run as a slot only got the base environment
+  plus `MCP_API_URL`; `MCP_API_TOKEN`/`MCP_AUTH` (so the HTTP tools gateway answered 401), every `SECRET_*`, `VAR_*`,
+  `STEP_*`, `DB_PATH`, `WORKFLOW_*` and `PYTHONPATH` were missing. Cause: the handler appended those values to the
+  command's environment *after* the isolator had wrapped it for the slot, and the wrap writes the environment into
+  the request at that moment. Fix: `security.Isolator.ExtraEnv` carries the filtered per-call values and they are merged
+  (`MergeExtraEnv`) before `WrapCommand`; non-slot commands are unchanged. Tests: `security/extra_env_test.go`,
+  `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (excellence, RTS,
+  Confida) until deployed.
+- **By design.** `planning/` is mounted read-only in a workflow shell so plan changes go through the authenticated tools.
+- **Browser (RTS "Browser restarted - reconnecting" loop; Confida "Permission denied ... google-chrome").** The
+  `agent-browser` CLI starts its own daemon and Chrome from inside the command and the platform manages them (profile
+  folders `browser-profile*` are service-owned 0700, the live view, restarts, killing). As a slot the CLI could not
+  write the profile folders (so `daemonPID=0`, no Chrome, live view 502) and the platform could not stop a browser
+  owned by another account. Decided: a command that is exactly one `agent-browser` invocation runs as the service
+  account, with the folder guard, as before slots (`handlers/browser_command.go`, `isStandaloneBrowserCommand`: no
+  unquoted shell operator, no command substitution, first word exactly `agent-browser`); everything else still runs
+  as the slot, so appending `agent-browser` to another command does not leave the slot. Residual: a browser command
+  has the service account's access inside the Landlock folder guard (the same as before slots), and the browser
+  daemon reads `file://` as the service. Making browsers run as the slot would need slot-writable profile folders and
+  a platform that can manage processes it does not own; not done.
+
+### 2026-10-01 — RTS resized to t3.medium (2 vCPU / 4 GB) for performance testing
+
+- **Decided and done.** The RTS instance went from `t3.large` to `t3.medium` through the stack (change set
+  `rts-resize-t3-medium`, in place, same disks and Elastic IP; a few minutes of downtime). `t3.medium` was added to the
+  template's allowed sizes. The stack said `t3.xlarge` while the instance had been resized by hand to `t3.large`
+  earlier, so the stack parameter now matches reality again. The template's first-boot script differs from the deployed
+  one (rootless Docker was added later); it only runs on a new instance, so nothing re-ran.
+- **Why not c5.large.** `t3` is burstable: once CPU credits run out it is throttled, so sustained performance numbers
+  drift. A fixed-performance size (`c5.large`, also 2 vCPU / 4 GB) gives steadier results if the tests run long; the
+  template does not list it yet.
+- **Deploys.** The on-box build cap was 6 GB; it is now `${RTS_BUILD_MEMORY_MAX:-3G}` (`deploy.sh`), with swap
+  (4 GB) absorbing the rest, so deploys are slower rather than killed. Set `RTS_BUILD_MEMORY_MAX=6G` after a larger resize.
+
+### 2026-10-01 — Slots: shared folders need a shared group (workflow shell was failing for slotted users)
+
+- **Incident.** With slots on, every shell command a workflow or Relay ran as the user's slot failed with
+  `slotctl: could not start: fork/exec ...: permission denied` (Go reports a failed chdir this way): the shared
+  folders (`Workflow/`, `Downloads/`, `skills/`, `subagents/`, `tmp/`) belong to the service account and the folders
+  inside them are owner-only, so no slot could enter its own workflow's folder. Found on Confida (Vaibhav, 13:12);
+  RTS (scheduled workflows run as the admin, who has a slot) and excellence (Relays/Crew) had the same gap. This is
+  the "shared folders are not slot-writable yet" item flagged when opt-in mode was introduced; assigning every
+  Confida user a slot made it bite.
+- **Decided and done.** One group per product (`<prefix>shared`: `cfshared` on Confida, `slotshared` on RTS and
+  excellence) holds the service account and every slot; the shared folders get that group, group read/write and
+  setgid, so files either side creates stay reachable by both. Private trees stay closed to other slots (checked: one
+  slot cannot list another's tree). Apps still decide who may open which workflow; this only restores what the
+  shell could do as the service account. `provision-slots.sh init` runs it and `provision-slots.sh shared` re-runs it
+  (`SHARED_DIRS` overrides the folder list); the service's user manager must be restarted once for the new group.
+- **Open.** Anything else a slot must reach but does not own (new shared folders outside that list) needs the same
+  treatment. CLIs as the user's own account (not enabled outside the excellence canary) have the equivalent question
+  for their runtime files.
+
 ### 2026-10-01 — Excellence offers Crew and Relays (the product switcher list lives in runtime-config.js)
 
 - **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`

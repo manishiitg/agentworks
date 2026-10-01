@@ -47,6 +47,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -382,6 +383,7 @@ type StreamingAPI struct {
 	cliSecurityStore    *clisecurity.Store
 	agentProfiles       *agentprofiles.Registry
 	productSchedules    *ProductScheduleService
+	gmailInbound        *gmailinbound.Service
 
 	// internalQueryHandler is a narrow test seam for server-owned follow-up
 	// turns. Production dispatch falls back to handleQuery.
@@ -2908,6 +2910,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	SchedulerRoutes(router, schedulerSvc)
 	WorkflowWebhookRoutes(router, schedulerSvc)
 	ProductWebhookRoutes(router, productScheduleSvc)
+	stopGmailInbound := api.initGmailInbound(router)
+	defer stopGmailInbound()
 
 	// Workflow API routes
 	apiRouter.HandleFunc("/workflow/create", requireWorkflowCreateAccess(api.handleCreateWorkflow)).Methods("POST", "OPTIONS")
@@ -3103,6 +3107,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	cancelStart := time.Now()
 	stopNativeTranscriptRecovery()
 	api.cancelActiveWorkForShutdown()
+	stopGmailInbound()
 	fmt.Printf("✅ Active agent work canceled (%s)\n", time.Since(cancelStart).Round(time.Millisecond))
 
 	// An internet share tunnel must not outlive the server it exposes.
@@ -6794,11 +6799,29 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
 			}
 			if len(req.WorkflowContextPaths) > 0 {
+				referenceSkillName := "work-workflow-files"
+				if resolvedProfile != nil {
+					referenceSkillName = agentprofiles.FeatureSkillName(resolvedProfile.Definition.ID, referenceSkillName)
+				} else {
+					// Workflow chats have no project profile to attach feature skills.
+					// Supply the same canonical reference guide before pointing to it.
+					referenceSkills := skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, []string{referenceSkillName})
+					if len(referenceSkills) == 0 {
+						sendError("Project reference guidance is unavailable", true)
+						return
+					}
+					for _, referenceSkill := range referenceSkills {
+						if err := llmAgent.AttachSkill(referenceSkill); err != nil {
+							sendError(fmt.Sprintf("Failed to attach project reference guidance: %v", err), true)
+							return
+						}
+					}
+				}
 				promptPaths := req.authorizedWorkflowContextReadPaths
 				if len(promptPaths) == 0 {
 					promptPaths = req.WorkflowContextPaths
 				}
-				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs))
+				promptCtx.WorkflowContext = buildWorkflowContextPromptWithLabels(promptPaths, workflowContextLabels(req.WorkflowContextRefs), referenceSkillName)
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = workproduct.BuildAttachedFoldersPrompt(workFolderGrantsForClaims(r.Context(), GetUserFromContext(r.Context())))

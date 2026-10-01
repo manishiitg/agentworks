@@ -190,6 +190,8 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	// with a bare permission error -- see sandbox_tool_env.go.
 	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist), policy.WorkDir, policy.WritePaths)
 	if iso.Slot != "" {
+		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
+		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)
 		// Run as the user's slot account: the namespaces and the policy are created after the switch.
 		wrapped, wrapErr := slots.WrapCommand(ctx, cmd, iso.Slot)
 		if wrapErr != nil {

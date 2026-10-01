@@ -14,7 +14,7 @@ Parameters:
   InstanceType:
     Type: String
     Default: t3.large
-    AllowedValues: [t3.large, t3.xlarge, t3.2xlarge]
+    AllowedValues: [t3.medium, t3.large, t3.xlarge, t3.2xlarge]
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Existing EC2 key pair used only for restricted SSH deployment access.

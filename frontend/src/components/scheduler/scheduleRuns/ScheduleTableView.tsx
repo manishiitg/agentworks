@@ -87,7 +87,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                   {!isMissed && !isIssue && !isWaiting && !overlapWith && <span className="text-muted-foreground">None</span>}
                 </div></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
-                  {isRunning && !panel.isReadOnlyUser && <button type="button" onClick={() => panel.handleStopRun(job)} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"><Square className="h-3 w-3" />Stop</button>}
+                  {isRunning && job.kind !== 'gmail' && !panel.isReadOnlyUser && <button type="button" onClick={() => panel.handleStopRun(job)} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"><Square className="h-3 w-3" />Stop</button>}
                   {canRunMissed && <button type="button" onClick={() => panel.handleTrigger(job)} disabled={panel.triggering === job.id} aria-label={`Run missed schedule ${name} now`} title="Start one run now. Missed times are not replayed individually." className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-warning/30 bg-warning/10 px-2 py-1 text-xs font-medium text-warning transition-colors hover:bg-warning/20 disabled:cursor-wait disabled:opacity-50"><Play className="h-3 w-3" />{panel.triggering === job.id ? 'Starting…' : 'Run now'}</button>}
                   <button type="button" aria-label={`${open ? 'Hide' : 'Show'} ${name} details`} aria-expanded={open} aria-controls={open ? detailsId : undefined} onClick={toggle} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>
                 </div></td>
@@ -100,7 +100,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                       <ScheduleRowActions {...panel} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
                     </div>}
                   </div>
-                  {isWebhook && <WebhookEndpoint id={job.id} name={job.name} />}
+                  {isWebhook && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
                   {job.group_names?.length ? <p className="text-xs text-muted-foreground">Groups: {job.group_names.join(', ')}</p> : null}
                   {hasRuntimePolicy && <div className="max-w-4xl space-y-1 rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">
                     <h4 className="font-medium text-foreground">Coordination and runtime policy</h4>

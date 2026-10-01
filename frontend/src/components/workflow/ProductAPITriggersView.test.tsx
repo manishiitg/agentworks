@@ -6,6 +6,7 @@ import ProductAPITriggersView from './ProductAPITriggersView'
 import { productWebhooksApi } from '../../api/productWebhooks'
 
 vi.mock('../../api/productWebhooks', () => ({ productWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn().mockResolvedValue({ configured: true, route: null, deliveries: [] }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const scope = { profileId: 'work', projectId: 'p1' }
 const trigger = { id: 'trigger-1', name: 'Deploy hook', enabled: true, message: 'Deploy the app', auth_mode: 'bearer' as const, path: '/api/hooks/product/trigger-1', run_destination: 'crew_chat' as const }

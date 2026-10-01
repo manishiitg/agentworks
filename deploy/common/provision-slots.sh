@@ -99,9 +99,12 @@ while p not in ("/", ""):
   # from its own service ("slot table unavailable: permission denied", Confida 2026-10-01). Search-only for
   # everyone on that one parent; each product's own folder and table stay closed to the others.
   if [[ "$ETC" != /etc/agentworks ]]; then chmod o+x /etc/agentworks; fi
+  local docker_flag
+  docker_flag="$(slot_docker_enabled)"
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
   "slot_prefix": "$SLOT_PREFIX",
+  "slot_docker": $docker_flag,
   "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod"],
   "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
@@ -130,8 +133,102 @@ SUDO
     find "$DOCS/_users" -mindepth 1 -maxdepth 1 -type d -exec chmod o-rwx {} +
   fi
   [[ -d "$DOCS/config" ]] && chmod 0700 "$DOCS/config"
+  cmd_shared
   echo "Slots 1..$SLOT_COUNT are in place for $PRODUCT."
   echo "The service account joined the slot groups just now: restart its services (or the user manager) once so they pick that up."
+}
+
+# Folders every account shares (workflows, downloads, skills): they belong to the service account, and a slot
+# account could not even enter a workflow's folder, so every shell command a workflow ran as a slot failed
+# ("fork/exec ...: permission denied", Confida and RTS, 2026-10-01). One group per product holds the service
+# account and every slot; the shared folders get that group, group read/write and setgid, so what the service
+# writes there stays reachable by the slots and the other way round. Private trees stay closed to other slots.
+# SHARED_DIRS (below DOCS) can be overridden. Safe to run again; run it after adding slots.
+cmd_shared() {
+  local group="${SLOT_PREFIX}shared" n dir
+  getent group "$group" >/dev/null || groupadd "$group"
+  for n in $(seq 1 "$SLOT_COUNT"); do usermod -aG "$group" "$(slot_name "$n")"; done
+  usermod -aG "$group" "$PRODUCT"
+  for dir in ${SHARED_DIRS:-Workflow Downloads skills subagents tmp}; do
+    [[ -d "$DOCS/$dir" ]] || continue
+    chgrp -R "$group" "$DOCS/$dir"
+    chmod -R g+rwX "$DOCS/$dir"
+    find "$DOCS/$dir" -type d -exec chmod g+s {} +
+    echo "shared folder: $DOCS/$dir -> group $group"
+  done
+  echo "The service account joined $group just now: restart its services (or the user manager) once."
+}
+
+# Whether this host gives every slot its own Docker (slot_docker in the slotctl config): "true" or "false".
+slot_docker_enabled() {
+  python3 - "$SLOTCTL_CONFIG" <<'PY' 2>/dev/null || echo false
+import json, sys
+try:
+    print("true" if json.load(open(sys.argv[1])).get("slot_docker") else "false")
+except Exception:
+    print("false")
+PY
+}
+
+alloc_subid() {
+  local file="$1" option="$2" account="$3" start
+  grep -q "^${account}:" "$file" && return
+  start="$(awk -F: 'BEGIN { max=100000; block=65536 } NF == 3 { end=$2+$3; if (end > max) max=end } END { print int((max+block-1)/block)*block }' /etc/subuid /etc/subgid)"
+  usermod "$option" "$start-$((start + 65535))" "$account"
+}
+
+# A private rootless Docker for one slot: the slot's commands reach it through DOCKER_HOST (set by the platform,
+# see slot_docker), so a user can run containers without the platform's own Docker, which their account cannot
+# reach, and without seeing or stopping anyone else's containers. Each slot keeps its own images and volumes
+# under its home: mind the disk, and the memory (a running daemon is roughly 100-150 MB). Safe to run again.
+enable_slot_docker() {
+  local slot="$1" uid home env
+  uid="$(id -u "$slot")"
+  home="$(getent passwd "$slot" | cut -d: -f6)"
+  alloc_subid /etc/subuid --add-subuids "$slot"
+  alloc_subid /etc/subgid --add-subgids "$slot"
+  loginctl enable-linger "$slot"
+  systemctl start "user@${uid}.service"
+  env="HOME=$home XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus"
+  runuser -u "$slot" -- env $env systemctl --user daemon-reload
+  if ! runuser -u "$slot" -- env $env systemctl --user is-active --quiet docker.service 2>/dev/null; then
+    runuser -u "$slot" -- env $env dockerd-rootless-setuptool.sh install >/dev/null
+    runuser -u "$slot" -- env $env systemctl --user enable --now docker.service
+  fi
+  local i
+  for i in $(seq 1 30); do [[ -S "/run/user/$uid/docker.sock" ]] && break; sleep 1; done
+  [[ -S "/run/user/$uid/docker.sock" ]] || { echo "$slot: its Docker socket did not appear" >&2; return 1; }
+  runuser -u "$slot" -- env $env DOCKER_HOST="unix:///run/user/$uid/docker.sock" docker info --format '{{.SecurityOptions}}' | grep -q rootless \
+    || { echo "$slot: its Docker is not rootless" >&2; return 1; }
+  echo "docker ready: $slot (uid $uid)"
+}
+
+cmd_docker() {
+  if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" == 1 && -z "${FORCE_DOCKER:-}" ]]; then
+    echo "Unprivileged user namespaces are restricted by AppArmor on this host: rootless Docker needs an exception first (FORCE_DOCKER=1 tries anyway)." >&2
+    exit 1
+  fi
+  command -v dockerd-rootless-setuptool.sh >/dev/null || { echo "docker-ce-rootless-extras (and uidmap) are not installed." >&2; exit 1; }
+  [[ -f "$TABLE" ]] || { echo "Run init first." >&2; exit 1; }
+  local -a targets=("$@") slot
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    while IFS= read -r slot; do targets+=("$slot"); done < <(python3 -c 'import json,sys; print("\n".join(sorted(json.load(open(sys.argv[1])).get("slots",{}))))' "$TABLE")
+  fi
+  for slot in "${targets[@]}"; do
+    [[ "$slot" =~ ^${SLOT_PREFIX}[0-9]{2,3}$ ]] || { echo "not a slot name: $slot" >&2; exit 2; }
+    enable_slot_docker "$slot"
+  done
+  python3 - "$SLOTCTL_CONFIG" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+cfg = json.load(open(path))
+cfg["slot_docker"] = True
+tmp = path + ".new"
+json.dump(cfg, open(tmp, "w"), indent=2)
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PY
+  echo "slot_docker is on for $PRODUCT: commands run as a slot now use that slot's own Docker."
 }
 
 user_tree() { printf '%s/_users/%s' "$DOCS" "$1"; }
@@ -176,6 +273,7 @@ PY
   # The slot's own runtime and state areas are group-owned too (created at init).
   chown root:"$PRODUCT" "$TABLE"; chmod 0640 "$TABLE"
   echo "$user_id -> $slot (tree $tree is group $slot, closed to everyone else)"
+  if [[ "$(slot_docker_enabled)" == true ]]; then enable_slot_docker "$slot"; fi
 }
 
 # Add a person (an account an administrator provisions) and give them a slot, in one step. Signing in
@@ -222,9 +320,11 @@ cmd_status() {
 
 case "${1:-}" in
   init) cmd_init ;;
+  shared) cmd_shared ;;
+  docker) shift; cmd_docker "$@" ;;
   assign) shift; cmd_assign "$@" ;;
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | shared | docker [slotNN ...] | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac

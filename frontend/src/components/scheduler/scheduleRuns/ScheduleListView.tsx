@@ -68,7 +68,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     <div className="divide-y divide-border">
       {filteredJobs.map((job, index, jobsList) => {
         const preset = presetMap.get(job.preset_query_id ?? '')
-        const cronDesc = job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
+        const cronDesc = job.kind === 'gmail' ? 'Gmail trigger · on email' : job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
         const localizedJobName = getLocalizedJobName(job)
         const workflowDisplayLabel = preset?.label || job.workflow_label || job.name
         const executionScope = getScheduleExecutionScope(job)
@@ -133,7 +133,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                 <div className={`${showWorkflowIdentityInScheduleRows ? 'mt-1' : ''} flex items-center gap-2 flex-wrap pr-28`}>
                   {showWorkflowIdentityInScheduleRows && (
                     <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
+                      {job.kind === 'gmail' ? 'Gmail' : job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
                     </span>
                   )}
                   <span className={`${showWorkflowIdentityInScheduleRows ? 'text-xs font-medium' : 'text-sm font-semibold'} text-foreground truncate`} title={job.name}>
@@ -206,7 +206,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                   </div>
                 )}
 
-                {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} />}
+                {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
 
                 {/* Run stats */}
                 <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">

@@ -5,6 +5,10 @@ repository root is the only local deployment entry point; each server's logic
 is a function inside it. Scripts under `deploy/` are the server-side halves it
 ships to the box (bootstrap, build-and-activate, release pruning, checks).
 
+Incoming Gmail is configured per deployment and remains off until configured.
+See [Gmail incoming conversations](../docs/gmail-inbound.md) for shared OAuth
+topics, deployment-specific push subscriptions, and the RTS-first test steps.
+
 Every frontend release must pass `node frontend/scripts/check-release-assets.mjs <packaged-static-directory>`.
 `npm run build` includes this gate. Repeat it against uploaded assets before
 activation and configure the agent's `STATIC_DIR` to the checked directory.

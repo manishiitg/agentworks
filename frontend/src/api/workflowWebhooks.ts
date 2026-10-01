@@ -6,7 +6,7 @@ export interface WorkflowAPITrigger {
   id: string
   name: string
   enabled: boolean
-  auth_mode: 'bearer' | 'github'
+  auth_mode: 'bearer' | 'github' | ''
   path: string
   route_selections: Record<string, string>
   group_names: string[]
@@ -14,8 +14,9 @@ export interface WorkflowAPITrigger {
   payload_mappings?: WebhookPayloadMappings
   secret?: string
   /** '' = external webhook, 'function' = callable function, 'internal' = one bound caller. */
-  kind?: '' | 'internal' | 'function'
+  kind?: '' | 'internal' | 'function' | 'gmail'
   caller?: { type: string; id: string; profile_id?: string }
+  gmail?: { connection_id: string; address: string; reply: boolean }
   function?: WorkflowFunctionSpec
 }
 

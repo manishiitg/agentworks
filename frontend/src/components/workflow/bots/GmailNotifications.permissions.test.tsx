@@ -24,6 +24,8 @@ vi.mock('../AskAIButton', () => ({ AskAIButton: () => null }))
 vi.mock('./GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
 vi.mock('../../../services/api', () => ({
   agentApi: {
+
+    getGmailInboundRoute: vi.fn(async () => ({ configured: false, route: null, deliveries: [] })),
     getBotConfig: vi.fn(async () => ({ allowed_emails: [] })),
     getGmailFeedbackConfig: vi.fn(async () => ({
       enabled: true, default_to: 'alice@example.com', blocked_recipients: [], ready: true,

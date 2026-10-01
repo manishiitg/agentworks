@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -164,6 +165,14 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 	if req.Userns {
 		cmd.SysProcAttr = namespaceAttr()
 	}
+	// The program runs in its own process group so a stop reaches everything it started. The platform cannot
+	// signal a slot's processes itself (they belong to another account), so this program, which runs as the slot,
+	// is the only one that can: a stop signal goes to the whole group, and a command that does not leave within
+	// the grace period is killed.
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
 	var policyWriter *os.File
 	if req.FD3 != "" {
 		reader, writer, perr := os.Pipe()
@@ -189,7 +198,13 @@ func runBody(body []byte, childStdin *os.File, stdout, stderr *os.File, cfg Exec
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	go func() {
 		for sig := range signals {
-			_ = cmd.Process.Signal(sig)
+			pgid := cmd.Process.Pid
+			if sysSig, ok := sig.(syscall.Signal); ok {
+				_ = syscall.Kill(-pgid, sysSig)
+			} else {
+				_ = cmd.Process.Signal(sig)
+			}
+			time.AfterFunc(StopGrace, func() { _ = syscall.Kill(-pgid, syscall.SIGKILL) })
 		}
 	}()
 	waitErr := cmd.Wait()

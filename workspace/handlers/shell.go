@@ -144,6 +144,12 @@ func ExecuteShellCommand(c *gin.Context) {
 	// Where slots are on, every command runs as the caller's own Linux account and never without
 	// a folder guard: an unguarded command would run as the service account from the workspace root.
 	userSlot, slotsOn, slotErr := slots.For(resolvedUserID)
+	// A plain agent-browser call runs as the service account (the platform owns the browser daemon, its profile
+	// folders and the live view); it keeps the folder guard. See isStandaloneBrowserCommand.
+	if slotsOn && slotErr == nil && userSlot != "" && isStandaloneBrowserCommand(stripShellPrefix(req.Command)) {
+		log.Printf("[SLOTS] browser command for %s runs as the service account, not %s", resolvedUserID, userSlot)
+		userSlot = ""
+	}
 	if slotsOn {
 		if slotErr != nil {
 			c.JSON(http.StatusForbidden, models.APIResponse[any]{
@@ -185,9 +191,18 @@ func ExecuteShellCommand(c *gin.Context) {
 			}
 		}
 
+		// The per-call environment a slot's command needs is part of the request that runs it as that account.
+		slotExtraEnv := map[string]string{}
+		for k, v := range req.ExtraEnv {
+			if isAllowedShellExtraEnvKey(k) {
+				slotExtraEnv[k] = v
+			}
+		}
+
 		// Use isolated execution with filesystem restrictions
 		isolator := &security.Isolator{
 			Slot:              userSlot,
+			ExtraEnv:          slotExtraEnv,
 			ReadPaths:         req.FolderGuard.ReadPaths,
 			WritePaths:        req.FolderGuard.WritePaths,
 			BlockedPaths:      req.FolderGuard.BlockedPaths,
@@ -523,6 +538,19 @@ func killShellCommandProcessGroup(cmd *exec.Cmd) {
 	}
 	pid := cmd.Process.Pid
 	if pid <= 0 {
+		return
+	}
+	if slots.IsWrapped(cmd) {
+		// A slotted command's processes belong to another account, so a kill from here would stop only sudo and
+		// leave the command running. A graceful signal is passed on by sudo to the slot program, which stops the
+		// whole group and kills what is left after its grace period; the hard kill below is the last resort.
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		time.AfterFunc(slots.StopGrace*3, func() {
+			if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			}
+			_ = cmd.Process.Kill()
+		})
 		return
 	}
 	if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {

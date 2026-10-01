@@ -206,6 +206,7 @@ export function AutomationHubPanel({
         />}
         {section === 'triggers' && entityType === 'product' && productTriggerScope && <ProductAPITriggersView
           scope={productTriggerScope}
+          workspacePath={workspacePath}
           deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
           hideHeader
           refreshToken={triggersRefreshToken}

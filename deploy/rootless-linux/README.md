@@ -40,6 +40,10 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ## Adding a new product
 
+For the new dedicated Citymall host, see [citymall.md](citymall.md) and
+`setup-citymall-host.sh` for base preparation and the remaining application
+configuration. Citymall is not yet a `deploy.sh` target.
+
 Copy `products/sparkquill/` as a starting point:
 
 - `product.env` — ports, provider/model, which CLIs to install, and any

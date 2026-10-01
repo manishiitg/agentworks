@@ -44,6 +44,17 @@ describe('global triggers overview', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('lists Gmail addresses without inventing webhook URLs', async () => {
+    mocks.listWorkflowTriggers.mockResolvedValue({ triggers: [{ id: 'gmail', name: 'Email triage', enabled: true, path: '', kind: 'gmail', gmail: { address: 'owner+agent-id@example.com' } }] })
+    const host = document.createElement('div'); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<GlobalTriggersView kind="workflow" onOpen={() => {}} />))
+      expect(host.textContent).toContain('Email triage')
+      expect(host.textContent).toContain('owner+agent-id@example.com')
+      expect(host.textContent).not.toContain('/api/hooks/workflow')
+    } finally { await act(async () => root.unmount()) }
+  })
+
   it('loads Crew triggers from owned projects', async () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

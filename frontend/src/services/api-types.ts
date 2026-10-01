@@ -3276,6 +3276,8 @@ export interface WorkflowNotificationInfoResponse {
 
 // Scheduled Jobs
 export interface ScheduledJob {
+  kind?: string
+  gmail?: { connection_id: string; address: string; reply: boolean }
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   id: string
@@ -3850,4 +3852,13 @@ export interface WorkFolderAddRequest {
   alias: string
   access: 'read_only' | 'read_write'
   reason?: string
+}
+
+/** Server-owned email routing; separate from agent Gmail write permissions. */
+export interface GmailInboundState {
+  configured: boolean
+  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string } | null
+  watch_ready?: boolean
+  error?: string
+  deliveries: { id: string; status: string; session_id: string; error?: string }[]
 }

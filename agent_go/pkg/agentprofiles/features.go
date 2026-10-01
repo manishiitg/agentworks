@@ -142,7 +142,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "define_function", "delete_function", "list_functions", "call_function", "get_function_call", "reply_function_call", "ask_function_update", "report_function_progress", "return_function_result"},
 		Skills:          []string{"work-workflow-files"},
 		Capabilities:    map[string]CapabilityRequirement{"workflow_references": CapabilityPreferred},
-		PromptExtension: "Read-only AgentWorks workflow references are enabled. Read the attached `work-workflow-files` skill before discovering, managing, reading, or invoking them. A # selection applies to one message and is context only; a workflow linked under Attached folders is durable and may be invoked only through its {{product}}-scoped secretless internal trigger. Never edit the referenced workflow or use public webhook triggers from this product. To have another Crew or workflow do work (the user tags #crew:<name> or #workflow:<name>), call one of its functions: list_functions, then call_function (or the generated <crew>__<function> tool). Every Crew and workflow has `ask` for free-form questions and tasks (a workflow's `ask` goes to its Run-mode assistant, one continuing thread per caller); a workflow's typed functions refuse a call missing a required input before anything runs. Results return directly or as an [AUTO-NOTIFICATION]; follow long calls with get_function_call / ask_function_update. If get_function_call shows pending_inputs, answer a request_id with reply_function_call. Each caller has its own continuing conversation with a Crew, never its main chat. When you receive a [Function call <id>] task, report milestones with report_function_progress and finish with return_function_result.",
+		PromptExtension: "Crew and workflow references and functions are enabled. Read the attached `work-workflow-files` skill before discovering, attaching, reading or invoking referenced projects, or answering incoming function calls.",
 	},
 	"terminal": {
 		Capabilities:    map[string]CapabilityRequirement{"raw_terminal": CapabilityPreferred},
@@ -170,7 +170,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Authenticated webhook triggers are enabled. Read the attached `work-schedules-and-bots` skill before managing triggers. A trigger stores one instruction in product.json and sends it to the project chat with the authenticated delivery payload; it does not run workflow routes.",
 	},
 	"bots": {
-		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "update_gmail_connection_grants", "send_slack_message", "slack", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
+		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "update_gmail_connection_grants", "get_gmail_trigger", "manage_gmail_trigger", "send_slack_message", "slack", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
 		Skills:          []string{"work-schedules-and-bots"},
 		UIPanels:        []string{"bots"},
 		Capabilities:    map[string]CapabilityRequirement{"whatsapp": CapabilityPreferred},
@@ -355,7 +355,7 @@ var workflowReferenceCalleeTools = map[string]bool{
 // Bots tools that reach beyond a 1:1 Slack DM or WhatsApp chat: Gmail and
 // Google Workspace, and Slack channel routes and channel API reads.
 var botsNonDirectMessageTools = map[string]bool{
-	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true, "get_gmail_trigger": true, "manage_gmail_trigger": true,
 	"slack": true, "send_slack_message": true,
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 }
@@ -363,7 +363,7 @@ var botsNonDirectMessageTools = map[string]bool{
 // botsOwnGmailTools are the Google account tools a product keeps with
 // gmail=own (its own private accounts only; see services.GmailUseScope).
 var botsOwnGmailTools = map[string]bool{
-	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true, "get_gmail_trigger": true, "manage_gmail_trigger": true,
 }
 
 // featureTools applies a binding's tool-narrowing options. Options only ever
@@ -430,11 +430,11 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 func featurePromptExtension(id, extension string, options map[string]string) string {
 	switch {
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "code_peers":
-		return "This private Code can call accessible Crews and workflows, and other Codes owned by the same account, with list_functions and call_function. It may define functions for its own Code and answer calls from same-owner Codes with report_function_progress and return_function_result. Poll with get_function_call; answer pending_inputs using reply_function_call. Codes never appear in the public Crew/MCP catalog. The owner's Crews/workflows may call its explicitly declared functions; shared readers/editors, external connections and other owners cannot call a Code."
+		return "This private Code supports authorized Crew/workflow calls and functions between Codes owned by the same account. Read the attached `work-workflow-files` skill before using references or functions, including incoming calls."
 	case id == "mcp" && strings.TrimSpace(options["scope"]) == "personal":
 		return "MCP connections here belong to this {{product}}: they are added with its owner's own sign-in and used by every chat in it. Read the attached `work-mcp` skill before connecting or using one. Use manage_my_mcp_servers to list the catalog and this {{product}}'s connections, and to connect or remove one (only the owner connects); never install, add or authenticate a platform-wide connection."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
-		return "Calling Crews and AgentWorks workflows is enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading, or invoking them. You may call the Crews and workflows the person working here can access, with that person's permissions: list_functions, then call_function (or the generated <crew>__<function> tool); every Crew and workflow has `ask` for free-form questions and tasks. Follow long calls with get_function_call / ask_function_update and answer its pending_inputs with reply_function_call. This workspace is never callable itself: it cannot define or answer functions, and other private workspaces are never valid targets."
+		return "Crew and workflow references and calls are enabled, outbound only. Read the attached `work-workflow-files` skill before discovering, reading or invoking them. This workspace cannot define or answer functions, and private workspaces are not valid call targets."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true" && strings.TrimSpace(options["gmail"]) == "own":
 		return "Direct-message chat is enabled: only the owner can message this workspace 1:1 from a Slack DM (its own Slack app) or WhatsApp; each channel continues the owner's own chat. Slack channels and group chats are not available, and you cannot send Slack messages yourself. Google (Gmail, Drive, Calendar...) is available only through this workspace's own private accounts, and only in its owner's chats: check list_gmail_connections first, then use google_workspace_cli. Read the attached `work-schedules-and-bots` skill for the Google CLI syntax; mailbox reads need a read grant, and drafting or sending needs the owner's agent-write opt-in plus the compose grant."
 	case id == "bots" && strings.TrimSpace(options["dm_only"]) == "true":

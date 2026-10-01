@@ -359,8 +359,7 @@ func TestWorkflowContextPromptListsTypedTags(t *testing.T) {
 	for _, want := range []string{
 		"**#crew:Beta Bot** (Crew) `_users/owner/Chats/Work/projects/beta/`",
 		"**#workflow:Weekly Reports** (workflow) `Workflow/reports/`",
-		"never a Slack channel",
-		"call_function",
+		"work-workflow-files",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)

@@ -30,7 +30,7 @@ export const ScheduleRowActions: React.FC<ScheduleRowActionsProps> = ({
   handleToggle,
   handleDelete,
   menuButtonClassName,
-}) => (
+}) => job.kind === 'gmail' ? <span className="text-xs text-muted-foreground">Manage in Builder</span> : (
   <>
     {!isReadOnlyUser && (
       job.enabled ? (
