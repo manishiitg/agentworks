@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Per-user Linux accounts ("slots"): shell tool and provisioning, off by default
+- New package `workspace/slots` and launcher `workspace/cmd/slotctl`. With `AGENTWORKS_SLOTS=on`
+  the workspace service runs each folder-guarded shell command as the caller's own Linux account
+  through `sudo` and `slotctl` (after the switch the Landlock policy and namespaces are created),
+  and refuses commands that carry no folder guard or come from a user without a slot. A root-owned
+  allow-list limits what `slotctl` will start. Off by default, so other deployments are unchanged.
+- `deploy/rootless-linux/provision-slots.sh` (run as root on the host) creates the accounts, the
+  sudoers rule and the slot table, and assigns a person to a slot; signing in never does. `slotctl`
+  is built into every rootless release; installing it root-owned is the script's job.
+- Done in this change: the shell tool. Not done yet: CLI launches and their terminals, ownership of
+  a user's runtime folders, the Crew and workflow sharing model. Not deployed or enabled anywhere.
+
 ### 2026-10-01 — Accounts are added by an administrator only; invitations and automatic sign-up are gone
 - Removed the invitation email (`POST /api/admin/users/{id}/invite`, the Supabase invite call, the
   `invite` option on create, the Resend and Copy-invitation controls, `USER_INVITE_EMAILS`).
