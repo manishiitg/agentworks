@@ -53,6 +53,21 @@ Design references for the linked runtime decisions:
   Evidence, scope and qualification plan:
   [progressive discovery design](design/progressive_prompt_discovery.md).
 
+### 2026-09-30 — Folder-guard write paths are boundary-checked before creation
+- The shell handler pre-created every `FolderGuard.WritePaths` entry with a
+  bare `MkdirAll`, resolving relative entries against the workspace root but
+  accepting absolute paths as-is: an absolute outside path, a `..` escape, or
+  a symlink redirect created directories anywhere as the service account.
+  Each entry is now resolved exactly as the isolator resolves it and checked
+  with the working-directory containment helper; escapes fail the request
+  with 400 before anything is created.
+- Scope note: `/api/execute` is token-gated and proxy-refused, so only the
+  trusted agent server sends these configs (FolderGuard is never model-set);
+  this closes a confused-harness hole, not a remote one. A check-to-create
+  swap race remains in principle; accepted as residual (same account).
+- Tests: `shell_guard_writepath_test.go` (resolution table plus a 400-and-
+  nothing-created handler case).
+
 ### 2026-09-30 — Spawned children get a minimal explicit environment
 - Every bare spawn site in `agent_go/cmd/server` (nil `cmd.Env`, which inherits
   everything, or a raw `os.Environ()` assignment) now builds its environment

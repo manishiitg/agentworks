@@ -21,6 +21,23 @@ import (
 	"github.com/spf13/viper"
 )
 
+// resolveGuardWritePath resolves one FolderGuard.WritePaths entry the way the
+// isolator resolves it (relative entries join to docsDir, absolute entries
+// used as-is) and requires the result to stay inside the workspace boundary,
+// following the same containment check as the working directory. Absolute
+// paths outside the boundary, .. escapes, and symlink redirects fail closed:
+// the caller must reject the request, never MkdirAll the result.
+func resolveGuardWritePath(wp, docsDir string) (string, error) {
+	physicalPath := wp
+	if !filepath.IsAbs(physicalPath) {
+		physicalPath = filepath.Join(docsDir, physicalPath)
+	}
+	if !utils.IsValidFilePath(physicalPath, docsDir) {
+		return "", fmt.Errorf("write path must be within the workspace boundary and cannot contain directory traversal")
+	}
+	return physicalPath, nil
+}
+
 // ExecuteShellCommand handles POST /api/execute
 func ExecuteShellCommand(c *gin.Context) {
 	var req models.ExecuteShellRequest
@@ -127,11 +144,18 @@ func ExecuteShellCommand(c *gin.Context) {
 	if req.FolderGuard != nil && req.FolderGuard.Enabled {
 		// Pre-create write path directories in the real filesystem before isolation.
 		// The mount script relies on these existing so it can bind-mount them as writable.
+		// Each path is resolved exactly as the isolator resolves it and must stay
+		// inside the workspace boundary: an unvalidated MkdirAll here would create
+		// directories anywhere (absolute paths, .. escapes, symlink redirects).
 		for _, wp := range req.FolderGuard.WritePaths {
-			physicalPath := wp
-			// Resolve relative to docsDir if not already absolute
-			if !filepath.IsAbs(physicalPath) {
-				physicalPath = filepath.Join(docsDir, physicalPath)
+			physicalPath, wpErr := resolveGuardWritePath(wp, docsDir)
+			if wpErr != nil {
+				c.JSON(http.StatusBadRequest, models.APIResponse[any]{
+					Success: false,
+					Message: "Invalid folder guard write path",
+					Error:   wpErr.Error(),
+				})
+				return
 			}
 			if mkErr := os.MkdirAll(physicalPath, 0755); mkErr != nil {
 				log.Printf("[SHELL ISOLATOR] Warning: failed to pre-create write path %s: %v", physicalPath, mkErr)
