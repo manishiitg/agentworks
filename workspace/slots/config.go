@@ -42,6 +42,10 @@ const maxRequestBytes = 8 << 20
 type ExecConfig struct {
 	// SlotPrefix names this product's slot accounts (slot_prefix); empty means "slot".
 	SlotPrefix string `json:"slot_prefix,omitempty"`
+	// SlotDocker says every slot has its own rootless Docker (provision-slots.sh docker): a command run as a
+	// slot then gets DOCKER_HOST pointing at it, replacing the platform account's socket, which a slot cannot
+	// reach.
+	SlotDocker bool `json:"slot_docker,omitempty"`
 	// AllowedExec lists the absolute programs a request may start; * matches one path segment.
 	AllowedExec []string `json:"allowed_exec"`
 	// AllowedCwd lists the folders a request may start in (or below).

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"syscall"
 )
@@ -23,7 +24,7 @@ func WrapCommand(ctx context.Context, cmd *exec.Cmd, slot string) (*exec.Cmd, er
 	if cmd == nil || len(cmd.Args) == 0 {
 		return nil, fmt.Errorf("empty command")
 	}
-	req := ExecRequest{Argv: append([]string(nil), cmd.Args...), Cwd: cmd.Dir, Env: append([]string(nil), cmd.Env...)}
+	req := ExecRequest{Argv: append([]string(nil), cmd.Args...), Cwd: cmd.Dir, Env: WithSlotDocker(append([]string(nil), cmd.Env...), slot)}
 	// The user's folders belong to the platform account with the slot's group, so git would refuse them as
 	// "dubious ownership". The command can only reach what its folder guard grants.
 	hasGit := false
@@ -73,4 +74,34 @@ func WrapCommand(ctx context.Context, cmd *exec.Cmd, slot string) (*exec.Cmd, er
 // IsWrapped reports whether cmd is a command WrapCommand built (it runs as a slot through sudo).
 func IsWrapped(cmd *exec.Cmd) bool {
 	return cmd != nil && len(cmd.Args) >= 5 && cmd.Args[0] == DefaultSudo && cmd.Args[2] == "-u" && ValidSlot(cmd.Args[3])
+}
+
+// lookupSlotUID returns a slot account's numeric uid; a variable so tests can run without real accounts.
+var lookupSlotUID = func(name string) (string, error) {
+	u, err := user.Lookup(name)
+	if err != nil {
+		return "", err
+	}
+	return u.Uid, nil
+}
+
+// WithSlotDocker returns env with DOCKER_HOST set to the slot's own Docker socket when this host gives every slot
+// one (slot_docker in the slotctl config); otherwise env is unchanged. The platform's own DOCKER_HOST (its
+// account's socket, in a folder only that account can open) is replaced, never passed through to a slot.
+func WithSlotDocker(env []string, slot string) []string {
+	cfg, err := LoadExecConfig(ConfigPath())
+	if err != nil || !cfg.SlotDocker {
+		return env
+	}
+	uid, err := lookupSlotUID(slot)
+	if err != nil || uid == "" {
+		return env
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, "DOCKER_HOST=") {
+			out = append(out, entry)
+		}
+	}
+	return append(out, "DOCKER_HOST=unix:///run/user/"+uid+"/docker.sock")
 }

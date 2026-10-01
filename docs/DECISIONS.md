@@ -13,6 +13,27 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Docker for slotted users: a private rootless Docker per slot (all deployments)
+
+- **Found.** A command run as a slot inherited the platform account's `DOCKER_HOST` (its rootless socket, in a folder
+  only that account can open) and had no Docker of its own: "permission denied while trying to connect to the docker
+  API". Sessions whose coding CLI runs as the platform account still had Docker, one shared daemon in which every
+  user could see and stop everyone's containers.
+- **Decided.** Docker is part of the shared slot setup, not a host's one-off: `provision-slots.sh docker [slotNN ...]`
+  gives each slot (all assigned ones by default) its own rootless daemon (user unit, linger, subuid/subgid, a socket
+  in the slot's own `/run/user/<uid>`), sets `slot_docker` in the slotctl config, and `assign` enables it for each new
+  slot automatically once the host uses it (`init` keeps the flag). The platform then replaces `DOCKER_HOST` with
+  the slot's own socket for commands run as a slot (`slots.WithSlotDocker`, builder; `slotfs.WithSlotDocker`, provider,
+  for CLIs run as a slot); a host without `slot_docker` is unchanged. Users cannot see or stop each other's containers.
+- **Costs to know per host.** Each slot keeps its own images and volumes under its home (disk) and a running daemon
+  is roughly 100-150 MB (memory): a small host (RTS, 4 GB) should enable it only for the slots that need it
+  (`docker slot03`). Rootless Docker needs unprivileged user namespaces (the script refuses on a host whose AppArmor
+  restricts them unless `FORCE_DOCKER=1`) and `docker-ce-rootless-extras`/`uidmap`. Published ports are host-wide:
+  two users publishing the same host port still collide (the port-limit plan is separate).
+- **Not applied yet.** The shared Hetzner host (excellence, Confida) is at 97% disk (15 GB free) with 59 GB of unused
+  images in the root Docker daemon (other developers' accounts); applying per-slot Docker waits for that headroom.
+  Tests: `slots/docker_env_linux_test.go`, `internal/slotfs` (provider).
+
 ### 2026-10-01 — Preserve MCP images through the coding CLI bridge
 
 - RTS/Manish's `sde private` Code chat used Claude and Jam's video tools;
