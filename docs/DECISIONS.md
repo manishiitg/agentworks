@@ -56,10 +56,17 @@ Design references for the linked runtime decisions:
   `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (excellence, RTS,
   Confida) until deployed.
 - **By design.** `planning/` is mounted read-only in a workflow shell so plan changes go through the authenticated tools.
-- **Open (browser).** `agent_browser` as a slot fails ("Permission denied ... google-chrome"): the shared-browser
-  daemons and their sockets belong to the service account's uid (`/tmp/.agent-browser/<product>/o`, mode 0700), so a
-  slot cannot reach them and the CLI falls back to starting its own Chrome, which the sandbox refuses. Needs a decision
-  (run browser commands as the service, or make the daemon sockets reachable by the slots).
+- **Browser (RTS "Browser restarted - reconnecting" loop; Confida "Permission denied ... google-chrome").** The
+  `agent-browser` CLI starts its own daemon and Chrome from inside the command and the platform manages them (profile
+  folders `browser-profile*` are service-owned 0700, the live view, restarts, killing). As a slot the CLI could not
+  write the profile folders (so `daemonPID=0`, no Chrome, live view 502) and the platform could not stop a browser
+  owned by another account. Decided: a command that is exactly one `agent-browser` invocation runs as the service
+  account, with the folder guard, as before slots (`handlers/browser_command.go`, `isStandaloneBrowserCommand`: no
+  unquoted shell operator, no command substitution, first word exactly `agent-browser`); everything else still runs
+  as the slot, so appending `agent-browser` to another command does not leave the slot. Residual: a browser command
+  has the service account's access inside the Landlock folder guard (the same as before slots), and the browser
+  daemon reads `file://` as the service. Making browsers run as the slot would need slot-writable profile folders and
+  a platform that can manage processes it does not own; not done.
 
 ### 2026-10-01 — RTS resized to t3.medium (2 vCPU / 4 GB) for performance testing
 

@@ -144,6 +144,12 @@ func ExecuteShellCommand(c *gin.Context) {
 	// Where slots are on, every command runs as the caller's own Linux account and never without
 	// a folder guard: an unguarded command would run as the service account from the workspace root.
 	userSlot, slotsOn, slotErr := slots.For(resolvedUserID)
+	// A plain agent-browser call runs as the service account (the platform owns the browser daemon, its profile
+	// folders and the live view); it keeps the folder guard. See isStandaloneBrowserCommand.
+	if slotsOn && slotErr == nil && userSlot != "" && isStandaloneBrowserCommand(stripShellPrefix(req.Command)) {
+		log.Printf("[SLOTS] browser command for %s runs as the service account, not %s", resolvedUserID, userSlot)
+		userSlot = ""
+	}
 	if slotsOn {
 		if slotErr != nil {
 			c.JSON(http.StatusForbidden, models.APIResponse[any]{
