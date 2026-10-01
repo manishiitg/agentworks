@@ -1,17 +1,22 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../stores/useGlobalPresetStore', () => ({
+  useGlobalPresetStore: {
+    getState: () => ({
+      workflowPresets: [
+        { id: 'r1', workflowKind: 'relay' },
+        { id: 'g1', workflowKind: 'workflow' },
+      ],
+    }),
+  },
+}))
+
 import { workflowSurfaceForPreset } from './workflowNavigation'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 
 describe('workflowSurfaceForPreset', () => {
   beforeEach(() => {
     ;(window as unknown as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays'] }
-    useGlobalPresetStore.setState({
-      workflowPresets: [
-        { id: 'r1', workflowKind: 'relay' },
-        { id: 'g1', workflowKind: 'workflow' },
-      ] as never,
-    })
   })
 
   it('opens a Relay in Relays and everything else in Goals', () => {
