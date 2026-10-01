@@ -47,6 +47,17 @@ export function getWorkflowNavigationContext(): Readonly<WorkflowNavigationConte
   return context
 }
 
+/**
+ * The product surface a workflow belongs to: a Relay opens in Relays, everything else in Goals. Navigation that
+ * lands on a workflow tab (activity pills, the global tab opener) must not force Goals, or opening a Relay
+ * shows the Goals page.
+ */
+export function workflowSurfaceForPreset(presetId: string | undefined | null): 'relays' | 'agentworks' {
+  if (!presetId) return 'agentworks'
+  const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === presetId)
+  return preset?.workflowKind === 'relay' && isEnabledProductSurface('relays') ? 'relays' : 'agentworks'
+}
+
 /** Project workflow selection into the existing report/workspace stores. */
 export function selectWorkflowPreset(presetOrId: CustomPreset | PredefinedPreset | string): boolean {
   const presetStore = useGlobalPresetStore.getState()

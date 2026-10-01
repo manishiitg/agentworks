@@ -13,6 +13,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Opening a Relay from activity or the global tab opener landed on Goals
+
+- **Reported** (Confida, two users): opening Relays opens Goals. The switcher and the Relay list are correct; two
+  navigation paths forced the Goals surface for every workflow tab (`openGlobalTab`, and the activity-session
+  fallback). Not reproduced in a browser: the fix is by reading the code, so confirm on Confida after the deploy.
+- **Done.** `workflowSurfaceForPreset` (a Relay maps to Relays, else Goals) is used by both. Test:
+  `workflowSurfaceForPreset.test.ts`. Still forcing Goals by design: the Quick Switcher and Schedules open
+  the workflow afterwards, which sets the right surface.
+
 ### 2026-10-01 — Gmail incoming email uses a shared, opt-in receiver across deployments
 
 - **Decided.** Link each owned Crew, Workflow, or Code to a connected Gmail mailbox and assign a stable
