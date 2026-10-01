@@ -13,6 +13,25 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Slots: shared folders need a shared group (workflow shell was failing for slotted users)
+
+- **Incident.** With slots on, every shell command a workflow or Relay ran as the user's slot failed with
+  `slotctl: could not start: fork/exec ...: permission denied` (Go reports a failed chdir this way): the shared
+  folders (`Workflow/`, `Downloads/`, `skills/`, `subagents/`, `tmp/`) belong to the service account and the folders
+  inside them are owner-only, so no slot could enter its own workflow's folder. Found on Confida (Vaibhav, 13:12);
+  RTS (scheduled workflows run as the admin, who has a slot) and excellence (Relays/Crew) had the same gap. This is
+  the "shared folders are not slot-writable yet" item flagged when opt-in mode was introduced; assigning every
+  Confida user a slot made it bite.
+- **Decided and done.** One group per product (`<prefix>shared`: `cfshared` on Confida, `slotshared` on RTS and
+  excellence) holds the service account and every slot; the shared folders get that group, group read/write and
+  setgid, so files either side creates stay reachable by both. Private trees stay closed to other slots (checked: one
+  slot cannot list another's tree). Apps still decide who may open which workflow; this only restores what the
+  shell could do as the service account. `provision-slots.sh init` runs it and `provision-slots.sh shared` re-runs it
+  (`SHARED_DIRS` overrides the folder list); the service's user manager must be restarted once for the new group.
+- **Open.** Anything else a slot must reach but does not own (new shared folders outside that list) needs the same
+  treatment. CLIs as the user's own account (not enabled outside the excellence canary) have the equivalent question
+  for their runtime files.
+
 ### 2026-10-01 — Excellence offers Crew and Relays (the product switcher list lives in runtime-config.js)
 
 - **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`

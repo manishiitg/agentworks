@@ -130,8 +130,30 @@ SUDO
     find "$DOCS/_users" -mindepth 1 -maxdepth 1 -type d -exec chmod o-rwx {} +
   fi
   [[ -d "$DOCS/config" ]] && chmod 0700 "$DOCS/config"
+  cmd_shared
   echo "Slots 1..$SLOT_COUNT are in place for $PRODUCT."
   echo "The service account joined the slot groups just now: restart its services (or the user manager) once so they pick that up."
+}
+
+# Folders every account shares (workflows, downloads, skills): they belong to the service account, and a slot
+# account could not even enter a workflow's folder, so every shell command a workflow ran as a slot failed
+# ("fork/exec ...: permission denied", Confida and RTS, 2026-10-01). One group per product holds the service
+# account and every slot; the shared folders get that group, group read/write and setgid, so what the service
+# writes there stays reachable by the slots and the other way round. Private trees stay closed to other slots.
+# SHARED_DIRS (below DOCS) can be overridden. Safe to run again; run it after adding slots.
+cmd_shared() {
+  local group="${SLOT_PREFIX}shared" n dir
+  getent group "$group" >/dev/null || groupadd "$group"
+  for n in $(seq 1 "$SLOT_COUNT"); do usermod -aG "$group" "$(slot_name "$n")"; done
+  usermod -aG "$group" "$PRODUCT"
+  for dir in ${SHARED_DIRS:-Workflow Downloads skills subagents tmp}; do
+    [[ -d "$DOCS/$dir" ]] || continue
+    chgrp -R "$group" "$DOCS/$dir"
+    chmod -R g+rwX "$DOCS/$dir"
+    find "$DOCS/$dir" -type d -exec chmod g+s {} +
+    echo "shared folder: $DOCS/$dir -> group $group"
+  done
+  echo "The service account joined $group just now: restart its services (or the user manager) once."
 }
 
 user_tree() { printf '%s/_users/%s' "$DOCS" "$1"; }
@@ -222,9 +244,10 @@ cmd_status() {
 
 case "${1:-}" in
   init) cmd_init ;;
+  shared) cmd_shared ;;
   assign) shift; cmd_assign "$@" ;;
   adduser) shift; cmd_adduser "$@" ;;
   release) shift; cmd_release "$@" ;;
   status) cmd_status ;;
-  *) echo "usage: provision-slots.sh init | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
+  *) echo "usage: provision-slots.sh init | shared | adduser <email> [role] [products] | assign <user-id> [slot] | release <user-id> | status" >&2; exit 2 ;;
 esac
