@@ -250,7 +250,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'apps' && product.profileId === 'code' && (
           // A Code is a place like a Crew: its connections are its own, added
-          // by its owner (a shared Code arrives under the owner's _users/ path).
+          // by its owner (the physical _users/ path names that owner).
           <PlaceMcpSection workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} />
         )}
         {activeTab === 'apps' && product.profileId !== 'code' && <WorkMCPTabBody

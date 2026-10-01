@@ -297,16 +297,6 @@ export interface SharedProjectSummary {
   workflow_context_paths?: string[]
   triggers?: SharedProjectTrigger[]
   schedules?: SharedProjectSchedule[]
-  /** The caller's role on a shared Code: viewer, editor or co_owner. */
-  role?: CodeShareRole
-}
-
-export type CodeShareRole = 'viewer' | 'editor' | 'co_owner'
-
-export interface CodeShareGrant {
-  user_id: string
-  username?: string
-  role: CodeShareRole
 }
 
 export interface CodeAdminWorkspace {
@@ -316,7 +306,8 @@ export interface CodeAdminWorkspace {
   title: string
   workspace_path: string
   updated_at?: string
-  shares: CodeShareGrant[]
+  /** Compatibility field; Code no longer has sharing grants. */
+  shares: never[]
 }
 
 export interface CodeAdminChat {
@@ -338,14 +329,6 @@ export interface CodeAdminAuditEntry {
   owner_id?: string
   project_id?: string
   target?: string
-}
-
-export interface CodeSharesResponse {
-  owner_id: string
-  owner_username?: string
-  /** The caller's own role: owner, co_owner, editor or viewer. */
-  role: CodeShareRole | 'owner'
-  grants: CodeShareGrant[]
 }
 
 export interface SharedProjectFileEntry {

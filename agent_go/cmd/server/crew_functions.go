@@ -209,6 +209,10 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if err != nil {
 		return nil, err
 	}
+	// A private Code exposes only functions its owner deliberately declared.
+	if target.CrewProfile == codeproduct.ProfileID {
+		return functions, nil
+	}
 	return withDefaultAskFunction(functions), nil
 }
 
@@ -1291,7 +1295,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path, or #code:<id> for an editable Code owned by this Code's owner."}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path, or #code:<id> for a private Code owned by the actual caller; only declared functions are callable."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		functions, err := callableFunctions(ctx, target)
 		if err != nil {
@@ -1347,7 +1351,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 	}
 	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
 
-	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), another Crew, or an editable private Code with the same owner. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
+	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), another Crew, or (from Code) another private Code owned by the caller. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
 		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
 			"target":        targetSchema,
 			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},
@@ -1380,6 +1384,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
+		if target.CrewProfile == codeproduct.ProfileID && caller.Stamp.ProfileID != codeproduct.ProfileID {
+			return "", fmt.Errorf("declare or remove Code functions in its owner's Code chat")
+		}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
 			return "", err
@@ -1409,6 +1416,9 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		name, _ := args["name"].(string)
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
+		}
+		if target.CrewProfile == codeproduct.ProfileID && caller.Stamp.ProfileID != codeproduct.ProfileID {
+			return "", fmt.Errorf("declare or remove Code functions in its owner's Code chat")
 		}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
@@ -1459,7 +1469,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew, workflow, or editable private Code with the same owner. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
+	if err := register("call_function", "Call a typed function of another Crew, workflow, or private Code owned by the caller. Arguments are validated against its input schema; the target works in its own chat and returns a result validated against its result schema. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
@@ -1512,6 +1522,14 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
 			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
 		}
+		if call.TargetProfileID == codeproduct.ProfileID {
+			ownerID, ok := crewProjectOwnerID(call.TargetPath)
+			source := triggerLinkCaller{Stamp: triggerCaller{Type: call.CallerKind, ProfileID: call.CallerProfileID, ID: call.CallerID}, Path: call.CallerPath}
+			if !ok || authorizeOwnedCodeCaller(ctx, userID, ownerID, source) != nil ||
+				authorizeOwnedCodeCaller(ctx, userID, ownerID, caller) != nil {
+				return nil, caller, fmt.Errorf("private Code access denied")
+			}
+		}
 		if caller.Stamp.ProfileID == codeproduct.ProfileID {
 			ownerID, ok := crewProjectOwnerID(caller.Path)
 			if !ok && isCodeProjectPath(caller.Path) {
@@ -1520,9 +1538,7 @@ func (api *StreamingAPI) registerCrewFunctionTools(registrar definitionToolRegis
 			if !ok || !codeRoleFor(ctx, userID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
 				return nil, caller, fmt.Errorf("private Code access denied")
 			}
-			// Every editor of a shared Code has the same Code root, so a call
-			// made from it belongs to the person who made it, not to every
-			// editor (#246 review M1).
+			// Calls belong to their actual owner and source workspace.
 			if call.CallerProfileID == codeproduct.ProfileID && call.UserID != userID {
 				return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
 			}

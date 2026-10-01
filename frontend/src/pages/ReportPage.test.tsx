@@ -35,17 +35,18 @@ describe("standalone report page", () => {
   it("does not open a personal Work dashboard for a different account", async () => {
     const view = await renderReport("Chats/Work/projects/demo", "work-user", "other-user");
     try {
-      expect(view.host.textContent).toContain("Only the crew owner can open this dashboard");
+      expect(view.host.textContent).toContain("Only the workspace owner can open this dashboard");
       expect(view.host.textContent).not.toContain("Dashboard runtime");
     } finally {
       await act(async () => view.root.unmount());
     }
   });
 
-  it("opens a Code dashboard for someone its owner shared it with, at the owner's path", async () => {
+  it("refuses a Code dashboard for another person, including a former share recipient", async () => {
     const view = await renderReport("Chats/Code/projects/hrms-1", "owner-1", "member-2");
     try {
-      expect(view.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/hrms-1");
+      expect(view.host.textContent).toContain("Only the workspace owner");
+      expect(view.host.textContent).not.toContain("Dashboard runtime");
     } finally {
       await act(async () => view.root.unmount());
     }
@@ -60,9 +61,17 @@ describe("standalone report page", () => {
     }
   });
 
-  it("accepts a shared member's absolute Code path and rejects anything deeper", async () => {
-    const ok = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "member-2");
-    const bad = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1/db", undefined, "member-2");
+  it("refuses an absolute Code path for another person", async () => {
+    const view = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "member-2");
+    try {
+      expect(view.host.textContent).toContain("Only the workspace owner");
+      expect(view.host.textContent).not.toContain("Dashboard runtime");
+    } finally { await act(async () => view.root.unmount()); }
+  });
+
+  it("accepts only the owner's absolute Code path and rejects anything deeper", async () => {
+    const ok = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "owner-1");
+    const bad = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1/db", undefined, "owner-1");
     try {
       expect(ok.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/hrms-1");
       expect(bad.host.textContent).toContain("Invalid dashboard URL");

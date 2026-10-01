@@ -10,12 +10,10 @@ import {
   Monitor,
   Route,
   Server,
-  Share2,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
-import { CodeSharePanel } from './CodeSharePanel'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip'
@@ -50,7 +48,7 @@ const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView')
 const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'share'
+export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -75,8 +73,6 @@ const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIco
 const SETUP_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
   { id: 'identity', label: 'Identity', icon: Fingerprint },
   { id: 'mcp', label: 'Integrations', icon: Server },
-  // Code only: who the workspace is shared with (the workflow access UI).
-  { id: 'share', label: 'Share', icon: Share2 },
 ]
 
 // usePendingCrewSuggestions counts suggestions waiting for the owner, for
@@ -142,9 +138,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   // A Code's Share view is open to everyone in it (co-owners edit it, the
   // rest see who has access); Crews have no Share view.
   const visibleSetup = (readOnly
-    ? SETUP_BUTTONS.filter(item => isCode && item.id === 'share')
+    ? []
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
-    .filter(item => item.id !== 'share' || isCode)
   // Ops and Setup are always open and show icons only.
 
   return (
@@ -160,7 +155,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
           {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
-          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name, integrations and sharing' : 'Setup: identity and integrations'}>
+          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
             <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
         </div>
@@ -325,7 +320,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // fallback: a stale saved view or an agent-driven view request must never
   // render an owner-only panel (identity editors, transcripts, usage)
   // for someone else's Crew.
-  if (readOnly && view !== 'memory' && view !== 'files' && view !== 'share') {
+  if (readOnly && view !== 'memory' && view !== 'files') {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
   }
 
@@ -338,7 +333,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           crewRoot={workspacePath}
           request={sharedFileRequest}
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" /></Suspense>)}
-        {view === 'share' && <CodeSharePanel projectId={projectId} workspacePath={workspacePath} />}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           projectId={projectId}

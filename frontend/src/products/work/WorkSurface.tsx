@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Eye, Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -85,7 +85,6 @@ const WORKSPACE_VIEW_IDS = new Set<WorkWorkspaceView>(Object.values(WORK_UI_PRES
 // data (transcripts, run databases, usage) the proxy will not serve
 // cross-user.
 const SHARED_CREW_WORKSPACE_PANELS: Set<string> = new Set(['memory', 'files'])
-const SHARED_CODE_WORKSPACE_PANELS: Set<string> = new Set(['files', 'share'])
 
 function readWorkWorkspaceView(projectId?: string): WorkWorkspaceView | null {
   if (typeof window === 'undefined' || !projectId) return null
@@ -347,8 +346,6 @@ function useWorkChatTab(
   useEffect(() => {
     const target = sessionRef.current
     if (!target || target.id !== projectId) return
-    // A viewer of a shared Code reads its files but has no chat of it.
-    if (target.shared?.role === 'viewer') return
     let cancelled = false
     const prepare = async () => {
       try {
@@ -702,7 +699,6 @@ function WorkTopBarControl({
                     <span className="block truncate font-medium">{session.identity?.name || session.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {session.shared?.ownerUsername || session.shared?.ownerId || 'Another user'}
-                      {session.shared?.role ? ` · ${session.shared.role === 'co_owner' ? 'co-owner' : session.shared.role}` : ''}
                       {session.identity?.name && session.identity.name !== session.title ? ` · ${session.title}` : ''}
                     </span>
                   </span>
@@ -810,7 +806,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
   // matter what the server's feature list enables for owned Crews.
   const isShared = Boolean(selected?.shared)
   // A Code has no Memory: someone else's Code offers only its files.
-  const sharedPanels = product.profileId === 'code' ? SHARED_CODE_WORKSPACE_PANELS : SHARED_CREW_WORKSPACE_PANELS
+  const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
@@ -1143,7 +1139,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
                   <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">A private workspace to code in</h2>
                   <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
-                    Files, an editor and a terminal on the team server, with a coding agent beside them. Only you can see your workspaces until you share them.
+                    Files, an editor and a terminal on the team server, with a coding agent beside them. Your workspaces stay private to you.
                   </p>
                   <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
                     <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
@@ -1155,8 +1151,8 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       Ask it to write, run and fix code here. It can call the Crews and workflows you can use.
                     </div>
                     <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                      <span className="block font-medium text-foreground">Private until you share</span>
-                      Add a teammate as viewer, editor or co-owner. Each person keeps their own chats.
+                      <span className="block font-medium text-foreground">Private to you</span>
+                      Files, chats and credentials belong to your account. Sharing a link does not give another person access.
                     </div>
                   </div>
                   <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
@@ -1281,15 +1277,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                       }}
                     />
                   ))}
-                  {selected.shared?.role === 'viewer' ? (
-                    <div className="grid h-full place-items-center p-6 text-center">
-                      <div className="max-w-sm">
-                        <Eye className="mx-auto h-6 w-6 text-muted-foreground" />
-                        <p className="mt-2 text-sm font-medium text-foreground">You can view this workspace</p>
-                        <p className="mt-1 text-sm text-muted-foreground">Browse its files beside this panel. To run the agent here, ask {selected.shared.ownerUsername || selected.shared.ownerId} for editor access.</p>
-                      </div>
-                    </div>
-                  ) : tabId ? (
+                  {tabId ? (
                       <div className="min-h-0 flex-1">
                         <ChatArea
                           tabId={tabId}
@@ -1326,7 +1314,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                     data-ui-view={workPresentationView(workspaceView)}
                     className={layout.panelClassName}
                   >
-                  {tabId || selected.shared?.role === 'viewer' ? (
+                  {tabId ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}

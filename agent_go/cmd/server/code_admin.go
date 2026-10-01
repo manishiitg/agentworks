@@ -24,7 +24,7 @@ import (
 // owner-only for them.
 //
 // Admins, and accounts an admin marked as Code reviewers
-// (UserRecord.CodeReviewer), read everyone's Code chats, files and sharing,
+// (UserRecord.CodeReviewer), read everyone's Code chats and files,
 // read-only: these endpoints only read, and nothing here resumes a session or
 // writes a file. Every call is appended to an audit log, which both can read.
 
@@ -138,13 +138,13 @@ func (api *StreamingAPI) codeAdminProfile(w http.ResponseWriter, r *http.Request
 }
 
 type codeAdminWorkspace struct {
-	OwnerID       string               `json:"owner_id"`
-	OwnerUsername string               `json:"owner_username,omitempty"`
-	ID            string               `json:"id"`
-	Title         string               `json:"title"`
-	WorkspacePath string               `json:"workspace_path"`
-	UpdatedAt     string               `json:"updated_at,omitempty"`
-	Shares        []codeShareGrantView `json:"shares"`
+	OwnerID       string     `json:"owner_id"`
+	OwnerUsername string     `json:"owner_username,omitempty"`
+	ID            string     `json:"id"`
+	Title         string     `json:"title"`
+	WorkspacePath string     `json:"workspace_path"`
+	UpdatedAt     string     `json:"updated_at,omitempty"`
+	Shares        []struct{} `json:"shares"`
 }
 
 // GET /api/admin/code/workspaces — every user's Code workspaces.
@@ -168,7 +168,7 @@ func (api *StreamingAPI) handleAdminListCodeWorkspaces(w http.ResponseWriter, r 
 			rows = append(rows, codeAdminWorkspace{
 				OwnerID: ownerID, OwnerUsername: crewOwnerDisplayName(ownerID), ID: row.ID, Title: row.Title,
 				WorkspacePath: row.WorkspacePath, UpdatedAt: row.UpdatedAt,
-				Shares: codeSharesView(r.Context(), ownerID, row.ID, codeRoleOwner).Grants,
+				Shares: []struct{}{},
 			})
 		}
 	}
@@ -291,18 +291,13 @@ type codeAdminChat struct {
 	MessageCount int    `json:"message_count"`
 }
 
-// codeChatParticipants are the owner and everyone the Code is shared with:
-// the only people who can have chats of it.
+// Code chats belong to the owner; retired sharing records grant no access.
 func codeChatParticipants(ctx context.Context, ownerID, projectID string) []string {
-	people := []string{ownerID}
-	for _, grant := range codeSharesView(ctx, ownerID, projectID, codeRoleOwner).Grants {
-		people = append(people, grant.UserID)
-	}
-	return people
+	return []string{ownerID}
 }
 
 // GET /api/admin/code/workspaces/{owner}/{project_id}/chats — the owner's and
-// every sharer's chats of this Code.
+// Code's chats. Inspection stays audited and read-only.
 func (api *StreamingAPI) handleAdminCodeChats(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)

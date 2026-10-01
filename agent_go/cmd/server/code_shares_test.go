@@ -40,131 +40,77 @@ func sharedCodeRows(t *testing.T, api *StreamingAPI, caller string) []sharedProj
 	return decoded.Projects
 }
 
-func TestCodeSharingRoles(t *testing.T) {
-	api, _ := newCodePrivacyFixture(t)
-
-	// Not shared: nothing for the other user.
-	if level, err := codeTurnAccess(api, "other"); err == nil || level != WorkflowAccessNone {
-		t.Fatalf("unshared Code reached: %v %v", level, err)
-	}
-
-	// Viewer: listed and can read, but cannot run the agent.
-	if rec := putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"viewer"}]}`); rec.Code != http.StatusOK {
-		t.Fatalf("share as viewer = %d %s", rec.Code, rec.Body.String())
-	}
-	rows := sharedCodeRows(t, api, "other")
-	if len(rows) != 1 || rows[0].ID != "c0de0001-0000" || rows[0].Role != "viewer" || rows[0].OwnerID != "owner" {
-		t.Fatalf("viewer listing = %+v", rows)
-	}
-	if level, err := codeTurnAccess(api, "other"); err == nil || level != WorkflowAccessNone {
-		t.Fatalf("a viewer ran the agent: %v %v", level, err)
-	}
-	if !codeLinkReadAllowed(context.Background(), &UserClaims{UserID: "other"}, "owner", codePrivacyOwnerRoot) {
-		t.Fatal("a viewer cannot open the Code's links")
-	}
-	// A viewer cannot change sharing.
-	if rec := putCodeShares(t, api, "other", `{"grants":[{"user":"other","role":"co_owner"}]}`); rec.Code != http.StatusForbidden {
-		t.Fatalf("viewer promoted itself: %d %s", rec.Code, rec.Body.String())
-	}
-
-	// Editor: write access in their own chat.
-	if rec := putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`); rec.Code != http.StatusOK {
-		t.Fatalf("share as editor = %d", rec.Code)
-	}
-	if level, err := codeTurnAccess(api, "other"); err != nil || level != WorkflowAccessWrite {
-		t.Fatalf("editor access = %v %v", level, err)
-	}
-	if rec := putCodeShares(t, api, "other", `{"grants":[]}`); rec.Code != http.StatusForbidden {
-		t.Fatalf("an editor changed sharing: %d", rec.Code)
-	}
-
-	// Co-owner: owner access and may manage sharing.
-	if rec := putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"co_owner"}]}`); rec.Code != http.StatusOK {
-		t.Fatalf("share as co-owner = %d", rec.Code)
-	}
-	if level, err := codeTurnAccess(api, "other"); err != nil || level != WorkflowAccessOwner {
-		t.Fatalf("co-owner access = %v %v", level, err)
-	}
-	if rec := putCodeShares(t, api, "other", `{"grants":[{"user":"other","role":"co_owner"}]}`); rec.Code != http.StatusOK {
-		t.Fatalf("a co-owner could not manage sharing: %d", rec.Code)
-	}
-
-	// Unsharing removes access at once.
-	if rec := putCodeShares(t, api, "owner", `{"grants":[]}`); rec.Code != http.StatusOK {
-		t.Fatalf("unshare = %d", rec.Code)
-	}
-	if level, err := codeTurnAccess(api, "other"); err == nil || level != WorkflowAccessNone {
-		t.Fatalf("unshared user kept access: %v %v", level, err)
-	}
-	if rows := sharedCodeRows(t, api, "other"); len(rows) != 0 {
-		t.Fatalf("unshared Code still listed: %+v", rows)
-	}
-	if codeLinkReadAllowed(context.Background(), &UserClaims{UserID: "other"}, "owner", codePrivacyOwnerRoot) {
-		t.Fatal("unshared user can still open links")
+// Old persisted grants must never revive human access, including the most
+// privileged co_owner grant. Exercise the real HTTP/file/conversation gates.
+func TestCodeLegacySharesGrantNoAccess(t *testing.T) {
+	api, profile := newCodePrivacyFixture(t)
+	for _, role := range []string{"viewer", "editor", "co_owner"} {
+		t.Run(role, func(t *testing.T) {
+			legacy := `{"projects":{"owner/c0de0001-0000":{"owner_id":"owner","project_id":"c0de0001-0000","grants":{"other":"` + role + `"}}}}`
+			if err := writeFileToWorkspace(context.Background(), codeSharesFilePath(), legacy); err != nil {
+				t.Fatal(err)
+			}
+			if level, err := codeTurnAccess(api, "other"); err == nil || level != WorkflowAccessNone {
+				t.Fatalf("legacy %s ran Code: %v %v", role, level, err)
+			}
+			if rows := sharedCodeRows(t, api, "other"); len(rows) != 0 {
+				t.Fatalf("legacy grant listed Code: %+v", rows)
+			}
+			if codeLinkReadAllowed(context.Background(), &UserClaims{UserID: "other"}, "owner", codePrivacyOwnerRoot) {
+				t.Fatal("legacy grant opened Code file links")
+			}
+			if _, _, err := resolveConversationBindingForUser(context.Background(), "other", profile, "c0de0001-0000"); err == nil {
+				t.Fatal("legacy grant opened a Code conversation")
+			}
+			service := &ProductScheduleService{api: api, registry: api.agentProfiles}
+			if service.crewProjectExists(context.Background(), "other", "code", "c0de0001-0000") {
+				t.Fatal("legacy grant stamped outbound Code calls")
+			}
+			if level, err := codeTurnAccess(api, "owner"); err != nil || level != WorkflowAccessOwner {
+				t.Fatalf("owner lost access: %v %v", level, err)
+			}
+			if !codeLinkReadAllowed(context.Background(), &UserClaims{UserID: "owner"}, "owner", codePrivacyOwnerRoot) {
+				t.Fatal("owner lost file links")
+			}
+			after, present, err := readFileFromWorkspace(context.Background(), codeSharesFilePath())
+			if err != nil || !present || after != legacy {
+				t.Fatal("legacy data was rewritten or deleted")
+			}
+		})
 	}
 }
 
-func TestCodeSharingRejectsBadInput(t *testing.T) {
+func TestCodeSharingEndpointsRetired(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	for _, body := range []string{
-		`{"grants":[{"user":"nobody","role":"viewer"}]}`,
-		`{"grants":[{"user":"other","role":"admin"}]}`,
-		`not json`,
-	} {
-		if rec := putCodeShares(t, api, "owner", body); rec.Code != http.StatusBadRequest {
-			t.Fatalf("PUT %s = %d", body, rec.Code)
+	for _, caller := range []string{"owner", "other"} {
+		if rec := putCodeShares(t, api, caller, `{"grants":[{"user":"other","role":"co_owner"}]}`); rec.Code != http.StatusGone {
+			t.Fatalf("PUT shares = %d %s", rec.Code, rec.Body.String())
+		}
+		req := mux.SetURLVars(profileRouteRequest(http.MethodGet, "/x", nil, caller), map[string]string{"project_id": "guessed-private-id"})
+		rec := httptest.NewRecorder()
+		api.handleGetCodeShares(rec, req)
+		if rec.Code != http.StatusGone || strings.Contains(rec.Body.String(), "owner_id") {
+			t.Fatalf("GET shares = %d %s", rec.Code, rec.Body.String())
 		}
 	}
-	// Someone with no access cannot even see the share list.
-	req := mux.SetURLVars(profileRouteRequest(http.MethodGet, "/x", nil, "other"), map[string]string{"project_id": "c0de0001-0000"})
-	rec := httptest.NewRecorder()
-	api.handleGetCodeShares(rec, req)
-	if rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "owner") {
-		t.Fatalf("stranger read the share list: %d %s", rec.Code, rec.Body.String())
-	}
 }
 
-func TestCodeChatBindingFollowsRole(t *testing.T) {
-	api, profile := newCodePrivacyFixture(t)
-	ctx := context.Background()
-	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"viewer"}]}`)
-	if _, _, err := resolveConversationBindingForUser(ctx, "other", profile, "c0de0001-0000"); err == nil {
-		t.Fatal("a viewer got a chat of the shared Code")
-	}
-	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
-	binding, owned, err := resolveConversationBindingForUser(ctx, "other", profile, "c0de0001-0000")
-	if err != nil || owned {
-		t.Fatalf("editor binding owned=%v err=%v", owned, err)
-	}
-	// The editor's chat is their own: no coupling to the owner's manifest.
-	if binding.ManifestPath != "" || binding.AuthoritativeSessionID != "" || binding.WorkspacePath != codePrivacyOwnerRoot {
-		t.Fatalf("editor binding = %+v", binding)
-	}
-}
-
-// A Code calling a Crew or workflow is a valid caller for its owner and for
-// people it is shared with; nobody else can stamp calls as that Code.
-func TestCodeIsAValidOutboundCaller(t *testing.T) {
+func TestCodeIsAValidOutboundCallerForOwnerOnly(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	service := &ProductScheduleService{api: api, registry: api.agentProfiles}
-	ctx := context.Background()
-	if !service.crewProjectExists(ctx, "owner", "code", "c0de0001-0000") {
-		t.Fatal("the owner's Code is not a valid caller")
+	if !service.crewProjectExists(context.Background(), "owner", "code", "c0de0001-0000") {
+		t.Fatal("owner cannot call from Code")
 	}
-	if service.crewProjectExists(ctx, "other", "code", "c0de0001-0000") {
-		t.Fatal("an unshared user stamped calls as the owner's Code")
-	}
-	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
-	if !service.crewProjectExists(ctx, "other", "code", "c0de0001-0000") {
-		t.Fatal("an editor's calls from the shared Code were refused")
+	if service.crewProjectExists(context.Background(), "other", "code", "c0de0001-0000") {
+		t.Fatal("another person can call from Code")
 	}
 }
 
-// A Code is never a reference, attachment or call target, not even for its
-// owner and not when shared.
-func TestCodeIsNeverAReferenceOrTarget(t *testing.T) {
-	api, _ := newCodePrivacyFixture(t)
-	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"co_owner"}]}`)
+// A Code is never a folder reference/attachment or public call target,
+// including for its owner. Private function resolution is tested separately.
+func TestCodeExcludedFromPublicTargetsAndAttachments(t *testing.T) {
+	newCodePrivacyFixture(t)
+	_ = writeFileToWorkspace(context.Background(), codeSharesFilePath(), `{"projects":{"owner/c0de0001-0000":{"owner_id":"owner","project_id":"c0de0001-0000","grants":{"other":"co_owner"}}}}`)
 	for _, user := range []string{"owner", "other"} {
 		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user, Username: user})
 		for _, ref := range []string{"Chats/Code/projects/app-c0de0001", codePrivacyOwnerRoot} {
@@ -228,26 +174,23 @@ func TestCodeBotTurnsAreDirectMessageOnly(t *testing.T) {
 	if err := turn("other", services.BotIncomingMessage{Platform: "whatsapp"}); err == nil || !strings.Contains(err.Error(), "owner only") {
 		t.Fatalf("an editor reached the Code on WhatsApp: %v", err)
 	}
-	// An editor's Slack DM to the Code's own bot gets past the access gate
-	// (it may still fail later in this fixture, never with a refusal).
-	if err := turn("other", services.BotIncomingMessage{Platform: "slack", DirectMessage: true}); err != nil && (strings.Contains(err.Error(), "only 1:1") || strings.Contains(err.Error(), "owner only") || strings.Contains(err.Error(), "view-only") || strings.Contains(err.Error(), "chat-app")) {
-		t.Fatalf("an editor's Slack DM was refused: %v", err)
+	if err := turn("other", services.BotIncomingMessage{Platform: "slack", DirectMessage: true}); err == nil {
+		t.Fatal("a former editor's Slack DM reached private Code")
 	}
+
 }
 
-// A shared-Code editor's follow-up sent while the session is still active (its turn has not ended,
-// so no chat history is saved yet) is accepted: the registry entry for their own slot, bound to
-// this project, verifies the session. It used to fail with "conversation continuity conflict".
-func TestSharedCodeFollowUpBeforeHistoryIsSaved(t *testing.T) {
+// The owner can follow up while their first turn is still active.
+func TestOwnerCodeFollowUpBeforeHistoryIsSaved(t *testing.T) {
 	api, profile := newCodePrivacyFixture(t)
-	putCodeShares(t, api, "owner", `{"grants":[{"user":"other","role":"editor"}]}`)
-	req := profileRouteRequest(http.MethodPost, "/", nil, "other")
+	putCodeShares(t, api, "owner", `{"grants":[{"user":"owner","role":"editor"}]}`)
+	req := profileRouteRequest(http.MethodPost, "/", nil, "owner")
 	first, err := api.resolveAgentProfileConversation(req, profile, "c0de0001-0000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	api.activeSessions = map[string]*ActiveSessionInfo{first.SessionID: {SessionID: first.SessionID, UserID: "other"}}
-	follow := profileRouteRequest(http.MethodPost, "/", nil, "other")
+	api.activeSessions = map[string]*ActiveSessionInfo{first.SessionID: {SessionID: first.SessionID, UserID: "owner"}}
+	follow := profileRouteRequest(http.MethodPost, "/", nil, "owner")
 	follow.Header.Set("X-Session-ID", first.SessionID)
 	follow.Header.Set("X-Conversation-Continuation", "true")
 	again, err := api.resolveAgentProfileConversation(follow, profile, "c0de0001-0000")

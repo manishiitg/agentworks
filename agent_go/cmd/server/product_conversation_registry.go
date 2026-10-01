@@ -187,27 +187,6 @@ func (store productConversationRegistryStore) liveSessionIDs(ctx context.Context
 	return live, nil
 }
 
-// liveSessionIDsMatching is liveSessionIDs narrowed to the records match
-// accepts, e.g. one project's chats.
-func (store productConversationRegistryStore) liveSessionIDsMatching(ctx context.Context, userID, profileID string, match func(ProductConversationRecord) bool) (map[string]bool, error) {
-	path := productConversationRegistryPath(userID)
-	mutex := productConversationRegistryMutex(path)
-	mutex.Lock()
-	defer mutex.Unlock()
-	document, err := store.loadDocument(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	live := map[string]bool{}
-	prefix := strings.TrimSpace(profileID) + "/"
-	for entryKey, record := range document.Entries {
-		if strings.HasPrefix(entryKey, prefix) && strings.TrimSpace(record.SessionID) != "" && match(record) {
-			live[record.SessionID] = true
-		}
-	}
-	return live, nil
-}
-
 // switchTo makes an earlier conversation the slot's live one again; the one
 // it replaces joins the previous list. A session not in that list is
 // accepted only when the caller verified it is this slot's (a chat rotated

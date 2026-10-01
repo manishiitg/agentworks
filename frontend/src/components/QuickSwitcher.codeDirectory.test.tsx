@@ -15,7 +15,6 @@ vi.mock('../products/work/workSessions', () => ({
   loadWorkSessionsIncludingShared: vi.fn(async (product?: { profileId?: string }) => product?.profileId === 'code'
     ? [
         { id: 'code-own', title: 'billing-api' },
-        { id: 'code-shared', title: 'mobile-app', shared: { ownerId: 'u2', ownerUsername: 'yoav' } },
       ]
     : [{ id: 'crew-own', title: 'sde', identity: { name: 'SDE' } }]),
 }))
@@ -53,11 +52,10 @@ it('lists Code workspaces next to Crews and opens one on the Code surface', asyn
   const host = await renderSwitcher(onClose)
   expect(host.textContent).toContain('SDE')
   await act(async () => { await vi.waitFor(() => expect(host.textContent).toContain('billing-api')) })
-  expect(host.textContent).toContain('mobile-app')
-  expect(host.textContent).toContain('Code · shared by yoav')
-  const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('mobile-app'))
+  expect(host.textContent).not.toContain('shared by')
+  const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('billing-api'))
   await act(async () => { row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-  expect(useProductSurfaceStore.getState().selectedCodeProjectId).toBe('code-shared')
+  expect(useProductSurfaceStore.getState().selectedCodeProjectId).toBe('code-own')
   expect(useProductSurfaceStore.getState().productSurface).toBe('code')
   expect(onClose).toHaveBeenCalled()
 })

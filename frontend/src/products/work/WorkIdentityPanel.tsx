@@ -93,7 +93,7 @@ function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onD
       <SettingsCard
         icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Access"
-        description="Private to you and the people you share it with (Setup → Share). Admins and Code reviewers on this server can view it, read-only, and every view is logged."
+        description="Private to you. Files, chats, credentials and runtime cannot be shared with other users. Admins and Code reviewers on this server can view it, read-only, and every view is logged."
       >
         {null}
       </SettingsCard>
@@ -335,7 +335,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
 
 export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest }: {
   workspacePath: string
-  /** The project's id; a Code's General tab manages sharing with it. */
+  /** The project's id. */
   projectId?: string
   projectTitle: string
   projectDescription: string

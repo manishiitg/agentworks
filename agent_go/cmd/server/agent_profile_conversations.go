@@ -11,7 +11,6 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -393,14 +392,6 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		// A deleted Crew or Code takes its MCP connections, and their logins,
 		// with it.
 		forgetPlaceConnections(agentProfileRuntimeWorkspace(userID, binding.WorkspacePath))
-	}
-	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
-		// A deleted Code takes its share list with it.
-		owner := sanitizeUserIDForPath(userID)
-		_ = codeShares.update(context.WithoutCancel(r.Context()), func(doc *codeSharesDoc) error {
-			delete(doc.Projects, codeShareKey(owner, projectID))
-			return nil
-		})
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }

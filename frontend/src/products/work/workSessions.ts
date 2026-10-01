@@ -184,7 +184,6 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     shared: {
       ownerId: row.owner_id,
       ownerUsername: row.owner_username || undefined,
-      ...(row.role ? { role: row.role } : {}),
       triggers: row.triggers || [],
       schedules: row.schedules || [],
     },
@@ -192,6 +191,7 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
 }
 
 export async function loadSharedWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
+  if (!product.listsSharedProjects) return []
   const response = await agentApi.listSharedProjects(product.profileId)
   return (response?.projects || []).map(row => sharedProjectToWorkSession(row, product))
 }

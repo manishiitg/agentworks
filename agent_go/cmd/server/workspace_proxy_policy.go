@@ -64,9 +64,8 @@ func (p workspaceProxyPolicy) deniesPath(key, raw string) bool {
 }
 
 // workspaceProxyServerOwnedFiles are written only by the server, never by a
-// browser -- not even an admin's: Code sharing (an admin could otherwise make
-// themselves co-owner with no audit entry) and the admin audit log (which
-// must not be editable by the admins it records).
+// browser -- not even an admin's: legacy Code sharing data and the admin
+// audit log, which must not be editable by the admins it records.
 var workspaceProxyServerOwnedFiles = []string{codeSharesFilePath(), "config/code-admin-audit"}
 
 // serverOwnedWrite reports whether a write to clean would change a

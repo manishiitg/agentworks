@@ -144,7 +144,7 @@ func (s *ProductScheduleService) crewProjectExists(ctx context.Context, userID, 
 		profileID = "work"
 	}
 	// A calling Code has no schedules, so it is verified the way a Code turn
-	// is: the caller's own, or one shared with them.
+	// is: it must be the caller's own.
 	if strings.EqualFold(strings.TrimSpace(profileID), codeproduct.ProfileID) {
 		if s.registry == nil {
 			return false

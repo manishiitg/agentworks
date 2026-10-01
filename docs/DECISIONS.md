@@ -13,6 +13,33 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Code is always private; owner-authorized function calls do not share files
+- User decision: remove human Code sharing. Normal files, links, chats, Git, bots,
+  credentials and runtime access require the Code owner. Viewer/editor/co-owner
+  grants in legacy `config/code-shares.json` are ignored; that file is retained
+  and protected, never rewritten or deleted as a migration. Share controls and
+  client APIs are removed; old GET/PUT share URLs return 410, and the Code shared
+  directory returns an empty list. Code's audited read-only admin/reviewer
+  inspection remains separate from normal access and cannot run or edit Code.
+- A Code can call another Code it owns. The actual Code owner may also call
+  explicitly declared Code functions from a Crew they own or a workflow whose
+  ownership explicitly includes them, using `#code:<id>` with the existing
+  function tools. Shared Crew readers and workflow readers/editors cannot inherit
+  the resource owner's private Code access. No implicit Code `ask`, public Code
+  function catalog, file attachment or filesystem grant is introduced. Declare
+  and remove Code functions from the owner's Code chat, not from a Crew/workflow.
+- Hidden internal bindings record the source path and stamp. Discovery, connection,
+  dispatch, result/pending-input access and queued execution re-read source
+  ownership; target execution and history stay under the Code owner's identity.
+  Old Code-to-Code bindings still resolve their source ID only in that owner's
+  tree. Existing owner-created authenticated webhooks and schedules remain intact.
+- This fits per-user Linux accounts: there is no cross-user Code folder or Code
+  credentials to mount. It does not complete the separate Crew/workflow sharing
+  integration for slots. Main implementation: `code_shares.go`,
+  `code_peer_functions.go`, `product_webhooks.go`, `crew_functions.go` and the
+  shared Work/Code UI. Regression tests cover stale grants, typed Crew/workflow
+  calls, foreign sources, shared actors and ownership loss before a queued call.
+
 ### 2026-10-01 — Per-user Linux accounts ("slots"): shell tool and provisioning, off by default
 - New package `workspace/slots` and launcher `workspace/cmd/slotctl`. With `AGENTWORKS_SLOTS=on`
   the workspace service runs each folder-guarded shell command as the caller's own Linux account

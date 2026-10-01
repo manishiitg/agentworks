@@ -51,8 +51,6 @@ import type {
   AgentProfileConversationResponse,
   SharedProjectFileEntry,
   SharedProjectSummary,
-  CodeShareRole,
-  CodeSharesResponse,
   CodeAdminWorkspace,
   CodeAdminChat,
   CodeAdminAuditEntry,
@@ -1215,16 +1213,6 @@ export const agentApi = {
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/new`,
       request,
     )
-    return response.data
-  },
-
-  getCodeShares: async (projectId: string): Promise<CodeSharesResponse> => {
-    const response = await api.get(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shares`)
-    return response.data
-  },
-
-  putCodeShares: async (projectId: string, grants: Array<{ user: string; role: CodeShareRole }>): Promise<CodeSharesResponse> => {
-    const response = await api.put(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shares`, { grants })
     return response.data
   },
 
