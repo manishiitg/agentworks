@@ -31,6 +31,23 @@ Design references for the linked runtime decisions:
   `workspaceSelection`, `Workspace`, `PlannerFileList`,
   `workspace_proxy_policy.go`, and `deleteWorkSession`.
 
+### 2026-10-01 — Project sharing removed: projects are private to their owner
+
+- **Decided.** A project (a Crew in the project directory, on RTS the Video Studio / Goals projects that every
+  account could open) is private to its owner, as Code workspaces already were. A non-owner can no longer
+  see it in the shared-project list or open it as a reader. One switch, `projectSharingEnabled`
+  (`agent_go/cmd/server/project_sharing.go`, off by default, `AGENTWORKS_PROJECT_SHARING=on` restores it),
+  is checked in `resolveCrewProjectBinding` and `handleListSharedProjects`; the reader code stays so it can
+  come back. Why: with per-user Linux accounts (slots) a non-owner's commands run as their own account and
+  cannot work in the owner's folder, and the platform's own mediated reads were the only thing that made
+  shared projects work; private projects need no shared folders.
+- **Effect on RTS.** All existing Video Studio, Work and Code projects live under the admin account, so only
+  admin sees them after the next deploy; other accounts start with none. Workflow co-owners and public share
+  links are separate features and are unchanged.
+- **Tests.** The existing reader-flow tests run with sharing switched on (`project_sharing_testmain_test.go`);
+  `project_sharing_test.go` covers the default. `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID` and
+  `TestSalesCrewCatalogHasInstallableRoles` fail on a clean `origin/main` as well; not caused by this change.
+
 ### 2026-10-01 — Slots on the RTS host: one shared build step, opt-in mode, SSM provisioning
 
 - **Decided.** Every deployment builds and installs slots through one shared script, `deploy/common/slots.sh`

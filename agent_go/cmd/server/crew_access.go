@@ -158,6 +158,10 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		return denied()
 	}
+	// Projects are private to their owner unless project sharing is switched on (project_sharing.go).
+	if !projectSharingEnabled() {
+		return denied()
+	}
 	// The query path already carries the verified physical root: resolve
 	// directly under its owner instead of scanning every user.
 	if ownerID, ok := crewProjectOwnerID(selectedFolder); ok && ownerID != sanitizeUserIDForPath(callerID) {

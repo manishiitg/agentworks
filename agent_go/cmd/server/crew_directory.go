@@ -160,6 +160,10 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
 	}
+	if !projectSharingEnabled() {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
+		return
+	}
 	rows := []sharedProjectSummary{}
 	for _, ownerID := range crewProjectOwnerCandidates(claims.UserID) {
 		for _, row := range listSharedProjectsForOwner(r.Context(), claims, profile, ownerID) {
