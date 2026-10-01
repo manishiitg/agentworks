@@ -13,6 +13,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — RTS resized to t3.medium (2 vCPU / 4 GB) for performance testing
+
+- **Decided and done.** The RTS instance went from `t3.large` to `t3.medium` through the stack (change set
+  `rts-resize-t3-medium`, in place, same disks and Elastic IP; a few minutes of downtime). `t3.medium` was added to the
+  template's allowed sizes. The stack said `t3.xlarge` while the instance had been resized by hand to `t3.large`
+  earlier, so the stack parameter now matches reality again. The template's first-boot script differs from the deployed
+  one (rootless Docker was added later); it only runs on a new instance, so nothing re-ran.
+- **Why not c5.large.** `t3` is burstable: once CPU credits run out it is throttled, so sustained performance numbers
+  drift. A fixed-performance size (`c5.large`, also 2 vCPU / 4 GB) gives steadier results if the tests run long; the
+  template does not list it yet.
+- **Deploys.** The on-box build cap was 6 GB; it is now `${RTS_BUILD_MEMORY_MAX:-3G}` (`deploy.sh`), with swap
+  (4 GB) absorbing the rest, so deploys are slower rather than killed. Set `RTS_BUILD_MEMORY_MAX=6G` after a larger resize.
+
 ### 2026-10-01 — Slots: shared folders need a shared group (workflow shell was failing for slotted users)
 
 - **Incident.** With slots on, every shell command a workflow or Relay ran as the user's slot failed with

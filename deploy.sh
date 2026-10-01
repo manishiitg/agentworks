@@ -67,8 +67,9 @@ deploy_rts() {
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
   echo 'Server cloning main from all three repositories and building the release locally.'
-  # Keep builds below half the host's RAM and two CPU cores while tests keep running.
-  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=6G -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+  # Keep builds below ~3/4 of a 4 GB host (RTS_BUILD_MEMORY_MAX overrides, e.g. 6G on a larger instance) and two CPU
+  # cores while tests keep running; swap absorbs the rest, so a build is slower, not killed.
+  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 }
 
 # Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
