@@ -744,6 +744,10 @@ func (g *gateway) googleSSOCallback(w http.ResponseWriter, r *http.Request) {
 // Webhook receivers authenticate the original request with their own secret.
 // Keep management endpoints behind the normal user gate.
 func isWebhookRequest(r *http.Request) bool {
+	// The receiver validates Google's signed Pub/Sub identity itself.
+	if r.URL.Path == "/api/hooks/gmail/events" {
+		return r.Method == http.MethodPost
+	}
 	prefix := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/api/hooks/workflow/"):

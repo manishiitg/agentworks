@@ -3851,3 +3851,12 @@ export interface WorkFolderAddRequest {
   access: 'read_only' | 'read_write'
   reason?: string
 }
+
+/** Server-owned email routing; separate from agent Gmail write permissions. */
+export interface GmailInboundState {
+  configured: boolean
+  route: { id: string; address: string; connection_id: string; enabled: boolean; reply: boolean } | null
+  watch_ready?: boolean
+  error?: string
+  deliveries: { id: string; status: string; session_id: string; error?: string }[]
+}

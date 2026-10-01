@@ -13,6 +13,28 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Gmail incoming email uses a shared, opt-in receiver across deployments
+
+- **Decided.** Link each owned Crew, Workflow, or Code to a connected Gmail mailbox and assign a stable
+  plus-tagged address. A Gmail conversation creates an isolated app chat; replies continue it. V1 accepts
+  only the owner's directory email with Gmail sender authentication (or the mailbox's own Sent message).
+  Shared readers cannot configure routes; Code retains its private Google account scope. Optional final
+  responses use notification sending, with Auto-Submitted and the route address in Reply-To.
+- **Implementation.** `pkg/gmailinbound` persists cursors, notifications and deduplicated deliveries in private
+  server SQLite state. Four sync workers and two delivery workers serve all mailboxes through existing gog
+  credentials. Watch renewal is daily, reconciliation is every five minutes, and expired cursors recover with
+  an overlapping scan. A restart marks in-flight work uncertain instead of repeating external side effects.
+  Agent execution uses the existing internal conversation dispatcher, project bindings and access checks.
+- **Rollout.** Configuration maps named OAuth clients to topics, plus an exact HTTPS audience and verified
+  Pub/Sub service-account email. One topic per OAuth project and one subscription per deployment lets a
+  mailbox serve multiple deployments. RTS is first (AWS `./deploy.sh rts`); Hetzner uses the same gateway
+  code. No cloud provisioning, deployment, or service restart is included in this change. Operator guide:
+  `docs/gmail-inbound.md`.
+- **Open.** Live Google/RTS testing still needs the actual OAuth project ID, topic/IAM/subscription setup,
+  reconnect/read consent and real incoming mail. External senders/delegated sender policies, arbitrary
+  vanity addresses, distributed worker leases, manual delivery replay UI and guaranteed exactly-once tool
+  side effects are outside V1. Queue limits and 30-day body retention are documented in the operator guide.
+
 ### 2026-10-01 — Docker for slotted users: a private rootless Docker per slot (all deployments)
 
 - **Found.** A command run as a slot inherited the platform account's `DOCKER_HOST` (its rootless socket, in a folder

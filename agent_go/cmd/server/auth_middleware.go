@@ -308,6 +308,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 // shouldSkipAuth returns true for paths that don't require authentication
 func shouldSkipAuth(path string) bool {
+	if path == gmailInboundEventPath {
+		return true
+	} // Google OIDC is verified by the receiver.
 	// Public endpoints that don't require auth
 	publicPaths := []string{
 		"/api/auth/login",

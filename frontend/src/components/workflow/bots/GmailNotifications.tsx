@@ -16,6 +16,7 @@ import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import { GmailSetupGuide } from './GmailSetupGuide'
+import { GmailInboundPanel } from './GmailInboundPanel'
 
 // ── Email notifications (account-wide, shared by every workflow) ──────────
 
@@ -337,6 +338,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
 
   return (
     <div className="space-y-4">
+      {workspacePath && scopeNoun !== 'relay' && <GmailInboundPanel workspacePath={workspacePath} connections={gmailConnections} />}
       {gmailLoading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
       ) : (
