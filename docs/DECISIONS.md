@@ -13,6 +13,37 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Relay release review: visible readers execute as the owner
+
+- Anyone with live Relay visibility can execute its published API versions and
+  poll their own runs. Tokens still require `runs:execute` and the Relay scope;
+  listing versions requires `workflows:read`. Publish, edit, and schedule
+  configuration remain Owner/Write. Execution uses the owner's configured
+  accounts, workflow secrets and quota. This follows the PR 231 review's
+  maintainer decision. Live function/caller revocation applies to polling and
+  idempotent replay as well as dispatch.
+- Reuse the existing workflow read guards, provider-account admission,
+  message-sequence executor, database tools, scheduler run store and cost ledger.
+  Release identity maps to its live draft for grants/accounts; database and cost
+  artifacts stay in the full version workspace. Draft cost totals include all
+  versions without recording duplicate global charges.
+- Capacity waits now persist as nonterminal scheduler rows, survive restart,
+  and are claimed once for the original run. Restore its input, group, route,
+  folder and step checkpoint; check live caller access and release integrity
+  before resuming. Normal schedules use the same durable wait discovery.
+- Missing explicit versions return 404. Invalid release metadata remains listed
+  with an error. The schedule UI warns that timed schedules run the draft.
+- Accepted: Write editors may publish; frozen variables can retain stale secret
+  copies, while execution resolves live workflow secrets. Open: process-crash
+  recovery is deferred; execution snapshots are not a general read-only
+  filesystem. The Relay Builder warns against modifying executable snapshot
+  files, which would make later dispatch fail integrity verification. Binary
+  snapshots and pinned timed schedules remain outside this MVP.
+- Verified with automated backend and frontend regressions in the isolated
+  review worktree. The broader workflow suite still fails the existing AGY
+  alpha-gate test; reproduced on clean `origin/main` (`c48042b56`). No live preview, production deployment or interruption of
+  the user's running local app is claimed by these checks.
+
 ### 2026-10-01 — Scoped Files views show one workspace root above its contents
 - Rebuild a single scoped tree from the document API's mixture of nested
   children and flat siblings before shortening display paths. Merge folders

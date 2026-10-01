@@ -166,6 +166,7 @@ export function AutomationHubPanel({
         }}
       />
 
+      {relayMode && section === 'schedules' && <p role="note" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Relay schedules run the current draft. They do not use the active published API version; draft edits affect the next scheduled run.</p>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
         {section === 'chats' && chatContent && (

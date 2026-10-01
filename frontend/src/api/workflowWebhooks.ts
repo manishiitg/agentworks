@@ -55,6 +55,7 @@ export interface APITriggerOptions {
 }
 
 export interface RelayRelease {
+  error?: string
   version: string
   workspace_path: string
   hash: string
@@ -65,6 +66,7 @@ export interface RelayRelease {
 }
 
 export interface RelayReleasesResponse {
+  active_error?: string
   active_version: string
   releases: RelayRelease[]
 }

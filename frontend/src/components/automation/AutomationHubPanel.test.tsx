@@ -113,6 +113,14 @@ describe('AutomationHubPanel Ask AI', () => {
     return host.querySelector('[role="dialog"] [data-testid="ask-ai"]')?.getAttribute('data-message')
   }
 
+  it('shows the Relay draft schedule notice while preserving management permissions', async () => {
+    const { host, unmount } = await mountHub({ entityType: 'workflow', relayMode: true, canManage: false, workflowScope: { workspacePath: 'Workflow/one' } })
+    try {
+      expect(host.querySelector('[role="note"]')?.textContent).toContain('Relay schedules run the current draft')
+      expect(schedulesPanelProps.current?.canManage).toBe(false)
+    } finally { await unmount() }
+  })
+
   it('renders one popup Ask AI whose message follows the active tab', async () => {
     const { host, unmount } = await mountHub({
       entityType: 'workflow',

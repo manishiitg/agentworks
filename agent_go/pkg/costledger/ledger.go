@@ -731,7 +731,7 @@ func (l *Ledger) summarizeLegacyFiltered(from, to, executionID, workflowID, scop
 		if executionID != "" && e.ExecutionID != executionID {
 			continue
 		}
-		if workflowID != "" && e.WorkflowID != workflowID {
+		if workflowID != "" && !workflowCostMatches(workflowID, e.WorkflowID) {
 			continue
 		}
 		if scope != "" && e.Scope != scope {

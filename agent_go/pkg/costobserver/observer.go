@@ -469,16 +469,18 @@ func (o *Observer) appendToWorkspaceLedger(entry costledger.Entry) {
 	if workspacePath == "" {
 		return
 	}
-	ledger, err := costledger.WorkspaceLedger(workspacePath)
-	if err != nil {
-		log.Printf("[COST_LEDGER] Failed to open workspace ledger for %s: %v", workspacePath, err)
-		return
-	}
-	if ledger == nil {
-		return
-	}
-	if err := ledger.Append(entry); err != nil {
-		log.Printf("[COST_LEDGER] Failed to append entry to workspace ledger for %s: %v", workspacePath, err)
+	for _, destination := range costledger.WorkspaceCostCopies(workspacePath) {
+		ledger, err := costledger.WorkspaceLedger(destination)
+		if err != nil {
+			log.Printf("[COST_LEDGER] Failed to open workspace ledger for %s: %v", destination, err)
+			continue
+		}
+		if ledger == nil {
+			continue
+		}
+		if err := ledger.Append(entry); err != nil {
+			log.Printf("[COST_LEDGER] Failed to append entry to workspace ledger for %s: %v", destination, err)
+		}
 	}
 }
 

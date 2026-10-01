@@ -17,21 +17,25 @@ import (
 	"unicode/utf8"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
 const relayReleasesFolder = ".relay_releases"
 
 var relayVersionPattern = regexp.MustCompile(`^v[1-9][0-9]*$`)
 var relayPublishLocks sync.Map
+var errRelayVersionNotFound = errors.New("Relay version not found")
 
 type relayRelease struct {
-	Version     string    `json:"version"`
-	Hash        string    `json:"hash"`
-	PublishedAt time.Time `json:"published_at"`
-	Functions   []string  `json:"functions"`
-	OutputStep  string    `json:"output_step_id"`
-	FileCount   int       `json:"file_count"`
-	Files       []string  `json:"files"`
+	Version         string    `json:"version"`
+	Error           string    `json:"error,omitempty"`
+	SourceWorkspace string    `json:"source_workspace,omitempty"`
+	Hash            string    `json:"hash"`
+	PublishedAt     time.Time `json:"published_at"`
+	Functions       []string  `json:"functions"`
+	OutputStep      string    `json:"output_step_id"`
+	FileCount       int       `json:"file_count"`
+	Files           []string  `json:"files"`
 }
 
 func relayReleaseWorkspace(workspace, version string) string {
@@ -39,8 +43,7 @@ func relayReleaseWorkspace(workspace, version string) string {
 }
 
 func relayReleaseRoot(workspace string) string {
-	sum := sha256.Sum256([]byte(workspace))
-	return path.Join("Workflow", relayReleasesFolder, hex.EncodeToString(sum[:8]))
+	return workflowtypes.RelayReleaseRoot(workspace)
 }
 
 // relayDraftWorkspaceForRelease maps a release's execution workspace back to
@@ -51,6 +54,10 @@ func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (strin
 	parts := strings.Split(clean, "/")
 	if len(parts) < 2 || parts[0] != "Workflow" || parts[1] != relayReleasesFolder {
 		return workspace, nil
+	}
+	if root := workflowtypes.RelayReleaseWorkspace(clean); root != "" {
+		clean = root
+		parts = strings.Split(root, "/")
 	}
 	if len(parts) != 4 || !relayVersionPattern.MatchString(parts[3]) {
 		return "", errors.New("invalid Relay release workspace")
@@ -72,8 +79,11 @@ func readRelayRelease(ctx context.Context, workspace, version string) (*relayRel
 	}
 	releaseWorkspace := relayReleaseWorkspace(workspace, version)
 	raw, exists, err := readFileFromWorkspace(ctx, path.Join(releaseWorkspace, "release.json"))
-	if err != nil || !exists {
-		return nil, "", fmt.Errorf("Relay version %q not found", version)
+	if err != nil {
+		return nil, "", err
+	}
+	if !exists {
+		return nil, "", fmt.Errorf("%w: %q", errRelayVersionNotFound, version)
 	}
 	var release relayRelease
 	if err := json.Unmarshal([]byte(raw), &release); err != nil || release.Version != version || release.Hash == "" || len(release.Files) == 0 || release.FileCount != len(release.Files) {
@@ -163,9 +173,10 @@ func listRelayReleases(ctx context.Context, workspace string) ([]relayRelease, e
 			continue
 		}
 		release, _, err := readRelayRelease(ctx, workspace, name)
-		if err == nil {
-			releases = append(releases, *release)
+		if err != nil {
+			release = &relayRelease{Version: name, Error: err.Error()}
 		}
+		releases = append(releases, *release)
 	}
 	sort.Slice(releases, func(i, j int) bool {
 		var left, right int
@@ -339,7 +350,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			return nil, fmt.Errorf("copy Relay file %q: %w", key, err)
 		}
 	}
-	release := &relayRelease{Version: version, Hash: hash, PublishedAt: time.Now().UTC(), Functions: functions, OutputStep: manifest.RelayOutputStepID, FileCount: len(keys), Files: keys}
+	release := &relayRelease{Version: version, SourceWorkspace: workspace, Hash: hash, PublishedAt: time.Now().UTC(), Functions: functions, OutputStep: manifest.RelayOutputStepID, FileCount: len(keys), Files: keys}
 	encoded, _ := json.Marshal(release)
 	if err := writeFileToWorkspace(ctx, path.Join(destination, "release.json"), string(encoded)); err != nil {
 		return nil, err
@@ -396,7 +407,7 @@ func (api *StreamingAPI) registerRelayReleaseTools(registrar interface {
 }
 
 func (api *StreamingAPI) handleListRelayReleases(w http.ResponseWriter, r *http.Request) {
-	workspace, _, _, ok := api.relayForRunRequest(w, r)
+	workspace, _, _, ok := api.relayForRequest(w, r, "workflows:read")
 	if !ok {
 		return
 	}
@@ -405,10 +416,19 @@ func (api *StreamingAPI) handleListRelayReleases(w http.ResponseWriter, r *http.
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	active, _, _ := activeRelayRelease(r.Context(), workspace)
-	var version string
+	active, _, activeErr := activeRelayRelease(r.Context(), workspace)
+	var version, activeError string
 	if active != nil {
 		version = active.Version
+	} else if raw, exists, _ := readFileFromWorkspace(r.Context(), path.Join(relayReleaseRoot(workspace), "active.json")); exists {
+		var pointer struct {
+			Version string `json:"version"`
+		}
+		_ = json.Unmarshal([]byte(raw), &pointer)
+		version = pointer.Version
+		if activeErr != nil {
+			activeError = activeErr.Error()
+		}
 	}
 	// The existing run-folder and execution-log readers take a workspace path.
 	// Give the Relay UI each release's path so it can reuse those readers.
@@ -420,5 +440,5 @@ func (api *StreamingAPI) handleListRelayReleases(w http.ResponseWriter, r *http.
 	for _, release := range releases {
 		items = append(items, releaseWithWorkspace{relayRelease: release, WorkspacePath: relayReleaseWorkspace(workspace, release.Version)})
 	}
-	externalJSON(w, map[string]interface{}{"active_version": version, "releases": items})
+	externalJSON(w, map[string]interface{}{"active_version": version, "active_error": activeError, "releases": items})
 }

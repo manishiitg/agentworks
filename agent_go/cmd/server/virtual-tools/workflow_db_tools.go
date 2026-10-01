@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -708,6 +709,10 @@ func workflowDBWorkspacePathFromCandidate(candidate string) string {
 	}
 	for i := 0; i+1 < len(parts); i++ {
 		if parts[i] == "Workflow" && strings.TrimSpace(parts[i+1]) != "" {
+			if parts[i+1] == ".relay_releases" {
+				return workflowtypes.RelayReleaseWorkspace(strings.Join(parts[i:], "/"))
+			}
+
 			return filepath.ToSlash(filepath.Join("Workflow", parts[i+1]))
 		}
 	}

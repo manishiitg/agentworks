@@ -215,7 +215,9 @@ func (s *sqliteLedger) summarizeWorkflowOverview(from, to, workflowID string) (*
 	}
 	hasMore := false
 	if fromInclusive != "" {
-		err = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cost_events WHERE workflow_id = ? AND occurred_at < ? LIMIT 1)`, workflowID, fromInclusive).Scan(&hasMore)
+		filter, args := workflowCostSQL(workflowID)
+		args = append(args, fromInclusive)
+		err = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM cost_events WHERE `+filter+` AND occurred_at < ? LIMIT 1)`, args...).Scan(&hasMore)
 		if err != nil {
 			return nil, false, fmt.Errorf("costledger: check older workflow events: %w", err)
 		}
@@ -231,7 +233,8 @@ func (s *sqliteLedger) summarizeWorkflowTotals(workflowID string) (*Summary, err
 		BySourcePlatform: make(map[string]*Aggregate),
 		Coverage:         Coverage{Source: "sqlite"},
 	}
-	const query = `
+	filter, args := workflowCostSQL(workflowID)
+	query := `
 SELECT scope,
        COALESCE(SUM(prompt_tokens + CASE
          WHEN json_type(operation_metadata_json, '$.prompt_tokens_include_cache') = 'true' THEN 0
@@ -256,9 +259,9 @@ SELECT scope,
        COALESCE(SUM(CASE WHEN billing_basis = 'unpriced' THEN cache_read_tokens ELSE 0 END), 0),
        COALESCE(SUM(CASE WHEN billing_basis = 'unpriced' THEN cache_write_tokens ELSE 0 END), 0)
 FROM cost_events
-WHERE workflow_id = ?
+WHERE ` + filter + `
 GROUP BY scope`
-	rows, err := s.db.Query(query, workflowID)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("costledger: summarize workflow totals: %w", err)
 	}
@@ -346,8 +349,9 @@ FROM cost_events`
 		args = append(args, executionID)
 	}
 	if workflowID = strings.TrimSpace(workflowID); workflowID != "" {
-		where = append(where, "workflow_id = ?")
-		args = append(args, workflowID)
+		filter, workflowArgs := workflowCostSQL(workflowID)
+		where = append(where, filter)
+		args = append(args, workflowArgs...)
 	}
 	if scope = strings.TrimSpace(scope); scope != "" {
 		where = append(where, "scope = ?")

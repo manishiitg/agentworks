@@ -120,3 +120,15 @@ func TestRelayReleaseLogAccessFollowsLiveManifest(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayBrokenReleaseRemainsVisible(t *testing.T) {
+	draft := "Workflow/broken-release"
+	mock := &mockWorkspaceAPI{files: map[string]string{relayReleaseWorkspace(draft, "v2") + "/release.json": "{broken", relayReleaseWorkspace(draft, "v1") + "/release.json": `{"version":"v1","hash":"test","files":["workflow.json"],"file_count":1}`}}
+	ws := httptest.NewServer(mock)
+	defer ws.Close()
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	releases, err := listRelayReleases(context.Background(), draft)
+	if err != nil || len(releases) != 2 || releases[0].Version != "v1" || releases[0].Error != "" || releases[1].Version != "v2" || releases[1].Error == "" {
+		t.Fatalf("releases=%+v err=%v", releases, err)
+	}
+}

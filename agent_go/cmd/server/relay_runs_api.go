@@ -22,8 +22,12 @@ type relayRunRequest struct {
 }
 
 func (api *StreamingAPI) relayForRunRequest(w http.ResponseWriter, r *http.Request) (string, *WorkflowManifest, *UserClaims, bool) {
+	return api.relayForRequest(w, r, "runs:execute")
+}
+
+func (api *StreamingAPI) relayForRequest(w http.ResponseWriter, r *http.Request, scope string) (string, *WorkflowManifest, *UserClaims, bool) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || !userAllowedWorkflowID(claims, mux.Vars(r)["id"]) || (claims.AccessToken != nil && (!claims.AccessToken.Allows("runs:execute") || !claims.AccessToken.AllowsWorkflow(mux.Vars(r)["id"]))) {
+	if claims == nil || !userAllowedWorkflowID(claims, mux.Vars(r)["id"]) || (claims.AccessToken != nil && (!claims.AccessToken.Allows(scope) || !claims.AccessToken.AllowsWorkflow(mux.Vars(r)["id"]))) {
 		http.Error(w, "Relay not found", http.StatusNotFound)
 		return "", nil, nil, false
 	}
@@ -33,7 +37,7 @@ func (api *StreamingAPI) relayForRunRequest(w http.ResponseWriter, r *http.Reque
 		return "", nil, nil, false
 	}
 	access := workflowAccessForManifest(claims, manifest)
-	if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
+	if access == WorkflowAccessNone {
 		http.Error(w, "Relay not found", http.StatusNotFound)
 		return "", nil, nil, false
 	}
@@ -84,6 +88,11 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	caller := triggerCaller{Type: triggerCallerUser, ID: claims.UserID}
+	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, request.Function)
+	if liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, caller) {
+		http.Error(w, "Relay function not found", http.StatusNotFound)
+		return
+	}
 	args := map[string]interface{}{"INPUT": request.Input}
 	deliveryID := claims.UserID + "\x00" + request.IdempotencyKey
 	// Search old and published bindings before choosing today's active version.
@@ -132,7 +141,11 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 	}
 	release, releaseWorkspace, err := resolveRelayRelease(r.Context(), workspace, request.Version)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		status := http.StatusConflict
+		if request.Version != "" && errors.Is(err, errRelayVersionNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	published, found, err := ReadWorkflowManifest(r.Context(), releaseWorkspace)
@@ -141,8 +154,7 @@ func (api *StreamingAPI) handleStartRelayRun(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	sched, err := findWorkflowFunctionTrigger(published, request.Function)
-	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, request.Function)
-	if err != nil || liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, caller) {
+	if err != nil {
 		http.Error(w, "Relay function not found", http.StatusNotFound)
 		return
 	}
@@ -194,10 +206,16 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 	}
 	var delivery WorkflowWebhookDelivery
 	var payload struct {
-		Caller  string `json:"relay_caller"`
-		Version string `json:"relay_version"`
+		Caller   string `json:"relay_caller"`
+		Version  string `json:"relay_version"`
+		Function string `json:"function"`
 	}
 	if json.Unmarshal([]byte(content), &delivery) != nil || json.Unmarshal(delivery.Payload, &payload) != nil || payload.Caller != claims.UserID {
+		http.NotFound(w, r)
+		return
+	}
+	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, payload.Function)
+	if liveErr != nil || !workflowFunctionCallerAllowed(liveSched.Function, triggerCaller{Type: triggerCallerUser, ID: claims.UserID}) {
 		http.NotFound(w, r)
 		return
 	}

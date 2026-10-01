@@ -78,16 +78,18 @@ export default function WorkflowFunctionsView({ workspacePath, relayMode = false
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4" data-testid="workflow-functions">
-      <p className="text-xs leading-relaxed text-muted-foreground">{relayMode ? 'Publish a Relay version before calling its function triggers with a JSON INPUT object. An external access token with runs:execute can start a published run and poll its durable run ID. Builder edits stay in the draft until the next publish.' : "Functions are how other Crews, workflows and MCP/CLI tools call this workflow. Callers are identified by the platform: no URL or secret. A typed function sets its inputs as the run's variables and refuses a call missing a required input before anything runs."}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{relayMode ? 'Publish a Relay version before calling its function triggers with a JSON INPUT object. An external access token with runs:execute can start a published run and poll its durable run ID. Anyone with access to this Relay may execute it using the owner’s configured credentials. Publishing and editing require write access. Builder edits stay in the draft until the next publish.' : "Functions are how other Crews, workflows and MCP/CLI tools call this workflow. Callers are identified by the platform: no URL or secret. A typed function sets its inputs as the run's variables and refuses a call missing a required input before anything runs."}</p>
       {relayMode && <section className="rounded-lg border border-border p-3 text-xs" data-testid="relay-release-status">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><span className="font-medium">API release</span> <span className="text-muted-foreground">{releases?.active_version ? `Published ${releases.active_version}` : 'Draft only'}</span></div>
+          <div><span className="font-medium">API release</span> <span className="text-muted-foreground">{releases?.active_error ? `Unavailable ${releases.active_version || "release"}` : releases?.active_version ? `Published ${releases.active_version}` : 'Draft only'}</span></div>
           {canWrite && onAsk && <div className="flex gap-1.5">
             <button type="button" className={buttonClass} onClick={() => void onAsk('Test the current Relay draft with a sample INPUT JSON object. Ask me for the JSON if I have not provided it, run the complete graph, and report the actual final JSON or error.')}>Test draft in chat</button>
             <button type="button" className={buttonClass} onClick={() => void onAsk('Validate the current Relay draft and publish it as a new API version. Report the version and content hash returned by publish_relay.')}>Publish in chat</button>
           </div>}
         </div>
-        {releases?.releases.length ? <p className="mt-2 text-muted-foreground">Available versions: {releases.releases.map(item => item.version).join(', ')}. API calls use the active version unless you send a version.</p> : <p className="mt-2 text-muted-foreground">Publish the tested graph to make it callable through the Relay API. You can keep editing the draft afterward.</p>}
+        {releases?.active_error && <p role="alert" className="mt-2 text-destructive">{releases.active_error}</p>}
+        {releases?.releases.filter(item => item.error).map(item => <p key={item.version} role="alert" className="mt-2 text-destructive">{item.version}: {item.error}</p>)}
+        {releases?.releases.length ? <p className="mt-2 text-muted-foreground">Available versions: {releases.releases.map(item => `${item.version}${item.error ? " (unavailable)" : ""}`).join(', ')}. API calls use the active version unless you send a version.</p> : <p className="mt-2 text-muted-foreground">Publish the tested graph to make it callable through the Relay API. You can keep editing the draft afterward.</p>}
       </section>}
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       <div className="min-w-0 space-y-2">

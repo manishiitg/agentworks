@@ -400,6 +400,9 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		payload = map[string]interface{}{}
 	}
 	payload["function"] = sched.Function.Name
+	if manifest.Kind == "relay" {
+		payload["relay_trigger_caller"] = call.Caller
+	}
 	payload["args"] = call.Args
 	deliveryID := strings.TrimSpace(call.DeliveryID)
 	if deliveryID == "" {

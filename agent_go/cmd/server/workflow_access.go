@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"path"
 	"sort"
 	"strings"
 )
@@ -217,9 +216,16 @@ func requireWorkflowOwner(w http.ResponseWriter, r *http.Request, workspacePath 
 // requireWorkflowVisible writes a 403 and returns false unless the caller
 // may at least see the workflow at workspacePath.
 func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
-	if strings.HasPrefix(workspacePath, "Workflow/.relay_releases/") || workspacePath == "Workflow/.relay_releases" {
+	clean, ok := cleanWorkspaceReadPath(workspacePath, true)
+	if !ok {
+		writeWorkflowPermissionDenied(w, "read")
+		return false
+	}
+	workspacePath = clean
+	if clean == "Workflow/.relay_releases" || strings.HasPrefix(clean, "Workflow/.relay_releases/") {
 		return requireRelayReleaseVisible(w, r, workspacePath)
 	}
+
 	claims := GetUserFromContext(r.Context())
 	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspacePath)
 	if level != WorkflowAccessNone && (manifest == nil || userAllowedWorkflowID(claims, manifest.ID)) {
@@ -232,30 +238,32 @@ func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePat
 // Release files have a separate execution path but inherit access from the
 // live Relay. Never authorize them through the manifest-less release parent.
 func requireRelayReleaseVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
-	clean := path.Clean(workspacePath)
-	if !strings.HasPrefix(workspacePath, "Workflow/.relay_releases/") && workspacePath != "Workflow/.relay_releases" {
+	clean, ok := cleanWorkspaceReadPath(workspacePath, true)
+	if !ok {
+		writeWorkflowPermissionDenied(w, "read")
+		return false
+	}
+	if clean != "Workflow/.relay_releases" && !strings.HasPrefix(clean, "Workflow/.relay_releases/") {
 		return true
 	}
-	if clean != workspacePath {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	parts := strings.Split(clean, "/")
-	if len(parts) < 4 {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	draft, err := relayDraftWorkspaceForRelease(r.Context(), strings.Join(parts[:4], "/"))
-	if err != nil {
-		writeWorkflowPermissionDenied(w, "read")
-		return false
-	}
-	level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), draft)
-	if manifest == nil || level == WorkflowAccessNone {
+	if !relayReleaseReadAllowed(r.Context(), GetUserFromContext(r.Context()), clean) {
 		writeWorkflowPermissionDenied(w, "read")
 		return false
 	}
 	return true
+}
+
+func relayReleaseReadAllowed(ctx context.Context, claims *UserClaims, clean string) bool {
+	parts := strings.Split(clean, "/")
+	if len(parts) < 4 {
+		return false
+	}
+	draft, err := relayDraftWorkspaceForRelease(ctx, strings.Join(parts[:4], "/"))
+	if err != nil {
+		return false
+	}
+	level, manifest := workflowAccessForWorkspacePath(ctx, claims, draft)
+	return manifest != nil && level != WorkflowAccessNone && userAllowedWorkflowID(claims, manifest.ID)
 }
 
 // workflowFolderFromWorkspaceProxyPath extracts "Workflow/<folder>" from a

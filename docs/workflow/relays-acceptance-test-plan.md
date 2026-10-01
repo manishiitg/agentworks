@@ -18,7 +18,7 @@ A case passes only after the saved graph or configuration is visible, a real run
 | R5 | Schedule and observability | A schedule passes `trigger_payload` as `INPUT`; manual firing produces a durable run and execution log | Passed 2026-09-28; log label issue below |
 | R6 | Builder and UI round trip | Builder chat creates/edits graph and trigger; Graph, Triggers and execution logs reflect saved state without reload | Passed 2026-09-28; live graph refresh verified |
 | R7 | Restart durability | Completed run remains pollable after agent restart; an interrupted in-flight run has an honest terminal state | Passed; node resume deferred |
-| R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; unauthorized callers cannot access runs | Partially passed; no-route claim checked in config, not live |
+| R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; callers without visibility cannot execute; visible readers can execute and only poll their own API runs | Partially passed; no-route claim checked in config, not live |
 | R9 | Optional integrations | Selected MCP tool/skill, Gmail, Slack, model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
 | R10 | Versioned publish and draft isolation | Builder publishes v1; draft edit leaves v1 stable; v2 becomes active; explicit v1 remains callable and idempotent | Passed 2026-09-28 on isolated preview |
 
@@ -53,3 +53,7 @@ A case passes only after the saved graph or configuration is visible, a real run
 - External account actions in R9 need dedicated test connections and authorization before sending messages or email.
 
 Update the table and evidence as each case runs. Preserve failing run IDs and the precise error instead of turning an attempted test into a pass.
+
+### 2026-10-01 review regression verification
+
+The current policy permits execution by visible readers and retains Owner/Write for publish, edits, and schedule configuration. R8's unauthorized caller means a caller with no Relay access, an insufficient token scope, or a revoked function caller. Backend regressions cover each boundary, reader acceptance/polling, owner credential resolution, release path aliases, durable capacity wait restoration and claims, and release costs in the draft totals. Frontend regressions cover visible reader API instructions and unavailable version errors. These automated checks supplement the earlier live preview evidence; process-crash recovery remains deferred.

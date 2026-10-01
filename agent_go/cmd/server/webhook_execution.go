@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"time"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -90,7 +91,7 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 			return "", "", err
 		}
 	}
-	runFolder, err := allocateWebhookRunFolder(sctx.WorkspacePath, runID)
+	runFolder, err := webhookExecutionRunFolder(sctx, runID)
 	if err != nil {
 		return "", "", err
 	}
@@ -120,4 +121,18 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
 	sctx.ProducedRunEvidence = err == nil || s.scheduledWorkflowExecutionProducedEvidence(sessionID, startedAt)
 	return sessionID, runFolder, err
+}
+
+// Resume must reuse the recorded folder. If its binding disappeared, fail
+// instead of allocating an empty folder and replaying completed side effects.
+func webhookExecutionRunFolder(sctx *ScheduleContext, runID string) (string, error) {
+	if sctx.CapacityResumeRunID == "" {
+		return allocateWebhookRunFolder(sctx.WorkspacePath, runID)
+	}
+	root, err := openWebhookRunRoot(sctx.WorkspacePath, schedulerstate.Run{RunID: runID, RunFolder: sctx.CapacityResumeRunFolder})
+	if err != nil {
+		return "", fmt.Errorf("capacity resume run folder unavailable: %w", err)
+	}
+	root.Close()
+	return sctx.CapacityResumeRunFolder, nil
 }

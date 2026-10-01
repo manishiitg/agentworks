@@ -65,9 +65,11 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
       >
         <option value="draft">Draft tests</option>
         {releases?.releases.map(release => <option key={release.version} value={release.version}>
-          {release.version}{release.version === releases.active_version ? ' (active)' : ''}
+          {release.version}{release.error ? ' (unavailable)' : ''}{release.version === releases.active_version ? ' (active)' : ''}
         </option>)}
       </select>
+      {selectedRelease?.error && <span role="alert" className="text-destructive">{selectedRelease.error}</span>}
+      {releases?.active_error && <span role="alert" className="text-destructive">{releases.active_error}</span>}
       {error && <span role="alert" className="text-destructive">{error}</span>}
     </div>
     <div className="min-h-0 flex-1">

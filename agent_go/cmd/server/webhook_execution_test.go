@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,5 +79,33 @@ func TestDirectWebhookRequiresPreparedWorkflow(t *testing.T) {
 	}
 	if err := directWebhookPreflight(&WorkflowManifest{Version: WorkflowContractCurrentVersion, CodeLayoutVersion: 1}); err != nil {
 		t.Fatalf("current prepared workflow rejected: %v", err)
+	}
+}
+
+func TestDirectWebhookCapacityResumeUsesRecordedFolder(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	workspace := "Workflow/relay-resume-folder"
+	if err := os.MkdirAll(filepath.Join(docs, workspace), 0700); err != nil {
+		t.Fatal(err)
+	}
+	folder, err := allocateWebhookRunFolder(workspace, "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sctx := &ScheduleContext{WorkspacePath: workspace, CapacityResumeRunID: "original", CapacityResumeRunFolder: folder}
+	got, err := webhookExecutionRunFolder(sctx, "original")
+	if err != nil || got != folder {
+		t.Fatalf("resume folder = %q %v", got, err)
+	}
+	if err := os.Remove(filepath.Join(docs, workspace, "runs", folder, ".webhook-run-id")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := webhookExecutionRunFolder(sctx, "original"); err == nil {
+		t.Fatal("missing resume binding allocated a replacement folder")
+	}
+	folders, err := os.ReadDir(filepath.Join(docs, workspace, "runs"))
+	if err != nil || len(folders) != 1 {
+		t.Fatalf("replacement folder created: %v %v", folders, err)
 	}
 }

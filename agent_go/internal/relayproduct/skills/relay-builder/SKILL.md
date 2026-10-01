@@ -16,3 +16,9 @@ Use the existing workflow plan tools to create and edit a Relay. Read the curren
 - Use Relay-selected MCP tools and per-step skills for execution. Slack and Gmail may be used as configured. Do not create Slack or WhatsApp chat routes or WhatsApp notifications.
 - Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with a configured `group_name` and `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
 - Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
+
+## Published run boundaries
+
+- Anyone with visibility may execute a published Relay and poll their own API runs. Publishing, editing, and schedule configuration require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.
+- Cron and calendar schedules execute the current draft, so edits affect the next occurrence. Explain this when creating a production schedule.
+- Scripts and agent tools must write generated files only into the assigned run folder or runtime data directories (`db/`, `costs/`, `logs/`). Never write the release's graph, prompts, variables, skills, or saved code during execution. Warn that changing executable snapshot files makes the published version fail its next integrity check; a new publish is needed to restore it.
