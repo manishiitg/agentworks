@@ -13,6 +13,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Slotted shell commands lost their per-call environment (401 from the tools gateway)
+
+- **Incident (Confida, Vaibhav's workflow session).** A shell command run as a slot only got the base environment
+  plus `MCP_API_URL`; `MCP_API_TOKEN`/`MCP_AUTH` (so the HTTP tools gateway answered 401), every `SECRET_*`, `VAR_*`,
+  `STEP_*`, `DB_PATH`, `WORKFLOW_*` and `PYTHONPATH` were missing. Cause: the handler appended those values to the
+  command's environment *after* the isolator had wrapped it for the slot, and the wrap writes the environment into
+  the request at that moment. Fix: `security.Isolator.ExtraEnv` carries the filtered per-call values and they are merged
+  (`MergeExtraEnv`) before `WrapCommand`; non-slot commands are unchanged. Tests: `security/extra_env_test.go`,
+  `security/isolator_slot_env_linux_test.go`. Affects every slotted workflow shell on any host (excellence, RTS,
+  Confida) until deployed.
+- **By design.** `planning/` is mounted read-only in a workflow shell so plan changes go through the authenticated tools.
+- **Open (browser).** `agent_browser` as a slot fails ("Permission denied ... google-chrome"): the shared-browser
+  daemons and their sockets belong to the service account's uid (`/tmp/.agent-browser/<product>/o`, mode 0700), so a
+  slot cannot reach them and the CLI falls back to starting its own Chrome, which the sandbox refuses. Needs a decision
+  (run browser commands as the service, or make the daemon sockets reachable by the slots).
+
 ### 2026-10-01 — RTS resized to t3.medium (2 vCPU / 4 GB) for performance testing
 
 - **Decided and done.** The RTS instance went from `t3.large` to `t3.medium` through the stack (change set

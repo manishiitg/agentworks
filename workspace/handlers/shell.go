@@ -185,9 +185,18 @@ func ExecuteShellCommand(c *gin.Context) {
 			}
 		}
 
+		// The per-call environment a slot's command needs is part of the request that runs it as that account.
+		slotExtraEnv := map[string]string{}
+		for k, v := range req.ExtraEnv {
+			if isAllowedShellExtraEnvKey(k) {
+				slotExtraEnv[k] = v
+			}
+		}
+
 		// Use isolated execution with filesystem restrictions
 		isolator := &security.Isolator{
 			Slot:              userSlot,
+			ExtraEnv:          slotExtraEnv,
 			ReadPaths:         req.FolderGuard.ReadPaths,
 			WritePaths:        req.FolderGuard.WritePaths,
 			BlockedPaths:      req.FolderGuard.BlockedPaths,

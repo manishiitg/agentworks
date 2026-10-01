@@ -18,7 +18,13 @@ import (
 type Isolator struct {
 	// Slot, when set (Linux only), runs the command as that slot account through sudo and
 	// slotctl instead of as the service account (see the slots package).
-	Slot         string
+	Slot string
+	// ExtraEnv is the per-call environment the platform hands a command (session token, secrets, workflow
+	// variables, step paths). For a slot it must be in the request that is written when the command is wrapped:
+	// a command run as another account only sees what that request carries, so values appended to the command's
+	// environment afterwards never reach it (Confida 2026-10-01: 401 from the tools gateway, no secrets, no
+	// variables in a slotted workflow's shell). Callers pass only keys they have already filtered.
+	ExtraEnv     map[string]string
 	ReadPaths    []string
 	WritePaths   []string
 	BlockedPaths []string // Paths to explicitly deny READ AND WRITE (deny-list, takes precedence)
@@ -850,4 +856,20 @@ func replaceEnv(env []string, key, value string) []string {
 		}
 	}
 	return append(out, key+"="+value)
+}
+
+// MergeExtraEnv appends extra to env. PYTHONPATH keeps the platform helper importable beside the command's own
+// temp folder, so a TMPDIR already in env is put in front of it.
+func MergeExtraEnv(env []string, extra map[string]string) []string {
+	for k, v := range extra {
+		if k == "PYTHONPATH" {
+			for _, entry := range env {
+				if strings.HasPrefix(entry, "TMPDIR=") {
+					v = strings.TrimPrefix(entry, "TMPDIR=") + string(os.PathListSeparator) + v
+				}
+			}
+		}
+		env = append(env, k+"="+v)
+	}
+	return env
 }
