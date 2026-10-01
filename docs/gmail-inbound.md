@@ -146,6 +146,10 @@ After the operator configures and deploys a release:
 
 ## Reliability and operational limits
 
+Implementation note: the sync machinery below describes main. It is being
+replaced by the latest-only sync in the Planned section; the queue, worker
+counts, and limits are unchanged.
+
 One shared HTTPS ingress persists wakeups before acknowledging Pub/Sub.
 Four bounded sync workers invoke gog on demand; two workers execute/reply.
 There is no process or goroutine retained per connected user. Sync workers
@@ -180,6 +184,40 @@ ID. Failed/ambiguous sends are not automatically repeated. Inspect the saved
 chat and Sent folder before manually continuing; replaying a partially
 executed email can repeat real tool side effects. The receiver does not
 promise exactly-once external actions across process crashes.
+
+## Planned: latest-only sync and inbox filters
+
+Agreed direction, not implemented yet. Main still syncs with history cursors
+and recovery scans as described above.
+
+**Latest-only sync.** The feature promises new emails only, so the worker
+should read only the newest page per sync (about 20 messages) plus a capped
+thread fetch for conversation context, instead of paging history. Consequences:
+
+- No history cursors, expiry recovery, resync windows, or page-loop caps.
+  Each sync lists the newest messages (about 20) and fetches the thread of
+  each match (capped, about 10 messages) for conversation context. `Watch()`
+  stays only to keep push notifications alive, not as a sync cursor.
+- A long-offline mailbox resumes from the newest mail, never from months ago.
+  Pre-activation mail stays excluded by `EnabledAt` as today. Overlap between
+  syncs is free through the existing message-ID dedup.
+- If more mail exists than one page holds, the worker keeps the newest,
+  advances, and records a persistent visible warning ("skipped mail before
+  `<time>`, resumed with latest"). Skips are never silent. No mailbox can wedge.
+- Dispatch keeps running oldest-first within the batch (receipt-time order),
+  so recovered replies still follow their requests. Message-ID dedup is unchanged.
+- Thread context may include other participants' words: agents must treat
+  non-owner thread content as untrusted data, not instructions.
+
+**Inbox filters.** Per-route conditions narrowing which authenticated emails get
+processed: subject/body keywords (substring, case-insensitive; no regex in v1),
+attachment presence, and new-threads-only. Combined with AND. Filters only
+narrow — they cannot widen sender acceptance — and filtered-out mail stays
+visible in Recent activity with its reason. Configurable by asking the Builder,
+following the existing trigger-tool pattern (`get_gmail_trigger` /
+`manage_gmail_trigger`); the panes stay read-only.
+
+Owner-facing guide: `docs/gmail-inbound-owner-guide.md`.
 
 References: [Gmail push notifications](https://developers.google.com/workspace/gmail/api/guides/push),
 [history synchronization](https://developers.google.com/workspace/gmail/api/guides/sync),
