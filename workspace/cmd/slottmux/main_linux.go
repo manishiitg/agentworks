@@ -240,8 +240,16 @@ func run(args []string) int {
 		// takes its reason with it when the session ends.
 		if idx := c.ShellCommandIndex(); idx >= 0 {
 			log := filepath.Join(cfg.SlotRunRoot, slot, "last-launch.stderr")
-			rest := append([]string(nil), c.Rest...)
-			rest[idx] = "exec 2>" + shellQuote(log) + "; " + rest[idx]
+			rest := append([]string(nil), c.Rest[:idx]...)
+			tail := c.Rest[idx:]
+			if len(tail) == 1 {
+				// one string: tmux runs it through a shell
+				rest = append(rest, "exec 2>"+shellQuote(log)+"; "+tail[0])
+			} else {
+				// several words: tmux runs them directly, so keep them as arguments of a small shell
+				rest = append(rest, "/bin/sh", "-c", "exec 2>"+shellQuote(log)+`; exec "$@"`, "slot-launch")
+				rest = append(rest, tail...)
+			}
 			args = append(append(append([]string(nil), c.Prefix...), c.Subcommand), rest...)
 		}
 		code := asSlot(cfg, slot, args, slotEnv(cfg, slot), os.Stdout, os.Stderr)
