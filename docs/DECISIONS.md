@@ -954,6 +954,20 @@ Design references for the linked runtime decisions:
 
 ## Open issues
 
+### 2026-10-01 — Generated model names can disagree with the actual runtime
+- Excellence/Ashutosh's 14:15 IST Code turn used `gpt-6.1-sol`: both the app's
+  generation records and Codex's native rollout `turn_context.model` confirmed
+  it. The earlier 13:07 turn used `gpt-6-sol`. The later response saying
+  "GPT-6 (Codex)" was generated prose, not an additional catalog entry or proof
+  that the model switch failed. No runtime-switch change is needed for that
+  latest turn.
+- Use native turn metadata to verify the executed model; a saved selection or
+  requested-model log alone is insufficient, and asking the agent its model
+  can produce a wrong answer. The UI currently emphasizes the selected model;
+  explicit pending/running model feedback and accurate agent self-reporting
+  remain open. Related code: `WorkModelsPanel`, `agent_profile_routes.go`, and
+  the Codex adapter's native transcript.
+
 ### 2026-10-01 — Model selection is pending while typing directly into a retained terminal
 - Excellence/Ashutosh's Code saved `gpt-6.1-sol` in its project manifest, while
   its retained Codex runtime still had `gpt-6-sol`. The model was saved after
