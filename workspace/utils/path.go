@@ -32,8 +32,18 @@ func IsValidFilePath(filePath, docsDir string) bool {
 	}
 	// A symlink never carries a path from one user's tree into another's.
 	if realOwner, inUser := userTreeOwner(resolvedRoot, resolvedCandidate); inUser {
-		if lexOwner, lexIn := userTreeOwner(cleanDocsDir, cleanPath); !lexIn || lexOwner != realOwner {
-			return false
+		lexOwner, lexIn := userTreeOwner(cleanDocsDir, cleanPath)
+		if realOwner != "" {
+			if !lexIn || lexOwner != realOwner {
+				return false
+			}
+		} else if lexIn && lexOwner != "" {
+			// The path resolved no further than the _users folder itself. That is fine while the path does
+			// not exist yet (a user's first file: nothing below _users/<id> is there to follow), but a
+			// link that exists and points at _users would list every account.
+			if _, statErr := os.Lstat(cleanPath); statErr == nil {
+				return false
+			}
 		}
 	}
 	return true

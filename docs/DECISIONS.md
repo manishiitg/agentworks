@@ -199,6 +199,13 @@ Design references for the linked runtime decisions:
   `X-User-ID`, and shared Code collaborators, Crew owners and administrators legitimately read another
   user's folder, so the name check must not live there. Lesson: a change to a shared resolver needs a
   startup check against a copy of the real data layout before a swap.
+- **Second outage, same day (excellence startup).** The symlink rule compared a path's owner with the owner of
+  its nearest *existing* parent, so a path that does not exist yet (`_users/_system_global_secrets/...`, or
+  a new user's first file, whose nearest parent is `_users` itself) was refused and the agent could not
+  start; excellence went down until its release was rolled back. Fixed: the comparison applies only once the
+  resolved path has reached a user's own folder, and a link to `_users` itself stays refused. RTS was only
+  unaffected because those folders already existed. Checked against the real service with a data layout
+  that has no `_system_global_secrets` folder and a brand-new user's first write, not only unit tests.
 - **Decided.** Shell commands (`security.buildNativeEnvironment`) and CLI launches
   (`llmtypes.ScopedCodingAgentEnvironmentPlan`, now also when no secret scope is declared) never inherit
   the host's server-owned secrets: `AUTH_SECRET`, `ACCESS_PASSWORD`, `AUTH_USERS`, `GLOBAL_SECRET_*`, the

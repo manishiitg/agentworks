@@ -82,3 +82,30 @@ func TestResolveUserPathStillAllowsOwnAndSharedFiles(t *testing.T) {
 		t.Errorf("bob denied his own file: %v", err)
 	}
 }
+
+// A path whose leaf (or whole user folder) does not exist yet resolves no further than its nearest existing
+// parent; that must not be mistaken for a hop into another tree (RTS/excellence startup, 2026-10-01).
+func TestIsValidFilePathAllowsPathsThatDoNotExistYet(t *testing.T) {
+	docs := crossUserFixture(t)
+	for _, p := range []string{
+		"_users/_system_global_secrets/secrets.json", // the platform's own folder, created on first use
+		"_users/newuser/Chats/first.txt",             // a user's very first file
+		"_users/alice/Chats/not-yet.txt",             // a new file in an existing tree
+		"_users/alice/Chats/newdir/deep/file.txt",
+	} {
+		if !IsValidFilePath(filepath.Join(docs, p), docs) {
+			t.Errorf("%s refused although nothing exists to follow", p)
+		}
+		if _, err := ResolveUserPath(docs, p, "alice"); err != nil {
+			t.Errorf("ResolveUserPath %s: %v", p, err)
+		}
+	}
+}
+
+func TestIsValidFilePathRefusesALinkToTheUsersFolderItself(t *testing.T) {
+	docs := crossUserFixture(t)
+	_ = os.Symlink("../..", filepath.Join(docs, "_users", "alice", "Chats", "everyone"))
+	if IsValidFilePath(filepath.Join(docs, "_users", "alice", "Chats", "everyone"), docs) {
+		t.Error("a link to the _users folder would list every account")
+	}
+}
