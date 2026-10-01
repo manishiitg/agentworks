@@ -1,0 +1,24 @@
+{
+  "providers": {
+    "citymall": {
+      "baseUrl": "https://cm-ai-images-apim.azure-api.net/chat/v1/gpt-5.6-luna",
+      "api": "openai-completions",
+      "apiKey": "$CITYMALL_API_KEY",
+      "headers": {
+        "api-key": "$CITYMALL_API_KEY"
+      },
+      "authHeader": false,
+      "models": [
+        {
+          "id": "gpt-5.6-luna",
+          "name": "Citymall GPT-5.6 Luna",
+          "input": ["text", "image"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none"
+          }
+        }
+      ]
+    }
+  }
+}

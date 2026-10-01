@@ -13,6 +13,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Citymall AI gateway works through Pi's existing Chat Completions transport
+
+- Live gateway calls passed chat, streaming, inline vision and image generation;
+  isolated installed Pi CLI calls returned a Hindi greeting and read a test file
+  through the native tool with the explicit off-to-none mapping. Stage a non-secret
+  Pi custom-provider template (`products/citymall/pi-models.json`), with the key
+  supplied as `CITYMALL_API_KEY` from Citymall's own protected environment.
+- **Open:** function tools require `reasoning_effort=none`; the default fails.
+  Map Pi's off thinking level explicitly to `none` in the template; without that
+  mapping the CLI omits the field and native tool calls still fail.
+  The existing Azure adapter chooses Responses for every GPT-5 name and this
+  gateway's Responses request failed with HTTP 500. Private Pi session model
+  configuration/scoped credentials and a separate image-generation adapter still
+  need application integration and authenticated qualification before launch.
+
 ### 2026-10-01 — Citymall dedicated host: prepare an isolated service account first
 
 - The supplied EC2 host (`52.66.201.227`, Ubuntu 26.04, 2 CPUs/4 GB RAM) is fresh.
