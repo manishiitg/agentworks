@@ -2,16 +2,17 @@
 
 **What you'll do:** give one of your projects its own email address, so emailing it starts (or continues) a chat there.
 
-Each project gets a stable address such as `you+agent-<id>@yourdomain.com`. Mail to it lands in your existing mailbox — no new account or mail server. Every email conversation becomes its own chat under that project; replying in the same email thread continues the same chat.
+Each project gets a stable address such as `you+agent-<id>@yourdomain.com`. Mail to it lands in your existing mailbox — no new account or mail server. For Crew and Code, each email conversation gets its own project chat and replies continue it. For workflows, each message runs the saved route in a new isolated run, including replies.
 
 ## Setup (ask the Builder)
 
 The Email and Triggers panes are read-only — they show the address, readiness, and delivery activity. The Builder does the configuration. In the project's chat, ask it to set up incoming email. It will:
 
 1. Check that this deployment can receive mail (an operator enables this once per server; without it, setup stops here).
-2. Use your connected mailbox — Gmail read access must be granted, and you complete Google's consent yourself if asked.
+2. Use your connected mailbox, or prepare a Google sign-in link for a new one. You complete Google's consent yourself; Builder checks the result afterward. Code owners connect their own private accounts; an administrator connects shared Crew/workflow accounts.
 3. Create the address and show it back with its readiness. Email it only after it reads Ready.
-4. For a workflow, it wires the saved route the email should run; for a Crew or Code, mail goes to an isolated project chat.
+4. For a workflow, it finds and wires the saved route you name; for a Crew or Code, mail goes to an isolated project chat. You don't need to supply IDs or edit a form.
+5. Set any email filters you request and show the saved settings back to you.
 
 To pause, ask the Builder to disable it. Disabling keeps the address; mail sent while disabled never triggers work later. Re-enabling starts fresh from that moment.
 
@@ -19,12 +20,12 @@ To pause, ask the Builder to disable it. Disabling keeps the address; mail sent 
 
 - **Only your email.** Version one accepts mail only from the project owner's own address. Nothing from anyone else triggers anything, and an address never shares your private chats, files, logins, tools, or budget.
 - **Only authenticated mail.** The sender's domain must pass DMARC, or the message must be your own mailbox's sent mail.
-- **Only new mail.** Sync reads the latest emails; anything older than the current window is never actioned.
+- **Only mail received after activation.** Older mail never triggers work. The service tracks new messages and can catch up after an outage; unrelated new inbox mail does not push your request out of a 20-message window.
 - **No automated mail.** Auto-replies, mailing lists, spam, and trash are ignored.
 
 ## Replies (optional)
 
-If replies are on, the project's final response goes back to you — only ever to the authenticated sender, never to CC, and never to any Reply-To on the incoming mail. Your address stays in Reply-To so the thread continues in the same chat.
+If replies are on, the project's final response goes back to you — only ever to the authenticated sender, never to CC, and never to any Reply-To on the incoming mail. The receiving address stays in Reply-To. Replies continue the Crew/Code chat; workflows run their saved route again unless you enabled new-threads-only.
 
 ## Limits
 
@@ -34,12 +35,29 @@ If replies are on, the project's final response goes back to you — only ever t
 
 ## If something looks wrong
 
-Open Recent email activity on the project: every delivery shows received, running, completed, rejected, failed, or uncertain, with a reason. `uncertain` means the run was interrupted (for example a restart mid-send) — look at the saved chat and your Sent folder before resending, because replaying a half-run email can repeat real side effects. Failed sends are never retried automatically.
+Open Recent email activity on the project: every delivery shows waiting, running, completed, filtered, rejected, failed, or uncertain, with a reason. `uncertain` means the run was interrupted (for example a restart mid-send) — look at the saved chat and your Sent folder before resending, because replaying a half-run email can repeat real side effects. Failed sends are never retried automatically.
 
 Common causes: read access was revoked (reconnect the account), the address was disabled, the mail came from a different sender, or the deployment's mail receiving isn't configured (an operator task — see the operator doc).
 
-## Planned: inbox filters
+## Inbox filters (ask the Builder)
 
-Per-address filters are planned but not built yet: subject/body keywords, attachment presence, and new-threads-only, combined to narrow which emails get processed. Filters will only ever narrow — they can't widen who is accepted — and filtered-out mail will stay visible in Recent activity with its reason. Like setup, filters will be configurable by asking the Builder.
+Examples you can say in the project's Builder chat:
+
+- “Connect Gmail to this Crew. Only process emails whose subject contains invoice and that have attachments.”
+- “Use the Support route for emails with refund in the subject and order in the body.”
+- “Only start work for new email threads; ignore replies.”
+- “Remove the attachment condition but keep the subject filter.”
+- “Clear the email filters.”
+
+Keyword matching ignores case and uses literal substrings. Every keyword and
+condition you specify must match. Attachment presence can require files or
+require no files. New-threads-only rejects replies and threads this target
+already accepted. There are no filters unless you ask for them.
+
+Filters only narrow what gets processed; the owner-only sender rule stays in
+place. Filtered mail remains in Recent email activity with a reason. Changing
+or clearing filters does not replay skipped mail. Updated filters apply to
+messages still queued, while an already running task and its final response
+continue. The pane displays the filters read-only; change them through Builder.
 
 Operator setup and internals: `docs/gmail-inbound.md`.

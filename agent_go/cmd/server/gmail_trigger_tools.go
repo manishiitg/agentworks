@@ -17,9 +17,10 @@ import (
 
 // Gmail is a trigger source, not another public per-workflow webhook.
 type WorkflowGmailTriggerConfig struct {
-	ConnectionID string `json:"connection_id"`
-	Address      string `json:"address"`
-	Reply        bool   `json:"reply"`
+	Filters      *gmailinbound.Filters `json:"filters,omitempty"`
+	ConnectionID string                `json:"connection_id"`
+	Address      string                `json:"address"`
+	Reply        bool                  `json:"reply"`
 }
 
 func (s WorkflowSchedule) IsGmailTrigger() bool {
@@ -27,17 +28,23 @@ func (s WorkflowSchedule) IsGmailTrigger() bool {
 }
 
 type gmailTriggerInput struct {
-	WorkspacePath   string            `json:"workspace_path"`
-	ConnectionID    string            `json:"connection_id"`
-	Name            string            `json:"name"`
-	Enabled         bool              `json:"enabled"`
-	Reply           bool              `json:"reply"`
-	RouteSelections map[string]string `json:"route_selections"`
-	GroupNames      []string          `json:"group_names"`
-	StepID          string            `json:"step_id"`
+	Filters         *gmailinbound.Filters `json:"filters"`
+	WorkspacePath   string                `json:"workspace_path"`
+	ConnectionID    string                `json:"connection_id"`
+	Name            string                `json:"name"`
+	Enabled         bool                  `json:"enabled"`
+	Reply           bool                  `json:"reply"`
+	RouteSelections map[string]string     `json:"route_selections"`
+	GroupNames      []string              `json:"group_names"`
+	StepID          string                `json:"step_id"`
 }
 
 func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gmailinbound.Route, mailboxEmail ...string) error {
+	filters, err := gmailinbound.NormalizeFilters(route.Filters)
+	if err != nil {
+		return err
+	}
+	route.Filters = filters
 	if !route.WorkflowTrigger {
 		if len(mailboxEmail) > 0 {
 			return api.gmailInbound.Store.SaveRoute(ctx, route, mailboxEmail[0])
@@ -68,7 +75,7 @@ func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gma
 	if name == "" {
 		name = "Incoming Gmail"
 	}
-	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseMode: "off", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply}}
+	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseMode: "off", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters}}
 	index := -1
 	for i, existing := range manifest.Schedules {
 		if existing.ID == route.ID {
@@ -201,19 +208,26 @@ func (api *StreamingAPI) waitGmailWorkflowRun(ctx context.Context, d *gmailinbou
 }
 
 func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, session, workspace string) error {
-	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved workflow routing, readiness and delivery activity. Read before and after changing it. The right pane is read-only. If configured=false, an operator must enable Pub/Sub first.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The right pane is read-only. If configured=false, an operator must enable Pub/Sub first.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, nil)
 	}, "gmail_connection_management"); err != nil {
 		return err
 	}
-	return reg.RegisterCustomTool("manage_gmail_trigger", "Configure or disable this target's unique incoming-email trigger as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Google Gmail read consent and deployment Pub/Sub setup are required. For workflows discover exact route IDs/groups with manage_workflow_webhook(action=list), then provide route_selections and group_names (or step_id). This executes the saved route directly with email JSON as input. Crew and Code target isolated project chats. Omitted settings are preserved; reply defaults true on first setup. Disable preserves the address. No arbitrary target or sender policy. Never change gog watches directly. Return the receiving address and verify readiness; saving alone does not prove live delivery.", map[string]interface{}{
+	return reg.RegisterCustomTool("manage_gmail_trigger", "Connect, configure or disable this target's unique incoming-email trigger as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Use action=connect to create an account or request read consent on connection_id and return a Google consent link; the human must authorize, then inspect again before configure. Existing account-management permissions apply. client_name is only for connect; omit when one deployed OAuth client is eligible. For workflows discover saved route IDs/groups with manage_workflow_webhook(action=list), then configure route_selections and group_names (or step_id). Optional filters narrow accepted mail; all keywords/conditions use AND, substring matching is case-insensitive. Omitted filters are preserved; filters={} clears them; a supplied filters object replaces the whole filter set. New threads only rejects replies and threads already accepted here. No filters by default. Crew/Code email starts isolated project chats. reply/enabled default true on first setup. Disable preserves the address. No arbitrary target or sender policy, no UI setup forms or direct gog watch changes. Return address, filter summary and verified readiness; saving alone does not prove live delivery.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":        map[string]interface{}{"type": "string", "enum": []string{"configure", "disable"}},
+			"action":        map[string]interface{}{"type": "string", "enum": []string{"connect", "configure", "disable"}},
+			"client_name":   map[string]interface{}{"type": "string", "description": "Only for connect: exact configured OAuth client; do not invent names."},
 			"connection_id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"},
 			"enabled": map[string]interface{}{"type": "boolean"}, "reply": map[string]interface{}{"type": "boolean"},
 			"route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}},
 			"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
 			"step_id":          map[string]interface{}{"type": "string"},
+			"filters": map[string]interface{}{"type": "object", "additionalProperties": false, "properties": map[string]interface{}{
+				"subject_contains": map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
+				"body_contains":    map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
+				"has_attachments":  map[string]interface{}{"type": "boolean", "description": "True requires attachments; false requires no attachments; omit for either."},
+				"new_threads_only": map[string]interface{}{"type": "boolean"},
+			}},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, args)
@@ -241,8 +255,14 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 		return rec.Body.String(), nil
 	}
 	action, _ := args["action"].(string)
+	if action == "connect" {
+		if api.gmailInbound == nil {
+			return "", fmt.Errorf("an administrator must configure Gmail Pub/Sub first")
+		}
+		return api.connectGmailTriggerAccount(ctx, workspace, config, args)
+	}
 	if action != "configure" && action != "disable" {
-		return "", fmt.Errorf("action must be configure or disable")
+		return "", fmt.Errorf("action must be connect, configure or disable")
 	}
 	var current struct {
 		Route *gmailinbound.Route `json:"route"`
@@ -253,7 +273,7 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 	input := gmailTriggerInput{WorkspacePath: workspace, Name: "Incoming Gmail", Enabled: true, Reply: true}
 	if current.Route != nil {
 		r := current.Route
-		input = gmailTriggerInput{WorkspacePath: workspace, ConnectionID: r.ConnectionID, Name: r.Name, Enabled: r.Enabled, Reply: r.Reply, RouteSelections: r.RouteSelections, GroupNames: r.GroupNames, StepID: r.StepID}
+		input = gmailTriggerInput{WorkspacePath: workspace, ConnectionID: r.ConnectionID, Name: r.Name, Enabled: r.Enabled, Reply: r.Reply, RouteSelections: r.RouteSelections, GroupNames: r.GroupNames, StepID: r.StepID, Filters: r.Filters}
 	}
 	if action == "disable" && current.Route == nil {
 		return "", fmt.Errorf("no Gmail trigger exists")

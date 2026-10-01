@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -298,5 +299,171 @@ func TestGmailManagementHTTPIsReadOnly(t *testing.T) {
 	router.ServeHTTP(w, sharedSecretsRequest("POST", "/api/gmail-inbound/route", "owner", map[string]interface{}{"workspace_path": "Workflow/mail"}))
 	if w.Code != 405 {
 		t.Fatalf("public management accepts writes: %d", w.Code)
+	}
+}
+
+func TestGmailBuilderFiltersPreserveBindingAndCanBeCleared(t *testing.T) {
+	api, ctx, _ := gmailTriggerFixture(t)
+	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"subject_contains": []string{" Invoice "}, "has_attachments": false, "new_threads_only": true}}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ := api.gmailInbound.Store.Routes(ctx)
+	route := routes[0]
+	_, schedule, err := api.gmailWorkflowTrigger(ctx, route)
+	if err != nil || schedule.Gmail.Filters == nil || schedule.Gmail.Filters.SubjectContains[0] != "Invoice" || *schedule.Gmail.Filters.HasAttachments {
+		t.Fatalf("filters not persisted in binding: %+v %v", schedule.Gmail, err)
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "name": "Invoices"}); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ = api.gmailInbound.Store.Routes(ctx)
+	if routes[0].Filters == nil || routes[0].ID != route.ID || routes[0].Address != route.Address || routes[0].RouteSelections["triage"] != "support" {
+		t.Fatal("unrelated change lost filters or binding")
+	}
+	for _, invalid := range []interface{}{map[string]interface{}{"sender": "anyone"}, map[string]interface{}{"subject_contains": []string{" "}}, map[string]interface{}{"has_attachments": "yes"}} {
+		if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "filters": invalid}); err == nil {
+			t.Fatal("unsafe filter accepted")
+		}
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "disable"}); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ = api.gmailInbound.Store.Routes(ctx)
+	if routes[0].Filters == nil {
+		t.Fatal("disable lost filters")
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "route_selections": map[string]string{"triage": "billing"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "route_selections": map[string]string{"triage": "missing"}}); err == nil {
+		t.Fatal("paused trigger accepted an invalid saved route")
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "filters": map[string]interface{}{}}); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ = api.gmailInbound.Store.Routes(ctx)
+	if routes[0].Filters != nil || routes[0].Enabled {
+		t.Fatal("clearing filters changed enablement")
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "enabled": true}); err != nil {
+		t.Fatal(err)
+	}
+	_, schedule, err = api.gmailWorkflowTrigger(ctx, routes[0])
+	if err != nil || schedule.Gmail.Filters != nil || schedule.RouteSelections["triage"] != "billing" {
+		t.Fatalf("clear lost binding: %+v %v", schedule, err)
+	}
+}
+
+func prepareGmailBuilderOAuth(t *testing.T) {
+	t.Helper()
+	t.Setenv("PUBLIC_URL", "https://app.example.com")
+	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
+	restore := services.SetGogClientStore(services.StoreGogClientForTest)
+	t.Cleanup(restore)
+	if _, err := services.CreateOAuthClient(context.Background(), "app", []byte(`{"web":{"client_id":"test.apps.googleusercontent.com","client_secret":"test-oauth-secret"}}`), false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertGmailBuilderConsent(t *testing.T, output, callback string) string {
+	t.Helper()
+	var link struct {
+		ConnectionID string `json:"connection_id"`
+		URL          string `json:"reconnect_url"`
+		Ready        bool   `json:"ready"`
+	}
+	if err := json.Unmarshal([]byte(output), &link); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(link.URL)
+	if err != nil || u.Host != "accounts.google.com" || u.Query().Get("redirect_uri") != "https://app.example.com"+callback || !strings.Contains(u.Query().Get("scope"), services.GmailReadonlyScope) || link.ConnectionID == "" || link.Ready {
+		t.Fatalf("invalid consent link: %s %v", output, err)
+	}
+	return link.ConnectionID
+}
+
+func TestGmailBuilderConnectCreatesConsentLinkWithoutEnablingTrigger(t *testing.T) {
+	api, ctx, _ := gmailTriggerFixture(t)
+	prepareGmailBuilderOAuth(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","email":"owner@example.com","admin":true,"can_create":true}]}`)
+	out, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "connect"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := assertGmailBuilderConsent(t, out, gmailOAuthCallbackPath)
+	conn, found := services.GetGmailService().GetConnection(id)
+	if !found || conn.IsPrivate() || !conn.AllowReadAccess || conn.AllowAgentWriteAccess || len(conn.Services) != 0 {
+		t.Fatalf("wrong connection grants: %+v", conn)
+	}
+	routes, _ := api.gmailInbound.Store.Routes(ctx)
+	if len(routes) != 0 {
+		t.Fatal("consent preparation enabled a trigger")
+	}
+	before := len(services.GetGmailService().GetConfig().Connections)
+	write := true
+	if _, err := services.GetGmailService().UpdateConnection(ctx, id, services.GmailConnectionInput{AllowAgentWriteAccess: &write, Services: []services.GoogleServiceGrant{{Service: "drive"}}, ServicesSet: true}); err != nil {
+		t.Fatal(err)
+	}
+	out, err = api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "connect", "connection_id": id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assertGmailBuilderConsent(t, out, gmailOAuthCallbackPath) != id || len(services.GetGmailService().GetConfig().Connections) != before {
+		t.Fatal("reconnect created a duplicate account")
+	}
+	conn, _ = services.GetGmailService().GetConnection(id)
+	if !conn.AllowAgentWriteAccess || len(conn.Services) != 1 || conn.Services[0].Service != "drive" {
+		t.Fatal("incoming-mail reconnect discarded unrelated grants")
+	}
+}
+
+func TestGmailBuilderConnectPreservesPrivateCodeScopeAndPlatformCallback(t *testing.T) {
+	api, ctx, mock := gmailTriggerFixture(t)
+	prepareGmailBuilderOAuth(t)
+	api.agentProfiles = agentprofiles.NewRegistry()
+	if err := api.agentProfiles.RegisterProfile(codeproduct.BuiltinAgentProfile()); err != nil {
+		t.Fatal(err)
+	}
+	api.productSchedules = NewProductScheduleService(api, api.agentProfiles)
+	root := "_users/owner/Chats/Code/projects/app"
+	mock.mu.Lock()
+	mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"code-app","title":"App","session_id":"app"}`
+	mock.files[root+"/workflow.json"] = `{"schema_version":1,"product":"code","id":"code-app","title":"App"}`
+	mock.mu.Unlock()
+	out, err := api.gmailTriggerToolRequest(ctx, "human", root, map[string]interface{}{"action": "connect"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := assertGmailBuilderConsent(t, out, gmailOAuthCallbackPath)
+	svc := services.GetGmailService()
+	conn, _ := svc.GetConnection(id)
+	if !conn.IsPrivate() || conn.ScopeWorkspace != root || conn.OwnerID != "owner" {
+		t.Fatalf("private scope lost: %+v", conn)
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", root, map[string]interface{}{"action": "connect", "connection_id": "mail"}); err == nil {
+		t.Fatal("Code reconnected shared credentials")
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", root, map[string]interface{}{"action": "connect", "workspace_path": "elsewhere"}); err == nil {
+		t.Fatal("agent chose another target")
+	}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "connect"}); err == nil {
+		t.Fatal("non-admin created shared credentials")
+	}
+	// The platform app already registers the shared OAuth callback.
+	withMCPConnectionsRoot(t)
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	if err := writeMCPApp("google", mcpApp{ClientID: "platform.apps.googleusercontent.com", ClientSecret: "test-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	// Use the actual platform registry name rather than the agent inventing one.
+	t.Setenv("GMAIL_INBOUND_TOPICS", `{"`+services.PlatformGoogleClientName+`":"projects/test-project/topics/mail"}`)
+	out, err = api.gmailTriggerToolRequest(ctx, "human", root, map[string]interface{}{"action": "connect"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGmailBuilderConsent(t, out, "/api/oauth/callback")
+	if callback, err := gmailOAuthRedirectURIFromEnv(services.PlatformGoogleClientName); err != nil || callback != "https://app.example.com/api/oauth/callback" {
+		t.Fatalf("Builder reconnect uses a different callback: %s %v", callback, err)
 	}
 }

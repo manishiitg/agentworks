@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT 
 CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
+CREATE INDEX IF NOT EXISTS delivery_thread ON deliveries(route,json_extract(message,'$.thread_id'));
 UPDATE deliveries SET status='uncertain',error='Server stopped during execution; inspect the saved app thread before retrying' WHERE status IN ('running','sending');`)
 	if e != nil {
 		_ = db.Close()
@@ -45,6 +46,11 @@ UPDATE deliveries SET status='uncertain',error='Server stopped during execution;
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) SaveRoute(ctx context.Context, r Route, email string) error {
+	filters, err := NormalizeFilters(r.Filters)
+	if err != nil {
+		return err
+	}
+	r.Filters = filters
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
@@ -156,12 +162,24 @@ func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
 	if exists {
 		return tx.Commit()
 	}
-	var count int
-	if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM deliveries WHERE status IN ('staged','pending','running','reply','sending')`).Scan(&count); e != nil {
-		return e
+	reason := r.Filters.Mismatch(m)
+	if reason == "" && r.Filters != nil && r.Filters.NewThreadsOnly {
+		var accepted bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE route=? AND json_extract(message,'$.thread_id')=? AND status!='filtered')`, r.ID, m.ThreadID).Scan(&accepted); e != nil {
+			return e
+		}
+		if accepted {
+			reason = "New threads only: this thread has already been accepted"
+		}
 	}
-	if count >= 10000 {
-		return fmt.Errorf("email delivery queue is full")
+	if reason == "" {
+		var count int
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM deliveries WHERE status IN ('staged','pending','running','reply','sending')`).Scan(&count); e != nil {
+			return e
+		}
+		if count >= 10000 {
+			return fmt.Errorf("email delivery queue is full")
+		}
 	}
 	b, e := json.Marshal(m)
 	if e != nil {
@@ -171,11 +189,32 @@ func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
 	if receivedAt == 0 {
 		receivedAt = time.Now().UnixMilli()
 	}
-	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deliveries(id,route,message,created_at,received_at) VALUES(?,?,?,?,?)`, r.ID+":"+m.ID, r.ID, string(b), time.Now().Unix(), receivedAt)
+	status := "staged"
+	if reason != "" {
+		status = "filtered"
+	}
+	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deliveries(id,route,message,status,error,created_at,received_at) VALUES(?,?,?,?,?,?,?)`, r.ID+":"+m.ID, r.ID, string(b), status, reason, time.Now().Unix(), receivedAt)
 	if e != nil {
 		return e
 	}
 	return tx.Commit()
+}
+
+// Recheck changed filters before execution. A queued message may be the first
+// accepted message in its thread; do not count that message or later messages.
+func (s *Store) FilterReason(ctx context.Context, d Delivery) (string, error) {
+	if reason := d.Route.Filters.Mismatch(d.Message); reason != "" {
+		return reason, nil
+	}
+	if d.Route.Filters == nil || !d.Route.Filters.NewThreadsOnly {
+		return "", nil
+	}
+	var earlier bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries a JOIN deliveries d ON d.id=? WHERE a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id') AND a.status!='filtered' AND (a.received_at<d.received_at OR (a.received_at=d.received_at AND a.rowid<d.rowid)))`, d.ID).Scan(&earlier)
+	if earlier {
+		return "New threads only: this thread has already been accepted", err
+	}
+	return "", err
 }
 
 // Keep compact IDs for durable deduplication, while releasing message bodies

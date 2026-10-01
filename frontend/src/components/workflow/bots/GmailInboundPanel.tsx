@@ -49,6 +49,13 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
 
   const route = state?.route
   const account = connections.find(connection => connection.id === route?.connection_id)
+  const filters = route?.filters
+  const conditions = [
+    ...(filters?.subject_contains || []).map(term => `Subject contains “${term}”`),
+    ...(filters?.body_contains || []).map(term => `Body contains “${term}”`),
+    ...(filters?.has_attachments === undefined ? [] : [filters.has_attachments ? 'Has attachments' : 'No attachments']),
+    ...(filters?.new_threads_only ? ['New threads only'] : []),
+  ]
   return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose the workflow route, or disable this trigger. This panel shows the saved configuration.">
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
@@ -62,6 +69,7 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
         <p className="text-muted-foreground">Starts: {route.workflow_trigger ? route.step_id ? `Step ${route.step_id}` : Object.keys(route.route_selections || {}).length ? Object.entries(route.route_selections!).map(([step, branch]) => `${step} → ${branch}`).join(', ') : 'Full workflow' : 'A project chat; replies continue the same chat'}</p>
         {!!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
         <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · Owner email only</p>
+        <p className="text-muted-foreground">Filters: {conditions.length ? `${conditions.join(' · ')} (all must match)` : 'None'}</p>
         <p className="text-muted-foreground">{!route.enabled ? 'Incoming email is disabled.' : state?.error ? state.error : state?.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
         {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
       </div>}

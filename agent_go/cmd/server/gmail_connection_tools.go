@@ -17,12 +17,16 @@ import (
 // browser-driven /auth/start route in gmail_oauth_routes.go) has no
 // *http.Request to derive the host from -- PUBLIC_URL is this deployment's
 // own known public base URL instead.
-func gmailOAuthRedirectURIFromEnv() (string, error) {
+func gmailOAuthRedirectURIFromEnv(clientName ...string) (string, error) {
 	publicURL := strings.TrimSpace(os.Getenv("PUBLIC_URL"))
 	if publicURL == "" {
 		return "", fmt.Errorf("PUBLIC_URL is not configured on this server; cannot generate a Gmail reconnect link from chat")
 	}
-	return strings.TrimRight(publicURL, "/") + gmailOAuthCallbackPath, nil
+	callback := gmailOAuthCallbackPath
+	if len(clientName) > 0 && clientName[0] == services.PlatformGoogleClientName {
+		callback = "/api/oauth/callback"
+	}
+	return strings.TrimRight(publicURL, "/") + callback, nil
 }
 
 // gmailGrantMismatchNote is included in both list_gmail_connections' tool
@@ -188,7 +192,7 @@ func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context
 		return "", fmt.Errorf("saved the new request, but could not prepare this legacy connection for reconnect: %w", err)
 	}
 
-	redirectURI, err := gmailOAuthRedirectURIFromEnv()
+	redirectURI, err := gmailOAuthRedirectURIFromEnv(updated.ClientName)
 	if err != nil {
 		return "", fmt.Errorf("saved the new request, but could not build a reconnect link: %w. Tell the user to open the Sending accounts panel and click Reconnect themselves", err)
 	}

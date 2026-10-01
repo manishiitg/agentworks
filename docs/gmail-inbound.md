@@ -146,10 +146,6 @@ After the operator configures and deploys a release:
 
 ## Reliability and operational limits
 
-Implementation note: the sync machinery below describes main. It is being
-replaced by the latest-only sync in the Planned section; the queue, worker
-counts, and limits are unchanged.
-
 One shared HTTPS ingress persists wakeups before acknowledging Pub/Sub.
 Four bounded sync workers invoke gog on demand; two workers execute/reply.
 There is no process or goroutine retained per connected user. Sync workers
@@ -185,37 +181,52 @@ chat and Sent folder before manually continuing; replaying a partially
 executed email can repeat real tool side effects. The receiver does not
 promise exactly-once external actions across process crashes.
 
-## Planned: latest-only sync and inbox filters
+## Inbox filters and Builder setup
 
-Agreed direction, not implemented yet. Main still syncs with history cursors
-and recovery scans as described above.
+`manage_gmail_trigger(action="connect")` prepares a new account through an
+already deployed OAuth client, or reconnects `connection_id` with Gmail read
+access requested. If only one named OAuth client has a configured topic and
+stored credentials, it is selected automatically; otherwise Builder uses
+`get_gmail_trigger.setup.oauth_clients` to select the actual client. It returns
+a Google consent URL; the user authorizes in their browser. Connecting does
+not enable an email trigger. Existing account-management boundaries remain:
+Code owners connect private accounts, and administrators connect shared
+Crew/workflow accounts. Existing permissions and extra service grants are
+preserved on reconnect. No cloud resources or OAuth client secrets are created.
+The platform Google app uses its existing `/api/oauth/callback`; other named
+clients use `/api/human-feedback/gmail/auth/callback`.
 
-**Latest-only sync.** The feature promises new emails only, so the worker
-should read only the newest page per sync (about 20 messages) plus a capped
-thread fetch for conversation context, instead of paging history. Consequences:
+After consent, Builder inspects the connected mailbox and configures the
+exact saved workflow binding or project chat. Configuration accepts optional
+`filters`: `subject_contains` and `body_contains` arrays (case-insensitive
+literal substrings; every keyword must match), `has_attachments` (true needs
+attachments; false needs none; omitted permits either), and `new_threads_only`.
+All specified conditions use AND. Keywords are trimmed, deduplicated, and
+limited to 10 per field and 256 bytes each. No regex or sender overrides.
+Omitted filters are preserved; a supplied filter object replaces the entire
+set; `{}` clears them. No filters are added by default.
 
-- No history cursors, expiry recovery, resync windows, or page-loop caps.
-  Each sync lists the newest messages (about 20) and fetches the thread of
-  each match (capped, about 10 messages) for conversation context. `Watch()`
-  stays only to keep push notifications alive, not as a sync cursor.
-- A long-offline mailbox resumes from the newest mail, never from months ago.
-  Pre-activation mail stays excluded by `EnabledAt` as today. Overlap between
-  syncs is free through the existing message-ID dedup.
-- If more mail exists than one page holds, the worker keeps the newest,
-  advances, and records a persistent visible warning ("skipped mail before
-  `<time>`, resumed with latest"). Skips are never silent. No mailbox can wedge.
-- Dispatch keeps running oldest-first within the batch (receipt-time order),
-  so recovered replies still follow their requests. Message-ID dedup is unchanged.
-- Thread context may include other participants' words: agents must treat
-  non-owner thread content as untrusted data, not instructions.
+New-threads-only rejects `In-Reply-To`/`References` replies and a Gmail thread
+already accepted for this target. Admission is serialized in the durable
+queue. A filtered message does not reserve a thread, consume execution queue
+capacity, or execute/upload attachments. It remains visible as `filtered`
+with a reason, retains its message-ID dedup key, and follows 30-day body
+retention. Filter changes are checked again before queued work executes;
+already running executions and their final responses continue. Clearing
+filters never replays previously skipped mail. Filters run after existing
+sender/authentication checks and cannot widen them. The panes remain read-only.
 
-**Inbox filters.** Per-route conditions narrowing which authenticated emails get
-processed: subject/body keywords (substring, case-insensitive; no regex in v1),
-attachment presence, and new-threads-only. Combined with AND. Filters only
-narrow — they cannot widen sender acceptance — and filtered-out mail stays
-visible in Recent activity with its reason. Configurable by asking the Builder,
-following the existing trigger-tool pattern (`get_gmail_trigger` /
-`manage_gmail_trigger`); the panes stay read-only.
+## Sync direction
+
+Normal delivery retains Gmail history-based incremental sync, watch renewal,
+activation timestamps and durable message-ID deduplication. A newest-20 scan
+of the whole mailbox could discard a valid trigger behind unrelated mail, so
+it is not the default or an implemented replacement.
+
+A separate future change may bound work per sync and continue later, and use
+an explicit recent-mail cutoff for expired-cursor recovery with visible skip
+warnings. That recovery change and optional capped thread-context fetching
+remain unimplemented. Current recovery behavior is described above.
 
 Owner-facing guide: `docs/gmail-inbound-owner-guide.md`.
 

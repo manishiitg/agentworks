@@ -222,6 +222,15 @@ func (s *Service) deliverNext(ctx context.Context) {
 		_ = s.Store.Finish(context.WithoutCancel(ctx), d, status, e)
 		return
 	}
+	reason, e := s.Store.FilterReason(ctx, d)
+	if e != nil {
+		_ = s.Store.Finish(ctx, d, "failed", e)
+		return
+	}
+	if reason != "" {
+		_ = s.Store.Finish(ctx, d, "filtered", errors.New(reason))
+		return
+	}
 	e = s.Dispatch(ctx, &d)
 	status := "complete"
 	if e != nil {

@@ -40,6 +40,19 @@ describe('Gmail incoming email settings', () => {
     expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(2)
   })
 
+  it('shows combined filters read-only, including an explicit no-attachments condition', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { subject_contains: ['invoice', 'RTS'], body_contains: ['approved'], has_attachments: false, new_threads_only: true } }, deliveries: [{ id: 'skipped', status: 'filtered', session_id: '', error: 'Body does not match the required keywords' }] })
+    await render()
+    expect(host.textContent).toContain('Subject contains “invoice”')
+    expect(host.textContent).toContain('Body contains “approved”')
+    expect(host.textContent).toContain('No attachments')
+    expect(host.textContent).toContain('New threads only')
+    expect(host.textContent).toContain('all must match')
+    expect(host.textContent).toContain('Body does not match the required keywords')
+    expect(host.querySelector('select, input, form')).toBeNull()
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Copy email address', 'Refresh email activity'])
+  })
+
   it('ignores a late response from the previously selected workspace', async () => {
     let resolveOld!: (value: GmailInboundState) => void
     vi.mocked(agentApi.getGmailInboundRoute).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))

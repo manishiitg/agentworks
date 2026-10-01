@@ -1,3 +1,4 @@
+import type { GmailInboundFilters } from '../services/api-types'
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
@@ -16,7 +17,7 @@ export interface WorkflowAPITrigger {
   /** '' = external webhook, 'function' = callable function, 'internal' = one bound caller. */
   kind?: '' | 'internal' | 'function' | 'gmail'
   caller?: { type: string; id: string; profile_id?: string }
-  gmail?: { connection_id: string; address: string; reply: boolean }
+  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters }
   function?: WorkflowFunctionSpec
 }
 

@@ -13,6 +13,30 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Builder connects Gmail and configures narrowing inbox filters
+
+- **Decided.** Keep history-based incremental delivery. A newest-20 mailbox scan
+  could lose an eligible trigger behind unrelated mail. Bounded continuation,
+  explicit recovery-age limits/skip warnings and thread-context fetching remain
+  a separate future change; they are not claimed implemented.
+- **Done.** `manage_gmail_trigger(action=connect)` prepares a Google consent link
+  through existing account handlers and configured OAuth clients. It does not
+  enable a trigger. Code private-account ownership and shared-account admin
+  permissions remain. Platform-app links use the registered shared callback.
+  Builder guidance discovers IDs, requests human consent, verifies it, selects
+  exact saved workflow routes, and returns the address/readiness/filter summary.
+- **Filters.** Optional subject/body substrings, attachment presence and new
+  threads only narrow authenticated owner mail. All keywords/conditions use AND.
+  Replacement/clear semantics are explicit; omitted filters survive updates and
+  disable. Builder can also update a paused workflow binding without enabling
+  it; changed bindings are validated, while disabling stale bindings still works.
+  Filtered mail is durable, visible with a reason, not replayed after
+  filter changes, and follows content retention. Thread admission is serialized.
+  Queued work rechecks current filters; running work/final responses continue.
+- **UI and rollout.** Panes display filters read-only. Owner/operator docs are
+  corrected for workflow reply runs and actual sync behavior. No deployment,
+  cloud provisioning or live RTS certification is performed here.
+
 ### 2026-10-01 — Live browser stuck on "Browser restarted — reconnecting…" (RTS, Code project)
 
 - **Found.** The browser of a Code project is started by the coding CLI inside its sandbox. The sandbox's private

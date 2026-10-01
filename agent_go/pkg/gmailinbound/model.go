@@ -13,6 +13,7 @@ import (
 )
 
 type Route struct {
+	Filters         *Filters          `json:"filters,omitempty"`
 	Name            string            `json:"name,omitempty"`
 	WorkflowTrigger bool              `json:"workflow_trigger,omitempty"`
 	RouteSelections map[string]string `json:"route_selections,omitempty"`
@@ -51,6 +52,7 @@ type Message struct {
 	ID            string       `json:"id"`
 	ReceivedAt    int64        `json:"received_at"`
 	ThreadID      string       `json:"thread_id"`
+	IsReply       bool         `json:"is_reply,omitempty"`
 	From          string       `json:"from"`
 	Recipients    []string     `json:"recipients"`
 	Subject       string       `json:"subject"`
@@ -110,6 +112,7 @@ func (r RawMessage) Parse(account string) (Message, error) {
 		return Message{}, fmt.Errorf("invalid sender")
 	}
 	m := Message{ID: r.ID, ThreadID: r.ThreadID, From: strings.ToLower(from.Address), Subject: r.Payload.header("Subject"), RFCMessageID: r.Payload.header("Message-ID")}
+	m.IsReply = strings.TrimSpace(r.Payload.header("In-Reply-To")) != "" || strings.TrimSpace(r.Payload.header("References")) != ""
 	m.ReceivedAt, _ = strconv.ParseInt(r.InternalDate, 10, 64)
 	if subject, e := new(mime.WordDecoder).DecodeHeader(m.Subject); e == nil {
 		m.Subject = subject

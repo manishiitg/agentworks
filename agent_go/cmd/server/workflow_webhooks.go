@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
@@ -178,6 +179,9 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 	if s.IsGmailTrigger() {
 		if s.Gmail == nil || s.Gmail.ConnectionID == "" || s.Gmail.Address == "" || s.Caller != nil || s.Function != nil || s.Webhook == nil || s.Webhook.EncryptedSecret != "" || s.Webhook.AuthMode != "" {
 			return errors.New("Gmail triggers require a mailbox binding and issue no webhook secret")
+		}
+		if _, err := gmailinbound.NormalizeFilters(s.Gmail.Filters); err != nil {
+			return err
 		}
 	} else if isFunctionTriggerKind(s.Kind) {
 		if err := validateWorkflowFunctionSpec(s.Function); err != nil {

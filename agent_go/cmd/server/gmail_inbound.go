@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -230,11 +232,30 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				http.Error(w, "An administrator must configure Gmail Pub/Sub on this server first", 409)
 				return
 			}
+			input.Filters, e = gmailinbound.NormalizeFilters(input.Filters)
+			if e != nil {
+				http.Error(w, e.Error(), 400)
+				return
+			}
 			// Disabling never needs the mailbox credential to still exist.
 			if !input.Enabled && existing != nil {
 				paused := *existing
 				paused.Enabled = false
 				paused.Reply = input.Reply
+				paused.Filters = input.Filters
+				paused.Name = strings.TrimSpace(input.Name)
+				if paused.WorkflowTrigger && (!maps.Equal(paused.RouteSelections, input.RouteSelections) || !slices.Equal(paused.GroupNames, input.GroupNames) || paused.StepID != input.StepID) {
+					groups, err := validateScheduleGroupNamesForWorkspace(r.Context(), paused.WorkspacePath, input.GroupNames)
+					if err != nil {
+						http.Error(w, err.Error(), 400)
+						return
+					}
+					if err := validateWebhookTarget(r.Context(), paused.WorkspacePath, input.StepID, input.RouteSelections); err != nil {
+						http.Error(w, err.Error(), 400)
+						return
+					}
+					paused.RouteSelections, paused.GroupNames, paused.StepID = input.RouteSelections, groups, input.StepID
+				}
 				box, e := api.gmailInbound.Store.MailboxStatus(r.Context(), paused.ConnectionID)
 				if e != nil || api.saveGmailWorkflowTrigger(r.Context(), paused, box.Email) != nil {
 					http.Error(w, "cannot disable email route", 500)
@@ -257,6 +278,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				target.EnabledAt = time.Now().UnixMilli()
 			}
 			target.Reply = input.Reply
+			target.Filters = input.Filters
 			target.Name = strings.TrimSpace(input.Name)
 			if target.Name == "" {
 				target.Name = "Incoming Gmail"
@@ -316,7 +338,8 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 			}
 			existing = &target
 		}
-		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}}
+		scope, _ := gmailRequestScope(r, target.WorkspacePath)
+		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r)}}
 		if existing != nil {
 			if m, e := api.gmailInbound.Store.MailboxStatus(r.Context(), existing.ConnectionID); e == nil {
 				response["watch_ready"] = m.Cursor != ""
