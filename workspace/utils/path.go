@@ -27,7 +27,16 @@ func IsValidFilePath(filePath, docsDir string) bool {
 		return false
 	}
 	resolvedCandidate, err := resolveExistingPathPrefix(cleanPath, cleanDocsDir)
-	return err == nil && pathWithinRoot(resolvedCandidate, resolvedRoot)
+	if err != nil || !pathWithinRoot(resolvedCandidate, resolvedRoot) {
+		return false
+	}
+	// A symlink never carries a path from one user's tree into another's.
+	if realOwner, inUser := userTreeOwner(resolvedRoot, resolvedCandidate); inUser {
+		if lexOwner, lexIn := userTreeOwner(cleanDocsDir, cleanPath); !lexIn || lexOwner != realOwner {
+			return false
+		}
+	}
+	return true
 }
 
 func resolveExistingPathPrefix(candidate, root string) (string, error) {
@@ -177,7 +186,39 @@ func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 		return "", fmt.Errorf("path %q resolves outside the workspace root", requestedPath)
 	}
 
+	// Another user's tree is never reachable: not by name, and not through a symlink that leads into it.
+	// The containment checks above only keep a path inside the one docs root, which holds every user's
+	// folder (docs/DECISIONS.md, 2026-10-01).
+	self := SanitizeUserID(userID)
+	if owner, ok := userTreeOwner(docsDir, resolved); ok && owner != self {
+		return "", fmt.Errorf("path %q is not in your folder", requestedPath)
+	}
+	if real, err := resolveExistingPathPrefix(resolved, filepath.Clean(docsDir)); err == nil {
+		if rootReal, rerr := filepath.EvalSymlinks(filepath.Clean(docsDir)); rerr == nil {
+			if owner, ok := userTreeOwner(rootReal, real); ok && owner != self {
+				return "", fmt.Errorf("path %q leads into another user's folder", requestedPath)
+			}
+		}
+	}
+
 	return resolved, nil
+}
+
+// userTreeOwner returns the user id of the _users/<id>/ tree that path lies in, if it lies in one.
+// A path directly at _users/ (no id) belongs to no user, and is reported with an empty owner.
+func userTreeOwner(root, path string) (string, bool) {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) == 0 || parts[0] != UsersDirectory {
+		return "", false
+	}
+	if len(parts) == 1 {
+		return "", true
+	}
+	return parts[1], true
 }
 
 // ConvertToUserRelativePath converts an absolute path back to a relative path

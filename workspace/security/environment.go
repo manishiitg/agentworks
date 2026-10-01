@@ -124,6 +124,8 @@ func buildNativeEnvironment() []string {
 		"AGENT_MODEL",
 		"DEEP_SEARCH_",
 		"MULTI_USER_",
+		// Per-deployment global secrets (GLOBAL_SECRET_<NAME>) belong to workflows that declare them.
+		"GLOBAL_SECRET_",
 	}
 
 	// Exact env var names to block
@@ -138,6 +140,10 @@ func buildNativeEnvironment() []string {
 		// The JWT signing and stored-secret encryption key: a shell holding
 		// it could forge sessions and decrypt stored secrets.
 		"AUTH_SECRET": true,
+		// The app's global login password and the legacy user list (emails and password hashes or
+		// passwords): a shell holding either could sign in as anyone.
+		"ACCESS_PASSWORD": true,
+		"AUTH_USERS":      true,
 	}
 
 	var env []string

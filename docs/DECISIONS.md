@@ -13,6 +13,26 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Review fixes: no cross-user path resolution, server secrets out of agent environments
+
+- **Decided.** `utils.ResolveUserPath` refuses another user's tree: a path under `_users/<id>/` must be
+  the requester's own, as written (`_users/bob/...` used to resolve for anyone) and after symlinks are
+  followed. `IsValidFilePath` (used by every other handler) refuses a symlink that carries a path from one
+  user's tree into another's, or from a shared folder into a user's tree. Checked first on excellence: no
+  existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`. Other
+  resolvers' call sites inherit the hop rule; handlers that take a user-supplied path without
+  `ResolveUserPath` are the next place to look.
+- **Decided.** Shell commands (`security.buildNativeEnvironment`) and CLI launches
+  (`llmtypes.ScopedCodingAgentEnvironmentPlan`, now also when no secret scope is declared) never inherit
+  the host's server-owned secrets: `AUTH_SECRET`, `ACCESS_PASSWORD`, `AUTH_USERS`, `GLOBAL_SECRET_*`, the
+  server and bridge tokens. Whether the secrets exposed earlier were actually rotated is a fact about each
+  deployment, not this code: confirm it per server.
+- **Deferred.** Refusing a CLI launch when Landlock is requested but unavailable (`cli_landlock.go`
+  falls back to the older tool-restricted mode). The product is not installed on hosts without Landlock.
+- **Open.** The generated-HTML iframes (`HtmlRenderer.tsx`, `HtmlWidgetFrame.tsx`) run with
+  `allow-scripts allow-same-origin`, so a malicious report could read the viewer's session. Removing
+  `allow-same-origin` needs a message-passing replacement for the report frame's direct DOM access.
+
 ### 2026-10-01 — Chat activity belongs beside the current agent turn
 - Move the composer loading indicator to the shared conversation's agent header,
   covering Code, Crew and workflow chats. A pending turn gets a header before its
