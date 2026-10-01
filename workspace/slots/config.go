@@ -12,12 +12,36 @@ import (
 // world-readable folder because slotctl runs as the slot, which cannot enter /etc/agentworks.
 const DefaultSlotctlConfig = "/usr/local/libexec/agentworks/slotctl.json"
 
+// ConfigPath is the allow-list config this product's processes read: AGENTWORKS_SLOTCTL_CONFIG, else the
+// default. A product with its own slots on a shared host sets it (and its own launcher) in its service
+// environment.
+func ConfigPath() string {
+	if override := strings.TrimSpace(os.Getenv(EnvConfig)); override != "" {
+		return override
+	}
+	return DefaultSlotctlConfig
+}
+
+// ConfigBesideExecutable is the config slotctl reads: the one next to the launcher (each product's launcher
+// has its own folder, and slotctl runs as the slot with no service environment), else the default.
+func ConfigBesideExecutable() string {
+	if exe, err := os.Executable(); err == nil {
+		beside := filepath.Join(filepath.Dir(exe), "slotctl.json")
+		if _, statErr := os.Stat(beside); statErr == nil {
+			return beside
+		}
+	}
+	return DefaultSlotctlConfig
+}
+
 // maxRequestBytes bounds a request (an environment and a sandbox policy are a few kilobytes).
 const maxRequestBytes = 8 << 20
 
 // ExecConfig is what slotctl will agree to run. It is root-owned, so the platform account cannot
 // widen it.
 type ExecConfig struct {
+	// SlotPrefix names this product's slot accounts (slot_prefix); empty means "slot".
+	SlotPrefix string `json:"slot_prefix,omitempty"`
 	// AllowedExec lists the absolute programs a request may start; * matches one path segment.
 	AllowedExec []string `json:"allowed_exec"`
 	// AllowedCwd lists the folders a request may start in (or below).
@@ -54,6 +78,7 @@ func LoadExecConfig(path string) (ExecConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
+	SetPrefix(cfg.SlotPrefix)
 	return cfg, nil
 }
 
@@ -64,7 +89,7 @@ func (cfg ExecConfig) SlotStateDir(slot string) string {
 
 // StateDirFor returns the folder a slot's CLI runtimes live in, from the root-owned config file.
 func StateDirFor(slot string) (string, error) {
-	cfg, err := LoadExecConfig(DefaultSlotctlConfig)
+	cfg, err := LoadExecConfig(ConfigPath())
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +101,7 @@ func StateDirFor(slot string) (string, error) {
 
 // RunDirFor returns a slot's run folder (its tmux socket and short-lived files).
 func RunDirFor(slot string) (string, error) {
-	cfg, err := LoadExecConfig(DefaultSlotctlConfig)
+	cfg, err := LoadExecConfig(ConfigPath())
 	if err != nil {
 		return "", err
 	}

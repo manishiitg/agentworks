@@ -41,6 +41,22 @@ Design references for the linked runtime decisions:
   at the bottom of the terminal pane where people expect to type. The footer
   does not shrink into the output and is announced as a status notice.
 
+### 2026-10-01 — Slots per product on a shared host (Confida: prefix cf, 15 accounts)
+
+- **Decided.** Products that share a host each get their own slot accounts, launcher, config, table and sudo
+  rule, so one product's service account is never in another's slot groups (a single set would let
+  Confida's service read excellence users' folders). The prefix, config path, launcher and table path are
+  settings (`AGENTWORKS_SLOT_PREFIX`, `_SLOTCTL_CONFIG`, `_SLOTCTL`, `_SLOTS_FILE`; `slot_prefix` in the
+  slotctl config for programs that run without the service environment). The default (`slot`,
+  `/usr/local/libexec/agentworks/`, `/etc/agentworks/`) is unchanged, so excellence needs no migration.
+  `provision-slots.sh` takes `SLOT_PREFIX`; a non-default prefix puts everything under a per-product name
+  (`/usr/local/libexec/agentworks/<product>/`, `/etc/agentworks/<product>/`,
+  `/etc/sudoers.d/agentworks-slots-<product>`, its own sudoers alias).
+- **Decided.** Confida: `SLOT_PREFIX=cf SLOT_COUNT=15`, opt-in mode (it runs Workflows and Crews). It has 12 users.
+- **Decided.** In opt-in mode a host with no slot table yet is unchanged (nobody holds a slot) instead of
+  refusing shell commands, so a product can deploy with the slot settings first and be provisioned after.
+  A damaged or unreadable table is still an error; `on` mode still refuses without a table.
+
 ### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
 
 - **Decided.** Excellence offers Crew (`work`) next to Code (`AGENT_PRODUCTS="code,work"`). Who sees it is

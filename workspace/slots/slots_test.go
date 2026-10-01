@@ -78,9 +78,48 @@ func TestForOptInRunsOnlySlotHoldersAsSlots(t *testing.T) {
 	if slot, enabled, err := For("u2"); enabled || err != nil || slot != "" {
 		t.Fatalf("a user without a slot is unchanged in opt-in mode: %q %v %v", slot, enabled, err)
 	}
-	// an unreadable table is still an error, never a silent fallback
-	t.Setenv(EnvTableFile, filepath.Join(t.TempDir(), "missing.json"))
+	// a damaged table is still an error, never a silent fallback
+	t.Setenv(EnvTableFile, writeTable(t, `{"slots": not json`))
 	if _, _, err := For("u1"); err == nil {
-		t.Fatal("an unreadable table must be an error")
+		t.Fatal("a damaged table must be an error")
+	}
+}
+
+func TestSlotPrefixMakesAProductsOwnAccountsTheOnlyValidOnes(t *testing.T) {
+	t.Cleanup(func() { prefixMu.Lock(); configuredPref = ""; prefixMu.Unlock() })
+	if !ValidSlot("slot07") || ValidSlot("cf07") {
+		t.Fatal("the default prefix is slot")
+	}
+	t.Setenv(EnvPrefix, "cf")
+	if !ValidSlot("cf07") || !ValidSlot("cf123") || ValidSlot("slot07") || ValidSlot("cf7") || ValidSlot("xcf07") {
+		t.Fatal("prefix cf must accept only cf<2-3 digits>")
+	}
+	// the programs that run without the service's environment learn it from their config
+	t.Setenv(EnvPrefix, "")
+	cfg := filepath.Join(t.TempDir(), "slotctl.json")
+	if err := os.WriteFile(cfg, []byte(`{"slot_prefix":"confida","slot_run_root":"/x/run"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadExecConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !ValidSlot("confida03") || ValidSlot("slot03") {
+		t.Fatalf("config prefix not applied: %q", Prefix())
+	}
+	if SlotOfDir("/x/state", "/x/state/confida03/work") != "confida03" || SlotOfDir("/x/state", "/x/state/slot03/work") != "" {
+		t.Fatal("SlotOfDir must use the product's prefix")
+	}
+}
+
+func TestForOptInWithoutAProvisionedTableChangesNothing(t *testing.T) {
+	t.Setenv(EnvEnabled, "optin")
+	t.Setenv(EnvTableFile, filepath.Join(t.TempDir(), "not-provisioned-yet.json"))
+	if slot, enabled, err := For("u1"); enabled || err != nil || slot != "" {
+		t.Fatalf("an unprovisioned opt-in host must be unchanged: %q %v %v", slot, enabled, err)
+	}
+	// "on" still treats a missing table as an error
+	t.Setenv(EnvEnabled, "on")
+	if _, enabled, err := For("u1"); !enabled || err == nil {
+		t.Fatalf("on-mode must refuse without a table: enabled=%v err=%v", enabled, err)
 	}
 }

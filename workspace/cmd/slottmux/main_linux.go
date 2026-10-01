@@ -88,7 +88,7 @@ func onSocket(sock string, args []string) []string {
 // identity, never the platform's environment (which holds the services' secrets). What a CLI needs
 // beyond that travels in its launch script.
 func slotEnv(cfg slots.ExecConfig, slot string) []string {
-	keep := map[string]bool{"PATH": true, "LANG": true, "LC_ALL": true, "LC_CTYPE": true, "TERM": true, "TZ": true, "COLORTERM": true}
+	keep := map[string]bool{"AGENTWORKS_SLOT_PREFIX": true, "AGENTWORKS_SLOTCTL_CONFIG": true, "AGENTWORKS_SLOTCTL": true, "AGENTWORKS_SLOTS_FILE": true, "PATH": true, "LANG": true, "LC_ALL": true, "LC_CTYPE": true, "TERM": true, "TZ": true, "COLORTERM": true}
 	env := []string{"HOME=" + filepath.Join(filepath.Dir(cfg.SlotRunRoot), "home", slot), "USER=" + slot, "LOGNAME=" + slot, "SHELL=/bin/sh"}
 	for _, entry := range os.Environ() {
 		if key, _, ok := strings.Cut(entry, "="); ok && keep[key] {
@@ -297,7 +297,7 @@ func sockets(cfg slots.ExecConfig) map[string]string {
 }
 
 func run(args []string) int {
-	cfg, err := slots.LoadExecConfig(slots.DefaultSlotctlConfig)
+	cfg, err := slots.LoadExecConfig(slots.ConfigPath())
 	if err != nil || cfg.SlotRunRoot == "" || cfg.SlotStateRoot == "" {
 		return passthrough(args) // slots are not set up on this host
 	}

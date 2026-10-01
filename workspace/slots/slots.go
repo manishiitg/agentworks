@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"regexp"
 	"strings"
@@ -30,6 +31,14 @@ const (
 	EnvTableFile = "AGENTWORKS_SLOTS_FILE"
 	// EnvSlotctl overrides the path of the slotctl launcher.
 	EnvSlotctl = "AGENTWORKS_SLOTCTL"
+	// EnvPrefix names this product's slot accounts (default "slot": slot01, slot02, ...). Products that share
+	// a host each have their own prefix, launcher, config and table, so one product's service account is
+	// never in another product's slot groups.
+	EnvPrefix = "AGENTWORKS_SLOT_PREFIX"
+	// EnvConfig overrides the path of the slotctl allow-list config.
+	EnvConfig = "AGENTWORKS_SLOTCTL_CONFIG"
+	// DefaultPrefix is the slot account prefix when a product does not set one.
+	DefaultPrefix = "slot"
 
 	// DefaultTableFile is root-owned and group-readable by the platform: the platform can read it
 	// and cannot change which user holds which slot.
@@ -40,10 +49,51 @@ const (
 	DefaultSudo = "/usr/bin/sudo"
 )
 
-var slotName = regexp.MustCompile(`^slot[0-9]{2,3}$`)
+var (
+	prefixMu       sync.Mutex
+	configuredPref string
+	nameCache      = map[string]*regexp.Regexp{}
+)
 
-// ValidSlot reports whether name looks like a slot account name.
-func ValidSlot(name string) bool { return slotName.MatchString(name) }
+// SetPrefix sets the slot account prefix for this process (read from a product's slotctl config by the
+// programs that run without the service's environment). An empty prefix keeps the current one.
+func SetPrefix(prefix string) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return
+	}
+	prefixMu.Lock()
+	configuredPref = prefix
+	prefixMu.Unlock()
+}
+
+// Prefix returns the slot account prefix in effect: the config's, else AGENTWORKS_SLOT_PREFIX, else "slot".
+func Prefix() string {
+	prefixMu.Lock()
+	defer prefixMu.Unlock()
+	if configuredPref != "" {
+		return configuredPref
+	}
+	if env := strings.TrimSpace(os.Getenv(EnvPrefix)); env != "" {
+		return env
+	}
+	return DefaultPrefix
+}
+
+func slotNamePattern() *regexp.Regexp {
+	prefix := Prefix()
+	prefixMu.Lock()
+	defer prefixMu.Unlock()
+	re, ok := nameCache[prefix]
+	if !ok {
+		re = regexp.MustCompile("^" + regexp.QuoteMeta(prefix) + "[0-9]{2,3}$")
+		nameCache[prefix] = re
+	}
+	return re
+}
+
+// ValidSlot reports whether name looks like one of this product's slot account names.
+func ValidSlot(name string) bool { return slotNamePattern().MatchString(name) }
 
 // Table is the user to slot assignment.
 type Table struct {
@@ -150,6 +200,12 @@ func For(userID string) (slot string, enabled bool, err error) {
 	}
 	table, err := cachedTable()
 	if err != nil {
+		// In opt-in mode a host that has not been provisioned yet has no table: nobody holds a slot, so
+		// nothing changes for anyone. Any other failure to read it (permissions, a damaged file) is still an
+		// error, never a silent fallback.
+		if optIn() && errors.Is(err, fs.ErrNotExist) {
+			return "", false, nil
+		}
 		return "", true, fmt.Errorf("slot table unavailable: %w", err)
 	}
 	slot, ok := table.SlotFor(userID)

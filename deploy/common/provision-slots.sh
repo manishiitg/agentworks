@@ -26,16 +26,32 @@ HOME_DIR="${APP_DIR:-/srv/$PRODUCT}"
 DOCS="${DOCS:-$HOME_DIR/data/docs}"
 SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
-LIBEXEC=/usr/local/libexec/agentworks
-ETC=/etc/agentworks
+# Products that share one host each get their own slot accounts, launcher, config, table and sudo rule, so a
+# product's service account is only ever in its own slot groups. The default prefix "slot" keeps the original
+# host-wide names (the first product on a host, excellence's `agents`); any other prefix puts everything under
+# a per-product name: accounts <prefix>01.., /usr/local/libexec/agentworks/<product>/, /etc/agentworks/<product>/,
+# /etc/sudoers.d/agentworks-slots-<product>. Set the same prefix in the product's service environment
+# (AGENTWORKS_SLOT_PREFIX, AGENTWORKS_SLOTCTL, AGENTWORKS_SLOTCTL_CONFIG, AGENTWORKS_SLOTS_FILE).
+SLOT_PREFIX="${SLOT_PREFIX:-slot}"
+[[ "$SLOT_PREFIX" =~ ^[a-z][a-z0-9]{0,15}$ ]] || { echo "SLOT_PREFIX must be lowercase letters and digits, starting with a letter." >&2; exit 2; }
+if [[ "$SLOT_PREFIX" == slot ]]; then
+  LIBEXEC=/usr/local/libexec/agentworks
+  ETC=/etc/agentworks
+  SUDOERS=/etc/sudoers.d/agentworks-slots
+else
+  LIBEXEC="/usr/local/libexec/agentworks/$PRODUCT"
+  ETC="/etc/agentworks/$PRODUCT"
+  SUDOERS="/etc/sudoers.d/agentworks-slots-$PRODUCT"
+fi
 TABLE="$ETC/slots.json"
 SLOTCTL_CONFIG="$LIBEXEC/slotctl.json"
-SUDOERS=/etc/sudoers.d/agentworks-slots
+# sudoers alias names are shared by every file under /etc/sudoers.d: one per product.
+if [[ "$SLOT_PREFIX" == slot ]]; then ALIAS=AGENTWORKS_SLOTS; else ALIAS="AGENTWORKS_SLOTS_$(printf '%s' "$PRODUCT" | tr 'a-z-' 'A-Z_')"; fi
 
 [[ $EUID -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
 id "$PRODUCT" >/dev/null || { echo "Account $PRODUCT is missing." >&2; exit 1; }
 
-slot_name() { printf 'slot%02d' "$1"; }
+slot_name() { printf '%s%02d' "$SLOT_PREFIX" "$1"; }
 
 cmd_init() {
   command -v setfacl >/dev/null || { echo "Installing the acl package (setfacl)"; DEBIAN_FRONTEND=noninteractive apt-get install -y acl >/dev/null; }
@@ -75,11 +91,12 @@ while p not in ("/", ""):
   done
 
   # The one program the service account may run as a slot.
-  install -d -o root -g root -m 0755 "$LIBEXEC"
+  install -d -o root -g root -m 0755 "$(dirname "$LIBEXEC")" "$LIBEXEC"
   install -o root -g root -m 0755 "$slotctl_src" "$LIBEXEC/slotctl"
   install -d -o root -g "$PRODUCT" -m 0750 "$ETC"
   cat > "$SLOTCTL_CONFIG.new" <<JSON
 {
+  "slot_prefix": "$SLOT_PREFIX",
   "allowed_exec": ["$HOME_DIR/releases/*/bin/video-studio-landlock-runner", "/usr/bin/tmux", "/usr/bin/chmod"],
   "allowed_cwd": ["$HOME_DIR/data/docs", "$HOME_DIR/slots"],
   "slot_run_root": "$HOME_DIR/slots/run",
@@ -96,8 +113,8 @@ JSON
 Defaults:$PRODUCT !requiretty
 Defaults:$PRODUCT env_reset
 Defaults:$PRODUCT secure_path="/usr/bin:/bin"
-Runas_Alias AGENTWORKS_SLOTS = $names
-$PRODUCT ALL=(AGENTWORKS_SLOTS) NOPASSWD: $LIBEXEC/slotctl exec, $LIBEXEC/slotctl exec --request-file *
+Runas_Alias $ALIAS = $names
+$PRODUCT ALL=($ALIAS) NOPASSWD: $LIBEXEC/slotctl exec, $LIBEXEC/slotctl exec --request-file *
 SUDO
   visudo -cf "$SUDOERS.new" >/dev/null || { echo "sudoers did not validate; nothing installed." >&2; rm -f "$SUDOERS.new"; exit 1; }
   install -o root -g root -m 0440 "$SUDOERS.new" "$SUDOERS" && rm -f "$SUDOERS.new"
@@ -117,12 +134,12 @@ user_tree() { printf '%s/_users/%s' "$DOCS" "$1"; }
 cmd_assign() {
   local user_id="${1:-}" slot="${2:-}"
   [[ "$user_id" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "usage: assign <user-id> [slotNN]" >&2; exit 2; }
-  [[ -z "$slot" || "$slot" =~ ^slot[0-9]{2,3}$ ]] || { echo "usage: assign <user-id> [slotNN]: $slot is not a slot name" >&2; exit 2; }
+  [[ -z "$slot" || "$slot" =~ ^${SLOT_PREFIX}[0-9]{2,3}$ ]] || { echo "usage: assign <user-id> [${SLOT_PREFIX}NN]: $slot is not a slot name" >&2; exit 2; }
   [[ $# -le 2 ]] || { echo "usage: assign <user-id> [slotNN]" >&2; exit 2; }
   [[ -f "$TABLE" ]] || { echo "Run init first." >&2; exit 1; }
-  slot="$(python3 - "$TABLE" "$user_id" "$slot" "$SLOT_COUNT" <<'PY'
+  slot="$(python3 - "$TABLE" "$user_id" "$slot" "$SLOT_COUNT" "$SLOT_PREFIX" <<'PY'
 import json, os, sys, fcntl
-path, user, want, count = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+path, user, want, count, prefix = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
 with open(path + ".lock", "a") as lock:
     fcntl.flock(lock, fcntl.LOCK_EX)
     table = json.load(open(path))
@@ -130,7 +147,7 @@ with open(path + ".lock", "a") as lock:
     held = next((s for s, u in slots.items() if u == user), None)
     if held:
         print(held); sys.exit(0)
-    free = want or next(("slot%02d" % n for n in range(1, count + 1) if "slot%02d" % n not in slots), None)
+    free = want or next(("%s%02d" % (prefix, n) for n in range(1, count + 1) if "%s%02d" % (prefix, n) not in slots), None)
     if not free:
         sys.exit("no free slot: raise SLOT_COUNT and run init again")
     if free in slots and slots[free] != user:
@@ -193,7 +210,7 @@ PY
 }
 
 cmd_status() {
-  echo "service account: $PRODUCT; slot accounts: $(getent passwd | grep -c '^slot[0-9]')"
+  echo "service account: $PRODUCT; slot accounts: $(getent passwd | grep -c "^${SLOT_PREFIX}[0-9]")"
   [[ -f "$TABLE" ]] && python3 -c 'import json,sys; t=json.load(open(sys.argv[1])).get("slots",{}); print("assigned:", len(t)); [print(" ",s,"->",u) for s,u in sorted(t.items())]' "$TABLE"
   ls -l "$LIBEXEC/slotctl" "$SLOTCTL_CONFIG" "$SUDOERS" 2>&1 | sed 's/^/  /'
 }

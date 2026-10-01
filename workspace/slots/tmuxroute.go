@@ -2,7 +2,6 @@ package slots
 
 import (
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -147,8 +146,6 @@ func SessionOfTarget(target string) string {
 	return target
 }
 
-var slotDirPattern = regexp.MustCompile(`^(slot[0-9]{2,3})$`)
-
 // SlotOfDir returns the slot a folder under stateRoot belongs to ("" when it is not under one).
 func SlotOfDir(stateRoot, dir string) string {
 	stateRoot = filepath.Clean(stateRoot)
@@ -158,7 +155,7 @@ func SlotOfDir(stateRoot, dir string) string {
 		return ""
 	}
 	first := strings.SplitN(strings.TrimPrefix(dir, prefix), string(filepath.Separator), 2)[0]
-	if slotDirPattern.MatchString(first) {
+	if ValidSlot(first) {
 		return first
 	}
 	return ""

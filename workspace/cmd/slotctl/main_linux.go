@@ -20,7 +20,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: slotctl exec | slotctl exec --request-file <path>")
 		os.Exit(2)
 	}
-	cfg, err := slots.LoadExecConfig(slots.DefaultSlotctlConfig)
+	cfg, err := slots.LoadExecConfig(slots.ConfigBesideExecutable())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "slotctl: no usable allow-list: %v\n", err)
 		os.Exit(125)
