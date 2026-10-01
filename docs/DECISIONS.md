@@ -13,6 +13,38 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Open review findings (reference skill, image bridge, gateway test)
+
+- **Open.** Workflow-chat queries with tagged references fail entirely when the
+  `work-workflow-files` reference skill cannot be loaded or attached
+  (`agent_go/cmd/server/server.go`, no-profile branch). The previous inline
+  guidance had no external dependency, so a skill-registry or network hiccup
+  could not break queries. Suggested: fall back to a minimal inline pointer
+  instead of failing the query. Found reviewing 97fa26caa; not implemented.
+- **Open.** The MCP image bridge caps each image at 20 MiB but not the image
+  count (`mcpagent` `cmd/mcpbridge`, `executor`). A hostile or buggy tool can
+  exhaust bridge memory through the uncapped HTTP body read and fill disk via
+  the persist loop. Suggested: accept roughly the first 10 images and note the
+  truncation. Found reviewing 09ea79c; not implemented.
+- **Open.** The AWS gateway login-bypass test never executes:
+  `deploy/aws-ec2/server` has no `go.mod`, so neither `gmail_gateway_test.go`
+  nor the older `auth-gateway_test.go` runs anywhere. The bypass itself
+  (exact path, POST-only) was reviewed and is correct. Suggested: wire the
+  directory into a module/CI or cover the predicate from `agent_go`. Found
+  reviewing 58b5ea934; not implemented.
+- **Open (minor).** `PushVerifier` holds its mutex across the 10s signing-key
+  fetch (`agent_go/pkg/gmailinbound/oidc.go`), stalling concurrent
+  verifications during rotation. Suggested: fetch outside the lock with a
+  double-checked refresh. Found reviewing 58b5ea934; not implemented.
+- **Open (minor).** Relay dispatch failures, including release-integrity
+  errors, still return 400 with internal text (`agent_go/cmd/server/relay_runs_api.go`).
+  Concurrency/store failures already map to 503; integrity failures should be
+  5xx too. Publishing while the Builder edits can also mix file versions (the
+  per-workspace publish mutex serializes only concurrent publishes). Found
+  re-reviewing the Relay MVP on main; not implemented. The wider N3 gap (runs
+  writing into their release folder) stays as recorded in the 2026-10-01 Relay
+  release review entry.
+
 ### 2026-10-01 — Builder connects Gmail and configures narrowing inbox filters
 
 - **Decided.** Keep history-based incremental delivery. A newest-20 mailbox scan
