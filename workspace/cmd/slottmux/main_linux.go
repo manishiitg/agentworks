@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
@@ -121,11 +122,22 @@ func loadBuffer(cfg slots.ExecConfig, registry string, c slots.TmuxCommand, args
 			_ = os.WriteFile(file, data, 0o600)
 		}
 	}
-	// the default server's copy (ignored when no default server runs: the paste may be a slot's)
-	cp := exec.Command(slots.TmuxPath, onStdin(args)...)
-	cp.Stdin = bytes.NewReader(data)
-	_ = cp.Run()
+	sweepBuffers(filepath.Join(registry, "buffers"))
 	return 0
+}
+
+// sweepBuffers drops paste content left behind by a paste that never came (a loaded buffer is deleted by
+// the paste that uses it).
+func sweepBuffers(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > time.Hour {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // onStdin rewrites a load-buffer command to read its content from standard input.
@@ -157,6 +169,25 @@ func pasteBuffer(cfg slots.ExecConfig, registry, slot string, c slots.TmuxComman
 	code := exitCode(exec.Command(slots.TmuxPath, onSocket(sock, args)...).Run())
 	if hasDelete(c) {
 		_ = os.Remove(bufferFile(registry, c.BufferName()))
+	}
+	return code
+}
+
+// pasteDefault loads the stored content into the default server only now, when a paste for a session
+// that is not a slot's says where it goes, and removes it after a deleting paste.
+func pasteDefault(registry string, c slots.TmuxCommand, args []string) int {
+	file := bufferFile(registry, c.BufferName())
+	if data, err := os.ReadFile(file); err == nil {
+		ld := exec.Command(slots.TmuxPath, "load-buffer", "-b", c.BufferName(), "-")
+		ld.Stdin = bytes.NewReader(data)
+		if out, err := ld.CombinedOutput(); err != nil {
+			_, _ = os.Stderr.Write(out)
+			return exitCode(err)
+		}
+	}
+	code := exitCode(exec.Command(slots.TmuxPath, args...).Run())
+	if hasDelete(c) {
+		_ = os.Remove(file)
 	}
 	return code
 }
@@ -272,14 +303,13 @@ func run(args []string) int {
 
 	case c.Subcommand == "delete-buffer" && c.BufferName() != "":
 		_ = os.Remove(bufferFile(registry, c.BufferName()))
-		_ = exec.Command(slots.TmuxPath, args...).Run() // the default server's copy, when there is one
 		return 0
 
 	case c.Subcommand == "paste-buffer" && c.BufferName() != "":
 		if slot := lookup(registry, c.Target()); slot != "" {
 			return pasteBuffer(cfg, registry, slot, c, args)
 		}
-		return passthrough(args)
+		return pasteDefault(registry, c, args)
 
 	default:
 		target := c.Target()

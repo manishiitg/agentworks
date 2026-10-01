@@ -13,6 +13,27 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Slot launches: git ownership check off, repository hooks off; paste and key hygiene
+
+- **Decided.** Every command and CLI run as a user's own Linux account (slot) gets `safe.directory=*`
+  (the user's folders belong to the platform account with the slot's group, so git would refuse them as
+  "dubious ownership", and Muse could not resolve its project root). That removes git's guard against
+  a repository whose own config runs code, so the same environment also sets `core.hooksPath=/dev/null`
+  and `core.fsmonitor=false`: a sharer cannot plant a hook that runs as another user's slot. Other
+  repository-config code paths (for example a configured pager) remain; an agent reading an attacker's
+  files is exposed to that already. Code: `workspace/slots.GitSlotEnv` (shell tool) and
+  `internal/clisandbox/landlock.go` (CLIs, provider).
+- **Decided.** `slottmux` keeps paste content only in a 0600 file under the slot registry and loads it
+  into a tmux server when the paste names the session, so a slot's paste is never copied into the shared
+  default server. Files are removed by the deleting paste and swept after an hour.
+- **Decided.** The Codex API-key login the platform saves (`auth.json`, apikey mode) is removed when no
+  key is configured any more; a browser login is left alone.
+- **Decided.** `server add-user` re-reads the directory after saving and redoes the add when another
+  write replaced the file (no lock is shared with the running server, which also writes it).
+- **Open.** Muse still prints "local session messaging unavailable: registry root: Permission denied" in
+  slot sessions (it tries to `chmod 0700` platform-owned folders). Harmless, not traced.
+
+
 ### 2026-10-01 — Code is always private; owner-authorized function calls do not share files
 - User decision: remove human Code sharing. Normal files, links, chats, Git, bots,
   credentials and runtime access require the Code owner. Viewer/editor/co-owner

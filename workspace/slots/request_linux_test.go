@@ -57,7 +57,7 @@ func TestWrapCommandRunsSlotctlThroughSudoAndMovesTheRequestToStdin(t *testing.T
 		t.Fatalf("sudo must not receive the platform's environment: %v", wrapped.Env)
 	}
 	req := readRequest(t, wrapped)
-	if !req.Userns || req.Cwd != "/srv/work" || len(req.Env) != 5 { // A, B and git's safe.directory
+	if !req.Userns || req.Cwd != "/srv/work" || len(req.Env) != 2+len(GitSlotEnv()) {
 		t.Fatalf("request lost fields: %+v", req)
 	}
 	if req.FD3 != `{"WorkDir":"/w"}` {

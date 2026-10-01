@@ -73,18 +73,34 @@ func runAddUser(cmd *cobra.Command, _ []string) error {
 			products = append(products, p)
 		}
 	}
-	dir, err := readUserDirectoryFile()
-	if err != nil {
-		return fmt.Errorf("read the user directory: %w", err)
-	}
-	rec, created, err := addDirectoryUser(dir, email, username, role, products)
-	if err != nil {
-		return err
-	}
-	if created {
+	// The directory is one file the running server also writes (a first sign-in), by read-modify-write
+	// with no lock shared across processes. So the add is checked after it is saved, and redone from a
+	// fresh read when another write replaced the file between our read and our save.
+	var rec UserRecord
+	var created bool
+	for attempt := 0; ; attempt++ {
+		dir, err := readUserDirectoryFile()
+		if err != nil {
+			return fmt.Errorf("read the user directory: %w", err)
+		}
+		rec, created, err = addDirectoryUser(dir, email, username, role, products)
+		if err != nil {
+			return err
+		}
+		if !created {
+			break
+		}
 		if err := saveUserDirectory(dir); err != nil {
 			return fmt.Errorf("save the user directory: %w", err)
 		}
+		after, err := readUserDirectoryFile()
+		if err == nil && after.byEmail(rec.Email) != nil {
+			break
+		}
+		if attempt >= 2 {
+			return fmt.Errorf("the user directory changed while saving; the account was not confirmed, run the command again")
+		}
+		time.Sleep(300 * time.Millisecond)
 	}
 	return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
 		"id": rec.ID, "username": rec.Username, "email": rec.Email, "role": roleForRecord(&rec), "products": rec.Products, "created": created,

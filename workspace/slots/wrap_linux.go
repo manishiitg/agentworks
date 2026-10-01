@@ -33,7 +33,7 @@ func WrapCommand(ctx context.Context, cmd *exec.Cmd, slot string) (*exec.Cmd, er
 		}
 	}
 	if !hasGit {
-		req.Env = append(req.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=*")
+		req.Env = append(req.Env, GitSlotEnv()...)
 	}
 	if cmd.SysProcAttr != nil && cmd.SysProcAttr.Cloneflags&syscall.CLONE_NEWUSER != 0 {
 		req.Userns = true
