@@ -13,6 +13,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Slotted commands were not stopped by a timeout, cancel or kill
+
+- **Found (tested on Confida, then on a server with the real code path).** The platform stops a shell command by
+  signalling its process group (a hard kill). A slotted command's processes belong to another Linux account, so the
+  signal stopped only `sudo`: after the kill the command (and anything it started) was still running (2 `sleep`
+  processes before the kill, 2 after). Timeouts, cancelled chats and "stop process" left slotted commands running.
+- **Decided and done.** (1) `slotctl exec` starts the program in its own process group and, on SIGTERM/SIGINT/SIGHUP,
+  signals the whole group and kills it after `slots.StopGrace` (2 s). (2) The wrapped command's cancel is a graceful
+  SIGTERM that `sudo` relays (a hard kill of `sudo` cannot be relayed), with a last-resort delay. (3)
+  `killShellCommandProcessGroup` does the same for a wrapped command (`slots.IsWrapped`). The "stop process" path
+  (`terminateProcessGroup`) already sends SIGTERM first and now works through (1). Normal exit does not kill
+  background processes a command started (as before). `slotctl` is root-installed from the release by
+  `provision-slots.sh init`, so each host needs that re-run after the deploy that carries this.
+- **Tests.** `slots/exec_linux_test.go: TestRunExecStopSignalReachesTheWholeProcessGroup` (run on a Linux host).
+
 ### 2026-10-01 — Citymall AI gateway works through Pi's existing Chat Completions transport
 
 - Live gateway calls passed chat, streaming, inline vision and image generation;

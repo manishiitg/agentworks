@@ -12,3 +12,6 @@ import (
 func WrapCommand(_ context.Context, _ *exec.Cmd, _ string) (*exec.Cmd, error) {
 	return nil, errors.New("slots are only supported on Linux")
 }
+
+// IsWrapped is false off Linux: nothing is wrapped for a slot there.
+func IsWrapped(_ *exec.Cmd) bool { return false }

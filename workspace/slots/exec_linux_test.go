@@ -5,8 +5,11 @@ package slots
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func testConfig(t *testing.T) (ExecConfig, string) {
@@ -162,4 +165,44 @@ func TestValidateChmodIsOnlyForAnAccountThatIsASlot(t *testing.T) {
 	if _, err := cfg.Validate(req); err == nil {
 		t.Fatal("chmod must be refused for an account that is not a slot")
 	}
+}
+
+// A stop signal must reach everything the program started, not only the program: the platform cannot signal a
+// slot's processes itself, so this is the only way a timeout or a cancel stops a slotted command.
+func TestRunExecStopSignalReachesTheWholeProcessGroup(t *testing.T) {
+	cfg, root := testConfig(t)
+	marker := filepath.Join(root, "child.pid")
+	body := `{"argv":["/bin/sh","-c","sleep 300 & echo $! > ` + marker + `; wait"],"cwd":"` + root + `","env":["PATH=/usr/bin:/bin"]}`
+	done := make(chan int, 1)
+	go func() {
+		code, _, _ := runWith(t, cfg, body)
+		done <- code
+	}()
+	var childPID string
+	for i := 0; i < 50 && childPID == ""; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if data, err := os.ReadFile(marker); err == nil {
+			childPID = strings.TrimSpace(string(data))
+		}
+	}
+	if childPID == "" {
+		t.Fatal("the program did not start its child")
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil { // handled by RunExec's signal forwarding
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(StopGrace + 4*time.Second):
+		t.Fatal("the program did not stop after the signal")
+	}
+	pid, _ := strconv.Atoi(childPID)
+	deadline := time.Now().Add(StopGrace + 2*time.Second)
+	for time.Now().Before(deadline) {
+		if syscall.Kill(pid, 0) != nil {
+			return // gone
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("the program's child %d is still running after the stop", pid)
 }

@@ -54,11 +54,23 @@ func WrapCommand(ctx context.Context, cmd *exec.Cmd, slot string) (*exec.Cmd, er
 	wrapped := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	wrapped.Env = []string{"PATH=/usr/bin:/bin"}
 	wrapped.SysProcAttr = &syscall.SysProcAttr{Setpgid: cmd.SysProcAttr != nil && cmd.SysProcAttr.Setpgid}
+	// A stop must reach the slot's processes, which this process cannot signal itself: ask sudo to pass a graceful
+	// signal to slotctl (a hard kill of sudo cannot be passed on and would leave the command running). The delay is
+	// the last resort after slotctl's own grace period.
+	wrapped.Cancel = func() error { return wrapped.Process.Signal(syscall.SIGTERM) }
 	wrapped.WaitDelay = cmd.WaitDelay
+	if wrapped.WaitDelay == 0 {
+		wrapped.WaitDelay = StopGrace * 3
+	}
 	body, err := encode(req)
 	if err != nil {
 		return nil, err
 	}
 	wrapped.Stdin = bytes.NewReader(body)
 	return wrapped, nil
+}
+
+// IsWrapped reports whether cmd is a command WrapCommand built (it runs as a slot through sudo).
+func IsWrapped(cmd *exec.Cmd) bool {
+	return cmd != nil && len(cmd.Args) >= 5 && cmd.Args[0] == DefaultSudo && cmd.Args[2] == "-u" && ValidSlot(cmd.Args[3])
 }

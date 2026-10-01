@@ -540,6 +540,19 @@ func killShellCommandProcessGroup(cmd *exec.Cmd) {
 	if pid <= 0 {
 		return
 	}
+	if slots.IsWrapped(cmd) {
+		// A slotted command's processes belong to another account, so a kill from here would stop only sudo and
+		// leave the command running. A graceful signal is passed on by sudo to the slot program, which stops the
+		// whole group and kills what is left after its grace period; the hard kill below is the last resort.
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		time.AfterFunc(slots.StopGrace*3, func() {
+			if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			}
+			_ = cmd.Process.Kill()
+		})
+		return
+	}
 	if pgid, err := syscall.Getpgid(pid); err == nil && pgid > 0 {
 		if err := syscall.Kill(-pgid, syscall.SIGKILL); err == nil {
 			return
