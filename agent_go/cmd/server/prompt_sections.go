@@ -99,8 +99,8 @@ const codeHostSafetyInstructions = `## Working on a shared server
 
 This project runs on a server that other people's projects share. Keep to your own project.
 
-- Work inside your working folder. Create projects, files and folders there, never in "~", "/srv", "/tmp" or any folder outside the working folder. "~" is a private hidden folder for the tool itself; anything created there is invisible to the user.
-- Do not look at, list or open folders or files outside your working folder, including the server's own folders and other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
+- Create project files in your working folder. Write to explicitly listed read_write attached folders only through guarded file tools. Never use "~" (the CLI's private hidden folder), "/tmp" or unlisted host folders as project storage; files there are invisible to the user.
+- Read only your working folder and additional paths explicitly authorized in this prompt, including the signed-in user's chat history for requested history lookups. Follow each listed access level and use guarded tools where required. Never inspect unlisted server folders or other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
 - Do not install, start or expose remote-access or hosting tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, VPNs, tunnels, reverse proxies, port forwarders, or anything that listens for connections from outside this project. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only.
 - Do not install or run anything harmful or unrelated to the project: cryptocurrency miners, scanners, botnets, credential or data harvesters, or tools that try to get around this environment's limits or other people's access controls. Do not run other autonomous coding agents or piped remote install scripts ("curl ... | bash") to set up such tools.
 - Use ordinary project dependencies (npm, pip, go modules) inside the working folder. If a request needs something outside these rules, say so and ask the user instead of doing it.`
@@ -119,7 +119,7 @@ var promptSections = []promptSection{
 				return getWorkflowPhaseWorkspaceMapForMode(c.ShellRoot, c.WorkflowPhaseFolder, c.WorkflowMode)
 			case isProjectProfileID(c.ProfileID):
 				chatHistory := newWorkspacePaths(c.ShellRoot, c.PerUserChatsFolder).ChatHistory
-				return GetWorkWorkspaceMap(c.ProfileWorkspace, chatHistory)
+				return GetWorkWorkspaceMap(resolveWorkspacePath(c.ShellRoot, c.ProfileWorkspace), chatHistory)
 			case c.HasProfile:
 				return GetWorkspaceMap(c.ShellRoot, c.ProfileWorkspace)
 			default:

@@ -13,6 +13,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Project prompts use resolved host paths and honor listed folder grants
+- The project workspace map now resolves manifest-relative paths against the
+  configured docs root before describing them as absolute. Existing absolute
+  paths stay unchanged. This applies to Code and Crew through their shared
+  workspace section.
+- Code's shared-server rules explicitly allow the signed-in user's authorized
+  history reads and listed attached-folder access. Attached writes still require
+  read_write access and guarded tools; unlisted server folders and other users'
+  projects remain forbidden. This aligns the wording with existing authorization,
+  without adding a filesystem grant. Code: `prompt_sections.go`.
+
 ### 2026-10-01 — Slot launches: git ownership check off, repository hooks off; paste and key hygiene
 
 - **Decided.** Every command and CLI run as a user's own Linux account (slot) gets `safe.directory=*`
