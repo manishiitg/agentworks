@@ -87,6 +87,21 @@ func (c TmuxCommand) NewSessionFlags() (name, dir string) {
 	return name, dir
 }
 
+// ShellCommandIndex returns the index in Rest of the shell command a new-session runs (the first word
+// that is not a flag or a flag's value), or -1 when the session runs the default shell.
+func (c TmuxCommand) ShellCommandIndex() int {
+	for i := 0; i < len(c.Rest); i++ {
+		a := c.Rest[i]
+		if !strings.HasPrefix(a, "-") {
+			return i
+		}
+		if newSessionValueFlags[a] {
+			i++
+		}
+	}
+	return -1
+}
+
 // NewSessionDetached reports whether a new-session command is detached (-d, alone or in a cluster
 // such as -dP). Only detached sessions can be started for a slot: an attached one needs a terminal.
 func (c TmuxCommand) NewSessionDetached() bool {
@@ -166,4 +181,33 @@ func SessionFile(registry, session string) string {
 		}
 	}
 	return filepath.Join(registry, b.String())
+}
+
+// BufferName returns the value of -b (the buffer a buffer command names), or "".
+func (c TmuxCommand) BufferName() string {
+	for i := 0; i < len(c.Rest); i++ {
+		if c.Rest[i] == "--" {
+			return ""
+		}
+		if c.Rest[i] == "-b" && i+1 < len(c.Rest) {
+			return c.Rest[i+1]
+		}
+	}
+	return ""
+}
+
+// LoadBufferSource returns what a load-buffer command reads: a file path, or "-" for standard input.
+func (c TmuxCommand) LoadBufferSource() string {
+	for i := 0; i < len(c.Rest); i++ {
+		a := c.Rest[i]
+		if a == "-b" || a == "-t" {
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "-") && a != "-" {
+			continue
+		}
+		return a
+	}
+	return ""
 }

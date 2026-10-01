@@ -82,6 +82,99 @@ func onSocket(sock string, args []string) []string {
 	return append(out, c.Rest...)
 }
 
+// slotEnv is the environment a slot's tmux server starts with: a small fixed set and the slot's own
+// identity, never the platform's environment (which holds the services' secrets). What a CLI needs
+// beyond that travels in its launch script.
+func slotEnv(cfg slots.ExecConfig, slot string) []string {
+	keep := map[string]bool{"PATH": true, "LANG": true, "LC_ALL": true, "LC_CTYPE": true, "TERM": true, "TZ": true, "COLORTERM": true}
+	env := []string{"HOME=" + filepath.Join(filepath.Dir(cfg.SlotRunRoot), "home", slot), "USER=" + slot, "LOGNAME=" + slot, "SHELL=/bin/sh"}
+	for _, entry := range os.Environ() {
+		if key, _, ok := strings.Cut(entry, "="); ok && keep[key] {
+			env = append(env, entry)
+		}
+	}
+	return env
+}
+
+// A paste buffer belongs to one tmux server, but `load-buffer` names no session. The front-end keeps
+// the content itself and loads it into the right server when the paste says which session it is for;
+// the default server gets a copy too, so sessions that are not a slot's work as before.
+func bufferFile(registry, name string) string {
+	return slots.SessionFile(filepath.Join(registry, "buffers"), name)
+}
+
+func loadBuffer(cfg slots.ExecConfig, registry string, c slots.TmuxCommand, args []string) int {
+	source := c.LoadBufferSource()
+	var data []byte
+	var err error
+	if source == "-" || source == "" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(source)
+	}
+	if err != nil {
+		_, _ = io.WriteString(os.Stderr, "tmux: cannot read the buffer: "+err.Error()+"\n")
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Join(registry, "buffers"), 0o700); err == nil {
+		if file := bufferFile(registry, c.BufferName()); file != "" {
+			_ = os.WriteFile(file, data, 0o600)
+		}
+	}
+	// the default server's copy (ignored when no default server runs: the paste may be a slot's)
+	cp := exec.Command(slots.TmuxPath, onStdin(args)...)
+	cp.Stdin = bytes.NewReader(data)
+	_ = cp.Run()
+	return 0
+}
+
+// onStdin rewrites a load-buffer command to read its content from standard input.
+func onStdin(args []string) []string {
+	c := slots.ParseTmux(args)
+	out := append([]string{}, c.Prefix...)
+	out = append(out, c.Subcommand)
+	for i := 0; i < len(c.Rest); i++ {
+		if c.Rest[i] == "-b" && i+1 < len(c.Rest) {
+			out = append(out, "-b", c.Rest[i+1])
+			i++
+		}
+	}
+	return append(out, "-")
+}
+
+func pasteBuffer(cfg slots.ExecConfig, registry, slot string, c slots.TmuxCommand, args []string) int {
+	sock := slots.SlotSocket(cfg.SlotRunRoot, slot)
+	if file := bufferFile(registry, c.BufferName()); file != "" {
+		if data, err := os.ReadFile(file); err == nil {
+			ld := exec.Command(slots.TmuxPath, "-S", sock, "load-buffer", "-b", c.BufferName(), "-")
+			ld.Stdin = bytes.NewReader(data)
+			if out, err := ld.CombinedOutput(); err != nil {
+				_, _ = os.Stderr.Write(out)
+				return exitCode(err)
+			}
+		}
+	}
+	code := exitCode(exec.Command(slots.TmuxPath, onSocket(sock, args)...).Run())
+	if hasDelete(c) {
+		_ = os.Remove(bufferFile(registry, c.BufferName()))
+	}
+	return code
+}
+
+func hasDelete(c slots.TmuxCommand) bool {
+	for _, a := range c.Rest {
+		if a == "--" {
+			return false
+		}
+		if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a[1:], "d") && a != "-b" && a != "-t" {
+			return true
+		}
+	}
+	return false
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
 func lookup(registry, session string) string {
 	file := slots.SessionFile(registry, session)
 	if file == "" {
@@ -143,7 +236,15 @@ func run(args []string) int {
 			return passthrough(args)
 		}
 		sock := slots.SlotSocket(cfg.SlotRunRoot, slot)
-		code := asSlot(cfg, slot, args, os.Environ(), os.Stdout, os.Stderr)
+		// Keep the pane's error output in the slot's run folder: a CLI that fails to start otherwise
+		// takes its reason with it when the session ends.
+		if idx := c.ShellCommandIndex(); idx >= 0 {
+			log := filepath.Join(cfg.SlotRunRoot, slot, "last-launch.stderr")
+			rest := append([]string(nil), c.Rest...)
+			rest[idx] = "exec 2>" + shellQuote(log) + "; " + rest[idx]
+			args = append(append(append([]string(nil), c.Prefix...), c.Subcommand), rest...)
+		}
+		code := asSlot(cfg, slot, args, slotEnv(cfg, slot), os.Stdout, os.Stderr)
 		if code != 0 {
 			return code
 		}
@@ -157,6 +258,20 @@ func run(args []string) int {
 
 	case c.IsListSessions():
 		return listAll(cfg, args)
+
+	case c.Subcommand == "load-buffer" && c.Target() == "" && c.BufferName() != "":
+		return loadBuffer(cfg, registry, c, args)
+
+	case c.Subcommand == "delete-buffer" && c.BufferName() != "":
+		_ = os.Remove(bufferFile(registry, c.BufferName()))
+		_ = exec.Command(slots.TmuxPath, args...).Run() // the default server's copy, when there is one
+		return 0
+
+	case c.Subcommand == "paste-buffer" && c.BufferName() != "":
+		if slot := lookup(registry, c.Target()); slot != "" {
+			return pasteBuffer(cfg, registry, slot, c, args)
+		}
+		return passthrough(args)
 
 	default:
 		target := c.Target()

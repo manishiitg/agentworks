@@ -118,3 +118,30 @@ func TestSlotForDirRecognisesAUsersOwnTree(t *testing.T) {
 		t.Fatal("with no docs root configured nothing is a user tree")
 	}
 }
+
+func TestShellCommandIndex(t *testing.T) {
+	c := ParseTmux([]string{"new-session", "-d", "-s", "x", "-c", "/d", "-x", "200", "cd /d && exec cli"})
+	if i := c.ShellCommandIndex(); i < 0 || c.Rest[i] != "cd /d && exec cli" {
+		t.Fatalf("index %d", i)
+	}
+	if ParseTmux([]string{"new-session", "-d", "-s", "x"}).ShellCommandIndex() != -1 {
+		t.Fatal("no shell command expected")
+	}
+}
+
+func TestBufferCommandParsing(t *testing.T) {
+	c := ParseTmux([]string{"load-buffer", "-b", "mlp-123", "-"})
+	if c.BufferName() != "mlp-123" || c.LoadBufferSource() != "-" {
+		t.Fatalf("%q %q", c.BufferName(), c.LoadBufferSource())
+	}
+	c = ParseTmux([]string{"load-buffer", "-b", "buf", "/tmp/x.txt"})
+	if c.LoadBufferSource() != "/tmp/x.txt" {
+		t.Fatalf("source %q", c.LoadBufferSource())
+	}
+	if ParseTmux([]string{"paste-buffer", "-d", "-p", "-r", "-b", "buf", "-t", "sess"}).BufferName() != "buf" {
+		t.Fatal("paste-buffer -b")
+	}
+	if ParseTmux([]string{"delete-buffer"}).BufferName() != "" {
+		t.Fatal("no buffer named")
+	}
+}
