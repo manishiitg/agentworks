@@ -30,3 +30,26 @@ func TestNativeEnvironmentDropsAuthSecret(t *testing.T) {
 		}
 	}
 }
+
+// Agent shells never inherit the app's login password, the legacy user list or the deployment's global
+// secrets, while ordinary tool configuration still passes through.
+func TestNativeEnvironmentDropsLoginAndGlobalSecrets(t *testing.T) {
+	t.Setenv("ACCESS_PASSWORD", "fake-access-password")
+	t.Setenv("AUTH_USERS", "a@example.com:fake")
+	t.Setenv("GLOBAL_SECRET_STRIPE_KEY", "fake-global")
+	t.Setenv("MY_TOOL_CONFIG", "kept")
+	kept := false
+	for _, kv := range buildNativeEnvironment() {
+		for _, name := range []string{"ACCESS_PASSWORD=", "AUTH_USERS=", "GLOBAL_SECRET_"} {
+			if strings.HasPrefix(kv, name) {
+				t.Fatalf("shell environment carries %s", name)
+			}
+		}
+		if kv == "MY_TOOL_CONFIG=kept" {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatal("ordinary configuration was dropped")
+	}
+}

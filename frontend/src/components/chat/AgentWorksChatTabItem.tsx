@@ -10,6 +10,7 @@ export interface AgentWorksChatTabItemProps {
   canClose: boolean
   isBlank: boolean
   displayName?: string
+  titleOverride?: string
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>

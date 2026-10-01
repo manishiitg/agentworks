@@ -61,6 +61,120 @@ No provider repository changes, application restart, or deployment are included.
 Existing native conversations use the current instructions/tools on subsequent
 turns once the updated application is running.
 
+## Skill-first prompt migration (2026-10-01)
+
+The second migration keeps the always-loaded contract small: role, access/mode
+limits, live roots and grants, essential secret safety, discovery and core memory
+rules. Skills own operating procedures, examples, templates and troubleshooting.
+The skill index retains names and action triggers; prompts do not become bare
+links. Argument shapes remain in current tool schemas.
+
+- AgentWorks attaches a managed `project-memory` procedure skill to project chats
+  and workflow chats, including delegated project agents. It holds no project
+  facts: `MEMORY.md` remains the only store. Writers retain proactive verified
+  memory and the existing dated format/correction/forgetting procedure. Run and
+  read-only accounts receive retrieval-only content. The mode boundary, one-store
+  rule, secret prohibition and explicit skill-authoring authorization stay upfront.
+- Crew Builder moves conversation-history lookup, coding/repository layout and
+  memory-versus-procedure examples into `crew-builder`. Its frontmatter is the
+  canonical trigger description. Identity, granted roots, private-chat boundaries,
+  managed database restrictions and workflow-authoring restrictions stay upfront.
+- Workflow Builder/Run point to the mode-filtered `workflow-chat` reference in
+  `builder-reference`. That reference routes to the existing focused procedures
+  for plan edits, branching, human input, runtime grounding, route selection,
+  failure inspection and reports. Run does not receive authoring references.
+  Sequential defaults, overlap approval, auto-notification behavior, backend-owned
+  Slack credentials and execution-versus-authoring limits remain upfront.
+- Native API and CLI workflow chats both load procedures from skills. API tools
+  retain supplied native schemas; CLI execution retains runtime discovery. The
+  linked `cd project` exception is explicitly limited to the private CLI; bridge
+  shell examples use absolute paths. Every nested operations reference is checked
+  against the mode's actually attached supporting files.
+- Dynamic secret names stay in context once, without per-name shell/Python
+  examples or values. Provider/model/auth status now comes from the admitted
+  `list_llm_capabilities` tool rather than a duplicate upfront snapshot.
+- mcpagent attaches `runtime-http-tools` only for progressive code-execution
+  sessions. The prompt keeps declared native tools, intrinsic readers, discovery
+  and permission rules; the skill owns curl/auth/JSON/error mechanics. Legacy
+  consumers keep inline mechanics from the same constant. Removing the managed
+  skill restores inline mechanics instead of leaving a dangling pointer. Agy
+  retains its names/descriptions fallback; bodies remain on demand.
+
+Same-fixture server composition was measured in owned baseline worktrees at
+builder `6b70472f8` / mcpagent `d13b6d3` and the new implementation. These counts
+include production server composition, not mcpagent routing, native skill
+metadata, tool schemas, history or provider wrappers. They are bytes, not tokens.
+
+| Server composition fixture | Before | After |
+| --- | ---: | ---: |
+| Code identity + features + workspace + memory | 7,923 | 6,223 |
+| Crew Builder identity + features + workspace + memory | 10,466 | 6,324 |
+| Crew Run identity + workspace + memory | 2,822 | 3,337 |
+| Workflow Builder, CLI references, interactive, optional context | 20,065 | 11,985 |
+| Workflow Run, CLI references, interactive, optional context | 20,130 | 12,386 |
+
+Crew Run already had a short memory reminder. Its increase adds common memory
+constraints and the retrieval-skill trigger; it is not a reduction claim. The
+workflow fixture keeps the same optional capability metadata, grants, browser,
+notification and secret input on both sides. Current capability discovery can
+remove more static metadata in production, but that saving is not included here.
+The workflow server ceiling is now 15KB for this controlled fixture.
+
+Live `TestLocalCLIDiscoverySkillsAndResume` passed on **Claude and Codex** with
+both a feature-skill-only validation value and a transport-skill-only marker.
+A fresh resumed Agent uses changed tool names and values in both skills. The
+receipt requires an actual HTTP execution. Neither value is in initial system
+text. The test harness now supplies the production short bridge variables and
+session-prefixed routes; its prior omissions made Codex fail despite reading both
+skills. Pi stopped before model I/O because local Google credentials were absent;
+its previous-migration success is not a qualification of this change. Cursor,
+Muse and Agy remain unqualified for this second migration. Full business flows,
+OAuth onboarding, total turn cost and latency are still evidence gaps.
+
+### Reproduce a readable local system prompt
+
+Use owned worktrees and a Go workspace pointing to the owned dependencies.
+Run the Code-only capture in AgentWorks' `agent_go`:
+
+```sh
+PROMPT_SNAPSHOT_DIR=/absolute/output/directory go test ./cmd/server -run '^TestCodePreparedSystemPrompt$' -v -count=1
+```
+
+This test sends a request through the real `handleQuery`: it resolves the
+project binding, profile/access, provider and native-tool mode, registers the
+actual permitted tools, attaches current skills, and calls `FinalizeDefinition`.
+A narrow internal test seam captures the finalized agent and stops before a turn
+starts. mcpagent's read-only `ReadAgentSystemPrompt` facade invokes the same
+outbound composer used by model requests. No prompt logic is copied into the
+fixture, and no CLI process or model call is started.
+
+`code.system.md` is the complete outgoing system text for the mocked user/project;
+`code.skills.json` holds attached metadata and on-demand bodies; `summary.json`
+records byte/character counts and registered tools. Only external state (workspace
+API, user, saved project, MCP configuration and credentials) is mocked. Paths and
+local time come from the actual handler. This is not a snapshot of a specific
+live user's configuration; provider-owned prompts, native tool schemas, history
+and native skill indexes can add context outside this text.
+
+A captured Claude Code fixture measured 8,295 UTF-8 bytes / 8,293 characters,
+13 attached skills (including a mock project reviewer) and 47 registered tools.
+This corrected capture is not comparable to the earlier hand-assembled sample
+as a reduction measurement: it includes the real handler's live context.
+
+The earlier two-stage export was removed: it combined base profile data with a
+fresh runtime and missed Code's resolved `hybrid` native-tool mode. The handler
+capture asserts the enabled native-read policy. Discovery sessions also remove
+stale `<available_tools>` catalogs: the runtime block already owns that guidance.
+
+Full server checks reproduced six unrelated failures on the unchanged baseline:
+sales-Crew catalog, delegation tier defaults, two playbook catalog cases, native
+tmux input timing, and Workshop model defaults. The Crew Run prompt assertion
+was updated to check its retained prohibition rather than the old exact sentence.
+All other server cases passed in the full run, and changed prompt/skill cases
+passed after the final edits. Workflow suites pass with the two existing model
+and Agy-gate failures excluded; the absolute-path assertion now handles the
+explicit private linked-CLI exception and passes.
+
 ## Measured evidence
 
 Byte counts below compare identical controlled fixtures, not the entire RTS

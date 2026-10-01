@@ -893,7 +893,16 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		_ = subAgent.AddInstructions(GetWorkspaceMap(subShellRoot, subAgentChatsFolder))
 		_ = subAgent.AddInstructions(GetWorkspaceReference(subShellRoot, subAgentChatsFolder))
 		if projectScopedProfile {
-			_ = subAgent.AddInstructions(governedProjectMemoryInstructions)
+			memoryReadOnly := false
+			if cfg := common.GetSessionShellConfig(sessionID); cfg != nil {
+				memoryReadOnly = cfg.WorkflowReadOnly || cfg.ReadOnlyAccess || cfg.CrewReader
+			}
+			if err := subAgent.AttachSkill(browserinstructions.ProjectMemorySkill(memoryReadOnly)); err != nil {
+				return "", fmt.Errorf("attach delegated memory guidance: %w", err)
+			}
+			if err := subAgent.AddInstructions(browserinstructions.ProjectMemoryPrompt(memoryReadOnly)); err != nil {
+				return "", err
+			}
 		}
 		log.Printf("[DELEGATION] Added workspace instructions to sub-agent (chats=%s)", subAgentChatsFolder)
 

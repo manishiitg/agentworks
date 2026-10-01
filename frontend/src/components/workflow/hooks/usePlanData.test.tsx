@@ -42,3 +42,27 @@ it('never polls the plan changelog (manual refresh reloads the plan)', async () 
   expect(agentApi.getPlanChangelog).not.toHaveBeenCalled()
  }finally{act(()=>root.unmount())}
 })
+
+it('keeps the current graph visible while a live refresh reads the edited plan', async () => {
+ let resolveFresh: ((value: unknown) => void) | undefined
+ let planReads = 0
+ vi.mocked(agentApi.getPlannerFileContent).mockImplementation(path => {
+  if (path.endsWith('/step_config.json')) return Promise.resolve({success:true,data:{content:'{"steps":[]}'}} as never)
+  planReads += 1
+  if (planReads === 1) return Promise.resolve({success:true,data:{content:'{"steps":[{"id":"old","type":"regular","title":"Old"}]}'}} as never)
+  return new Promise(resolve => { resolveFresh = resolve })
+ })
+ let data: ReturnType<typeof usePlanData>
+ function Probe() {data=usePlanData('Workflow/live-plan-test');return null}
+ const root=createRoot(document.createElement('div'))
+ try {
+  await act(async()=>{root.render(<Probe/>);await Promise.resolve()})
+  expect(data!.plan?.steps[0].id).toBe('old')
+  let refreshed: Promise<boolean>
+  await act(async()=>{refreshed=data!.refresh()})
+  expect(data!.plan?.steps[0].id).toBe('old')
+  expect(data!.loading).toBe(false)
+  await act(async()=>{resolveFresh!({success:true,data:{content:'{"steps":[{"id":"new","type":"regular","title":"New"}]}'}});await refreshed})
+  expect(data!.plan?.steps[0].id).toBe('new')
+ }finally{act(()=>root.unmount())}
+})

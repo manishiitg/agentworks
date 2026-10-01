@@ -12,6 +12,8 @@ Start with the operator journey, then use the subsystem references when you need
 - [Workflow](workflow/README.md): workflow authoring, execution, scheduling, monitoring, Pulse, and Auto Improve.
 - [Organization and Agents](multiagent/README.md): delegation, Org Pulse, shared memory, and agent-to-agent coordination.
 - [Core](core/README.md): providers, MCP, browser sessions, connectors, secrets, security, and shared runtime services.
+- [Security](security/README.md): the security model, per-user Linux accounts, and provider credentials.
+- [Relays](relay/README.md): versioned agent chains you run from anywhere — builder flow, releases, and the runs API.
 
 `docs/bugs/` is an incident archive — see [its index](bugs/README.md), which groups the 2026-08-01/02 investigations into how the agent-facing tool and permission contract actually behaves. `docs/refactor/` records implementation migrations — see [its index](refactor/README.md), where status distinguishes a shipped design from one still being built. Neither folder is the recommended entry point for operators, but the bugs index is the fastest way to understand why an agent is told one thing and the runtime does another.
 
@@ -156,6 +158,17 @@ this is the complete map.
 - [mcpagent public API simplification](refactor/mcpagent_public_api_simplification.md)
 - [Native streaming speech-to-text](refactor/native_streaming_stt.md)
 - [Design: Live-attach terminal transport (replace snapshot/replay mirror)](refactor/terminal_live_attach_transport.md)
+
+### Relays ([index](relay/README.md))
+
+- [Relays overview](relay/README.md)
+
+### Security ([index](security/README.md))
+
+- [Per-user Linux accounts](security/per_user_linux_accounts.md)
+- [Provider credentials](security/provider_credentials.md)
+- [Sharing and slots](security/sharing.md)
+- [Managing secrets](security/secrets.md)
 
 ### Workflow ([index](workflow/README.md))
 

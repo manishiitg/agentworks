@@ -36,6 +36,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
@@ -53,6 +54,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
@@ -173,7 +175,11 @@ func claudeCodeTokenMissingForSingleProductDeployment(resolvedProfile *resolvedA
 	if resolvedProfile == nil || !strings.EqualFold(finalProvider, "claude-code") {
 		return false
 	}
-	if !isSingleProductServerDeployment() && !resolvedProfile.Definition.Runtime.RequireProviderToken {
+	// Code is private to each person and signs in with their own coding CLI login: on a multi-user server it
+	// never falls back to the CLI's ambient login (the platform account's), whatever else the server offers.
+	// A single-product deployment used to give Code this by itself; offering Crew next to it must not take it away.
+	codeOnMultiUserServer := IsMultiUserMode() && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.ID), codeproduct.ProfileID)
+	if !isSingleProductServerDeployment() && !resolvedProfile.Definition.Runtime.RequireProviderToken && !codeOnMultiUserServer {
 		return false
 	}
 	if resolvedProfile.APIKeys == nil || resolvedProfile.APIKeys.ClaudeCodeOAuthToken == nil {
@@ -406,6 +412,9 @@ type StreamingAPI struct {
 	// internalAgentToolsModeDecided lets tests see the agent-tools mode a
 	// turn decided (after provider-account rules) and stop the turn there.
 	internalAgentToolsModeDecided func(sessionID, mode string) bool
+	// internalPreparedAgent captures the finalized production assembly in tests.
+	// Returning true ends the request before any turn or model invocation.
+	internalPreparedAgent func(context.Context, *mcpagent.Agent) bool
 	// internalSteerTransportReady lets gate tests observe steer
 	// readiness without a real CLI registry. Production dispatch
 	// checks the provider's interactive-session registration.
@@ -1676,6 +1685,7 @@ func init() {
 
 	ServerCmd.AddCommand(rotateProviderKeysCmd)
 	ServerCmd.AddCommand(rotateAuthSecretCmd)
+	ServerCmd.AddCommand(addUserCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
 	ServerCmd.AddCommand(migrateProductSecretsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
@@ -1684,6 +1694,8 @@ func init() {
 }
 
 func runServer(cmd *cobra.Command, args []string) {
+	// With per-user accounts, what the server creates must stay writable by the user's slot group.
+	slots.ApplyServiceUmask()
 	// Standard-library logs are emitted from many downstream packages that do
 	// not accept a logger. Enforce stable username/workflow keys at the process
 	// boundary and enrich session-tagged lines from the request registry.
@@ -2376,7 +2388,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/share-tunnel/status", requireAdmin(api.handleGetShareTunnelStatus)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminListUsers)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users", requireAdmin(api.handleAdminCreateUser)).Methods("POST")
-	apiRouter.HandleFunc("/admin/users/{id}/invite", requireAdmin(api.handleAdminInviteUser)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminUpdateUser)).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/admin/users/{id}", requireAdmin(api.handleAdminDeleteUser)).Methods("DELETE")
 	apiRouter.HandleFunc("/workflow/user-permissions", requireWorkflowOwnerAccess(api.handleListWorkflowUserPermissions)).Methods("GET", "OPTIONS")
@@ -2934,6 +2945,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Plan and Step Config API routes
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
+	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
+	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
+	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
@@ -3367,6 +3381,12 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 	Value string `json:"value"`
 } {
 	if userID == "" || len(selectedNames) == 0 {
+		return nil
+	}
+	var identityErr error
+	workflowPath, identityErr = relayDraftWorkspaceForRelease(ctx, workflowPath)
+	if identityErr != nil {
+		log.Printf("[SECRETS] Relay release identity unavailable: %v", identityErr)
 		return nil
 	}
 
@@ -3927,6 +3947,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		identitySkillNames := skills.WithAgentBrowserCapability(req.SelectedSkills, buildChatBrowserConfig(req).HasAgentBrowser)
 		resolvedProfileSkills = skills.LoadAttachableIn(getWorkspaceAPIURL(), req.SelectedFolder, identitySkillNames)
 		resolvedProfileSkills = agentprofiles.FeatureSkillsForSession(resolvedProfile.Definition, resolvedProfileSkills)
+		resolvedProfileSkills = append(resolvedProfileSkills, browserinstructions.ProjectMemorySkill(currentUserIsReadOnly))
 	}
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
@@ -5634,6 +5655,29 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// how a real enabled: list gets seeded from a live session rather than
 		// guessed.
 		toolGate := newProductToolGate(resolvedProfile)
+		relayChat := false
+		if isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
+			// /api/query acknowledges before this worker finishes; the HTTP request
+			// context is already canceled here. Match the workflow setup reads above.
+			manifest, found, manifestErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder)
+			if manifestErr != nil {
+				sendError(fmt.Sprintf("Failed to read workflow manifest: %v", manifestErr), true)
+				return
+			}
+			if found && manifest.Kind == "relay" {
+				relayChat = true
+				if currentUserIsReadOnly {
+					sendError("Relay Builder requires edit access to this Relay.", true)
+					return
+				}
+				relayTools, toolErr := relayproduct.BuilderTools()
+				if toolErr != nil {
+					sendError(fmt.Sprintf("Failed to load Relay Builder tools: %v", toolErr), true)
+					return
+				}
+				toolGate = newProductToolGateForAllowlist("relays", relayTools)
+			}
+		}
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
@@ -5938,7 +5982,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] Main agent workspace executors: created with explicit userID=%q sessionID=%q", currentUserID, sessionID)
 			// Inject LLM config fallback for read_image HTTP calls (e.g., from claude CLI subprocess)
 			if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
-				virtualtools.SetReadImageLLMConfig(workspaceExecutors, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig)
+				virtualtools.SetReadImageLLMConfig(workspaceExecutors, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig, mergedAPIKeys)
 			}
 
 			// Merge @context file paths into additional folder-guard write access.
@@ -6361,8 +6405,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					if currentUserIsReadOnly {
 						chatMode = "run"
 					}
-					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !agentworksproduct.ChatAllowsTool(chatMode, toolName) {
-						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because AgentWorks product.yaml does not admit it in %s mode", toolName, chatMode)
+					allowedHumanTool := false
+					if relayChat {
+						allowedHumanTool = relayproduct.BuilderAllowsTool(toolName)
+					} else {
+						allowedHumanTool = agentworksproduct.ChatAllowsTool(chatMode, toolName)
+					}
+					if isWorkflowPhase && virtualtools.IsHumanToolCategory(toolCategory) && !allowedHumanTool {
+						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
 					if isWorkflowPhase && (accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
@@ -6706,6 +6756,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			if resolvedProfile != nil && !isWorkflowPhase {
+				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly)); err != nil {
+					sendError(fmt.Sprintf("Failed to attach project memory guidance: %v", err), true)
+					return
+				}
+			}
+
 			// 3. INSTRUCTION SECTIONS — workspace map, capabilities, workflow
 			//    context, channel formatting, browser pointer, reference docs,
 			//    grants, and the CLI tool environment. Each is a named section
@@ -6717,18 +6774,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
 				CrewReadOnly:             crewReaderCLI,
+				MemoryReadOnly:           currentUserIsReadOnly,
 				HasTriggerAutoNotifyTool: canTriggerAutoNotify,
 				ShellRoot:                shellRoot,
 				PerUserChatsFolder:       perUserChatsFolder,
 				WorkflowPhaseFolder:      workflowPhaseFolder,
 				ProfileWorkspace:         agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
 				CapabilitySection:        buildLLMCapabilityPromptSection(r.Context()),
-				// The snapshot instructs the agent to call these. The gate is the
-				// authority on whether it can, so ask it rather than assuming.
-				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities") ||
-					toolGate.Admit("set_provider_auth"),
-				ChannelFormatting: buildChannelFormattingInstructions(req.BotPlatform),
-				GrantSections:     resolvedGrants.PromptSections,
+				// Capability details are loaded through this tool, so do not
+				// advertise its pointer merely because auth setup is admitted.
+				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),
+				ChannelFormatting:     buildChannelFormattingInstructions(req.BotPlatform),
+				GrantSections:         resolvedGrants.PromptSections,
 			}
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
@@ -6751,7 +6808,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatBrowserCfg := buildChatBrowserConfig(req)
 			if chatBrowserCfg.HasAgentBrowser {
 				browserPrompt := "\n## Browser\n\nThis session has a browser tool configured (mode=" + chatBrowserCfg.Mode + "). " +
-					"CDP availability is live state and is not stored in this prompt. Before first use, call `agent_browser(command=\"status\", session=\"default\")` and follow its `effective_mode` and authorized endpoints. Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for tab, file, and safety rules. "
+					"CDP availability is live state and is not stored in this prompt. Before first use, call `agent_browser(command=\"status\", session=\"default\")` and follow its `effective_mode` and authorized endpoints. Read the attached `agent-browser` skill for tab, file, and safety rules. "
 				if chatBrowserCfg.Mode == "auto" || chatBrowserCfg.Mode == "cdp" {
 					_, endpointGuidance := cdpPromptEndpoints(chatBrowserCfg.CdpPorts, chatBrowserCfg.CdpPort)
 					browserPrompt += endpointGuidance + " These endpoints are configured candidates; live status is authoritative.\n"
@@ -6767,7 +6824,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// correctly run its one allowlisted tool and then, in the very same
 			// turn, tell the user it has no working tool because this stale text
 			// contradicted what actually happened.
-			hasProductAllowlist := resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
+			hasProductAllowlist := relayChat || resolvedProfile != nil && resolvedProfile.Definition.ToolPolicy.IsAllowlist()
 			if common.IsCLIProvider(req.Provider) && !hasProductAllowlist {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
@@ -6856,14 +6913,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// skill so the builder agent sees what the workflow has
 					// learned across runs. Mirrors the step-time attach in
 					// step_based_workflow.appendSupplementaryPrompts.
-					if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
-						_ = llmAgent.AttachSkill(globalSkill)
-						log.Printf("[SKILLS] Auto-attached workflow global skill (_global) from learnings/_global/SKILL.md")
+					if !relayChat {
+						if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
+							_ = llmAgent.AttachSkill(globalSkill)
+							log.Printf("[SKILLS] Auto-attached workflow global skill (_global) from learnings/_global/SKILL.md")
+						}
 					}
 					// Playbooks are workflow-local skills for Builder setup. They are
 					// intentionally attached here, after the definitive workflow path is
 					// known, and never added to the workflow execution skill defaults.
-					if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
+					if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && !relayChat {
 						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr == nil && found {
 							builderSkills := installedBuilderSkillNames(manifest.InstalledPlaybooks)
 							for _, playbookSkill := range skills.LoadAttachableIn(getWorkspaceAPIURL(), phaseWorkspacePath, builderSkills) {
@@ -6923,6 +6982,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					"WorkspacePath":               phaseWorkspacePath,
 					"IsCodeExecutionMode":         fmt.Sprintf("%v", phaseIsCodeExec),
 					"UseProjectedReferenceSkills": "true", // legacy template key; mcpagent read_skill is transport-neutral
+				}
+				if relayChat {
+					phaseTemplateVars["WorkflowKind"] = "relay"
 				}
 
 				// Pass workshop mode from frontend override (auto-detection happens after plan is loaded below).
@@ -7102,7 +7164,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 								// upload rules, session limits) lives in the builder-reference
 								// mega-skill as `browser-usage` and is fetched on demand.
 								browserPrompt := "\n## Browser\n\nThis phase has a browser tool configured (mode=" + configuredBrowserMode +
-									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints. Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+									"). CDP availability is live state and is never stored in this prompt. Before the first browser action, call `agent_browser(command=\"status\", session=\"default\")`, then follow its `effective_mode` and authorized endpoints.\n"
+								if !relayChat {
+									browserPrompt += " Read `read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/browser-usage.md\"}])` for Builder-specific tab, file, and safety rules.\n"
+								}
 								if configuredBrowserMode == "auto" || configuredBrowserMode == "cdp" {
 									_, endpointGuidance := cdpPromptEndpoints(phaseConfiguredCDPPorts, phaseBrowserCfg.CdpPort)
 									browserPrompt += endpointGuidance + " These are configured candidates only; `agent_browser status` is authoritative for current reachability.\n"
@@ -7120,6 +7185,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// assembler. UI guidance follows the same caller policy as registration.
 				activeForPrompt, _ := api.getActiveSession(sessionID)
 				promptCtx.WorkflowMode = phaseTemplateVars["WorkshopMode"]
+				if err := llmAgent.AttachSkill(browserinstructions.ProjectMemorySkill(currentUserIsReadOnly || promptCtx.WorkflowMode == "run")); err != nil {
+					sendError(fmt.Sprintf("Failed to attach workflow memory guidance: %v", err), true)
+					return
+				}
 				promptCtx.WorkflowUIAvailable = workflowUICallerAllowed(workflowPhaseID, sessionID, req, activeForPrompt)
 				// Workflow browser configuration is authoritative; do not add the
 				// generic chat browser pointer as well.
@@ -7239,6 +7308,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if api.internalPreparedAgent != nil && api.internalPreparedAgent(streamCtx, llmAgent.GetUnderlyingAgent()) {
+			_ = llmAgent.Close()
+			return
+		}
+
 		// Register the finalized instance for steering and lifecycle management.
 		var registeredRunningAgent *mcpagent.Agent
 		if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
@@ -7283,7 +7357,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if newWorkshopMode != "" {
 			activeForPolicy, _ := api.getActiveSession(sessionID)
 			currentPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForPolicy, currentUserIsReadOnly)
-			policyKey := api.chatPolicySessionKey(currentPolicy)
+			policyWorkflowKind := ""
+			if relayChat {
+				policyWorkflowKind = "relay"
+			}
+			policyKey := api.chatPolicySessionKey(currentPolicy, policyWorkflowKind)
 			policyRoleKey := currentPolicy.sessionKey()
 			codingProvider := common.IsCLIProvider(finalProvider)
 			api.conversationMux.RLock()
@@ -9560,10 +9638,14 @@ func (api *StreamingAPI) updateSessionStatus(sessionID, status string) {
 	api.observeRuntimeSnapshot(sessionID)
 	if changed {
 		publishSessionsChanged()
-		// Only a finished scheduled run refreshes the right pane. A chat turn
-		// (sending a message) must change nothing outside the chat.
-		if scheduled && liveFeedTerminalStatus(status) {
-			publishWorkflowSettled(workspacePath)
+		if liveFeedTerminalStatus(status) {
+			if scheduled {
+				publishWorkflowSettled(workspacePath)
+			} else {
+				// Coding CLIs can edit plan files directly, outside workspace
+				// tools. The terminal notice catches up with those edits.
+				publishPlanChanged(workspacePath + "/planning/plan.json")
+			}
 		}
 	}
 }

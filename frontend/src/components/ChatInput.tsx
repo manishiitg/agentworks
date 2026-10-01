@@ -21,6 +21,7 @@ import FileSelectionDialog from './FileSelectionDialog'
 import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
 import { PulseReviewFocusDialog } from './commands/PulseReviewFocusDialog'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { findCommand, findProductCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
@@ -39,7 +40,6 @@ import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButt
 import { readVoiceAutoSendPref } from '../products/sparkquill/voiceAutoSend'
 import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { hasActiveSessionWork } from '../utils/activitySessions'
-import { headerStatusLabel, statusTone } from '../utils/globalActivityMonitorStatus'
 import { shouldClearAcceptedChatDraft } from '../utils/chatSubmissionDraft'
 import { sendQueuedChatMessage } from '../utils/chatQueueController'
 import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwnership'
@@ -173,7 +173,6 @@ interface ChatInputProps {
   pendingNativeChoice?: boolean
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
-  showCompactRuntimeLoading?: boolean
   showProductSteerAction?: boolean
   showProductTerminalControl?: boolean
 }
@@ -400,45 +399,6 @@ const QueuedAutoNotificationGroup: React.FC<{
   )
 }
 
-// Isolated from ChatInputComponent's render cadence on purpose: the active
-// tab is selected there as one whole object (state.chatTabs[activeTabId]),
-// and during streaming that object gets a new reference on every appended
-// token -- so ChatInputComponent (and anything computed inline in its body,
-// including mainAgentRuntimeStatus) re-renders at token-arrival frequency,
-// live-measured at 1000+ times/sec on a fast response, even though this
-// indicator's own state/label/activityLabel stay identical the whole time.
-// React.memo here means this subtree -- including the animated Loader2 --
-// only actually re-renders when one of those three values genuinely
-// changes, decoupling the spinner's visual stability from how often the
-// surrounding composer re-renders for unrelated reasons (PLAT spinner
-// flicker report, reproduced live 2026-09-09: composer spinner glitching
-// during active generation, same symptom independently reported for both
-// pi-cli and claude-code sessions -- confirming the cause is this shared
-// frontend layer, not any provider-specific backend behavior).
-const MainAgentRuntimeStatusIndicator = React.memo(function MainAgentRuntimeStatusIndicator({
-  state,
-  label,
-}: {
-  state: 'running' | 'waiting' | 'ready'
-  label: string
-}) {
-  return (
-    <div
-      className="flex h-7 items-center px-1 text-muted-foreground"
-      role="status"
-      aria-label={`${label} — ${state}`}
-    >
-      {state === 'running' ? (
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-lime-300" aria-hidden="true" />
-      ) : state === 'waiting' ? (
-        <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
-      ) : (
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-lime-300" aria-hidden="true" />
-      )}
-    </div>
-  )
-})
-
 // Completely isolated input component that doesn't re-render when events change
 const ChatInputComponent: React.FC<ChatInputProps> = ({
   onSubmit: onSubmitProp,
@@ -449,13 +409,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   pendingNativeChoice = false,
   showNewChatAction = false,
   hideRuntimeStatus = false,
-  showCompactRuntimeLoading = false,
   showProductSteerAction = false,
   showProductTerminalControl = false,
   onNewChat,
 }) => {
   const isProductSurface = surfaceVariant === 'product'
   const terminalFocus = useTerminalFocusMode()
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
   // Store subscriptions
   const {
     agentMode,
@@ -1456,11 +1416,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     [chatInputMainTerminal],
   )
 
-  // Use the exact same authoritative activity classification as the global
-  // monitor. A retained tmux session is intentionally "idle" there; merely
-  // keeping its process alive must never make this spinner claim the agent is
-  // still working.
-  const mainAgentRuntimeStatus = useMemo(() => {
+  const mainAgentRuntimeLabel = useMemo(() => {
     // Match resolveLockedLLM, including the product-profile binding exception.
     // A manifest-backed Builder selection wins over a retained session's
     // cached runtime. This is shared by Work projects and AgentWorks workflow
@@ -1490,37 +1446,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const model = effective?.model_id || ''
     if (!provider) return null
 
-    // A durable foreground completion settles the turn even when the periodic
-    // activity snapshot has not refreshed yet. This is the same boundary the
-    // global monitor eventually observes, applied immediately to the open chat.
-    const tone = activeTab?.isCompleted && !isTurnInFlight
-      ? 'idle'
-      : activeSession ? statusTone(activeSession) : 'idle'
-    const waiting = tone === 'needs-input'
-    const running = tone === 'running' || tone === 'background'
-    return {
-      // The composer is user-facing: transport names such as "claude-code"
-      // do not add useful context here. Keep the provider only as a fallback
-      // when the runtime has not reported its model yet.
-      label: model || provider,
-      state: waiting ? 'waiting' as const : running ? 'running' as const : 'ready' as const,
-      activityLabel: activeSession ? headerStatusLabel(activeSession) : 'idle',
-    }
+    return model || provider
   }, [
-    activeSession,
     activeSession?.runtime?.model_id,
     activeSession?.runtime?.provider,
-    activeSession?.runtime_state?.phase,
-    activeSession?.runtime_state?.waiting_for_user,
-    activeSession?.status,
-    activeSession?.runtime_state?.background_live,
-    activeSession?.has_running_background_agents,
-    activeSession?.running_background_agent_count,
-    activeSession?.needs_user_input,
-    activeTab?.isCompleted,
     activeTab?.metadata?.agentProfileEngine,
     activeTab?.metadata?.agentProfileModelID,
-    isTurnInFlight,
     isProductProfile,
     isWorkflowPhaseChat,
     manifestLLMConfig,
@@ -1531,27 +1462,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     publishedLLMs,
     llmConfigSource,
   ])
-
-  // TEMP DEBUG (spinner flicker investigation) - remove after diagnosis.
-  // mainAgentRuntimeStatus reads activeSession from activeSessionsCache, a
-  // 30s-TTL cache that nothing polls on a timer inside the workflow-builder
-  // view (only the main chat view's GlobalActivityMonitor does, every 5s).
-  // The tab strip's own busy dot reads chatTabs[tabId].isStreaming /
-  // .hasRunningBgAgents directly -- live, event-driven -- so left alone this
-  // composer chip can visibly lag it: still showing "running" up to 30s
-  // after a background agent/step actually finished (reported live: the
-  // composer's spinner kept going after the tab strip had already gone
-  // idle). Force a refresh right when the live signal transitions instead
-  // of waiting on the cache's own TTL.
-  const liveTabBusy = (activeTab?.isStreaming ?? false) || (activeTab?.hasRunningBgAgents ?? false)
-  const lastLiveTabBusyRef = useRef(liveTabBusy)
-  useEffect(() => {
-    if (lastLiveTabBusyRef.current === liveTabBusy) return
-    lastLiveTabBusyRef.current = liveTabBusy
-    useChatStore.getState().getActiveSessions(true).catch(error => {
-      console.warn('[ChatInput] Failed to refresh active sessions after live busy-state change', error)
-    })
-  }, [liveTabBusy])
 
   // Preset folder selection
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -2957,13 +2867,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (placeholderOverride) return placeholderOverride
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
-      return 'Chat with the automation builder... (@ files, / commands, # references)'
+      return isRelaySurface
+        ? 'Describe your Relay graph... (@ files, / commands, # references)'
+        : 'Chat with the automation builder... (@ files, / commands, # references)'
     }
     const baseHints = "@ files, / commands, # references, ! skills, $ servers"
     if (!tabSessionId && (canBootstrapMultiAgentTab || canBootstrapWorkflowPhaseTab)) return `Ask anything... chat will initialize on send (${baseHints})`
     if (isMultiAgentMode) return `Ask anything... (${baseHints})`
     return `Ask anything... (${baseHints})`
-  }, [agentProfileWorkspace, isProductSurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
+  }, [agentProfileWorkspace, isProductSurface, isRelaySurface, isStreaming, isViewOnly, isMultiAgentMode, isWorkflowPhaseChat, placeholderOverride, tabSessionId, canBootstrapMultiAgentTab, canBootstrapWorkflowPhaseTab, pendingNativeChoice])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2976,7 +2888,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const jobName = activeTab?.metadata?.scheduledJobName
     const botPlatform = activeTab?.metadata?.botPlatform
     const terminalTitle = [
-      `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}`,
+      `${terminalViewSelected ? 'Return to conversation' : 'Open live view'}${mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}`,
       ...terminalUsage.map(line => `${line.text}${line.high ? ' (high)' : ''}`),
       ...terminalSessionUsage,
     ].join('\n')
@@ -3340,12 +3252,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     New chat
                   </Button>
                 ) : null}
-                {!hideRuntimeStatus && mainAgentRuntimeStatus && (
-                  <MainAgentRuntimeStatusIndicator
-                    state={showCompactRuntimeLoading && isTurnInFlight ? 'running' : mainAgentRuntimeStatus.state}
-                    label={mainAgentRuntimeStatus.label}
-                  />
-                )}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3385,7 +3291,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     <TooltipContent>
                       <p>
                         {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                        {mainAgentRuntimeStatus?.label ? ` · ${mainAgentRuntimeStatus.label}` : ''}
+                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
                       </p>
                       {terminalUsage.map((line, index) => (
                         <p

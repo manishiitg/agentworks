@@ -609,10 +609,10 @@ function App() {
   // former profile-less Chat landing was removed; product-owned chats render
   // outside this shell and continue to use their own agent profiles.
   useEffect(() => {
-    if (productSurface !== 'agentworks') return
+    if (productSurface !== 'agentworks' && productSurface !== 'relays') return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') {
       setModeCategory('workflow')
-      setShowWorkflowsOverview(true)
+      setShowWorkflowsOverview(productSurface === 'agentworks')
       completeInitialSetup()
     }
   }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview])
@@ -621,7 +621,7 @@ function App() {
   // This ensures that when tabs are restored from localStorage, we select the first tab of the current mode
   // if activeTabId is null or invalid or belongs to a different mode
   useEffect(() => {
-    if (!hasCompletedInitialSetup || productSurface !== 'agentworks' || selectedModeCategory !== 'workflow') return
+    if (!hasCompletedInitialSetup || (productSurface !== 'agentworks' && productSurface !== 'relays') || selectedModeCategory !== 'workflow') return
 
     let cancelled = false
 
@@ -721,7 +721,7 @@ function App() {
   useEffect(() => {
     // AgentWorks only restores automation presets. Product chats own their
     // profile configuration and never use the removed generic-chat preset.
-    if (productSurface === 'agentworks' && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
+    if ((productSurface === 'agentworks' || productSurface === 'relays') && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
       // Add a small delay to ensure stores are fully initialized
       const timer = setTimeout(() => {
         const activePreset = getActivePreset(selectedModeCategory)

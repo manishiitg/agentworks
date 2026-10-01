@@ -1,4 +1,4 @@
-export const PRODUCT_SURFACES = ['agentworks', 'video-studio', 'dominion', 'sparkquill', 'work', 'code', 'mcp-gateway'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'dominion', 'sparkquill', 'work', 'code', 'mcp-gateway'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
@@ -21,13 +21,13 @@ export function isProductSurface(value: unknown): value is ProductSurface {
 /**
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
- * the automation surface and the built-in Work coding surface together.
+ * the automation, Relays, and built-in Crew surfaces together.
  * A configured gateway URL opts a local deployment into the CapLayer alpha.
  * Dedicated product shells can replace this with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {
   const configured = runtimeConfig()?.enabledProductSurfaces
-  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'work', 'mcp-gateway'] : ['agentworks', 'work']
+  const defaults: ProductSurface[] = gatewayBaseUrl() ? ['agentworks', 'relays', 'work', 'mcp-gateway'] : ['agentworks', 'relays', 'work']
   if (!Array.isArray(configured)) return defaults
 
   const enabled = configured.filter(isProductSurface).filter(surface => surface !== 'mcp-gateway' || gatewayBaseUrl() !== null)
@@ -91,7 +91,9 @@ export function intersectAllowedProductSurfaces(
 ): ProductSurface[] {
   if (!allowedProducts) return surfaces
   const allowed = new Set(allowedProducts.map((p) => p.toLowerCase()))
-  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()))
+  // Relays use the existing workflow APIs and permissions. A user granted
+  // AgentWorks workflow access can use the Relay view without a new ACL.
+  return surfaces.filter((surface) => allowed.has(surface.toLowerCase()) || (surface === 'relays' && allowed.has('agentworks')))
 }
 
 /** Product switcher entries in stable UI order for the current user. */

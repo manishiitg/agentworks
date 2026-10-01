@@ -62,7 +62,7 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   itemNoun: 'Code workspace',
   hasIdentity: false,
   hasTemplates: false,
-  listsSharedProjects: true,
+  listsSharedProjects: false,
   // Native agent tools are always on in a Code (owner decision 2026-09-29):
   // no switch, and the server ignores a stored "off".
   hasNativeAgentToolsSetting: false,

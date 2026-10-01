@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 )
 
 type recordingAppender struct {
@@ -126,24 +127,9 @@ func TestProjectMemoryIsSharedByEveryProductAndWorkflow(t *testing.T) {
 	}
 	text := section.Build(promptContext{HasProfile: true})
 	for _, required := range []string{
-		"project root MEMORY.md",
-		"one durable memory store",
-		"chat, schedule, bot, webhook-triggered task, and background task",
-		"normal project file browser",
-		"Claude auto-memory, Cursor Memories, Cursor rules, Codex AGENTS.md",
-		"Persist learned information only in the project-root MEMORY.md",
-		"reverse chronological",
-		"# Project Memory",
-		"YYYY-MM-DD — Topic",
-		"**Summary:**",
-		"**Details:**",
-		"**Source:**",
-		"**Related skill:**",
-		"update or merge an existing topic instead of appending a duplicate",
-		"Do not turn MEMORY.md into a raw activity log",
-		"Never create or update a skill",
-		`"remember this"`,
-		`"forget this"`,
+		"project root MEMORY.md", "one durable memory store", "project/MEMORY.md",
+		"Read it before", "provider-native memory", "Never retain secrets",
+		"explicit user request", "Save stable verified facts proactively", "project-memory skill",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("shared project-memory instructions are missing %q", required)
@@ -300,6 +286,49 @@ func TestHostSafetyRulesApplyToCodeOnly(t *testing.T) {
 	for _, must := range []string{"working folder", "code-server", "127.0.0.1", "\"~\""} {
 		if !strings.Contains(text, must) {
 			t.Fatalf("the shared-server rules no longer mention %s", must)
+		}
+	}
+}
+
+func TestMemorySkillAndPromptAgreeAcrossModes(t *testing.T) {
+	section := sectionByName(t, "project-memory")
+	for _, ctx := range []promptContext{{HasProfile: true}, {HasProfile: true, CrewReadOnly: true},
+		{HasProfile: true, ProfileID: "code", MemoryReadOnly: true}, {IsWorkflowPhase: true, WorkflowMode: "workshop"}, {IsWorkflowPhase: true, WorkflowMode: "run"}} {
+		readonly := ctx.MemoryReadOnly || ctx.CrewReadOnly || ctx.WorkflowMode == "run"
+		prompt := section.Build(ctx)
+		skill := instructions.ProjectMemorySkill(readonly)
+		if !strings.Contains(prompt, skill.Name) || strings.Contains(prompt, "**Summary:**") {
+			t.Fatal("missing skill pointer or inlined memory template")
+		}
+		if readonly && (!strings.Contains(prompt, "cannot update") || strings.Contains(skill.Content, "**Summary:**")) {
+			t.Fatal("Run received writer instructions")
+		}
+		if !readonly && !strings.Contains(skill.Content, "**Summary:**") {
+			t.Fatal("writer lost format")
+		}
+	}
+}
+
+// Project paths come from the manifest relative to the docs root, whereas
+// already-resolved host paths must remain unchanged.
+func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
+	section := sectionByName(t, "workspace-map")
+	for _, profile := range []string{"code", "work"} {
+		for _, workspace := range []string{"_users/alice/Chats/Code/projects/site", "/srv/docs/_users/alice/Chats/Code/projects/site"} {
+			text := section.Build(promptContext{ProfileID: profile, HasProfile: true,
+				ShellRoot: "/srv/docs", ProfileWorkspace: workspace, PerUserChatsFolder: "_users/alice/Chats"})
+			if !strings.Contains(text, "primary workspace is `/srv/docs/_users/alice/Chats/Code/projects/site/`") {
+				t.Fatalf("%s workspace %q was not resolved correctly: %s", profile, workspace, text)
+			}
+			if !strings.Contains(text, "`/srv/docs/_users/alice/chat_history/`") {
+				t.Fatalf("%s lost the signed-in user's history path", profile)
+			}
+		}
+	}
+	text := sectionByName(t, "code-host-safety").Build(promptContext{})
+	for _, must := range []string{"additional paths explicitly authorized in this prompt", "signed-in user's chat history for requested history lookups", "read_write attached folders only through guarded file tools", "Never inspect unlisted server folders or other people's projects"} {
+		if !strings.Contains(text, must) {
+			t.Fatalf("missing authorization boundary %q", must)
 		}
 	}
 }

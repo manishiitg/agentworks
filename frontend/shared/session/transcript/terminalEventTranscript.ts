@@ -491,20 +491,27 @@ export function collapseCompletedLifecycleStarts(events: PollingEvent[]): Pollin
   // is the outcome that actually held, and the newest card carries the final
   // duration.
   const lastTerminalByKey = new Map<string, PollingEvent>()
+  let mainTurn = 0
   for (const event of events) {
+    if (event.type === 'user_message') mainTurn += 1
     const descriptor = LIFECYCLE_EVENT_FAMILIES[event.type || '']
     if (!descriptor?.terminal) continue
     const key = lifecycleKey(event, aliasExecutions)
     if (!key) continue
-    lastTerminalByKey.set(key, event)
+    // The retained main execution can answer multiple human turns; only its
+    // current turn's lifecycle carriers supersede each other. Child execution
+    // outcomes still collapse by their execution identity.
+    lastTerminalByKey.set(isMainAgentLifecycle(event) ? `${mainTurn}:${key}` : key, event)
   }
   const supersededTerminals = new Set<PollingEvent>()
+  mainTurn = 0
   for (const event of events) {
+    if (event.type === 'user_message') mainTurn += 1
     const descriptor = LIFECYCLE_EVENT_FAMILIES[event.type || '']
     if (!descriptor?.terminal) continue
     const key = lifecycleKey(event, aliasExecutions)
     if (!key) continue
-    if (lastTerminalByKey.get(key) !== event) supersededTerminals.add(event)
+    if (lastTerminalByKey.get(isMainAgentLifecycle(event) ? `${mainTurn}:${key}` : key) !== event) supersededTerminals.add(event)
   }
 
   return events.filter(event => !hiddenStarts.has(event) && !supersededTerminals.has(event))
@@ -1004,18 +1011,31 @@ function comparableAnswer(text: string): string {
 // report the identical short answer (e.g. "done"), and merging across
 // executions would silently hide one agent's real result -- exact scoping,
 // exact text equality (not containment) keeps this to the narrow case it is
-// meant for.
+// meant for. A retained main execution spans many user turns, so both kinds
+// of answer deduplication must also stop at a user-message boundary.
 function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEvent[] {
-  const completionAnswers: string[] = []
+  const completionAnswersByTurn = new Map<number, string[]>()
+  let turn = 0
   for (const event of events) {
+    if (event.type === 'user_message') turn += 1
     if (!COMPLETION_ANSWER_TYPES.has(event.type || '')) continue
     const text = comparableAnswer(answerText(event))
-    if (text) completionAnswers.push(text)
+    if (text) {
+      const answers = completionAnswersByTurn.get(turn) || []
+      answers.push(text)
+      completionAnswersByTurn.set(turn, answers)
+    }
   }
 
+  turn = 0
   let lastCompletion: { executionID: string; text: string } | null = null
   return events.filter(event => {
     const type = event.type || ''
+    if (type === 'user_message') {
+      turn += 1
+      lastCompletion = null
+      return true
+    }
     if (COMPLETION_ANSWER_TYPES.has(type)) {
       const text = comparableAnswer(answerText(event))
       if (!text) return true
@@ -1027,6 +1047,7 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
       return true
     }
 
+    const completionAnswers = completionAnswersByTurn.get(turn) || []
     if (type !== 'llm_generation_end' || completionAnswers.length === 0) return true
     const text = comparableAnswer(answerText(event))
     // Exact equality is definitive even for a one-word reply. The backend
@@ -1046,7 +1067,7 @@ export function buildTranscriptItems(events: PollingEvent[]): TranscriptItem[] {
   // completion can supersede the richer delegated completion and then be
   // removed itself, accidentally hiding both records.
   const transcriptEvents = normalizeTranscriptChunkEvents(events).filter(isTranscriptEvent)
-  const visibleEvents = dropStaleEmptyThinkingActivity(dropAdjacentFrontendUserEchoes(dropAnswersRepeatedByCompletionCard(
+  const visibleEvents = dropStaleEmptyThinkingActivity(dropAnswersRepeatedByCompletionCard(dropAdjacentFrontendUserEchoes(
     dropDuplicateExecutionPromptMessages(collapseCompletedLifecycleStarts(transcriptEvents)),
   )))
   const items: TranscriptItem[] = []

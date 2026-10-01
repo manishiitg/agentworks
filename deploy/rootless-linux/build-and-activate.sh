@@ -112,6 +112,9 @@ mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
 # Literal filename required: workspace/security/landlock_policy.go resolves
 # its sandbox launcher by this exact name regardless of which product runs.
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
+# Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the RTS build).
+source "$REPO_ROOT/deploy/common/slots.sh"
+slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
 GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 
@@ -223,6 +226,12 @@ if [[ "${PERSIST_MCP_STATE:-false}" == "true" ]]; then
 fi
 
 runtime_path="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Per-user accounts: a `tmux` front-end first in PATH sends a slot's sessions to that slot's own tmux
+# server and leaves every other command to the real tmux. It lives outside the releases so its path
+# never changes; a host without slots keeps the plain PATH.
+if slots_shim_dir="$(slots_install_shim "$REMOTE_APP" "$BUILD_DIR")" && [[ -n "$slots_shim_dir" ]]; then
+  runtime_path="$slots_shim_dir:$runtime_path"
+fi
 
 # EnvironmentFile= values are applied after Environment= and therefore win
 # for duplicate variables -- a systemd drop-in setting PATH looks correct in

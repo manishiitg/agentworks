@@ -180,6 +180,9 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
 				}
 			}
 			pushUnique({ id: event.id, role: 'user', content: displayContent || content, timestamp: event.timestamp })
+      // The same answer can legitimately recur after another user message.
+      // Only collapse duplicate final-answer carriers within the current turn.
+      lastAssistantContent = ''
       completedAssistantAwaitingUsage = undefined
       continue
     }

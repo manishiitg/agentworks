@@ -1,6 +1,6 @@
 ---
 name: google-ai
-description: Generate optional still images and off-camera narration through Google's Gemini API for Video Studio. Do not use Google video models: all Video Studio footage uses MiniMax H3 through fal.ai.
+description: "Generate optional still images and off-camera narration through Google's Gemini API for Video Studio. Do not use Google video models: all Video Studio footage uses MiniMax H3 through fal.ai."
 ---
 
 # Google Gemini stills and narration

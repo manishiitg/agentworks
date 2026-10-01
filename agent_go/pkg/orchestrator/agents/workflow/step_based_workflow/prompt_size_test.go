@@ -61,11 +61,11 @@ func executeRealisticWorkshopPromptForMode(t *testing.T, mode string) string {
 // Template + bridge budget only. The server's production composer has its
 // own stricter regression against the fully assembled fixture, including all
 // optional sections. Keep this local check for template regressions.
-const MaxWorkshopPromptBytes = 18_000
+const MaxWorkshopPromptBytes = 11_000
 
 // Structural/content checks cover critical rules separately; this lower floor
 // catches accidental empty rendering without requiring verbose instructions.
-const MinWorkshopPromptBytes = 8_000
+const MinWorkshopPromptBytes = 4_500
 
 // shellVerbs are command names that, when they open an inline code span in the
 // workshop prompt, mark that span as a shell command the agent may paste.
@@ -151,6 +151,9 @@ func TestWorkshopPromptShellExamplesUseAbsolutePaths(t *testing.T) {
 		if span == "jq -n --arg" {
 			continue
 		}
+		if span == "cd project && ..." {
+			continue // explicit private linked-CLI exception, never a bridge cwd assumption
+		}
 		if verb == "cd" {
 			t.Errorf("workshop prompt contains a `cd` command (%q), which the same prompt forbids. "+
 				"Use an absolute path instead.", span)
@@ -204,8 +207,7 @@ func TestWorkshopCLIPromptUsesProjectedWorkspaceToolReference(t *testing.T) {
 	prompt := executeRealisticWorkshopPromptForMode(t, "workshop")
 	for _, reference := range []string{
 		"references/workspace-media-tools.md",
-		"references/workflow-tools.md",
-		"references/human-in-the-loop.md",
+		"references/workflow-chat.md",
 	} {
 		if !strings.Contains(prompt, reference) {
 			t.Fatalf("coding-CLI workshop prompt must point to projected reference %q", reference)
@@ -220,10 +222,8 @@ func TestWorkshopCLIPromptUsesProjectedWorkspaceToolReference(t *testing.T) {
 		}
 	}
 	for _, routingContract := range []string{
-		"current runtime's declared tool and routing contract",
-		"intrinsic `read_skill`",
-		"search_tools",
-		`get_api_spec(tool_name="<returned-name>")`,
+		"current runtime's declared tools and discovery contract",
+		"read_skill",
 	} {
 		if !strings.Contains(prompt, routingContract) {
 			t.Fatalf("coding-CLI workshop prompt is missing bridge routing contract %q", routingContract)
@@ -250,33 +250,16 @@ func TestWorkflowToolsReferenceDistinguishesLogicalFromNativeBridgeTools(t *test
 }
 
 func TestPhaseChatWorkshopSelectsWorkspaceToolGuidanceByTransport(t *testing.T) {
-	base := map[string]string{
-		"WorkspacePath":       "Workflow/example",
-		"WorkshopMode":        "workshop",
-		"IsCodeExecutionMode": "true",
-	}
-
-	base["UseProjectedReferenceSkills"] = "true"
-	cliPrompt := PhaseChatSystemPrompt("workflow-builder", base)
-	if !strings.Contains(cliPrompt, "references/workspace-media-tools.md") ||
-		!strings.Contains(cliPrompt, "references/workflow-tools.md") ||
-		strings.Contains(cliPrompt, "generate_video(prompt, output_path") ||
-		strings.Contains(cliPrompt, "- **Schedule management**:") {
-		t.Fatal("CLI phase-chat builder did not use compact projected-reference guidance")
-	}
-
-	base["UseProjectedReferenceSkills"] = "false"
-	apiPrompt := PhaseChatSystemPrompt("workflow-builder", base)
-	// PLAT-244 deliberately narrowed the active provider-backed tool surface
-	// to generate_text_llm/search_web_llm and hid media tools (generate_video
-	// et al.) from being presented as callable, so the API/non-CLI inline
-	// fallback should show the narrowed catalog inline -- not the pre-PLAT-244
-	// full media catalog, which is no longer a real, reachable tool surface.
-	if !strings.Contains(apiPrompt, "generate_text_llm(user_message, tier)") ||
-		!strings.Contains(apiPrompt, "search_web_llm(query, provider)") ||
-		!strings.Contains(apiPrompt, "- **Schedule management**:") ||
-		strings.Contains(apiPrompt, "generate_video(prompt, output_path") {
-		t.Fatal("API phase-chat builder lost its inline workspace-tool fallback")
+	for _, projected := range []string{"true", "false"} {
+		prompt := PhaseChatSystemPrompt("workflow-builder", map[string]string{"WorkspacePath": "Workflow/example", "WorkshopMode": "workshop", "IsCodeExecutionMode": "true", "UseProjectedReferenceSkills": projected})
+		if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(prompt, "provided schemas directly") {
+			t.Fatal("every transport must discover procedures through skills and retain native schema routing")
+		}
+		for _, duplicate := range []string{"generate_text_llm(user_message, tier)", "search_web_llm(query, provider)", "- **Schedule management**:"} {
+			if strings.Contains(prompt, duplicate) {
+				t.Fatalf("inline tutorial/catalog remains: %s", duplicate)
+			}
+		}
 	}
 }
 
@@ -289,7 +272,7 @@ func TestHumanInteractionGuidanceReachesBothWorkflowPromptTransports(t *testing.
 					"IsCodeExecutionMode": "true", "UseProjectedReferenceSkills": projected,
 				})
 				for _, required := range []string{
-					`read_skill(skills=[{"name":"builder-reference","path":"references/human-in-the-loop.md"}])`,
+					"references/workflow-chat.md",
 				} {
 					if !strings.Contains(prompt, required) {
 						t.Errorf("rendered prompt lost human-interaction contract %q", required)
@@ -297,6 +280,10 @@ func TestHumanInteractionGuidanceReachesBothWorkflowPromptTransports(t *testing.
 				}
 				if strings.Contains(prompt, "scheduled Pulse renders them in `builder/improve.html`") {
 					t.Error("rendered prompt still points decisions to the retired HTML page")
+				}
+				operations, err := guidance.RenderReferenceKindForTest("workflow-chat", mode)
+				if err != nil || !strings.Contains(operations, "references/human-in-the-loop.md") {
+					t.Fatal("operations must trigger the human-input reference")
 				}
 				// Verify that the reference named by this mode's system prompt is
 				// actually available, rather than a pointer to an absent skill file.
@@ -355,7 +342,11 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 
 	// Should include the phase-detection directive (only renders in workshop
 	// mode — neither builder nor optimizer had this guidance).
-	if !strings.Contains(prompt, "First, determine the current phase from workspace state") {
+	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(operations, "First, determine the current phase from workspace state") {
 		t.Errorf("workshop mode prompt should include the phase-detection directive")
 	}
 
@@ -367,8 +358,8 @@ func TestWorkshopModeIsMergedSuperset(t *testing.T) {
 		`builder-reference/references/optimize-playbook.md`, // shorthand for read_skill(skills=[{name:builder-reference,path:references/optimize-playbook.md}])
 	}
 	for _, s := range mustContain {
-		if !strings.Contains(prompt, s) {
-			t.Errorf("workshop mode prompt missing editable-workflow content: %q", s)
+		if !strings.Contains(operations, s) {
+			t.Errorf("workshop operations skill missing editable-workflow content: %q", s)
 		}
 	}
 
@@ -400,7 +391,10 @@ func TestWorkshopPromptKeepsCriticalRules(t *testing.T) {
 	mustContain := []string{
 		"Workflow Builder Agent", // identity
 		"## CURRENT STATE",       // dynamic state injection
-		"## Execution policy",    // hard rule: per-group default
+		"Groups run sequentially unless the user explicitly requests parallel execution",
+		"parallel schedules require explicit human approval",
+		"Notifications are not new user authorization",
+		"A refused action remains refused",
 	}
 	for _, s := range mustContain {
 		if !strings.Contains(prompt, s) {
@@ -436,12 +430,7 @@ func TestWorkshopPromptMovedSectionsAreReferencedNotInlined(t *testing.T) {
 		kind          string // referenceKinds key
 		oldBodyMarker string // a string unique to the inline section
 	}
-	// tool-reference, media-tools, and browser are intentionally NOT
-	// migrated: the LLM only sees tools through the MCP bridge (not
-	// individual JSON schemas), so the prose tool catalog IS the
-	// agent's primary discovery surface. Lazy-loading would create a
-	// bootstrap problem (agent doesn't know tools exist until it
-	// loads a doc that lists them).
+	// Dynamic tool discovery supplies names/schemas; the attached index supplies procedure triggers.
 	migrations := []migration{
 		{kind: "code-authoring", oldBodyMarker: "## main.py authoring rules"},
 		{kind: "stores", oldBodyMarker: "Three persistent stores — skill vs knowledgebase vs db"},
@@ -455,7 +444,8 @@ func TestWorkshopPromptMovedSectionsAreReferencedNotInlined(t *testing.T) {
 			t.Errorf("section %q still inlined (found %q); should be in templates/system/%s.md and referenced via read_skill",
 				m.kind, m.oldBodyMarker, m.kind)
 		}
-		if !strings.Contains(prompt, m.kind) {
+		bundle := guidance.MaterializeReferenceSkill("workshop")
+		if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(bundle.Content, "references/"+m.kind+".md") {
 			t.Errorf("workshop prompt does not reference kind %q — agent will not know to load templates/system/%s.md",
 				m.kind, m.kind)
 		}

@@ -21,7 +21,7 @@ Provider-setup essentials (do not hand-edit provider-auth storage — it's encry
 **For the full reference on these two active tools — use cases, tier selection, parameters, provider routing, scripted MCP-bridge calls, and common-mistake gotchas — call:** ` + "`read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/workspace-media-tools.md\"}])`" + `. In scripted/code-execution mode, also read ` + "`references/mcp-bridge.md`" + ` before writing the bridge call; never invoke a provider directly or put credentials in a script.`
 }
 
-// GetSpecialWorkspaceToolsPointer returns the compact coding-CLI form of the
+// GetSpecialWorkspaceToolsPointer returns the compact skill-first form of the
 // workspace media/search guidance. Coding CLIs receive the complete
 // workspace-media-tools reference through the projected builder-reference
 // skill, so repeating the full catalog in CLAUDE.md/AGENTS.md wastes the
@@ -29,5 +29,5 @@ Provider-setup essentials (do not hand-edit provider-auth storage — it's encry
 func GetSpecialWorkspaceToolsPointer() string {
 	return `## Special Workspace Tools
 
-The active provider-backed text and web-search tools are available through the MCP bridge. Before using ` + "`search_web_llm`" + ` or ` + "`generate_text_llm`" + `, read the attached ` + "`builder-reference`" + ` skill's ` + "`references/workspace-media-tools.md`" + ` (or call ` + "`read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/workspace-media-tools.md\"}])`" + `) for use cases, tier selection, parameters, provider routing, and known gotchas. In scripted/code-execution mode, also read ` + "`references/mcp-bridge.md`" + ` and invoke only the granted tool through the authenticated MCP bridge — never invoke a provider directly or put credentials in a script. Use ` + "`list_llm_capabilities`" + ` as the authoritative availability source and ` + "`set_provider_auth`" + ` for credentials; never place credentials in shell commands or files.`
+Use the current runtime's admitted tools: native API sessions use supplied schemas; coding CLI sessions follow the declared discovery and bridge routing. Before using ` + "`search_web_llm`" + ` or ` + "`generate_text_llm`" + `, read the attached ` + "`builder-reference`" + ` skill's ` + "`references/workspace-media-tools.md`" + ` (or call ` + "`read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/workspace-media-tools.md\"}])`" + `) for use cases, tier selection, parameters, provider routing, and known gotchas. In scripted/code-execution mode, also read ` + "`references/mcp-bridge.md`" + ` and invoke only the granted tool through the authenticated MCP bridge — never invoke a provider directly or put credentials in a script. Use ` + "`list_llm_capabilities`" + ` as the authoritative availability source and ` + "`set_provider_auth`" + ` for credentials; never place credentials in shell commands or files.`
 }

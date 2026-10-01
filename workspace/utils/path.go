@@ -27,7 +27,26 @@ func IsValidFilePath(filePath, docsDir string) bool {
 		return false
 	}
 	resolvedCandidate, err := resolveExistingPathPrefix(cleanPath, cleanDocsDir)
-	return err == nil && pathWithinRoot(resolvedCandidate, resolvedRoot)
+	if err != nil || !pathWithinRoot(resolvedCandidate, resolvedRoot) {
+		return false
+	}
+	// A symlink never carries a path from one user's tree into another's.
+	if realOwner, inUser := userTreeOwner(resolvedRoot, resolvedCandidate); inUser {
+		lexOwner, lexIn := userTreeOwner(cleanDocsDir, cleanPath)
+		if realOwner != "" {
+			if !lexIn || lexOwner != realOwner {
+				return false
+			}
+		} else if lexIn && lexOwner != "" {
+			// The path resolved no further than the _users folder itself. That is fine while the path does
+			// not exist yet (a user's first file: nothing below _users/<id> is there to follow), but a
+			// link that exists and points at _users would list every account.
+			if _, statErr := os.Lstat(cleanPath); statErr == nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func resolveExistingPathPrefix(candidate, root string) (string, error) {
@@ -177,7 +196,29 @@ func ResolveUserPath(docsDir, requestedPath, userID string) (string, error) {
 		return "", fmt.Errorf("path %q resolves outside the workspace root", requestedPath)
 	}
 
+	// Who may read a given user's tree is decided above this API (the app server authorizes the caller
+	// and stamps X-User-ID: Code collaborators, Crew owners and administrators legitimately read another
+	// user's folder), so a path is not refused for naming another user. What is refused, in
+	// IsValidFilePath, is a symlink carrying a path from one tree into another, which would let a link
+	// planted in the caller's own folder read someone else's (docs/DECISIONS.md, 2026-10-01).
 	return resolved, nil
+}
+
+// userTreeOwner returns the user id of the _users/<id>/ tree that path lies in, if it lies in one.
+// A path directly at _users/ (no id) belongs to no user, and is reported with an empty owner.
+func userTreeOwner(root, path string) (string, bool) {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) == 0 || parts[0] != UsersDirectory {
+		return "", false
+	}
+	if len(parts) == 1 {
+		return "", true
+	}
+	return parts[1], true
 }
 
 // ConvertToUserRelativePath converts an absolute path back to a relative path

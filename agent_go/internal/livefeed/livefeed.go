@@ -31,6 +31,8 @@ const (
 	HumanInputs Kind = "human_inputs"
 	// Report: a workflow's Report dashboard data may have changed.
 	Report Kind = "report"
+	// Plan: the graph or its step configuration may have changed.
+	Plan Kind = "plan"
 )
 
 // Notice is one change. Workflow is the workspace path ("Workflow/<folder>")
@@ -148,8 +150,45 @@ func WorkflowRoot(p string) string {
 	return parts[0] + "/" + parts[1]
 }
 
-// PublishWorkflow publishes a workflow-scoped notice for any path inside a
-// workflow; paths outside Workflow/ are ignored.
+// IsPlanPath reports files that change the shared Graph/Plan view. Keep this
+// classification in one place for workspace tools and server-side writes.
+func IsPlanPath(p string) bool {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(p), "/"), "/")
+	start := 0
+	if len(parts) >= 3 && parts[0] == "_users" && parts[1] != "" {
+		start = 2
+	}
+	if len(parts) <= start {
+		return false
+	}
+	rootEnd := 0
+	switch {
+	case len(parts) >= start+2 && (parts[start] == "Workflow" || parts[start] == "Crew") && parts[start+1] != "":
+		rootEnd = start + 2
+	case len(parts) >= start+4 && parts[start] == "Chats" && (parts[start+1] == "Work" || parts[start+1] == "Code") && parts[start+2] == "projects" && parts[start+3] != "":
+		rootEnd = start + 4
+	default:
+		return false
+	}
+	rest := parts[rootEnd:]
+	if len(rest) == 1 {
+		return rest[0] == "workflow.json"
+	}
+	return len(rest) == 2 && rest[0] == "planning" &&
+		(rest[1] == "plan.json" || rest[1] == "step_config.json")
+}
+
+// PublishPlanPath keeps Workflow/Crew notices scoped. Legacy Crew and Code
+// project paths use a path-free notice; their read endpoints still authorize
+// the refetch, and the feed reveals no private project path to other users.
+func PublishPlanPath(p string) {
+	if !IsPlanPath(p) {
+		return
+	}
+	Default.Publish(Plan, WorkflowRoot(p))
+}
+
+// PublishWorkflow publishes a scoped notice for Workflow/ and Crew/ roots.
 func PublishWorkflow(kind Kind, path string) {
 	if wf := WorkflowRoot(path); wf != "" {
 		Default.Publish(kind, wf)

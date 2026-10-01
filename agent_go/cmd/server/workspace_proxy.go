@@ -49,6 +49,16 @@ func workspaceProxyHandler() http.Handler {
 				resp.Header.Del(name)
 			}
 		}
+		// Browser edits bypass the workspace tool client. Publish only after the
+		// upstream confirms a write, so a rejected edit cannot refresh Graph.
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.Request != nil {
+			switch resp.Request.Method {
+			case http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete:
+				filePath := strings.TrimPrefix(resp.Request.URL.Path, "/api/documents/")
+				filePath = strings.TrimSuffix(strings.TrimSuffix(filePath, "/diff"), "/move")
+				publishPlanChanged(filePath)
+			}
+		}
 		return nil
 	}
 	log.Printf("[WORKSPACE PROXY] Proxying /api/wp/* → %s", wsURL)

@@ -131,7 +131,6 @@ export function AdminCodeInspector({ onClose }: { onClose: () => void }) {
                   className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${selected?.id === item.id && selected.owner_id === item.owner_id ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted'}`}
                 >
                   <span className="block truncate">{item.title}</span>
-                  {item.shares.length > 0 ? <span className="block truncate text-[11px]">shared with {item.shares.map(share => share.username || share.user_id).join(', ')}</span> : null}
                 </button>
               ))}
             </div>

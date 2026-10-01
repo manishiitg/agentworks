@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // mock services/api directly, keeps the test isolated from that unrelated
 // fragility rather than trying to fix it as part of an unrelated feature.
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: () => undefined }))
+vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { getState: () => ({}) } }))
 
 import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 
@@ -16,6 +17,9 @@ afterEach(() => {
 })
 
 describe('ProductSurfaceSwitcher deployment allowlist', () => {
+  it('shows AgentWorks, Relays, and Crew in the local product switcher', () => {
+    expect(visibleProductSurfaceIDs()).toEqual(['agentworks', 'relays', 'work'])
+  })
   it('shows only AgentWorks and Video Studio on the dedicated server', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: {

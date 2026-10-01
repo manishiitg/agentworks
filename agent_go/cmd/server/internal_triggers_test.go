@@ -735,6 +735,50 @@ func TestReadInternalWorkflowTriggerRun(t *testing.T) {
 	}
 }
 
+func TestReadPublishedRelayFunctionRunUsesReleaseScopeAndLiveCaller(t *testing.T) {
+	ctx := context.Background()
+	draft := "Workflow/relay-crew-poll"
+	release := relayReleaseWorkspace(draft, "v1")
+	caller := triggerCaller{Type: triggerCallerCrew, ID: "reports", ProfileID: "work"}
+	sched := WorkflowSchedule{ID: "function-1", ScheduleType: "webhook", Kind: triggerKindFunction, Enabled: true, Function: &WorkflowFunctionSpec{Name: "process", AllowedCallers: []triggerCaller{caller}}}
+	live := NewWorkflowManifest("Crew poll")
+	live.Kind = "relay"
+	live.Schedules = []WorkflowSchedule{sched}
+	published := *live
+	published.Schedules = []WorkflowSchedule{sched}
+	liveRaw, _ := json.Marshal(live)
+	publishedRaw, _ := json.Marshal(&published)
+	releaseRaw, _ := json.Marshal(relayRelease{Version: "v1", Hash: "test", FileCount: 1, Files: []string{"workflow.json"}})
+	deliveryRaw, _ := json.Marshal(WorkflowWebhookDelivery{RunID: "run-1", Payload: json.RawMessage(`{"relay_version":"v1"}`)})
+	mock := &mockWorkspaceAPI{files: map[string]string{
+		manifestPath(draft):                string(liveRaw),
+		manifestPath(release):              string(publishedRaw),
+		release + "/release.json":          string(releaseRaw),
+		webhookInputPath(release, "run-1"): string(deliveryRaw),
+	}}
+	ws := httptest.NewServer(mock)
+	t.Cleanup(ws.Close)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	scope, scopeID, lockKey := scheduleStateScope(buildScheduleContext(release, &published, sched))
+	if err := store.BeginRun(ctx, schedulerstate.Run{RunID: "run-1", LockKey: lockKey, ScheduleID: sched.ID, ScopeType: scope, ScopeID: scopeID, TriggerSource: "webhook", State: schedulerstate.State("running")}); err != nil {
+		t.Fatal(err)
+	}
+	svc := &SchedulerService{stateStore: store}
+	got, err := svc.readInternalWorkflowTriggerRun(ctx, draft, live, sched.ID, "run-1", caller)
+	if err != nil || got.RunID != "run-1" || got.Version != "v1" {
+		t.Fatalf("published Crew poll = %+v, %v", got, err)
+	}
+	live.Schedules[0].Function.AllowedCallers = []triggerCaller{{Type: triggerCallerCrew, ID: "other", ProfileID: "work"}}
+	if _, err := svc.readInternalWorkflowTriggerRun(ctx, draft, live, sched.ID, "run-1", caller); !errors.Is(err, ErrInternalCallerMismatch) {
+		t.Fatalf("revoked caller poll = %v, want mismatch", err)
+	}
+}
+
 func TestSaveProductWebhookRejectsInaccessibleCallerWorkflow(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)

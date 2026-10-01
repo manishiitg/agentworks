@@ -416,7 +416,7 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !externalAuthIdentityApproved(extUser.Email) {
-		log.Printf("[AUTH] OAuth login refused: email is neither in AUTH_ALLOWED_EMAILS nor the user directory via provider %s", stateEntry.Provider)
+		log.Printf("[AUTH] OAuth login refused: email is not in the user directory via provider %s", stateEntry.Provider)
 		http.Error(w, `{"error": "This account is not approved for this workspace"}`, http.StatusForbidden)
 		return
 	}
@@ -428,21 +428,24 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		userID = hex.EncodeToString(hash[:16])
 	}
 
-	// First SSO login creates the account record with nothing enabled
-	// (unless ADMIN_USERS names it); an admin switches it on.
-	if rec := ensureDirectoryUserForExternal(userID, extUser); rec != nil {
-		if rec.Disabled {
-			log.Printf("[AUTH] OAuth login refused for disabled user %s", extUser.Username)
-			http.Error(w, `{"error": "This account is disabled"}`, http.StatusForbidden)
-			return
-		}
-		// A pre-provisioned password account keeps its stable id, projects,
-		// history, and permissions when the same email first signs in with SSO.
-		userID = rec.ID
-		// The token names the directory account, not the display name the
-		// person chose at the provider.
-		extUser.Username = rec.Username
+	// A sign-in never creates an account. The person must already be in the directory (added by an
+	// administrator), or be a configured administrator bootstrapping their own record.
+	rec := ensureDirectoryUserForExternal(userID, extUser)
+	if rec == nil {
+		log.Printf("[AUTH] OAuth login refused: %s has no account; an administrator must add them", extUser.Email)
+		http.Error(w, `{"error": "This account has not been added by an administrator"}`, http.StatusForbidden)
+		return
 	}
+	if rec.Disabled {
+		log.Printf("[AUTH] OAuth login refused for disabled user %s", extUser.Username)
+		http.Error(w, `{"error": "This account is disabled"}`, http.StatusForbidden)
+		return
+	}
+	// A pre-provisioned account keeps its stable id, projects, history, and permissions when the
+	// same email first signs in with SSO.
+	userID = rec.ID
+	// The token names the directory account, not the display name the person chose at the provider.
+	extUser.Username = rec.Username
 	// Generate JWT token with provider information
 	token, err := GenerateJWTWithProvider(userID, extUser.Username, extUser.Email, extUser.Provider)
 	if err != nil {

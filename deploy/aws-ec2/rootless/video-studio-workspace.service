@@ -7,7 +7,7 @@ After=docker.service
 [Service]
 EnvironmentFile=%h/video-studio/.env
 Environment=HOME=%h
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/video-studio/slots/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=AGENT_BROWSER_CDP_ENABLED=false
 Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock
 WorkingDirectory=%h/video-studio/current

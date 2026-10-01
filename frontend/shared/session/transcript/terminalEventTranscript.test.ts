@@ -965,6 +965,27 @@ describe('final answer visibility (CDP step regression)', () => {
 })
 
 describe('answer shown exactly once', () => {
+  it.each(['unified_completion', 'agent_end'])('keeps identical %s answers to separate messages in a retained main execution', completionType => {
+    const events = [1, 2, 3].flatMap(turn => [
+      evt({ id: `user-${turn}`, type: 'user_message', data: { data: { content: 'Which model are you using?' } } as never }),
+      evt({ id: `gen-${turn}`, type: 'llm_generation_end', execution_id: 'main:s1', data: { data: { content: 'GPT-6 (Codex).' } } as never }),
+      evt({ id: `done-${turn}`, type: completionType, execution_id: 'main:s1', data: { data: { final_result: 'GPT-6 (Codex).', status: 'completed' } } as never }),
+    ])
+    expect(buildTranscriptItems(events).map(item => item.key)).toEqual([
+      'user-1', 'done-1', 'user-2', 'done-2', 'user-3', 'done-3',
+    ])
+  })
+
+  it('keeps an answer whose completion is missing when another turn repeats it', () => {
+    const events = [
+      evt({ id: 'user-1', type: 'user_message', data: { data: { content: 'Hello' } } as never }),
+      evt({ id: 'gen-1', type: 'llm_generation_end', data: { data: { content: 'Hello there.' } } as never }),
+      evt({ id: 'user-2', type: 'user_message', data: { data: { content: 'Hello again' } } as never }),
+      evt({ id: 'done-2', type: 'unified_completion', data: { data: { final_result: 'Hello there.', status: 'completed' } } as never }),
+    ]
+    expect(buildTranscriptItems(events).map(item => item.key)).toEqual(['user-1', 'gen-1', 'user-2', 'done-2'])
+  })
+
   const ANSWER =
     'Confirmed CDP is available: status reported the endpoint reachable, and a live snapshot succeeded.'
   const gen = (content: string): any => ({

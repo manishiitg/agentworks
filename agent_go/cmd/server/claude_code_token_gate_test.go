@@ -120,3 +120,33 @@ func TestClaudeCodeTokenMissingForSingleProductDeploymentGatesCorrectly(t *testi
 		})
 	}
 }
+
+// Code is private to each person and uses their own coding CLI login: on a multi-user server it must keep
+// refusing a claude-code turn that has no token even when the server offers several products (Code next to
+// Crew), because the fallback would be the platform account's own CLI login.
+func TestClaudeCodeTokenMissingKeepsCodePrivateOnAMultiProductMultiUserServer(t *testing.T) {
+	t.Setenv("AGENT_PRODUCTS", "code,work")
+	t.Setenv("MULTI_USER_MODE", "true")
+	code := &resolvedAgentProfile{APIKeys: nil}
+	code.Definition.ID = "code"
+	if !claudeCodeTokenMissingForSingleProductDeployment(code, "claude-code") {
+		t.Fatal("a Code turn with no personal token must be refused on a multi-user multi-product server")
+	}
+	token := "sk-ant-oat01-test"
+	code.APIKeys = &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &token}
+	if claudeCodeTokenMissingForSingleProductDeployment(code, "claude-code") {
+		t.Fatal("a Code turn with the user's own token must go through")
+	}
+	// another product on the same server keeps the shared-server behavior (ambient login allowed)
+	crew := &resolvedAgentProfile{APIKeys: nil}
+	crew.Definition.ID = "work"
+	if claudeCodeTokenMissingForSingleProductDeployment(crew, "claude-code") {
+		t.Fatal("the rule must not extend to other products")
+	}
+	// a single-user install (desktop) is unchanged
+	t.Setenv("MULTI_USER_MODE", "")
+	code.APIKeys = nil
+	if claudeCodeTokenMissingForSingleProductDeployment(code, "claude-code") {
+		t.Fatal("a single-user install must keep using the local CLI login")
+	}
+}

@@ -51,7 +51,7 @@ describe('workflow responsive pane contract', () => {
     expect(layout).not.toContain('botContent=')
     expect(viewHost).toContain("effectiveView === 'workshop' ? 'flex overflow-hidden' : ''")
     expect(layout).toContain("listChatHistorySessions(5, 0, workspacePath, 'chat')")
-    expect(layout).toContain('workflowLandingContent={<WorkflowNewChatGuide />}')
+    expect(layout).toContain('workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}')
     expect(layout).toContain('This is your persistent conversation for this workflow.')
     expect(tabs).toContain("displayName={isPersistentChat ? 'Chat'")
     expect(tabs).toContain('canClose={!isPersistentChat')

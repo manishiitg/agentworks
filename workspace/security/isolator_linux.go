@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
 var sandboxCapabilityOnce sync.Once
@@ -188,6 +189,16 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	// $HOME, which lies outside every step's grant, and every install died
 	// with a bare permission error -- see sandbox_tool_env.go.
 	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist), policy.WorkDir, policy.WritePaths)
+	if iso.Slot != "" {
+		// Run as the user's slot account: the namespaces and the policy are created after the switch.
+		wrapped, wrapErr := slots.WrapCommand(ctx, cmd, iso.Slot)
+		if wrapErr != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: run as the user's slot: %w", wrapErr)
+		}
+		wrapped.Dir = "/"
+		cmd = wrapped
+	}
 	return cmd, cleanup, nil
 }
 

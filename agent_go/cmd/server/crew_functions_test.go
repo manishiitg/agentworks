@@ -314,7 +314,7 @@ func TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID(t *testing.T) {
 	}
 }
 
-func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
+func TestCodePeersAllowOnlyOwnerIgnoringLegacyGrants(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	profile := agentprofiles.Profile{ID: codeproduct.ProfileID, Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
 		Runtime: agentprofiles.RuntimePolicy{Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
@@ -332,8 +332,8 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 	env.mock.files["_users/other/Chats/Code/projects/foreign/product.json"] = `{"schema_version":1,"product":"code","id":"foreign","title":"Foreign","session_id":"code-foreign"}`
 	env.mock.files[codeSharesFilePath()] = `{"projects":{"owner/source":{"owner_id":"owner","project_id":"source","grants":{"other":"editor"}},"owner/target":{"owner_id":"owner","project_id":"target","grants":{"other":"editor"}}}}`
 	env.mock.mu.Unlock()
-	var editorBindingID, editorRunID string
-	for _, actor := range []string{"owner", "other"} {
+	var ownerBindingID, ownerRunID string
+	for _, actor := range []string{"owner"} {
 		t.Run(actor, func(t *testing.T) {
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: actor})
 			caller, err := crewTriggerLinkCaller(source)(ctx)
@@ -354,24 +354,13 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 			if actor == "owner" && !created {
 				t.Fatal("owner binding was not created")
 			}
-			if actor == "other" && created {
-				t.Fatal("editor did not reuse the binding")
-			}
 			delivery, err := env.api.dispatchTargetTrigger(ctx, actor, caller, target, bindingID, "code-test-"+actor, crewFunctionEvent, map[string]interface{}{"task": "Check the project"})
 			if err != nil || delivery.RunID == "" {
 				t.Fatalf("dispatch = %+v, %v", delivery, err)
 			}
-			if actor == "other" {
-				editorBindingID, editorRunID = bindingID, delivery.RunID
-			}
+			ownerBindingID, ownerRunID = bindingID, delivery.RunID
 			if got := codePeerPrivateRunsWorkspace(actor, targetPath, "target"); !strings.HasPrefix(got, "_users/"+actor+"/chat_history/") {
 				t.Fatalf("Code run history is not private to %s: %s", actor, got)
-			}
-			if actor == "other" {
-				binding, err := codePeerRunBinding(ctx, actor, profile, "target", targetPath, bindingID, "Peer call")
-				if err != nil || binding.ManifestPath != "" || binding.WorkspacePath != targetPath {
-					t.Fatalf("editor chat binding = %+v, %v", binding, err)
-				}
 			}
 			if _, err := env.svc.getInternalProductTriggerRun(ctx, actor, "code", "target", bindingID, delivery.RunID, caller.Stamp, "owner"); err != nil {
 				t.Fatalf("poll = %v", err)
@@ -380,18 +369,18 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 	}
 	// A typed result must be returned by the target Code's own tool surface.
 	// The caller and target are different Code paths even though both run as
-	// the same editor, which previously made callRecord reject the target.
-	editorCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
-	sourceTools := env.functionTools(t, source, "code-peer-source-editor", nil)
-	targetTools := env.functionTools(t, targetPath, "code-peer-target-editor", nil)
-	if _, err := targetTools["define_function"].exec(editorCtx, map[string]interface{}{
+	// the same owner, which previously made callRecord reject the target.
+	callerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	sourceTools := env.functionTools(t, source, "code-peer-source-owner", nil)
+	targetTools := env.functionTools(t, targetPath, "code-peer-target-owner", nil)
+	if _, err := targetTools["define_function"].exec(callerCtx, map[string]interface{}{
 		"name": "review_changes", "description": "Review a change", "instructions": "Return whether it passed.",
 		"input_schema":  map[string]interface{}{"type": "object", "required": []interface{}{"change"}, "properties": map[string]interface{}{"change": map[string]interface{}{"type": "string"}}},
 		"result_schema": map[string]interface{}{"type": "object", "required": []interface{}{"ok"}, "properties": map[string]interface{}{"ok": map[string]interface{}{"type": "boolean"}}},
 	}); err != nil {
 		t.Fatalf("define Code function: %v", err)
 	}
-	started, err := sourceTools["call_function"].exec(editorCtx, map[string]interface{}{"target": "#code:target", "function": "review_changes", "args": map[string]interface{}{"change": "docs"}, "notify": false})
+	started, err := sourceTools["call_function"].exec(callerCtx, map[string]interface{}{"target": "#code:target", "function": "review_changes", "args": map[string]interface{}{"change": "docs"}, "notify": false})
 	if err != nil {
 		t.Fatalf("call Code function: %v", err)
 	}
@@ -411,13 +400,13 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 	if strings.Contains(targetRecord, source) || strings.Contains(targetRecord, `"caller_path"`) || !strings.Contains(privateIndex, source) {
 		t.Fatal("Code source path leaked into the target call record or was lost from the private index")
 	}
-	if _, err := targetTools["report_function_progress"].exec(editorCtx, map[string]interface{}{"call_id": callID, "message": "checking"}); err != nil {
+	if _, err := targetTools["report_function_progress"].exec(callerCtx, map[string]interface{}{"call_id": callID, "message": "checking"}); err != nil {
 		t.Fatalf("target Code could not report progress: %v", err)
 	}
-	if _, err := targetTools["return_function_result"].exec(editorCtx, map[string]interface{}{"call_id": callID, "result": map[string]interface{}{"ok": true}}); err != nil {
+	if _, err := targetTools["return_function_result"].exec(callerCtx, map[string]interface{}{"call_id": callID, "result": map[string]interface{}{"ok": true}}); err != nil {
 		t.Fatalf("target Code could not return typed result: %v", err)
 	}
-	if got, err := sourceTools["get_function_call"].exec(editorCtx, map[string]interface{}{"call_id": callID}); err != nil || !strings.Contains(got, `"completed"`) {
+	if got, err := sourceTools["get_function_call"].exec(callerCtx, map[string]interface{}{"call_id": callID}); err != nil || !strings.Contains(got, `"completed"`) {
 		t.Fatalf("caller did not receive typed result: %s, %v", got, err)
 	}
 	// Public Code webhooks still use the owner-run Automation path. The
@@ -453,7 +442,7 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 	publicQueued := false
 	for _, queue := range env.svc.queued {
 		for _, item := range queue {
-			if item.options.RunID == publicDelivery.RunID && item.job.PeerSourceID == "" && strings.Contains(item.job.Schedule.Messages[0], "untrusted data") {
+			if item.options.RunID == publicDelivery.RunID && item.job.CodeCaller == nil && strings.Contains(item.job.Schedule.Messages[0], "untrusted data") {
 				publicQueued = true
 			}
 		}
@@ -464,14 +453,14 @@ func TestCodePeersAllowOwnerAndEditorOnlyWithBothGrants(t *testing.T) {
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	caller, _ := crewTriggerLinkCaller(source)(ctx)
-	target, _ := resolveFunctionTarget(ctx, &UserClaims{UserID: "other"}, caller, "#code:target")
+	target := triggerTarget{Kind: triggerCallerCrew, Path: targetPath, CrewID: "target", CrewProfile: "code", CrewOwner: "owner"}
 	env.mock.mu.Lock()
 	env.mock.files[codeSharesFilePath()] = `{"projects":{"owner/source":{"owner_id":"owner","project_id":"source","grants":{"other":"editor"}}}}`
 	env.mock.mu.Unlock()
 	if _, err := resolveFunctionTarget(ctx, &UserClaims{UserID: "other"}, caller, "#code:target"); err == nil {
 		t.Fatal("editor without target grant could resolve target")
 	}
-	if _, err := env.svc.getInternalProductTriggerRun(ctx, "other", "code", "target", editorBindingID, editorRunID, caller.Stamp, "owner"); err == nil {
+	if _, err := env.svc.getInternalProductTriggerRun(ctx, "other", "code", "target", ownerBindingID, ownerRunID, caller.Stamp, "owner"); err == nil {
 		t.Fatal("revoked editor read a private Code run")
 	}
 	if _, _, err := env.api.connectTriggerTarget(ctx, "other", caller, target); err == nil {

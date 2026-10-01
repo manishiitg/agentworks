@@ -1,3 +1,7 @@
+import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
+import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
+import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
+import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/sessionStreamingState'
 import { isForegroundSessionEvent } from '../../shared/session/foreground'
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useMemo, useState, lazy, Suspense, type ComponentType, type ForwardedRef, type ReactNode } from 'react'
@@ -89,11 +93,6 @@ const STREAMING_EVENT_TYPES = new Set(['streaming_start', 'streaming_chunk', 'st
 // its wiring from ChatArea while leaving the component, the server capability
 // flag, and the server-side diagnostic endpoints themselves fully intact.
 const RuntimeDiagnosticsPanel = lazy(() => import('./TerminalCenter').then(module => ({ default: module.TerminalCenter })))
-
-type RuntimeEventScope = {
-  kind: 'session' | 'delegation' | 'workshop'
-  id?: string
-}
 
 function isStreamingEventType(type: unknown): type is string {
   return typeof type === 'string' && STREAMING_EVENT_TYPES.has(type)
@@ -230,69 +229,6 @@ function createSubmissionErrorEvent(sessionId: string, error: unknown): PollingE
       },
     } as PollingEvent['data'],
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return undefined
-}
-
-function isRootLikeExecutionId(value?: string): boolean {
-  return !value || value.startsWith('main:') || value.startsWith('session:')
-}
-
-function getEventPayloadParts(event: PollingEvent) {
-  const eventRecord = event as unknown as Record<string, unknown>
-  const agentEvent = asRecord(event.data)
-  const innerData = asRecord(agentEvent?.data)
-  const metadata = asRecord(innerData?.metadata) || asRecord(agentEvent?.metadata)
-  return { eventRecord, agentEvent, innerData, metadata }
-}
-
-function getRuntimeEventScope(event: PollingEvent): RuntimeEventScope {
-  const { eventRecord, agentEvent, innerData, metadata } = getEventPayloadParts(event)
-  const component = firstString(eventRecord.component, innerData?.component, agentEvent?.component)
-  const correlationId = firstString(
-    eventRecord.correlation_id,
-    innerData?.correlation_id,
-    agentEvent?.correlation_id,
-    metadata?.correlation_id
-  )
-  const delegationId = firstString(innerData?.delegation_id, agentEvent?.delegation_id, metadata?.delegation_id)
-  const workshopStepId = firstString(metadata?.workshop_step_id, innerData?.workshop_step_id, agentEvent?.workshop_step_id)
-  const executionId = firstString(eventRecord.execution_id)
-  const parentExecutionId = firstString(
-    eventRecord.parent_execution_id,
-    metadata?.parent_execution_id,
-    innerData?.parent_execution_id,
-    agentEvent?.parent_execution_id
-  )
-  const backgroundAgentId = firstString(
-    innerData?.background_agent_id,
-    agentEvent?.background_agent_id,
-    innerData?.agent_id,
-    agentEvent?.agent_id
-  )
-  const executionKind = firstString(eventRecord.execution_kind)
-
-  if (component?.startsWith('delegation-')) return { kind: 'delegation', id: component }
-  if (delegationId?.startsWith('delegation-')) return { kind: 'delegation', id: delegationId }
-  if (correlationId?.startsWith('delegation-')) return { kind: 'delegation', id: correlationId }
-  if ((executionKind === 'workflow_step' || executionId?.startsWith('workflow-step:')) && !isRootLikeExecutionId(executionId)) {
-    return { kind: 'workshop', id: executionId }
-  }
-  if (!isRootLikeExecutionId(parentExecutionId)) return { kind: 'workshop', id: parentExecutionId }
-  if (!isRootLikeExecutionId(backgroundAgentId)) return { kind: 'workshop', id: backgroundAgentId }
-  if (correlationId?.startsWith('workshop-')) return { kind: 'workshop', id: correlationId }
-  if (workshopStepId?.startsWith('workshop-')) return { kind: 'workshop', id: workshopStepId }
-
-  return { kind: 'session' }
 }
 
 function handleLiveStreamingEvent(
@@ -461,6 +397,7 @@ function isStaleQueuedAutoNotification(message: string): boolean {
 }
 
 export interface ChatContentRendererProps {
+  runtimeActivity?: ChatRuntimeActivity
   events: PollingEvent[]
   isStreaming: boolean
   isRestoring: boolean
@@ -555,12 +492,8 @@ interface ChatAreaProps {
   // final response. The shared AgentWorks surface keeps this internal by
   // default to avoid changing its transcript density.
   showConversationUsage?: boolean
-  // Product deployments with one fixed runtime can omit a redundant badge.
+  // Product deployments can omit the composer's provider status summaries.
   hideRuntimeStatus?: boolean
-  // Show AgentWorks' compact running spinner beside the microphone. When this
-  // is enabled the model badge stays a stable status dot, so the composer never
-  // renders two activity spinners for the same turn.
-  showCompactRuntimeLoading?: boolean
   // Work reuses AgentWorks' queued-message UI and exposes an explicit Steer
   // action even though the underlying provider is a coding CLI.
   showProductSteerAction?: boolean
@@ -589,7 +522,7 @@ let globalHasRestored = false
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showCompactRuntimeLoading = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, inputVariant = 'default', fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showProductTerminalControl = false, showNewChatAction = false , composerPlaceholder} = props
   // Product mode is a complete shared surface, not just a simplified composer.
   // Products may still supply a renderer for domain-specific presentation, but
   // every new product gets the durable transcript and normalized error UI by
@@ -810,6 +743,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Session-specific selector: only re-renders when the ACTIVE session's events change
   // (not when any other session gets events)
+  const runtimeActivity = useChatRuntimeActivity(targetTabId)
   const activeSessionId = activeTab?.sessionId
   const activeEventViewMode = normalizeEventViewMode(activeTab?.viewMode)
   const serverRuntimeDiagnosticsEnabled = useCapabilitiesStore(state => state.capabilities?.runtime_debug === true)
@@ -1799,10 +1733,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         }
       }
 
-      // An intermediate narration row (intermediateUpdateFromTranscriptChunk)
-      // reuses the llm_generation_end shape but is not the turn's completion.
-      const isIntermediateUpdate = innerData?.restored_intermediate_update === true
-      if (!isSubAgentEvent && !isIntermediateUpdate && (event.type === 'llm_generation_end' || event.type === 'unified_completion' || event.type === 'agent_end' || event.type === 'conversation_end' || event.type === 'conversation_error' || event.type === 'context_cancelled')) {
+      if (isForegroundTurnCompletion(event)) {
         hasCompletionEvent = true
       }
 
@@ -3671,6 +3602,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           />
         ) : EffectiveContentRenderer && selectedModeCategory !== 'workflow' ? (
           <EffectiveContentRenderer
+            runtimeActivity={runtimeActivity}
             events={transcriptEvents}
             isStreaming={activeTabBusy}
             isRestoring={multiAgentSurface === 'restoring'}
@@ -3745,6 +3677,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
+                    runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
@@ -3809,6 +3742,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                   )
                 : <TerminalEventTranscript
                     scrollKey={activeTab.tabId}
+                    runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
@@ -3844,7 +3778,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           tabId={targetTabId}
           surfaceVariant={inputVariant}
           hideRuntimeStatus={hideRuntimeStatus}
-          showCompactRuntimeLoading={showCompactRuntimeLoading}
           showProductSteerAction={showProductSteerAction}
           showProductTerminalControl={showProductTerminalControl}
           showNewChatAction={showNewChatAction}

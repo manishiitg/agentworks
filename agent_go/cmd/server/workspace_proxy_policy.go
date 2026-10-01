@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
 // workspaceProxyPolicy decides, per workspace path a proxied request names
@@ -16,12 +18,14 @@ import (
 //   - bulk routes (search, glob, folder copy) never run on the whole
 //     workspace for non-admins.
 type workspaceProxyPolicy struct {
-	ctx    context.Context
-	claims *UserClaims
-	own    string
-	admin  bool
-	write  bool
-	bulk   bool
+	ctx         context.Context
+	claims      *UserClaims
+	own         string
+	admin       bool
+	write       bool
+	bulk        bool
+	delete      bool
+	clearFolder bool
 }
 
 // Routes that POST a read (a SQL query, a table listing).
@@ -49,12 +53,14 @@ func newWorkspaceProxyPolicy(r *http.Request, callerID string) workspaceProxyPol
 		write = !workspaceProxyReadOnlyPostRoutes[rel]
 	}
 	return workspaceProxyPolicy{
-		ctx:    r.Context(),
-		claims: claims,
-		own:    sanitizeUserIDForPath(callerID),
-		admin:  userAccessForClaims(claims).Admin,
-		write:  write,
-		bulk:   workspaceProxyBulkRoutes[rel],
+		ctx:         r.Context(),
+		claims:      claims,
+		own:         sanitizeUserIDForPath(callerID),
+		admin:       userAccessForClaims(claims).Admin,
+		write:       write,
+		bulk:        workspaceProxyBulkRoutes[rel],
+		delete:      r.Method == http.MethodDelete,
+		clearFolder: r.Method == http.MethodDelete && strings.HasPrefix(rel, "api/folders/") && strings.HasSuffix(rel, "/files"),
 	}
 }
 
@@ -64,9 +70,8 @@ func (p workspaceProxyPolicy) deniesPath(key, raw string) bool {
 }
 
 // workspaceProxyServerOwnedFiles are written only by the server, never by a
-// browser -- not even an admin's: Code sharing (an admin could otherwise make
-// themselves co-owner with no audit entry) and the admin audit log (which
-// must not be editable by the admins it records).
+// browser -- not even an admin's: legacy Code sharing data and the admin
+// audit log, which must not be editable by the admins it records.
 var workspaceProxyServerOwnedFiles = []string{codeSharesFilePath(), "config/code-admin-audit"}
 
 // serverOwnedWrite reports whether a write to clean would change a
@@ -88,8 +93,26 @@ func serverOwnedWrite(clean string) bool {
 func (p workspaceProxyPolicy) denies(key, raw string) string {
 	write := p.write && !workspaceProxySourceKeys[key]
 	clean := strings.Trim(path.Clean("/"+strings.TrimSpace(raw)), "/")
+	deleteTarget := clean
+	if p.clearFolder {
+		deleteTarget = strings.TrimSuffix(deleteTarget, "/files")
+	}
+	if p.delete && write && codeFilesDeletionProtected(deleteTarget) {
+		return "the Code workspace root and project metadata cannot be deleted from Files; use Delete Code to remove the workspace"
+	}
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"
+	}
+	// Relay releases are server-owned snapshots. Their nested path has no
+	// manifest at Workflow/.relay_releases, so normal workflow path lookup
+	// cannot safely authorize access to them.
+	if clean == "Workflow/.relay_releases" || strings.HasPrefix(clean, "Workflow/.relay_releases/") {
+		if write {
+			return "Relay releases are written only by the server"
+		}
+		if !p.admin {
+			return "Relay releases are not available through the workspace proxy"
+		}
 	}
 	if p.admin {
 		return ""
@@ -136,6 +159,26 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 		}
 	}
 	return ""
+}
+
+// The Files proxy must not bypass project deletion, which owns conversation,
+// running-session and credential cleanup. This also covers deleting a parent
+// folder or clearing its contents through /folders/<path>/files.
+func codeFilesDeletionProtected(clean string) bool {
+	parts := strings.Split(clean, "/")
+	if len(parts) >= 3 && parts[0] == "_users" {
+		clean = strings.Join(parts[2:], "/")
+	}
+	root := codeproduct.ProjectsRoot
+	if clean == root || (clean != "" && strings.HasPrefix(root, clean+"/")) {
+		return true
+	}
+	rel, inside := strings.CutPrefix(clean, root+"/")
+	if !inside {
+		return false
+	}
+	parts = strings.Split(rel, "/")
+	return len(parts) == 1 || (len(parts) == 2 && (parts[1] == "product.json" || parts[1] == "workflow.json"))
 }
 
 // workspaceProxyURLTarget is the workspace path a document/folder/version

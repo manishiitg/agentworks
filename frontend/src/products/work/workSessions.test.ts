@@ -140,13 +140,11 @@ describe('createWorkSession', () => {
     expect(product.description).toBe('')
     // No template files: a Code never installs Crew templates.
     expect(updatePlannerFile.mock.calls.every(call => !String(call[0]).includes('/skills/'))).toBe(true)
-    // Only the Codes shared with the caller are listed, from Code's endpoint.
+    // Code never requests or displays a shared directory.
     loadProductProjects.mockResolvedValueOnce([])
-    listSharedProjects.mockResolvedValueOnce({ projects: [{ id: 'c1', title: 'Shared app', owner_id: 'alice', owner_username: 'alice', workspace_path: '_users/alice/Chats/Code/projects/app-c1', role: 'editor' }] })
     const listed = await loadWorkSessionsIncludingShared(CODE_PRODUCT)
-    expect(listSharedProjects).toHaveBeenCalledWith('code')
-    expect(listed).toHaveLength(1)
-    expect(listed[0]).toMatchObject({ product: 'code', id: 'c1', shared: { ownerId: 'alice', role: 'editor' } })
+    expect(listSharedProjects).not.toHaveBeenCalled()
+    expect(listed).toEqual([])
   })
 
   it('creates a Finance Analyst with its local skill and no active integrations or automations', async () => {
@@ -471,6 +469,15 @@ describe('createWorkSession', () => {
 })
 
 describe('deleteWorkSession', () => {
+  it('allows cached project cleanup when Files already removed the project', async () => {
+    deleteAgentProfileProject.mockRejectedValueOnce({ response: { status: 404 } })
+    await expect(deleteWorkSession({ product: 'code', id: 'gone-code' } as WorkSession)).resolves.toBeUndefined()
+  })
+  it.each([403, 409, 500])('keeps deletion errors visible for status %s', async status => {
+    const error = { response: { status } }
+    deleteAgentProfileProject.mockRejectedValueOnce(error)
+    await expect(deleteWorkSession({ product: 'code', id: 'existing-code' } as WorkSession)).rejects.toBe(error)
+  })
   it('deletes the authenticated durable Crew project through its profile', async () => {
     const session = parseSessionManifest(JSON.stringify({
       schema_version: 1,

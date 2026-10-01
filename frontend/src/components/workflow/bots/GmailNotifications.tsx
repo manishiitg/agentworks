@@ -225,7 +225,7 @@ function SignInLinkBox({ url }: { url: string }) {
 export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk, platformConnect }: {
   bots: GmailNotificationsBots
   workspacePath: string | null
-  scopeNoun?: 'workflow' | 'project'
+  scopeNoun?: 'workflow' | 'project' | 'relay'
   /** When the server has a Google app, adding an account is this one sign-in form: no client
    *  file to upload, so the upload form and its setup guide are not shown at all. */
   platformConnect?: ReactNode

@@ -11,6 +11,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -120,6 +121,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	}
 	switch workflowPhaseID {
 	case workflowtypes.WorkflowStatusWorkflowBuilder:
+		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
+			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
+				return fmt.Errorf("register Relay release tools: %w", err)
+			}
+		}
 		if policy.allows("plan_authoring") {
 			if err := api.registerPlaybookSearchTool(definitionAgent, phaseWorkspacePath); err != nil {
 				return fmt.Errorf("register search_playbooks: %w", err)
@@ -457,11 +463,23 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		// silently lost its procedures along with its tools and improvised a
 		// plausible-looking pass instead. Tools may legitimately be unavailable;
 		// the procedure describing how to behave must not vanish with them.
-		workshopMode := phaseTemplateVars["WorkshopMode"]
-		if err := guidance.AttachConfiguredReferenceSurface(workshopMode, mcpManagement, agentworksproduct.ChatSkills(policy.Mode), func(skill *llmtypes.Skill) error {
-			return definitionAgent.AttachSkill(skill)
-		}); err != nil {
-			return fmt.Errorf("attach reference surface in %s (mode=%s): %w", workflowPhaseID, workshopMode, err)
+		if phaseTemplateVars["WorkflowKind"] == "relay" {
+			skills, err := relayproduct.ChatSkills("builder")
+			if err != nil {
+				return fmt.Errorf("load Relay Builder skills: %w", err)
+			}
+			for _, skill := range skills {
+				if err := definitionAgent.AttachSkill(skill); err != nil {
+					return fmt.Errorf("attach Relay Builder skill %s: %w", skill.Name, err)
+				}
+			}
+		} else {
+			workshopMode := phaseTemplateVars["WorkshopMode"]
+			if err := guidance.AttachConfiguredReferenceSurface(workshopMode, mcpManagement, agentworksproduct.ChatSkills(policy.Mode), func(skill *llmtypes.Skill) error {
+				return definitionAgent.AttachSkill(skill)
+			}); err != nil {
+				return fmt.Errorf("attach reference surface in %s (mode=%s): %w", workflowPhaseID, workshopMode, err)
+			}
 		}
 	default:
 		// planning: plan modification tools

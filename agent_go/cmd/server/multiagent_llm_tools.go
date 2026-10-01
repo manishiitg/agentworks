@@ -684,57 +684,8 @@ func buildLLMCapabilities(ctx context.Context, capability string, includeModels 
 	return all
 }
 
-func buildLLMCapabilityPromptSection(ctx context.Context) string {
-	capabilities := buildLLMCapabilities(ctx, "all", false)
-	orderedCapabilities := []string{
-		"chat",
-		"search_web",
-	}
-
-	var lines []string
-	for _, capability := range orderedCapabilities {
-		entry, _ := capabilities[capability].(map[string]interface{})
-		if entry == nil {
-			continue
-		}
-		providers, _ := entry["providers"].([]llmCapabilityProvider)
-		if len(providers) == 0 {
-			continue
-		}
-
-		var providerSummaries []string
-		for _, provider := range providers {
-			if strings.TrimSpace(provider.Provider) == "" {
-				continue
-			}
-			summary := provider.Provider
-			if provider.DefaultModel != "" {
-				summary += " (" + provider.DefaultModel + ")"
-			}
-			if provider.Usable {
-				summary += " usable"
-			} else if provider.AuthConfigured {
-				summary += " auth configured"
-			} else {
-				summary += " auth missing"
-			}
-			providerSummaries = append(providerSummaries, summary)
-		}
-		if len(providerSummaries) == 0 {
-			continue
-		}
-		lines = append(lines, "- `"+capability+"`: "+strings.Join(providerSummaries, ", "))
-	}
-
-	if len(lines) == 0 {
-		return ""
-	}
-
-	return `## Workspace LLM Capability Snapshot
-
-Published LLM entries are chat/text routing entries. Use ` + "`list_llm_capabilities`" + ` for authoritative chat and web-search provider, model, auth, and runtime status. The only active shared provider tools are ` + "`generate_text_llm`" + ` and ` + "`search_web_llm`" + `.
-
-` + strings.Join(lines, "\n")
+func buildLLMCapabilityPromptSection(_ context.Context) string {
+	return "## Model capabilities\n\nUse list_llm_capabilities for current providers, models, authentication and runtime status. Read the relevant attached integration/configuration skill before changes; never read or edit raw provider config files.\n"
 }
 
 // registerMultiAgentLLMTools registers the shared AgentWorks model-library

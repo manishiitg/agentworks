@@ -36,7 +36,7 @@ profile:
     - models
     - id: bots
       # 1:1 only. Slack: the Code's own dedicated app, DMs only (people with
-      # editor access or more, each in their own chat); never the shared bot
+      # owner access, in their own chat); never the shared bot
       # or a channel. WhatsApp: the owner only, like every WhatsApp pairing.
       # gmail: own -- Google accounts (gog: Gmail, Drive, Calendar, Docs, Sheets,
       # Slides) connected in this Code only, private to it and usable only in its

@@ -1390,6 +1390,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			}
 		}
 		isScriptedMode = isScriptedStep(step, agentCfgs)
+		if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
+			isScriptedMode = true
+		}
 		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] step=%s type=%s scripted=%v",
 			step.GetID(), step.StepType(), isScriptedMode))
 	}
@@ -1771,11 +1774,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				templateVars["ScriptedMetadataPath"] = metaRelPath
 			}
 
-			if execCtx != nil && execCtx.SavedScriptOnly {
-				if fastResult.RanScript && fastResult.Success {
+			strictScript := execCtx != nil && execCtx.SavedScriptOnly
+			if regular, ok := step.(*RegularPlanStep); ok && regular.ScriptOnly {
+				strictScript = true
+			}
+			if strictScript {
+				if scriptedDecision.FastPathDone {
 					hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] Saved-script-only run succeeded for step %d", stepIndex+1))
 				} else if fastResult.RanScript {
-					return "", updatedContextFiles, fmt.Errorf("saved main.py failed for step %q:\n%s", step.GetID(), fastResult.Error)
+					return "", updatedContextFiles, fmt.Errorf("saved main.py failed validation or execution for step %q: %s", step.GetID(), fastResult.Error)
 				} else {
 					return "", updatedContextFiles, fmt.Errorf("no saved main.py found for scripted step %q in %s/main.py", step.GetID(), hcpo.scriptedSourceDir(step.GetID()))
 				}

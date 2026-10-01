@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"time"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -18,6 +19,27 @@ func directWebhookPreflight(manifest *WorkflowManifest) error {
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil
+}
+
+// relayScheduledInput maps a timed trigger's JSON payload onto the same INPUT
+// variable contract as an API call. The schedule then uses the direct plan
+// executor, with no Builder turn or schedule-local message sequence.
+func relayScheduledInput(sctx *ScheduleContext, runID string) (*WorkflowWebhookDelivery, error) {
+	if sctx == nil || len(sctx.Schedule.GroupNames) != 1 {
+		return nil, fmt.Errorf("a Relay schedule requires exactly one variable group")
+	}
+	payload := sctx.Schedule.TriggerPayload
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+	var input map[string]interface{}
+	if err := json.Unmarshal(payload, &input); err != nil || input == nil {
+		return nil, fmt.Errorf("Relay schedule trigger_payload must be a JSON object")
+	}
+	return &WorkflowWebhookDelivery{
+		RunID: runID, DeliveryID: runID, Event: "relay.schedule", ReceivedAt: time.Now().UTC(),
+		Payload: append(json.RawMessage(nil), payload...), Variables: map[string]string{"INPUT": string(payload)}, Group: sctx.Schedule.GroupNames[0],
+	}, nil
 }
 
 func configureDirectWebhookRequest(req map[string]interface{}, sctx *ScheduleContext, runFolder string) (*stepworkflow.ExecutionOptions, error) {
@@ -64,7 +86,12 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	if err := directWebhookPreflight(manifest); err != nil {
 		return "", "", err
 	}
-	runFolder, err := allocateWebhookRunFolder(sctx.WorkspacePath, runID)
+	if manifest.Kind == "relay" {
+		if err := validateRelayOutputStep(ctx, sctx.WorkspacePath, manifest.RelayOutputStepID); err != nil {
+			return "", "", err
+		}
+	}
+	runFolder, err := webhookExecutionRunFolder(sctx, runID)
 	if err != nil {
 		return "", "", err
 	}
@@ -94,4 +121,18 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
 	sctx.ProducedRunEvidence = err == nil || s.scheduledWorkflowExecutionProducedEvidence(sessionID, startedAt)
 	return sessionID, runFolder, err
+}
+
+// Resume must reuse the recorded folder. If its binding disappeared, fail
+// instead of allocating an empty folder and replaying completed side effects.
+func webhookExecutionRunFolder(sctx *ScheduleContext, runID string) (string, error) {
+	if sctx.CapacityResumeRunID == "" {
+		return allocateWebhookRunFolder(sctx.WorkspacePath, runID)
+	}
+	root, err := openWebhookRunRoot(sctx.WorkspacePath, schedulerstate.Run{RunID: runID, RunFolder: sctx.CapacityResumeRunFolder})
+	if err != nil {
+		return "", fmt.Errorf("capacity resume run folder unavailable: %w", err)
+	}
+	root.Close()
+	return sctx.CapacityResumeRunFolder, nil
 }

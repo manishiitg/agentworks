@@ -16,6 +16,9 @@ import (
 )
 
 type Isolator struct {
+	// Slot, when set (Linux only), runs the command as that slot account through sudo and
+	// slotctl instead of as the service account (see the slots package).
+	Slot         string
 	ReadPaths    []string
 	WritePaths   []string
 	BlockedPaths []string // Paths to explicitly deny READ AND WRITE (deny-list, takes precedence)

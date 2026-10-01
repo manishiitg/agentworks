@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/spf13/viper"
 )
 
@@ -140,6 +141,28 @@ func ExecuteShellCommand(c *gin.Context) {
 	var fullCommand string
 	var cleanup func()
 
+	// Where slots are on, every command runs as the caller's own Linux account and never without
+	// a folder guard: an unguarded command would run as the service account from the workspace root.
+	userSlot, slotsOn, slotErr := slots.For(resolvedUserID)
+	if slotsOn {
+		if slotErr != nil {
+			c.JSON(http.StatusForbidden, models.APIResponse[any]{
+				Success: false,
+				Message: "No account slot for this user",
+				Error:   slotErr.Error(),
+			})
+			return
+		}
+		if req.FolderGuard == nil || !req.FolderGuard.Enabled {
+			c.JSON(http.StatusForbidden, models.APIResponse[any]{
+				Success: false,
+				Message: "Commands without a folder guard are not available on this server",
+				Error:   "a folder guard is required",
+			})
+			return
+		}
+	}
+
 	// Check if folder guard is enabled
 	if req.FolderGuard != nil && req.FolderGuard.Enabled {
 		// Pre-create write path directories in the real filesystem before isolation.
@@ -164,6 +187,7 @@ func ExecuteShellCommand(c *gin.Context) {
 
 		// Use isolated execution with filesystem restrictions
 		isolator := &security.Isolator{
+			Slot:              userSlot,
 			ReadPaths:         req.FolderGuard.ReadPaths,
 			WritePaths:        req.FolderGuard.WritePaths,
 			BlockedPaths:      req.FolderGuard.BlockedPaths,

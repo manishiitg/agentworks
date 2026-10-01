@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,9 @@ func init() {
 }
 
 func runServer(cmd *cobra.Command, args []string) {
+	// With per-user accounts, what this service creates must be writable by the user's slot group
+	// (the slot's own files are group-writable for the service in return) and closed to everyone else.
+	slots.ApplyServiceUmask()
 	// The workspace service never reads AUTH_SECRET; drop it from the
 	// environment first so agent shells and other children cannot inherit it.
 	os.Unsetenv("AUTH_SECRET")

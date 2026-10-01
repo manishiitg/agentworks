@@ -16,17 +16,18 @@ import (
 type State string
 
 const (
-	StateStarting         State = "starting"
-	StateWorkflowRunning  State = "workflow_running"
-	StateWorkflowFinished State = "workflow_finished"
-	StatePulseGate        State = "pulse_gate"
-	StatePulseModules     State = "pulse_modules"
-	StatePulseFinalizing  State = "pulse_finalizing"
-	StateCompleted        State = "completed"
-	StatePartial          State = "partial"
-	StateFailed           State = "failed"
-	StateStopped          State = "stopped"
-	StateInterrupted      State = "interrupted"
+	StateStarting           State = "starting"
+	StateWaitingForCapacity State = "waiting_for_capacity"
+	StateWorkflowRunning    State = "workflow_running"
+	StateWorkflowFinished   State = "workflow_finished"
+	StatePulseGate          State = "pulse_gate"
+	StatePulseModules       State = "pulse_modules"
+	StatePulseFinalizing    State = "pulse_finalizing"
+	StateCompleted          State = "completed"
+	StatePartial            State = "partial"
+	StateFailed             State = "failed"
+	StateStopped            State = "stopped"
+	StateInterrupted        State = "interrupted"
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 )
 
 var allowedTransitions = map[State]map[State]bool{
+	StateWaitingForCapacity: {StateStarting: true, StateFailed: true, StateStopped: true, StateInterrupted: true},
 	StateStarting: {
 		StateWorkflowRunning: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
@@ -44,7 +46,7 @@ var allowedTransitions = map[State]map[State]bool{
 		StateWorkflowFinished: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
 	StateWorkflowFinished: {
-		StatePulseGate: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
+		StatePulseGate: true, StateWaitingForCapacity: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
 	StatePulseGate: {
 		StatePulseModules: true, StatePulseFinalizing: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
@@ -812,6 +814,67 @@ func (s *Store) RunForScheduleOccurrence(ctx context.Context, scopeType, scopeID
 		return Run{}, err
 	}
 	return s.GetRun(ctx, runID)
+}
+
+// WaitingCapacityRuns discovers suspended invocations independently of cron jobs.
+func (s *Store) WaitingCapacityRuns(ctx context.Context) ([]Run, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT run_id FROM schedule_runs WHERE state = ?", StateWaitingForCapacity)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var runs []Run
+	for _, id := range ids {
+		run, err := s.GetRun(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if run.State == StateWaitingForCapacity {
+			runs = append(runs, run)
+		}
+	}
+	return runs, nil
+}
+
+// ResumeCapacityRun atomically claims the existing row. Unlike idempotent
+// Transition, only one tick may change waiting -> starting and launch work.
+func (s *Store) ResumeCapacityRun(ctx context.Context, runID string, at time.Time) error {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE schedule_runs SET state = ?, updated_at = ?, active_session_id = '', error_message = '' WHERE run_id = ? AND state = ?`, StateStarting, formatTime(at), runID, StateWaitingForCapacity)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("%w: capacity resume already claimed", ErrRunAlreadyActive)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_run_events (run_id, from_state, to_state, reason, created_at) VALUES (?, ?, ?, ?, ?)`, runID, StateWaitingForCapacity, StateStarting, "capacity window reopened", formatTime(at)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetRun(ctx context.Context, runID string) (Run, error) {

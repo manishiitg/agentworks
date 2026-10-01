@@ -22,6 +22,8 @@ export type AutomationHubSection = 'chats' | 'schedules' | 'triggers' | 'functio
 
 type AutomationHubPanelProps = {
   entityType: 'workflow' | 'product'
+  relayMode?: boolean
+  relayWorkflowID?: string
   workspacePath: string
   workflowScope?: WorkflowScope
   productTriggerScope?: ProductTriggerScope
@@ -58,6 +60,8 @@ const WORKFLOW_SECTION_MESSAGES: Record<AutomationHubSection, string> = {
 
 export function AutomationHubPanel({
   entityType,
+  relayMode = false,
+  relayWorkflowID,
   workspacePath,
   workflowScope,
   productTriggerScope,
@@ -83,14 +87,14 @@ export function AutomationHubPanel({
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
     ...(chatContent ? ['chats' as const] : []),
-    'schedules',
+    'schedules' as const,
     ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
-    ...((entityType === 'product' && productTriggerScope) || entityType === 'workflow' ? ['functions' as const] : []),
-    ...(botContent ? ['bots' as const] : []),
-  ]), [botContent, chatContent, entityType, productTriggerScope])
-  const fallbackSection = availableSections.has(initialSection) ? initialSection : 'schedules'
+    ...(!relayMode && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
+    ...(!relayMode && botContent ? ['bots' as const] : []),
+  ]), [botContent, chatContent, entityType, productTriggerScope, relayMode])
+  const fallbackSection = availableSections.has(initialSection) ? initialSection : relayMode ? 'triggers' : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
   const selectSection = useCallback((next: AutomationHubSection) => {
     setSection(next)
@@ -117,7 +121,9 @@ export function AutomationHubPanel({
   const refreshAction = section === 'schedules'
     ? { label: 'Refresh schedules', run: () => setSchedulesRefreshToken(token => token + 1), spinning: schedulesStatus?.isLoading }
     : section === 'triggers'
-      ? { label: 'Refresh webhooks', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
+      ? relayMode
+        ? { label: 'Refresh triggers', run: () => setFunctionsRefreshToken(token => token + 1), spinning: false }
+        : { label: 'Refresh webhooks', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
       : section === 'functions'
         ? { label: 'Refresh functions', run: () => setFunctionsRefreshToken(token => token + 1), spinning: false }
       : section === 'chats'
@@ -138,13 +144,15 @@ export function AutomationHubPanel({
     >
       <WorkspaceViewHeader
         icon={Zap}
-        title="Automation"
+        title={relayMode ? 'Relay' : 'Automation'}
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle="Chat history and the channels that can start work."
+        subtitle={relayMode ? 'Schedules, API triggers, and chat history for this Relay.' : 'Chat history and the channels that can start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />
-          : section === 'triggers' && triggersCounts ? (
+          : section === 'triggers' && relayMode && functionsCounts ? (
+            <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions</span>
+          ) : section === 'triggers' && triggersCounts ? (
             <span className="text-xs text-muted-foreground">{triggersCounts.active} active · {triggersCounts.paused} paused</span>
           ) : section === 'functions' && functionsCounts ? (
             <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions · {functionsCounts.running} running</span>
@@ -153,11 +161,12 @@ export function AutomationHubPanel({
         tabs={{
           value: section,
           onChange: (value: string) => selectSection(value as AutomationHubSection),
-          options: SECTION_DEFS.filter(item => availableSections.has(item.id)).map(({ id, label, icon }) => ({ value: id, label, icon })),
+          options: SECTION_DEFS.filter(item => availableSections.has(item.id)).map(({ id, label, icon }) => ({ value: id, label: relayMode && id === 'triggers' ? 'Triggers' : label, icon })),
           ariaLabel: 'Automation center',
         }}
       />
 
+      {relayMode && section === 'schedules' && <p role="note" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Relay schedules run the current draft. They do not use the active published API version; draft edits affect the next scheduled run.</p>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>
         {section === 'chats' && chatContent && (
@@ -180,12 +189,20 @@ export function AutomationHubPanel({
           onStatus={setSchedulesStatus}
           onClose={() => {}}
         />}
-        {section === 'triggers' && entityType === 'workflow' && <WorkflowAPITriggersView
+        {section === 'triggers' && entityType === 'workflow' && !relayMode && <WorkflowAPITriggersView
           workspacePath={workspacePath}
           deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="workflow" />}
           hideHeader
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
+        />}
+        {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
+          workspacePath={workspacePath}
+          relayMode
+          relayWorkflowID={relayWorkflowID}
+          refreshToken={functionsRefreshToken}
+          onCounts={setFunctionsCounts}
+          onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))}
         />}
         {section === 'triggers' && entityType === 'product' && productTriggerScope && <ProductAPITriggersView
           scope={productTriggerScope}

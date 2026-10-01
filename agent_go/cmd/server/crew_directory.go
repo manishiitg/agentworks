@@ -55,9 +55,6 @@ type sharedProjectSummary struct {
 	WorkflowContextPaths []string                   `json:"workflow_context_paths,omitempty"`
 	Triggers             []sharedProjectTrigger     `json:"triggers,omitempty"`
 	Schedules            []productschedule.Schedule `json:"schedules,omitempty"`
-	// Role is the caller's role on a shared Code (viewer, editor, co_owner).
-	// Crew rows leave it empty: every Crew reader has the same access.
-	Role string `json:"role,omitempty"`
 }
 
 type sharedProjectLLM struct {
@@ -154,27 +151,16 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusNotFound, "shared projects not found")
 		return
 	}
-	// Crews are readable server-wide. A Code lists only the workspaces
-	// shared with the caller (config/code-shares.json), with their role.
+	// Code has no shared directory, even if legacy share records exist.
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		rows := []sharedProjectSummary{}
-		for _, entry := range codeProjectsSharedWith(r.Context(), claims.UserID) {
-			project, err := resolveProductProjectBindingWithStore(r.Context(), entry.OwnerID, profile, entry.ProjectID, defaultProductProjectStore())
-			if err != nil {
-				continue
-			}
-			manifest, err := readCrewProjectManifests(r.Context(), profile.ID, project.WorkspacePath)
-			if err != nil {
-				continue
-			}
-			row := summarizeSharedProject(r.Context(), claims, entry.OwnerID, project.WorkspacePath, manifest)
-			row.Role = string(entry.Grants[codeGranteeID(claims.UserID)])
-			rows = append(rows, row)
-		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
 	}
 	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
+		return
+	}
+	if !projectSharingEnabled() {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
 	}

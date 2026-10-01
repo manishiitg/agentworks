@@ -1,0 +1,100 @@
+schema_version: 2
+dependencies: {}
+
+# Relay authoring reuses the workflow Builder runtime, graph canvas, triggers,
+# and executor. This manifest owns built-in chat prompts, skills, and tool
+# surfaces. An individual Relay's authored step prompts and selected runtime
+# integrations remain in its workflow.json and planning/plan.json.
+prompt:
+  file: prompts/builder.md
+  variables: {}
+
+chat:
+  builder:
+    prompt:
+      file: prompts/builder.md
+    skills: [relay-builder]
+    tools:
+      - execute_shell_command
+      - diff_patch_workspace_file
+      - get_workflow_config
+      - update_workflow_config
+      - update_variable
+      - list_secrets
+      - set_workflow_secret
+      - delete_workflow_secret
+      - create_plan
+      - maintain_plan
+      - add_step
+      - update_step
+      - update_step_config
+      - delete_plan_steps
+      - change_step_type
+      - manage_step_route
+      - validate_plan_change
+      - execute_step
+      - query_step
+      - send_step_message
+      - stop_step
+      - stop_all_executions
+      - run_full_workflow
+      - list_executions
+      - get_relay_releases
+      - publish_relay
+      - get_step_prompts
+      - get_llm_config
+      - list_schedules
+      - create_schedule
+      - create_calendar_schedule
+      - update_schedule
+      - delete_schedule
+      - trigger_schedule
+      - manage_workflow_webhook
+      - list_mcp_servers
+      - search_mcp_catalog
+      - add_mcp_server
+      - install_mcp_server
+      - edit_mcp_server
+      - remove_mcp_server
+      - trigger_mcp_discovery
+      - list_skills
+      - search_skills
+      - install_skill
+      - import_skill
+      - uninstall_skill
+      - list_gmail_connections
+      - update_gmail_connection_grants
+      - google_workspace_cli
+      - slack
+      - send_slack_message
+      - notify_user
+      - get_notification_history
+      - get_cost_summary
+      - get_schedule_runs
+      - get_ui_state
+      - list_ui_capabilities
+      - perform_ui_action
+      - get_file_link
+      - agent_browser
+profile:
+  id: relays
+  name: Relays
+  version: 1
+  scope: global
+  built_in: true
+
+branding:
+  icon: ""
+  favicon: ""
+
+ui:
+  surface: "workflow"
+  files_panel: false
+  workflow_panel: true
+  secrets: true
+  streaming: auto
+
+workflows:
+  enabled: []
+  selected_skills: []
+  browser_mode: none

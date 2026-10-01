@@ -14,9 +14,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-// resolveFunctionTarget keeps Codes out of the public Crew resolver. Only a
-// Code whose caller can edit it can find another editable Code under that
-// same owner's tree; all other callers still see only Crews and workflows.
+// Code targets are resolved privately, under the actual actor's own tree.
+// The public Crew/workflow resolver and catalog never enumerate Codes.
 func resolveFunctionTarget(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, raw string) (triggerTarget, error) {
 	query := strings.TrimPrefix(strings.TrimSpace(raw), "#")
 	explicitCode := strings.HasPrefix(strings.ToLower(query), "code:") || isCodeProjectPath(query)
@@ -47,14 +46,11 @@ func resolveOwnedCodePeer(ctx context.Context, claims *UserClaims, caller trigge
 	denied := func() (triggerTarget, error) {
 		return triggerTarget{}, fmt.Errorf("private Code target is unavailable or access denied")
 	}
-	if claims == nil || !strings.EqualFold(caller.Stamp.ProfileID, codeproduct.ProfileID) {
+	if claims == nil {
 		return denied()
 	}
-	ownerID, ok := crewProjectOwnerID(caller.Path)
-	if !ok && isCodeProjectPath(caller.Path) {
-		ownerID, ok = sanitizeUserIDForPath(claims.UserID), true
-	}
-	if !ok || strings.TrimSpace(query) == "" || !codeRoleFor(ctx, claims.UserID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
+	ownerID := sanitizeUserIDForPath(claims.UserID)
+	if strings.TrimSpace(query) == "" || authorizeOwnedCodeCaller(ctx, claims.UserID, ownerID, caller) != nil {
 		return denied()
 	}
 	root := agentProfileRuntimeWorkspace(ownerID, codeproduct.ProjectsRoot)
@@ -105,8 +101,7 @@ func resolveOwnedCodePeer(ctx context.Context, claims *UserClaims, caller trigge
 	return *found, nil
 }
 
-// authorizeCodePeerIDs rechecks both grants at each phase of an internal
-// call. A revoked editor must not keep a binding, poll a result or steer a run.
+// authorizeCodePeerIDs checks that the actor owns both private Codes.
 func authorizeCodePeerIDs(ctx context.Context, actorID, ownerID, sourceID, targetID string) error {
 	denied := fmt.Errorf("private Code target is unavailable or access denied")
 	if actorID == "" || ownerID == "" || sourceID == "" || targetID == "" || sourceID == targetID {
@@ -142,28 +137,72 @@ func (s *ProductScheduleService) codePeerProject(ctx context.Context, ownerID, t
 	return profile, binding, manifest, nil
 }
 
-// connectCodePeerTarget writes only a hidden internal caller binding. Code's
-// public schedule/webhook APIs remain disabled; both Codes must stay editable.
+// authorizeOwnedCodeCaller verifies the actual actor and the source manifest,
+// never substituting a shared Crew/workflow's owner for its calling person.
+// Path and ID must both match. Workflow access requires explicit ownership;
+// legacy access, editors, readers and a general admin bypass are insufficient.
+func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, caller triggerLinkCaller) error {
+	denied := fmt.Errorf("private Code target is unavailable or access denied")
+	if !codeRoleFor(ctx, actorID, ownerID, "").atLeast(codeRoleOwner) || strings.TrimSpace(caller.Stamp.ID) == "" {
+		return denied
+	}
+	claims := &UserClaims{UserID: actorID}
+	ctx = context.WithValue(ctx, UserContextKey, claims)
+	if !userAllowedProduct(claims, codeproduct.ProfileID) {
+		return denied
+	}
+	switch caller.Stamp.Type {
+	case triggerCallerCrew:
+		profileID := caller.Stamp.ProfileID
+		if profileID != crewProfileID && profileID != codeproduct.ProfileID {
+			return denied
+		}
+		if !userAllowedProduct(claims, profileID) {
+			return denied
+		}
+		root := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path))
+		parts := strings.Split(root, "/")
+		productFolder := "Work"
+		if profileID == codeproduct.ProfileID {
+			productFolder = "Code"
+		}
+		if path.Clean(root) != root || len(parts) != 6 || parts[0] != "_users" ||
+			parts[1] != sanitizeUserIDForPath(ownerID) || parts[2] != "Chats" || parts[3] != productFolder || parts[4] != "projects" || parts[5] == "" {
+			return denied
+		}
+		raw, present, err := defaultProductProjectStore().read(ctx, root+"/product.json")
+		var manifest productProjectManifest
+		if err != nil || !present || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != profileID || manifest.ID != caller.Stamp.ID {
+			return denied
+		}
+	case triggerCallerWorkflow:
+		if caller.Stamp.ProfileID != "" || !userAllowedProduct(claims, "agentworks") {
+			return denied
+		}
+		if _, err := authorizeWorkflowContextPaths(ctx, []string{caller.Path}); err != nil {
+			return denied
+		}
+		manifest, present, err := ReadWorkflowManifest(ctx, caller.Path)
+		if err != nil || !present || manifest == nil || manifest.ID != caller.Stamp.ID ||
+			!containsID(manifest.effectiveOwners(), actorID) || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
+			return denied
+		}
+	default:
+		return denied
+	}
+	return nil
+}
+
+// connectCodePeerTarget writes a hidden internal binding for an owned source.
+// Code's public trigger API cannot create these bindings.
 func (api *StreamingAPI) connectCodePeerTarget(ctx context.Context, actorID string, caller triggerLinkCaller, target triggerTarget) (string, bool, error) {
 	ownerID := target.CrewOwner
-	if caller.Stamp.Type != triggerCallerCrew || caller.Stamp.ProfileID != codeproduct.ProfileID ||
-		ownerID == "" || target.CrewProfile != codeproduct.ProfileID {
+	if target.CrewProfile != codeproduct.ProfileID ||
+		(caller.Stamp.ProfileID == codeproduct.ProfileID && caller.Stamp.ID == target.CrewID) ||
+		authorizeOwnedCodeCaller(ctx, actorID, ownerID, caller) != nil {
 		return "", false, fmt.Errorf("private Code target is unavailable or access denied")
 	}
-	if sourceOwner, ok := crewProjectOwnerID(caller.Path); ok && sourceOwner != ownerID {
-		return "", false, fmt.Errorf("private Code target is unavailable or access denied")
-	} else if !ok && sanitizeUserIDForPath(actorID) != ownerID {
-		return "", false, fmt.Errorf("private Code target is unavailable or access denied")
-	}
-	if err := authorizeCodePeerIDs(ctx, actorID, ownerID, caller.Stamp.ID, target.CrewID); err != nil {
-		return "", false, err
-	}
-	// Verify the source really exists under the same owner, not just a stale
-	// grant record or a forged caller stamp.
-	_, sourceBinding, _, err := api.productSchedules.codePeerProject(ctx, ownerID, caller.Stamp.ID)
-	if err != nil || canonicalCrewWorkspaceRoot(sourceBinding.WorkspacePath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path)) {
-		return "", false, fmt.Errorf("private Code target is unavailable or access denied")
-	}
+	sourcePath := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path))
 	productWebhookConfigMu.Lock()
 	defer productWebhookConfigMu.Unlock()
 	_, binding, manifest, err := api.productSchedules.codePeerProject(ctx, ownerID, target.CrewID)
@@ -171,13 +210,13 @@ func (api *StreamingAPI) connectCodePeerTarget(ctx context.Context, actorID stri
 		return "", false, err
 	}
 	for _, trigger := range manifest.Triggers {
-		if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) {
+		if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) && (canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, trigger.PrivateCallerPath)) == sourcePath || (trigger.PrivateCallerPath == "" && caller.Stamp.ProfileID == codeproduct.ProfileID)) {
 			return trigger.ID, false, nil
 		}
 	}
 	stamp := caller.Stamp
-	trigger := productWebhookTrigger{ID: uuid.NewString(), Name: "Called by private Code workspace", Enabled: true,
-		Message: crewTargetMessage(caller), Kind: triggerKindInternal, Caller: &stamp, RunDestination: runDestinationIsolated}
+	trigger := productWebhookTrigger{ID: uuid.NewString(), Name: "Called by " + caller.Label, Enabled: true,
+		Message: crewTargetMessage(caller), Kind: triggerKindInternal, Caller: &stamp, PrivateCallerPath: sourcePath, RunDestination: runDestinationIsolated}
 	if err := validateProductWebhook(trigger); err != nil {
 		return "", false, err
 	}
@@ -188,7 +227,7 @@ func (api *StreamingAPI) connectCodePeerTarget(ctx context.Context, actorID stri
 	return trigger.ID, true, nil
 }
 
-// codePeerRunBinding gives each editor their own isolated target chat.
+// codePeerRunBinding runs a function in the owner's isolated target chat.
 func codePeerRunBinding(ctx context.Context, actorID string, profile agentprofiles.Profile, targetID, targetPath, triggerID, title string) (productConversationBinding, error) {
 	project, err := resolveCrewProjectBinding(ctx, actorID, profile, targetID, targetPath)
 	if err != nil || !workspacePathsMatchForUser(actorID, project.Binding.WorkspacePath, targetPath) ||
@@ -196,6 +235,23 @@ func codePeerRunBinding(ctx context.Context, actorID string, profile agentprofil
 		return productConversationBinding{}, fmt.Errorf("private Code target is unavailable or access denied")
 	}
 	return isolateProjectAutomationBinding(project.Binding, targetID, "trigger", triggerID, title)
+}
+
+// This is the queued execution boundary. Re-read the binding and source
+// ownership instead of trusting authorization captured at submission.
+func (s *ProductScheduleService) codeFunctionRunBinding(ctx context.Context, job productScheduleJob, title string) (productConversationBinding, error) {
+	ownerID, ok := crewProjectOwnerID(job.WorkspacePath)
+	if !ok || job.CodeCaller == nil {
+		return productConversationBinding{}, ErrInternalTriggerNotFound
+	}
+	_, target, _, trigger, err := s.findInternalProductTrigger(ctx, job.UserID, codeproduct.ProfileID, job.ProjectID, job.Schedule.ID, codePeerTriggerAccess{ownerID, *job.CodeCaller})
+	if err != nil {
+		return productConversationBinding{}, err
+	}
+	if canonicalCrewWorkspaceRoot(target.WorkspacePath) != canonicalCrewWorkspaceRoot(job.WorkspacePath) || trigger.PrivateCallerPath != job.CodeCallerPath {
+		return productConversationBinding{}, ErrInternalTriggerNotFound
+	}
+	return codePeerRunBinding(ctx, job.UserID, job.Profile, job.ProjectID, job.WorkspacePath, job.Schedule.ID, title)
 }
 
 func codePeerPrivateRunsWorkspace(actorID, targetPath, targetID string) string {
@@ -206,5 +262,5 @@ func codePeerPrivateRunsWorkspace(actorID, targetPath, targetID string) string {
 
 func isPrivateCodePeerTrigger(profileID string, trigger productWebhookTrigger) bool {
 	return profileID == codeproduct.ProfileID && trigger.IsInternal() && trigger.Caller != nil &&
-		trigger.Caller.Type == triggerCallerCrew && trigger.Caller.ProfileID == codeproduct.ProfileID
+		(trigger.Caller.Type == triggerCallerWorkflow || (trigger.Caller.Type == triggerCallerCrew && (trigger.Caller.ProfileID == codeproduct.ProfileID || trigger.Caller.ProfileID == crewProfileID)))
 }

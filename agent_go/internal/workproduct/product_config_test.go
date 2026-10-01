@@ -231,6 +231,7 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 		t.Fatalf("RegisterProductSkills: %v", err)
 	}
 	checks := map[string][]string{
+		"crew-builder":            {"## Coding rules", "create_crew", "builder/conversation/", "Crew should remember that", "When asked to do X, Crew should"},
 		"work-mcp":                {"list_mcp_servers", "Setup > MCP", "platform-level", "trigger_mcp_discovery", "update_project_mcp_server_selection", "next user message"},
 		"work-integrations":       {"set_workflow_secret", "available to shell", "do not ask the user to start", "manage_global_secret", "update_project_global_secret_selection", "selected_global_secret_names", "list_work_folders", "Setup > Models"},
 		"work-workflow-files":     {"list_accessible_workflows", "WORK_FOLDER_<ALIAS>", "workflow.json", "knowledgebase/", "learnings/", "db/db.sqlite", "db/reports/", "runs/run_index.json", "sqlite3 -readonly", "get_file_link", "get_report_link", "same signed-in Crew account", "list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run", "delivery_id", "public webhook"},
@@ -348,21 +349,17 @@ func TestRenderPromptSucceedsAgainstAPromptContext(t *testing.T) {
 		"Coding is a first-class capability",
 		"not the only kind of work",
 		"questions, research, analysis, writing, planning",
-		"## Coding rules",
+		"## Working contract",
 		"relevant attached skill before using or configuring",
 		"only backend-authorized tools grant access",
 		"workflow selected with `#` is",
 		"general-purpose",
 		"Read the relevant attached skill",
-		"use `create_crew`",
+		"Read `crew-builder`",
 		"work-workflow-files",
 		"## How to talk to the user",
 		"runs a small business and is not technical",
 		"Use business words, never platform words alone",
-		"## Memory versus skills",
-		"Crew should remember that",
-		"When asked to do X, Crew should",
-		"same instructions into both files",
 	} {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("rendered Crew prompt is missing %q", required)

@@ -13,6 +13,458 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Excellence offers Crew and Relays (the product switcher list lives in runtime-config.js)
+
+- **Correction.** Which products a deployment's switcher lists is the frontend `runtime-config.js`
+  (`enabledProductSurfaces`), narrowed per account by `allowed_products` (administrators: all enabled; others:
+  their `users.json` products plus `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL`). Excellence's file said
+  `["code"]`, so Crew and Relays never appeared even for administrators. Earlier notes that `AGENT_PRODUCTS`
+  controls this were wrong: that setting is not passed to these services.
+- **Decided.** `enabledProductSurfaces: ["code", "work", "relays"]` on excellence (default stays `code`). Visible to
+  Manish and Aayush (administrators) and Vaibhav (`work`, `relays` in his list); every other account stays on
+  Code because its own list does not include them.
+
+### 2026-10-01 — Relays (profile id `relays`) opened on Confida for everyone to test; excellence per person
+
+- **Decided.** Confida: `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL=work,code,relays`, so every account can open Relays
+  for testing (the feature landed on `main` today; it was not in any live build before this deploy). Excellence:
+  Relays only for Aayush (administrator, every product) and Vaibhav (`relays` added to his `users.json` products);
+  excellence's available-to-all list stays `code`. RTS is unchanged. To close it again on Confida, remove `relays` from
+  that list and redeploy.
+
+### 2026-10-01 — read_image over the CLI bridge runs on the session's own account
+
+- **Found (Confida, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
+  request, with none of the turn's provider accounts in its context. The analysis fell back to "the agent's own
+  model" (claude-code/claude-sonnet-5-5) but, with no account in hand, started Claude under the **server's**
+  account: Confida has no server Claude login, so Claude stopped on "Select login method" and timed out
+  ("LLM image analysis failed ... [auth]"), even for a user with their own Claude connection.
+- **Decided.** The turn's account keys (`mergedAPIKeys`) are attached to bridge-originated `read_image` calls
+  (`SetReadImageLLMConfig(..., keys)` / `injectSelectedLLMConfig`), so the analysis uses the same CLI, connection
+  and scope as the session, as the in-process path already did. Keys already in the context are never replaced.
+  Test: `virtual-tools/read_image_account_test.go`.
+- **Kept.** Custom tools stay: the platform tools (shell as the user's slot, browser, files under the folder guard,
+  secrets, workflow and MCP tools) are what the native CLI tools do not provide; only this tool's separate
+  model call was wrong. Other bridge-called tools that start their own model (e.g. `generate_text_llm`) were not
+  audited for the same gap.
+
+### 2026-10-01 — Confida slot table unreachable (incident), and image analysis login
+
+- **Incident.** After Confida's slots went live (12:00), its service could not read
+  `/etc/agentworks/confida/slots.json`: `/etc/agentworks` was `root:agents 0750` (excellence's group), so Confida's
+  service could not traverse it. In opt-in mode a table that cannot be read is an error, so every shell and
+  browser call failed for every Confida user ("No account slot for this user ... permission denied"), about
+  13 calls until it was fixed (`chmod 0751 /etc/agentworks`, search-only; the tables and per-product folders stay
+  closed to the other product, verified both ways). `provision-slots.sh` now sets that for any non-default
+  prefix. My earlier probe ran as the Confida account but never read the table, so it missed this; the probe
+  must read the slot table through the service's own path.
+- **Not from slots.** Image analysis (`read_image`) on Confida uses the workflow's chosen model
+  (claude-code/claude-sonnet-5-5); Confida has no Claude login (no token, no credentials file), so Claude shows
+  its login screen and the call times out. Fix by connecting a Claude account (Providers) or choosing a model
+  with a login for image analysis.
+
+### 2026-10-01 — Excellence: Docker for users runs rootless; `agents` left the root `docker` group
+
+- **Found.** `agents` (the platform account, which also runs every non-canary user's coding CLI) was in the host's
+  `docker` group, i.e. root-equivalent: any user's Code session could `docker run -v /:/host` and own the box.
+  Users really did use it (invoicing, hrms, injuryconnect stacks ran on the root daemon).
+- **Decided and done.** `agents` is out of the `docker` group and has its own rootless Docker daemon (user unit
+  `docker.service`, data under `/srv/agents/.local/share/docker`, socket `/run/user/990/docker.sock`);
+  `DOCKER_HOST` points the services at it (`product.env`, `/srv/agents/.env`). Containers of excellence users on
+  the root daemon (7: invoicing x3, hrms_db, injuryconnect x3) were stopped; their named volumes were backed
+  up to `/root/docker-backups-20261001/` on the host and kept, so users re-create their stacks (`docker compose
+  up`) in the new daemon and can ask for a restore. The other 33 containers on the root daemon belong to other
+  developers' accounts (newjoinee, node, dev83, pythonai, react) and were not touched.
+- **Not the shared installer.** `deploy/common/install-rootless-docker.sh` runs `apt-get install docker-ce ...`,
+  which can restart the root daemon (and everyone's containers); it was not used. Its final check also refuses a
+  service user in the `docker` group, which is why the group had to go first.
+- **Open.** `newjoinee` is still in the `docker` group (root-equivalent). When coding CLIs move to the user's own
+  slot account, Docker needs a per-user rootless daemon (or is unavailable), since a slot cannot reach the
+  platform's socket. Several other accounts publish databases on all interfaces (mongo, postgres, redis); not
+  checked against the firewall.
+
+### 2026-10-01 — Relay release review: visible readers execute as the owner
+
+- Anyone with live Relay visibility can execute its published API versions and
+  poll their own runs. Tokens still require `runs:execute` and the Relay scope;
+  listing versions requires `workflows:read`. Publish, edit, and schedule
+  configuration remain Owner/Write. Execution uses the owner's configured
+  accounts, workflow secrets and quota. This follows the PR 231 review's
+  maintainer decision. Live function/caller revocation applies to polling and
+  idempotent replay as well as dispatch.
+- Reuse the existing workflow read guards, provider-account admission,
+  message-sequence executor, database tools, scheduler run store and cost ledger.
+  Release identity maps to its live draft for grants/accounts; database and cost
+  artifacts stay in the full version workspace. Draft cost totals include all
+  versions without recording duplicate global charges.
+- Capacity waits now persist as nonterminal scheduler rows, survive restart,
+  and are claimed once for the original run. Restore its input, group, route,
+  folder and step checkpoint; check live caller access and release integrity
+  before resuming. Normal schedules use the same durable wait discovery.
+- Missing explicit versions return 404. Invalid release metadata remains listed
+  with an error. The schedule UI warns that timed schedules run the draft.
+- Accepted: Write editors may publish; frozen variables can retain stale secret
+  copies, while execution resolves live workflow secrets. Open: process-crash
+  recovery is deferred; execution snapshots are not a general read-only
+  filesystem. The Relay Builder warns against modifying executable snapshot
+  files, which would make later dispatch fail integrity verification. Binary
+  snapshots and pinned timed schedules remain outside this MVP.
+- Verified with automated backend and frontend regressions in the isolated
+  review worktree. The broader workflow suite still fails the existing AGY
+  alpha-gate test; reproduced on clean `origin/main` (`c48042b56`). No live preview, production deployment or interruption of
+  the user's running local app is claimed by these checks.
+
+### 2026-10-01 — Scoped Files views show one workspace root above its contents
+- Rebuild a single scoped tree from the document API's mixture of nested
+  children and flat siblings before shortening display paths. Merge folders
+  and files once, including contents-only responses; do not render the root
+  beside its children or show entries outside the requested scope.
+- Compare case-preserving paths after removing boundary slashes and converting
+  only the signed-in user's own physical prefix to its public API path. Keep
+  full API paths for file actions and project-root/manifest deletion protection.
+  Code and Crew use this shared scoped Files view. Code: `scopedWorkspaceTree`,
+  `Workspace`. Tests cover root ordering, duplicate entries, path variants,
+  nested contents, hidden folders, foreign paths and rendered bulk deletion.
+- Ashutosh's screenshot shows `unknown2-0-8079bd2f` beside `code` and `db`.
+  Local fixtures reproduce this layout with the previous exact-path fallback;
+  the precise live response/path variant is not yet captured.
+
+### 2026-10-01 — A closed main terminal does not imply an inactivity timeout
+- The raw terminal's recovery banner now says the terminal is no longer
+  running, without attributing every exit to inactivity. Excellence logs show
+  both idle-backstop cleanup and unexpected pane exits; the terminal snapshot
+  does not establish a cause for this banner.
+- "Back to chat" switches the existing chat to its formatted view. It does
+  not send a prompt or relaunch the CLI; the next new chat message uses the
+  existing resume path. The project folder, saved conversation and final
+  terminal output remain available. Code: `MainAgentTerminal`, `ChatArea`.
+- User decision: pin the recovery notice and button below the final output,
+  at the bottom of the terminal pane where people expect to type. The footer
+  does not shrink into the output and is announced as a status notice.
+
+### 2026-10-01 — Slots per product on a shared host (Confida: prefix cf, 15 accounts)
+
+- **Decided.** Products that share a host each get their own slot accounts, launcher, config, table and sudo
+  rule, so one product's service account is never in another's slot groups (a single set would let
+  Confida's service read excellence users' folders). The prefix, config path, launcher and table path are
+  settings (`AGENTWORKS_SLOT_PREFIX`, `_SLOTCTL_CONFIG`, `_SLOTCTL`, `_SLOTS_FILE`; `slot_prefix` in the
+  slotctl config for programs that run without the service environment). The default (`slot`,
+  `/usr/local/libexec/agentworks/`, `/etc/agentworks/`) is unchanged, so excellence needs no migration.
+  `provision-slots.sh` takes `SLOT_PREFIX`; a non-default prefix puts everything under a per-product name
+  (`/usr/local/libexec/agentworks/<product>/`, `/etc/agentworks/<product>/`,
+  `/etc/sudoers.d/agentworks-slots-<product>`, its own sudoers alias).
+- **Decided.** Confida: `SLOT_PREFIX=cf SLOT_COUNT=15`, opt-in mode (it runs Workflows and Crews). It has 12 users.
+- **Decided.** In opt-in mode a host with no slot table yet is unchanged (nobody holds a slot) instead of
+  refusing shell commands, so a product can deploy with the slot settings first and be provisioned after.
+  A damaged or unreadable table is still an error; `on` mode still refuses without a table.
+
+### 2026-10-01 — Crew offered on excellence (Code + Crew); Code keeps its own-login rule
+
+- **Decided.** Crew (`work`) on excellence is given per person, not to everyone: administrators (every
+  product) and anyone whose `users.json` `products` lists it. Vaibhav now has `code` and `work`; the other
+  accounts stay on `code`. `AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL` stays `code`. (`AGENT_PRODUCTS` in
+  `product.env` is not passed to this deployment's services, so it gates nothing; an earlier edit of it to
+  `code,work` had no effect and was reverted.) Crew projects are private to their owner (project sharing is off).
+- **Decided.** A single-product deployment refuses a Claude turn with no token by itself
+  (`isSingleProductServerDeployment`); a multi-product or unset `AGENT_PRODUCTS` (excellence, Confida) never had
+  that safety net. Code is private to
+  each person and signs in with their own CLI login, so on a multi-user server a Code turn with no token
+  is still refused (`claudeCodeTokenMissingForSingleProductDeployment`), instead of falling back to the
+  platform account's own CLI login. Other products on the server keep the shared-server behavior.
+- **Open.** Excellence keeps `COPY_PLAYBOOKS=false` and `RUN_WORKFLOW_BUILDER_MIGRATION=false`; check
+  Crew templates and any playbook-backed feature in a first Crew test.
+
+
+### 2026-10-01 — Header activity stays active through stale idle polls during a new turn
+- The latest foreground user/start event keeps the chat header active until
+  its completion, even when tab flags or a session-status poll still describe
+  the previous idle/completed turn. Waiting-for-input remains distinct and
+  completion still clears stale running flags. The shared hook applies to
+  Code, Crew and workflows, including RTS's Cursor workflow chats.
+- Select the latest lifecycle event by its timestamp, using sequence to break
+  equal timestamps and arrival order when timing is unavailable. A replayed
+  older completion appended after a new message cannot settle that new turn.
+  Tests exercise the real store/hook/rendered header through repeated idle
+  polls, delayed older completion and the new completion. Code:
+  `foregroundTurnActivity`, `chatRuntimeActivity`, `useChatRuntimeActivity`.
+- During the RTS investigation, Manish's `automationtesting` request at
+  14:31:30 IST ended at 14:33:14 with Cursor `quota_exhausted` / "cursor usage
+  limit reached". This is a provider failure separate from the loading race;
+  changing the indicator does not resolve account quota.
+
+### 2026-10-01 — Identical chat replies remain visible in separate user turns
+- Excellence/Ashutosh's 14:24–14:26 IST Code messages reached Codex and each
+  received an answer. Native transcripts, server observer events and browser
+  receipt telemetry confirmed delivery. The shared transcript filter hid later
+  identical answers because it compared across the whole conversation and the
+  retained main execution ID spans multiple turns.
+- Deduplicate answer carriers only within a user turn. Each later user message
+  resets completion-card comparison; a generation answer cannot be hidden by
+  a completion in another turn. Reconcile adjacent frontend/durable user echoes
+  before comparing answers. The compact conversation projection also resets
+  its last-answer comparison on a user message. Code, Crew and workflow chats
+  use these shared projections. Regression tests cover identical native replies,
+  a turn missing its completion, and rendered live/restored transcripts. Main
+  agent lifecycle cards also supersede each other only within the user turn;
+  child lifecycle cards retain their existing execution-based collapse.
+
+### 2026-10-01 — Providers terminals for personal accounts run under Landlock
+
+- **Found.** The Providers screen opens a terminal for a person's own provider account (sign-in, "inspect") by
+  starting the coding CLI directly as the platform account with only the CLI's own flags (`--sandbox
+  read-only`, `--disable-shell`, `--tools ""`) around it; Pi and Agy opened unrestricted. Any user with a
+  personal connection could therefore read other users' folders and the server's secret files through the CLI.
+- **Decided.** A personal account's terminal is confined with the same Landlock launcher and policy shape as the
+  chat CLIs, limited to the account's private HOME, the folder it starts in and the CLI's install
+  (`agent_go/cmd/server/provider_setup_confine.go`, `pkg/clilaunch` in the provider). It cannot be turned
+  off. A multi-user host that cannot confine refuses the terminal; a single-user install is unchanged.
+- **Not covered.** The server account's own terminals (admin only, service home) are unconfined, and a
+  confined terminal still has network access and the account's own login. Sign-in flows that need a local
+  callback port or another path outside the account's home may need a grant: test each provider's sign-in
+  after deploying.
+
+### 2026-10-01 — Files bulk deletion preserves its project container
+- Excellence/Vaibhav's Files selection deleted the entire Code project folder;
+  its cached project row remained, and the later project-delete request returned
+  "project not found". A scoped pane's Select all now selects its displayed
+  contents, preserving the root and `product.json`/`workflow.json`. Protected
+  entries cannot be checked or passed to its delete handlers. This shared Files
+  behavior also applies to other panes that hide their scoped root actions.
+- The browser workspace proxy refuses deletion or clearing of Code roots and
+  their parent containers, and deletion of Code identity manifests, including
+  for admins. Normal Code content deletion and manifest reads/updates remain
+  allowed. Delete Code stops work and uses the existing project lifecycle
+  endpoint to clean up its durable chat and connections.
+- A project-delete 404 lets the frontend finish clearing an already-missing
+  owned project's cached row and tabs. Permission, active-work and server
+  errors still surface, and shared-project deletion remains refused. Code:
+  `workspaceSelection`, `Workspace`, `PlannerFileList`,
+  `workspace_proxy_policy.go`, and `deleteWorkSession`.
+
+### 2026-10-01 — Project sharing removed: projects are private to their owner
+
+- **Decided.** A project (a Crew in the project directory, on RTS the Video Studio / Goals projects that every
+  account could open) is private to its owner, as Code workspaces already were. A non-owner can no longer
+  see it in the shared-project list or open it as a reader. One switch, `projectSharingEnabled`
+  (`agent_go/cmd/server/project_sharing.go`, off by default, `AGENTWORKS_PROJECT_SHARING=on` restores it),
+  is checked in `resolveCrewProjectBinding` and `handleListSharedProjects`; the reader code stays so it can
+  come back. Why: with per-user Linux accounts (slots) a non-owner's commands run as their own account and
+  cannot work in the owner's folder, and the platform's own mediated reads were the only thing that made
+  shared projects work; private projects need no shared folders.
+- **Effect on RTS.** All existing Video Studio, Work and Code projects live under the admin account, so only
+  admin sees them after the next deploy; other accounts start with none. Workflow co-owners and public share
+  links are separate features and are unchanged.
+- **Tests.** The existing reader-flow tests run with sharing switched on (`project_sharing_testmain_test.go`);
+  `project_sharing_test.go` covers the default. `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID` and
+  `TestSalesCrewCatalogHasInstallableRoles` fail on a clean `origin/main` as well; not caused by this change.
+
+### 2026-10-01 — Slots on the RTS host: one shared build step, opt-in mode, SSM provisioning
+
+- **Decided.** Every deployment builds and installs slots through one shared script, `deploy/common/slots.sh`
+  (build `slotctl` and `slottmux`; install the tmux front-end outside the releases), called from both
+  `deploy/rootless-linux/build-and-activate.sh` and `deploy/aws-ec2/server/build-and-activate.sh`. The
+  provisioning script moved to `deploy/common/provision-slots.sh` and takes `APP_DIR`, `DOCS` and
+  `SERVICE_HOME`, so the same script serves `/srv/<product>` hosts and RTS. The two build scripts themselves
+  are still separate (RTS has its own Docker, CloudFront and AppArmor steps); merging them is a larger
+  change and is not done.
+- **Decided.** `AGENTWORKS_SLOTS=optin` (new): a user who holds a slot runs shell commands as it; a user without
+  one is unchanged (`on` still refuses them). RTS runs Video Studio and Workflow/Crew runs that write into
+  shared folders a slot account cannot write yet (the per-slot state roots item below), so it rolls out per
+  user. The RTS build writes `optin` only when `/etc/agentworks/slots.json` exists, i.e. after an administrator
+  ran `deploy/aws-ec2/slots-admin.sh init`.
+- **Decided.** RTS has no sudo and SSH is deploy-only, so root steps go through SSM Run Command
+  (`deploy/aws-ec2/slots-admin.sh`, like `install-system-tools.sh`). `init` also installs `acl` (setfacl).
+- **Open.** CLIs as the user's own account (`AGENTWORKS_SLOT_CLI*`) are not enabled on RTS; shared Workflow and
+  Crew folders still need slot-writable state roots before shell-as-slot can cover those runs.
+
+### 2026-10-01 — Foreground completion clears chat header loading despite stale status
+- The latest foreground turn's completion event clears the header spinner even
+  when tab flags or the active-session cache still report foreground work. The
+  next user/start event resets that completion signal; actual background work
+  continues to show activity. This applies through the shared hook to Code,
+  Crew and workflow chats.
+- Reuse ChatArea's existing completion types and child-execution scope rules in
+  shared utilities, including its exclusion of restored intermediate narration.
+  Regression tests exercise the real store, hook and rendered transcript with
+  stale busy flags, completion, and the next message. Code:
+  `foregroundTurnActivity`, `runtimeEventScope`, `useChatRuntimeActivity`.
+
+### 2026-10-01 — Review fixes: no cross-user path resolution, server secrets out of agent environments
+
+- **Decided.** `utils.IsValidFilePath` (behind `ResolveUserPath` and every other handler) refuses a symlink
+  that carries a path from one user's tree into another's, or from a shared folder into a user's tree: a
+  link planted in your own folder can no longer read someone else's. Checked first on excellence and RTS:
+  no existing link does either. Regression tests in `workspace/utils/path_cross_user_test.go`.
+- **Reversed the same day (RTS outage).** The first version also refused any `_users/<id>/` path whose id was
+  not the requester's. That broke RTS: the agent could not load `_users/_system_global_secrets/secrets.json`
+  at startup, never listened, and RTS was down for about 8 minutes until the release was rolled back. The
+  workspace API has no authorization of its own by design; the app server authorizes the caller and stamps
+  `X-User-ID`, and shared Code collaborators, Crew owners and administrators legitimately read another
+  user's folder, so the name check must not live there. Lesson: a change to a shared resolver needs a
+  startup check against a copy of the real data layout before a swap.
+- **Second outage, same day (excellence startup).** The symlink rule compared a path's owner with the owner of
+  its nearest *existing* parent, so a path that does not exist yet (`_users/_system_global_secrets/...`, or
+  a new user's first file, whose nearest parent is `_users` itself) was refused and the agent could not
+  start; excellence went down until its release was rolled back. Fixed: the comparison applies only once the
+  resolved path has reached a user's own folder, and a link to `_users` itself stays refused. RTS was only
+  unaffected because those folders already existed. Checked against the real service with a data layout
+  that has no `_system_global_secrets` folder and a brand-new user's first write, not only unit tests.
+- **Decided.** Shell commands (`security.buildNativeEnvironment`) and CLI launches
+  (`llmtypes.ScopedCodingAgentEnvironmentPlan`, now also when no secret scope is declared) never inherit
+  the host's server-owned secrets: `AUTH_SECRET`, `ACCESS_PASSWORD`, `AUTH_USERS`, `GLOBAL_SECRET_*`, the
+  server and bridge tokens. Whether the secrets exposed earlier were actually rotated is a fact about each
+  deployment, not this code: confirm it per server.
+- **Deferred.** Refusing a CLI launch when Landlock is requested but unavailable (`cli_landlock.go`
+  falls back to the older tool-restricted mode). The product is not installed on hosts without Landlock.
+- **Open.** The generated-HTML iframes (`HtmlRenderer.tsx`, `HtmlWidgetFrame.tsx`) run with
+  `allow-scripts allow-same-origin`, so a malicious report could read the viewer's session. Removing
+  `allow-same-origin` needs a message-passing replacement for the report frame's direct DOM access.
+
+### 2026-10-01 — Chat activity belongs beside the current agent turn
+- Move the composer loading indicator to the shared conversation's agent header,
+  covering Code, Crew and workflow chats. A pending turn gets a header before its
+  first text/tool event; streamed text and tool work then share that header.
+  Earlier turns keep their recorded duration and never animate for a later turn.
+- Reuse the activity monitor's session classification with immediate tab-local
+  start/completion signals. Running/background work spins, input waiting shows
+  amber, and settled or idle retained CLIs show no activity indicator. Status is
+  scoped to the displayed chat and the lifecycle refresh also works without a
+  composer in read-only run views. Provider usage and stop/steer controls remain
+  in the composer.
+- Keep the animation isolated from token updates and honor reduced motion.
+  Code: `useChatRuntimeActivity`, `chatRuntimeActivity`, and
+  `TerminalEventTranscript`. Tests cover pending/streaming/tool-only turns,
+  completion/error/cancel, background work, waiting and chat switches.
+
+### 2026-10-01 — Project prompts use resolved host paths and honor listed folder grants
+- The project workspace map now resolves manifest-relative paths against the
+  configured docs root before describing them as absolute. Existing absolute
+  paths stay unchanged. This applies to Code and Crew through their shared
+  workspace section.
+- Code's shared-server rules explicitly allow the signed-in user's authorized
+  history reads and listed attached-folder access. Attached writes still require
+  read_write access and guarded tools; unlisted server folders and other users'
+  projects remain forbidden. This aligns the wording with existing authorization,
+  without adding a filesystem grant. Code: `prompt_sections.go`.
+
+### 2026-10-01 — Slot launches: git ownership check off, repository hooks off; paste and key hygiene
+
+- **Decided.** Every command and CLI run as a user's own Linux account (slot) gets `safe.directory=*`
+  (the user's folders belong to the platform account with the slot's group, so git would refuse them as
+  "dubious ownership", and Muse could not resolve its project root). That removes git's guard against
+  a repository whose own config runs code, so the same environment also sets `core.hooksPath=/dev/null`
+  and `core.fsmonitor=false`: a sharer cannot plant a hook that runs as another user's slot. Other
+  repository-config code paths (for example a configured pager) remain; an agent reading an attacker's
+  files is exposed to that already. Code: `workspace/slots.GitSlotEnv` (shell tool) and
+  `internal/clisandbox/landlock.go` (CLIs, provider).
+- **Decided.** `slottmux` keeps paste content only in a 0600 file under the slot registry and loads it
+  into a tmux server when the paste names the session, so a slot's paste is never copied into the shared
+  default server. Files are removed by the deleting paste and swept after an hour.
+- **Decided.** The Codex API-key login the platform saves (`auth.json`, apikey mode) is removed when no
+  key is configured any more; a browser login is left alone.
+- **Decided.** `server add-user` re-reads the directory after saving and redoes the add when another
+  write replaced the file (no lock is shared with the running server, which also writes it).
+- **Fixed (same day).** The tmux front-end routed any session in a user's folder to that user's slot, but
+  only users with CLI-as-slot (`AGENTWORKS_SLOT_CLI_USERS`) have launch scripts the slot can read, so
+  Muse (and Codex) died at start for everyone else ("cannot open mlp-coding-agent-launch-*.sh:
+  Permission denied"). It now routes to a slot only when the command's script is in that slot's run
+  folder; otherwise the session stays on the platform's tmux. A Muse session that is not a slot's
+  keeps its launch error output under `<run root>/.sessions/launch-logs/`.
+- **Fixed (same day).** The front-end's session records ("session X lives in slot Y") could go stale: a
+  session started on the platform's tmux after a misrouted one left the old record, so `has-session`
+  went to the empty slot server and the platform then failed with "duplicate session". A record is
+  now dropped when its slot has no running tmux server, and a non-slot new-session clears any record
+  of that name.
+- **Open.** Muse still prints "local session messaging unavailable: registry root: Permission denied" in
+  slot sessions (it tries to `chmod 0700` platform-owned folders). Harmless, not traced.
+
+
+### 2026-10-01 — Code is always private; owner-authorized function calls do not share files
+- User decision: remove human Code sharing. Normal files, links, chats, Git, bots,
+  credentials and runtime access require the Code owner. Viewer/editor/co-owner
+  grants in legacy `config/code-shares.json` are ignored; that file is retained
+  and protected, never rewritten or deleted as a migration. Share controls and
+  client APIs are removed; old GET/PUT share URLs return 410, and the Code shared
+  directory returns an empty list. Code's audited read-only admin/reviewer
+  inspection remains separate from normal access and cannot run or edit Code.
+- A Code can call another Code it owns. The actual Code owner may also call
+  explicitly declared Code functions from a Crew they own or a workflow whose
+  ownership explicitly includes them, using `#code:<id>` with the existing
+  function tools. Shared Crew readers and workflow readers/editors cannot inherit
+  the resource owner's private Code access. No implicit Code `ask`, public Code
+  function catalog, file attachment or filesystem grant is introduced. Declare
+  and remove Code functions from the owner's Code chat, not from a Crew/workflow.
+- Hidden internal bindings record the source path and stamp. Discovery, connection,
+  dispatch, result/pending-input access and queued execution re-read source
+  ownership; target execution and history stay under the Code owner's identity.
+  Old Code-to-Code bindings still resolve their source ID only in that owner's
+  tree. Existing owner-created authenticated webhooks and schedules remain intact.
+- This fits per-user Linux accounts: there is no cross-user Code folder or Code
+  credentials to mount. It does not complete the separate Crew/workflow sharing
+  integration for slots. Main implementation: `code_shares.go`,
+  `code_peer_functions.go`, `product_webhooks.go`, `crew_functions.go` and the
+  shared Work/Code UI. Regression tests cover stale grants, typed Crew/workflow
+  calls, foreign sources, shared actors and ownership loss before a queued call.
+
+### 2026-10-01 — Per-user Linux accounts ("slots"): shell tool and provisioning, off by default
+- New package `workspace/slots` and launcher `workspace/cmd/slotctl`. With `AGENTWORKS_SLOTS=on`
+  the workspace service runs each folder-guarded shell command as the caller's own Linux account
+  through `sudo` and `slotctl` (after the switch the Landlock policy and namespaces are created),
+  and refuses commands that carry no folder guard or come from a user without a slot. A root-owned
+  allow-list limits what `slotctl` will start. Off by default, so other deployments are unchanged.
+- `deploy/common/provision-slots.sh` (run as root on the host) creates the accounts, the
+  sudoers rule and the slot table, and assigns a person to a slot; signing in never does. `slotctl`
+  is built into every rootless release; installing it root-owned is the script's job.
+- Done in this change: the shell tool. Not done yet: CLI launches and their terminals, ownership of
+  a user's runtime folders, the Crew and workflow sharing model. Not deployed or enabled anywhere.
+
+### 2026-10-01 — Accounts are added by an administrator only; invitations and automatic sign-up are gone
+- Removed the invitation email (`POST /api/admin/users/{id}/invite`, the Supabase invite call, the
+  `invite` option on create, the Resend and Copy-invitation controls, `USER_INVITE_EMAILS`).
+  Adding a person in the Users panel still creates their account (role, products); the panel now
+  just says to ask them to sign in with Google using that address.
+- A sign-in never creates an account any more. `externalAuthIdentityApproved` admits only an
+  address already in the user directory, or one named in `ADMIN_USERS` so the first administrator
+  can bootstrap their own record. `ensureDirectoryUserForExternal` creates a record only for such a
+  configured administrator; the OAuth callback answers 403 "has not been added by an administrator"
+  to anyone else. `AUTH_ALLOWED_EMAILS` no longer admits anybody (it used to, and the first sign-in
+  then created the account).
+- Why: per-user accounts ("slots", private plan) need an administrator-provisioned user before
+  anyone can sign in. Existing users already have records and are unaffected. Anyone who was only
+  in `AUTH_ALLOWED_EMAILS` and never signed in must now be added by an administrator.
+- Left: `SUPABASE_SERVICE_ROLE_KEY` on excellence was only needed for the invite email and can be
+  dropped from its `.env` later; the password and bot-route sign-in paths are unchanged. Not deployed.
+
+### 2026-10-01 — Keep prompt contracts upfront and load procedures through skills
+- System prompts retain role, access/mode limits, live workspace/grants, secret
+  safety, discovery and core memory rules. Skills own operating procedures,
+  examples, formats and troubleshooting; tool schemas own argument shapes.
+  Skill descriptions retain explicit action triggers. No authorization is added.
+- AgentWorks owns mode-specific `project-memory` procedures, Crew Builder
+  history/coding guidance and Workflow chat operations references. Run gets
+  retrieval/execution guidance without authoring procedures. `MEMORY.md` remains
+  the only facts store; the managed memory skill is a procedure, not another store.
+  Current secret names remain live context; provider details load from the
+  admitted capability tool.
+- mcpagent owns the on-demand `runtime-http-tools` skill for progressive CLI/code
+  execution. The runtime block owns discovery; redundant available-tools
+  reminders are removed. Legacy inline mechanics and that skill share one source. Native API
+  schemas remain intact; Agy retains its skill-list fallback. The linked CLI may
+  `cd project`; bridge shell calls use absolute paths.
+- Readable Code snapshots drive the real query handler through finalized agent
+  assembly and inspect its outbound composer before any model turn. External
+  state is mocked; runtime policy and tool registration are production paths.
+  This replaces reconstruction that missed Code's resolved native-tool mode.
+  Capture also found a browser pointer to unattached builder-reference; Code/
+  Crew chat pointers now name their attached agent-browser skill.
+- Controlled server fixtures reduce Code by 21%, Crew Builder by 40% and workflow
+  chats by roughly 39–40%. Crew Run was already compact and adds about 500 bytes
+  of shared memory constraints. Live first use and changed-skill native resume
+  pass on Claude and Codex. Pi currently lacks local Google auth; Cursor/Muse/Agy,
+  complete business flows, total turn cost and latency remain unqualified.
+  Details: [prompt discovery design](design/progressive_prompt_discovery.md).
+  Existing unrelated suite failures remain open. No restart or deployment.
+
 ### 2026-10-01 — Audit-log spawned provider-child env names (disable via LOG_CHILD_ENV=0)
 - `providerConnectionSetupEnvironment` and `workflowProviderSetupEnvironment`
   now emit `[CHILD_ENV]` lines showing which variable names a spawned child
@@ -22,6 +474,16 @@ Design references for the linked runtime decisions:
   `LOG_CHILD_ENV=0` (or false/off/no) to disable. Lives in
   `agent_go/cmd/server/child_env_log.go`; temporary observability until the
   builders move to an allowlist.
+
+### 2026-10-01 — A skill with an invalid YAML header stopped the server at startup
+- `e05c52f23` made `RegisterEmbeddedSkillsRendered` parse every skill header as YAML, and
+  `server.go` stops the process on any error. The Video Studio `google-ai` skill had an unquoted
+  `: ` inside its description, so the agent exited at start (excellence, 2026-10-01, status 1,
+  502 for about 30 minutes) because AGENT_PRODUCTS was unset there and every product registers.
+  Every deploy of that `main` would have failed the same way.
+- Quoted the description, and added `TestEverySkillFrontmatterIsValidYAML` which checks every
+  `SKILL.md` in the repo, so the build fails before a deploy can. Code:
+  `agent_go/pkg/agentprofiles/skill_frontmatter_test.go`. Not done: making a bad skill non-fatal.
 
 ### 2026-10-01 — Use live tool discovery and one owner for runtime guidance
 - AgentWorks owns product prompts, access/mode constraints and feature skills;
@@ -693,6 +1155,46 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
+- After the answered 14:26:04 IST submission, the 14:26:25 retry reused its
+  submission ID. Returning the original successful receipt without another
+  provider send is intentional idempotency, not proof of a new model turn.
+  Browser telemetry also recorded a conversation error for the original
+  response; it does not include the error text, so its cause is unconfirmed.
+- By 14:26:42 IST the main-terminal stream returned 410; a read-only tmux check
+  and subsequent lease logs confirmed the terminal no longer existed. The
+  logs inspected do not explain its exit. The existing new-message route
+  closes an idle retained session with no live terminal and resumes normally;
+  changing replay behavior or sending the user's prompt again during diagnosis
+  would risk duplicating an already-answered request. No production session
+  was modified in this investigation.
+
+### 2026-10-01 — Generated model names can disagree with the actual runtime
+- Excellence/Ashutosh's 14:15 IST Code turn used `gpt-6.1-sol`: both the app's
+  generation records and Codex's native rollout `turn_context.model` confirmed
+  it. The earlier 13:07 turn used `gpt-6-sol`. The later response saying
+  "GPT-6 (Codex)" was generated prose, not an additional catalog entry or proof
+  that the model switch failed. No runtime-switch change is needed for that
+  latest turn.
+- Use native turn metadata to verify the executed model; a saved selection or
+  requested-model log alone is insufficient, and asking the agent its model
+  can produce a wrong answer. The UI currently emphasizes the selected model;
+  explicit pending/running model feedback and accurate agent self-reporting
+  remain open. Related code: `WorkModelsPanel`, `agent_profile_routes.go`, and
+  the Codex adapter's native transcript.
+
+### 2026-10-01 — Model selection is pending while typing directly into a retained terminal
+- Excellence/Ashutosh's Code saved `gpt-6.1-sol` in its project manifest, while
+  its retained Codex runtime still had `gpt-6-sol`. The model was saved after
+  that runtime's last chat turn. Saving is working; model/account reconciliation
+  and relaunch happen in the next project chat request, and native terminal
+  input bypasses that request path.
+- The Models panel says "next message", which can imply terminal input applies
+  the change too. Pending-versus-running feedback and native-terminal handling
+  remain open; the current way to apply the saved choice is to send the next
+  message through the chat. Code: `WorkModelsPanel`, `changeWorkRuntime` in
+  `WorkSurface`, and `prepareProductConversationTurn` in `agent_profile_routes.go`.
 
 - **Remaining local linked-runtime CLI qualification (2026-09-30).** Muse's
   integrated resume exceeded the fixture budget after linked artifact work passed; Agy's

@@ -175,32 +175,41 @@ func TestBootstrapImportsAuthUsersAndAdmins(t *testing.T) {
 	}
 }
 
-func TestExternalAuthEmailAllowlist(t *testing.T) {
-	t.Setenv("AUTH_ALLOWED_EMAILS", " Manish.Prakash@realtrainingsys.com, rob.rubin@realtrainingsys.com ")
-	if !externalAuthEmailAllowed("manish.prakash@realtrainingsys.com") || !externalAuthEmailAllowed("ROB.RUBIN@realtrainingsys.com") {
-		t.Fatal("configured email was rejected")
+func TestExternalAuthIdentityApprovedOnlyForProvisionedAccountsAndConfiguredAdmins(t *testing.T) {
+	// AUTH_ALLOWED_EMAILS no longer admits anyone: accounts are added by an administrator.
+	t.Setenv("AUTH_ALLOWED_EMAILS", "existing@confida.ai")
+	t.Setenv("ADMIN_USERS", "boss@confida.ai")
+	withMemoryUserDirectory(t, `{"users":[{"id":"invited-user","username":"invitee","email":"invited@confida.ai","admin":false,"can_create":false,"products":["agentworks"]}]}`)
+
+	if !externalAuthIdentityApproved("Invited@Confida.ai") {
+		t.Fatal("an administrator-added account must be allowed to complete its first SSO login")
 	}
-	if externalAuthEmailAllowed("other@realtrainingsys.com") || externalAuthEmailAllowed("") {
-		t.Fatal("unapproved or empty email was accepted")
+	if !externalAuthIdentityApproved("boss@confida.ai") {
+		t.Fatal("a configured administrator must be able to bootstrap their own record")
 	}
-	t.Setenv("AUTH_ALLOWED_EMAILS", "")
-	if !externalAuthEmailAllowed("") {
-		t.Fatal("empty allowlist must preserve existing OAuth behavior")
+	if externalAuthIdentityApproved("existing@confida.ai") {
+		t.Fatal("an AUTH_ALLOWED_EMAILS entry alone must no longer be approved")
+	}
+	if externalAuthIdentityApproved("unknown@confida.ai") || externalAuthIdentityApproved("") {
+		t.Fatal("a stranger or an empty email must be refused")
 	}
 }
 
-func TestExternalAuthIdentityApprovedByProvisionedAccount(t *testing.T) {
-	t.Setenv("AUTH_ALLOWED_EMAILS", "existing@confida.ai")
-	withMemoryUserDirectory(t, `{"users":[{"id":"invited-user","username":"invitee","email":"invited@confida.ai","admin":false,"can_create":false,"products":["agentworks"]}]}`)
+func TestSSOSignInNeverCreatesAnAccountForAStranger(t *testing.T) {
+	t.Setenv("ADMIN_USERS", "boss@confida.ai")
+	content := withMemoryUserDirectory(t, `{"users":[{"id":"u1","username":"alice","email":"alice@confida.ai","products":[]}]}`)
 
-	if !externalAuthIdentityApproved("invited@confida.ai") {
-		t.Fatal("admin-provisioned account must be allowed to complete its first SSO login")
+	if rec := ensureDirectoryUserForExternal("g-stranger", &ExternalUser{ExternalID: "g-stranger", Email: "stranger@gmail.com", Username: "Stranger", Provider: "supabase-google"}); rec != nil {
+		t.Fatalf("a stranger got an account: %+v", rec)
 	}
-	if !externalAuthIdentityApproved("existing@confida.ai") {
-		t.Fatal("legacy AUTH_ALLOWED_EMAILS entry must remain approved")
+	var saved userDirectoryFile
+	if err := json.Unmarshal([]byte(*content), &saved); err != nil || len(saved.Users) != 1 {
+		t.Fatalf("a refused sign-in changed the directory: err=%v users=%+v", err, saved.Users)
 	}
-	if externalAuthIdentityApproved("unknown@confida.ai") {
-		t.Fatal("unknown account outside AUTH_ALLOWED_EMAILS must remain denied")
+
+	boss := ensureDirectoryUserForExternal("g-boss", &ExternalUser{ExternalID: "g-boss", Email: "Boss@Confida.ai", Username: "Boss", Provider: "supabase-google"})
+	if boss == nil || !boss.Admin || !boss.CanCreate {
+		t.Fatalf("a configured administrator could not bootstrap: %+v", boss)
 	}
 }
 
@@ -440,11 +449,10 @@ func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
 		t.Fatalf("the invited account was not the one linked: %+v", rec)
 	}
 
-	// Someone else with the same display name and no account gets their own,
-	// under a username that is not the admin's.
-	other := ensureDirectoryUserForExternal("g-other", &ExternalUser{ExternalID: "g-other", Email: "other@gmail.com", Username: "Boss", Provider: "supabase-google"})
-	if other == nil || other.ID != "g-other" || other.Admin || strings.EqualFold(other.Username, "Boss") {
-		t.Fatalf("a same-name person was merged into an existing account: %+v", other)
+	// Someone else with the same display name and no account gets no account at all: they were
+	// never added by an administrator, and the name must not merge them into the admin's.
+	if other := ensureDirectoryUserForExternal("g-other", &ExternalUser{ExternalID: "g-other", Email: "other@gmail.com", Username: "Boss", Provider: "supabase-google"}); other != nil {
+		t.Fatalf("a same-name stranger got an account or was merged into one: %+v", other)
 	}
 	dir, err := readUserDirectoryFile()
 	if err != nil {

@@ -503,6 +503,9 @@ type PlanStepInterface interface {
 type RegularPlanStep struct {
 	Type StepType `json:"type"` // Always "regular" - required for JSON marshaling/unmarshaling
 	CommonStepFields
+	// ScriptOnly executes the saved main.py without agent generation or repair.
+	// Relay script nodes use this on the existing scripted step executor.
+	ScriptOnly      bool          `json:"script_only,omitempty"`
 	NextStepID      string        `json:"next_step_id,omitempty"`     // Optional explicit successor; empty preserves sequential execution
 	HasLoop         bool          `json:"has_loop"`                   // DEPRECATED: loop feature removed, kept for JSON backward compatibility
 	LoopCondition   string        `json:"loop_condition,omitempty"`   // DEPRECATED: loop feature removed
@@ -634,14 +637,18 @@ func (r *RoutingPlanStep) SetRoutingResponse(resp *RoutingResponse) { r.RoutingR
 type BranchPlanStep struct {
 	Type StepType `json:"type"` // Always "branch" - required for JSON marshaling/unmarshaling
 	CommonStepFields
-	BranchQuestion  string           `json:"branch_question"`             // Human-readable decision prompt; retained for compatibility/readability
-	Routes          []RoutingRoute   `json:"routes"`                      // Available routes (min 2, required)
-	DefaultRouteID  string           `json:"default_route_id,omitempty"`  // Optional fallback route_id when no route file is available
-	RouteSourceFile string           `json:"route_source_file,omitempty"` // Optional route_selection.json source produced by a prior step
-	RouteSource     string           `json:"route_source,omitempty"`      // "human": when no route was preseeded, ask the person (routes are the options) instead of falling to default_route_id. Successor to yesno/multiple_choice human_input. See controller_branch_human.go.
-	SelectedRouteID string           `json:"-"`                           // runtime: stores selected route ID
-	RoutingResponse *RoutingResponse `json:"-"`                           // runtime: stores structured routing response
-	AgentConfigs    *AgentConfigs    `json:"-"`                           // runtime: per-agent configuration
+	BranchQuestion  string         `json:"branch_question"`             // Human-readable decision prompt; retained for compatibility/readability
+	Routes          []RoutingRoute `json:"routes"`                      // Available routes (min 2, required)
+	DefaultRouteID  string         `json:"default_route_id,omitempty"`  // Optional fallback route_id when no route file is available
+	RouteSourceFile string         `json:"route_source_file,omitempty"` // Optional route_selection.json source produced by a prior step
+	RouteSource     string         `json:"route_source,omitempty"`      // "human": when no route was preseeded, ask the person (routes are the options) instead of falling to default_route_id. Successor to yesno/multiple_choice human_input. See controller_branch_human.go.
+	// ValuePath is one authored input or prior JSON output reference, for
+	// example {{input.kind}}. ValueCases maps exact values to route IDs.
+	ValuePath       string            `json:"value_path,omitempty"`
+	ValueCases      map[string]string `json:"value_cases,omitempty"`
+	SelectedRouteID string            `json:"-"` // runtime: stores selected route ID
+	RoutingResponse *RoutingResponse  `json:"-"` // runtime: stores structured routing response
+	AgentConfigs    *AgentConfigs     `json:"-"` // runtime: per-agent configuration
 }
 
 // Implement PlanStepInterface for BranchPlanStep
@@ -791,7 +798,11 @@ type MessageSequenceItem struct {
 type MessageSequencePlanStep struct {
 	Type StepType `json:"type"`
 	CommonStepFields
-	Items            []MessageSequenceItem    `json:"items,omitempty"`
+	Items []MessageSequenceItem `json:"items,omitempty"`
+	// AuthoredPrompt runs the exact system prompt and user messages supplied by
+	// the author. It is used by Relays on the shared message-sequence executor.
+	AuthoredPrompt   bool                     `json:"authored_prompt,omitempty"`
+	SystemPrompt     string                   `json:"system_prompt,omitempty"`
 	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
 	NextStepID       string                   `json:"next_step_id,omitempty"`
 	AgentConfigs     *AgentConfigs            `json:"-"`
@@ -821,6 +832,8 @@ func (m *MessageSequencePlanStep) UnmarshalJSON(data []byte) error {
 		Type StepType `json:"type"`
 		CommonStepFields
 		Items               []MessageSequenceItem `json:"items,omitempty"`
+		AuthoredPrompt      bool                  `json:"authored_prompt,omitempty"`
+		SystemPrompt        string                `json:"system_prompt,omitempty"`
 		PredefinedRoutesRaw []json.RawMessage     `json:"predefined_routes,omitempty"`
 		NextStepID          string                `json:"next_step_id,omitempty"`
 	}
@@ -832,6 +845,8 @@ func (m *MessageSequencePlanStep) UnmarshalJSON(data []byte) error {
 	m.Type = StepTypeMessageSeq
 	m.CommonStepFields = raw.CommonStepFields
 	m.Items = raw.Items
+	m.AuthoredPrompt = raw.AuthoredPrompt
+	m.SystemPrompt = raw.SystemPrompt
 	m.NextStepID = raw.NextStepID
 	m.PredefinedRoutes = nil
 	for i, routeJSON := range raw.PredefinedRoutesRaw {
@@ -1192,10 +1207,13 @@ type PartialPlanStep struct {
 	// Routing fields
 	NextStepID string `json:"next_step_id,omitempty"` // Optional: Updated next_step_id (for routing steps)
 	// Routing step fields
-	RoutingQuestion string         `json:"routing_question,omitempty"`  // Optional: Updated routing question
-	Routes          []RoutingRoute `json:"routes,omitempty"`            // Optional: Updated routes
-	DefaultRouteID  string         `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
-	RouteSourceFile string         `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
+	RoutingQuestion string            `json:"routing_question,omitempty"`  // Optional: Updated routing question
+	Routes          []RoutingRoute    `json:"routes,omitempty"`            // Optional: Updated routes
+	DefaultRouteID  string            `json:"default_route_id,omitempty"`  // Optional: Updated default route ID
+	RouteSourceFile string            `json:"route_source_file,omitempty"` // Optional: Updated deterministic route source file
+	ValuePath       string            `json:"value_path,omitempty"`
+	ValueCases      map[string]string `json:"value_cases,omitempty"`
+	ScriptOnly      *bool             `json:"script_only,omitempty"`
 	// Branch step fields (PLAT-259: same deterministic-switch shape as
 	// routing, just its own field name for the human-readable prompt)
 	BranchQuestion string `json:"branch_question,omitempty"` // Optional: Updated branch question
@@ -1211,7 +1229,9 @@ type PartialPlanStep struct {
 	ValidationSchema *ValidationSchema                    `json:"validation_schema,omitempty"`   // Optional: Updated validation schema
 	ScriptParameters map[string]ScriptParameterDefinition `json:"script_parameters,omitempty"`   // Optional: replace the scripted runtime parameter contract; pass {} to clear
 	// Message sequence fields
-	Items []MessageSequenceItem `json:"items,omitempty"`
+	Items          []MessageSequenceItem `json:"items,omitempty"`
+	AuthoredPrompt *bool                 `json:"authored_prompt,omitempty"`
+	SystemPrompt   *string               `json:"system_prompt,omitempty"`
 	// Crew step fields
 	CrewProfileID      string `json:"crew_profile_id,omitempty"` // Optional: Updated crew profile ID
 	CrewProjectID      string `json:"crew_project_id,omitempty"` // Optional: Updated crew project ID
@@ -1490,6 +1510,7 @@ func getUpdateRegularStepSchema() string {
 							"type": "string",
 							"description": "REQUIRED: The ID of the step in the existing plan that you want to update. Use the step's id field from the plan."
 						},
+						"script_only": {"type": "boolean", "description": "For a Relay script node, execute saved main.py strictly, without agent repair."},
 						"title": {
 							"type": "string",
 							"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
@@ -1560,6 +1581,7 @@ func getAddRegularStepSchema() string {
 		"type": "object",
 		"properties": {
             "is_orphan": {"type": "boolean", "description": "Set true to create a reusable saved script in orphan_steps instead of the main flow, for scripted message-sequence batches. It does not auto-run. Use empty insert_after_step_id."},
+			"script_only": {"type": "boolean", "description": "For a Relay script node, require an existing main.py and stop on any error without agent generation or repair."},
 			"id": {
 				"type": "string",
 				"description": "REQUIRED: Stable step ID for this new step. Generate a unique, URL-friendly ID based on the step title (e.g., 'deploy-application' from 'Deploy Application')."
@@ -1651,6 +1673,8 @@ func getAddMessageSequenceStepSchema() string {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the message sequence step."},
 			"description": {"type": "string", "description": "REQUIRED: The durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put ordered execution and verification instructions in items[]."},
+			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
+			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "REQUIRED: Prior context files this sequence depends on. Use [] if none."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Summary/result file for later steps. Omit when the step writes its result to the db (validate via validation_schema.db)."},
 			"items": {
@@ -1663,7 +1687,7 @@ func getAddMessageSequenceStepSchema() string {
 						"type": {"type": "string", "enum": ["user_message", "prevalidation", "foreach", "scripted"], "description": "user_message, prevalidation, foreach, or a deterministic scripted batch"},
 						"kind": {"type": "string", "description": "Optional shorthand that narrows this turn's inherited writes to one store: learning, knowledgebase, or db. Explicit non-empty write_access overrides kind."},
 						"title": {"type": "string"},
-						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
+						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. In a Relay authored step, use {{input}} for the complete caller JSON, {{input.field}} for a required field, or {{steps.id.output.field}} for earlier output. Do not use {{input.INPUT}} or {{variables.INPUT}}. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
 						"write_access": {
 							"type": "object",
 							"description": "Optional item-scoped narrowing. Omit it to inherit the step-level DB/KB/learnings write permissions. A non-empty object limits this turn to the selected stores and can never exceed step-level access. Folder-level booleans only — NO per-file path scoping (a \"paths\" list is rejected).",
@@ -1704,6 +1728,8 @@ func getUpdateMessageSequenceStepSchema() string {
 			"existing_step_id": {"type": "string", "minLength": 1, "description": "REQUIRED: ID of the message_sequence step to update. Legacy non-scripted regular steps are accepted and atomically upgraded to message_sequence because that is already their effective runtime type."},
 			"title": {"type": "string", "description": "OPTIONAL: New title. Omit to preserve the existing title."},
 			"description": {"type": "string", "description": "OPTIONAL: Replaces the durable system-level charter for the whole agent step: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It is visible on every turn but is not itself a user turn. Put ordered execution and verification instructions in items[]. Omit to preserve the existing description — do not resend it unchanged just to also change another field."},
+			"authored_prompt": {"type": "boolean", "description": "Switch exact authored prompt mode on or off. When true, provide system_prompt and end items with a JSON-returning user_message."},
+			"system_prompt": {"type": "string", "description": "Replace the authored system prompt. Supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "OPTIONAL: Replaces the full list of prior context files this sequence depends on. Omit to preserve the existing list."},
 			"context_output": {"type": "string", "description": "OPTIONAL: Replaces the summary/result file for later steps. Omit to preserve the existing value, or to leave the step writing its result to the db (validate via validation_schema.db) instead of a file."},
 			"items": {
@@ -1901,6 +1927,8 @@ func getAddBranchStepSchema() string {
 				"type": "string",
 				"description": "REQUIRED for compatibility/readability: Human-readable next-step decision prompt. It is not evaluated by an LLM at runtime; the selected route must come from caller route_selections, route_source_file, route_selection.json dependency, or default_route_id."
 			},
+			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: map exact rendered values to route_id; unmatched values use default_route_id or fail."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,
@@ -1988,6 +2016,8 @@ func getUpdateBranchStepSchema() string {
 				"type": "string",
 				"description": "OPTIONAL: Updated human-readable branch prompt. Runtime does not LLM-evaluate this field."
 			},
+			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: replace exact value to route_id mapping."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,
@@ -3266,6 +3296,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.NextStepID != "" {
 			updated.NextStepID = partialUpdate.NextStepID
 		}
+		if partialUpdate.ScriptOnly != nil {
+			updated.ScriptOnly = *partialUpdate.ScriptOnly
+		}
 		// Loop fields ignored (feature removed)
 		if partialUpdate.ValidationSchema != nil {
 			updated.ValidationSchema = partialUpdate.ValidationSchema
@@ -3335,6 +3368,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		}
 		if partialUpdate.Items != nil {
 			updated.Items = partialUpdate.Items
+		}
+		if partialUpdate.AuthoredPrompt != nil {
+			updated.AuthoredPrompt = *partialUpdate.AuthoredPrompt
+		}
+		if partialUpdate.SystemPrompt != nil {
+			updated.SystemPrompt = *partialUpdate.SystemPrompt
 		}
 		if partialUpdate.PredefinedRoutes != nil {
 			updated.PredefinedRoutes = append([]PlanOrchestrationRoute(nil), partialUpdate.PredefinedRoutes...)
@@ -3478,6 +3517,12 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		}
 		if partialUpdate.RouteSource != "" {
 			updated.RouteSource = partialUpdate.RouteSource
+		}
+		if partialUpdate.ValuePath != "" {
+			updated.ValuePath = partialUpdate.ValuePath
+		}
+		if partialUpdate.ValueCases != nil {
+			updated.ValueCases = partialUpdate.ValueCases
 		}
 		return &updated
 
@@ -3711,6 +3756,14 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			NewValue: partialUpdate.ScriptParameters,
 		})
 	}
+	if partialUpdate.ScriptOnly != nil {
+		changedFields = append(changedFields, "script_only")
+		old := false
+		if regular, ok := existingStep.(*RegularPlanStep); ok {
+			old = regular.ScriptOnly
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "script_only", OldValue: old, NewValue: *partialUpdate.ScriptOnly})
+	}
 	if partialUpdate.Items != nil {
 		changedFields = append(changedFields, "items")
 		oldItemsJSON := "[]"
@@ -3725,6 +3778,16 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldItemsJSON,
 			NewValue: string(newBytes),
 		})
+	}
+	if sequenceStep, ok := existingStep.(*MessageSequencePlanStep); ok {
+		if partialUpdate.AuthoredPrompt != nil {
+			changedFields = append(changedFields, "authored_prompt")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "authored_prompt", OldValue: sequenceStep.AuthoredPrompt, NewValue: *partialUpdate.AuthoredPrompt})
+		}
+		if partialUpdate.SystemPrompt != nil {
+			changedFields = append(changedFields, "system_prompt")
+			*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "system_prompt", OldValue: sequenceStep.SystemPrompt, NewValue: *partialUpdate.SystemPrompt})
+		}
 	}
 	// Loop fields ignored (feature removed)
 	// Legacy todo_task_step field — extract fields and track them as top-level changes
@@ -4050,6 +4113,22 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldQuestion,
 			NewValue: partialUpdate.BranchQuestion,
 		})
+	}
+	if partialUpdate.ValuePath != "" {
+		changedFields = append(changedFields, "value_path")
+		old := ""
+		if branch, ok := existingStep.(*BranchPlanStep); ok {
+			old = branch.ValuePath
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "value_path", OldValue: old, NewValue: partialUpdate.ValuePath})
+	}
+	if partialUpdate.ValueCases != nil {
+		changedFields = append(changedFields, "value_cases")
+		var old map[string]string
+		if branch, ok := existingStep.(*BranchPlanStep); ok {
+			old = branch.ValueCases
+		}
+		*fieldChanges = append(*fieldChanges, PlanFieldChange{StepID: partialUpdate.ExistingStepID, Field: "value_cases", OldValue: old, NewValue: partialUpdate.ValueCases})
 	}
 	if partialUpdate.Routes != nil {
 		changedFields = append(changedFields, "routes")
@@ -5902,6 +5981,17 @@ func validateMessageSequenceStepFieldsTypedWithOptions(step *MessageSequencePlan
 	if len(step.Items) == 0 {
 		return fmt.Errorf("message_sequence step (title: %q, ID: %s) must include at least one item", step.Title, step.ID)
 	}
+	if step.AuthoredPrompt {
+		if strings.TrimSpace(step.SystemPrompt) == "" {
+			return fmt.Errorf("message_sequence step %q: authored_prompt requires system_prompt", step.ID)
+		}
+		if len(step.PredefinedRoutes) > 0 {
+			return fmt.Errorf("message_sequence step %q: authored_prompt does not support predefined_routes", step.ID)
+		}
+		if lastType := strings.TrimSpace(step.Items[len(step.Items)-1].Type); lastType != "" && lastType != "user_message" {
+			return fmt.Errorf("message_sequence step %q: authored_prompt must end with a user_message that returns JSON", step.ID)
+		}
+	}
 	seen := make(map[string]bool, len(step.Items))
 	for i, item := range step.Items {
 		if strings.TrimSpace(item.ID) == "" {
@@ -5945,6 +6035,9 @@ func validateMessageSequenceStepFieldsTypedWithOptions(step *MessageSequencePlan
 			}
 		default:
 			return fmt.Errorf("message_sequence step %q item %q has unsupported type %q", step.ID, item.ID, item.Type)
+		}
+		if step.AuthoredPrompt && itemType != "user_message" && itemType != "scripted" {
+			return fmt.Errorf("message_sequence step %q item %q: authored_prompt supports only user_message and scripted items", step.ID, item.ID)
 		}
 
 		// NOTE: per-item write access (db/kb/learnings) is intentionally NOT

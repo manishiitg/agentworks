@@ -221,6 +221,7 @@ function ProjectChatWelcome({ project }: { project: VideoProject }) {
 }
 
 function VideoStudioConversation({
+  runtimeActivity,
   events,
   isRestoring,
   streamingText,
@@ -234,12 +235,13 @@ function VideoStudioConversation({
   onRetryLastMessage,
   onSubmitQuery,
 }: ChatContentRendererProps) {
-  if (!isRestoring && events.length === 0 && !streamingText.trim() && !streamingStatus?.trim()) {
+  if (!isRestoring && events.length === 0 && !streamingText.trim() && !streamingStatus?.trim() && (!runtimeActivity || runtimeActivity.state === 'ready')) {
     return <>{landingContent}</>
   }
 
   return (
     <TerminalEventTranscript
+      runtimeActivity={runtimeActivity}
       events={events}
       terminal={null}
       loading={isRestoring}

@@ -8,6 +8,7 @@ export interface ChatTabPillProps {
   canClose: boolean
   isBlank: boolean
   displayName?: string
+  titleOverride?: string
   readOnly?: boolean
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void
@@ -24,7 +25,7 @@ const TAB_STATUS_DOT: Record<'busy' | 'completed' | 'ready', { cls: string; labe
 
 /** The shared Chat tab pill used by workflows, Work, and CapLayer. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
-  tab, isActive, canClose, isBlank, displayName: displayNameOverride,
+  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride,
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false,
 }) => {
   const displayName = displayNameOverride ?? tab.name
@@ -102,7 +103,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       ) : (
         <span
           className="min-w-0 max-w-[14rem] truncate whitespace-nowrap"
-          title={tab.name || displayName}
+          title={titleOverride || tab.name || displayName}
         >
           {displayName}
         </span>

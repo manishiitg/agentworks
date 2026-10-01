@@ -483,7 +483,11 @@ func TestParseStepFromJSONHandlesBranchType(t *testing.T) {
 // (background_skill_inheritance_test.go).
 func TestCanonicalWorkshopPromptOffersBranchForFixedChoices(t *testing.T) {
 	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
-	if !strings.Contains(prompt, "references/plan-design.md") || !strings.Contains(prompt, "`branch`") {
+	operations, err := guidance.RenderReferenceKindForTest("workflow-chat", "workshop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(operations, "references/plan-design.md") || !strings.Contains(operations, "`branch`") {
 		t.Fatal("workshop must route step design to the canonical skill and expose branch")
 	}
 	doc := guidance.RenderSystemDoc("plan-design")

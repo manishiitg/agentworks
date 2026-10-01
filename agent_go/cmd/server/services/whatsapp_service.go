@@ -1294,6 +1294,7 @@ func listWhatsAppOtherCrews(ctx context.Context, userID string) []WhatsAppOtherC
 type whatsappWorkflowManifest struct {
 	ID            string `json:"id"`
 	Label         string `json:"label"`
+	Kind          string `json:"kind"`
 	ExecutionDefs struct {
 		WorkshopMode string `json:"workshop_mode"`
 	} `json:"execution_defaults"`
@@ -1592,6 +1593,9 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 		var manifest whatsappWorkflowManifest
 		if err := json.Unmarshal([]byte(content.Content), &manifest); err != nil {
 			log.Printf("[WHATSAPP] Failed to parse workflow manifest %s: %v", manifestPath, err)
+			continue
+		}
+		if manifest.Kind == "relay" {
 			continue
 		}
 		workspacePath := strings.TrimSuffix(manifestPath, "/workflow.json")

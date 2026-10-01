@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { DominionMark } from '../products/dominion/DominionMark'
@@ -13,6 +13,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { applyRuntimeBranding } from '../runtime-branding'
 import { cn } from '../lib/utils'
+import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
@@ -31,6 +32,7 @@ const products: Array<{
   icon: ProductMarkComponent
 }> = [
   { id: 'agentworks', label: 'Goals', description: 'Set a goal, give the agents a metric, and watch them hit it', icon: RunloopMark },
+  { id: 'relays', label: 'Relays', description: 'Build and run an API callable agent graph', icon: Waypoints },
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
   { id: 'dominion', label: 'Dominion', description: 'Paper-trading watchlist and portfolio', icon: DominionMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
@@ -71,12 +73,18 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
     setOpen(false)
     if (standalone) return
     setProductSurface(product)
-    if (product !== 'agentworks') return
+    if (product !== 'agentworks' && product !== 'relays') return
 
-    // AgentWorks opens the automation overview; parked products are not exposed here.
+    const presetStore = useGlobalPresetStore.getState()
+    const activePreset = presetStore.getActivePreset('workflow')
+    if (activePreset && (activePreset.workflowKind === 'relay') !== (product === 'relays')) {
+      presetStore.clearActivePreset('workflow')
+      presetStore.setSelectedPresetFolder(null)
+    }
     const appStore = useAppStore.getState()
     appStore.setModeCategory('workflow')
-    appStore.setShowWorkflowsOverview(true)
+    appStore.setShowWorkflowsOverview(product === 'agentworks')
+    appStore.setShowSchedulesOverview(false)
   }
 
   useEffect(() => {

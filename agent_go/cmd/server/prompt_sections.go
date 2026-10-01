@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 )
 
 // The system prompt is assembled from independent sections, each with its own
@@ -55,6 +56,7 @@ type promptContext struct {
 	HasProfile             bool
 	IsWorkflowPhase        bool
 	CrewReadOnly           bool
+	MemoryReadOnly         bool
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
@@ -90,26 +92,6 @@ type promptContext struct {
 	FeatureExtensions []string
 }
 
-const governedProjectMemoryInstructions = `## Persistent project memory
-
-- Use the project root MEMORY.md as the one durable memory store shared by every chat, schedule, bot, webhook-triggered task, and background task in this project. Keep memory visible in the normal project file browser. Do not create another memory file, memory folder, memory index, or memory skill.
-- Provider-native instruction and memory surfaces are not alternate stores. Never create, update, or invoke Claude auto-memory, Cursor Memories, Cursor rules, Codex AGENTS.md, or any provider memory tool to retain learned project information. AgentWorks may temporarily project this system prompt through a provider instruction file; do not edit that file. Persist learned information only in the project-root MEMORY.md.
-- Before saying project-specific information is unknown or starting new research, read MEMORY.md when it exists. When remembered information materially affects the answer, mention MEMORY.md so the user can inspect it.
-- Save stable, verified information likely to help future work without waiting for the user to repeat a request. Keep the file concise and reverse chronological using this Markdown shape (newest entry first):
-
-  # Project Memory
-
-  ## YYYY-MM-DD — Topic
-  - **Summary:** One sentence stating the durable fact, preference, or decision.
-  - **Details:** Only the context future work needs.
-  - **Source:** Where it was verified and the verification date, when that matters.
-  - **Related skill:** ` + "`skills/<skill-name>/SKILL.md`" + ` when an applicable project-local skill exists.
-
-  Omit fields that add no value. Keep bullets short, use one topic per dated heading, and update or merge an existing topic instead of appending a duplicate. Replace or remove stale entries when newer evidence contradicts them. Do not turn MEMORY.md into a raw activity log.
-- Never create or update a skill as a side effect of learning something. Skills change only when the user explicitly asks to create, import, install, or change one.
-- Do not save guesses, transient status, raw conversation, credentials, secret values, or sensitive personal information unless the user explicitly asks for it to be retained. Never turn unverified research into memory. Briefly tell the user when durable project memory was added or materially updated.
-- Treat "remember this", "save this for later", "what do you remember", "correct that memory", and "forget this" as direct operations on the same MEMORY.md file.`
-
 // codeHostSafetyInstructions are the rules for a Code project's agent. A Code project is a shared
 // server that other people's projects also run on; its agent may write code, install packages and
 // run tools for the project, but must keep to the project and never turn the server into a service
@@ -119,8 +101,8 @@ const codeHostSafetyInstructions = `## Working on a shared server
 
 This project runs on a server that other people's projects share. Keep to your own project.
 
-- Work inside your working folder. Create projects, files and folders there, never in "~", "/srv", "/tmp" or any folder outside the working folder. "~" is a private hidden folder for the tool itself; anything created there is invisible to the user.
-- Do not look at, list or open folders or files outside your working folder, including the server's own folders and other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
+- Create project files in your working folder. Write to explicitly listed read_write attached folders only through guarded file tools. Never use "~" (the CLI's private hidden folder), "/tmp" or unlisted host folders as project storage; files there are invisible to the user.
+- Read only your working folder and additional paths explicitly authorized in this prompt, including the signed-in user's chat history for requested history lookups. Follow each listed access level and use guarded tools where required. Never inspect unlisted server folders or other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
 - Do not install, start or expose remote-access or hosting tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, VPNs, tunnels, reverse proxies, port forwarders, or anything that listens for connections from outside this project. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only.
 - Do not install or run anything harmful or unrelated to the project: cryptocurrency miners, scanners, botnets, credential or data harvesters, or tools that try to get around this environment's limits or other people's access controls. Do not run other autonomous coding agents or piped remote install scripts ("curl ... | bash") to set up such tools.
 - Use ordinary project dependencies (npm, pip, go modules) inside the working folder. If a request needs something outside these rules, say so and ask the user instead of doing it.`
@@ -139,7 +121,7 @@ var promptSections = []promptSection{
 				return getWorkflowPhaseWorkspaceMapForMode(c.ShellRoot, c.WorkflowPhaseFolder, c.WorkflowMode)
 			case isProjectProfileID(c.ProfileID):
 				chatHistory := newWorkspacePaths(c.ShellRoot, c.PerUserChatsFolder).ChatHistory
-				return GetWorkWorkspaceMap(c.ProfileWorkspace, chatHistory)
+				return GetWorkWorkspaceMap(resolveWorkspacePath(c.ShellRoot, c.ProfileWorkspace), chatHistory)
 			case c.HasProfile:
 				return GetWorkspaceMap(c.ShellRoot, c.ProfileWorkspace)
 			default:
@@ -155,10 +137,7 @@ var promptSections = []promptSection{
 
 		Applies: func(c promptContext) bool { return !c.WorkspaceFilesDisabled && (c.HasProfile || c.IsWorkflowPhase) },
 		Build: func(c promptContext) string {
-			if c.CrewReadOnly {
-				return "## Persistent project memory\n\nRead the Crew's project-root MEMORY.md when relevant, within the current folder grants. Run mode cannot update memory, instructions, or skills. In a private CLI runtime, the project memory is at project/MEMORY.md.\n"
-			}
-			return governedProjectMemoryInstructions
+			return instructions.ProjectMemoryPrompt(c.MemoryReadOnly || c.CrewReadOnly || (c.IsWorkflowPhase && c.WorkflowMode == "run"))
 		},
 	},
 	{

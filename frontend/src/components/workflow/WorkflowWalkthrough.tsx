@@ -263,7 +263,7 @@ const EMPTY_CODE_STEPS: WalkthroughStep[] = [
 const CODE_STEPS: WalkthroughStep[] = [
   {
     title: 'Your private workspace',
-    body: 'Chat with the agent, keep your files, and connect your own apps here. Only you and the people you share it with can open it; administrators and reviewers can view it read-only.',
+    body: 'Chat with the agent, keep your files, and connect your own apps here. Only you can open it; administrators and reviewers can inspect it read-only, with every view logged.',
     example: 'Ask it to research a topic, then turn the notes into a document.',
   },
   {

@@ -28,6 +28,12 @@ func TestToolWritesToDashboardOrDBPublishReportNotices(t *testing.T) {
 	if got, _ := sub.Drain(); len(got) != 0 {
 		t.Fatalf("non-dashboard write published %v", got)
 	}
+	if _, err := client.UpdateWorkspaceFile(ctx, UpdateWorkspaceFileParams{Filepath: "Workflow/trader/planning/plan.json", Content: `{"steps":[]}`}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := sub.Drain(); !reflect.DeepEqual(got, []livefeed.Notice{{Kind: livefeed.Plan, Workflow: "Workflow/trader"}}) {
+		t.Fatalf("plan write notices = %v", got)
+	}
 
 	if _, err := client.UpdateWorkspaceFile(ctx, UpdateWorkspaceFileParams{Filepath: "Workflow/trader/db/reports/index.html", Content: "<html>"}); err != nil {
 		t.Fatal(err)

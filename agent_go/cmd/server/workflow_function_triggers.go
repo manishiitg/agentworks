@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // Workflow functions: a workflow offers typed functions to Crews, other
@@ -42,7 +43,7 @@ type WorkflowFunctionSpec struct {
 // variable of the same name for that run.
 type WorkflowFunctionInput struct {
 	Name        string   `json:"name"`
-	Type        string   `json:"type,omitempty"` // string (default), integer, number, boolean
+	Type        string   `json:"type,omitempty"` // string (default), integer, number, boolean, object
 	Required    bool     `json:"required,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Enum        []string `json:"enum,omitempty"`
@@ -60,7 +61,7 @@ func (s WorkflowSchedule) IsFunctionTrigger() bool {
 
 func workflowFunctionInputType(input WorkflowFunctionInput) string {
 	switch strings.ToLower(strings.TrimSpace(input.Type)) {
-	case "integer", "number", "boolean":
+	case "integer", "number", "boolean", "object":
 		return strings.ToLower(strings.TrimSpace(input.Type))
 	default:
 		return "string"
@@ -96,9 +97,9 @@ func validateWorkflowFunctionSpec(spec *WorkflowFunctionSpec) error {
 		}
 		seen[input.Name] = true
 		switch strings.ToLower(strings.TrimSpace(input.Type)) {
-		case "", "string", "integer", "number", "boolean":
+		case "", "string", "integer", "number", "boolean", "object":
 		default:
-			return fmt.Errorf("function input %q: type must be string, integer, number or boolean", input.Name)
+			return fmt.Errorf("function input %q: type must be string, integer, number, boolean or object", input.Name)
 		}
 	}
 	for _, caller := range spec.AllowedCallers {
@@ -178,11 +179,17 @@ func workflowFunctions(manifest *WorkflowManifest) []crewFunction {
 		if !sched.IsFunctionTrigger() || !sched.Enabled {
 			continue
 		}
+		resultSchema := workflowFunctionResultSchema()
+		if manifest.Kind == "relay" {
+			// The authored Relay output is JSON chosen by its author. A future
+			// output-schema field can narrow this for specific integrations.
+			resultSchema = nil
+		}
 		out = append(out, crewFunction{
 			Name:         sched.Function.Name,
 			Description:  firstNonEmptyTrimmed(sched.Function.Description, sched.Name),
 			InputSchema:  workflowFunctionInputSchema(sched),
-			ResultSchema: workflowFunctionResultSchema(),
+			ResultSchema: resultSchema,
 			CreatedBy:    "workflow trigger " + sched.ID,
 			TriggerID:    sched.ID,
 		})
@@ -270,6 +277,15 @@ func workflowFunctionArgs(sched WorkflowSchedule, args map[string]interface{}) (
 func workflowFunctionInputValue(input WorkflowFunctionInput, raw interface{}) (string, error) {
 	var value string
 	switch workflowFunctionInputType(input) {
+	case "object":
+		if _, ok := raw.(map[string]interface{}); !ok {
+			return "", fmt.Errorf("input %s must be an object", input.Name)
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return "", fmt.Errorf("input %s must be a JSON object", input.Name)
+		}
+		value = string(encoded)
 	case "integer":
 		switch n := raw.(type) {
 		case float64:
@@ -323,11 +339,12 @@ func workflowFunctionInputValue(input WorkflowFunctionInput, raw interface{}) (s
 
 // workflowFunctionCall is one call of a workflow function.
 type workflowFunctionCall struct {
-	WorkflowID string
-	Function   string
-	Caller     triggerCaller
-	DeliveryID string
-	Args       map[string]interface{}
+	WorkflowID   string
+	Function     string
+	RelayVersion string
+	Caller       triggerCaller
+	DeliveryID   string
+	Args         map[string]interface{}
 	// Payload is the JSON the run sees (arguments, call id, caller).
 	Payload map[string]interface{}
 }
@@ -339,11 +356,39 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
+	if manifest.Kind == "relay" {
+		// Revoking a function or caller on the live Relay takes effect at once.
+		// The published copy still supplies the versioned input contract and
+		// executable graph, but never grants authority on its own.
+		liveSchedule, liveErr := findWorkflowFunctionTrigger(manifest, call.Function)
+		if liveErr != nil {
+			return "", internalTriggerDeliveryResult{}, liveErr
+		}
+		if !workflowFunctionCallerAllowed(liveSchedule.Function, call.Caller) {
+			return liveSchedule.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, call.Function)
+		}
+		release, releaseWorkspace, releaseErr := resolveRelayRelease(ctx, workspacePath, call.RelayVersion)
+		if releaseErr != nil {
+			return "", internalTriggerDeliveryResult{}, releaseErr
+		}
+		if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
+			return "", internalTriggerDeliveryResult{}, err
+		}
+		workspacePath = releaseWorkspace
+		manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
+		if err != nil || manifest == nil {
+			return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Relay %s: %w", release.Version, err)
+		}
+		if call.Payload == nil {
+			call.Payload = map[string]interface{}{}
+		}
+		call.Payload["relay_version"] = release.Version
+	}
 	sched, err := findWorkflowFunctionTrigger(manifest, call.Function)
 	if err != nil {
 		return "", internalTriggerDeliveryResult{}, err
 	}
-	if !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
+	if manifest.Kind != "relay" && !workflowFunctionCallerAllowed(sched.Function, call.Caller) {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("%w: function %q does not allow this caller", ErrInternalCallerMismatch, sched.Function.Name)
 	}
 	variables, group, err := workflowFunctionArgs(*sched, call.Args)
@@ -355,7 +400,28 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		payload = map[string]interface{}{}
 	}
 	payload["function"] = sched.Function.Name
+	if manifest.Kind == "relay" {
+		payload["relay_trigger_caller"] = call.Caller
+	}
 	payload["args"] = call.Args
+	deliveryID := strings.TrimSpace(call.DeliveryID)
+	if deliveryID == "" {
+		deliveryID = uuid.NewString()
+	}
+	if manifest.Kind == "relay" {
+		// A replay must return its original run even if the author edited the
+		// plan after dispatch. Keep the existing function-trigger idempotency.
+		if run, lookupErr := s.existingWebhookRun(ctx, webhookDeliveryRunID(manifest.ID, sched.ID, deliveryID)); lookupErr == nil {
+			return sched.ID, internalTriggerDeliveryResult{RunID: run.RunID, DeliveryID: deliveryID, Duplicate: true, Status: string(run.State)}, nil
+		}
+		if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
+			return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Relay %q has no relay_output_step_id", manifest.Label)
+		}
+		if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
+			return sched.ID, internalTriggerDeliveryResult{}, err
+		}
+		payload["relay_output_step_id"] = manifest.RelayOutputStepID
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
@@ -363,13 +429,17 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 	if err := checkInternalPayload(body); err != nil {
 		return sched.ID, internalTriggerDeliveryResult{}, err
 	}
-	deliveryID := strings.TrimSpace(call.DeliveryID)
-	if deliveryID == "" {
-		deliveryID = uuid.NewString()
-	}
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
 	delivery, err := receiver.deliverFunction(ctx, manifest.ID, workspacePath, *sched, deliveryID, body, variables, group)
 	return sched.ID, delivery, err
+}
+
+func validateRelayOutputStep(ctx context.Context, workspacePath, outputStepID string) error {
+	plan, err := readPlanFromWorkspace(ctx, workspacePath)
+	if err != nil {
+		return fmt.Errorf("read Relay plan: %w", err)
+	}
+	return stepworkflow.ValidateRelayPlanStructure(plan, outputStepID)
 }
 
 // deliverFunction is deliver for a function trigger: the validated inputs

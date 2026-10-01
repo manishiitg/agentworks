@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -162,6 +165,30 @@ func (s *SchedulerService) resumeDueCapacityWaits(ctx context.Context, now time.
 	}
 	s.mu.Unlock()
 
+	// API invocations are durable rows, not registered cron jobs. Include every
+	// suspended invocation, even when several share one published version.
+	s.stateStoreMu.RLock()
+	store := s.stateStore
+	s.stateStoreMu.RUnlock()
+	if store != nil {
+		runs, err := store.WaitingCapacityRuns(ctx)
+		if err != nil {
+			scheduleLogf("[SCHEDULER] capacity wait discovery failed: %v", err)
+			return
+		}
+		for _, run := range runs {
+			resumeCtx, err := s.capacityResumeContext(ctx, run, now)
+			if err != nil {
+				s.transitionScheduleRun(ctx, nil, schedulerstate.Transition{RunID: run.RunID, To: schedulerstate.StateFailed, ErrorMessage: err.Error(), Reason: "capacity resume unavailable", At: now})
+				_ = UpdateScheduleRun(ctx, run.ScopeID, run.RunID, "error", err.Error(), nil, run.RunFolder, "")
+				continue
+			}
+			if resumeCtx != nil {
+				go s.triggerSchedule(resumeCtx, now)
+			}
+		}
+		return
+	}
 	for _, c := range candidates {
 		waitingRun, wait := s.outstandingCapacityWait(ctx, c.sctx.WorkspacePath)
 		if waitingRun == nil || !wait.ResumeDue(now) {
@@ -175,6 +202,105 @@ func (s *SchedulerService) resumeDueCapacityWaits(ctx context.Context, now time.
 			waitingRun.ID, wait.StepNumber, wait.Describe())
 		go s.triggerSchedule(&resumeCtx, now)
 	}
+}
+
+// capacityResumeContext restores the pinned workspace and delivery. It never
+// synthesizes a schedule INPUT for an existing API invocation.
+func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedulerstate.Run, now time.Time) (*ScheduleContext, error) {
+	if run.ScopeType != "workflow" {
+		return nil, nil
+	}
+	wait, exists := readWorkflowCapacityWait(ctx, run.ScopeID, run.RunFolder)
+	if !exists {
+		return nil, fmt.Errorf("capacity wait checkpoint is unavailable")
+	}
+	if !wait.ResumeDue(now) {
+		return nil, nil
+	}
+	manifest, found, err := ReadWorkflowManifest(ctx, run.ScopeID)
+	if err != nil || !found {
+		return nil, fmt.Errorf("capacity resume workflow is unavailable")
+	}
+	var sched *WorkflowSchedule
+	for i := range manifest.Schedules {
+		if manifest.Schedules[i].ID == run.ScheduleID {
+			sched = &manifest.Schedules[i]
+			break
+		}
+	}
+	if sched == nil || !sched.Enabled {
+		return nil, fmt.Errorf("capacity resume schedule is disabled or removed")
+	}
+	resume := buildScheduleContext(run.ScopeID, manifest, *sched)
+	resume.TriggerSource = run.TriggerSource
+	raw, exists, readErr := readFileFromWorkspace(ctx, webhookInputPath(run.ScopeID, run.RunID))
+	if readErr != nil {
+		return nil, readErr
+	}
+	if exists {
+		var input WorkflowWebhookDelivery
+		if json.Unmarshal([]byte(raw), &input) != nil || input.RunID != run.RunID {
+			return nil, fmt.Errorf("capacity resume delivery is invalid")
+		}
+		if err := webhookDeliveryStartError(*sched, &input); err != nil {
+			return nil, err
+		}
+		resume.WebhookInput = &input
+		if input.Group != "" {
+			resume.Schedule.GroupNames = []string{input.Group}
+		}
+		stepID, routes := resolvedWebhookExecutionTarget(*sched, &input)
+		resume.Schedule.RouteSelections = routes
+		if sched.Webhook != nil {
+			webhook := *sched.Webhook
+			webhook.StepID = stepID
+			resume.Schedule.Webhook = &webhook
+		}
+	} else if run.TriggerSource == "webhook" {
+		return nil, fmt.Errorf("capacity resume delivery is unavailable")
+	}
+	if manifest.Kind == "relay" && resume.WebhookInput != nil && sched.IsFunctionTrigger() {
+		draft, err := relayDraftWorkspaceForRelease(ctx, run.ScopeID)
+		if err != nil {
+			return nil, err
+		}
+		if version := strings.Split(run.ScopeID, "/"); workflowtypes.RelayReleaseWorkspace(run.ScopeID) != "" {
+			release, releaseWorkspace, err := readRelayRelease(ctx, draft, version[3])
+			if err != nil {
+				return nil, err
+			}
+			if err := verifyRelayRelease(ctx, release, releaseWorkspace); err != nil {
+				return nil, err
+			}
+		}
+		live, found, err := ReadWorkflowManifest(ctx, draft)
+		if err != nil || !found {
+			return nil, fmt.Errorf("capacity resume Relay is unavailable")
+		}
+		var payload struct {
+			Function string        `json:"function"`
+			Caller   triggerCaller `json:"relay_trigger_caller"`
+			User     string        `json:"relay_caller"`
+		}
+		if json.Unmarshal(resume.WebhookInput.Payload, &payload) != nil {
+			return nil, fmt.Errorf("capacity resume caller is unavailable")
+		}
+		if payload.Caller.ID == "" && payload.User != "" {
+			payload.Caller = triggerCaller{Type: triggerCallerUser, ID: payload.User}
+		}
+		liveSchedule, err := findWorkflowFunctionTrigger(live, payload.Function)
+		if payload.Caller.ID == "" || err != nil || !workflowFunctionCallerAllowed(liveSchedule.Function, payload.Caller) {
+			return nil, fmt.Errorf("capacity resume caller is no longer allowed")
+		}
+		access := workflowAccessForManifest(principalClaims(payload.Caller.ID), live)
+		if payload.Caller.Type == triggerCallerUser && (access == WorkflowAccessNone || !userAllowedWorkflowID(principalClaims(payload.Caller.ID), live.ID)) {
+			return nil, fmt.Errorf("capacity resume caller no longer has Relay access")
+		}
+	}
+	resume.CapacityResumeRunID = run.RunID
+	resume.CapacityResumeRunFolder = run.RunFolder
+	resume.CapacityResumeFromStep = wait.StepNumber
+	return resume, nil
 }
 
 // capacityWaitBelongsToRun reports whether a record was written by the run that

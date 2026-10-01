@@ -131,10 +131,7 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 		return level, nil
 	}
 	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), codeproduct.ProfileID) || isCodeProjectPath(req.SelectedFolder) {
-		// A Code is private: its owner, and the people it is shared with
-		// (config/code-shares.json), reach it. Owners and co-owners get owner
-		// access, editors write access in their own chat, and a viewer
-		// cannot run the agent at all.
+		// Only its owner can run Code; audited inspection has separate routes.
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
 			return WorkflowAccessNone, fmt.Errorf("Code access denied")
 		}

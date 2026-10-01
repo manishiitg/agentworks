@@ -3,6 +3,8 @@ package agentworksproduct
 import (
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 )
 
 // Run mode must be told to consult what the workflow knows and how to turn a
@@ -14,6 +16,13 @@ func TestRunPromptCoversKnowledgeAndRouteSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompt := string(raw)
+	if !strings.Contains(prompt, "references/workflow-chat.md") || !strings.Contains(prompt, "Do not edit plan/config") {
+		t.Fatal("Run must retain its mode limit and procedure trigger")
+	}
+	procedure, err := guidance.RenderReferenceKindForTest("workflow-chat", "run")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		"learnings/_global/SKILL.md",
 		"learnings/<step-id>/",
@@ -24,8 +33,8 @@ func TestRunPromptCoversKnowledgeAndRouteSelection(t *testing.T) {
 		"your reply is the answer",
 		"Do not answer with \"see report.md\"",
 	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("run.md no longer says %q", want)
+		if !strings.Contains(procedure, want) {
+			t.Fatalf("Run operations skill no longer says %q", want)
 		}
 	}
 }

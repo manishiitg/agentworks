@@ -2,6 +2,7 @@ import { sharedLink } from '../../utils/sharedLinks'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Folder, AlertCircle, Loader2, ChevronRight, ChevronDown, Trash2, MessageSquare, Upload, Plus, MoreHorizontal, Move, Download, CheckSquare, Edit2, Link, Check } from 'lucide-react'
 import type { PlannerFile } from '../../services/api-types'
+import { isProtectedWorkspaceEntry } from '../../utils/workspaceSelection'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../ui/tooltip'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -38,6 +39,7 @@ interface PlannerFileListProps {
   downloadingFilePath?: string
   hideAddToChat?: boolean
   hideRootActions?: boolean
+  protectedRootPath?: string
   isSelectionMode?: boolean
   selectedFiles?: Set<string>
   onToggleFileSelection?: (file: PlannerFile) => void
@@ -84,6 +86,7 @@ export default function PlannerFileList({
   downloadingFilePath,
   hideAddToChat = false,
   hideRootActions = false,
+  protectedRootPath,
   isSelectionMode = false,
   selectedFiles = new Set(),
   onToggleFileSelection,
@@ -203,6 +206,7 @@ export default function PlannerFileList({
     const isActionMenuOpen = openActionsPath === actionMenuPath
     
     const isSelected = selectedFiles.has(file.filepath)
+    const isSelectable = !isProtectedWorkspaceEntry(file, protectedRootPath) && !(hideRootActions && !protectedRootPath && depth === 0 && file.type === 'folder')
     const isOpenFile = !!openFilePath && file.type !== 'folder' && (openFilePath === file.filepath || openFilePath === file.originalFilepath)
     const isFocused = focusedPath === file.filepath
     const gitKey = (file.originalFilepath || file.filepath).replace(/^\/+/, '')
@@ -239,7 +243,8 @@ export default function PlannerFileList({
           onClick={() => {
             setFocusedPath(file.filepath)
             if (isSelectionMode && onToggleFileSelection) {
-              onToggleFileSelection(file)
+              if (isSelectable) onToggleFileSelection(file)
+              else if (file.type === 'folder') onFolderClick(file)
             } else {
               if (file.type === 'folder') {
                 onFolderClick(file)
@@ -254,6 +259,8 @@ export default function PlannerFileList({
             <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
+                aria-label={`Select ${fileName}`}
+                disabled={!isSelectable}
                 checked={isSelected}
                 onChange={() => onToggleFileSelection?.(file)}
                 className="h-4 w-4 accent-primary cursor-pointer"

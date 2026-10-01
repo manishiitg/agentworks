@@ -38,8 +38,6 @@ export type ProductProject<P extends string = string> = {
 export type ProductProjectShare = {
   ownerId: string
   ownerUsername?: string
-  /** A shared Code's role for the caller (viewer, editor, co_owner). Unset for Crew readers. */
-  role?: 'viewer' | 'editor' | 'co_owner'
   triggers: SharedProjectTrigger[]
   schedules: SharedProjectSchedule[]
 }

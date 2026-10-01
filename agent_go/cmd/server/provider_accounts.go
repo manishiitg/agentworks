@@ -544,6 +544,12 @@ type providerAccountRun struct {
 func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope providerAccountScope) providerAccountRun {
 	run := providerAccountRun{Product: strings.ToLower(strings.TrimSpace(scope.Product)), Label: "this run"}
 	path := strings.Trim(filepath.ToSlash(strings.TrimSpace(scope.WorkspacePath)), "/")
+	if draft, err := relayDraftWorkspaceForRelease(ctx, path); err == nil {
+		path = draft
+	} else {
+		return run // An invalid snapshot must never inherit a workflow share.
+	}
+
 	if path != "" {
 		if ref, ok := resolveCrewPath(ctx, scope.Principal, path); ok {
 			run.Product = productCrews

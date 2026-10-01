@@ -91,6 +91,9 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		if len(segments) < 2 {
 			return admin
 		}
+		if segments[1] == relayReleasesFolder && len(segments) >= 4 {
+			return relayReleaseReadAllowed(ctx, claims, clean)
+		}
 		if strings.HasPrefix(segments[1], ".") {
 			return admin
 		}

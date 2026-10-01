@@ -34,6 +34,7 @@ type ScheduleContext struct {
 	WorkspacePath string
 	WorkflowID    string
 	WorkflowLabel string
+	WorkflowKind  string
 	Schedule      WorkflowSchedule
 	WebhookInput  *WorkflowWebhookDelivery
 	Capabilities  WorkflowCapabilities
@@ -397,11 +398,13 @@ func (s *SchedulerService) durableScheduleRunProjection(ctx context.Context, run
 	}
 	run, err := store.GetRun(ctx, runID)
 	s.stateStoreMu.RUnlock()
-	if err != nil || !schedulerstate.IsTerminal(run.State) {
+	if err != nil || (!schedulerstate.IsTerminal(run.State) && run.State != schedulerstate.StateWaitingForCapacity) {
 		return "", "", nil, false
 	}
 	status := "error"
 	switch run.State {
+	case schedulerstate.StateWaitingForCapacity:
+		status = scheduleRunStatusWaitingForCapacity
 	case schedulerstate.StateCompleted:
 		status = "success"
 	case schedulerstate.StatePartial:
@@ -583,9 +586,18 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		WorkspacePath: workspacePath,
 		WorkflowID:    manifest.ID,
 		WorkflowLabel: manifest.Label,
+		WorkflowKind:  manifest.Kind,
 		Schedule:      sched,
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
+	}
+	if manifest.Kind == "relay" {
+		notifications := WorkflowNotificationConfig{}
+		if sctx.Capabilities.Notifications != nil {
+			notifications = *sctx.Capabilities.Notifications
+		}
+		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "whatsapp")
+		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {
 		// PLAT-115: a workflow's own periodic Pulse-review schedule reuses the
@@ -1763,6 +1775,12 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	// The reload above rebuilds the context from the manifest, so a resume's
 	// identity has to be carried across explicitly or it is silently dropped
 	// and the run restarts from step 1 (PLAT-101).
+	freshCtx.WebhookInput = sctx.WebhookInput
+	if sctx.WebhookInput != nil {
+		freshCtx.Schedule.GroupNames = sctx.Schedule.GroupNames
+		freshCtx.Schedule.RouteSelections = sctx.Schedule.RouteSelections
+		freshCtx.Schedule.Webhook = sctx.Schedule.Webhook
+	}
 	freshCtx.CapacityResumeRunID = sctx.CapacityResumeRunID
 	freshCtx.CapacityResumeRunFolder = sctx.CapacityResumeRunFolder
 	freshCtx.CapacityResumeFromStep = sctx.CapacityResumeFromStep
@@ -2259,6 +2277,21 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		})
 		s.cleanupRemovedScheduleRuntimeState(runtimeKey)
 	}
+	if sctx.WorkflowKind == "relay" && sctx.WebhookInput == nil && !sctx.PulseOnly {
+		input, inputErr := relayScheduledInput(sctx, runID)
+		if inputErr == nil {
+			var data []byte
+			data, inputErr = json.Marshal(input)
+			if inputErr == nil {
+				inputErr = writeFileToWorkspace(ctx, webhookInputPath(sctx.WorkspacePath, runID), string(data))
+			}
+		}
+		if inputErr != nil {
+			failBeforeHistory(inputErr, "")
+			return "", inputErr
+		}
+		sctx.WebhookInput = input
+	}
 
 	if !sctx.PulseOnly && sctx.WebhookInput == nil {
 		folder := strings.TrimSpace(sctx.CapacityResumeRunFolder)
@@ -2444,7 +2477,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	if migrationRequired {
 		s.sessionLogf(sctx, sessionID, "[PULSE] skipped for %s: this workflow requires a manual contract migration, so it did not run and there is no evidence to review", schedID)
 	}
-	if !migrationRequired && !userInterrupted && runFolder != "" {
+	if status != scheduleRunStatusWaitingForCapacity && !migrationRequired && !userInterrupted && runFolder != "" {
 		if manifest, found, mErr := ReadWorkflowManifest(ctx, sctx.WorkspacePath); mErr == nil && found && shouldRunPulseLifecycle(sctx, manifest) {
 			pulseMode := effectiveSchedulePulseMode(sctx, manifest)
 			pulseEvidenceStatus := status
@@ -2465,7 +2498,9 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 
 	// Now the whole scheduled job, including post-run side effects, is done.
 	terminalState := schedulerstate.StateCompleted
-	if userInterrupted {
+	if status == scheduleRunStatusWaitingForCapacity {
+		terminalState = schedulerstate.StateWaitingForCapacity
+	} else if userInterrupted {
 		terminalState = schedulerstate.StateStopped
 	} else if status == "error" {
 		terminalState = schedulerstate.StateFailed
@@ -4785,6 +4820,9 @@ func (s *SchedulerService) claimScheduleRun(ctx context.Context, sctx *ScheduleC
 			return errors.New("API trigger run store is unavailable")
 		}
 		return nil
+	}
+	if sctx.CapacityResumeRunID != "" {
+		return s.stateStore.ResumeCapacityRun(ctx, sctx.CapacityResumeRunID, startedAt)
 	}
 	scopeType, scopeID, lockKey := scheduleStateScope(sctx)
 	triggerSource := strings.TrimSpace(sctx.TriggerSource)

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -113,6 +114,7 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 
 type CreateWorkflowManifestRequest struct {
 	Label                     string                     `json:"label"`
+	Kind                      string                     `json:"kind,omitempty"`
 	Icon                      string                     `json:"icon,omitempty"`
 	WorkspacePath             string                     `json:"workspace_path"`
 	Capabilities              *WorkflowCapabilities      `json:"capabilities,omitempty"`
@@ -173,6 +175,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 
 	// Build manifest
 	manifest := NewWorkflowManifest(req.Label)
+	manifest.Kind = strings.TrimSpace(req.Kind)
 	manifest.Icon = strings.TrimSpace(req.Icon)
 	manifest.CreatedBy = GetUserIDFromContext(r.Context())
 	if manifest.CreatedBy != "" {
@@ -196,7 +199,11 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 
 	// Write manifest
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrInvalidWorkflowManifest) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), status)
 		return
 	}
 
@@ -220,6 +227,7 @@ type UpdateWorkflowManifestRequest struct {
 	KBWriteGrants              *[]string                                    `json:"kb_write_grants,omitempty"`
 	WorkspacePath              string                                       `json:"workspace_path"`
 	Label                      *string                                      `json:"label,omitempty"`
+	RelayOutputStepID          *string                                      `json:"relay_output_step_id,omitempty"`
 	Icon                       *string                                      `json:"icon,omitempty"`
 	Capabilities               *WorkflowCapabilities                        `json:"capabilities,omitempty"`
 	ExecutionDefaults          *WorkflowExecutionDefaults                   `json:"execution_defaults,omitempty"`
@@ -390,6 +398,9 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	if req.Label != nil {
 		manifest.Label = strings.TrimSpace(*req.Label)
 	}
+	if req.RelayOutputStepID != nil {
+		manifest.RelayOutputStepID = strings.TrimSpace(*req.RelayOutputStepID)
+	}
 	if req.Icon != nil {
 		manifest.Icon = strings.TrimSpace(*req.Icon)
 	}
@@ -550,7 +561,11 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 
 	// Write updated manifest
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrInvalidWorkflowManifest) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, fmt.Sprintf("Failed to write manifest: %v", err), status)
 		return
 	}
 	if req.FolderAccess != nil {

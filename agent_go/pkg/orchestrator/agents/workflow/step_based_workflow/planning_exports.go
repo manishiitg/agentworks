@@ -213,11 +213,8 @@ func PhaseChatSystemPrompt(phaseId string, templateVars map[string]string) strin
 		templateData["WorkflowSuccessCriteria"] = templateVars["WorkflowSuccessCriteria"]
 		templateData["ExecutionMode"] = templateVars["ExecutionMode"]
 		templateData["AvailableGroups"] = templateVars["AvailableGroups"]
-		if templateVars["UseProjectedReferenceSkills"] == "true" {
-			templateData["SpecialWorkspaceToolsInstructions"] = instructions.GetSpecialWorkspaceToolsPointer()
-		} else {
-			templateData["SpecialWorkspaceToolsInstructions"] = instructions.GetSpecialWorkspaceToolsInstructions()
-		}
+		// Both native API and CLI sessions attach the same mode-filtered reference skill.
+		templateData["SpecialWorkspaceToolsInstructions"] = instructions.GetSpecialWorkspaceToolsPointer()
 		wsPath := templateVars["WorkspacePath"]
 		templateData["AbsWorkspacePath"] = GetPromptDocsRoot() + "/" + wsPath
 		templateData["AbsDocsRoot"] = GetPromptDocsRoot()
@@ -602,12 +599,12 @@ type WorkshopConfig struct {
 	// StepBusyForPulse, set only on Pulse workshops, returns a non-empty
 	// explanation when stepID is being run right now by the workflow's own
 	// (non-Pulse) run, so Pulse waits instead of running it a second time.
-	StepBusyForPulse func(ctx context.Context, workspacePath, stepID string) string
-	UseKnowledgebase       bool
-	LLMAllocationMode      string
-	TieredConfig           *TieredLLMConfig
-	Logger                 loggerv2.Logger
-	EventBridge            mcpagent.AgentEventListener
+	StepBusyForPulse  func(ctx context.Context, workspacePath, stepID string) string
+	UseKnowledgebase  bool
+	LLMAllocationMode string
+	TieredConfig      *TieredLLMConfig
+	Logger            loggerv2.Logger
+	EventBridge       mcpagent.AgentEventListener
 	// Session tracking — needed for MCP connection sharing and session cleanup
 	SessionID string
 	// Secrets for step execution (merged global + user secrets)

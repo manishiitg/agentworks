@@ -35,7 +35,7 @@ func TestWorkflowFunctionSpecValidation(t *testing.T) {
 		{"bad name", &WorkflowFunctionSpec{Name: "Review PR"}, "snake_case"},
 		{"reserved input", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "group"}}}, "reserved"},
 		{"duplicate input", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "A"}, {Name: "A"}}}, "twice"},
-		{"bad type", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "A", Type: "object"}}}, "type must be"},
+		{"bad type", &WorkflowFunctionSpec{Name: "run", Inputs: []WorkflowFunctionInput{{Name: "A", Type: "array"}}}, "type must be"},
 	} {
 		if err := validateWorkflowFunctionSpec(tt.spec); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Fatalf("%s: err = %v, want %q", tt.name, err, tt.want)
@@ -87,6 +87,17 @@ func TestWorkflowFunctionArgs(t *testing.T) {
 	}
 	if _, ok := schema["properties"].(map[string]interface{})["group"]; !ok {
 		t.Fatal("a multi-group function offers group")
+	}
+}
+
+func TestWorkflowFunctionObjectInput(t *testing.T) {
+	sched := WorkflowSchedule{Function: &WorkflowFunctionSpec{Name: "run_relay", Inputs: []WorkflowFunctionInput{{Name: "INPUT", Type: "object", Required: true}}}}
+	values, _, err := workflowFunctionArgs(sched, map[string]interface{}{"INPUT": map[string]interface{}{"customer": "Asha", "count": float64(2)}})
+	if err != nil || values["INPUT"] != `{"count":2,"customer":"Asha"}` {
+		t.Fatalf("values = %v, err = %v", values, err)
+	}
+	if _, _, err := workflowFunctionArgs(sched, map[string]interface{}{"INPUT": "not an object"}); err == nil {
+		t.Fatal("object input accepted a string")
 	}
 }
 

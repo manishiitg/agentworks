@@ -24,7 +24,7 @@ describe('fixed pane headers', () => {
 
   it('titles the Workshop header with the view name and opens on Schedules', () => {
     const hub = readFileSync('src/components/automation/AutomationHubPanel.tsx', 'utf8')
-    expect(hub).toContain('title="Automation"')
+    expect(hub).toContain("title={relayMode ? 'Relay' : 'Automation'}")
     expect(hub).not.toContain('title={entityLabel}')
     expect(hub).toContain("initialSection = 'schedules'")
   })

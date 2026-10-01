@@ -64,7 +64,7 @@ export type BotRouteTarget = {
   label: string
 }
 
-export function useWorkflowBots(workspacePath: string | null, target?: BotRouteTarget, section: 'bots' | 'email' | 'all' = 'all') {
+export function useWorkflowBots(workspacePath: string | null, target?: BotRouteTarget, section: 'bots' | 'email' | 'slack' | 'all' = 'all') {
   // A Code's Google accounts are its own: list and connect only those.
   const gmailScopeWorkspace = projectProductForPath(workspacePath || undefined)?.profileId === 'code' ? (workspacePath || undefined) : undefined
   // ── Workflow identity ─────────────────────────────────────────────────────
@@ -538,6 +538,8 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     }
     if (section !== 'email') {
       void loadSlack()
+    }
+    if (section === 'bots' || section === 'all') {
       void loadWaStatus()
       void loadWaRouting()
     }
