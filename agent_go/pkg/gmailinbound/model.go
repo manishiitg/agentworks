@@ -13,16 +13,21 @@ import (
 )
 
 type Route struct {
-	ID            string `json:"id"`
-	OwnerID       string `json:"owner_id"`
-	ConnectionID  string `json:"connection_id"`
-	Address       string `json:"address"`
-	WorkspacePath string `json:"workspace_path"`
-	ProfileID     string `json:"profile_id,omitempty"`
-	ProjectID     string `json:"project_id"`
-	Enabled       bool   `json:"enabled"`
-	EnabledAt     int64  `json:"enabled_at"`
-	Reply         bool   `json:"reply"`
+	Name            string            `json:"name,omitempty"`
+	WorkflowTrigger bool              `json:"workflow_trigger,omitempty"`
+	RouteSelections map[string]string `json:"route_selections,omitempty"`
+	GroupNames      []string          `json:"group_names,omitempty"`
+	StepID          string            `json:"step_id,omitempty"`
+	ID              string            `json:"id"`
+	OwnerID         string            `json:"owner_id"`
+	ConnectionID    string            `json:"connection_id"`
+	Address         string            `json:"address"`
+	WorkspacePath   string            `json:"workspace_path"`
+	ProfileID       string            `json:"profile_id,omitempty"`
+	ProjectID       string            `json:"project_id"`
+	Enabled         bool              `json:"enabled"`
+	EnabledAt       int64             `json:"enabled_at"`
+	Reply           bool              `json:"reply"`
 }
 
 type Mailbox struct {

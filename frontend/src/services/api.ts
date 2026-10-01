@@ -1673,9 +1673,7 @@ export const agentApi = {
     return (await api.get('/api/gmail-inbound/route', { params: { workspace_path: workspacePath } })).data
   },
 
-  saveGmailInboundRoute: async (input: { workspace_path: string; connection_id: string; enabled: boolean; reply: boolean }): Promise<import('./api-types').GmailInboundState> => {
-    return (await api.post('/api/gmail-inbound/route', input)).data
-  },
+
 
   getGmailFeedbackConfig: async (): Promise<GmailConfigResponse> => {
     const apiResponse = await api.get('/api/human-feedback/gmail/config', { timeout: 10000 })

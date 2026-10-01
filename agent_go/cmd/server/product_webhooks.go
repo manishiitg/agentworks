@@ -69,16 +69,17 @@ type productWebhookRequest struct {
 }
 
 type productWebhookResponse struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Enabled        bool           `json:"enabled"`
-	Message        string         `json:"message"`
-	AuthMode       string         `json:"auth_mode"`
-	Path           string         `json:"path"`
-	Secret         string         `json:"secret,omitempty"`
-	RunDestination string         `json:"run_destination"`
-	Kind           string         `json:"kind,omitempty"`
-	Caller         *triggerCaller `json:"caller,omitempty"`
+	Gmail          *WorkflowGmailTriggerConfig `json:"gmail,omitempty"`
+	ID             string                      `json:"id"`
+	Name           string                      `json:"name"`
+	Enabled        bool                        `json:"enabled"`
+	Message        string                      `json:"message"`
+	AuthMode       string                      `json:"auth_mode"`
+	Path           string                      `json:"path"`
+	Secret         string                      `json:"secret,omitempty"`
+	RunDestination string                      `json:"run_destination"`
+	Kind           string                      `json:"kind,omitempty"`
+	Caller         *triggerCaller              `json:"caller,omitempty"`
 }
 
 func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
@@ -255,7 +256,7 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 	if profileID == "" {
 		profileID = "work"
 	}
-	_, _, manifest, err := s.projectManifest(r.Context(), productWorkspaceUserID(r.Context()), profileID, projectID)
+	_, binding, manifest, err := s.projectManifest(r.Context(), productWorkspaceUserID(r.Context()), profileID, projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -266,6 +267,22 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 			continue
 		}
 		responses = append(responses, productWebhookDTO(trigger))
+	}
+	if s.api != nil && s.api.gmailInbound != nil {
+		routes, err := s.api.gmailInbound.Store.Routes(r.Context())
+		if err != nil {
+			http.Error(w, "cannot read Gmail triggers", 500)
+			return
+		}
+		for _, route := range routes {
+			if route.OwnerID == productWorkspaceUserID(r.Context()) && route.ProfileID == profileID && route.ProjectID == manifest.ID && normalizeConversationWorkspace(route.WorkspacePath) == normalizeConversationWorkspace(agentProfileRuntimeWorkspace(route.OwnerID, binding.WorkspacePath)) {
+				name := route.Name
+				if name == "" {
+					name = "Incoming Gmail"
+				}
+				responses = append(responses, productWebhookResponse{ID: route.ID, Name: name, Enabled: route.Enabled, Kind: "gmail", RunDestination: runDestinationIsolated, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply}})
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"triggers": responses})

@@ -30,7 +30,7 @@ function ProductTriggerDeliveryHistory({ scope }: { scope: ProductTriggerScope }
   const openChat = useResumePreviousChat()
   const refresh = useCallback(async () => {
     try {
-      const triggers = (await productWebhooksApi.list(scope)).triggers
+      const triggers = (await productWebhooksApi.list(scope)).triggers.filter(trigger => trigger.kind !== 'gmail')
       const histories = await Promise.all(triggers.map(async trigger => ({
         trigger,
         runs: (await productWebhooksApi.runs(scope, trigger.id, 30)).runs || [],

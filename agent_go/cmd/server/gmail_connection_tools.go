@@ -116,9 +116,12 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 			},
 		},
 	}
-	return registrar.RegisterCustomTool("update_gmail_connection_grants", description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
+	if err := registrar.RegisterCustomTool("update_gmail_connection_grants", description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return api.updateGmailConnectionGrantsFromTool(ctx, sessionID, workspacePath, args, scope)
-	}, "gmail_connection_management")
+	}, "gmail_connection_management"); err != nil {
+		return err
+	}
+	return api.registerGmailTriggerTools(registrar, sessionID, workspacePath)
 }
 
 func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}, scope services.GmailUseScope) (string, error) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { agentApi } from '../../../services/api'
 import type { GmailConnection, GmailInboundState } from '../../../services/api-types'
 import { Button } from '../../ui/Button'
@@ -9,49 +9,17 @@ function errorMessage(error: unknown): string {
   return typeof response === 'string' ? response : 'Could not load incoming email settings.'
 }
 
-export function GmailInboundPanel({ workspacePath, connections }: { workspacePath: string; connections: GmailConnection[] }) {
+// Configuration belongs to Builder tools. Both Email and Triggers show this
+// same persisted route without granting mutation authority to the pane.
+export function GmailInboundPanel({ workspacePath, connections = [], refreshToken = 0, onCounts }: { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
   const [state, setState] = useState<GmailInboundState | null>(null)
-  const [connection, setConnection] = useState('')
-  const [reply, setReply] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const generation = useRef(0)
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     const current = ++generation.current
-    let stopped = false
-    setState(null); setError(''); setBusy(false); setConnection(''); setReply(true); setCopied(false)
-    const load = async () => {
-      try {
-        const result = await agentApi.getGmailInboundRoute(workspacePath)
-        if (stopped || current !== generation.current) return
-        setState(result)
-        setConnection(result.route?.connection_id || '')
-        setReply(result.route?.reply ?? true)
-      } catch (e) {
-        if (!stopped && current === generation.current) setError(errorMessage(e))
-      }
-    }
-    void load()
-    return () => { stopped = true; generation.current++ }
-  }, [workspacePath])
-
-  const save = async (enabled: boolean) => {
-    const current = generation.current
-    setBusy(true); setError('')
-    try {
-      const result = await agentApi.saveGmailInboundRoute({ workspace_path: workspacePath, connection_id: connection, enabled, reply })
-      if (current === generation.current) setState(result)
-    } catch (e) {
-      if (current === generation.current) setError(errorMessage(e))
-    } finally {
-      if (current === generation.current) setBusy(false)
-    }
-  }
-
-  const refresh = async () => {
-    const current = generation.current
     setBusy(true); setError('')
     try {
       const result = await agentApi.getGmailInboundRoute(workspacePath)
@@ -61,47 +29,43 @@ export function GmailInboundPanel({ workspacePath, connections }: { workspacePat
     } finally {
       if (current === generation.current) setBusy(false)
     }
-  }
+  }, [workspacePath])
 
-  // Poll only active panels while watch registration is pending. Later changes
-  // are visible on refresh; an idle UI does not add a mailbox watcher.
+  useEffect(() => {
+    setState(null); setError(''); setCopied(false)
+    void refresh()
+    return () => { generation.current++ }
+  }, [refresh, refreshToken])
+
+  useEffect(() => {
+    onCounts?.({ active: state?.route?.enabled ? 1 : 0, paused: state?.route && !state.route.enabled ? 1 : 0 })
+  }, [state, onCounts])
+
   useEffect(() => {
     if (!state?.route?.enabled || state.watch_ready || state.error) return
-    const current = generation.current
-    const timer = setTimeout(async () => {
-      try {
-        const result = await agentApi.getGmailInboundRoute(workspacePath)
-        if (current === generation.current) setState(result)
-      } catch { /* Keep saved settings; the next visit can retry. */ }
-    }, 5000)
+    const timer = setTimeout(() => { void refresh() }, 5000)
     return () => clearTimeout(timer)
-  }, [state, workspacePath])
+  }, [state, refresh])
 
-  return <FormSection title="Incoming email" description="Email this address to start a new chat. Replies in the same email conversation continue that chat. Only email from your signed-in account is accepted.">
+  const route = state?.route
+  const account = connections.find(connection => connection.id === route?.connection_id)
+  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose the workflow route, or disable this trigger. This panel shows the saved configuration.">
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {state && !state.configured && <p className="text-muted-foreground">An administrator needs to enable Gmail incoming email for this deployment.</p>}
-      {state?.configured && <>
-        <label className="block space-y-1">Receiving Gmail account
-          <select aria-label="Receiving Gmail account" className="block w-full rounded-md border bg-background p-2" value={connection} onChange={e => setConnection(e.target.value)} disabled={busy}>
-            <option value="">Select your account</option>
-            {connections.filter(c => (c.enabled && c.allow_read_access) || c.id === state.route?.connection_id).map(c => <option key={c.id} value={c.id}>{c.email || c.display_name}</option>)}
-          </select>
-        </label>
-        <p className="text-muted-foreground">Connect your Google account below and enable Gmail read access before activating this address.</p>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={reply} onChange={e => setReply(e.target.checked)} disabled={busy} />Email the final response back to me</label>
-        <div className="flex gap-2">
-          <Button size="sm" disabled={busy || !connection} onClick={() => void save(true)}>{busy ? 'Saving…' : state.route?.enabled ? 'Save incoming email' : 'Enable incoming email'}</Button>
-          {state.route?.enabled && <Button size="sm" variant="outline" disabled={busy} onClick={() => void save(false)}>Disable incoming email</Button>}
-        </div>
-        {state.route && <div className="space-y-2 rounded-md border p-3">
-          <div className="break-all font-mono text-xs">{state.route.address}</div>
-          <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(state.route!.address); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>
-          <p className="text-muted-foreground">{!state.route.enabled ? 'Incoming email is disabled.' : state.error ? state.error : state.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>Refresh email activity</Button>
-          {state.deliveries.length > 0 && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
-        </div>}
-      </>}
+      {state?.configured && !route && <p className="text-muted-foreground">No Gmail trigger configured. Ask Builder to link a connected account.</p>}
+      {route && <div className="space-y-2 rounded-md border p-3">
+        <p className="font-medium">{route.name || 'Gmail trigger'} · {route.enabled ? 'Enabled' : 'Disabled'}</p>
+        <p className="text-muted-foreground">Receiving account: {account?.email || account?.display_name || route.connection_id}</p>
+        <div className="break-all font-mono text-xs">{route.address}</div>
+        <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(route.address); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>
+        <p className="text-muted-foreground">Starts: {route.workflow_trigger ? route.step_id ? `Step ${route.step_id}` : Object.keys(route.route_selections || {}).length ? Object.entries(route.route_selections!).map(([step, branch]) => `${step} → ${branch}`).join(', ') : 'Full workflow' : 'A project chat; replies continue the same chat'}</p>
+        {!!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
+        <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · Owner email only</p>
+        <p className="text-muted-foreground">{!route.enabled ? 'Incoming email is disabled.' : state?.error ? state.error : state?.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
+        {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
+      </div>}
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>Refresh email activity</Button>
     </div>
   </FormSection>
 }

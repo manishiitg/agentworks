@@ -42,6 +42,9 @@ func setScheduleEnabled(ctx context.Context, scheduleID string, enabled bool, ch
 	if err != nil {
 		return nil, err
 	}
+	if result.Manifest.Schedules[result.Index].IsGmailTrigger() {
+		return nil, fmt.Errorf("%w: use manage_gmail_trigger in Builder chat", errScheduleChangeRefused)
+	}
 	if beforeWrite != nil {
 		beforeWrite(result.WorkspacePath)
 	}

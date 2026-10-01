@@ -170,7 +170,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Authenticated webhook triggers are enabled. Read the attached `work-schedules-and-bots` skill before managing triggers. A trigger stores one instruction in product.json and sends it to the project chat with the authenticated delivery payload; it does not run workflow routes.",
 	},
 	"bots": {
-		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "update_gmail_connection_grants", "send_slack_message", "slack", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
+		Tools:           []string{"google_workspace_cli", "list_gmail_connections", "update_gmail_connection_grants", "get_gmail_trigger", "manage_gmail_trigger", "send_slack_message", "slack", "get_slack_bot_settings", "get_slack_bot_credentials", "configure_slack_bot", "test_slack_bot_connection", "create_slack_bot_route", "update_slack_bot_route_permission", "remove_slack_bot_route"},
 		Skills:          []string{"work-schedules-and-bots"},
 		UIPanels:        []string{"bots"},
 		Capabilities:    map[string]CapabilityRequirement{"whatsapp": CapabilityPreferred},
@@ -355,7 +355,7 @@ var workflowReferenceCalleeTools = map[string]bool{
 // Bots tools that reach beyond a 1:1 Slack DM or WhatsApp chat: Gmail and
 // Google Workspace, and Slack channel routes and channel API reads.
 var botsNonDirectMessageTools = map[string]bool{
-	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true, "get_gmail_trigger": true, "manage_gmail_trigger": true,
 	"slack": true, "send_slack_message": true,
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 }
@@ -363,7 +363,7 @@ var botsNonDirectMessageTools = map[string]bool{
 // botsOwnGmailTools are the Google account tools a product keeps with
 // gmail=own (its own private accounts only; see services.GmailUseScope).
 var botsOwnGmailTools = map[string]bool{
-	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"google_workspace_cli": true, "list_gmail_connections": true, "update_gmail_connection_grants": true, "get_gmail_trigger": true, "manage_gmail_trigger": true,
 }
 
 // featureTools applies a binding's tool-narrowing options. Options only ever

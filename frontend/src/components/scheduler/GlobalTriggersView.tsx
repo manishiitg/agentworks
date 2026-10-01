@@ -27,8 +27,8 @@ async function loadTriggers(kind: TriggerOwner['kind']): Promise<{ rows: Trigger
       const triggers = kind === 'crew'
         ? (await productWebhooksApi.list({ profileId: WORK_PROFILE_ID, projectId: owner.id })).triggers
         : (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
-      return triggers.filter(trigger => !trigger.kind).map(trigger => ({
-        id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.path, owner,
+      return triggers.filter(trigger => !trigger.kind || trigger.kind === 'gmail').map(trigger => ({
+        id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.kind === 'gmail' ? trigger.gmail?.address || '' : trigger.path, owner,
       }))
     }))
     results.forEach(result => {
@@ -85,7 +85,7 @@ export default function GlobalTriggersView({ kind, onOpen }: {
         <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground"><tr>
           <th className="px-4 py-2 font-medium">{kind === 'crew' ? 'Crew' : 'Workflow'}</th>
           <th className="px-4 py-2 font-medium">Trigger</th>
-          <th className="px-4 py-2 font-medium">Endpoint</th>
+          <th className="px-4 py-2 font-medium">Address / endpoint</th>
           <th className="px-4 py-2 font-medium">Status</th>
           <th className="px-4 py-2 font-medium">Action</th>
         </tr></thead>

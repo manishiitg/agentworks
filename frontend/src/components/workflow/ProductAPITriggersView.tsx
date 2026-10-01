@@ -1,3 +1,4 @@
+import { GmailInboundPanel } from './bots/GmailInboundPanel'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, Webhook } from 'lucide-react'
@@ -12,9 +13,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts }: { scope: ProductTriggerScope; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
+  const [gmailCounts, setGmailCounts] = useState({ active: 0, paused: 0 })
   const [issued, setIssued] = useState<ProductAPITrigger | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -23,7 +25,7 @@ export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHist
   const refresh = useCallback(async () => {
     // Caller bindings (kind=internal) are listed under Functions → Callers;
     // this view is external webhooks only.
-    try { setTriggers((await productWebhooksApi.list({ profileId, projectId })).triggers.filter(trigger => trigger.kind !== 'internal')) }
+    try { setTriggers((await productWebhooksApi.list({ profileId, projectId })).triggers.filter(trigger => trigger.kind !== 'internal' && trigger.kind !== 'gmail')) }
     catch (cause) { setError(errorMessage(cause)) }
   }, [profileId, projectId])
 
@@ -35,8 +37,8 @@ export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHist
 
   const activeTriggers = triggers.filter(trigger => trigger.enabled).length
   useEffect(() => {
-    onCounts?.({ active: activeTriggers, paused: triggers.length - activeTriggers })
-  }, [onCounts, activeTriggers, triggers.length])
+    onCounts?.({ active: activeTriggers + gmailCounts.active, paused: triggers.length - activeTriggers + gmailCounts.paused })
+  }, [onCounts, activeTriggers, triggers.length, gmailCounts])
 
   const save = async (trigger: ProductAPITrigger, rotate = false) => {
     if (busy) return
@@ -66,7 +68,7 @@ export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHist
     {!hideHeader && <WorkspaceViewHeader
       sticky
       icon={Webhook}
-      title="Webhooks"
+      title="Triggers"
       subtitle="Send one saved message to this project when an external service sends authenticated JSON."
       actions={<>
         {headerAction}
@@ -75,6 +77,7 @@ export default function ProductAPITriggersView({ scope, onViewRuns, deliveryHist
     />}
     <div className="space-y-4 p-4">
     <p className="text-xs leading-relaxed text-muted-foreground">Webhooks let outside systems (GitHub, CI) start work. Each one runs in the Crew's main chat or in its own continuing conversation. Other Crews, workflows and MCP/CLI tools call this Crew through Functions instead. {!deliveryHistory && onViewRuns && <button type="button" className="underline text-foreground" onClick={onViewRuns}>View delivery history</button>}</p>
+    {workspacePath && <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onCounts={setGmailCounts} />}
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <h3 className="text-sm font-medium">New secret for {issued.name}</h3>

@@ -1,15 +1,22 @@
 # Incoming Gmail conversations
 
 Crew, Workflow, and Code owners can link a connected Gmail account in the
-Email settings panel. Enabling incoming email creates a stable address such
+Builder chat using `get_gmail_trigger` and `manage_gmail_trigger`. The Email
+and Triggers panels show read-only state. Configuring incoming email creates a stable address such
 as `manish+agent-<route-id>@rts.com`. Google delivers it to the existing
 `manish@rts.com` mailbox; no SMTP server, separate Google user, or MX change
 is needed. This works with personal Gmail and Google Workspace accounts
 whose mail is hosted by Gmail. Google Workspace administrators can restrict
 OAuth apps or tagged delivery; test receipt in the real mailbox first.
 
-Each Gmail conversation gets its own application chat. A reply in that Gmail
-conversation continues the same chat. Optional final responses go to the
+Crew and Code Gmail conversations get isolated application chats; replies
+continue the same chat. Workflow Gmail triggers store `kind=gmail` in the
+workflow manifest and bind exact `route_selections`/`group_names`, or a
+standalone `step_id`. Each incoming message (including a reply) executes that
+saved binding through the existing authenticated trigger pipeline, producing
+an isolated run and delivery history. Email cannot change the route. Legacy
+unbound workflow email chats remain until the owner configures their binding
+with Builder. Optional final responses go to the
 authenticated sender with the receiving address in Reply-To. Gmail read
 access is required; fixed replies use the existing notification sending
 permission, separately from agent write access. The ordinary account needs
@@ -123,14 +130,17 @@ After the operator configures and deploys a release:
 1. Confirm unsigned POST requests to the receiving URL return 401, rather
    than a browser login redirect. Confirm Google Pub/Sub deliveries succeed.
 2. In a target you own, connect your mailbox, enable Gmail read access and
-   complete reconnect. Select it under Incoming email and enable the address.
+   complete reconnect. Ask Builder to configure the Gmail trigger; for workflows
+   tell it which saved route and group to use. The tool validates exact plan IDs.
 3. Wait for Ready, then email the displayed address from the signed-in user's
    directory email. Verify one chat is created under that target.
-4. Reply to the response and verify the same chat continues. Send a separate
+4. Reply to the response and verify the same Crew/Code chat continues (or a new
+   isolated run executes the saved binding for a workflow trigger). Send a separate
    email conversation and verify a separate chat appears. Retry a notification
    and verify it does not create another turn.
 5. Verify mail from another person does not trigger execution, a shared-project
-   reader cannot configure it, and disabling the route prevents new turns.
+   reader cannot configure it, the UI has no configuration controls, and asking
+   Builder to disable the route prevents new turns.
 6. Inspect Recent email activity and `[GMAIL-INBOUND]` logs for errors. This
    local implementation has no live Google/RTS end-to-end certification yet.
 

@@ -1,3 +1,4 @@
+import { GmailInboundPanel } from './bots/GmailInboundPanel'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, GitBranch, ShieldCheck, Webhook, Zap } from 'lucide-react'
@@ -91,7 +92,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
     <div className="flex h-full min-h-0 w-full max-w-none flex-col bg-background">
       {!hideHeader && <WorkspaceViewHeader
         icon={Webhook}
-        title="Webhooks"
+        title="Triggers"
         context={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{options.triggers.length}</span>}
         subtitle="External events that start this workflow."
         actions={<>
@@ -110,6 +111,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p className="min-w-0 [overflow-wrap:anywhere]">Create a webhook or change its routing by asking Builder. Each webhook accepts up to four deliveries at once; additional deliveries receive a retry response.</p>
       </div>
+      <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} />
       {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {issued?.secret && (
         <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
@@ -165,7 +167,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         })}
         {options.triggers.filter(trigger => !trigger.kind).length === 0 && <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No webhooks configured. Ask the workflow builder chat to create one.</p>}
       </div>
-      {options.triggers.some(trigger => trigger.kind) && <p className="text-xs text-muted-foreground">Functions (typed calls from Crews, workflows and MCP/CLI) are under Automation → Functions.</p>}
+      {options.triggers.some(trigger => trigger.kind && trigger.kind !== 'gmail') && <p className="text-xs text-muted-foreground">Functions (typed calls from Crews, workflows and MCP/CLI) are under Automation → Functions.</p>}
       {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}
       {options.route_error && <p className="text-xs text-muted-foreground">{options.route_error}</p>}
       <details className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">

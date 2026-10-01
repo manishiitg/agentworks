@@ -26,6 +26,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
+var gmailTriggerConfigMu sync.Mutex
+
 const gmailInboundEventPath = "/api/hooks/gmail/events"
 
 var inboundTopicPattern = regexp.MustCompile(`^projects/[a-z0-9][a-z0-9-]+/topics/[A-Za-z][A-Za-z0-9._~%+-]*$`)
@@ -94,7 +96,7 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		}
 		api.gmailInbound.Receive(w, r)
 	}).Methods("POST")
-	router.HandleFunc("/api/gmail-inbound/route", api.gmailInboundRoute(c)).Methods("GET", "POST")
+	router.HandleFunc("/api/gmail-inbound/route", api.gmailInboundRoute(c)).Methods("GET")
 	if api.gmailInbound == nil {
 		return func() {}
 	}
@@ -191,13 +193,10 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 			return
 		}
 		path := r.URL.Query().Get("workspace_path")
-		var input struct {
-			WorkspacePath string `json:"workspace_path"`
-			ConnectionID  string `json:"connection_id"`
-			Enabled       bool   `json:"enabled"`
-			Reply         bool   `json:"reply"`
-		}
+		var input gmailTriggerInput
 		if r.Method == "POST" {
+			gmailTriggerConfigMu.Lock()
+			defer gmailTriggerConfigMu.Unlock()
 			decoder := json.NewDecoder(io.LimitReader(r.Body, 8192))
 			decoder.DisallowUnknownFields()
 			if decoder.Decode(&input) != nil {
@@ -237,7 +236,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				paused.Enabled = false
 				paused.Reply = input.Reply
 				box, e := api.gmailInbound.Store.MailboxStatus(r.Context(), paused.ConnectionID)
-				if e != nil || api.gmailInbound.Store.SaveRoute(r.Context(), paused, box.Email) != nil {
+				if e != nil || api.saveGmailWorkflowTrigger(r.Context(), paused, box.Email) != nil {
 					http.Error(w, "cannot disable email route", 500)
 					return
 				}
@@ -258,6 +257,18 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				target.EnabledAt = time.Now().UnixMilli()
 			}
 			target.Reply = input.Reply
+			target.Name = strings.TrimSpace(input.Name)
+			if target.Name == "" {
+				target.Name = "Incoming Gmail"
+			}
+			target.WorkflowTrigger = target.ProfileID == ""
+			target.RouteSelections = input.RouteSelections
+			target.GroupNames = input.GroupNames
+			target.StepID = input.StepID
+			if target.ProfileID != "" && (len(input.RouteSelections) > 0 || len(input.GroupNames) > 0 || input.StepID != "") {
+				http.Error(w, "Workflow routes and groups do not apply to Crew or Code chats", 400)
+				return
+			}
 			svc := services.GetGmailService()
 			if svc == nil {
 				http.Error(w, "Gmail unavailable", 409)
@@ -299,8 +310,8 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				http.Error(w, e.Error(), 409)
 				return
 			}
-			if e = api.gmailInbound.Store.SaveRoute(r.Context(), target, strings.ToLower(conn.Email)); e != nil {
-				http.Error(w, "cannot save email route", 500)
+			if e = api.saveGmailWorkflowTrigger(r.Context(), target, strings.ToLower(conn.Email)); e != nil {
+				http.Error(w, e.Error(), 400)
 				return
 			}
 			existing = &target
@@ -370,6 +381,11 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 	if target.ProjectID != r.ProjectID || target.ProfileID != r.ProfileID {
 		return fmt.Errorf("email target changed")
 	}
+	if r.WorkflowTrigger {
+		if _, _, e := api.gmailWorkflowTrigger(ctx, r); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 
@@ -414,8 +430,14 @@ func (api *StreamingAPI) dispatchInboundEmail(ctx context.Context, d *gmailinbou
 			if e != nil {
 				return e
 			}
+			d.Message.Attachments[i].ID = ""
+			d.Message.Attachments[i].Data = ""
+			d.Message.Attachments[i].Name = path
 			query += "\nAttached file: " + path
 		}
+	}
+	if r.WorkflowTrigger {
+		return api.dispatchGmailWorkflowTrigger(ctx, d)
 	}
 	key := emailConversationID(r, d.Message)
 	var req map[string]interface{}

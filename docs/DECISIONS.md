@@ -13,6 +13,28 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Builder configures Gmail triggers; panes show read-only state
+
+- **Decided.** Incoming Gmail setup belongs to Builder tools (`get_gmail_trigger`,
+  `manage_gmail_trigger`), not a manual UI form. Email and Triggers show the same
+  persisted address, target binding, readiness and activity, with only copy/refresh.
+  Public management POST is removed; the shared Google-authenticated ingress remains.
+- **Workflow binding.** A Gmail trigger is a `kind=gmail` webhook schedule without
+  a public per-trigger endpoint or secret. Builder discovers saved routes/groups
+  and stores the exact target. Each incoming message executes that binding through
+  the existing durable trigger pipeline and isolated run folders, including email
+  replies. Crew/Code retain continuing email chats. Legacy unbound workflow email
+  chats remain until explicitly configured with Builder. One address per owner/target
+  is retained, and disabling preserves it. Deleted/invalid bindings fail closed.
+- **Guidance and authority.** Shared Crew/Code skill and workflow `gmail-inbound`
+  reference teach account/read-consent setup, route selection, operator Pub/Sub
+  prerequisites and verification. Route changes require an interactive owner;
+  email, bot, scheduled and external-token callers cannot configure their routing.
+- **Open.** Live RTS/Google testing still requires operator provisioning and deployment;
+  none is performed here. This retains the private single-server SQLite queue and
+  owner-only sender policy. Workflow trigger replies start new runs rather than
+  continuing a conversational assistant, because the owner chose deterministic routing.
+
 ### 2026-10-01 — Deploys reported "exit 7" although the release was fine
 
 - **Cause.** The deploy's last step probed the agent's local port once, right after the restart (after a drain the

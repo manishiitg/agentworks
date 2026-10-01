@@ -146,6 +146,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
           <div className="min-h-0 flex-1">
             <ProductAPITriggersView
               scope={productTriggerScope}
+              workspacePath={workflowScope?.workspacePath || undefined}
               deliveryHistory={workflowScope?.workspacePath ? <TriggerDeliveryHistoryPanel workspacePath={workflowScope.workspacePath} entityType="product" /> : undefined}
               headerAction={headerAction}
             />

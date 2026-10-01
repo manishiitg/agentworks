@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GmailInboundState } from '../../../services/api-types'
 
-vi.mock('../../../services/api', () => ({ agentApi: { getGmailInboundRoute: vi.fn(), saveGmailInboundRoute: vi.fn() } }))
+vi.mock('../../../services/api', () => ({ agentApi: { getGmailInboundRoute: vi.fn() } }))
 import { agentApi } from '../../../services/api'
 import { GmailInboundPanel } from './GmailInboundPanel'
 
@@ -19,14 +19,25 @@ describe('Gmail incoming email settings', () => {
   beforeEach(() => { vi.resetAllMocks(); vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(enabled); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
   afterEach(async () => { await act(async () => root.unmount()); host.remove() })
 
-  it('disables receiving while preserving the selected account and reply preference', async () => {
-    vi.mocked(agentApi.saveGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, enabled: false } })
+  it('shows saved routing without controls that can change it', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, workflow_trigger: true, route_selections: { triage: 'support' }, group_names: ['prod'] } })
     await render()
     expect(host.textContent).toContain(enabled.route!.address)
-    const disable = [...host.querySelectorAll('button')].find(b => b.textContent === 'Disable incoming email')!
-    await act(async () => disable.click())
-    expect(agentApi.saveGmailInboundRoute).toHaveBeenCalledWith({ workspace_path: 'Workflow/test', connection_id: 'gmail', enabled: false, reply: true })
+    expect(host.textContent).toContain('triage → support')
+    expect(host.textContent).toContain('Groups: prod')
+    expect(host.textContent).toContain('Ready to receive email.')
+    expect(host.textContent).toContain('Ask Builder')
+    expect(host.querySelector('select, input, form')).toBeNull()
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Copy email address', 'Refresh email activity'])
+  })
+
+  it('refreshes saved configuration after Builder changes it', async () => {
+    await render()
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, enabled: false } })
+    const refresh = [...host.querySelectorAll('button')].find(b => b.textContent === 'Refresh email activity')!
+    await act(async () => refresh.click())
     expect(host.textContent).toContain('Incoming email is disabled.')
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(2)
   })
 
   it('ignores a late response from the previously selected workspace', async () => {

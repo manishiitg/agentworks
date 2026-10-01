@@ -3,10 +3,12 @@ import { act, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import WorkflowAPITriggersView from './WorkflowAPITriggersView'
+import { agentApi } from '../../services/api'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn().mockResolvedValue({ configured: true, route: null, deliveries: [] }) } }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: vi.fn().mockResolvedValue(undefined) }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
@@ -139,4 +141,15 @@ it('keeps functions out of the webhooks list and points to the Functions tab', a
   expect(host.textContent).toContain('Issues')
   expect(host.textContent).not.toContain('review_pr')
   expect(host.textContent).toContain('Automation → Functions')
+})
+
+it('shows the Builder Gmail binding as a read-only trigger', async () => {
+  vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [{ ...trigger, id: 'gmail', kind: 'gmail', path: '', name: 'Mail triage' }], groups: ['prod'], routes: [] })
+  vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: true, watch_ready: true, deliveries: [], route: { id: 'gmail', name: 'Mail triage', address: 'owner+agent-id@example.com', connection_id: 'mail', enabled: true, reply: true, workflow_trigger: true, route_selections: { triage: 'support' }, group_names: ['prod'] } })
+  const host = await mount()
+  expect(host.textContent).toContain('owner+agent-id@example.com')
+  expect(host.textContent).toContain('triage → support')
+  expect(host.textContent).not.toContain('/api/hooks/workflow/gmail')
+  expect(host.querySelector('input, select')).toBeNull()
+  expect([...host.querySelectorAll('button')].some(button => ['Pause', 'Enable', 'Remove', 'Rotate secret'].includes(button.textContent || ''))).toBe(false)
 })
