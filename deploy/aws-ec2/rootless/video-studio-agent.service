@@ -6,7 +6,7 @@ ConditionPathIsMountPoint=/data/video-studio
 [Service]
 EnvironmentFile=%h/video-studio/.env
 Environment=HOME=%h
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/video-studio/slots/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=AGENT_PRODUCTS=video-studio,work,code
 Environment=AGENTWORKS_MCP_STATE_DIR=%h/.local/state/agentworks/mcp
 Environment=AGENTWORKS_STATE_ROOT=%h/video-studio/state

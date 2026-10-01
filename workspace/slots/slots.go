@@ -9,7 +9,7 @@
 //   - The platform reaches a slot's files through a per-slot group it belongs to; other slots are
 //     not in that group.
 //
-// The feature is off unless AGENTWORKS_SLOTS=on, so hosts and the desktop app are unchanged.
+// The feature is off unless AGENTWORKS_SLOTS=on (or optin), so hosts and the desktop app are unchanged.
 package slots
 
 import (
@@ -65,8 +65,18 @@ func (t *Table) SlotFor(userID string) (string, bool) {
 	return "", false
 }
 
-// Enabled reports whether the feature is on for this process.
-func Enabled() bool { return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvEnabled)), "on") }
+// Enabled reports whether the feature is on for this process: "on" (every user needs a slot) or "optin"
+// (users who hold a slot run as it; everyone else is unchanged, which lets a host whose workflows and
+// shared folders are not slot-aware yet roll slots out user by user).
+func Enabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvEnabled))) {
+	case "on", "optin":
+		return true
+	}
+	return false
+}
+
+func optIn() bool { return strings.EqualFold(strings.TrimSpace(os.Getenv(EnvEnabled)), "optin") }
 
 // Slotctl returns the launcher path.
 func Slotctl() string {
@@ -144,6 +154,9 @@ func For(userID string) (slot string, enabled bool, err error) {
 	}
 	slot, ok := table.SlotFor(userID)
 	if !ok {
+		if optIn() {
+			return "", false, nil
+		}
 		return "", true, ErrNoSlot
 	}
 	return slot, true, nil

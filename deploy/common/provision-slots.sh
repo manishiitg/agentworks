@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Per-user Linux accounts ("slots") for a rootless product host. Run as root ON the host:
 #
-#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- init'            < deploy/rootless-linux/provision-slots.sh
-#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- adduser <email> [role] [products]' < deploy/rootless-linux/provision-slots.sh
-#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- assign <user-id>' < deploy/rootless-linux/provision-slots.sh
+#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- init'            < deploy/common/provision-slots.sh
+#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- adduser <email> [role] [products]' < deploy/common/provision-slots.sh
+#   ssh -p 2299 root@<host> 'PRODUCT=agents bash -s -- assign <user-id>' < deploy/common/provision-slots.sh
 #
 # What it sets up (idempotent):
 #   - slot01..slotNN accounts, each with its own group; the product's service account joins every
@@ -17,9 +17,14 @@
 # Signing in never provisions anything: an administrator runs `assign`.
 set -euo pipefail
 
+# PRODUCT is the service account. The layout defaults to the rootless-linux products (/srv/<product>);
+# another host sets APP_DIR (releases, current, slots, .env), DOCS and SERVICE_HOME, for example the
+# RTS EC2 host: PRODUCT=video-studio APP_DIR=/var/lib/video-studio/video-studio DOCS=/data/video-studio/docs
+# SERVICE_HOME=/var/lib/video-studio
 PRODUCT="${PRODUCT:-agents}"
-HOME_DIR="/srv/$PRODUCT"
-DOCS="$HOME_DIR/data/docs"
+HOME_DIR="${APP_DIR:-/srv/$PRODUCT}"
+DOCS="${DOCS:-$HOME_DIR/data/docs}"
+SERVICE_HOME="${SERVICE_HOME:-$HOME_DIR/home}"
 SLOT_COUNT="${SLOT_COUNT:-50}"
 LIBEXEC=/usr/local/libexec/agentworks
 ETC=/etc/agentworks
@@ -33,6 +38,8 @@ id "$PRODUCT" >/dev/null || { echo "Account $PRODUCT is missing." >&2; exit 1; }
 slot_name() { printf 'slot%02d' "$1"; }
 
 cmd_init() {
+  command -v setfacl >/dev/null || { echo "Installing the acl package (setfacl)"; DEBIAN_FRONTEND=noninteractive apt-get install -y acl >/dev/null; }
+  command -v setfacl >/dev/null || { echo "setfacl is missing and could not be installed." >&2; exit 1; }
   local slotctl_src
   slotctl_src="$(readlink -f "$HOME_DIR/current/bin/slotctl" 2>/dev/null || true)"
   [[ -x "$slotctl_src" ]] || { echo "No slotctl in $HOME_DIR/current/bin: deploy a release that builds it first." >&2; exit 1; }
@@ -54,8 +61,18 @@ cmd_init() {
     install -d -o "$PRODUCT" -g "$slot" -m 2770 "$HOME_DIR/slots/state/$slot" "$HOME_DIR/slots/run/$slot"
   done
   install -d -o "$PRODUCT" -g "$PRODUCT" -m 0700 "$HOME_DIR/slots/run/.sessions"
-  # Slots must be able to walk to their own files (they cannot list anything they have no access to).
-  chmod 0751 "$HOME_DIR"
+  # Slots must be able to walk to their own files (they cannot list anything they have no access to):
+  # search-only for everyone on the folders above the app and the docs, nothing else.
+  local walk dir
+  for walk in "$HOME_DIR" "$DOCS"; do
+    for dir in "$walk" $(python3 -c 'import os,sys
+p=os.path.dirname(sys.argv[1])
+while p not in ("/", ""):
+    print(p); p=os.path.dirname(p)' "$walk"); do
+      [[ -d "$dir" && "$dir" != /srv && "$dir" != /var && "$dir" != /var/lib && "$dir" != /data ]] || continue
+      [[ "$(stat -c %a "$dir")" =~ [1357]$ ]] || chmod o+x "$dir"
+    done
+  done
 
   # The one program the service account may run as a slot.
   install -d -o root -g root -m 0755 "$LIBEXEC"
@@ -149,7 +166,7 @@ cmd_adduser() {
   [[ "$products" =~ ^[a-z0-9_,-]+$ ]] || { echo "products must be a comma-separated list like code" >&2; exit 2; }
   [[ -x "$HOME_DIR/current/bin/$PRODUCT-agent" ]] || { echo "No $PRODUCT-agent in $HOME_DIR/current/bin." >&2; exit 1; }
   local out id
-  out="$(runuser -u "$PRODUCT" -- env HOME="$HOME_DIR/home" bash -c 'set -a; . "$1/.env"; set +a; exec "$1/current/bin/$2-agent" server add-user --email "$3" --role "$4" --products "$5"' _ "$HOME_DIR" "$PRODUCT" "$email" "$role" "$products")"
+  out="$(runuser -u "$PRODUCT" -- env HOME="$SERVICE_HOME" bash -c 'set -a; . "$1/.env"; set +a; exec "$1/current/bin/$2-agent" server add-user --email "$3" --role "$4" --products "$5"' _ "$HOME_DIR" "$PRODUCT" "$email" "$role" "$products")"
   printf '%s\n' "$out" | tail -1
   id="$(printf '%s' "$out" | tail -1 | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["id"])')"
   cmd_assign "$id"

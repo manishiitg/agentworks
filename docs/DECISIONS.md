@@ -13,6 +13,25 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Slots on the RTS host: one shared build step, opt-in mode, SSM provisioning
+
+- **Decided.** Every deployment builds and installs slots through one shared script, `deploy/common/slots.sh`
+  (build `slotctl` and `slottmux`; install the tmux front-end outside the releases), called from both
+  `deploy/rootless-linux/build-and-activate.sh` and `deploy/aws-ec2/server/build-and-activate.sh`. The
+  provisioning script moved to `deploy/common/provision-slots.sh` and takes `APP_DIR`, `DOCS` and
+  `SERVICE_HOME`, so the same script serves `/srv/<product>` hosts and RTS. The two build scripts themselves
+  are still separate (RTS has its own Docker, CloudFront and AppArmor steps); merging them is a larger
+  change and is not done.
+- **Decided.** `AGENTWORKS_SLOTS=optin` (new): a user who holds a slot runs shell commands as it; a user without
+  one is unchanged (`on` still refuses them). RTS runs Video Studio and Workflow/Crew runs that write into
+  shared folders a slot account cannot write yet (the per-slot state roots item below), so it rolls out per
+  user. The RTS build writes `optin` only when `/etc/agentworks/slots.json` exists, i.e. after an administrator
+  ran `deploy/aws-ec2/slots-admin.sh init`.
+- **Decided.** RTS has no sudo and SSH is deploy-only, so root steps go through SSM Run Command
+  (`deploy/aws-ec2/slots-admin.sh`, like `install-system-tools.sh`). `init` also installs `acl` (setfacl).
+- **Open.** CLIs as the user's own account (`AGENTWORKS_SLOT_CLI*`) are not enabled on RTS; shared Workflow and
+  Crew folders still need slot-writable state roots before shell-as-slot can cover those runs.
+
 ### 2026-10-01 — Foreground completion clears chat header loading despite stale status
 - The latest foreground turn's completion event clears the header spinner even
   when tab flags or the active-session cache still report foreground work. The
@@ -137,7 +156,7 @@ Design references for the linked runtime decisions:
   through `sudo` and `slotctl` (after the switch the Landlock policy and namespaces are created),
   and refuses commands that carry no folder guard or come from a user without a slot. A root-owned
   allow-list limits what `slotctl` will start. Off by default, so other deployments are unchanged.
-- `deploy/rootless-linux/provision-slots.sh` (run as root on the host) creates the accounts, the
+- `deploy/common/provision-slots.sh` (run as root on the host) creates the accounts, the
   sudoers rule and the slot table, and assigns a person to a slot; signing in never does. `slotctl`
   is built into every rootless release; installing it root-owned is the script's job.
 - Done in this change: the shell tool. Not done yet: CLI launches and their terminals, ownership of

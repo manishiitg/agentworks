@@ -68,3 +68,19 @@ func TestForRespectsTheFeatureFlagAndNeverFallsBack(t *testing.T) {
 		t.Fatalf("an unreadable table must be an error, not a fallback: enabled=%v err=%v", enabled, err)
 	}
 }
+
+func TestForOptInRunsOnlySlotHoldersAsSlots(t *testing.T) {
+	t.Setenv(EnvEnabled, "optin")
+	t.Setenv(EnvTableFile, writeTable(t, `{"slots":{"slot03":"u1"}}`))
+	if slot, enabled, err := For("u1"); !enabled || err != nil || slot != "slot03" {
+		t.Fatalf("a slot holder runs as its slot: %q %v %v", slot, enabled, err)
+	}
+	if slot, enabled, err := For("u2"); enabled || err != nil || slot != "" {
+		t.Fatalf("a user without a slot is unchanged in opt-in mode: %q %v %v", slot, enabled, err)
+	}
+	// an unreadable table is still an error, never a silent fallback
+	t.Setenv(EnvTableFile, filepath.Join(t.TempDir(), "missing.json"))
+	if _, _, err := For("u1"); err == nil {
+		t.Fatal("an unreadable table must be an error")
+	}
+}

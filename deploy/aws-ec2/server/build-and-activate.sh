@@ -73,6 +73,9 @@ bash "$SCRIPT_DIR/build/build-linux-agent.sh" "$BUILD_DIR" "$BUILDER_REPO_ROOT/a
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-browser" "$BUILDER_REPO_ROOT/workspace/cmd/shared-browser")
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$BUILDER_REPO_ROOT/workspace/cmd/landlock-runner")
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -o "$BUILD_DIR/bin/workspace-security.test" "$BUILDER_REPO_ROOT/workspace/security")
+# Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the rootless-linux build).
+source "$REPO_ROOT/deploy/common/slots.sh"
+slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$BUILDER_REPO_ROOT" "$BUILD_DIR"
 (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-gateway" "$SCRIPT_DIR/server/auth-gateway.go"
 if [[ ! -x "$REPO_ROOT/frontend/node_modules/.bin/tsc" ]]; then
@@ -83,6 +86,7 @@ cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
 node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/frontend"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
+cp "$REPO_ROOT/deploy/common/slots.sh" "$BUILD_DIR/slots.sh"
 install -m 0755 "$REPO_ROOT/scripts/migrate_workflow_builder_chats.py" "$BUILD_DIR/migrations/migrate_workflow_builder_chats.py"
 install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/migrations/workflow-builder-chat-owners-v1.json"
 # frontend's build:report-preview step (part of `npm run build` above) writes
@@ -186,6 +190,15 @@ mv "$env_file.next2" "$env_file.next"
   echo "LLM_CONFIG_LOCKED=true"
   printf "DEFAULT_PUBLISHED_LLMS='[{\"id\":\"agentworks-default\",\"name\":\"%s (%s)\",\"provider\":\"%s\",\"model_id\":\"%s\"}]'\n" "$agentworks_provider" "$agentworks_model" "$agentworks_provider" "$agentworks_model"
 } >> "$env_file.next"
+# Per-user accounts (deploy/common/slots.sh, deploy/common/provision-slots.sh): on a host an administrator has
+# provisioned, install the tmux front-end and run in opt-in mode, so a user who holds a slot runs as it
+# and everyone else (shared Video Studio and Workflow runs) is unchanged until their folders are slot-aware.
+awk '!/^AGENTWORKS_SLOTS=/' "$env_file.next" > "$env_file.next2" && mv "$env_file.next2" "$env_file.next"
+if [ -r /etc/agentworks/slots.json ]; then
+  . "$remote_release/slots.sh"
+  slots_install_shim "$remote_app" "$remote_release" >/dev/null
+  echo 'AGENTWORKS_SLOTS=optin' >> "$env_file.next"
+fi
 chmod 600 "$env_file.next"
 mv "$env_file.next" "$env_file"
 

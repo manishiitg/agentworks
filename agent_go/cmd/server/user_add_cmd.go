@@ -10,7 +10,7 @@ import (
 )
 
 // `server add-user` creates an account the way the Users panel does, for an administrator working on
-// the host (deploy/rootless-linux/provision-slots.sh adduser calls it, then assigns a slot).
+// the host (deploy/common/provision-slots.sh adduser calls it, then assigns a slot).
 // Signing in never creates an account, so this is how a person gets one.
 var addUserCmd = &cobra.Command{
 	Use:   "add-user",
