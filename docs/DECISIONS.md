@@ -13,6 +13,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Citymall dedicated host: prepare an isolated service account first
+
+- The supplied EC2 host (`52.66.201.227`, Ubuntu 26.04, 2 CPUs/4 GB RAM) is fresh.
+  Prepare `/srv/citymall` under an unprivileged `citymall` account with a persistent
+  user manager, workspace directories, native/Python/browser prerequisites and
+  Confida's checksum-pinned Node runtime. Generate new persistent secrets; never
+  borrow another customer's logins, credentials or data. Code:
+  `deploy/rootless-linux/setup-citymall-host.sh`; runbook: `citymall.md` beside it.
+- **Open:** domain, enabled products, sign-in configuration and initial admin
+  need to be chosen before adding a deploy target and activating the application.
+  Base preparation does not start a public site or application services. Also
+  size the first build for the 4 GB host and verify its namespace sandbox before
+  activation; the shared deployment defaults assume a larger machine.
+
 ### 2026-10-01 — Slotted shell commands lost their per-call environment (401 from the tools gateway)
 
 - **Incident (Confida, Vaibhav's workflow session).** A shell command run as a slot only got the base environment
