@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -250,6 +251,29 @@ func lookup(registry, session string) string {
 	return slot
 }
 
+// liveLookup is lookup for a command that is about to use the slot's server: a record whose slot has
+// no running tmux server is stale (the session ended, or a later one of that name was started on the
+// platform's own tmux), so it is dropped and the command goes to the default server.
+func liveLookup(cfg slots.ExecConfig, registry, session string) string {
+	slot := lookup(registry, session)
+	if slot == "" {
+		return ""
+	}
+	conn, err := net.DialTimeout("unix", slots.SlotSocket(cfg.SlotRunRoot, slot), time.Second)
+	if err != nil {
+		forget(registry, session)
+		return ""
+	}
+	_ = conn.Close()
+	return slot
+}
+
+func forget(registry, session string) {
+	if file := slots.SessionFile(registry, session); file != "" {
+		_ = os.Remove(file)
+	}
+}
+
 func remember(registry, session, slot string) {
 	file := slots.SessionFile(registry, session)
 	if file == "" {
@@ -291,6 +315,9 @@ func run(args []string) int {
 	case c.IsNewSession():
 		name, dir := c.NewSessionFlags()
 		slot := cfg.SlotForDir(dir)
+		if name != "" && !commandUsesSlotFolder(c, filepath.Join(cfg.SlotRunRoot, slot)) {
+			forget(registry, name) // a session of this name is about to live on the platform's own tmux
+		}
 		if slot == "" && name != "" && c.NewSessionDetached() && strings.Contains(name, "muse") {
 			// Not a slot's session: Muse's launch error output is still kept (diagnostics for a Muse that
 			// dies at start), under the registry, one file per session; other CLIs are left alone.
@@ -339,7 +366,7 @@ func run(args []string) int {
 		return 0
 
 	case c.Subcommand == "paste-buffer" && c.BufferName() != "":
-		if slot := lookup(registry, c.Target()); slot != "" {
+		if slot := liveLookup(cfg, registry, c.Target()); slot != "" {
 			return pasteBuffer(cfg, registry, slot, c, args)
 		}
 		return pasteDefault(registry, c, args)
@@ -349,7 +376,7 @@ func run(args []string) int {
 		if target == "" {
 			return passthrough(args)
 		}
-		if slot := lookup(registry, target); slot != "" {
+		if slot := liveLookup(cfg, registry, target); slot != "" {
 			return direct(slots.SlotSocket(cfg.SlotRunRoot, slot), args)
 		}
 		return passthrough(args)

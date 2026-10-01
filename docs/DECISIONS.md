@@ -63,6 +63,11 @@ Design references for the linked runtime decisions:
   Permission denied"). It now routes to a slot only when the command's script is in that slot's run
   folder; otherwise the session stays on the platform's tmux. A Muse session that is not a slot's
   keeps its launch error output under `<run root>/.sessions/launch-logs/`.
+- **Fixed (same day).** The front-end's session records ("session X lives in slot Y") could go stale: a
+  session started on the platform's tmux after a misrouted one left the old record, so `has-session`
+  went to the empty slot server and the platform then failed with "duplicate session". A record is
+  now dropped when its slot has no running tmux server, and a non-slot new-session clears any record
+  of that name.
 - **Open.** Muse still prints "local session messaging unavailable: registry root: Permission denied" in
   slot sessions (it tries to `chmod 0700` platform-owned folders). Harmless, not traced.
 
