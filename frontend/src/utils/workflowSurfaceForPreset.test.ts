@@ -1,6 +1,7 @@
+// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { workflowSurfaceForPreset } from './workflowNavigation'
+import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 
 describe('workflowSurfaceForPreset', () => {
   beforeEach(() => {
