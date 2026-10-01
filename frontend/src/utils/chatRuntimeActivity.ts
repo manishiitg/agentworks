@@ -12,12 +12,20 @@ export type ChatActivityTab = {
   isStreaming?: boolean
   hasRunningBgAgents?: boolean
   isCompleted?: boolean
+  foregroundTurnCompleted?: boolean
 }
 
 // The open chat shares the monitor's classification, with immediate tab-local
 // start/completion signals to bridge the active-session cache's refresh delay.
 // A retained CLI process alone never means that a turn is running.
 export function chatRuntimeActivity(tab: ChatActivityTab, session?: ActiveSessionInfo): ChatRuntimeActivity {
+  // A durable completion in this chat wins over stale tab/cache foreground
+  // flags. A new user/start event resets this signal before its request begins.
+  if (tab.foregroundTurnCompleted) {
+    return tab.hasRunningBgAgents || (session && runtimeHasBackgroundAgents(session))
+      ? { state: 'running', label: 'background running' }
+      : { state: 'ready', label: 'idle' }
+  }
   const inFlight = Boolean(tab.isStreaming || tab.hasRunningBgAgents)
   if (tab.isCompleted && !inFlight) return { state: 'ready', label: 'idle' }
   const tone = session ? statusTone(session) : 'idle'

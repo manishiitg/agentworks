@@ -1,3 +1,5 @@
+import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
+import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
 import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import { sessionStreamingState, type SessionActivitySnapshot } from '../utils/sessionStreamingState'
@@ -91,11 +93,6 @@ const STREAMING_EVENT_TYPES = new Set(['streaming_start', 'streaming_chunk', 'st
 // its wiring from ChatArea while leaving the component, the server capability
 // flag, and the server-side diagnostic endpoints themselves fully intact.
 const RuntimeDiagnosticsPanel = lazy(() => import('./TerminalCenter').then(module => ({ default: module.TerminalCenter })))
-
-type RuntimeEventScope = {
-  kind: 'session' | 'delegation' | 'workshop'
-  id?: string
-}
 
 function isStreamingEventType(type: unknown): type is string {
   return typeof type === 'string' && STREAMING_EVENT_TYPES.has(type)
@@ -232,69 +229,6 @@ function createSubmissionErrorEvent(sessionId: string, error: unknown): PollingE
       },
     } as PollingEvent['data'],
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return undefined
-}
-
-function isRootLikeExecutionId(value?: string): boolean {
-  return !value || value.startsWith('main:') || value.startsWith('session:')
-}
-
-function getEventPayloadParts(event: PollingEvent) {
-  const eventRecord = event as unknown as Record<string, unknown>
-  const agentEvent = asRecord(event.data)
-  const innerData = asRecord(agentEvent?.data)
-  const metadata = asRecord(innerData?.metadata) || asRecord(agentEvent?.metadata)
-  return { eventRecord, agentEvent, innerData, metadata }
-}
-
-function getRuntimeEventScope(event: PollingEvent): RuntimeEventScope {
-  const { eventRecord, agentEvent, innerData, metadata } = getEventPayloadParts(event)
-  const component = firstString(eventRecord.component, innerData?.component, agentEvent?.component)
-  const correlationId = firstString(
-    eventRecord.correlation_id,
-    innerData?.correlation_id,
-    agentEvent?.correlation_id,
-    metadata?.correlation_id
-  )
-  const delegationId = firstString(innerData?.delegation_id, agentEvent?.delegation_id, metadata?.delegation_id)
-  const workshopStepId = firstString(metadata?.workshop_step_id, innerData?.workshop_step_id, agentEvent?.workshop_step_id)
-  const executionId = firstString(eventRecord.execution_id)
-  const parentExecutionId = firstString(
-    eventRecord.parent_execution_id,
-    metadata?.parent_execution_id,
-    innerData?.parent_execution_id,
-    agentEvent?.parent_execution_id
-  )
-  const backgroundAgentId = firstString(
-    innerData?.background_agent_id,
-    agentEvent?.background_agent_id,
-    innerData?.agent_id,
-    agentEvent?.agent_id
-  )
-  const executionKind = firstString(eventRecord.execution_kind)
-
-  if (component?.startsWith('delegation-')) return { kind: 'delegation', id: component }
-  if (delegationId?.startsWith('delegation-')) return { kind: 'delegation', id: delegationId }
-  if (correlationId?.startsWith('delegation-')) return { kind: 'delegation', id: correlationId }
-  if ((executionKind === 'workflow_step' || executionId?.startsWith('workflow-step:')) && !isRootLikeExecutionId(executionId)) {
-    return { kind: 'workshop', id: executionId }
-  }
-  if (!isRootLikeExecutionId(parentExecutionId)) return { kind: 'workshop', id: parentExecutionId }
-  if (!isRootLikeExecutionId(backgroundAgentId)) return { kind: 'workshop', id: backgroundAgentId }
-  if (correlationId?.startsWith('workshop-')) return { kind: 'workshop', id: correlationId }
-  if (workshopStepId?.startsWith('workshop-')) return { kind: 'workshop', id: workshopStepId }
-
-  return { kind: 'session' }
 }
 
 function handleLiveStreamingEvent(
@@ -1799,10 +1733,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         }
       }
 
-      // An intermediate narration row (intermediateUpdateFromTranscriptChunk)
-      // reuses the llm_generation_end shape but is not the turn's completion.
-      const isIntermediateUpdate = innerData?.restored_intermediate_update === true
-      if (!isSubAgentEvent && !isIntermediateUpdate && (event.type === 'llm_generation_end' || event.type === 'unified_completion' || event.type === 'agent_end' || event.type === 'conversation_end' || event.type === 'conversation_error' || event.type === 'context_cancelled')) {
+      if (isForegroundTurnCompletion(event)) {
         hasCompletionEvent = true
       }
 

@@ -22,6 +22,14 @@ describe('open chat runtime activity', () => {
   it('settles immediately despite a stale running cache', () => {
     expect(chatRuntimeActivity({ isCompleted: true }, session('running')).state).toBe('ready')
   })
+  it.each(['running', 'waiting'] as const)('a completed foreground settles stale %s tab and cache flags', phase => {
+    expect(chatRuntimeActivity({ foregroundTurnCompleted: true, isStreaming: true, isCompleted: false }, session(phase)))
+      .toEqual({ state: 'ready', label: 'idle' })
+  })
+  it('keeps actual background work visible after a foreground completion', () => {
+    expect(chatRuntimeActivity({ foregroundTurnCompleted: true, isStreaming: true }, session('idle', { background_live: true })))
+      .toEqual({ state: 'running', label: 'background running' })
+  })
   it.each(['idle', 'completed', 'failed', 'canceled'] as const)('does not spin for a retained %s CLI', phase => {
     expect(chatRuntimeActivity({}, session(phase)).state).toBe('ready')
   })

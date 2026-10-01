@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore } from '../stores/useChatStore'
+import { foregroundTurnCompleted } from '../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../utils/chatRuntimeActivity'
 
 export function useChatRuntimeActivity(tabId: string | null | undefined) {
@@ -12,6 +13,7 @@ export function useChatRuntimeActivity(tabId: string | null | undefined) {
       isStreaming: current?.isStreaming,
       hasRunningBgAgents: current?.hasRunningBgAgents,
       isCompleted: current?.isCompleted,
+      foregroundTurnCompleted: foregroundTurnCompleted(current?.sessionId ? state.tabEvents[current.sessionId] : undefined),
     }
   }))
   const session = useChatStore(state => tab.sessionId

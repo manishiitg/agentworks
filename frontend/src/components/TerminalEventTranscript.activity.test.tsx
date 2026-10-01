@@ -4,6 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PollingEvent } from '../services/api-types'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
+import { useChatRuntimeActivity } from '../hooks/useChatRuntimeActivity'
+import { useChatStore, type ChatTab } from '../stores/useChatStore'
+import type { ActiveSessionInfo } from '../services/api-types'
 
 vi.mock('react-virtuoso', () => ({
   Virtuoso: ({ data, firstItemIndex, itemContent, computeItemKey }: { data: unknown[]; firstItemIndex: number; itemContent: (index: number, item: unknown) => React.ReactNode; computeItemKey: (index: number, item: unknown) => string }) => (
@@ -36,6 +39,34 @@ function indicators(host: HTMLElement) { return host.querySelectorAll('[data-tes
 function headers(host: HTMLElement) { return host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]') }
 
 describe('activity belongs to the current agent turn', () => {
+  it('removes the actual header spinner when the turn completes while cache and tab flags remain running', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const original = useChatStore.getState()
+    useChatStore.setState({
+      getActiveSessions: vi.fn().mockResolvedValue([]),
+      activeSessionsCache: [{ session_id: 'chat-a', status: 'running' } as ActiveSessionInfo],
+      chatTabs: { a: { tabId: 'a', sessionId: 'chat-a', isStreaming: true } as ChatTab },
+      tabEvents: { 'chat-a': [user] },
+    })
+    function Chat() {
+      const activity = useChatRuntimeActivity('a')
+      const events = useChatStore(state => state.tabEvents['chat-a'])
+      return <TerminalEventTranscript terminal={null} events={events} runtimeActivity={activity} />
+    }
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    cleanups.push(() => { act(() => root.unmount()); host.remove(); useChatStore.setState(original, true) })
+    await act(async () => { root.render(<Chat />) })
+    expect(indicators(host)).toHaveLength(1)
+    await act(async () => { useChatStore.setState({ tabEvents: { 'chat-a': [user, completed] } }) })
+    expect(indicators(host)).toHaveLength(0)
+    expect(headers(host)[0].textContent).toContain('32.1s')
+    await act(async () => {
+      useChatStore.setState({ tabEvents: { 'chat-a': [user, completed, event('next-user', 'user_message', { content: 'Check again' })] } })
+    })
+    expect(indicators(host)).toHaveLength(1)
+    expect(headers(host)[0].querySelector('[role="status"]')).toBeNull()
+  })
   it.each([{ events: [] }, { events: [user] }])('shows the agent before any response or tool event arrives', async ({ events }) => {
     const { host } = await mount({ events, runtimeActivity: running })
     expect(headers(host)).toHaveLength(1)

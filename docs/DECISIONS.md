@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — Foreground completion clears chat header loading despite stale status
+- The latest foreground turn's completion event clears the header spinner even
+  when tab flags or the active-session cache still report foreground work. The
+  next user/start event resets that completion signal; actual background work
+  continues to show activity. This applies through the shared hook to Code,
+  Crew and workflow chats.
+- Reuse ChatArea's existing completion types and child-execution scope rules in
+  shared utilities, including its exclusion of restored intermediate narration.
+  Regression tests exercise the real store, hook and rendered transcript with
+  stale busy flags, completion, and the next message. Code:
+  `foregroundTurnActivity`, `runtimeEventScope`, `useChatRuntimeActivity`.
+
 ### 2026-10-01 — Review fixes: no cross-user path resolution, server secrets out of agent environments
 
 - **Decided.** `utils.ResolveUserPath` refuses another user's tree: a path under `_users/<id>/` must be
@@ -868,6 +880,18 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+### 2026-10-01 — Model selection is pending while typing directly into a retained terminal
+- Excellence/Ashutosh's Code saved `gpt-6.1-sol` in its project manifest, while
+  its retained Codex runtime still had `gpt-6-sol`. The model was saved after
+  that runtime's last chat turn. Saving is working; model/account reconciliation
+  and relaunch happen in the next project chat request, and native terminal
+  input bypasses that request path.
+- The Models panel says "next message", which can imply terminal input applies
+  the change too. Pending-versus-running feedback and native-terminal handling
+  remain open; the current way to apply the saved choice is to send the next
+  message through the chat. Code: `WorkModelsPanel`, `changeWorkRuntime` in
+  `WorkSurface`, and `prepareProductConversationTurn` in `agent_profile_routes.go`.
 
 - **Remaining local linked-runtime CLI qualification (2026-09-30).** Muse's
   integrated resume exceeded the fixture budget after linked artifact work passed; Agy's
