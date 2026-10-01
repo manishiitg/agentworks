@@ -5961,7 +5961,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] Main agent workspace executors: created with explicit userID=%q sessionID=%q", currentUserID, sessionID)
 			// Inject LLM config fallback for read_image HTTP calls (e.g., from claude CLI subprocess)
 			if underlying := llmAgent.GetUnderlyingAgent(); underlying != nil {
-				virtualtools.SetReadImageLLMConfig(workspaceExecutors, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig)
+				virtualtools.SetReadImageLLMConfig(workspaceExecutors, mcpagent.ReadAgentRuntimeInfo(underlying).LLMConfig, mergedAPIKeys)
 			}
 
 			// Merge @context file paths into additional folder-guard write access.

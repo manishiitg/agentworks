@@ -730,9 +730,10 @@ func wrapReadImageExecutor(executors map[string]func(ctx context.Context, args m
 func SetReadImageLLMConfig(
 	executors map[string]func(ctx context.Context, args map[string]any) (string, error),
 	selected mcpagent.LLMModel,
+	keys *llm.ProviderAPIKeys,
 ) {
 	if existing, ok := executors["read_image"]; ok {
-		executors["read_image"] = injectSelectedLLMConfig(existing, selected)
+		executors["read_image"] = injectSelectedLLMConfig(existing, selected, keys)
 		log.Printf("[READ_IMAGE_DEBUG] read_image executor wrapped with LLM selected (provider=%s, model=%s)",
 			selected.Provider, selected.ModelID)
 	}
@@ -757,16 +758,23 @@ func stringFromMap(args map[string]any, key string) string {
 }
 
 // injectSelectedLLMConfig wraps an executor: if the context has no ToolExecutionLLMConfigKey,
-// the selected config is injected before calling the inner executor.
+// the selected config is injected before calling the inner executor. keys are the turn's provider accounts:
+// a call that arrives over the CLI's tool bridge is a plain HTTP request and carries none, and without them the
+// analysis starts the CLI under the server's own account (no login, "Select login method") instead of the
+// account the session runs on. They are attached when the context has none.
 func injectSelectedLLMConfig(
 	inner func(ctx context.Context, args map[string]any) (string, error),
 	selected mcpagent.LLMModel,
+	keys *llm.ProviderAPIKeys,
 ) func(ctx context.Context, args map[string]any) (string, error) {
 	return func(ctx context.Context, args map[string]any) (string, error) {
 		if ctx.Value(mcpagent.ToolExecutionLLMConfigKey) == nil {
 			log.Printf("[READ_IMAGE_DEBUG] No LLM config in context, injecting selected (provider=%s, model=%s)",
 				selected.Provider, selected.ModelID)
 			ctx = context.WithValue(ctx, mcpagent.ToolExecutionLLMConfigKey, selected)
+		}
+		if keys != nil && ProviderAccountKeysFromContext(ctx) == nil {
+			ctx = WithProviderAccountKeys(ctx, keys)
 		}
 		return inner(ctx, args)
 	}

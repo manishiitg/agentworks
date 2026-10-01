@@ -13,6 +13,22 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-01 — read_image over the CLI bridge runs on the session's own account
+
+- **Found (Confida, Vaibhav).** `read_image` called by a coding CLI arrives through the tool bridge as a plain HTTP
+  request, with none of the turn's provider accounts in its context. The analysis fell back to "the agent's own
+  model" (claude-code/claude-sonnet-5-5) but, with no account in hand, started Claude under the **server's**
+  account: Confida has no server Claude login, so Claude stopped on "Select login method" and timed out
+  ("LLM image analysis failed ... [auth]"), even for a user with their own Claude connection.
+- **Decided.** The turn's account keys (`mergedAPIKeys`) are attached to bridge-originated `read_image` calls
+  (`SetReadImageLLMConfig(..., keys)` / `injectSelectedLLMConfig`), so the analysis uses the same CLI, connection
+  and scope as the session, as the in-process path already did. Keys already in the context are never replaced.
+  Test: `virtual-tools/read_image_account_test.go`.
+- **Kept.** Custom tools stay: the platform tools (shell as the user's slot, browser, files under the folder guard,
+  secrets, workflow and MCP tools) are what the native CLI tools do not provide; only this tool's separate
+  model call was wrong. Other bridge-called tools that start their own model (e.g. `generate_text_llm`) were not
+  audited for the same gap.
+
 ### 2026-10-01 — Confida slot table unreachable (incident), and image analysis login
 
 - **Incident.** After Confida's slots went live (12:00), its service could not read
