@@ -13,6 +13,23 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
+
+- **Found (Mayur, Code on excellence; same pattern in a second session).** A shell command ran 5 minutes; Muse recorded
+  `timed_out` at exactly 5:00 (its own tool-call limit) and the very next call failed with "api-bridge: MCP stdio
+  connection is closed". The Muse process had no `mcpbridge` child any more and never reconnects, so every file write
+  and shell call failed for the rest of that session. Checked across all Muse sessions: the two sessions that ever
+  saw "connection is closed" both had a `timed_out` call ~6 s before the first failure. No OOM, no deploy, no platform
+  kill (nothing in the platform kills `mcpbridge`).
+- **Why it was a race.** The bridge's own HTTP limit is also 5 minutes (`DefaultBridgeHTTPTimeout`), and Muse has no
+  documented/configurable MCP timeout (Claude and Codex get a 90-minute one through their config), so Muse's timer won.
+- **Done.** `mcpbridge` honours `MCP_BRIDGE_MAX_CALL_SECONDS` (mcpagent e9af395) and the Muse adapter sets it to 270 s on
+  its bridge entry (provider), so a slow call returns an ordinary TIMEOUT tool error (with the advice to run long jobs in
+  the background) before Muse's limit fires. Takes effect for Muse sessions started after the deploy.
+- **Still open.** A Muse session whose bridge has died is not detected and restarted automatically: it stays broken until
+  its tmux session is closed (done by hand for Mayur on 2026-10-02). The platform could check for the bridge child
+  before delivering a message and relaunch Muse (resume) when it is missing.
+
 ### 2026-10-01 — Open review findings (reference skill, image bridge, gateway test)
 
 - **Open.** Workflow-chat queries with tagged references fail entirely when the
