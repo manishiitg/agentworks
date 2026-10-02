@@ -46,7 +46,9 @@ func (api *StreamingAPI) externalWorkflowFunctionCall(w http.ResponseWriter, r *
 			replyFunctionCallInput(w, call, strings.TrimSpace(requestID), response)
 			return
 		}
-		externalJSON(w, externalWorkflowCallResponse(ctx, call, 0))
+		out := externalWorkflowCallResponse(ctx, call, 0)
+		out["can_reply"] = access == WorkflowAccessOwner || access == WorkflowAccessWrite
+		externalJSON(w, out)
 	case "call_workflow_function":
 		if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
 			externalError(w, 403, "forbidden", "Calling a workflow function needs owner or editor access to the workflow.")
