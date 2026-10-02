@@ -473,6 +473,55 @@ func TestDownloadsRequiresExplicitPermission(t *testing.T) {
 	}
 }
 
+func TestMountScriptBindsExternalAbsolutePathsFromHost(t *testing.T) {
+	root := t.TempDir()
+	external := t.TempDir()
+	inside := filepath.Join(root, "Workflow", "example")
+	iso := &Isolator{
+		BaseDir:    root,
+		WorkDir:    inside,
+		ReadPaths:  []string{inside},
+		WritePaths: []string{inside, external},
+	}
+
+	tempPath, target := resolveTempAndAbsPath(external, root, "/tmp/workspace-original-$$")
+	if tempPath != external || target != external {
+		t.Fatalf("external bind = (%q, %q), want host path %q", tempPath, target, external)
+	}
+	script := iso.generateMountScript("true", nil)
+	if !strings.Contains(script, fmt.Sprintf(`mount --bind "%s" "%s"`, external, external)) {
+		t.Fatalf("external path must bind from host: %s", script)
+	}
+	if strings.Contains(script, filepath.Join("/tmp/workspace-original-$$", strings.TrimPrefix(external, "/"))) {
+		t.Fatal("external path was incorrectly sourced from the workspace copy")
+	}
+	if strings.Contains(script, fmt.Sprintf(`mkdir -p "%s"`, external)) {
+		t.Fatal("mount script must not create an external grant")
+	}
+	internalSource, _ := resolveTempAndAbsPath(inside, root, "/tmp/workspace-original-$$")
+	if internalSource != filepath.Join("/tmp/workspace-original-$$", "Workflow", "example") {
+		t.Fatalf("workspace bind source changed: %q", internalSource)
+	}
+}
+
+func TestMountNamespacePrivateTmpKeepsOnlyGrantedPaths(t *testing.T) {
+	const socket = "/tmp/.agent-browser/o/w0123456789abcdef"
+	iso := &Isolator{
+		BaseDir:        "/srv/workspace",
+		WorkDir:        "/tmp/ungranted-workdir",
+		ReadPaths:      []string{"/srv/workspace/Workflow/example"},
+		WritePaths:     []string{socket},
+		BrowserSession: "workflow-0123456789abcdef--browser",
+	}
+	got := iso.mountTmpKeepPaths()
+	if len(got) != 1 || got[0] != socket {
+		t.Fatalf("private /tmp grants = %v, want only %q", got, socket)
+	}
+	if script := iso.generateMountScript("true", nil); !strings.Contains(script, "mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp") {
+		t.Fatal("mount namespace fallback did not make /tmp private")
+	}
+}
+
 // TestMacOSAuthorizedSiblingDirectory verifies the complete permission path
 // used by Builder attachments: an allowed directory below workspace-docs must
 // permit access to the directory node as well as its descendants. A subpath-
