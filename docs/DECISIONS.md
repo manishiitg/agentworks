@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals
+
+- **Found (user).** A manager of a shared provider account gets a live terminal for Usage, and could type `/logout` (or change settings) for everyone on the account.
+- **Done.** In a `usage` setup session, typed input goes through the same slash allowlist as the coding agents' live terminals (`AGENTWORKS_TERMINAL_SLASH_COMMANDS`,
+  default `/usage` only): other slash lines are erased, menu navigation is dropped. Non-managers still get server-collected text. Supersedes the unpushed
+  "usage read-only for everyone" branch (managers keep the live view).
 ### 2026-10-03 — The old workspace `Downloads/` folder is no longer granted
 
 Folder guards stop granting `Downloads/` and prompts stop pointing at it; outputs

@@ -45,6 +45,13 @@ type slashGuard struct {
 
 var terminalSlashGuard = &slashGuard{lines: map[string]*slashLine{}}
 
+// forget drops the typed-line state of a session that ended.
+func (g *slashGuard) forget(session string) {
+	g.mu.Lock()
+	delete(g.lines, session)
+	g.mu.Unlock()
+}
+
 // slashPolicy resolves the allowlist from the environment.
 func slashPolicy() (allowAll bool, allowed map[string]bool) {
 	value := strings.TrimSpace(os.Getenv(terminalSlashCommandsEnv))
