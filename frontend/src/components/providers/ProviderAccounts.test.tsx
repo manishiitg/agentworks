@@ -212,3 +212,17 @@ it('shows no native-tools badge on accounts the viewer does not own', async () =
   expect(container.textContent).not.toMatch(/native tools off/i)
   expect(container.textContent).toContain('Owner: Erin · Private (only Erin can use it)')
 })
+
+it('selection-only accounts hide setup choices and preserve a signed-out saved account as disabled', async () => {
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+    { ...server, configured: false }, { ...own, configured: false }, sharedWithMe,
+  ])
+  const onSelect = vi.fn()
+  const container = await render(<ProviderAccounts provider="claude-code" selectionOnly selectedId="acct-own" onSelect={onSelect} />)
+  const select = container.querySelector<HTMLSelectElement>('select[aria-label="Provider account"]')!
+  expect(select.value).toBe('acct-own')
+  expect(select.selectedOptions[0].textContent).toContain('needs setup')
+  expect(select.selectedOptions[0].disabled).toBe(true)
+  expect([...select.options].filter(option => !option.disabled).map(option => option.value)).toEqual(['acct-dana'])
+  expect(onSelect).not.toHaveBeenCalled()
+})

@@ -13,6 +13,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Project model choices require a ready account; remove older Codex choices
+
+- Refine the earlier installation-only rule: Workflow/product Setup and Crew/Code
+  Identity → Models offer installed coding providers with a configured, usable
+  admin-managed or personal account in the current project/product scope.
+  A signed-out admin-managed account does not hide a working personal account.
+  Providers needing setup remain available in Providers management.
+- Saved unavailable selections remain visible for diagnosis as disabled values;
+  opening settings never substitutes another provider/account. Account choices
+  omit unconfigured accounts except a saved selection that needs attention.
+- Remove GPT-5.5 and GPT-5.4 from the Codex CLI selectable catalog and automatic
+  published role models. Retain metadata/runtime handling for saved sessions.
+- Code: `readyCodingProviders`, `WorkflowLLMConfigurationPanel`, `WorkModelsPanel`,
+  `LLMRoleSelector`, `published_llm_store`, and the provider's `codexcli_models`.
+
 ### 2026-10-03 — Deploy notices in Slack are opt-in
 
 - **Decision (user).** `deploy.sh` no longer posts to the Slack channel by default (it posted "deploying" and "finished" for every deploy,

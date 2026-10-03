@@ -17,7 +17,7 @@ const { storeState } = vi.hoisted(() => ({
     getProviderDynamicModels: vi.fn(),
     isProviderSupported: vi.fn(() => true),
     llmConfigLocked: false,
-    lockedProviders: [],
+    lockedProviders: [] as string[],
     savedLLMs: [] as SavedLLM[],
     setShowLLMModal: vi.fn(),
   },
@@ -70,6 +70,7 @@ afterEach(() => {
   storeState.availableLLMs = []
   storeState.providerManifest = []
   storeState.llmConfigLocked = false
+  storeState.lockedProviders = []
   storeState.savedLLMs = []
   storeState.setShowLLMModal.mockReset()
   storeState.getProviderDynamicModels.mockClear()
@@ -78,7 +79,7 @@ afterEach(() => {
 })
 
 describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
-  it.each(['agentworks', 'work', 'code'])('shows only installed providers in %s setup, including an installed CLI needing sign-in', async product => {
+  it.each(['agentworks', 'work', 'code'])('shows only installed, ready providers in %s setup', async product => {
     storeState.providerManifest = [
       provider({}),
       provider({ id: 'codex-cli', display_name: 'OpenAI Codex CLI', runtime_available: false }),
@@ -93,7 +94,7 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
         <WorkflowLLMConfigurationPanel workspacePath="/project" product={product} splitPiProviders={false} onChange={vi.fn()} />,
       ))
       expect(host.textContent).toContain('Claude Code')
-      expect(host.textContent).toContain('Cursor CLI')
+      expect(host.textContent).not.toContain('Cursor CLI')
       expect(host.textContent).not.toContain('OpenAI Codex CLI')
       expect(host.textContent).not.toContain('Pi CLI')
       expect(storeState.getProviderDynamicModels).not.toHaveBeenCalledWith('pi-cli', false)
@@ -126,12 +127,32 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
       const saved = agents.find(agent => agent.value === 'codex-cli')
       expect(saved).toBeDefined()
       expect(saved?.selectedOptions[0].disabled).toBe(true)
-      expect(saved?.selectedOptions[0].textContent).toContain('not installed')
+      expect(saved?.selectedOptions[0].textContent).toContain('unavailable')
       expect(onChange).not.toHaveBeenCalled()
     } finally {
       await act(async () => root.unmount())
       host.remove()
     }
+  })
+
+  it('hides a locked provider needing setup and a ready installation denied in this project', async () => {
+    storeState.lockedProviders = ['codex-cli']
+    storeState.providerManifest = [
+      provider({}),
+      provider({ id: 'codex-cli', display_name: 'OpenAI Codex CLI', auth_configured: false, usable: false }),
+    ]
+    vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+      { id: 'global:claude-code', provider: 'claude-code', display_name: 'Admin-managed account', scope: 'global', auth_method: 'server', usable: false },
+    ])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host); const onChange = vi.fn()
+    try {
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/project" onChange={onChange} />))
+      expect(host.textContent).not.toContain('Claude Code')
+      expect(host.textContent).not.toContain('OpenAI Codex CLI')
+      expect(host.textContent).toContain('No providers are ready to use')
+      expect(onChange).not.toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove() }
   })
 
   it('shows authenticated CLIs as connected and keeps testing out of workflow selection', async () => {
@@ -164,14 +185,13 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
 
       expect(host.textContent).toContain('Claude Code')
       expect(host.textContent).toContain('Connected')
-      expect(host.textContent).toContain('OpenAI Codex CLI')
-      expect(host.textContent).toContain('Needs setup')
+      expect(host.textContent).not.toContain('OpenAI Codex CLI')
+      expect(host.textContent).not.toContain('Needs setup')
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Test')).toBe(false)
       expect(Array.from(host.querySelectorAll('button')).filter(button => button.textContent?.trim() === 'Use')).toHaveLength(1)
       const setupButton = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Manage in Providers')
-      expect(setupButton).toBeDefined()
-      await act(async () => setupButton?.click())
-      expect(storeState.setShowLLMModal).toHaveBeenCalledWith(true)
+      expect(setupButton).toBeUndefined()
+      expect(storeState.setShowLLMModal).not.toHaveBeenCalled()
       expect(host.textContent).not.toContain('Add a private account')
     } finally {
       await act(async () => root.unmount())
@@ -260,6 +280,7 @@ describe('workflow account tree', () => {
       { id: 'global:claude-code', provider: 'claude-code', display_name: 'Server account', scope: 'global', auth_method: 'server' },
       { id: 'account-a', provider: 'claude-code', display_name: 'Personal A', scope: 'user', auth_method: 'api_key' },
       { id: 'account-b', provider: 'claude-code', display_name: 'Personal B', scope: 'user', auth_method: 'api_key' },
+      { id: 'signed-out', provider: 'claude-code', display_name: 'Needs login', scope: 'user', auth_method: 'api_key', configured: false },
     ])
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host); const persist = vi.fn()
@@ -268,6 +289,8 @@ describe('workflow account tree', () => {
       await act(async () => Promise.resolve())
       expect(host.textContent).not.toContain('Needs setup')
       expect(host.textContent).toContain('Personal B (private)')
+      expect(host.textContent).not.toContain('Needs login')
+      expect(host.textContent).not.toContain('Admin-managed account')
       const providerBranch = host.querySelector<HTMLButtonElement>('[aria-label="Show Claude Code accounts"]')?.parentElement?.parentElement
       expect(providerBranch?.textContent).toContain('Claude Code')
       expect(providerBranch?.textContent).toContain('Personal B')
@@ -277,6 +300,23 @@ describe('workflow account tree', () => {
       expect(persist).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude-code', connection_id: 'account-a' }))
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Add account')).toBe(false)
       expect(host.querySelector('input[placeholder="e.g. Personal account"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
+  it('binds a ready shared account when choosing a signed-out provider', async () => {
+    storeState.providerManifest = [provider({ usable: false, auth_configured: false })]
+    vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+      { id: 'signed-out', provider: 'claude-code', display_name: 'Signed out', scope: 'user', auth_method: 'api_key', configured: false },
+      { id: 'shared', provider: 'claude-code', display_name: 'Team account', scope: 'user', auth_method: 'api_key', relation: 'shared_with_crew', configured: true, usable: true },
+    ])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host); const persist = vi.fn()
+    try {
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel workspacePath="/project" onChange={vi.fn()} onUseProvider={persist} />))
+      const use = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Use')
+      expect(use).toBeDefined()
+      await act(async () => use?.click())
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({ provider: 'claude-code', connection_id: 'shared' }))
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 

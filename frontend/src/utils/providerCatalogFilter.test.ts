@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { installedCodingProviders, nonDeprecatedProviders } from './providerCatalogFilter'
-import type { ProviderManifestEntry } from '../services/llm-config-api'
+import { installedCodingProviders, nonDeprecatedProviders, readyCodingProviders } from './providerCatalogFilter'
+import type { ProviderConnection, ProviderManifestEntry } from '../services/llm-config-api'
 
 // Minimal fixture -- only the fields nonDeprecatedProviders reads.
 const provider = (id: string, deprecated?: boolean): ProviderManifestEntry =>
@@ -41,5 +41,46 @@ describe('installedCodingProviders', () => {
       { ...provider('openai'), ...cli, integration_kind: 'api_model' },
     ])
     expect(result.map(entry => entry.id)).toEqual(['claude-code'])
+  })
+})
+
+describe('readyCodingProviders', () => {
+  const cli = (id: string, usable = true) => ({
+    ...provider(id), integration_kind: 'coding_agent', runtime_available: true, usable,
+  } as ProviderManifestEntry)
+  const account = (overrides: Partial<ProviderConnection>): ProviderConnection => ({
+    id: 'personal', provider: 'claude-code', scope: 'user', auth_method: 'api_key',
+    display_name: 'Personal', ...overrides,
+  })
+
+  it('hides setup-only providers but keeps a ready personal account when the server is signed out', () => {
+    const providers = [cli('claude-code', false), cli('codex-cli', false), cli('cursor-cli', false)]
+    const accounts = [
+      account({ scope: 'global', configured: false }),
+      account({ configured: true }),
+      account({ provider: 'codex-cli', configured: false }),
+      account({ provider: 'cursor-cli', relation: 'admin_view' }),
+    ]
+    expect(readyCodingProviders(providers, accounts).map(p => p.id)).toEqual(['claude-code'])
+  })
+
+  it('honors scoped availability and the server restriction on personal accounts', () => {
+    const accounts = [
+      account({ scope: 'global', usable: false, personal_accounts_allowed: false }),
+      account({ configured: true }),
+      account({ provider: 'codex-cli', usable: false }),
+    ]
+    expect(readyCodingProviders([cli('claude-code'), cli('codex-cli', false)], accounts)).toEqual([])
+  })
+
+  it('keeps unknown personal authentication compatible but still requires an installed CLI', () => {
+    const accounts = [account({}), account({ provider: 'codex-cli' })]
+    expect(readyCodingProviders([
+      cli('claude-code', false), { ...cli('codex-cli'), runtime_available: false },
+    ], accounts).map(p => p.id)).toEqual(['claude-code'])
+  })
+
+  it('does not offer a manifest-ready server account whose scoped status needs setup', () => {
+    expect(readyCodingProviders([cli('claude-code')], [account({ scope: 'global', configured: false })])).toEqual([])
   })
 })

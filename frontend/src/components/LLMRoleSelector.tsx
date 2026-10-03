@@ -107,7 +107,7 @@ export default function LLMRoleSelector({
           >
             {providers.map(option => (
               <option key={option.provider} value={option.provider} disabled={Boolean(allowedProviderIds && !allowedProviderIds.includes(option.provider))}>
-                {getProviderDisplayInfo(option.provider).name}{allowedProviderIds && !allowedProviderIds.includes(option.provider) ? ' (not installed)' : ''}
+                {getProviderDisplayInfo(option.provider).name}{allowedProviderIds && !allowedProviderIds.includes(option.provider) ? ' (unavailable)' : ''}
               </option>
             ))}
           </select>

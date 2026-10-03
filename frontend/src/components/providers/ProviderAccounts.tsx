@@ -408,10 +408,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
 
   // Picker: selectable accounts, grouped, plus a selected account that is no
   // longer available here so saving does not silently change it.
-  const selectable = connections.filter(accountUsable)
+  const selectable = connections.filter(record => accountUsable(record) && (!selectionOnly || accountConfigured(record)))
   const selectedValue = selectedId || `global:${provider}`
   const selectedRecord = connections.find(record => record.id === selectedValue)
   const selectedMissing = !selectable.some(record => record.id === selectedValue)
+  const selectedUnavailableText = selectedRecord?.configured === false ? "needs setup" : NO_LONGER_AVAILABLE.toLowerCase()
   const own = connections.filter(record => accountRelation(record) === 'own')
 
   const addForm = adding && (
@@ -494,7 +495,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <label className={`${selectionOnly ? '' : 'mt-4'} block text-xs font-medium text-gray-700 dark:text-gray-300`}>
           Account to use
           <select aria-label="Provider account" disabled={disabled || busy} value={selectedValue} onChange={event => onSelect(event.target.value)} className={inputClass}>
-            {selectedMissing && <option value={selectedValue}>{selectedRecord ? `${selectedRecord.display_name} (${NO_LONGER_AVAILABLE.toLowerCase()})` : `Selected account: ${NO_LONGER_AVAILABLE.toLowerCase()}`}</option>}
+            {selectedMissing && <option value={selectedValue} disabled>{selectedRecord ? `${selectedRecord.display_name} (${selectedUnavailableText})` : `Selected account: ${selectedUnavailableText}`}</option>}
             {ACCOUNT_GROUPS.map(groupSpec => {
               const records = selectable.filter(record => groupSpec.relations.includes(accountRelation(record)))
               if (records.length === 0) return null

@@ -6,14 +6,14 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type ModelMetadata, type ProviderSetupSession } from '../../services/llm-config-api'
+import { llmConfigService, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
-import { installedCodingProviders } from '../../utils/providerCatalogFilter'
+import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -45,6 +45,7 @@ export function WorkModelsPanel({
   const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
   const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
+  const [accounts, setAccounts] = useState<ProviderConnection[] | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
@@ -78,32 +79,47 @@ export function WorkModelsPanel({
     if (!providerManifestLoaded) void loadProviderManifest()
   }, [loadProviderManifest, providerManifestLoaded])
 
+  useEffect(() => {
+    let cancelled = false
+    setAccounts(null)
+    const refreshAccounts = () => {
+      void llmConfigService.getProviderConnections({ workspacePath, product: product.profileId }).then(records => {
+        if (!cancelled) setAccounts(records)
+      }).catch(() => { if (!cancelled) setAccounts([]) })
+    }
+    refreshAccounts()
+    window.addEventListener('provider-connections-changed', refreshAccounts)
+    return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refreshAccounts) }
+  }, [workspacePath, product.profileId])
+
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [loaded] = await Promise.all([
+      const [loaded, records] = await Promise.all([
         loadAgentProfileProviderOptions(product.profileId, product.profileVersion),
+        llmConfigService.getProviderConnections({ workspacePath, product: product.profileId }),
         loadProviderManifest(),
       ])
       setOptions(loaded)
+      setAccounts(records)
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest, product.profileId, product.profileVersion])
+  }, [loadProviderManifest, product.profileId, product.profileVersion, workspacePath])
 
-  const installedProviders = useMemo(() => installedCodingProviders(providerManifest), [providerManifest])
+  const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
   const modelCatalog = useMemo(
-    () => installedProviders.flatMap(provider => provider.models || []),
-    [installedProviders],
+    () => readyProviders.flatMap(provider => provider.models || []),
+    [readyProviders],
   )
   const engineGroups = useMemo(
     // Work intentionally offers the full platform catalog for each CLI. The
     // profile's model list may be present in an older running server until it
     // restarts, so do not let that stale curation hide the new project picker.
     () => buildAgentProfileEngineGroups(options
-      .filter(option => installedProviders.some(provider => provider.id === option.provider))
+      .filter(option => readyProviders.some(provider => provider.id === option.provider))
       .map(option => ({ ...option, models: undefined })), modelCatalog),
-    [installedProviders, modelCatalog, options],
+    [readyProviders, modelCatalog, options],
   )
   const workProviderIds = useMemo(
     () => options.map(option => option.provider || option.id),

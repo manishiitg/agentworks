@@ -21,10 +21,6 @@ func TestAutoPublishedCodingAgentLLMsIncludeConcreteClaudeAndCodexModels(t *test
 		"auto:claude-code:claude-sonnet-5-5:high",
 		"auto:claude-code:claude-opus-5-5:max",
 		"auto:codex-cli:gpt-5.3-codex-spark:high",
-		"auto:codex-cli:gpt-5.4:high",
-		"auto:codex-cli:gpt-5.4:xhigh",
-		"auto:codex-cli:gpt-5.5:high",
-		"auto:codex-cli:gpt-5.5:xhigh",
 	} {
 		if !containsPublishedLLMID(llms, want) {
 			t.Fatalf("auto-published ids missing %q; got %#v", want, publishedLLMIDs(llms))
@@ -35,6 +31,11 @@ func TestAutoPublishedCodingAgentLLMsIncludeConcreteClaudeAndCodexModels(t *test
 	}
 	if containsPublishedLLMModel(llms, "claude-code", "claude-opus-4-7") {
 		t.Fatalf("auto-published entries should not include removed Claude Opus 4.7: %#v", publishedLLMIDs(llms))
+	}
+	for _, removed := range []string{"gpt-5.4", "gpt-5.5"} {
+		if containsPublishedLLMModel(llms, "codex-cli", removed) {
+			t.Fatalf("auto-published entries should not include removed model %s", removed)
+		}
 	}
 	if containsPublishedLLMModel(llms, "codex-cli", "codex-cli") {
 		t.Fatalf("auto-published entries should not include codex-cli alias: %#v", publishedLLMIDs(llms))
