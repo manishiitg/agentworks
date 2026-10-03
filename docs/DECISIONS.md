@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks
+
+- **Decided (owner).** "Our platform should be secure; people can already do anything from the terminal": the Code agent may set up a tunnel
+  (cloudflared, ngrok) when the user asks, saying once that the app becomes reachable by anyone with the link.
+- **Done.** codeHostSafetyInstructions no longer forbids tunnels, reverse proxies and port forwarders; it still forbids browser IDEs,
+  SSH/remote-desktop servers and VPNs (the 2026-09-30 code-server incident) and binding ports to all interfaces.
+
 ### 2026-10-03 — Gmail sender exceptions require separate owner confirmation
 
 Builder may propose sender lists, but cannot authorize non-owner email. Only the
