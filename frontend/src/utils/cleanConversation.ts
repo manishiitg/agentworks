@@ -11,6 +11,24 @@ import {
 import { pairToolCalls, isAssistantUpdate } from './terminalEventTranscript'
 import { isConversationContinuityNotice } from '../components/ConversationContinuityNotice'
 
+/**
+ * A background task's output message is often the raw tool payload (a JSON object holding the whole command). Show the task's own
+ * description when it has one, else the first line, cut to a readable length; the full text stays available behind a click.
+ */
+export function summarizeBackgroundTaskMessage(message: string): string {
+  const text = message.trim()
+  if (!text) return ''
+  let summary = ''
+  if (text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>
+      if (typeof parsed.description === 'string') summary = parsed.description.trim()
+    } catch { /* not JSON: use the first line */ }
+  }
+  if (!summary) summary = text.split('\n').find((line) => line.trim())?.trim() || ''
+  return summary.length > 140 ? `${summary.slice(0, 137)}...` : summary
+}
+
 export type ConversationItem = {
   id: string
   role: 'user' | 'assistant' | 'progress' | 'reasoning' | 'error' | 'notification' | 'continuity' | 'background' | 'question'
@@ -235,7 +253,7 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
       const kind = firstText(payload.kind)
       if (['task_backgrounded', 'status', 'output', 'completed', 'failed', 'cancelled', 'rejected'].includes(kind)) {
         const label = kind === 'task_backgrounded' ? 'started' : kind
-        const message = firstText(payload.message)
+        const message = summarizeBackgroundTaskMessage(firstText(payload.message))
         const task = firstText(payload.task_id).slice(0, 8)
         pushUnique({
           id: event.id,

@@ -528,6 +528,7 @@ func interactiveShellHome(docsDir string, writePaths []string, workingDir string
 	for _, dir := range []string{filepath.Dir(home), home, filepath.Join(home, ".config")} {
 		_ = os.Chmod(dir, 0o770|os.ModeSetgid)
 	}
+	security.EnsurePlatformGitIgnore(filepath.Join(home, ".config"))
 	return home
 }
 

@@ -76,6 +76,7 @@ import { PlanApprovalDisplay } from './PlanApprovalDisplay'
 import { useChatStore } from '../../stores/useChatStore'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { backgroundAgentCompletionSummary } from '../../utils/backgroundAgentSummary'
+import { summarizeBackgroundTaskMessage } from '../../utils/cleanConversation'
 // getTerminalOwnerPayload / getOwnedTerminalOwnerKeys moved to
 // utils/eventOwnership.ts (pure, no React/store imports) so anything that only
 // needs event-ownership logic — the terminal transcript's event scoping, its
@@ -415,11 +416,20 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     const kind = typeof data.kind === 'string' ? data.kind : 'update'
     const message = typeof data.message === 'string' ? data.message : ''
     const taskID = typeof data.task_id === 'string' ? data.task_id.slice(0, 8) : ''
+    // The message is often the raw tool payload (a JSON object with the whole command): one readable line, the rest behind a click.
+    const summary = summarizeBackgroundTaskMessage(message)
+    const hasMore = message.trim() !== '' && message.trim() !== summary
     return (
       <CompactWrapper compact={compact}>
-        <div className={`rounded-md border border-cyan-200 bg-cyan-50/70 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/20 dark:text-cyan-300 ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
+        <div data-testid="background-task-event" className={`rounded-md border border-cyan-200 bg-cyan-50/70 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/20 dark:text-cyan-300 ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
           <span className="font-medium">Background task {taskID} · {kind === 'task_backgrounded' ? 'started' : kind}</span>
-          {message && <p className="mt-1 whitespace-pre-wrap break-words opacity-80">{message}</p>}
+          {summary && <p className="mt-1 break-words opacity-80">{summary}</p>}
+          {hasMore && (
+            <details className="mt-1">
+              <summary className="cursor-pointer select-none text-xs opacity-70">Show details</summary>
+              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs opacity-80">{message.length > 6000 ? `${message.slice(0, 6000)}\n... (${message.length - 6000} more characters)` : message}</pre>
+            </details>
+          )}
         </div>
       </CompactWrapper>
     )

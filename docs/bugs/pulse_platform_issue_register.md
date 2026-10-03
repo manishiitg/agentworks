@@ -1,3 +1,7 @@
+## Coding-agent background tasks show one readable line, not raw payload — PLAT-413
+
+[PLAT-413](pulse_platform/frontend-chat/plat-413.md), P3, fixed on `main`; deploy pending. Full text behind "Show details".
+
 ## Relay user message and validation guidance — PLAT-412
 
 [PLAT-412](pulse_platform/coding-agent-bridge/plat-412.md), fixed on main;
@@ -14,7 +18,7 @@ failed tool paths still need isolated verification.
 
 ## Source Control listed and would have committed the private `.sandbox-cache` folder — PLAT-410
 
-[PLAT-410](pulse_platform/frontend-chat/plat-410.md), P2, fixed on `main`; deploy pending. Panel git ignores the platform folder.
+[PLAT-410](pulse_platform/frontend-chat/plat-410.md), P2, fixed on `main`; deploy pending. Panel git and sandbox git (agent, terminal) ignore the platform folder.
 ## Relays use the shared Ctrl+K switcher — PLAT-409
 
 [PLAT-409](pulse_platform/frontend-chat/plat-409.md), fixed on main; deployment
