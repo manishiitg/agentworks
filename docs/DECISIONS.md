@@ -13,6 +13,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deploy notices in Slack are opt-in
+
+- **Decision (user).** `deploy.sh` no longer posts to the Slack channel by default (it posted "deploying" and "finished" for every deploy,
+  including false "problem" notices). Set `DEPLOY_SLACK_NOTIFY=1` for a run to get them back; the webhook settings are unchanged
+  (`DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`). Change: aa70c8802.
+
 ### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
 
 - **Found (user, after the Excellence deploy):** no Terminal option in Code. Two pieces of the 2026-09-28 code were lost when it was ported
