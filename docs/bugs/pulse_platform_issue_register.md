@@ -1,3 +1,22 @@
+## Blocked file sent agent shells to a weaker sandbox — PLAT-374
+
+[PLAT-374](pulse_platform/security-sandbox/plat-374.md), P0, **fixed** on `main`
+(`6f630cc25`), deploy pending: a blocked `db.sqlite` inside the project pushed
+Code agent shells off Landlock onto the mount-namespace fallback, which ran as
+the service account and could read the platform `.env`.
+
+## Muse question shown as "Unknown Event Type" — PLAT-375
+
+[PLAT-375](pulse_platform/frontend-chat/plat-375.md), P2, **fixed** on `main`,
+deploy pending: the detailed chat view had no handler for
+`coding_agent_question` (PLAT-354).
+
+## Admin-managed provider terminal chdir failure — PLAT-376
+
+[PLAT-376](pulse_platform/security-sandbox/plat-376.md), P1, **fixed** on `main`,
+RTS deploy pending: a `global:` provider binding was confined like a personal
+account and started with no working folder.
+
 ## Every local shell command refused — PLAT-373
 
 [PLAT-373](pulse_platform/security-sandbox/plat-373.md), P0, **fixed** on `main`:

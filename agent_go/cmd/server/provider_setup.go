@@ -422,7 +422,7 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 		cols, rows = liveAttachDefaultCols, liveAttachDefaultRows
 	}
 	// A personal account's terminal runs confined to that account's private home (provider_setup_confine.go).
-	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, bindingID != provider)
+	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, providerSetupIsPersonalBinding(provider, bindingID))
 	if confineErr != nil {
 		cancel()
 		cleanup()
@@ -996,4 +996,12 @@ func seedClaudeTheme(home string) {
 	}
 	_ = os.MkdirAll(home, 0o700)
 	_ = os.WriteFile(path, data, 0o600)
+}
+
+// providerSetupIsPersonalBinding says whether a Providers-screen terminal belongs to a personal account (its own private
+// HOME, confined). The server's own account (binding "global:<provider>", managed by an admin, "Admin-managed account"
+// in the UI) is not one: it has no private home to confine to, and starting it under the Landlock launcher with an empty
+// working folder failed every Cursor/Claude/Codex/Muse terminal on a host that can confine (RTS 2026-10-03).
+func providerSetupIsPersonalBinding(provider, bindingID string) bool {
+	return bindingID != provider && !strings.HasPrefix(bindingID, "global:")
 }

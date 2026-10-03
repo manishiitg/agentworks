@@ -36,3 +36,19 @@ func TestProviderUsageTerminalBlocksSlashCommandsButUsage(t *testing.T) {
 		t.Fatalf("/usage must go through, got %q", got)
 	}
 }
+
+func TestProviderSetupConfinesOnlyPersonalAccounts(t *testing.T) {
+	for _, tc := range []struct {
+		binding  string
+		personal bool
+	}{
+		{"cursor-cli", false},            // the server account, started without a connection
+		{"global:cursor-cli", false},     // the admin-managed server account (Providers screen)
+		{"conn-4f2a9c", true},            // a personal account
+		{"personal:cursor-cli:u1", true}, // any other connection id
+	} {
+		if got := providerSetupIsPersonalBinding("cursor-cli", tc.binding); got != tc.personal {
+			t.Errorf("binding %q: personal = %v, want %v", tc.binding, got, tc.personal)
+		}
+	}
+}
