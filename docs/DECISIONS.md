@@ -13,6 +13,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Local runs offer Code in the product switcher
+
+- **Found (user, local).** The start script's runtime config never set `enabledProductSurfaces`, so the frontend used its own default
+  (`agentworks`, `relays`, `work`) and Code never showed locally.
+- **Done.** `agent_go/run_server_with_logging.sh` now writes `enabledProductSurfaces` with Code included; override with
+  `AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'`.
+- **The 401 on Crew in the same session** came from a frontend started before the local checkout was updated: it still called the workspace
+  service directly (`/api/documents...` on port 18744), which now needs the server's token. Current code goes through the agent's `/api/wp`.
+  Restarting the local frontend/desktop app after an update clears it.
+
 ### 2026-10-03 — Providers page uses the main header's Back and Antigravity's icon
 
 - Embedded Providers uses the application header's Back control; remove the

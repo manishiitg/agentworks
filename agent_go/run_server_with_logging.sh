@@ -425,7 +425,10 @@ if [ "$ONLY_FRONTEND" = true ]; then
     FRONTEND_DIR="${SCRIPT_DIR}/../frontend"
     DESKTOP_DIR="${SCRIPT_DIR}/../desktop"
     ELECTRON_BIN="${DESKTOP_DIR}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-    FRONTEND_RUNTIME_CONFIG_PATH="${AGENTWORKS_RUNTIME_CONFIG_PATH:-${SCRIPT_DIR}/../frontend/public/runtime-config.js}"
+    # Products the local app offers in its switcher. Code is on by default here too (the frontend's own default
+# leaves it out); override with a JSON array, e.g. AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'.
+ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\"]}"
+FRONTEND_RUNTIME_CONFIG_PATH="${AGENTWORKS_RUNTIME_CONFIG_PATH:-${SCRIPT_DIR}/../frontend/public/runtime-config.js}"
 
     # Fallback chain for AGENT_PORT / WORKSPACE_PORT (when not explicitly set):
     #   1. running backend process (most accurate — survives stale config)
@@ -518,6 +521,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "${FRONTEND_URL}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL}",
   cdpEnabled: true,
+  enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${RUNTIME_APP_NAME}",
   faviconUrl: "${RUNTIME_FAVICON_URL}"
 };
@@ -1160,6 +1164,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "${frontend_api_base_url}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
   cdpEnabled: true,
+  enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${runtime_app_name}",
   faviconUrl: "${runtime_favicon_url}"
 };
