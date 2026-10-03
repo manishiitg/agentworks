@@ -13,6 +13,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code's terminal: Homebrew colours and a short prompt
+
+- **Decision (user).** The terminal was plain white on black (it only set a background; xterm's default text is white), and on a server the prompt was
+  `user@host:/srv/agents/data/docs/_users/<id>/Chats/Code/projects/<project>/code$`, wider than the screen.
+- **Colours.** A Homebrew scheme (macOS Terminal's classic profile: black, bright green `#28fe14`, a green cursor, a full 16-colour palette) is the default;
+  a palette button in the toolbar switches to Classic (the coding-tool terminals' look) and the choice is remembered. Homebrew's blues are lightened: the
+  original dark blue is unreadable on black, and `ls` prints directories in it.
+- **Prompt.** The shell sets `PROMPT_COMMAND` so the prompt is just the current folder's name in bold (`code $`); bash runs it before every prompt, so it holds
+  whatever `/etc/bash.bashrc` or a profile sets `PS1` to. A shell already running keeps its old prompt until Stop and Start.
+- **Checked.** Frontend tests (palette, readability of the blues, wiring); on a Mac the sandboxed and the unconfined shell show `a $`; on Excellence a
+  user's own-account shell reports the short `PS1`. One non-slot Linux e2e run failed on a loaded server and did not fail again in five re-runs (those tests
+  use fixed waits).
+
 ### 2026-10-03 — Browser teaching presents reusable skills and supports tabs
 
 - **Decision (user).** Keep browser internals out of the ordinary product flow.

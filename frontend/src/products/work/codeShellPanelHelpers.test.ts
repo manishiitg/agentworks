@@ -55,10 +55,11 @@ describe('Code terminal helpers', () => {
 describe('Code terminal panel wiring', () => {
   const source = readFileSync('src/products/work/CodeShellPanel.tsx', 'utf8')
 
-  it('looks like the coding-tool terminals: same theme and font, follows the app theme', () => {
-    expect(source).toContain('RAW_XTERM_THEMES[themeRef.current]')
+  it('uses the chosen colour scheme (Homebrew by default), recolors in place, and keeps the coding-tool font', () => {
+    expect(source).toContain('shellTheme(schemeRef.current, RAW_XTERM_THEMES[themeRef.current])')
+    expect(source).toContain('termRef.current.options.theme = shellTheme(colourScheme, RAW_XTERM_THEMES[theme])')
     expect(source).toContain('fontFamily: RAW_XTERM_FONT_FAMILY')
-    expect(source).toContain('termRef.current.options.theme = RAW_XTERM_THEMES[theme]')
+    expect(source).toContain('aria-label={`Colour scheme: ${SHELL_THEME_LABELS[colourScheme]}`}')
   })
 
   it('loads the xterm add-ons and opens links only through the safe check', () => {

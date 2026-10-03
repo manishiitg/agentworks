@@ -36,6 +36,11 @@ import (
 // the project's Folder Guard and stamps the user (X-User-ID).
 
 const interactiveShellRoot = "/tmp/.agentworks-shells"
+
+// interactiveShellPromptCommand gives the terminal a short prompt: just the current folder's name in bold, not bash's default
+// user@host:/full/path (on a server that is a path with a user id and a project id in it, far wider than the screen). bash runs
+// PROMPT_COMMAND before every prompt, so this holds whatever /etc/bash.bashrc or a profile sets PS1 to.
+const interactiveShellPromptCommand = `PS1='\[\e[1m\]\W\[\e[0m\] \$ '`
 const interactiveShellSession = "shell"
 
 var interactiveShellID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`)
@@ -266,7 +271,7 @@ func StartInteractiveShell(c *gin.Context) {
 	// server keeps the sandbox (and its private /tmp) alive for the shell.
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
-	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color", shellQuote(filepath.Join(dir, "tmp")))
+	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand))
 	if slot == "" && !unconfined {
 		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))

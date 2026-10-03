@@ -70,6 +70,10 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 	if !strings.Contains(string(screen), "HOME="+filepath.Join(docs, own, ".sandbox-cache", "home")) || strings.Contains(string(screen), "Operation not permitted") {
 		t.Fatalf("the shell must have a private home and no denied reads: %s", screen)
 	}
+	// A short prompt: the folder's name, not user@host:/full/path.
+	if !strings.Contains(string(screen), "a $ echo HOME=") || strings.Contains(string(screen), "@") {
+		t.Fatalf("the prompt must be just the folder name: %s", screen)
+	}
 	if code, _ := call("/stop", map[string]any{"shell_id": id}); code != http.StatusOK || interactiveShellRunning(socket) {
 		t.Fatal("stop did not end the shell")
 	}
@@ -122,6 +126,9 @@ func TestInteractiveShellUnconfinedUsesTheRealHomeOnAMac(t *testing.T) {
 	screen, _ := exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
 	if !strings.Contains(string(screen), "HOME="+home) || !strings.Contains(string(screen), "HOME_READABLE") || strings.Contains(string(screen), "Operation not permitted") {
 		t.Fatalf("an unconfined terminal must have the real, readable home: %s", screen)
+	}
+	if !strings.Contains(string(screen), "a $ echo HOME=") {
+		t.Fatalf("an unconfined terminal gets the short prompt too: %s", screen)
 	}
 	// Without the request flag the same service still sandboxes it (the flag is only honoured where allowed, and asked for).
 	call("/stop", map[string]any{"shell_id": id})

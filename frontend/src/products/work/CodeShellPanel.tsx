@@ -6,10 +6,11 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
-import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, Palette, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useTheme } from '../../hooks/useTheme'
 import { RAW_XTERM_FONT_FAMILY, RAW_XTERM_FONT_SIZE, RAW_XTERM_THEMES } from '../../components/TerminalCenter'
+import { SHELL_THEME_KEY, SHELL_THEME_LABELS, nextShellTheme, readShellTheme, shellTheme, type ShellThemeName } from './codeShellTheme'
 import {
   SHELL_FONT_SIZE_KEY,
   SHELL_RECONNECT_ATTEMPTS,
@@ -50,6 +51,9 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
   const attemptRef = useRef(0)
   const themeRef = useRef(theme)
   const fontSizeRef = useRef(readShellFontSize(RAW_XTERM_FONT_SIZE, storage()))
+  const [colourScheme, setColourScheme] = useState<ShellThemeName>(() => readShellTheme(storage()))
+  const schemeRef = useRef(colourScheme)
+  schemeRef.current = colourScheme
   const [state, setState] = useState<ShellState>('connecting')
   const [generation, setGeneration] = useState(0)
   const [fontSize, setFontSize] = useState(fontSizeRef.current)
@@ -73,7 +77,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
       fontWeightBold: 600,
       scrollback: 10000,
       macOptionIsMeta: true,
-      theme: RAW_XTERM_THEMES[themeRef.current],
+      theme: shellTheme(schemeRef.current, RAW_XTERM_THEMES[themeRef.current]),
     })
     const fit = new FitAddon()
     const search = new SearchAddon()
@@ -163,10 +167,16 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
     }
   }, [projectId, generation])
 
-  // The app's light/dark switch recolors the terminal in place.
+  // The colour scheme (and, for Classic, the app's light/dark switch) recolors the terminal in place.
   useEffect(() => {
-    if (termRef.current) termRef.current.options.theme = RAW_XTERM_THEMES[theme]
-  }, [theme])
+    if (termRef.current) termRef.current.options.theme = shellTheme(colourScheme, RAW_XTERM_THEMES[theme])
+  }, [theme, colourScheme])
+
+  const switchColourScheme = () => {
+    const next = nextShellTheme(colourScheme)
+    setColourScheme(next)
+    try { storage()?.setItem(SHELL_THEME_KEY, next) } catch { /* private window */ }
+  }
 
   const changeFontSize = useCallback((delta: number) => {
     const next = clampShellFontSize(fontSizeRef.current + delta, RAW_XTERM_FONT_SIZE)
@@ -222,7 +232,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
         : state === 'stopped' ? 'Stopped'
           : 'Connected'
   const dot = state === 'connected' ? 'bg-emerald-500' : state === 'connecting' || state === 'reconnecting' ? 'bg-amber-500' : 'bg-muted-foreground/60'
-  const themeBackground = RAW_XTERM_THEMES[theme].background
+  const themeBackground = shellTheme(colourScheme, RAW_XTERM_THEMES[theme]).background
 
   return (
     <div className={`flex min-h-0 flex-col bg-background ${expanded ? 'fixed inset-0 z-50' : 'h-full'}`} data-testid="code-shell-panel">
@@ -241,6 +251,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
         <button type="button" className={toolbarButton} title="Paste" aria-label="Paste" onClick={() => { void pasteClipboard() }}><ClipboardPaste className="h-3.5 w-3.5" /></button>
         <button type="button" className={toolbarButton} title="Clear the screen" aria-label="Clear the screen" onClick={() => { termRef.current?.clear(); termRef.current?.focus() }}><Eraser className="h-3.5 w-3.5" /></button>
         <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+        <button type="button" className={toolbarButton} title={`Colours: ${SHELL_THEME_LABELS[colourScheme]} (click for ${SHELL_THEME_LABELS[nextShellTheme(colourScheme)]})`} aria-label={`Colour scheme: ${SHELL_THEME_LABELS[colourScheme]}`} onClick={switchColourScheme}><Palette className="h-3.5 w-3.5" /></button>
         <button type="button" className={toolbarButton} title="Smaller text" aria-label="Smaller text" disabled={fontSize <= 10} onClick={() => changeFontSize(-1)}><Minus className="h-3.5 w-3.5" /></button>
         <span className="w-6 text-center tabular-nums" aria-label={`Text size ${fontSize}`}>{fontSize}</span>
         <button type="button" className={toolbarButton} title="Larger text" aria-label="Larger text" disabled={fontSize >= 22} onClick={() => changeFontSize(1)}><Plus className="h-3.5 w-3.5" /></button>
