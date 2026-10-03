@@ -6174,7 +6174,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Workflow/"}, additionalFolders...)
+					// Other workflows are readable only when attached to this chat
+					// (workflowReadOnlyFolders below), never the whole Workflow/ tree.
+					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}, additionalFolders...)
 					readPaths = append(readPaths, resolvedGrants.ReadOnlyExtra...)
 					readPaths = append(readPaths, workflowReadOnlyFolders...)
 					workspace.SetSessionFolderGuard(sessionID,

@@ -1,3 +1,9 @@
+## Chats read other workflows only when attached — PLAT-395
+
+[PLAT-395](pulse_platform/security-sandbox/plat-395.md), fixed on `main`, not
+deployed: the blanket read grant on `Workflow/` is gone; a chat reads its own
+workflow and attached ones (bridge tools and the CLI sandbox alike).
+
 ## Seatbelt for every coding CLI on a Mac; full_unconfined removed — PLAT-394
 
 [PLAT-394](pulse_platform/security-sandbox/plat-394.md), P1, on `main`, Mac-only

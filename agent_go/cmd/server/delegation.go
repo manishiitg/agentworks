@@ -995,7 +995,8 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			// spawned with their own folder scope). Pass nil.
 			workspaceExecutors = wrapExecutorsWithChatModeFolderGuard(workspaceExecutors, workflowReadOnlyFolders, nil, extraFolders...)
 			workspace.SetSessionWorkingDir(sessionID, subPerUserChatsFolder)
-			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "skills/", "subagents/", "Workflow/"}, extraFolders...)
+			// Other workflows only when attached (workflowReadOnlyFolders below).
+			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "skills/", "subagents/"}, extraFolders...)
 			readPaths = append(readPaths, subResolvedGrants.ReadOnlyExtra...)
 			readPaths = append(readPaths, workflowReadOnlyFolders...)
 			workspace.SetSessionFolderGuard(sessionID,

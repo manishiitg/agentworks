@@ -674,7 +674,8 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 				} else {
 					ctx = context.WithValue(ctx, common.FolderGuardAllowedWriteFolderKey, shellAllowedFolders)
 				}
-				readFolders := []string{"skills/", "subagents/", "Workflow/"}
+				// Other workflows only when attached (readOnlyFolders), never all of Workflow/.
+				readFolders := []string{"skills/", "subagents/"}
 				readFolders = append(readFolders, shellAllowedFolders...)
 				readFolders = append(readFolders, readOnlyFolders...)
 				readFolders = cleanFolderGuardFolders(readFolders)

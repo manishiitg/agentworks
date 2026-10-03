@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Chats read other workflows only when attached — PLAT-395
+
+- **Decided (owner).** A chat (Builder, generic chat, delegated workers) reads its own workflow and the
+  workflows attached to it, not the whole `Workflow/` tree.
+- **Why.** The sandbox self-test showed a Builder reading another workflow's files; attachment is the
+  explicit way to share one.
+- **Where.** Read grants in `cmd/server/server.go`, `delegation.go`, `tool_setup.go`.
+  [PLAT-395](bugs/pulse_platform/security-sandbox/plat-395.md).
+
 ### 2026-10-03 — Composer layout: terminal and attach left; New chat, commands, mic, send right. Workflow page: no Native agent tools toggle
 
 - **Decided (owner).** In every chat input the live-view (terminal) toggle and the attach button sit on the left; New chat, the commands (wand), the mic and send
