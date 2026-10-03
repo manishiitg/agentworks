@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy
+
+- **Done.** build-and-activate.sh reads deploy/common/runtime_profile.json and writes every same_everywhere setting into .env and both
+  services (like EXTRA_ENV, verified in the running processes): NATIVE_WORKSPACE, CDP off, CLI lock and Full CLI, AGENTWORKS_STATE_ROOT,
+  AGENTWORKS_MCP_STATE_DIR (state/mcp on every product; a release's MCP user config is carried over once) and
+  AGENT_BROWSER_SHARED_PROFILE=<app>/state/browser-profile. Applies to Excellence, Confida, SparkQuill.
+- **Decided.** MULTI_USER_MODE is per server: SparkQuill is single-user (data in _users/default); switching it on would hide that data.
+  No rollback step (owner: "if anything goes down it's fine").
+
 ### 2026-10-03 — Deployment unification, step 1: a read-only drift report
 
 - **Decided (owner).** All servers are deployed one way with one runtime profile (docs/design/deploy_unification.md).

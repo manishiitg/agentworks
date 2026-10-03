@@ -1,8 +1,7 @@
 {
-  "_doc": "The standard runtime profile every server runs (docs/design/deploy_unification.md). {app} is the app dir, {data} the data dir. same_everywhere: must have exactly this value in the running agent and workspace. per_server: may differ, listed for the report only.",
+  "_doc": "The standard runtime profile every server runs (docs/design/deploy_unification.md). {app} is the app dir, {data} the data dir. same_everywhere: must have exactly this value in the running agent and workspace. per_server: may differ, listed for the report only. MULTI_USER_MODE is per server: SparkQuill is a single-user product whose data lives in _users/default; turning it on would hide that data.",
   "same_everywhere": {
     "NATIVE_WORKSPACE": "true",
-    "MULTI_USER_MODE": "true",
     "AGENT_BROWSER_CDP_ENABLED": "false",
     "AGENTWORKS_CLI_LANDLOCK": "on",
     "AGENTWORKS_CLI_FULL": "on",
@@ -11,8 +10,18 @@
     "AGENT_BROWSER_SHARED_PROFILE": "{data}/browser-profile"
   },
   "per_server": [
-    "AGENTWORKS_SLOTS", "AGENTWORKS_SLOT_PREFIX", "AGENTWORKS_SLOTS_FILE", "AGENTWORKS_SLOT_CLI", "AGENTWORKS_SLOT_CLI_USERS",
-    "AGENT_PRODUCTS", "AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL", "AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES",
-    "SUPPORTED_LLM_PROVIDERS", "DOCKER_HOST", "AGENTWORKS_BROWSER_SESSION_PREFIX", "AGENT_BROWSER_NAMESPACE"
+    "MULTI_USER_MODE",
+    "AGENTWORKS_SLOTS",
+    "AGENTWORKS_SLOT_PREFIX",
+    "AGENTWORKS_SLOTS_FILE",
+    "AGENTWORKS_SLOT_CLI",
+    "AGENTWORKS_SLOT_CLI_USERS",
+    "AGENT_PRODUCTS",
+    "AGENTWORKS_PRODUCTS_AVAILABLE_TO_ALL",
+    "AGENTWORKS_ADMIN_ONLY_PRODUCT_SURFACES",
+    "SUPPORTED_LLM_PROVIDERS",
+    "DOCKER_HOST",
+    "AGENTWORKS_BROWSER_SESSION_PREFIX",
+    "AGENT_BROWSER_NAMESPACE"
   ]
 }
