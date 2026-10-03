@@ -1,6 +1,4 @@
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
-import { SettingsCard } from '../ui/SettingsCard'
-import { ToggleRow } from '../ui/ToggleRow'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LoaderCircle, Save, Search } from 'lucide-react'
 import { ToolSelectionSection } from '../ToolSelectionSection'
@@ -35,7 +33,6 @@ import { getIdentityTabAskAIMessage, getIntegrationTabAskAIMessage, getWorkspace
 import WorkflowIdentityPanel from './WorkflowIdentityPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
-import { nativeAgentToolsEnabled } from '../../utils/nativeAgentTools'
 
 // Which sections exist is decided by the registry in workspaceViews.ts; this
 // panel only carries the per-section copy.
@@ -613,24 +610,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
                       void persist(next)
                     }}
                   />
-                )}
-                {!relayMode && activeIdentityTab === 'llm' && (
-                  <div className="mt-4">
-                    <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
-                      <ToggleRow
-                        label="Native agent tools"
-                        description="On by default. In Builder and Run-mode chats, let the coding agent use native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Step agents, schedules, webhooks and read-only users keep AgentWorks tools only. Changing it starts a fresh CLI session on the next message. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
-                        checked={nativeAgentToolsEnabled(capabilities.native_agent_tools)}
-                        disabled={!canWriteWorkflow || saving}
-                        disabledTitle={canWriteWorkflow ? 'Saving…' : 'Only owners and editors can change this.'}
-                        onCheckedChange={checked => {
-                          const next = { ...capabilities, native_agent_tools: checked }
-                          setCapabilities(next)
-                          void persist(next)
-                        }}
-                      />
-                    </SettingsCard>
-                  </div>
                 )}
                 {!relayMode && activeIdentityTab === 'upgrades' && (
                   <WorkflowUpdatesView workspacePath={workspacePath} />
