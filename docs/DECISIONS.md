@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Workshop child costs retain the authorized launch identity
+
+The server records the launch user and channel in WorkshopConfig. Detached
+workshop sessions carry those values into their step and background agents,
+while keeping their lifetime controlled by session Close rather than the HTTP
+request. Missing identities stay unknown; current workflow ownership is not
+evidence of who launched a historical run. [PLAT-377](bugs/pulse_platform/cost-telemetry/plat-377.md).
+
 ### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only
 
 - **Decided (user).** The chat input has no model picker (models change in the right-side panel). Code gets a New chat button; it must replace the current chat, never open a

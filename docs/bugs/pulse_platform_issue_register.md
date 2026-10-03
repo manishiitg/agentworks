@@ -1,3 +1,10 @@
+## RTS Providers shows $242.35 as an unattributed user — PLAT-377
+
+[PLAT-377](pulse_platform/cost-telemetry/plat-377.md), P2, fixed on main for
+new workshop child runs; deployment and verified historical repair remain open.
+Detached workshop sessions discarded the launch user and channel, so child
+steps/reviewers had workflow attribution but no user attribution.
+
 ## Blocked file sent agent shells to a weaker sandbox — PLAT-374
 
 [PLAT-374](pulse_platform/security-sandbox/plat-374.md), P0, **fixed** on `main`

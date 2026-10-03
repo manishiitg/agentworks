@@ -11378,6 +11378,8 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	workshopLLMConfig.APIKeys = workshopAPIKeys
 
 	cfg := &todo_creation_human.WorkshopConfig{
+		UserID:            currentUserID,
+		SourcePlatform:    req.BotPlatform,
 		WorkspacePath:     workspacePath,
 		RunFolder:         runFolder,
 		MCPConfigPath:     api.mcpConfigPath,
