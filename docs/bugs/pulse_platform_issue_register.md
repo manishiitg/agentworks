@@ -1,3 +1,15 @@
+## Relays use the shared Ctrl+K switcher — PLAT-409
+
+[PLAT-409](pulse_platform/frontend-chat/plat-409.md), fixed on main; deployment
+pending. Include Relays in keyboard and custom-event entry points, label Relay
+presets correctly, and open them through existing product-aware navigation.
+
+## Workflow header Ops collapsed by default — PLAT-408
+
+[PLAT-408](pulse_platform/frontend-chat/plat-408.md), fixed on main; deployment
+pending. Keep the Ops label and expand its existing icons on click. Views and
+icon-only Setup remain open.
+
 ## Models: allowed models per account, one Model card, changes between turns — PLAT-407
 
 [PLAT-407](pulse_platform/frontend-chat/plat-407.md), fixed on `main`; deployed to Excellence only (the

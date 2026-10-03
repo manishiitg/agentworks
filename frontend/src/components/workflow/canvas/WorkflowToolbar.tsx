@@ -79,8 +79,8 @@ function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, ...at
 // Product-tour / test hooks on specific toolbar buttons. Kept here rather
 // than in the view registry because they describe this toolbar's buttons,
 // not the views themselves.
-// Dashboard and Pulse are always visible. The small remaining sets of workspace
-// views and setup controls stay expanded so their icons are directly available.
+// Primary views and setup controls stay expanded. Ops starts collapsed and
+// expands inline when the user opens it.
 
 const CAPABILITY_BUTTON_ATTRS: Partial<Record<WorkspaceViewId, { 'data-tour': string; 'data-testid': string }>> = {
   mcp: { 'data-tour': 'bot-connector', 'data-testid': 'tour-bot-connector' },
@@ -123,6 +123,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   monitorOn,
   className = ''
 }) => {
+  const [operationsOpen, setOperationsOpen] = useState(false)
   const { count: pendingDecisionCount, loaded: pendingDecisionsLoaded } = usePendingDecisionState(workspacePath)
   const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
   const canManageAccess = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
@@ -378,7 +379,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
           {/* One continuous pill: frequent views | operations | setup icons. */}
           {(workspacePath || canWriteWorkflow) && (
           <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
-          {/* Every group stays open; setup and primary views show only icons. */}
+          {/* Setup and primary views stay open; Ops expands on demand. */}
           {workspacePath && (
             <WorkspaceToolbarGroup
               label="Views"
@@ -440,7 +441,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
           <WorkspaceToolbarGroup
             label="Ops"
             data-tour="workflow-operations"
-            open
+            open={operationsOpen}
+            onToggle={() => setOperationsOpen(open => !open)}
             title={relayMode ? 'Relay operations: triggers, costs, execution logs and files' : 'Operations: automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
           >
             <div className="inline-flex items-center gap-0.5">

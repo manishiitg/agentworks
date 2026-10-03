@@ -12,12 +12,15 @@ describe('workflow Ask AI placement', () => {
     expect(host).toContain('assistantControl={workspacePath ? (')
   })
 
-  it('keeps Views, Ops and icon-only Setup permanently expanded', () => {
+  it('keeps Views and icon-only Setup expanded, with Ops collapsed by default', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
 
     expect(toolbar).not.toContain('label="Tools"')
     expect(toolbar).toContain('label="Views"')
     expect(toolbar).toContain('label="Ops"')
+    expect(toolbar).toContain('const [operationsOpen, setOperationsOpen] = useState(false)')
+    expect(toolbar).toContain('open={operationsOpen}')
+    expect(toolbar).toContain('onToggle={() => setOperationsOpen(open => !open)}')
     expect(toolbar).toContain('label="Setup"')
     expect(toolbar).toContain('hideLabel')
     expect(toolbar.match(/hideToggleWhenOpen/g)).toHaveLength(2)

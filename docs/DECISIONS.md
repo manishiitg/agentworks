@@ -19,6 +19,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relays participate in the shared Ctrl+K switcher
+
+Relays reuse the global switcher and workflow preset directory alongside
+AgentWorks, Crew and Code. Relay selections use existing product-aware
+navigation and show Relay labels so users can identify the product.
+Ticket: [PLAT-409](bugs/pulse_platform/frontend-chat/plat-409.md).
+
+### 2026-10-04 — Keep Ops labeled and collapsed by default
+
+The workflow and Relay header retains the Ops label and opens its icons on
+click, per the user's revised preference. Views and setup icons stay expanded.
+This supersedes the always-open Ops choice in PLAT-398.
+Ticket: [PLAT-408](bugs/pulse_platform/frontend-chat/plat-408.md).
+
 ### 2026-10-03 — Granted slot output directories must also permit Unix writes
 
 The shared shell prepares only authorized workspace write directories for its

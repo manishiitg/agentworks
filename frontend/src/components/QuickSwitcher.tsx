@@ -7,6 +7,7 @@ import type { ChatTab } from '../stores/useChatStore'
 import type { CustomPreset, PredefinedPreset } from '../types/preset'
 import type { ActiveSessionInfo } from '../services/api-types'
 import { sessionOriginLabel, titleWithoutOrigin } from '../utils/globalActivityPresentation'
+import { workflowSurfaceForPreset } from '../utils/workflowNavigation'
 import { scopeQuickSwitcherToAgentWorks } from '../utils/quickSwitcherScope'
 import { openWorkflowPresetPage, pickWorkflowActiveSession, workflowSessionBotPlatform } from '../utils/workflowSessionRestore'
 import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../utils/runtimeActivity'
@@ -249,7 +250,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     }
   }, [isOpen, initialQuery])
 
-  // AgentWorks and Crew share one switcher while other product surfaces stay
+  // AgentWorks, Relays, Crew and Code share one switcher while other product surfaces stay
   // isolated. Stable product metadata, rather than workspace strings, owns
   // Crew navigation.
   const allItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -385,8 +386,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'workflow' as const,
           id: `workflow:${preset.id}`,
           label: preset.label,
-          subtitle: `Automation · ${preset.selectedFolder!.filepath}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
-          isActive: productSurface === 'agentworks' && isWorkflowMode && preset.id === activePresetId,
+          subtitle: `${preset.workflowKind === 'relay' ? 'Relay' : 'Automation'} · ${preset.selectedFolder!.filepath}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          isActive: productSurface === workflowSurfaceForPreset(preset.id) && isWorkflowMode && preset.id === activePresetId,
           lastAccessedAt: recentPresetAccessedAt[preset.id] || (() => {
             const recentIndex = recentPresetOrder.indexOf(preset.id)
             return recentIndex >= 0 ? 1_000_000 - recentIndex : 0
@@ -558,7 +559,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     console.log(`%c[QuickSwitcher] Switching to workflow: ${item.label?.slice(0,30)} (${item.id?.slice(0,8)})`, 'color: #FF9800; font-weight: bold')
     console.time('[QuickSwitcher] workflow-switch-total')
 
-    useProductSurfaceStore.getState().setProductSurface('agentworks')
+    useProductSurfaceStore.getState().setProductSurface(workflowSurfaceForPreset(item.preset.id))
     await openWorkflowPresetPage(item.preset, {
       activeSession: item.activeSession,
       title: item.label,
@@ -662,7 +663,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {item.type === 'active' ? 'active' : item.type}
+                        {item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
                       </span>
                       {activeSession && item.type !== 'active' && (
                         activeSession.needs_user_input ? (
