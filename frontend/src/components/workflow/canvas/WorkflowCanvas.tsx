@@ -47,8 +47,7 @@ import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { WorkspacePanelGuideButton } from '../WorkspacePanelGuideButton'
 import { PlanEmptyState } from '../PlanEmptyState'
 import { useChatStore } from '../../../stores/useChatStore'
-import { agentApi, workflowManifestApi } from '../../../services/api'
-import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
+import { agentApi } from '../../../services/api'
 import type { PlanStep } from '../../../utils/stepConfigMatching'
 import { effectiveAgentItems, effectiveExecutionMode, effectiveExecutionModeReason, isCrewStep } from '../../../utils/stepConfigMatching'
 import { CrewStepDetailSection } from './CrewStepDetailSection'
@@ -910,12 +909,12 @@ function ReadOnlyStepDetailPanel({
         )}
 
         {sequenceItems?.length ? (
-          <DetailSection icon={ListOrdered} title={`Agent instructions (${sequenceItems.length})`}>
-            <p className="mb-2 text-xs text-muted-foreground">Ordered items the step runs top to bottom.</p>
+          <DetailSection icon={ListOrdered} title={`${step?.type === 'message_sequence' && step.authored_prompt ? 'User messages' : 'Agent instructions'} (${sequenceItems.length})`}>
+            <p className="mb-2 text-xs text-muted-foreground">{step?.type === 'message_sequence' && step.authored_prompt ? 'User messages sent to this agent in order. Variables are filled from the input and earlier step outputs.' : 'Ordered items the step runs top to bottom.'}</p>
             <ol className="space-y-2">
               {sequenceItems.map((item, index) => {
                 // Normalize so it reads consistently with the Agent node card.
-                const kind = (!item.type || item.type === 'user_message') ? 'message' : item.type
+                const kind = (!item.type || item.type === 'user_message') ? (step?.type === 'message_sequence' && step.authored_prompt ? 'user message' : 'message') : item.type
                 const subKind = item.kind && item.kind !== 'execution' ? item.kind : undefined
                 const chipClass =
                   kind === 'prevalidation' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
@@ -1058,20 +1057,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   embeddedPlanOnly = false,
   assistantControl,
 }, ref) => {
-  const [savingRelayOutput, setSavingRelayOutput] = React.useState(false)
-  const saveRelayOutput = React.useCallback(async (stepID: string) => {
-    if (!workspacePath || savingRelayOutput) return
-    setSavingRelayOutput(true)
-    try {
-      await workflowManifestApi.updateWorkflowManifest({ workspace_path: workspacePath, relay_output_step_id: stepID })
-      await useWorkflowManifestStore.getState().refreshWorkflows()
-      useChatStore.getState().addToast('Relay output saved', 'success')
-    } catch (error) {
-      useChatStore.getState().addToast(`Could not save Relay output: ${error instanceof Error ? error.message : String(error)}`, 'error')
-    } finally {
-      setSavingRelayOutput(false)
-    }
-  }, [workspacePath, savingRelayOutput])
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const { setViewport, getNode, updateNode, fitView, getViewport } = useReactFlow()
@@ -1451,12 +1436,15 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
       ? null : { workspace: workspacePath, ...trace })
   }, [workspacePath])
   const displayNodes = React.useMemo(() => tracedGraph.nodes.map(node => {
+    if (node.type === 'message_sequence') return { ...node, data: { ...node.data,
+      isRelayOutput: relayMode && !!relayOutputStepID && (node.data as StepNodeData).step?.id === relayOutputStepID,
+    } }
     if (node.type !== 'routing' && node.type !== 'branch') return node
     return { ...node, data: { ...node.data,
       tracedRouteId: activeTrace?.nodeId === node.id ? activeTrace.routeId : undefined,
       onTraceRoute: (routeId: string) => toggleRouteTrace({ nodeId: node.id, routeId }),
     } }
-  }), [tracedGraph.nodes, activeTrace, toggleRouteTrace])
+  }), [tracedGraph.nodes, activeTrace, toggleRouteTrace, relayMode, relayOutputStepID])
   const displayEdges = React.useMemo(() => tracedGraph.edges.map(edge => {
     const trace = routeTraceFromEdge(nodes, edge)
     if (!trace) return edge
@@ -2609,19 +2597,6 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
             </div>
           )}
           <div className="absolute right-3 top-3 z-20 flex items-center gap-1">
-            {relayMode && <label className="flex items-center gap-1 rounded-md border border-border bg-background/95 px-2 text-xs shadow-sm">
-              <span>Output</span>
-              <select
-                aria-label="Relay output agent"
-                className="h-8 max-w-32 bg-transparent text-xs"
-                value={relayOutputStepID || ''}
-                disabled={readOnly || savingRelayOutput}
-                onChange={event => void saveRelayOutput(event.target.value)}
-              >
-                <option value="">Select agent</option>
-                {plan?.steps?.filter(step => step.type === 'message_sequence' && step.authored_prompt).map(step => <option key={step.id} value={step.id}>{step.title || step.id}</option>)}
-              </select>
-            </label>}
             {assistantControl}
             <button type="button" onClick={() => void fitView({ padding: FLOW_FIT_PADDING, duration: 300, minZoom: FLOW_FIT_MIN_ZOOM, maxZoom: FLOW_FIT_MAX_ZOOM })}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"

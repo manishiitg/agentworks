@@ -19,6 +19,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Granted slot output directories must also permit Unix writes
+
+The shared shell prepares only authorized workspace write directories for its
+user slot, repairing service-created group permissions before launch. Ancestors
+get traversal; Folder Guard remains the access boundary. Relay scripts write
+JSON files explicitly; stdout and context_output do not create them.
+Ticket: [PLAT-399](bugs/pulse_platform/security-sandbox/plat-399.md).
+
+### 2026-10-03 — Builder owns Relay output selection; workflow tools stay visible
+
+Remove the output dropdown and mark its selected agent Output. Authored prompts
+are shown as User messages. Workflow setup is icons only, all groups stay open,
+and Automation sits in Ops, per the user.
+Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
+
 ### 2026-10-03 — Native agent tools are always on for every product (a stored "off" is ignored)
 
 - **Decided (owner).** Workflow, Relay, Crew and Code all use native agent tools by default; there is no switch.

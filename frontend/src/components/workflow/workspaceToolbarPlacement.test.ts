@@ -12,7 +12,7 @@ describe('workflow Ask AI placement', () => {
     expect(host).toContain('assistantControl={workspacePath ? (')
   })
 
-  it('toggles between Views and Ops while Setup stays permanently expanded', () => {
+  it('keeps Views, Ops and icon-only Setup permanently expanded', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
 
     expect(toolbar).not.toContain('label="Tools"')
@@ -21,13 +21,9 @@ describe('workflow Ask AI placement', () => {
     expect(toolbar).toContain('label="Setup"')
     expect(toolbar).toContain('hideLabel')
     expect(toolbar.match(/hideToggleWhenOpen/g)).toHaveLength(2)
-    expect(toolbar).toContain("useState<'views' | 'ops'>('views')")
-    expect(toolbar).toContain("open={openToolbarMenu === 'views'}")
-    expect(toolbar).toContain("open={openToolbarMenu === 'ops'}")
-    expect(toolbar).not.toContain("openToolbarMenu === 'setup'")
-    expect(toolbar).toContain("onToggle={() => toggleToolbarMenu('views')}")
-    expect(toolbar).toContain("onToggle={() => toggleToolbarMenu('ops')}")
-    expect(toolbar).not.toContain("toggleToolbarMenu('setup')")
+    expect(toolbar).not.toContain('openToolbarMenu')
+    expect(toolbar).not.toContain('toggleToolbarMenu')
+    expect(toolbar).toMatch(/label="Setup"[\s\S]*?hideToggleWhenOpen[\s\S]*?open/)
     expect(toolbar).toContain('<WorkspaceToolbarGroup')
     expect(toolbar).toContain('<ToolbarInlineItem')
     expect(toolbar).not.toContain('ToolbarPopoverGroup')
@@ -38,8 +34,8 @@ describe('workflow Ask AI placement', () => {
   it('keeps report separate, Knowledge visible, Costs and Execution logs in Ops, and Playbooks in Setup', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
 
-    expect(toolbar).toContain("new Set<WorkspaceViewId>(['pulse', 'flow', 'browser', 'workshop'])")
-    expect(toolbar).toContain("new Set<WorkspaceViewId>(['knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])")
+    expect(toolbar).toContain("new Set<WorkspaceViewId>(['pulse', 'flow', 'browser'])")
+    expect(toolbar).toContain("new Set<WorkspaceViewId>(['workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])")
     expect(toolbar).toContain("playbooks: 'Playbooks'")
     expect(toolbar).toContain("mcp: 'Integrations'")
     expect(toolbar).toContain("identity: 'Identity'")

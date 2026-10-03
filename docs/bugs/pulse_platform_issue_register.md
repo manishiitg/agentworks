@@ -1,3 +1,15 @@
+## Script outputs blocked by slot directory permissions — PLAT-399
+
+[PLAT-399](pulse_platform/security-sandbox/plat-399.md), fixed on main; deployment
+pending. Shared shell preparation makes granted output directories writable by
+slots. Relay guidance requires file outputs; pip listing itself succeeded.
+
+## Relay output labels and always-open workflow toolbar — PLAT-398
+
+[PLAT-398](pulse_platform/frontend-chat/plat-398.md), fixed on main; deployment
+pending. Output selector removed, output agent marked, authored user messages
+named clearly; Automation moves into always-open Ops and setup is icons only.
+
 ## Full CLI uses its own subagents; run_in_background narrowed — PLAT-397
 
 [PLAT-397](pulse_platform/coding-agent-bridge/plat-397.md), fixed on `main`, not
