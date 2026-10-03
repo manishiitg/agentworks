@@ -238,6 +238,12 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(runtimeTmp, "home"))
 	if browserSocket != "" {
 		cmd.Env = replaceEnv(cmd.Env, "AGENT_BROWSER_SOCKET_DIR", browserSocket)
+	} else if !envHas(cmd.Env, "AGENT_BROWSER_SOCKET_DIR") {
+		// The shared socket folder the sandbox grants (landlockSystemWritePaths, the private /tmp's kept paths). Without it
+		// agent-browser falls back to $XDG_RUNTIME_DIR/agent-browser (/run/user/<uid>), which no sandbox grants: in native mode
+		// (no shared HOME to replace) every Code project browser failed with "Socket directory ... is not writable" once the
+		// mount-namespace fallback, which could reach that folder, was removed (Excellence 2026-10-03).
+		cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
 	}
 	pythonPath := tmp
 	filtered := cmd.Env[:0]
@@ -908,4 +914,13 @@ func MergeExtraEnv(env []string, extra map[string]string) []string {
 		env = append(env, k+"="+v)
 	}
 	return env
+}
+
+func envHas(env []string, key string) bool {
+	for _, kv := range env {
+		if strings.HasPrefix(kv, key+"=") {
+			return true
+		}
+	}
+	return false
 }

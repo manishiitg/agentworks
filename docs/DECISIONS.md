@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal)
+
+- **Found (user).** "Cannot start browser: Socket directory '/run/user/990/agent-browser' is not writable". A project browser
+  (`agents--project-…`) is not a per-user session, so it gets no scoped socket folder, and in native mode nothing set
+  AGENT_BROWSER_SOCKET_DIR, so agent-browser used $XDG_RUNTIME_DIR. That worked only under the mount-namespace fallback removed by
+  PLAT-374 (6f630cc25).
+- **Done.** A sandboxed command without a scoped browser socket always gets AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser, the folder
+  the sandbox grants. New chat button: icon only in the composer's neutral colours; "New chat" slides out on hover/focus.
+
 ### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
 
 Owner decision. The reads-only hybrid mode is gone; on means the CLI's own

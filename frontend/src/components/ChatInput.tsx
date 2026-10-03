@@ -3244,18 +3244,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             <div className="flex justify-between items-center">
               <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
                 {showNewChatAction && onNewChat ? (
-                  <Button
+                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
+                  <button
                     type="button"
-                    variant="ghost"
                     onClick={onNewChat}
                     disabled={isTurnInFlight}
-                    className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
+                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Start a new chat"
                     title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
+                    data-testid="chat-new-chat"
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    New chat
-                  </Button>
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
+                      New chat
+                    </span>
+                  </button>
                 ) : null}
                 {chatInputStatusLine && (
                   <Tooltip>
