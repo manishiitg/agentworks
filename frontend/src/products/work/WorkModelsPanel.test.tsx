@@ -143,6 +143,26 @@ it.each(['work', 'code'])('shows curated and live Cursor choices in %s, without 
   expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ modelId: extra, provider: 'cursor-cli', connectionId: 'global:cursor-cli' }))
 })
 
+it('offers only the models the account allows and shows a single allowed model selected', async () => {
+  cursorFixture()
+  const account = { id: 'global:cursor-cli', provider: 'cursor-cli', display_name: 'Admin-managed account', scope: 'global', auth_method: 'server', allowed_models: ['composer-2.5', 'glm-5.3'] }
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([account] as never)
+  const config: PresetLLMConfig = { schema_version: 2, mode: 'explicit', builder_llm: { provider: 'cursor-cli', model_id: 'grok-4.6', connection_id: 'global:cursor-cli', options: {} } }
+  const { host, onRuntimeChange } = await render(config)
+  const titles = () => Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)
+  expect(titles()).toEqual(['composer-2.5', 'glm-5.3'])
+  // The saved grok-4.6 is not allowed: the Model card reads as the first allowed model.
+  expect(host.textContent).toContain('composer-2.5')
+  expect(onRuntimeChange).not.toHaveBeenCalled()
+  // One allowed model: that one is offered and selected.
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...account, allowed_models: ['glm-5.3'] }] as never)
+  await act(async () => { root?.unmount() }); document.body.innerHTML = ''
+  const second = await render(config)
+  expect(Array.from(second.host.querySelectorAll('button .font-medium')).map(title => title.textContent)).toEqual(['glm-5.3'])
+  expect(second.host.querySelector('button[aria-expanded] p')?.textContent).toContain('glm-5.3')
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
+})
+
 it('keeps curated Cursor choices when the live model list cannot be loaded', async () => {
   cursorFixture()
   vi.mocked(llmConfigService.getProviderModels).mockRejectedValue(new Error('Not signed in'))

@@ -35,6 +35,30 @@ Design references for the linked runtime decisions:
 - **Decided (owner).** The workflow Models page no longer offers "Native agent tools": native tools are always on, as in Crew and Code. A value already
   saved as off in a workflow's capabilities is left untouched (not editable from the UI).
 
+### 2026-10-03 — Allowed models per provider account
+
+- **Decided (owner).** "If anyone adds an account, admin or user, can they also select which models are available. Default is all, but can
+  set up a restriction." Every provider account (the admin-managed `global:<provider>` account and every personal account) has an optional
+  `allowed_models` list; absent or empty means every model (no migration). Example: the admin limits the Codex account to `gpt-5.3-codex`.
+- **Who sets it.** `PATCH /api/provider-connections/{id}` with `allowed_models` (`[]` clears it): an admin for `global:<provider>` (stored in
+  `config/provider-account-settings.json`), the owner for a personal account (stored on the account). Authorization is the neighbouring
+  routes' own: a personal account is private to its owner, admins included, so an admin cannot edit someone else's list (they can edit the
+  server account's). POST also accepts it when adding an account. The account view carries `allowed_models` for everyone who can see it.
+- **Enforcement (server, not only UI).** A new explicit pick of a disallowed model is REFUSED
+  ("<model> is not allowed on <account>; allowed: ..."); a SAVED or default selection that names a disallowed model runs on the FIRST allowed
+  model instead, so an old workflow/project setting never fails a chat. Choke points: handleQuery just before the agent config is built
+  (covers request, saved project/workflow, profile and product-default models; Crew, Code, Goals, workflow chats, bots); product chat turns
+  before the runtime is bound (`constrainProductChatModel`: refuse when the model differs from the conversation's bound one, fall back
+  otherwise); `workshopConvertAgentLLMConfig` (every workflow role: builder, pulse, tiers, scheduled runs, step execution, generate_text);
+  sub-agent delegation; delegation tier config (`LoadAndResolveTierConfig`); `effectiveProductDefaults` (a product default whose model the
+  server account does not allow becomes the first allowed one).
+- **Not covered.** The provider's account resolver (`llm.ProviderAPIKeys.ResolveConnection`) receives no model, so a model initialised
+  outside these paths is not checked there; a retained CLI keeps its model until its next turn (turns re-resolve). The list is not validated
+  against the provider's catalog (catalogs are dynamic); an unknown id simply never matches a picker entry.
+- **Where.** `agent_go/cmd/server/provider_allowed_models.go` (logic), `provider_account_routes.go` (routes), `provider_accounts.go`
+  (settings); UI `AllowedModelsEditor.tsx` (Providers, account menu "Models"; card shows "Models: All models / N models"),
+  `utils/allowedModels.ts`, `WorkModelsPanel.tsx` and `WorkflowLLMConfigurationPanel.tsx` (pickers offer only allowed models).
+
 ### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome)
 
 - **Found (user).** "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied" starting the Code browser on Excellence:

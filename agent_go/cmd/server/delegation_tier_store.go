@@ -199,9 +199,47 @@ func LoadDelegationTierConfig(ctx context.Context) (*virtualtools.DelegationTier
 func LoadAndResolveTierConfig(ctx context.Context, requestConfig *virtualtools.DelegationTierConfig) *virtualtools.DelegationTierConfig {
 	fileConfig, err := LoadDelegationTierConfig(ctx)
 	if err != nil {
-		return resolveDelegationTierConfig(requestConfig)
+		return constrainDelegationTierConfig(ctx, resolveDelegationTierConfig(requestConfig))
 	}
-	return resolveDelegationTierConfig(mergeDelegationTierConfig(fileConfig, requestConfig))
+	return constrainDelegationTierConfig(ctx, resolveDelegationTierConfig(mergeDelegationTierConfig(fileConfig, requestConfig)))
+}
+
+// constrainDelegationTierConfig moves a tier model its account does not allow
+// onto the account's first allowed model. It returns a copy; the input may be
+// shared.
+func constrainDelegationTierConfig(ctx context.Context, cfg *virtualtools.DelegationTierConfig) *virtualtools.DelegationTierConfig {
+	if cfg == nil {
+		return nil
+	}
+	fix := func(provider, connectionID, model string) string {
+		if resolved, changed, err := resolveAccountModel(ctx, provider, connectionID, model); err == nil && changed && strings.TrimSpace(model) != "" {
+			return resolved
+		}
+		return model
+	}
+	fixTier := func(tier *virtualtools.TierModel) *virtualtools.TierModel {
+		if tier == nil {
+			return nil
+		}
+		copied := *tier
+		copied.ModelID = fix(tier.Provider, tier.ConnectionID, tier.ModelID)
+		return &copied
+	}
+	out := *cfg
+	out.Main, out.High, out.Medium, out.Low = fixTier(cfg.Main), fixTier(cfg.High), fixTier(cfg.Medium), fixTier(cfg.Low)
+	if cfg.Custom != nil {
+		out.Custom = make(map[string]*virtualtools.CustomTierModel, len(cfg.Custom))
+		for name, tier := range cfg.Custom {
+			if tier == nil {
+				out.Custom[name] = nil
+				continue
+			}
+			copied := *tier
+			copied.ModelID = fix(tier.Provider, tier.ConnectionID, tier.ModelID)
+			out.Custom[name] = &copied
+		}
+	}
+	return &out
 }
 
 // handleSaveDelegationTierConfig saves delegation tier config to the workspace filesystem.

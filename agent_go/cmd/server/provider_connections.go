@@ -35,6 +35,10 @@ type ProviderConnection struct {
 	UnderlyingProvider      string    `json:"underlying_provider,omitempty"`
 	PersonalAccountsAllowed *bool     `json:"personal_accounts_allowed,omitempty"`
 	UpdatedAt               time.Time `json:"updated_at"`
+	// AllowedModels limits the models that may run on this account; empty
+	// means every model. The server account's list lives in
+	// providerAccountSettings.AllowedModels and is shown here in its view.
+	AllowedModels []string `json:"allowed_models,omitempty"`
 	// Sharing is who besides the owner may use a user account. Only the
 	// owner and admins see it.
 	Sharing *ProviderConnectionSharing `json:"sharing,omitempty"`

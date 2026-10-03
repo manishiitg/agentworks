@@ -328,6 +328,9 @@ func installationProductDefaults() (map[string]productDefault, error) {
 type providerAccountSettings struct {
 	AvailableTo     map[string]*providerAvailability `json:"available_to,omitempty"`
 	ProductDefaults map[string]productDefault        `json:"product_defaults,omitempty"`
+	// AllowedModels is, per provider, the models the server account allows;
+	// absent means every model.
+	AllowedModels map[string][]string `json:"allowed_models,omitempty"`
 }
 
 // The settings are cached in memory like the account registry: loaded once
@@ -355,6 +358,12 @@ func cloneProviderAccountSettings(in providerAccountSettings) providerAccountSet
 		out.ProductDefaults = make(map[string]productDefault, len(in.ProductDefaults))
 		for key, value := range in.ProductDefaults {
 			out.ProductDefaults[key] = value
+		}
+	}
+	if in.AllowedModels != nil {
+		out.AllowedModels = make(map[string][]string, len(in.AllowedModels))
+		for key, value := range in.AllowedModels {
+			out.AllowedModels[key] = append([]string(nil), value...)
 		}
 	}
 	return out
@@ -468,6 +477,8 @@ func effectiveProductDefaults(ctx context.Context) (map[string]productDefault, e
 		value.Pinned = false
 		result[product] = value
 	}
+	// A product's default model must be one the server account allows.
+	constrainServerDefaultModels(result, settings)
 	return result, nil
 }
 

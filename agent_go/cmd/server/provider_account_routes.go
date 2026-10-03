@@ -158,6 +158,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 	run := api.describeProviderAccountRun(ctx, scope)
 	anyProduct := strings.TrimSpace(scope.WorkspacePath) == "" && strings.TrimSpace(scope.Product) == ""
 	stored, _ := LoadProviderKeys(ctx)
+	accountSettings, _ := loadProviderAccountSettings(ctx)
 	views := []providerAccountView{}
 	for _, provider := range serverAccountProviders() {
 		availability, err := effectiveServerAccountAvailability(ctx, provider)
@@ -175,7 +176,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			}
 		}
 		view := providerAccountView{
-			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server"},
+			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server", AllowedModels: accountSettings.AllowedModels[provider]},
 			Kind:               kind, Relation: "server", Source: source, Availability: &availability,
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,
@@ -234,6 +235,9 @@ type providerConnectionRequest struct {
 	// AvailableTo is the admin setting for a server account; JSON null
 	// clears it back to the installation policy.
 	AvailableTo json.RawMessage `json:"available_to"`
+	// AllowedModels limits the models that may run on the account; [] means
+	// every model. Absent leaves the current list alone.
+	AllowedModels *[]string `json:"allowed_models"`
 }
 
 func validProviderAccountName(name *string) (string, error) {
@@ -271,11 +275,18 @@ func (api *StreamingAPI) createProviderConnection(w http.ResponseWriter, r *http
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	var allowedModels []string
+	if request.AllowedModels != nil {
+		if allowedModels, err = validateAllowedModels(*request.AllowedModels); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	credential := ""
 	if request.Credential != nil {
 		credential = strings.TrimSpace(*request.Credential)
 	}
-	record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: request.Provider, DisplayName: name, OwnerUserID: userID, Scope: "user", AuthMethod: "api_key", UnderlyingProvider: strings.TrimSpace(request.UnderlyingProvider), UpdatedAt: time.Now().UTC(), Sharing: sharing}, Credential: credential}
+	record := storedProviderConnection{ProviderConnection: ProviderConnection{ID: uuid.NewString(), Provider: request.Provider, DisplayName: name, OwnerUserID: userID, Scope: "user", AuthMethod: "api_key", UnderlyingProvider: strings.TrimSpace(request.UnderlyingProvider), UpdatedAt: time.Now().UTC(), Sharing: sharing, AllowedModels: allowedModels}, Credential: credential}
 	if request.AuthMethod == "cli_login" {
 		record.AuthMethod = "cli_login"
 		record.Credential = ""
@@ -355,7 +366,14 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 	}
 	target := records[index]
 	var sharing *ProviderConnectionSharing
+	var allowedModels []string
 	if r.Method != http.MethodDelete {
+		if request.AllowedModels != nil {
+			if allowedModels, err = validateAllowedModels(*request.AllowedModels); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
 		if personalProviderConnectionsLocked(target.Provider) {
 			http.Error(w, "personal connections are locked", http.StatusForbidden)
 			return
@@ -425,6 +443,9 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 			if request.Sharing != nil {
 				record.Sharing = sharing
 			}
+			if request.AllowedModels != nil {
+				record.AllowedModels = allowedModels
+			}
 			record.UpdatedAt = time.Now().UTC()
 		}
 		if saveProviderConnections(r.Context(), records) != nil {
@@ -442,6 +463,8 @@ func (api *StreamingAPI) handleProviderConnection(w http.ResponseWriter, r *http
 				_ = os.RemoveAll(filepath.Dir(home))
 			}
 			log.Printf("[PROVIDER_ACCOUNT] %s removed account %s (owner %s)", userID, id, target.OwnerUserID)
+		} else if request.AllowedModels != nil {
+			log.Printf("[PROVIDER_ACCOUNT] %s set the allowed models of account %s (owner %s): %d", userID, id, target.OwnerUserID, len(allowedModels))
 		} else if request.Sharing != nil {
 			log.Printf("[PROVIDER_ACCOUNT] %s set sharing of account %s (owner %s): %s", userID, id, target.OwnerUserID, sharingSummary(sharing))
 		}
@@ -465,8 +488,12 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var request providerConnectionRequest
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || len(request.AvailableTo) == 0 {
-		http.Error(w, "available_to is required", http.StatusBadRequest)
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 65536)).Decode(&request) != nil || (len(request.AvailableTo) == 0 && request.AllowedModels == nil) {
+		http.Error(w, "available_to or allowed_models is required", http.StatusBadRequest)
+		return
+	}
+	if len(request.AvailableTo) == 0 {
+		api.updateServerAccountAllowedModels(w, r, provider, *request.AllowedModels)
 		return
 	}
 	current, err := effectiveServerAccountAvailability(r.Context(), provider)
@@ -518,11 +545,54 @@ func (api *StreamingAPI) updateServerAccount(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
+	if request.AllowedModels != nil {
+		models, err := validateAllowedModels(*request.AllowedModels)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		setServerAccountAllowedModels(&settings, provider, models)
+	}
 	if err := saveProviderAccountSettings(r.Context(), settings); err != nil {
 		http.Error(w, "cannot save provider settings", http.StatusInternalServerError)
 		return
 	}
 	log.Printf("[PROVIDER_ACCOUNT] %s set who may use the %s server account", GetUserIDFromContext(r.Context()), provider)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func setServerAccountAllowedModels(settings *providerAccountSettings, provider string, models []string) {
+	if len(models) == 0 {
+		delete(settings.AllowedModels, provider)
+		return
+	}
+	if settings.AllowedModels == nil {
+		settings.AllowedModels = map[string][]string{}
+	}
+	settings.AllowedModels[provider] = models
+}
+
+// updateServerAccountAllowedModels sets which models the provider's server
+// account allows (admin only; the caller checked). Empty means every model.
+func (api *StreamingAPI) updateServerAccountAllowedModels(w http.ResponseWriter, r *http.Request, provider string, requested []string) {
+	models, err := validateAllowedModels(requested)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	providerAccountSettingsMu.Lock()
+	defer providerAccountSettingsMu.Unlock()
+	settings, err := loadProviderAccountSettings(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	setServerAccountAllowedModels(&settings, provider, models)
+	if err := saveProviderAccountSettings(r.Context(), settings); err != nil {
+		http.Error(w, "cannot save provider settings", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[PROVIDER_ACCOUNT] %s set the allowed models of the %s server account: %d", GetUserIDFromContext(r.Context()), provider, len(models))
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -14,6 +14,7 @@ import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
 import { readyCodingProviders } from '../../utils/providerCatalogFilter'
+import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -168,36 +169,43 @@ export function WorkModelsPanel({
     provider: selectedOption.provider as LLMProvider,
     connection_id: savedSelection?.connectionId,
   } : undefined, [selectedOption, savedSelection?.connectionId])
-  const defaultForOption = useCallback((option: AgentProfileProviderOption | undefined) => {
+  // The models an account allows (absent = every model): the account the project names, else the server's.
+  const allowedModelsFor = useCallback((provider: string | undefined, connectionId: string | undefined) => (
+    provider ? accounts?.find(account => account.id === (connectionId || `global:${provider}`))?.allowed_models : undefined
+  ), [accounts])
+  const defaultForOption = useCallback((option: AgentProfileProviderOption | undefined, connectionId?: string) => {
     if (!option) return { modelId: '', reasoningEffort: undefined as string | undefined }
     const defaults = providerManifest.find(provider => provider.id === option.provider)?.default_tier_models?.builder
     const profileEffort = typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined
     const manifestEffort = typeof defaults?.options?.reasoning_effort === 'string' ? defaults.options.reasoning_effort : undefined
     return {
-      modelId: defaults?.model_id || option.model_id || '',
+      modelId: allowedModelOrFirst(defaults?.model_id || option.model_id || '', allowedModelsFor(option.provider, connectionId)) || '',
       reasoningEffort: [profileEffort, manifestEffort, option.reasoning_efforts?.[0]]
         .find(effort => effort && option.reasoning_efforts?.includes(effort)),
     }
-  }, [providerManifest])
+  }, [providerManifest, allowedModelsFor])
 
   const currentGroup = engineGroups.find(group => group.option.id === selectedOption?.id)
-  const selectedDefaults = defaultForOption(selectedOption)
+  const selectedAllowedModels = allowedModelsFor(selectedOption?.provider, savedSelection?.connectionId)
+  const selectedDefaults = defaultForOption(selectedOption, savedSelection?.connectionId)
   const metadataMatchesSelectedProvider = tab?.metadata?.agentProfileEngine === selectedOption?.id
-  const currentModelId = savedSelection?.modelId
+  // Only an allowed model is shown selected; a saved one the account no longer allows reads as its first allowed model
+  // (the server runs it that way too).
+  const currentModelId = allowedModelOrFirst(savedSelection?.modelId
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileModelID : undefined)
     || activeRuntime?.model_id
-    || selectedDefaults.modelId
+    || selectedDefaults.modelId, selectedAllowedModels)
   const selectableModels = useMemo(() => {
     const metadataById = new Map(modelCatalog.map(model => [model.model_id, model]))
-    return (currentGroup?.models || []).map(({ id, label }) => metadataById.get(id) || {
+    return filterAllowedModels((currentGroup?.models || []).map(({ id, label }) => metadataById.get(id) || {
       model_id: id,
       model_name: label,
       provider: selectedOption?.provider || '',
       context_window: 0,
       input_cost_per_1m: 0,
       output_cost_per_1m: 0,
-    } satisfies ModelMetadata)
-  }, [currentGroup?.models, modelCatalog, selectedOption?.provider])
+    } satisfies ModelMetadata), selectedAllowedModels)
+  }, [currentGroup?.models, modelCatalog, selectedOption?.provider, selectedAllowedModels])
   const requestedReasoningEffort = savedSelection?.reasoningEffort
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
     || selectedDefaults.reasoningEffort
@@ -245,7 +253,7 @@ export function WorkModelsPanel({
   const selectProvider = (config: PresetLLMConfig) => {
     const option = options.find(candidate => candidate.provider === config.provider)
     if (!option) return
-    const defaults = defaultForOption(option)
+    const defaults = defaultForOption(option, config.connection_id)
     void onRuntimeChange({
       engine: option.id,
       connectionId: config.connection_id,

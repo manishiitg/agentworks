@@ -5705,6 +5705,21 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if req.LLMConfig != nil && req.LLMConfig.Primary.ConnectionID != "" {
 			resolvedConnectionID = req.LLMConfig.Primary.ConnectionID
 		}
+		// Allowed models: whatever settled finalModelID above (request, saved
+		// project or workflow, product default), the account's list decides. A
+		// saved model it does not allow runs on the first allowed one.
+		if constrained, changed, constrainErr := resolveAccountModel(streamCtx, finalProvider, resolvedConnectionID, finalModelID); constrainErr != nil {
+			sendError(constrainErr.Error(), true)
+			return
+		} else if changed {
+			finalModelID = constrained
+			req.ModelID = constrained
+			if req.LLMConfig != nil {
+				configCopy := *req.LLMConfig
+				configCopy.Primary.ModelID = constrained
+				req.LLMConfig = &configCopy
+			}
+		}
 		agentConfig := agent.LLMAgentConfig{
 			ConnectionID:       resolvedConnectionID,
 			Name:               "chat-agent",
@@ -13625,10 +13640,16 @@ func workshopConvertAgentLLMConfig(config *workflowtypes.AgentLLMConfig) *todo_c
 	if config == nil {
 		return nil
 	}
+	// A saved role model its account does not allow (the admin restricted the
+	// account after the workflow was set up) runs on the first allowed model.
+	modelID, publishedID := config.ModelID, config.PublishedLLMID
+	if constrained, changed, err := resolveAccountModel(context.Background(), config.Provider, config.ConnectionID, config.ModelID); err == nil && changed && strings.TrimSpace(config.ModelID) != "" {
+		modelID, publishedID = constrained, ""
+	}
 	return &todo_creation_human.AgentLLMConfig{
-		PublishedLLMID: config.PublishedLLMID,
+		PublishedLLMID: publishedID,
 		Provider:       config.Provider,
-		ModelID:        config.ModelID,
+		ModelID:        modelID,
 		Options:        config.Options,
 		ConnectionID:   config.ConnectionID,
 	}

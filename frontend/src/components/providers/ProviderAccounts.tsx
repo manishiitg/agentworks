@@ -6,6 +6,8 @@ import ProviderAccountCostsSection from './AccountCosts'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
+import AllowedModelsEditor from './AllowedModelsEditor'
+import { allowedModelsSummary } from '../../utils/allowedModels'
 import {
   llmConfigService,
   providerApiErrorText,
@@ -96,6 +98,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [connections, setConnections] = useState<ProviderConnection[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [sharingId, setSharingId] = useState<string | null>(null)
+  const [modelsId, setModelsId] = useState<string | null>(null)
   const [sharingDraft, setSharingDraft] = useState<ProviderAccountSharing>({ mode: 'private' })
   const [availabilityDraft, setAvailabilityDraft] = useState<ProviderAvailableTo | null>(null)
   // Signing in the shared login changes the account everyone allowed uses:
@@ -232,6 +235,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save sharing.')) }
     finally { setBusy(false) }
   }
+  const saveModels = async (record: ProviderConnection, models: string[]) => {
+    setBusy(true); setError(null)
+    try {
+      await llmConfigService.setAccountAllowedModels(record.id, models)
+      setConnections(current => current.map(item => item.id === record.id ? { ...item, allowed_models: models.length > 0 ? models : undefined } : item))
+      setModelsId(null); changed()
+    } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save the allowed models.')) }
+    finally { setBusy(false) }
+  }
+  const modelsEditor = (record: ProviderConnection) => modelsId === record.id && (
+    <AllowedModelsEditor provider={provider} value={record.allowed_models} disabled={busy} onSave={models => saveModels(record, models)} onCancel={() => setModelsId(null)} />
+  )
+  const modelsItem = (record: ProviderConnection) => record.can_manage && manage ? [{ label: 'Models', onSelect: () => setModelsId(modelsId === record.id ? null : record.id) }] : []
   const saveAvailability = async (value: ProviderAvailableTo | null) => {
     setBusy(true); setError(null)
     try {
@@ -310,6 +326,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               {record.configured === false && <span className={`${badgeClass} bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300`} title="Not signed in and no key yet: use Sign in to set it up">Not set up</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
+            {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsSummary(record.allowed_models)}</p>}
             {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
             {statusLine(record)}
           </div>
@@ -323,12 +340,14 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               ...(canManage && record.auth_method === 'cli_login' && personalAllowed && !needsSignIn(record) ? [{ label: 'Sign in again', onSelect: () => void login(record) }] : []),
               ...(personalAllowed && canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
               ...(canManage && manage ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
+              ...(own ? modelsItem({ ...record, can_manage: true }) : []),
               ...(own && personalAllowed ? [{ label: 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
             ]} />
           </div>
         )}
         {sharingEditor(record)}
+        {modelsEditor(record)}
         {terminalFor(record)}
       </li>
     )
@@ -349,6 +368,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>
+              {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsSummary(record.allowed_models)}</p>}
             </div>
           </div>
           {!disabled && record.can_manage && (
@@ -360,6 +380,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
                 ...(!needsSignIn(record) ? [{ label: 'Sign in with another login', onSelect: () => setConfirmSharedLogin(record) }] : []),
                 ...(canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
                 ...(record.availability_editable ? [{ label: 'Who can use it', onSelect: () => setAvailabilityDraft(availability?.available_to ?? 'all') }] : []),
+                ...modelsItem(record),
               ]} />
             </div>
           )}
@@ -391,6 +412,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           </div>
         )}
+        {modelsEditor(record)}
         {terminalFor(record)}
       </div>
     )

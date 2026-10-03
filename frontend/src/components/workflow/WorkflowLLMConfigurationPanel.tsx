@@ -18,6 +18,7 @@ import { getWorkflowLLMOptions, getWorkflowLLMTierDefaults, getWorkflowProviderO
 import { effectiveLLMUnderLock } from '../../utils/effectiveLLM'
 import { installedCodingProviders, readyCodingProviders } from '../../utils/providerCatalogFilter'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
+import { hasModelLimit, isModelAllowed } from '../../utils/allowedModels'
 
 type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'pulse_llm'
 const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'pulse_llm']
@@ -301,6 +302,13 @@ export default function WorkflowLLMConfigurationPanel({
     () => getWorkflowLLMOptions(availableLLMs.filter(option => readyProviderIds.includes(option.provider)), readyEntries),
     [availableLLMs, readyProviderIds, readyEntries],
   )
+
+  // A role offers only the models its account allows (the server enforces the same list).
+  const optionsForRoleAccount = useCallback((role?: { provider?: string; connection_id?: string }) => {
+    const allowed = role?.provider ? accountRecords.find(record => record.id === (role.connection_id || `global:${role.provider}`))?.allowed_models : undefined
+    if (!hasModelLimit(allowed)) return workflowOptions
+    return workflowOptions.filter(option => option.provider !== role?.provider || isModelAllowed(option.model, allowed))
+  }, [accountRecords, workflowOptions])
 
   const rows = useMemo<ProviderRow[]>(() => {
     const codingAgents = manifestEntries
@@ -1008,7 +1016,7 @@ export default function WorkflowLLMConfigurationPanel({
         <div className="min-w-0 flex-1 space-y-1.5">
           {value ? (
             <>
-            <LLMRoleSelector availableLLMs={workflowOptions} allowedProviderIds={readyProviderIds} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
+            <LLMRoleSelector availableLLMs={optionsForRoleAccount(value)} allowedProviderIds={readyProviderIds} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
             {value?.provider && ["claude-code","codex-cli","cursor-cli","pi-cli","muse-cli"].includes(value.provider) && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly workspacePath={workspacePath} product={product} onSelect={connection_id=>updateRole(row.key,{...value,connection_id})} />}
             </>
           ) : (
