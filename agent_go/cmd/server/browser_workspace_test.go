@@ -29,6 +29,7 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	t.Setenv("WORKSPACE_API_TOKEN", "browser-test-token")
 	var commands []string
+	var restores int
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Workspace-Token") != "browser-test-token" {
 			t.Error("missing service authentication")
@@ -49,6 +50,14 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 				out = `{"success":true,"data":{"enabled":true}}`
 			}
 			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"stdout": out, "exit_code": 0}})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/restore-tabs") {
+			restores++
+			if r.URL.Path != "/api/browser/live/"+browserSessionForWorkspace("alice", "Workflow/one")+"/restore-tabs" {
+				t.Error("wrong restore scope")
+			}
+			json.NewEncoder(w).Encode(map[string]bool{"success": true})
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/teaching") {
@@ -90,13 +99,26 @@ func TestWorkspaceBrowserStartsWithoutChatAndEnforcesScope(t *testing.T) {
 			t.Fatal("Unsafe workspace accepted", bad, r.Code)
 		}
 	}
+	for _, user := range []string{"", "bob", "stranger"} {
+		if response := call(user, "/?workspace_path=Workflow/one", `{"action":"recover"}`, false); response.Code != 403 {
+			t.Fatal("unwritable recovery was admitted")
+		}
+	}
 	r := call("alice", "/?workspace_path=Workflow/one", `{"action":"start"}`, false)
 	if r.Code != 200 || !strings.Contains(r.Body.String(), session) {
 		t.Fatalf("cannot start without a chat: %d %s", r.Code, r.Body.String())
 	}
+	if restores != 1 {
+		t.Fatal("startup skipped authorized tab restore")
+	}
 	if len(commands) != 2 || strings.Contains(commands[0], "--cdp") || strings.Contains(commands[1], "enable") {
 		t.Fatalf("wrong startup/stream lifecycle: %v", commands)
 	}
+	browser.BindViewerCDPPort(session, 9222)
+	if response := call("alice", "/?workspace_path=Workflow/one", `{"action":"recover"}`, false); response.Code != 409 {
+		t.Fatal("Recovery restarted physical Chrome", response.Code)
+	}
+	browser.BindViewerCDPPort(session, 0)
 	r = call("alice", "/?workspace_path=Workflow/one", `{"action":"save","mode":"cdp","port":9222}`, false)
 	if r.Code != 400 {
 		t.Fatal("server allowed local Chrome", r.Code)
@@ -167,6 +189,7 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 	router := gin.New()
 	router.POST("/api/execute", workspacehandlers.ExecuteShellCommand)
 	router.POST("/api/browser/live/:session/teaching", workspacehandlers.BrowserTeaching)
+	router.POST("/api/browser/live/:session/restore-tabs", workspacehandlers.BrowserRestoreTabs)
 	workspace := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Workspace-Token") != "start-real-token" {
 			http.Error(w, "no service token", 403)
@@ -229,16 +252,24 @@ func TestWorkspaceBrowserStartsRealChrome(t *testing.T) {
 		Status  string                `json:"status"`
 		Actions []browserteach.Action `json:"actions"`
 		Errors  []string              `json:"errors"`
-	} { t.Helper(); payload["workspace_path"] = workspacePath; body, err := forwardTeaching(context.Background(), session, payload); if err != nil {
-		t.Fatal(err)
-	}; var state struct {
-		ID      string                `json:"id"`
-		Status  string                `json:"status"`
-		Actions []browserteach.Action `json:"actions"`
-		Errors  []string              `json:"errors"`
-	}; if err := json.Unmarshal(body, &state); err != nil {
-		t.Fatal(err)
-	}; return state }
+	} {
+		t.Helper()
+		payload["workspace_path"] = workspacePath
+		body, err := forwardTeaching(context.Background(), session, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			ID      string                `json:"id"`
+			Status  string                `json:"status"`
+			Actions []browserteach.Action `json:"actions"`
+			Errors  []string              `json:"errors"`
+		}
+		if err := json.Unmarshal(body, &state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
 	call(map[string]any{"action": "start", "goal": "Greet a customer"})
 	run("click", "#customer")
 	run("keyboard", "type", "Alice")

@@ -11,7 +11,6 @@ import (
 	"hash/fnv"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -155,15 +154,14 @@ func loadTeach(base, id string) (*teachState, error) {
 // holds the browser control gate before forwarding mutating requests.
 func BrowserTeaching(c *gin.Context) {
 	var req struct {
-		LaunchArgs []string              `json:"launch_args"`
-		Action     string                `json:"action"`
-		Workspace  string                `json:"workspace_path"`
-		ID         string                `json:"id"`
-		Goal       string                `json:"goal"`
-		Guidance   string                `json:"guidance"`
-		Actions    []browserteach.Action `json:"actions"`
-		Check      teachCheck            `json:"check"`
-		Inputs     map[string]string     `json:"inputs"`
+		Action    string                `json:"action"`
+		Workspace string                `json:"workspace_path"`
+		ID        string                `json:"id"`
+		Goal      string                `json:"goal"`
+		Guidance  string                `json:"guidance"`
+		Actions   []browserteach.Action `json:"actions"`
+		Check     teachCheck            `json:"check"`
+		Inputs    map[string]string     `json:"inputs"`
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	if c.ShouldBindJSON(&req) != nil {
@@ -237,9 +235,9 @@ func BrowserTeaching(c *gin.Context) {
 			c.JSON(409, gin.H{"error": "Start the browser and sign in first"})
 			return
 		}
-		output, err := runTeachCommand(ctx, socket, session, append([]string{"get", "cdp-url"}, req.LaunchArgs...)...)
+		output, err := existingBrowserCommand(ctx, socket, session, map[string]any{"id": "teach-endpoint", "action": "cdp_url"})
 		if err != nil {
-			c.JSON(503, gin.H{"error": "Upgrade agent-browser: teaching requires get cdp-url support"})
+			c.JSON(503, gin.H{"error": "Browser is unavailable. Start it again, then retry teaching."})
 			return
 		}
 		var endpoint struct {
@@ -247,8 +245,11 @@ func BrowserTeaching(c *gin.Context) {
 				URL string `json:"cdpUrl"`
 			} `json:"data"`
 		}
-		_ = json.Unmarshal(output, &endpoint)
-		tabs, err := runTeachCommand(ctx, socket, session, append([]string{"tab"}, req.LaunchArgs...)...)
+		if json.Unmarshal(output, &endpoint) != nil || endpoint.Data.URL == "" {
+			c.JSON(502, gin.H{"error": "Unable to connect teaching. Try again."})
+			return
+		}
+		tabs, err := existingBrowserCommand(ctx, socket, session, map[string]any{"id": "teach-tabs", "action": "tab_list"})
 		if err != nil {
 			c.JSON(502, gin.H{"error": "Cannot inspect the active tab"})
 			return
@@ -285,7 +286,7 @@ func BrowserTeaching(c *gin.Context) {
 		rec, err := browserteach.Start(ctx, endpoint.Data.URL, target, dir)
 		if err != nil {
 			os.RemoveAll(dir)
-			c.JSON(502, gin.H{"error": "Cannot attach teaching recorder: " + err.Error()})
+			c.JSON(502, gin.H{"error": "Unable to connect teaching. Try again."})
 			return
 		}
 		relative, _ := filepath.Rel(root, dir)
@@ -318,7 +319,7 @@ func BrowserTeaching(c *gin.Context) {
 			return
 		}
 		run := func(args ...string) ([]byte, error) {
-			return runTeachCommand(ctx, socket, session, append(args, req.LaunchArgs...)...)
+			return runExistingTeachCommand(ctx, socket, session, args...)
 		}
 		if req.Action == "flush" {
 			err = state.recorder.Control(ctx, "flush")
@@ -417,7 +418,7 @@ func BrowserTeaching(c *gin.Context) {
 			c.JSON(409, gin.H{"error": "Start the browser first"})
 			return
 		}
-		err = replayTeach(ctx, socket, session, state, req.Inputs, req.LaunchArgs...)
+		err = replayTeach(ctx, socket, session, state, req.Inputs)
 		now := time.Now().UTC()
 		state.LastTest = &now
 		if err != nil {
@@ -577,9 +578,9 @@ func writeTeachText(path, text string) error {
 
 // Locate against fresh DOM and enforce uniqueness before every action. The
 // recorder's selectors are candidates, never assumed stable coordinates/refs.
-func replayTeach(ctx context.Context, socket, session string, state *teachState, inputs map[string]string, launchArgs ...string) error {
+func replayTeach(ctx context.Context, socket, session string, state *teachState, inputs map[string]string) error {
 	run := func(args ...string) ([]byte, error) {
-		return runTeachCommand(ctx, socket, session, append(args, launchArgs...)...)
+		return runExistingTeachCommand(ctx, socket, session, args...)
 	}
 	for _, a := range state.Actions {
 		if a.Warning != "" {
@@ -729,30 +730,6 @@ func replayTeach(ctx context.Context, socket, session string, state *teachState,
 		}
 	}
 	return fmt.Errorf("Expected %s was not observed; review the procedure", state.Check.Kind)
-}
-
-func runTeachCommand(ctx context.Context, socket, session string, args ...string) ([]byte, error) {
-	argv := append([]string{"--session", session}, args...)
-	argv = append(argv, "--json")
-	cmd := exec.CommandContext(ctx, "agent-browser", argv...)
-	for _, env := range os.Environ() {
-		if !strings.HasPrefix(env, "AGENT_BROWSER_SOCKET_DIR=") {
-			cmd.Env = append(cmd.Env, env)
-		}
-	}
-	cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+socket)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return out, fmt.Errorf("Browser command failed: %s", strings.TrimSpace(string(out)))
-	}
-	var result struct {
-		Success *bool  `json:"success"`
-		Error   string `json:"error"`
-	}
-	if json.Unmarshal(out, &result) == nil && result.Success != nil && !*result.Success {
-		return out, fmt.Errorf("%s", result.Error)
-	}
-	return out, nil
 }
 
 func waitTeachURL(ctx context.Context, run func(...string) ([]byte, error), expected string) error {

@@ -196,7 +196,7 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				http.Error(w, "Cannot save browser settings", 502)
 				return
 			}
-		} else if req.Action == "start" {
+		} else if req.Action == "start" || req.Action == "recover" {
 			// A viewer has its own scoped managed daemon. On local installations it may
 			// attach to the explicitly configured Chrome; server CDP policy still wins.
 			session := browserSessionForWorkspace(GetUserIDFromContext(r.Context()), workspace)
@@ -209,7 +209,11 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 			client := browser.NewClient(workspaceBrowserEndpoint())
 			args := browser.HeadlessLaunchArgsForSession(session)
 			cdpPort := 0
-			if browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
+			if req.Action == "recover" && (browser.ViewerCDPPort(session) > 0 || settings.Mode == "cdp") {
+				http.Error(w, "Reconnect local Chrome manually", 409)
+				return
+			}
+			if req.Action != "recover" && browser.CDPEnabled() && (settings.Mode == "cdp" || settings.Mode == "auto") {
 				connected, _, checkErr := client.CheckCDP(r.Context(), settings.Port)
 				if connected && checkErr == nil {
 					cdpPort = settings.Port
@@ -228,7 +232,20 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				defer unlock()
 			}
 			// Listing tabs lazily starts Chrome and preserves the selected signed-in page.
-			if _, err = client.ExecuteCommand(r.Context(), append(args, "--session", session, "tab", "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second)); err != nil {
+			// A daemon finishing shutdown may still have stale socket metadata. A
+			// bounded retry is safe here: listing tabs performs no website action.
+			for attempt := 0; attempt < 3; attempt++ {
+				_, err = client.ExecuteCommand(r.Context(), append(args, "--session", session, "tab", "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
+				if err == nil || attempt == 2 {
+					break
+				}
+				select {
+				case <-r.Context().Done():
+					return
+				case <-time.After(250 * time.Millisecond):
+				}
+			}
+			if err != nil {
 				http.Error(w, "Cannot start browser: "+err.Error(), 502)
 				return
 			}
@@ -247,6 +264,12 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 			if streamErr != nil {
 				http.Error(w, "Browser started, but live streaming could not connect: "+streamErr.Error(), 502)
 				return
+			}
+			if cdpPort == 0 {
+				if err := restoreWorkspaceBrowserTabs(r.Context(), session); err != nil {
+					http.Error(w, "Browser started, but previous tabs could not be reopened. Try again.", 502)
+					return
+				}
 			}
 			browser.BindViewerCDPPort(session, cdpPort)
 			browser.GetSessionTracker().Touch(session, "viewer:"+session, "viewer:"+session)
@@ -284,15 +307,6 @@ func workspaceBrowserEndpoint() string {
 	return endpoint
 }
 func forwardTeaching(ctx context.Context, session string, payload any) (json.RawMessage, error) {
-	if source, ok := payload.(map[string]any); ok {
-		request := make(map[string]any, len(source)+1)
-		for key, value := range source {
-			request[key] = value
-		}
-		// Runtime flags come from trusted scope startup, never the browser UI.
-		request["launch_args"] = browserViewerLaunchArgs(session)
-		payload = request
-	}
 	data, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, "POST", workspaceBrowserEndpoint()+"/api/browser/live/"+session+"/teaching", bytes.NewReader(data))
 	if err != nil {
@@ -379,4 +393,24 @@ func (api *StreamingAPI) handleBrowserTeaching(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(body)
+}
+
+// Restoring is a trusted operation in the workspace namespace. The route has
+// no caller-selected profile or addresses, and runs under startup's scope lease.
+func restoreWorkspaceBrowserTabs(ctx context.Context, session string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, workspaceBrowserEndpoint()+"/api/browser/live/"+session+"/restore-tabs", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Workspace-Token", os.Getenv("WORKSPACE_API_TOKEN"))
+	response, err := (&http.Client{Timeout: 65 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	if response.StatusCode != 200 {
+		return fmt.Errorf("cannot restore browser tabs")
+	}
+	return nil
 }

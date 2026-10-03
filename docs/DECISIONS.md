@@ -19,6 +19,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Compact browser chrome and recovery preserve the working browser
+
+Browser tabs and actions share one compact row, with navigation beneath it.
+Managed workflow/project browsers remember their open URLs and selected tab in
+private profile storage and reopen them on startup. Teaching and replay attach
+to the existing daemon over fixed IPC operations, avoiding CLI version changes
+that restart Chrome. A writable viewer that had control may recover a dropped
+managed browser once; passive viewers and local CDP do not launch browsers.
+Interrupted teaching stays interrupted. Ticket:
+[PLAT-393](bugs/pulse_platform/browser/plat-393.md).
+
 ### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy
 
 - **Done.** build-and-activate.sh reads deploy/common/runtime_profile.json and writes every same_everywhere setting into .env and both

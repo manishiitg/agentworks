@@ -26,6 +26,9 @@ func BrowserLiveStream(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Live browser unavailable. Start a browser session with a streaming-capable agent-browser version."})
 		return
 	}
+	if c.GetHeader("X-Browser-Managed") == "true" {
+		monitorBrowserTabs(c.Param("session"))
+	}
 	target := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", port)}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	original := proxy.Director
@@ -38,6 +41,7 @@ func BrowserLiveStream(c *gin.Context) {
 		r.Header.Del("Authorization")
 		r.Header.Del("Cookie")
 		r.Header.Del("X-Workspace-Token")
+		r.Header.Del("X-Browser-Managed")
 		r.Header.Set("Origin", "http://localhost")
 	}
 	proxy.ServeHTTP(c.Writer, c.Request)

@@ -1,0 +1,13 @@
+.live-browser-chrome {
+  container: browser-chrome / inline-size;
+}
+.live-browser-actions > * { flex-shrink: 0; }
+@container browser-chrome (max-width: 760px) {
+  .browser-action-label { display: none; }
+}
+@container browser-chrome (max-width: 520px) {
+  .browser-heading-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .browser-status { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .live-browser-actions { gap: 2px; }
+  .live-browser-tabs [role=tab] { max-width: 100px; }
+}

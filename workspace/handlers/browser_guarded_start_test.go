@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserteach"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/spf13/viper"
 )
@@ -108,6 +109,48 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 	if !strings.Contains(string(run("eval", "localStorage.getItem('signed_in_fixture')")), `"yes"`) {
 		t.Fatal("Repeated startup lost sign-in")
 	}
+	// Teaching must attach to the guarded daemon without changing its process.
+	_, socket, err := browserLiveEndpoint(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(socket, session+".pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	teachBody, _ := json.Marshal(map[string]any{"action": "start", "goal": "Guarded teaching fixture", "workspace_path": workspace, "launch_args": launch})
+	teachResponse := httptest.NewRecorder()
+	teachContext, _ := gin.CreateTestContext(teachResponse)
+	teachContext.Params = gin.Params{{Key: "session", Value: session}}
+	teachContext.Request = httptest.NewRequest("POST", "/", strings.NewReader(string(teachBody)))
+	teachContext.Request.Header.Set("Content-Type", "application/json")
+	BrowserTeaching(teachContext)
+	if teachResponse.Code != 200 {
+		t.Fatalf("Guarded teaching: HTTP %d %s", teachResponse.Code, teachResponse.Body.String())
+	}
+	after, err := os.ReadFile(filepath.Join(socket, session+".pid"))
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("Teaching restarted the browser: before=%s after=%s err=%v", before, after, err)
+	}
+	if value, ok := teachingActive.Load(session); ok {
+		stopTeach(value.(*teachState), "cancelled")
+	}
+	if err := replayTeach(context.Background(), socket, session, &teachState{Actions: []browserteach.Action{{ID: 1, Kind: "navigate", Page: "root", URL: fixture.URL}}, Check: teachCheck{Kind: "text", Value: "Browser ready"}}, nil); err != nil {
+		t.Fatalf("Guarded replay: %v", err)
+	}
+	after, err = os.ReadFile(filepath.Join(socket, session+".pid"))
+	if err != nil || string(before) != string(after) {
+		t.Fatal("Replay restarted the browser", err)
+	}
+	for _, args := range [][]string{{"network", "har", "start", "--content", "none"}, {"console", "--clear"}, {"errors", "--clear"}, {"network", "har", "stop", os.DevNull}} {
+		if _, err := runCaptureCommand(context.Background(), socket, session, args...); err != nil {
+			t.Fatalf("Managed capture %v: %v", args, err)
+		}
+	}
+	after, err = os.ReadFile(filepath.Join(socket, session+".pid"))
+	if err != nil || string(before) != string(after) {
+		t.Fatal("Capture restarted browser", err)
+	}
 	// Qualify viewer paste against the daemon started by the guarded shell.
 	run("eval", "(() => { const field = document.createElement('textarea'); field.id = 'viewer-paste'; document.body.append(field); field.focus(); })()")
 	text := "first line\n日本語🙂 \"quotes\" $(not-a-command)"
@@ -124,4 +167,58 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 	if err := json.Unmarshal(run("eval", "document.querySelector('#viewer-paste').value"), &pasted); err != nil || pasted.Data.Result != text {
 		t.Fatalf("Viewer paste did not preserve multiline Unicode text: %v", err)
 	}
+	// The headless shell has no native Sessions files: persist and reopen its
+	// actual tab strip, including duplicate URLs and the selected tab.
+	run("tab", "new", fixture.URL+"/second")
+	run("tab", "new", fixture.URL+"/removed")
+	run("tab", "close")
+	run("tab", "new", fixture.URL)
+	if err := saveBrowserTabs(context.Background(), socket, session); err != nil {
+		t.Fatal(err)
+	}
+	statePath, err := browserTabsPath(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(statePath)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("Tab state must be private", err)
+	}
+	run("close")
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(socket, session+".pid")); os.IsNotExist(err) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	run("tab")
+	if err := restoreBrowserTabs(context.Background(), session); err != nil {
+		t.Fatalf("Restore tabs: %v", err)
+	}
+	reopened, err := currentBrowserTabs(context.Background(), socket, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	active := ""
+	for _, tab := range reopened {
+		counts[tab.URL]++
+		if tab.Active {
+			active = tab.URL
+		}
+	}
+	if len(reopened) != 3 || counts[fixture.URL+"/"] != 2 || counts[fixture.URL+"/second"] != 1 || active != fixture.URL+"/" {
+		t.Fatalf("Wrong restored tabs: %+v", reopened)
+	}
+	if err := restoreBrowserTabs(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := currentBrowserTabs(context.Background(), socket, session); err != nil || len(again) != 3 {
+		t.Fatal("Repeated restore duplicated tabs", again, err)
+	}
+	if !strings.Contains(string(run("eval", "localStorage.getItem('signed_in_fixture')")), `"yes"`) {
+		t.Fatal("Restored tabs lost sign-in")
+	}
+
 }

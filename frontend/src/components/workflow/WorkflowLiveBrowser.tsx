@@ -68,7 +68,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
     setError('')
     try {
       const { data } = await api.post<{ browser_session: string }>('/api/browser/workspace', { action: 'start' }, {
-        params: { workspace_path: workspacePath, profile_id: profileId }, timeout: 45000,
+        params: { workspace_path: workspacePath, profile_id: profileId }, timeout: 90000,
       })
       setSessions(current => current.some(item => item.browser_session === data.browser_session) ? current : [
         ...current, { browser_session: data.browser_session, workflow_session: 'workspace', label: 'Workspace browser' },
@@ -76,6 +76,9 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
       selectedBrowser.current = data.browser_session
       setSession(data.browser_session)
       setSelection(data.browser_session)
+      reconnectAttempt.current = 0
+      setLinkState('starting')
+      setRetry(value => value + 1)
     } catch (cause) {
       const detail = cause instanceof Error ? (cause as { response?: { data?: unknown } }).response?.data : undefined
       setError(typeof detail === 'string' ? detail : cause instanceof Error ? cause.message : 'Unable to start browser')
@@ -98,6 +101,8 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const [linkState, setLinkState] = useState<BrowserLinkState>('starting')
   const [menuOpen, setMenuOpen] = useState(false)
   const reconnectAttempt = useRef(0)
+  const recovery = useRef<{ key: string; controlled: boolean; attempted: boolean; controller?: AbortController }>({ key: '', controlled: false, attempted: false })
+  const controlAllowed = useRef(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [recording, setRecording] = useState<Recording>({ recording: false })
@@ -143,6 +148,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const readOnly = currentBrowser?.read_only === 'true'
     || (followingActivity && (!currentBrowser || currentBrowser.kind === 'playwright'))
   const canControl = canWrite && !readOnly
+  controlAllowed.current = canControl
   const retainedFrame = !connected && lastPlaywrightFrame?.workspace === workspacePath
     && (followingActivity || session.startsWith('pw-'))
     && (!session || session === lastPlaywrightFrame.session) ? lastPlaywrightFrame.frame : ''
@@ -239,7 +245,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
 
   useEffect(() => {
     pendingTab.current = ''
-    setFrame(''); setTabs([]); setConnected(false); setControlling(false); setError(''); setTeachState({status:'idle'}); pendingTeach.current=''
+    setFrame(''); setTabs([]); setConnected(false); setControlling(false); setError('')
     if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
     if (reconnectAttempt.current === 0) setLinkState('starting')
     if (!session || !workspacePath || sourceCompleted) return
@@ -275,6 +281,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
         } else if (message.type === 'viewer_control') {
           if (message.platform) setBrowserPlatform(message.platform)
           setControlling(message.controlling === true)
+          recovery.current.controlled = message.controlling === true
           setError('')
           if (message.controlling) {
             if (pendingTeach.current) {
@@ -300,6 +307,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     ws.onclose = () => {
       if (disposed) return
       setConnected(false); setControlling(false); setFrame('')
+      pendingTeach.current = ''
+      setTeachState(previous => ['recording', 'paused'].includes(previous.status) ? { ...previous, status: 'interrupted' } : previous)
       if (session.startsWith('pw-')) {
         setError(receivedFrame ? '' : 'Playwright test browser disconnected or finished. Running test browsers appear automatically.')
         return
@@ -310,7 +319,26 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
         const delay = browserReconnectDelayMs(reconnectAttempt.current)
         reconnectAttempt.current += 1
         setLinkState('reconnecting')
-        reconnectTimer.current = setTimeout(() => { reconnectTimer.current = null; setRetry(value => value + 1) }, delay)
+        reconnectTimer.current = setTimeout(() => {
+          reconnectTimer.current = null
+          const intent = recovery.current
+          const key = `${workspacePath}:${session}`
+          // A passive viewer never launches browsers. Only a previously controlled
+          // managed browser gets one authorized recovery, after reconnect failed.
+          if (reconnectAttempt.current >= 2 && intent.key === key && intent.controlled && !intent.attempted && controlAllowed.current && /(?:workflow|project|session|user|guest|workspace)-[a-f0-9]{16}--browser$/.test(session)) {
+            intent.attempted = true
+            intent.controller = new AbortController()
+            void api.post('/api/browser/workspace', { action: 'recover' }, {
+              params: { workspace_path: workspacePath, profile_id: profileId }, signal: intent.controller.signal, timeout: 70000,
+            }).then(() => {
+              if (recovery.current === intent && !intent.controller?.signal.aborted) {
+                reconnectAttempt.current = 0
+                setRetry(value => value + 1)
+              }
+            }).catch(() => { /* Normal reconnects remain bounded; Start browser stays available. */ })
+          }
+          setRetry(value => value + 1)
+        }, delay)
       } else {
         setLinkState('failed')
         console.warn(`[browser] live view for ${session} closed ${BROWSER_RECONNECT_ATTEMPTS} times; check agent-browser streaming and Chrome health on the server`)
@@ -320,12 +348,18 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
     }, 10000)
     return () => { disposed = true; window.clearInterval(heartbeat); ws.close(); if (socket.current === ws) socket.current = null }
-  }, [session, workspacePath, retry, sourceCompleted, allowTeaching])
+  }, [session, workspacePath, retry, sourceCompleted, allowTeaching, profileId])
 
   // A different browser (or leaving the panel) starts a fresh retry budget.
   useEffect(() => {
     reconnectAttempt.current = 0
-    return () => { if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null } }
+    recovery.current.controller?.abort()
+    recovery.current = { key: `${workspacePath}:${session}`, controlled: false, attempted: false }
+    setTeachState({ status: 'idle' }); pendingTeach.current = ''
+    return () => {
+      recovery.current.controller?.abort()
+      if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null }
+    }
   }, [session, workspacePath])
 
   function tryAgain() {
@@ -497,12 +531,12 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   const tertiaryButtonClass = browserActionButtonClass
 
   const controlToggle = connected && canControl && (
-    <button type="button" aria-pressed={controlling} title="Press Esc to give control back" className={tertiaryButtonClass} onClick={() => send({ type: controlling ? 'release_control' : 'take_control' })}>
+    <button type="button" aria-pressed={controlling} aria-label={controlling ? 'Give back to helper' : 'Take control'} title={controlling ? 'Give back to helper (Esc)' : 'Take control'} className={tertiaryButtonClass} onClick={() => send({ type: controlling ? 'release_control' : 'take_control' })}>
       <Hand className="h-4 w-4" aria-hidden="true" />
-      {controlling ? 'Give back to helper' : 'Take control'}
+      <span className="browser-action-label">{controlling ? 'Give back to helper' : 'Take control'}</span>
     </button>
   )
-  const teachToggle = allowTeaching && connected && canControl && <button type="button" className={tertiaryButtonClass} aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" />Teach task</button>
+  const teachToggle = allowTeaching && connected && canControl && <button type="button" className={tertiaryButtonClass} aria-label="Teach task" title="Teach task" aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" /><span className="browser-action-label">Teach task</span></button>
   const startToggle = canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
   function navigateAddress() {
     const value = address.trim()
@@ -513,7 +547,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     send({ type: 'close_tab', tab: tab.tabId })
     if (!tab.active && activeTab) send({ type: 'switch_tab', tab: activeTab.tabId })
   }
-  const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!controlling} className="h-8 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
+  const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!controlling} className="h-7 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
   const expandToggle = !minimal && Boolean(displayFrame) && (
     <button type="button" aria-pressed={expanded} aria-label={expanded ? 'Exit expanded view' : 'Expand browser'} title={expanded ? 'Exit expanded view (Esc)' : 'Expand browser'} className={iconButtonClass} onClick={() => setExpanded(value => !value)}>
       {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}

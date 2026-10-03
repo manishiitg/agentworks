@@ -52,7 +52,7 @@ works before an agent runs. Opening the panel discovers browsers; the Start butt
 launches/reuses the scoped browser through the workspace service.
 
 `GET/POST /api/browser/workspace?workspace_path=...` resolves the browser identity
-on the server. POST accepts `start` or `save`; fixed-workspace products also pass
+on the server. POST accepts `start`, `recover` or `save`; fixed-workspace products also pass
 `profile_id`. The agent API checks product capability and workspace grants. A
 per-scope control gate rejects startup while another controller/action owns it.
 Startup preserves existing tabs and enables streaming only when necessary.
@@ -69,6 +69,32 @@ Chrome's own profile and may also be controlled directly in Chrome; the viewer's
 control lease holds the same per-port lock as agent CDP commands. Sites may expire
 sessions, so saved procedures still require an active sign-in.
 
+## Tabs and reconnection
+
+Connected browser chrome has two 36 px rows: tabs and neutral actions, then
+navigation, address and connection/control status. Narrow panels use labeled
+icons and scroll the tab strip; actions do not wrap into another header.
+
+Each managed browser remembers up to 50 HTTP(S)/blank tab URLs and the selected
+page in `.agentworks-tabs.json` (0600) inside its existing private Chrome profile.
+The service snapshots the live daemon once per second while it remains running,
+even after a previously opened viewer closes. URLs retain their query/fragment
+routing; this is private browser state, distinct from sanitized teaching evidence.
+Passwords, field contents and clipboard text are not stored in the tab file.
+Startup reopens remembered pages when the new browser is blank, or selects the
+remembered page if full Chrome restored the same pages itself. Existing different
+pages always win, and repeated Start does not reset a live page. Headless shell
+cannot rely on Chrome's `--restore-last-session` flag. Local CDP leaves tab
+restoration to the user's Chrome. Unsaved form contents are not restored; changes
+within the last snapshot interval may be lost in a sudden crash.
+
+A dropped stream retries with bounded backoff. After failed reconnects, a writable
+viewer that previously held control may make one authorized managed-browser
+recovery request under the same scope/control gate. Passive watchers and Playwright
+never start a browser; local CDP recovery requires the user to reconnect Chrome.
+Starting a browser manually also resets exhausted reconnect retries. Teaching
+never resumes automatically across an unobserved gap.
+
 ## Teach a browser task
 
 **Start browser → sign in → Teach task → describe the result → demonstrate →
@@ -79,15 +105,17 @@ separate feature; it does not automatically become a learned task.
 Local settings show a compact browser choice: Automatic, Workspace browser or
 My Chrome. Connection ports, diagnostics and setup commands sit under a closed
 Advanced disclosure. Server settings describe the workspace browser without
-redundant mode choices. Start browser is in the top header, followed by an
-address bar and New tab / Close tab when connected. Tab mutations require
+redundant mode choices. Start browser is in the top header; connected tabs
+have close controls and a plus button. Tab mutations require
 exclusive manual control; manually entering an address during teaching records
 an explicit navigation so replay opens it instead of waiting for a link click; closing the sole remaining tab is refused.
 
 ### Capture inside the existing Chrome
 
 `workspace/browserteach` obtains the selected browser's private runtime-provided
-CDP URL and attaches to its selected page. It does not launch another browser,
+CDP URL and attaches to its selected page. Discovery and reviewed replay send
+fixed operations to the existing daemon through its private IPC socket. Managed diagnostic capture uses the same IPC rule. They
+do not invoke another CLI, which could restart the daemon on a version mismatch. It does not launch another browser,
 replace the profile, expose a raw CDP endpoint, or record every Chrome tab.
 The private recorder currently requires a loopback WebSocket endpoint. A local
 container connecting to host Chrome needs additional endpoint qualification.

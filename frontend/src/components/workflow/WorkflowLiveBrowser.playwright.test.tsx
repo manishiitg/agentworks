@@ -302,7 +302,7 @@ it('shows a starting message, then header, tabs and one address bar', async () =
   expect(bar).not.toBeNull()
   expect(host.querySelector('header')).toBe(bar)
   expect(host.textContent).not.toContain('See what your helper does')
-  expect(bar.querySelector('[role="status"]')?.textContent).toBe('Live')
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('Live')
   expect(bar.textContent).not.toContain('https://example.com/pricing')
   expect(host.querySelector('[role="tab"]')?.textContent).toBe('Pricing')
   expect((host.querySelector('[aria-label="Website address"]') as HTMLInputElement).value).toBe('https://example.com/pricing')
@@ -551,4 +551,36 @@ it('keeps tab controls by the tabs and navigation mutations behind manual contro
   expect(buttonNamed(host, 'Give back to helper')?.className).not.toMatch(/amber|bg-primary/)
   await act(async () => { buttonNamed(host, 'Go back')!.click(); buttonNamed(host, 'Go forward')!.click(); buttonNamed(host, 'Reload page')!.click() })
   expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
+})
+
+it('recovers a previously controlled managed browser once and never restarts teaching', async () => {
+  const managed = { browser_session: 'project-0123456789abcdef--browser', workflow_session: 'workspace', label: 'Code browser' }
+  api.get.mockResolvedValue({ data: { sessions: [managed] } })
+  const { host } = await mountBrowser(true)
+  const first = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    first.onmessage?.(frameMessage())
+    first.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    first.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'recording', goal: 'A task' } }) })
+    first.onclose?.()
+    vi.advanceTimersByTime(1000)
+  })
+  const second = FakeSocket.instances.at(-1)!
+  api.post.mockResolvedValue({ data: { browser_session: managed.browser_session } })
+  await act(async () => { second.onclose?.(); vi.advanceTimersByTime(2000) })
+  const recoveries = () => api.post.mock.calls.filter(call => call[0] === '/api/browser/workspace' && call[1]?.action === 'recover')
+  expect(recoveries()).toHaveLength(1)
+  expect(recoveries()[0][2].params.workspace_path).toBe('Workflow/test')
+  await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(15000) })
+  expect(recoveries()).toHaveLength(1)
+  expect(FakeSocket.instances.flatMap(socket => socket.send.mock.calls).some(([value]) => JSON.parse(value).type === 'teach_start')).toBe(false)
+  expect(host.textContent).not.toContain('Recording your task')
+})
+
+it('never launches a missing managed browser for a passive viewer', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [{ browser_session: 'project-0123456789abcdef--browser', workflow_session: 'workspace' }] } })
+  await mountBrowser(true)
+  await act(async () => { FakeSocket.instances.at(-1)!.onmessage?.(frameMessage()); FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(1000) })
+  await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(2000) })
+  expect(api.post.mock.calls.some(call => call[0] === '/api/browser/workspace')).toBe(false)
 })

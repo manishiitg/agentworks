@@ -1,3 +1,9 @@
+## Browser teaching restarted RTS Code; compact chrome and durable tabs — PLAT-393
+
+[PLAT-393](pulse_platform/browser/plat-393.md), locally and on RTS qualified;
+main push and deployment pending. Two compact header rows, profile-owned tab memory, direct teaching IPC
+and bounded recovery of a previously controlled managed browser.
+
 ## Codex resumed chats cancelled after confinement migration — PLAT-392
 
 [PLAT-392](pulse_platform/coding-agent-bridge/plat-392.md), fixed in the shared

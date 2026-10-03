@@ -198,6 +198,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.POST("/browser/live/:session/recording", requireWorkspaceAPIToken(), handlers.BrowserRecording)
 		api.POST("/browser/live/:session/teaching", requireWorkspaceAPIToken(), handlers.BrowserTeaching)
 		api.POST("/browser/live/:session/text", requireWorkspaceAPIToken(), handlers.BrowserViewerText)
+		api.POST("/browser/live/:session/restore-tabs", requireWorkspaceAPIToken(), handlers.BrowserRestoreTabs)
 		api.GET("/browser/processes", handlers.ListBrowserProcesses)
 		api.POST("/browser/cleanup", handlers.KillBrowserProcesses)
 

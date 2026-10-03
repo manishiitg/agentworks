@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/manishiitg/coding-agent-loop/workspace/browserteach"
 	"github.com/spf13/viper"
@@ -307,4 +308,30 @@ func TestTeachingArtifactsAllowOwningAccountSlotReview(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outside, "child")); !os.IsNotExist(err) {
 		t.Fatal("outside directory created")
 	}
+}
+
+func runTeachCommand(ctx context.Context, socket, session string, args ...string) ([]byte, error) {
+	argv := append([]string{"--session", session}, args...)
+	argv = append(argv, "--json")
+	cmd := exec.CommandContext(ctx, "agent-browser", argv...)
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "AGENT_BROWSER_SOCKET_DIR=") {
+			cmd.Env = append(cmd.Env, env)
+		}
+	}
+	cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+socket)
+	var diagnostics strings.Builder
+	cmd.Stderr = &diagnostics
+	out, err := cmd.Output()
+	if err != nil {
+		return out, fmt.Errorf("Browser command failed: %s", strings.TrimSpace(diagnostics.String()))
+	}
+	var result struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+	}
+	if json.Unmarshal(out, &result) == nil && result.Success != nil && !*result.Success {
+		return out, fmt.Errorf("%s", result.Error)
+	}
+	return out, nil
 }

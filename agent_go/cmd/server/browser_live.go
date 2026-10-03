@@ -204,6 +204,9 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 	target.RawQuery = ""
 	headers := http.Header{}
 	headers.Set("X-Workspace-Token", os.Getenv("WORKSPACE_API_TOKEN"))
+	if browser.ViewerCDPPort(session) == 0 {
+		headers.Set("X-Browser-Managed", "true")
+	}
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 	upstream, response, err := dialer.DialContext(r.Context(), target.String(), headers)
 	if err != nil {
