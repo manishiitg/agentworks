@@ -13,11 +13,9 @@ import (
 	"time"
 )
 
-// A managed Chrome must get as far as DevTools inside the sandbox, started the way the app starts it (the headless arguments of
-// browserconfig.HeadlessArgsForSession, through the chrome-agentworks wrapper the deploy installs beside the system Chrome).
-// Excellence 2026-10-03: Chrome launched but "exited early (exit code: 1) without writing DevToolsActivePort".
-// Skips without a system Chrome or the Landlock launcher (AGENTWORKS_LANDLOCK_RUNNER).
-func TestManagedChromeReachesDevToolsInsideTheSandbox(t *testing.T) {
+// managedChromeSandbox sets up what the deploy installs (the launcher beside a `chrome` symlink to the system Chrome) and a native-mode
+// server environment, and returns the isolator, launcher, and a fresh profile folder inside the project grant.
+func managedChromeSandbox(t *testing.T) (*Isolator, string, string) {
 	chrome := "/opt/google/chrome/chrome"
 	if _, err := os.Stat(chrome); err != nil {
 		t.Skip("no system Chrome on this host")
@@ -50,6 +48,15 @@ func TestManagedChromeReachesDevToolsInsideTheSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	iso := &Isolator{ReadPaths: []string{project}, WritePaths: []string{project}, WorkDir: project, BaseDir: project, AllowNetwork: true}
+	return iso, wrapper, profile
+}
+
+// A managed Chrome must get as far as DevTools inside the sandbox, started the way the app starts it (the headless arguments of
+// browserconfig.HeadlessArgsForSession, through the chrome-agentworks wrapper the deploy installs beside the system Chrome).
+// Excellence 2026-10-03: Chrome launched but "exited early (exit code: 1) without writing DevToolsActivePort".
+// Skips without a system Chrome or the Landlock launcher (AGENTWORKS_LANDLOCK_RUNNER).
+func TestManagedChromeReachesDevToolsInsideTheSandbox(t *testing.T) {
+	iso, wrapper, profile := managedChromeSandbox(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	command := strings.Join([]string{
@@ -93,4 +100,36 @@ func TestManagedChromeReachesDevToolsInsideTheSandbox(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A screenshot needs the compositor: through the `chrome -> /opt/google/chrome/chrome` symlink Chrome looked for libvulkan next to the
+// symlink, SwANGLE failed to initialise and the browser died (SIGTRAP, agent-browser "CDP response channel closed") on the first
+// capture. The launcher must run the resolved binary.
+func TestManagedChromeScreenshotsInsideTheSandbox(t *testing.T) {
+	iso, wrapper, profile := managedChromeSandbox(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	shot := filepath.Join(profile, "shot.png")
+	command := strings.Join([]string{wrapper, "--headless=new", "--no-sandbox", "--disable-gpu", "--user-data-dir=" + profile,
+		"--window-size=800,600", "--screenshot=" + shot, "data:text/html,screenshot-test"}, " ")
+	cmd, cleanup, err := iso.ExecuteIsolated(ctx, command, nil)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		t.Fatalf("ExecuteIsolated: %v", err)
+	}
+	output, runErr := cmd.CombinedOutput()
+	_ = exec.Command("pkill", "-f", "--", "--user-data-dir="+profile).Run()
+	data, readErr := os.ReadFile(shot)
+	if readErr != nil || len(data) < 8 || string(data[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("no PNG screenshot (run: %v, read: %v)\n%s", runErr, readErr, lastBytes(output, 1500))
+	}
+}
+
+func lastBytes(data []byte, n int) []byte {
+	if len(data) > n {
+		return data[len(data)-n:]
+	}
+	return data
 }

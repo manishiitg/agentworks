@@ -1,3 +1,9 @@
+## Code project browser starts, screenshots and live-views under the sandbox — PLAT-401
+
+[PLAT-401](pulse_platform/browser/plat-401.md), fixed on main; installed and proved on Excellence, other servers pending.
+Managed Chrome launcher with a writable HOME and the resolved binary, installed by the deploy; regression tests and a
+52-row browser matrix script.
+
 ## Supply-chain loader on the Excellence box; scanner missed it — PLAT-400
 
 [PLAT-400](pulse_platform/security-sandbox/plat-400.md), P1, contained; sweep tool on main. Account owners must rotate

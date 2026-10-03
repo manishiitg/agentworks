@@ -55,10 +55,12 @@ Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
 - **Decided.** Every rootless server starts Chrome through `chrome-agentworks` beside the host's Chrome, selected by
   `AGENT_BROWSER_EXECUTABLE_PATH=<app>/tools/chrome/current/chrome-agentworks` from the standard runtime profile; the deploy installs it
   (`install-managed-chrome.sh`, system Chrome gets `tools/chrome/system`). The launcher runs the real `chrome` binary, not the
-  `/usr/bin/google-chrome` shell script (it writes under HOME), and exports a writable HOME/XDG dir.
+  `/usr/bin/google-chrome` shell script (it writes under HOME), by its resolved path (through the `chrome` symlink Chrome could not find
+  libvulkan and died on the first screenshot), and exports a writable HOME/XDG dir.
 - **Why.** After PLAT-374 removed the mount-namespace fallback, the Landlock sandbox ran Chrome as the service account with a read-only HOME:
   Chrome exited "without writing DevToolsActivePort" (crashpad `--database is required`, SIGTRAP). Reproduced and fixed on Excellence
-  with the launcher plus a writable HOME; `agent-browser open https://example.com` / `get title` then worked in the sandbox.
+  with the launcher plus a writable HOME; `agent-browser open https://example.com` / `get title` then worked in the sandbox, and screenshots and the live view
+  after the resolved-path fix ([PLAT-401](bugs/pulse_platform/browser/plat-401.md)); `verify-browser-matrix.py` re-checks all of it after a deploy.
 - **Where.** `deploy/rootless-linux/chrome-agentworks`, `install-managed-chrome.sh`, `build-and-activate.sh`, `deploy/common/runtime_profile.json`;
   regression test `workspace/security/chrome_devtools_linux_test.go` (skips without Chrome or the Landlock launcher).
   Confida and Dominion share the Excellence box and deploy through the same script: they need the same deploy (separate `<app>/tools/chrome`).
