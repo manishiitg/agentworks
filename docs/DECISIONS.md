@@ -42,6 +42,9 @@ Design references for the linked runtime decisions:
 - **Scratch folders** the platform creates for a sandboxed command (`.tmp`, `.cache`, ...) are now group-writable: a slot
   could not create a temp file in its own TMPDIR (the private-terminal launcher failed on this).
 - **Not on RTS yet.** A raw shell can reach the instance role through IMDS; that exposure is still open there.
+- **Known limit.** Code's sandbox is strict, so this works. A *non-strict* guard as a slot still fails on a host where the platform's
+  Gmail tool config folder is service-only (Excellence: `stat .../gog: permission denied`); that affects non-strict workflow
+  shells too and is tracked as the open gog-config gap.
 - **Tests.** Real-sandbox shell tests on a Linux host (`interactive_shell_e2e_linux_test.go`, including private PTY) and
   `interactive_shell_slot_e2e_linux_test.go`, run on Confida: the shell is the user's slot, has a pty, cannot read the
   service `.env` or list other people's folders. Sweep of orphaned shells: `interactive_shell_sweep_test.go`.

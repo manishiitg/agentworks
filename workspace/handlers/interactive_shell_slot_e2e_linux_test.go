@@ -73,7 +73,8 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	}
 	id := "slot-e2e-" + strings.ToLower(slot)
 	defer post("/stop", map[string]any{"shell_id": id})
-	guard := map[string]any{"enabled": true, "read_paths": []string{project + "/"}, "write_paths": []string{project + "/"}}
+	// Code's sandbox policy is strict (agent_go/internal/codeproduct/product.yaml), so the terminal's guard is too.
+	guard := map[string]any{"enabled": true, "strict_allowlist": true, "read_paths": []string{project + "/"}, "write_paths": []string{project + "/"}}
 	if code := post("/start", map[string]any{"shell_id": id, "working_directory": project, "folder_guard": guard}); code != 200 {
 		t.Fatalf("start as the slot = %d", code)
 	}
@@ -93,8 +94,10 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 		t.Fatalf("attach: %v", err)
 	}
 	defer conn.Close()
+	// The service's own .env sits two folders above the docs folder (<app>/data/docs -> <app>/.env).
+	platformEnv := filepath.Join(filepath.Dir(filepath.Dir(docs)), ".env")
 	script := "id -un > who.txt; tty > tty.txt 2>&1; " +
-		"cat /srv/confida/.env > env.txt 2>&1; ls /srv/confida/data/docs/_users > users.txt 2>&1; " +
+		"cat " + shellQuote(platformEnv) + " > env.txt 2>&1; ls " + shellQuote(filepath.Join(docs, "_users")) + " > users.txt 2>&1; " +
 		"echo done > done.txt\r"
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(script)); err != nil {
 		t.Fatal(err)
