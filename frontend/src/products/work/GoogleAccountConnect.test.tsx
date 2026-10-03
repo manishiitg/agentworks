@@ -25,6 +25,43 @@ const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountCo
 }
 
 describe('GoogleAccountConnect', () => {
+  it('keeps saved access visible while adding and removing services, and discards edits on Cancel', async () => {
+    status.mockResolvedValue({ configured: true, redirect_uri: '' })
+    const host = await render()
+    const account = { id: 'existing', email: 'me@example.com', allow_read_access: true, services: [{ service: 'drive', write: true }] } as GmailConnection
+    await act(async () => changeGoogleAccountAccess(account, 'Chats/Code/projects/p1'))
+    const drive = host.querySelector('[data-testid="google-access-drive"]')!
+    const docs = host.querySelector('[data-testid="google-access-docs"]')!
+    expect(drive.textContent).toContain('Current: Read and edit')
+    expect(docs.textContent).toContain('Current: No access')
+    await act(async () => (host.querySelector('[aria-label="Remove Drive access"]') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('[aria-label="Add Docs access"]') as HTMLButtonElement).click())
+    expect((drive.querySelector('select') as HTMLSelectElement).value).toBe('off')
+    expect((docs.querySelector('select') as HTMLSelectElement).value).toBe('read')
+    expect(drive.textContent).toContain('Current: Read and edit')
+    expect(docs.textContent).toContain('Current: No access')
+    expect(host.textContent).toContain('2 unsaved changes')
+    expect(connect).not.toHaveBeenCalled()
+    expect(reconnect).not.toHaveBeenCalled()
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Cancel')!.click())
+    expect(host.textContent).not.toContain('Current:')
+    expect((drive.querySelector('select') as HTMLSelectElement).value).toBe('read')
+    expect((docs.querySelector('select') as HTMLSelectElement).value).toBe('off')
+  })
+
+  it('removes Gmail agent access without removing its notification permission', async () => {
+    status.mockResolvedValue({ configured: true, redirect_uri: '' })
+    connect.mockResolvedValue({ id: 'c1', auth_url: 'https://accounts.google.com/auth' })
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    try {
+      const host = await render()
+      await act(async () => (host.querySelector('[aria-label="Remove Gmail access"]') as HTMLButtonElement).click())
+      expect(host.querySelector('[data-testid="google-access-gmail"]')?.textContent).toContain('Notifications only')
+      await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Connect Google account'))!.click())
+      expect(connect).toHaveBeenCalledWith(expect.objectContaining({ allow_read_access: false, allow_agent_write_access: false }))
+    } finally { open.mockRestore() }
+  })
+
   it('keeps the existing connection and send-only access when changing a legacy account', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     reconnect.mockResolvedValue({ id: 'legacy', auth_url: 'https://accounts.google.com/auth' })
@@ -47,6 +84,7 @@ describe('GoogleAccountConnect', () => {
     const host = await render({ workspacePath: 'Workflow/support', privateAccount: false, readOnly: true })
     expect(host.textContent).toContain('An administrator manages shared Google accounts')
     expect([...host.querySelectorAll('select')].every(select => select.disabled)).toBe(true)
+    expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label$=" access"]')].every(button => button.disabled)).toBe(true)
     await act(async () => ([...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account') as HTMLButtonElement).click())
     await act(async () => changeGoogleAccountAccess({ id: 'shared', email: 'me@example.com' } as GmailConnection, 'Workflow/support'))
     expect(host.textContent).not.toContain('Change access for')

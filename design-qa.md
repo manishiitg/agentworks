@@ -1,3 +1,70 @@
+# Google account permissions design QA
+
+Source visual truth: `/var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/codex-clipboard-1941a458-68d4-4976-84b3-82c058be1730.png`.
+Implementation evidence: `/tmp/agentworks-google-access-qa/form-dark.png`,
+`edit-dark.png`, `edit-narrow-fixed.png`, `form-light.png` in the same directory.
+Full-view comparison: `/tmp/agentworks-google-access-qa/comparison.png` places the
+original screenshot and redesigned form together at native pixel scale.
+
+Viewport: form and account editing at 700×900 CSS pixels; narrow sidebar at
+360×820. Source: 732×275 pixels, including surrounding app edges. Implementation
+captures use device scale 1 and native 700-pixel width; narrow capture uses 360.
+No density scaling. The requested redesign intentionally increases form height
+from the original compact dropdown grid to service cards. Comparison is of the
+Google form region; it is not a claim of matching the original pixel for pixel.
+
+State: initial connect with Gmail/Drive/Calendar read-only, other services off;
+existing sample account, two pending permission edits; Cancel; dark and light.
+The preview renders the production components with sample API responses. Live
+account creation, consent and removal were not performed.
+
+## Findings
+
+No actionable P0/P1/P2 findings remain.
+
+- Typography: existing app sans-serif, 14px service headings, 12px descriptions
+  and permissions. Labels remain readable; long account names wrap.
+- Spacing/layout: two service columns at reference width, one at narrow width.
+  Controls and footer remain inside the form. The narrow page measures 360px
+  document width for a 360px viewport, with 294px service cards.
+- Colors/tokens: existing background, border, primary and muted tokens used.
+  Pending access changes have both a Changed label and border tint; status is
+  also conveyed in text. Light and dark variants were inspected.
+- Asset fidelity: existing vendored Google, Gmail, Drive, Calendar, Docs, Sheets
+  and Slides marks; no approximate custom marks. Icons remain crisp.
+- Copy/content: current agent access is distinguished from pending selection.
+  Notifications-only Gmail access is explained; no claim of OAuth revocation.
+
+## Comparison history
+
+1. P2 at 360px: action buttons squeezed the account email into an awkward final
+   one-character line. Evidence: `edit-narrow.png`. Fixed by reserving a 10rem
+   flex basis for account identity so actions wrap onto the next row.
+2. Retest at the same viewport/state: `edit-narrow-fixed.png` shows the email
+   on one line with actions below. No overflow or actionable layout issue.
+
+Focused region comparison: all form controls and typography are readable at
+native 700px capture size in the combined comparison, so no extra crop needed.
+The editing and narrow screenshots cover the additional requested states.
+
+## Implementation checklist
+
+- Service icons, saved permission labels and Add/Remove controls implemented.
+- Saved values remain visible while edits change; Cancel discards the edits.
+- Existing connection ID, workspace isolation and read-only gating tested.
+- Browser Add/Remove, write selection and Cancel interactions verified.
+- No console errors on the corrected isolated preview origin (5220). Initial
+  generic fixture import failed; the fixture now replaces the API module with
+  sample responses and uses the real UI components.
+
+Residual test gap: live Google consent was not performed in visual QA.
+
+final result: passed
+
+---
+
+## Previous QA report (preserved)
+
 # Design QA — Schedule Description Width
 
 - Source visual truth: `/var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/codex-clipboard-ee9b83c3-236e-4f12-9682-7b2bf8e0bf66.png`

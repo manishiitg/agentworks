@@ -13,6 +13,28 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Google service permission cards and resumed Claude quota notices
+
+- Google account setup uses the existing Google Workspace brand marks, service
+  cards and explicit Add/Remove controls across products. Existing accounts show
+  all six services' saved agent permissions; Change access keeps the saved value
+  visible alongside unsaved selections. Cancel restores new-account defaults.
+- Permissions remain account-owner/admin controlled. Removing Gmail agent access
+  leaves server notification sending available; removing a service restricts
+  agent access and does not claim to revoke the Google OAuth token. Changes keep
+  the connection ID and its OAuth client, then request Google consent as before.
+- RTS investigation: at 2026-10-03 08:25 UTC the resumed SDE Code session reported
+  quota exhaustion while its native transcript recorded successful tool calls.
+  Its only native quota notice was from October 1. Resume redraw made historical
+  scrollback appear new before a structured usage statusline was available.
+  The provider now considers quota notices only after the latest nonempty user
+  prompt, preserving fresh walls, empty-composer cases and other fatal statuses.
+  Provider fix: `e38d33f`; regression tests live in
+  `claudecode_resumed_quota_test.go` in the provider repo.
+- Validation: Google permission component/integration tests, production frontend
+  build and dark/light/narrow visual checks; Claude adapter tests. Live RTS still
+  needs a deployment of these changes; this investigation did not restart it.
+
 ### 2026-10-03 — Cursor offers GLM and Grok choices plus the CLI's live list
 
 - Add Cursor's officially documented `glm-5.3`, `glm-5.3-flash`, and `grok-4.6`

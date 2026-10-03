@@ -2,13 +2,24 @@ import type { GmailConnection } from '../../services/api-types'
 
 export type GoogleAccessLevel = 'off' | 'read' | 'write'
 
-export const GOOGLE_SERVICES: { key: string; label: string }[] = [
-  { key: 'drive', label: 'Drive' },
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'docs', label: 'Docs' },
-  { key: 'sheets', label: 'Sheets' },
-  { key: 'slides', label: 'Slides' },
+export const GOOGLE_SERVICES = [
+  { key: 'drive', label: 'Drive', icon: 'googledrive', description: 'Files and folders' },
+  { key: 'calendar', label: 'Calendar', icon: 'googlecalendar', description: 'Events and schedules' },
+  { key: 'docs', label: 'Docs', icon: 'googledocs', description: 'Documents' },
+  { key: 'sheets', label: 'Sheets', icon: 'googlesheets', description: 'Spreadsheets' },
+  { key: 'slides', label: 'Slides', icon: 'googleslides', description: 'Presentations' },
 ]
+
+export const GOOGLE_ACCESS_SERVICES = [
+  { key: 'gmail', label: 'Gmail', icon: 'gmail', description: 'Email and drafts' },
+  ...GOOGLE_SERVICES,
+]
+
+export function googleAccessLabel(key: string, level: GoogleAccessLevel): string {
+  if (level === 'off') return key === 'gmail' ? 'Notifications only' : 'No access'
+  if (level === 'read') return 'Read only'
+  return key === 'gmail' ? 'Read, draft and send' : 'Read and edit'
+}
 
 /** The access a connection has, in the Connect form's terms. */
 export function googleAccessLevels(conn: GmailConnection): { gmail: GoogleAccessLevel; levels: Record<string, GoogleAccessLevel> } {
