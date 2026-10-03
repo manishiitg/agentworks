@@ -6,7 +6,7 @@ Each project gets a stable address such as `you+agent-<id>@yourdomain.com`. Mail
 
 ## Setup (ask the Builder)
 
-The Email and Triggers panes are read-only — they show the address, readiness, and delivery activity. The Builder does the configuration. In the project's chat, ask it to set up incoming email. It will:
+The Email and Triggers panes are read-only — they show the address, readiness, and delivery activity. Use **Ask AI** on the Incoming email card, or ask the project's chat to set up incoming email. The button opens setup help in that project's chat or workflow Builder, even when administrator setup is still needed. The Builder does the configuration. It will:
 
 1. Check that this deployment can receive mail (an operator enables this once per server; without it, setup stops here).
 2. Use your connected mailbox, or prepare a Google sign-in link for a new one. You complete Google's consent yourself; Builder checks the result afterward. Code owners connect their own private accounts; an administrator connects shared Crew/workflow accounts.

@@ -3,6 +3,14 @@ import { agentApi } from '../../../services/api'
 import type { GmailConnection, GmailInboundState } from '../../../services/api-types'
 import { Button } from '../../ui/Button'
 import { FormSection } from '../../ui/FormSection'
+import { AskAIButton } from '../AskAIButton'
+import { buildAskAIMessage } from '../../../utils/askAIMessage'
+
+const setupMessage = buildAskAIMessage({
+  view: 'Incoming email',
+  summary: 'Help me connect Gmail and choose what incoming email should start.',
+  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. If the deployment is not configured, explain what its administrator must enable; never request credentials in chat or edit server credential files. Return the receiving address and verified readiness. The Incoming email panel is read-only.',
+})
 
 function errorMessage(error: unknown): string {
   const response = (error as { response?: { data?: unknown } })?.response?.data
@@ -11,7 +19,7 @@ function errorMessage(error: unknown): string {
 
 // Configuration belongs to Builder tools. Both Email and Triggers show this
 // same persisted route without granting mutation authority to the pane.
-export function GmailInboundPanel({ workspacePath, connections = [], refreshToken = 0, onCounts }: { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
+export function GmailInboundPanel({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk }: { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const [state, setState] = useState<GmailInboundState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +64,7 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
     ...(filters?.has_attachments === undefined ? [] : [filters.has_attachments ? 'Has attachments' : 'No attachments']),
     ...(filters?.new_threads_only ? ['New threads only'] : []),
   ]
-  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose the workflow route, or disable this trigger. This panel shows the saved configuration.">
+  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose the workflow route, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={setupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {state && !state.configured && <p className="text-muted-foreground">An administrator needs to enable Gmail incoming email for this deployment.</p>}

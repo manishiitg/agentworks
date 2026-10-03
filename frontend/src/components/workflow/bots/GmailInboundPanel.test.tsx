@@ -3,9 +3,12 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GmailInboundState } from '../../../services/api-types'
+import { TooltipProvider } from '../../ui/tooltip'
 
-vi.mock('../../../services/api', () => ({ agentApi: { getGmailInboundRoute: vi.fn() } }))
+vi.mock('../../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn() } }))
+vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn().mockResolvedValue({}) }))
 import { agentApi } from '../../../services/api'
+import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import { GmailInboundPanel } from './GmailInboundPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -15,9 +18,34 @@ const connections = [{ id: 'gmail', email: 'owner@example.com', display_name: 'O
 describe('Gmail incoming email settings', () => {
   let host: HTMLDivElement
   let root: Root
-  const render = async (path = 'Workflow/test') => { await act(async () => root.render(<GmailInboundPanel workspacePath={path} connections={connections} />)) }
+  const render = async (path = 'Workflow/test', onAsk?: (message: string) => void) => { await act(async () => root.render(<TooltipProvider><GmailInboundPanel workspacePath={path} connections={connections} onAsk={onAsk} /></TooltipProvider>)) }
   beforeEach(() => { vi.resetAllMocks(); vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(enabled); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-  afterEach(async () => { await act(async () => root.unmount()); host.remove() })
+  afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
+
+  const ask = async () => {
+    const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask AI')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => button.click())
+    clock.mockReturnValue(1700)
+    await act(async () => button.click())
+  }
+
+  it('offers setup help when the deployment is disabled and sends it to this workflow Builder', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })
+    await render()
+    expect(host.textContent).toContain('An administrator needs to enable')
+    await ask()
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ workspacePath: 'Workflow/test', message: expect.stringContaining('Inspect get_gmail_trigger') })
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the project chat override rather than looking up a workflow for a Code project', async () => {
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    await ask()
+    expect(onAsk).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('wait for me to complete consent'))
+    expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+  })
 
   it('shows saved routing without controls that can change it', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, workflow_trigger: true, route_selections: { triage: 'support' }, group_names: ['prod'] } })
@@ -28,7 +56,7 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('Ready to receive email.')
     expect(host.textContent).toContain('Ask Builder')
     expect(host.querySelector('select, input, form')).toBeNull()
-    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Copy email address', 'Refresh email activity'])
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Refresh email activity'])
   })
 
   it('refreshes saved configuration after Builder changes it', async () => {
@@ -50,7 +78,7 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('all must match')
     expect(host.textContent).toContain('Body does not match the required keywords')
     expect(host.querySelector('select, input, form')).toBeNull()
-    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Copy email address', 'Refresh email activity'])
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Refresh email activity'])
   })
 
   it('ignores a late response from the previously selected workspace', async () => {

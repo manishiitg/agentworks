@@ -17,7 +17,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update API triggers'
 }
 
-export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts }: { workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
+export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { workspacePath: string | null; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
@@ -111,7 +111,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p className="min-w-0 [overflow-wrap:anywhere]">Create a webhook or change its routing by asking Builder. Each webhook accepts up to four deliveries at once; additional deliveries receive a retry response.</p>
       </div>
-      <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} />
+      <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onAsk={onAsk} />
       {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {issued?.secret && (
         <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">

@@ -13,6 +13,24 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
+
+- **UI.** Incoming email's read-only card offers the shared Ask AI button in
+  both Email and Triggers, including when deployment setup is missing. It sends
+  Gmail setup guidance to the target's interactive chat; Crew/Code use their
+  project chat callback and workflow targets use Builder. Consent and trigger
+  configuration remain in Builder tools, with no direct pane mutations.
+- **Excellence diagnosis and configuration.** The live agent's Google app was
+  absent under its current HOME `/srv/agents/home`; Gmail inbound environment
+  settings were also absent. Imported the matching downloaded web OAuth client
+  (project `excellence-jobs-b45cc`, callback on the Excellence domain) using the
+  running binary's `server set-mcp-app` command and the live service environment,
+  as the service account. Verified the sealed file is service-owned and 0600.
+  No code deployment or restart. Google account consent remains a human step.
+- **Open rollout requirement.** Google sign-in app configuration does not enable
+  Gmail inbound delivery: Pub/Sub, topic mapping and receiver authentication
+  still need operator setup on Excellence before triggers can be enabled.
+
 ### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them
 
 - **Found.** Confida kept 15 releases (14 GB) and Excellence 5, because the pruner keeps any release with a

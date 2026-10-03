@@ -17,8 +17,11 @@ access token (a `GITHUB_TOKEN` secret) used with git and the API.
 
 - **Admin, once:** Integrations → Gmail → "Google sign-in app": upload the Google OAuth client JSON
   (or paste the id and secret). It is the deployment's Google app, stored sealed at
-  `<tokens>/_platform/apps/google.json` (the same store the MCP sign-in used; RTS and excellence
-  already have it). The card shows the redirect URI to register and the APIs to enable.
+  `<tokens>/_platform/apps/google.json` (the same store the MCP sign-in used).
+  Confirm the app exists in the running service's credential root; a downloaded
+  JSON alone does not configure the server. Excellence's app was missing from
+  its current HOME and was imported again on 2026-10-03. The card shows the
+  redirect URI to register and the APIs to enable.
 - **A Code's owner:** Integrations → Gmail → **Connect Google account**: choose what the agent may
   use (Gmail: not used / read only / read, draft and send; Drive, Calendar, Docs, Sheets, Slides:
   not used / read only / read and edit), sign in with their own Google account, personal or work.

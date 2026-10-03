@@ -338,7 +338,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
 
   return (
     <div className="space-y-4">
-      {workspacePath && scopeNoun !== 'relay' && <GmailInboundPanel workspacePath={workspacePath} connections={gmailConnections} />}
+      {workspacePath && scopeNoun !== 'relay' && <GmailInboundPanel workspacePath={workspacePath} connections={gmailConnections} onAsk={onAsk} />}
       {gmailLoading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
       ) : (
