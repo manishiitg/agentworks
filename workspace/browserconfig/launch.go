@@ -10,6 +10,7 @@ import (
 
 const SharedSession = "shared-browser"
 const ProfileEnv = "AGENT_BROWSER_SHARED_PROFILE"
+const ProfileRootEnv = "AGENT_BROWSER_PROFILE_ROOT"
 
 func SharedProfile() string {
 	profile := strings.TrimSpace(os.Getenv(ProfileEnv))
@@ -94,7 +95,23 @@ func SocketDirForSession(session string) string {
 func ProfilePathForSession(session string) string {
 	profile := SharedProfile()
 	if profile == "" {
-		return ""
+		// Explicit legacy configuration retains its ephemeral/invalid behavior.
+		// New scoped browsers remember sign-ins without enabling global sharing.
+		if _, explicit := os.LookupEnv(ProfileEnv); explicit || (!workflowSession.MatchString(session) && !projectSession.MatchString(session)) {
+			return ""
+		}
+		base := strings.TrimSpace(os.Getenv(ProfileRootEnv))
+		if base == "" {
+			config, err := os.UserConfigDir()
+			if err != nil {
+				return ""
+			}
+			base = filepath.Join(config, "agentworks", "browser-profile")
+		}
+		if !filepath.IsAbs(base) || filepath.Clean(base) == string(filepath.Separator) {
+			return ""
+		}
+		profile = filepath.Clean(base)
 	}
 	if IsUserSession(session) {
 		profileRoot := profile + "-users"

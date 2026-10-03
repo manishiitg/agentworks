@@ -11,7 +11,7 @@ import (
 
 // Persistent CLI turns reuse their registered tools. Read browser intent at
 // invocation time so saving workflow settings takes effect without a new chat.
-// A disabled or missing configuration remains disabled, even with the tool present.
+// An invalid or missing configuration remains disabled, even with the tool present.
 func workflowBrowserExecutors(sessionID, workspacePath string, readManifest func(context.Context, string) (*WorkflowManifest, bool, error)) codingAgentToolExecutors {
 	return codingAgentToolExecutors{"agent_browser": func(ctx context.Context, args map[string]interface{}) (string, error) {
 		manifest, found, err := readManifest(ctx, workspacePath)
@@ -22,8 +22,8 @@ func workflowBrowserExecutors(sessionID, workspacePath string, readManifest func
 		var ports []int
 		if found && manifest != nil {
 			switch strings.ToLower(strings.TrimSpace(manifest.Capabilities.BrowserMode)) {
-			case "auto", "headless", "cdp":
-				mode = strings.ToLower(strings.TrimSpace(manifest.Capabilities.BrowserMode))
+			case "", "none", "auto", "headless", "cdp":
+				mode = effectiveWorkspaceBrowserMode(manifest.Capabilities.BrowserMode)
 			}
 			ports = configuredCDPPortsForMode(mode, nil, manifest.Capabilities.CDPPorts)
 		}

@@ -419,3 +419,13 @@ it('maps pointer positions through the letterboxed frame', () => {
   expect(mapToViewport(250, 0, rect, { width: 1000, height: 1000 })).toEqual({ x: 0, y: 0 })
   expect(mapToViewport(10, 490, rect, { width: 1000, height: 1000 })).toEqual({ x: 0, y: 980 })
 })
+
+it('lets the user start a scoped browser before an agent opens one', async () => {
+ api.get.mockResolvedValue({ data: { sessions: [] } })
+ const { host } = await mountBrowser()
+ api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
+ const start = [...host.querySelectorAll('button')].find(button => button.textContent === 'Start browser')!
+ await act(async () => { start.click() })
+ expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Workflow/test', profile_id: undefined } }))
+ expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
+})

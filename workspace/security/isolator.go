@@ -202,6 +202,16 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		cleanup()
 		return nil, nil, err
 	}
+	// Chrome outlives this CLI invocation. Its IPC files must survive the
+	// per-command scratch cleanup, within this browser's private socket scope.
+	runtimeTmp := tmp
+	if browserSocket != "" && (command == "agent-browser" || strings.HasPrefix(strings.TrimSpace(command), "agent-browser ")) {
+		runtimeTmp = filepath.Join(browserSocket, "tmp")
+		if err := os.MkdirAll(runtimeTmp, 0700); err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("prepare browser temporary directory: %w", err)
+		}
+	}
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		filtered := cmd.Env[:0]
 		for _, value := range cmd.Env {
@@ -209,11 +219,11 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 				filtered = append(filtered, value)
 			}
 		}
-		cmd.Env = append(filtered, key+"="+tmp)
+		cmd.Env = append(filtered, key+"="+runtimeTmp)
 	}
 	// No workflow or Crew folder to keep a home in: this command's own
 	// scratch, never the shared /tmp.
-	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(tmp, "home"))
+	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(runtimeTmp, "home"))
 	if browserSocket != "" {
 		cmd.Env = replaceEnv(cmd.Env, "AGENT_BROWSER_SOCKET_DIR", browserSocket)
 	}

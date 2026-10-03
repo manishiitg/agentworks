@@ -13,6 +13,56 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Browser startup, scope settings and structured teaching implemented
+
+- **Decision (user).** Implement the browser ownership, manual sign-in and teaching
+  design discussed above. Ordinary workflow `none`/missing modes now migrate to
+  `auto`; server deployments with CDP disabled use managed Chrome even for old
+  CDP settings. SparkQuill child and Dominion restrictions remain enforced.
+- **Done.** Shared browser panels can start/reuse the scope's browser before an
+  agent runs. Project `.browser-settings.json` is canonical. Managed scope
+  profiles persist by default without enabling the legacy global shared browser;
+  explicit existing ephemeral/profile environment overrides retain their intent.
+- **Teaching.** The private CDP recorder captures genuine DOM actions in the
+  existing selected Chrome, navigation and eligible visual evidence. Exclusive
+  manual control also blocks agent CDP actions. Login precedes teaching; sensitive
+  fields and paused edits are excluded. Disconnect/timeout yields interrupted
+  evidence, not a tested skill. The helper reviews a draft in the scope; the user
+  reviews parameters, guidance and a page outcome before real-action replay.
+- **Reuse.** Publication requires a service-held successful-test fingerprint.
+  Workflows link a learning reference from `_global/SKILL.md`; projects save under
+  `skills/`, Crew/Code select the skill, and product prompts point to the scope's
+  tested-procedure index. No per-user browser/learning store was introduced.
+- **Server handoff.** Browser shell requests carry the trusted account identity
+  and a scope guard. Startup lists tabs instead of calling URL-less `open`, which
+  resets the page in the qualified runtime. Local CDP startup takes the shared port lock too. Viewer/teaching commands retain the
+  selected runtime launch flags; attached CDP never acquires managed profile
+  flags. Chrome IPC uses its private scope directory beyond command cleanup.
+  Docker Compose shares a persistent profile volume and the same absolute profile
+  base between services, avoiding different container-home defaults.
+  Teaching files inherit the workspace group so Linux account slots can review
+  the draft and read published skills without opening another account's scope.
+- **Verified locally.** Authenticated workspace-service startup through replay
+  and publication, repeated Start retaining the signed-in page, real Chrome
+  capture/replay, semantic targeting, parameter
+  input, sign-in persistence on restart, JPEG evidence, repeated sessions and
+  password/paused-navigation privacy; Go race checks, API/control tests and the
+  production frontend build. Runtime proof uses agent-browser 0.38.2. Deployment
+  updates/restarts are not performed by this source change.
+- **Baseline test limits.** Broader product checks still fail on
+  `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
+  `TestSalesCrewCatalogHasInstallableRoles`, and `TestCodePreparedSystemPrompt`
+  (missing Claude deployment token). All three also fail in a separate clean
+  `origin/main` worktree; they are not introduced by the browser change.
+- **Open coverage.** Multi-tab replay, cross-process frames, shadow DOM, canvas,
+  native dialogs/uploads and downloaded-artifact outcome validation need further
+  qualification. Page text/URL checks do not prove a download. CDP recorder
+  connections currently require loopback; host-Chrome/container attachment needs
+  qualification. Broad retention/quota administration remains follow-up work.
+- **Guide.** [Browser](core/browser.md) is the consolidated reference, updated with
+  implemented behavior, runtime requirements and exact remaining limitations.
+
+
 ### 2026-10-03 — Google service permission cards and resumed Claude quota notices
 
 - Google account setup uses the existing Google Workspace brand marks, service

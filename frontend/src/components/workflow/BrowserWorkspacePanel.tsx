@@ -6,6 +6,7 @@ import WorkflowLiveBrowser from './WorkflowLiveBrowser'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
+import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -23,6 +24,7 @@ interface BrowserWorkspacePanelProps {
   onSave?: () => void
   assistantControl?: ReactNode
   scopeNoun?: 'workflow' | 'project'
+  profileId?: string
 }
 
 /**
@@ -46,6 +48,7 @@ export function BrowserWorkspacePanel({
   onSave,
   assistantControl,
   scopeNoun = 'workflow',
+  profileId,
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
@@ -61,9 +64,12 @@ export function BrowserWorkspacePanel({
     })
     : <>{assistantControl}{walkthrough}</>
 
+  const learn = isValidElement<WorkspaceViewActionsProps>(assistantControl) ? assistantControl.props.onAsk : undefined
+  const onLearn = learn ?? (workspacePath ? (message: string) => sendWorkspacePaneMessageToChat({ workspacePath, message }) : undefined)
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
-      <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} showGuide={false} toolbar={<>
+      <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
       </>} />

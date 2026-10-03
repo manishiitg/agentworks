@@ -1830,8 +1830,8 @@ func applyManifestDefaults(m *WorkflowManifest) {
 	if m.SchemaVersion == 0 {
 		m.SchemaVersion = 1
 	}
-	if m.Capabilities.BrowserMode == "" {
-		m.Capabilities.BrowserMode = "none"
+	if m.Capabilities.BrowserMode == "" || m.Capabilities.BrowserMode == "none" {
+		m.Capabilities.BrowserMode = "auto"
 	}
 	if m.Capabilities.SelectedServers == nil {
 		m.Capabilities.SelectedServers = []string{}

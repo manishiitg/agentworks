@@ -801,6 +801,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 
 	// Execute via client
 	opts := &ExecuteOptions{
+		UserID:           common.SessionUserIDFromContext(ctx),
 		Timeout:          timeout,
 		FolderGuard:      folderGuard,
 		WorkingDirectory: workingDir,

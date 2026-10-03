@@ -258,7 +258,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         if (editingPreset.enableBrowserAccess) {
           setBrowserModeState('headless');
         } else {
-          setBrowserModeState('none');
+          setBrowserModeState('auto');
         }
       }
       setCdpPort(editingPreset.cdpPorts?.[0] || 9222);

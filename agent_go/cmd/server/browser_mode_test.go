@@ -151,7 +151,7 @@ func TestApplyMultiAgentCapabilitiesToRequestOverridesRequestCapabilities(t *tes
 
 }
 
-func TestApplyMultiAgentCapabilitiesToRequestDisablesBrowserForNone(t *testing.T) {
+func TestApplyMultiAgentCapabilitiesMigratesLegacyNoneToAuto(t *testing.T) {
 	enabled := true
 	req := QueryRequest{
 		BrowserMode:          "cdp",
@@ -161,11 +161,11 @@ func TestApplyMultiAgentCapabilitiesToRequestDisablesBrowserForNone(t *testing.T
 
 	applyMultiAgentCapabilitiesToRequest(&req, WorkflowCapabilities{BrowserMode: "none"})
 
-	if req.BrowserMode != "none" {
-		t.Fatalf("browser mode = %q, want none", req.BrowserMode)
+	if req.BrowserMode != "auto" {
+		t.Fatalf("browser mode = %q, want auto", req.BrowserMode)
 	}
-	if req.EnableBrowserAccess == nil || *req.EnableBrowserAccess {
-		t.Fatalf("EnableBrowserAccess = %v, want false for none", req.EnableBrowserAccess)
+	if req.EnableBrowserAccess == nil || !*req.EnableBrowserAccess {
+		t.Fatalf("EnableBrowserAccess = %v, want true for legacy none", req.EnableBrowserAccess)
 	}
 	if req.UseCodeExecutionMode {
 		t.Fatalf("UseCodeExecutionMode = true, want saved false")

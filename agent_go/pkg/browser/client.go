@@ -66,6 +66,7 @@ func (c *Client) CheckCDP(ctx context.Context, port int) (bool, string, error) {
 // ExecuteOptions contains optional configuration for command execution
 type ExecuteOptions struct {
 	Timeout          time.Duration
+	UserID           string // Trusted caller identity for workspace account-slot checks.
 	FolderGuard      *FolderGuardConfig
 	WorkingDirectory string // Working directory for command execution (relative to workspace root)
 	ArtifactTransfer *ArtifactTransfer
@@ -137,6 +138,9 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if opts != nil && opts.UserID != "" {
+		req.Header.Set("X-User-ID", opts.UserID)
+	}
 	if token := strings.TrimSpace(os.Getenv("WORKSPACE_API_TOKEN")); token != "" {
 		req.Header.Set("X-Workspace-Token", token)
 	}

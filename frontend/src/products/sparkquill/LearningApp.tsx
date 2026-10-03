@@ -76,6 +76,7 @@ import { ChatMarkdown as SharedChatMarkdown } from '../../../shared/chat/ChatRen
 import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
 import { hasGatewaySSO, isSingleProductDeployment } from '../productSurfaceConfig'
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
+import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
 import WorkflowLiveBrowser from '../../components/workflow/WorkflowLiveBrowser'
 import { llmConfigService, type ProviderSetupSession } from '../../services/llm-config-api'
 
@@ -2741,7 +2742,7 @@ export default function LearningApp() {
 
               {drawerTab === 'browser' && (
                 <div className="fl-browser-view">
-                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" minimal />
+                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} onLearn={message=>{submitToParentChat(message)}} minimal />
                 </div>
               )}
 
@@ -3295,10 +3296,10 @@ export default function LearningApp() {
                     ) : (
                       <div className="fl-connector-card">
                         <p className="fl-connector-status" style={browserStatus?.cli_installed ? { color: 'var(--fl-green, #2e7d32)' } : undefined}>
-                          {browserStatus === null ? 'Checking…' : browserStatus.cli_installed ? '✓ Ready' : 'Not set up yet'}
+                          {!isBrowserCDPEnabled() ? 'Open the managed browser below' : browserStatus === null ? 'Checking…' : browserStatus.cli_installed ? '✓ Ready' : 'Open browser to check setup'}
                         </p>
                         <p className="fl-note">For things like school portals — assignments, report cards, uploaded books — the safest way for Quill to check them is to use a browser you're already signed into, so it never needs your password.</p>
-                        <div className="fl-install-steps">
+                        {isBrowserCDPEnabled() && <div className="fl-install-steps">
                           <p className="fl-note"><strong>One-time setup:</strong> copy this, paste it into the Terminal app on your Mac, and press Enter.</p>
                           <div className="fl-code-row">
                             <pre className="fl-code-block"><code>curl -fsSL 'https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/scripts/install-chrome-cdp-macOS.sh' | bash</code></pre>
@@ -3315,9 +3316,10 @@ export default function LearningApp() {
                             </button>
                           </div>
                           <p className="fl-note">A new browser window opens on its own once it's done.</p>
-                        </div>
-                        <p className="fl-note">Then sign into the school portal (or anything else you'd like Quill to check) in that window, and just leave it open. From then on, Quill can look things up there whenever it's useful — it never sees or stores your password.</p>
-                        {browserStatus && !browserStatus.cli_installed && (
+                        </div>}
+                        <button type="button" className="fl-ghost-btn" onClick={()=>{setWaOpen(false);setDrawerTab('browser')}}>Open browser to sign in or teach a task</button>
+                        <p className="fl-note">Open the browser panel, take control and sign into the school portal there. Return control when finished so Quill can use the same signed-in browser. Sign in before starting a teaching session.</p>
+                        {isBrowserCDPEnabled() && browserStatus && !browserStatus.cli_installed && (
                           <p className="fl-note">(Also needed once: ask whoever set this computer up to run <code>npm install -g agent-browser@latest</code>.)</p>
                         )}
                       </div>

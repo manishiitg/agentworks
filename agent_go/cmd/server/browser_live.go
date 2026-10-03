@@ -48,10 +48,9 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 			}
 			level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspace)
 			if manifest != nil {
-				// A real Workflow/ folder: its capabilities.browser_mode can
-				// disable browser access even though a session exists.
+				// Workflow access and a supported browser mode are required.
 				item["label"] = "Workflow browser"
-				if level != WorkflowAccessNone && (manifest.Capabilities.BrowserMode == "auto" || manifest.Capabilities.BrowserMode == "headless") {
+				if level != WorkflowAccessNone && normalBrowserMode(manifest.Capabilities.BrowserMode) != "" {
 					result = append(result, item)
 				}
 			} else if api.ownsProjectWorkspace(userID, workspace) {
@@ -144,6 +143,9 @@ func (api *StreamingAPI) userOwnsActiveSessionAtWorkspace(userID, workspace stri
 // live browser at workspace. Viewing follows liveBrowserSessions; control
 // needs write access: the Crew owner, or a workflow owner/editor.
 func (api *StreamingAPI) canControlLiveBrowser(ctx context.Context, claims *UserClaims, workspace string) bool {
+	if !validBrowserWorkspacePath(workspace) {
+		return false
+	}
 	userID := ""
 	if claims != nil {
 		userID = claims.UserID
@@ -223,7 +225,18 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 	// Only this connection can hold control. Disconnect/heartbeat timeout always
 	// releases waiting browser tool calls. Watchers cannot inject any raw commands.
 	var releaseControl func()
+	teachingActive := false
+	workspace := r.URL.Query().Get("workspace_path")
+	physical := workspace
+	if !strings.HasPrefix(normalizeConversationWorkspace(workspace), "Workflow/") {
+		physical = browserProjectKey(GetUserIDFromContext(r.Context()), workspace)
+	}
 	defer func() {
+		if teachingActive {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cleanupCancel()
+			_, _ = forwardTeaching(cleanupCtx, session, map[string]any{"action": "interrupt", "workspace_path": physical})
+		}
 		if releaseControl != nil {
 			releaseControl()
 		}
@@ -290,6 +303,8 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			Tab    string `json:"tab"`
 			Width  int    `json:"width"`
 			Height int    `json:"height"`
+			Goal   string `json:"goal"`
+			URL    string `json:"url"`
 		}
 		if json.Unmarshal(data, &message) != nil {
 			continue
@@ -308,14 +323,49 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					continue
 				}
 				var ok bool
-				releaseControl, ok = browser.TryTakeBrowserControl(session)
+				releaseControl, ok = browser.TryTakeWorkspaceBrowserControl(session)
 				if !ok {
 					sendError("The browser is busy. Wait for the current action to finish, then take control.")
 					continue
 				}
 			}
 			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": true})
+		case "teach_start", "teach_pause", "teach_resume", "teach_finish", "teach_cancel":
+			if releaseControl == nil || !canControl() {
+				sendError("Take control before teaching.")
+				continue
+			}
+			action := strings.TrimPrefix(message.Type, "teach_")
+			result, err := forwardTeaching(ctx, session, map[string]any{"action": action, "goal": message.Goal, "workspace_path": physical})
+			if err != nil {
+				sendError(err.Error())
+				continue
+			}
+			teachingActive = action != "finish" && action != "cancel"
+			_ = send(map[string]any{"type": "teaching", "state": result})
+			if action == "finish" || action == "cancel" {
+				releaseControl()
+				releaseControl = nil
+				_ = send(map[string]any{"type": "viewer_control", "controlling": false})
+			}
+		case "navigate":
+			if releaseControl == nil || !canControl() {
+				continue
+			}
+			target, err := url.Parse(message.URL)
+			if err != nil || target.User != nil || (target.Scheme != "http" && target.Scheme != "https") {
+				sendError("Enter an http or https address.")
+				continue
+			}
+			_, err = browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "open", message.URL, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
+			if err != nil {
+				sendError("Unable to open this address.")
+			}
 		case "release_control":
+			if teachingActive {
+				sendError("Finish or cancel teaching before returning control.")
+				continue
+			}
 			if releaseControl != nil {
 				releaseControl()
 				releaseControl = nil
@@ -330,15 +380,19 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				sendError("Page dimensions must be between 320 and 1920 pixels.")
 				continue
 			}
-			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browser.HeadlessLaunchArgsForSession(session), "--session", session, "set", "viewport", fmt.Sprint(message.Width), fmt.Sprint(message.Height), "--json"), &browser.ExecuteOptions{Timeout: 10 * time.Second})
+			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "set", "viewport", fmt.Sprint(message.Width), fmt.Sprint(message.Height), "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 10*time.Second))
 			if err != nil {
 				sendError("Unable to resize the browser page.")
 			}
 		case "switch_tab":
+			if teachingActive {
+				sendError("Finish teaching before selecting an unrelated tab.")
+				continue
+			}
 			if releaseControl == nil || !liveBrowserTabRef.MatchString(message.Tab) {
 				continue
 			}
-			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browser.HeadlessLaunchArgsForSession(session), "--session", session, "tab", message.Tab, "--json"), &browser.ExecuteOptions{Timeout: 10 * time.Second})
+			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "tab", message.Tab, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 10*time.Second))
 			if err != nil {
 				sendError("Unable to switch browser tab.")
 			}

@@ -361,3 +361,24 @@ type errString string
 func (e errString) Error() string {
 	return string(e)
 }
+
+func TestExecuteCommandPassesTrustedAccountAndScope(t *testing.T) {
+	t.Setenv("WORKSPACE_API_TOKEN", "service-token")
+	var got ShellExecuteRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Workspace-Token") != "service-token" || r.Header.Get("X-User-ID") != "alice" {
+			t.Error("missing trusted identity")
+		}
+		json.NewDecoder(r.Body).Decode(&got)
+		json.NewEncoder(w).Encode(APIResponse{Success: true, Data: ShellExecuteResponse{Stdout: "ok"}})
+	}))
+	defer server.Close()
+	guard := &FolderGuardConfig{Enabled: true, BrowserSession: "workflow-1111111111111111--browser", ReadPaths: []string{"Workflow/a/"}, WritePaths: []string{"Workflow/a/"}}
+	_, err := NewClient(server.URL).ExecuteCommand(context.Background(), []string{"get", "url"}, &ExecuteOptions{UserID: "alice", WorkingDirectory: "Workflow/a", FolderGuard: guard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WorkingDirectory != "Workflow/a" || got.FolderGuard == nil || got.FolderGuard.BrowserSession != guard.BrowserSession || !got.FolderGuard.Enabled {
+		t.Fatal("scope guard not forwarded", got)
+	}
+}

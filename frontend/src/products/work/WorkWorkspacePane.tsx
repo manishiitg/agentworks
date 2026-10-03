@@ -20,7 +20,7 @@ import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspaceP
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip'
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { ReportDocumentSwitcher } from '../../components/workflow/ReportDocumentSwitcher'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import type { PresetLLMConfig } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -173,20 +173,32 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
-  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode)
+  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode === 'none' ? 'auto' : savedMode)
+  const [canonicalSettings, setCanonicalSettings] = useState<{ mode: BrowserAutomationMode; port: number }>({
+    mode: savedMode === 'none' ? 'auto' : savedMode, port: savedPort,
+  })
   const [cdpPort, setCdpPort] = useState(savedPort)
+  useEffect(() => {
+    let live = true
+    api.get<{ mode: BrowserAutomationMode; port: number }>('/api/browser/workspace', {
+      params: { workspace_path: workspacePath, profile_id: product.profileId },
+    }).then(({ data }) => {
+      if (live) { setCanonicalSettings(data); setBrowserMode(data.mode); setCdpPort(data.port) }
+    }).catch(() => {})
+    return () => { live = false }
+  }, [workspacePath, product.profileId])
   const [cdpConnected, setCdpConnected] = useState<boolean | null>(null)
   const [cdpError, setCdpError] = useState<string | null>(null)
   const [cdpChecking, setCdpChecking] = useState(false)
   const [saving, setSaving] = useState(false)
   // Crew has no workspace refresh token: remount the panel to reload sessions.
   const [refreshNonce, setRefreshNonce] = useState(0)
-  const dirty = browserMode !== savedMode || cdpPort !== savedPort
+  const dirty = browserMode !== canonicalSettings.mode || cdpPort !== canonicalSettings.port
 
   useEffect(() => {
-    setBrowserMode(savedMode)
-    setCdpPort(savedPort)
-  }, [savedMode, savedPort, tabId])
+    setBrowserMode(canonicalSettings.mode)
+    setCdpPort(canonicalSettings.port)
+  }, [canonicalSettings, tabId])
 
   const checkCdpConnection = useCallback(async (port: number) => {
     if (!isBrowserCDPEnabled()) {
@@ -209,22 +221,26 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
     }
   }, [])
 
-  const save = useCallback(() => {
+  const save = useCallback(async () => {
     const store = useChatStore.getState()
     const current = store.getTab(tabId)
     const projectId = current?.metadata?.agentProfileProjectId
     setSaving(true)
-    for (const tab of Object.values(store.chatTabs)) {
-      if (tab.tabId !== tabId && (!projectId || tab.metadata?.agentProfileProjectId !== projectId)) continue
-      store.setTabConfig(tab.tabId, {
-        browserMode,
-        cdpPort,
-        enableBrowserAccess: browserMode !== 'none',
-        useCdp: browserMode === 'cdp',
+    try {
+      await api.post('/api/browser/workspace', { action: 'save', mode: browserMode, port: cdpPort }, {
+        params: { workspace_path: workspacePath, profile_id: product.profileId },
       })
+      setCanonicalSettings({ mode: browserMode, port: cdpPort })
+      for (const tab of Object.values(store.chatTabs)) {
+        if (tab.tabId !== tabId && (!projectId || tab.metadata?.agentProfileProjectId !== projectId)) continue
+        store.setTabConfig(tab.tabId, { browserMode, cdpPort, enableBrowserAccess: true, useCdp: browserMode === 'cdp' })
+      }
+    } catch {
+      store.addToast('Unable to save project browser settings', 'error')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-  }, [browserMode, cdpPort, tabId])
+  }, [browserMode, cdpPort, tabId, workspacePath, product.profileId])
 
   return (
     <BrowserWorkspacePanel
@@ -242,6 +258,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
       saving={saving}
       onSave={save}
       scopeNoun="project"
+      profileId={product.profileId}
       assistantControl={
         <WorkspaceViewActions
           workspacePath={workspacePath}

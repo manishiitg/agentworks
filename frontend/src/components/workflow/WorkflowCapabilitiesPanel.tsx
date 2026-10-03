@@ -77,7 +77,7 @@ const EMPTY_CAPABILITIES: WorkflowCapabilities = {
   selected_skills: [],
   selected_secrets: [],
   selected_global_secret_names: null,
-  browser_mode: 'none',
+  browser_mode: 'auto',
   use_code_execution_mode: false,
 }
 

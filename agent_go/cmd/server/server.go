@@ -1311,8 +1311,12 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
 		req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 	}
-	if req.BrowserMode == "" {
-		req.BrowserMode = "none"
+	if req.BrowserMode == "" || req.BrowserMode == "none" {
+		req.BrowserMode = "auto"
+	}
+
+	if req.BrowserMode == "cdp" && !browser.CDPEnabled() {
+		req.BrowserMode = "headless"
 	}
 
 	enableBrowser := req.BrowserMode == "auto" || req.BrowserMode == "headless" || req.BrowserMode == "cdp"
@@ -2635,6 +2639,8 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Browser session tracking API
 	apiRouter.HandleFunc("/browser/sessions", api.handleGetBrowserSessions).Methods("GET")
+	apiRouter.HandleFunc("/browser/workspace", api.handleWorkspaceBrowser).Methods("GET", "POST")
+	apiRouter.HandleFunc("/browser/live/{session}/teaching", api.handleBrowserTeaching).Methods("POST")
 	apiRouter.HandleFunc("/browser/live/sessions", api.handleLiveBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/stream", api.handleLiveBrowserStream).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/recording", api.handleBrowserRecording).Methods("GET", "POST")
