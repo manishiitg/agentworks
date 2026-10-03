@@ -141,7 +141,7 @@ profile:
         options:
           reasoning_effort: high
     agent_tools:
-      mode: mcp_only
+      mode: full
     capabilities:
       live_input: preferred
       raw_terminal: disabled
@@ -268,7 +268,7 @@ profiles:
           options:
             reasoning_effort: high
       agent_tools:
-        mode: mcp_only
+        mode: full
       capabilities:
         live_input: preferred
         raw_terminal: disabled

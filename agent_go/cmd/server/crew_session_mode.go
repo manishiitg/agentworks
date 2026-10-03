@@ -86,6 +86,9 @@ func sessionModeFromContext(ctx context.Context) string {
 // retained turns. Codex's built-in sandbox is distinct from platform tools.
 func agentSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
 	if resolvedProfile != nil && resolvedProfile.Definition.ID == sparkquillproduct.ParentProfileID && !readOnly {
+		if agentProfileToolsMode(resolvedProfile) == "full" {
+			return sessionModeOpen + "\nYou are in SparkQuill Parent Mode with full native tools. Use native tools within the granted workspace and the admitted platform tools for product actions. If a built-in tool reports read-only, platform tools such as execute_shell_command still enforce their own actual folder and access permissions; attempt authorised work through them and report an actual denial instead of asking the parent to enable editing from the CLI label alone.\n" + sessionModeClose
+		}
 		return sessionModeOpen + "\nYou are in SparkQuill Parent Mode. Use the admitted platform tools, including execute_shell_command, to create and save requested lessons in the family workspace. Codex's read-only sandbox applies to its built-in tools; it does not make the platform workspace tools viewing-only. Those tools enforce the actual folder and access permissions. Use them for authorised writes and report their actual errors if denied; do not ask the parent to enable editing merely because the CLI reports read-only.\n" + sessionModeClose
 	}
 	return crewSessionModeForTurn(req, currentUserID, resolvedProfile, readOnly)
