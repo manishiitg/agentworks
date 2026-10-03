@@ -22,7 +22,7 @@ the sandbox. Nothing runs unconfined any more: a Mac without `sandbox-exec`
 | | |
 |---|---|
 | Open | everything the person can use, including their whole home |
-| Closed | AgentWorks' workspace data (`workspace-docs`: other workflows, users, config) except this chat's folder grants (`ProtectedRoots`) |
+| Closed | AgentWorks' workspace data (`workspace-docs`: other workflows, users, config) and the app's own folder (`~/Library/Application Support/AgentWorks`: every chat's CLI runtime, `state/auth`, `personal-mcp`, chat event databases, `config.json` with the server token), except this chat's folder grants and its own runtime (`ProtectedRoots`) |
 | Refused inside grants | the folder guard's blocked paths (`planning/`, the raw database, ...) |
 | Blocked | `open`, `osascript`, `osacompile`, `automator`, `shortcuts`, Apple Events, LaunchServices |
 
@@ -55,6 +55,16 @@ the sandbox. Nothing runs unconfined any more: a Mac without `sandbox-exec`
   `planning/plan.json` and `osascript` fail with "operation not permitted".
 - Codex (native tools and subagent), Cursor, Muse (tmux and structured)
   full-mode live tests pass under Seatbelt; each checks the CLI started inside it.
+
+## Found in owner testing (2026-10-03)
+
+- The app folder was open: a chat's working folder is its runtime under
+  `state/cli-runtimes/v1/`, and `..` (other chats' runtimes, logins, the token
+  in `config.json`) was readable and writable. Closed with `cliSeatbeltProtectedRoots`;
+  checked with the real profile on the owner's folders (own runtime works;
+  another runtime, `config.json`, `state/auth` and writes beside the runtimes refused).
+- Codex showed "Trust this folder?": the folder was pre-trusted in the sandbox's
+  private `.codex`, not the person's `~/.codex` (provider `b7839e8`).
 
 ## Left
 

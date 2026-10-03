@@ -127,7 +127,7 @@ func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	policy.Mode = llmtypes.CLISecurityModeIsolated
 	policy.Seatbelt = true
 	policy.LandlockRunner = ""
-	policy.ProtectedRoots = []string{fsutil.WorkspaceDocsRoot()}
+	policy.ProtectedRoots = cliSeatbeltProtectedRoots()
 	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Seatbelt policy could not be attached (%v)", err))
@@ -205,4 +205,21 @@ func cliHomeName(provider string) string {
 		return "cli"
 	}
 	return name
+}
+
+// cliSeatbeltProtectedRoots are the AgentWorks folders inside a person's home
+// that Seatbelt closes (their own runtime folder and grants reopen what the
+// chat needs): the workspace data, and the app's own folder, whose state/ holds
+// every chat's CLI runtime, logins (auth/, personal-mcp/), chat event databases,
+// and whose config.json holds a server token. The home is otherwise open, so
+// without this any chat could read or change other chats and those secrets.
+func cliSeatbeltProtectedRoots() []string {
+	roots := []string{fsutil.WorkspaceDocsRoot()}
+	if state, err := workflowCLIStateRoot(); err == nil && strings.TrimSpace(state) != "" {
+		roots = append(roots, state)
+		if filepath.Base(state) == "state" {
+			roots = append(roots, filepath.Dir(state))
+		}
+	}
+	return roots
 }
