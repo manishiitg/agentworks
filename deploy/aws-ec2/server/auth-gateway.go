@@ -860,6 +860,17 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	expiresAt, authenticated := g.sessionExpiry(r)
 	if !authenticated {
+		// Sandboxed lesson previews have an opaque origin, so SameSite login
+		// cookies are absent on their media requests. rawUrl carries the app
+		// JWT instead. Admit only authenticated raw reads here; the agent still
+		// enforces the caller's workspace access. Writes remain cookie-gated.
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+			strings.HasPrefix(r.URL.Path, "/api/wp/api/documents/") && strings.HasSuffix(r.URL.Path, "/raw") {
+			if g.requireUserToken(w, r) {
+				g.route(w, r)
+			}
+			return
+		}
 		if isGatewayAPIRoute(r.URL.Path) {
 			if isMCPOAuthPublicAPIPath(r.URL.Path) {
 				r.Header.Del("X-User-ID")

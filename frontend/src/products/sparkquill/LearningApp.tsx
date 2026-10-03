@@ -41,6 +41,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import './learning-app.css'
+import { rewriteAssetSourcesRelativeTo } from './platform/assetSources'
 import {
   useSetupStore,
   useFamilyStore,
@@ -283,12 +284,7 @@ function readTheme(): Theme {
 // dir and points it at the raw-file API — the one place this actually
 // happens, shared by the full-page viewer and a show_scene snippet alike.
 function rewriteImgSrcsRelativeTo(html: string, dir: string): string {
-  return html.replace(/\bsrc=(["'])(.*?)\1/gi, (whole, quote: string, ref: string) => {
-    if (/^(https?:)?\/\//i.test(ref) || ref.startsWith('/') || ref.startsWith('data:') || ref.startsWith('#')) return whole
-    const resolved = dir ? `${dir}/${ref}` : ref
-    const url = api.rawUrl(resolved)
-    return `src=${quote}${url}${quote}`
-  })
+  return rewriteAssetSourcesRelativeTo(html, dir, (path) => api.rawUrl(path))
 }
 
 function rewriteRelativeAssetURLs(html: string, filePath: string): string {
