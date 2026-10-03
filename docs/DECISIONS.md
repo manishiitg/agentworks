@@ -13,6 +13,29 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — macOS Seatbelt confines Claude on a person's own Mac
+
+- On a single-user Mac, Claude Code now starts under `sandbox-exec` with Full CLI
+  (multi-llm-provider-go `clisandbox.SeatbeltArgs`/`SeatbeltCmd`, policy field
+  `Seatbelt`). Other CLIs stay Full CLI unconfined on a Mac until each is
+  certified (`cliSeatbeltCertified`).
+- Profile: allow by default; deny reads and writes under the home, `/Users`,
+  `/Volumes` and `/Network`; reopen the chat's folder-guard read/write grants,
+  the launch files, the CLI install, and Claude's own config (`~/.claude`,
+  `~/.claude.json*`, its cache, read-only Keychain files). The folder guard's
+  blocked paths are denied last, so `planning/`, `AGENTS.md` and the raw
+  `db.sqlite` are refused inside granted folders — something Landlock cannot
+  express. Network and system paths are untouched (macOS CLIs have
+  undocumented dependencies there).
+- Claude keeps its real home on a Mac: its login is a Keychain entry named after
+  its config folder, so a private home (as on Linux) would sign it out.
+- Fixed with it: the sandbox policy prefixed absolute host grants (Downloads, a
+  project folder) with the docs root, so neither lock actually granted them.
+- If sandbox-exec is missing or the policy cannot attach, a Mac falls back to
+  Full CLI unconfined, as before. Tests: `TestSeatbeltConfinesUnderTheRealSandbox`
+  (runs the real sandbox), `TestDecideCLIConfinement`, `TestCLISandboxPolicyPaths`.
+  Live certification (start, login, tools, resume) still to do.
+
 ### 2026-10-03 — Providers owns agent and account setup; products select ready runtimes
 
 - **Decision (user).** Install/configure coding agents and manage logins, tokens,
@@ -33,7 +56,6 @@ Design references for the linked runtime decisions:
 - **Verification.** Shared product panel tests, model/effort selection tests,
   frontend typecheck, embedded product profile checks and Go Cursor integration/
   adapter tests. Runtime deployment is separate from pushing the source changes.
-
 ### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
 
 - **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the

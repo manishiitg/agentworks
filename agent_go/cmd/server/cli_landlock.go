@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -59,10 +60,13 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	if llmAgent == nil {
 		return
 	}
-	decision, runner, why := decideCLIConfinement(workingDir)
+	decision, runner, why := decideCLIConfinement(provider, workingDir)
 	switch decision {
 	case cliRunUnconfined:
 		applyFullUnconfined(llmAgent, sessionID)
+		return
+	case cliRunSeatbelt:
+		applyCLISeatbelt(llmAgent, sessionID, provider, workingDir, base)
 		return
 	case cliRunBridgeOnly:
 		failClosedToBridgeOnly(llmAgent, sessionID, why)
@@ -90,13 +94,28 @@ const (
 	cliRunUnconfined cliRunDecision = "unconfined"  // Full CLI, no lock: a person's own Mac
 	cliRunConfined   cliRunDecision = "confined"    // Full CLI inside the Landlock lock
 	cliRunBridgeOnly cliRunDecision = "bridge_only" // no native tools: the lock could not be applied
+	cliRunSeatbelt   cliRunDecision = "seatbelt"    // Full CLI inside macOS Seatbelt: a person's own Mac
 )
+
+// cliSeatbeltCertified are the CLIs whose Seatbelt launch is built and checked
+// (multi-llm-provider-go wraps their launch). Others on a Mac run Full CLI
+// unconfined until they are certified (PLAT-364).
+var cliSeatbeltCertified = map[string]bool{"claude-code": true}
+
+// cliSeatbeltAvailable reports whether macOS sandbox-exec is present (a variable for tests).
+var cliSeatbeltAvailable = func() bool {
+	_, err := os.Stat("/usr/bin/sandbox-exec")
+	return err == nil
+}
 
 // decideCLIConfinement is applyCLILandlock's choice, kept separate so it can
 // be tested without an agent. It never answers "unconfined" outside a
 // person's own Mac.
-func decideCLIConfinement(workingDir string) (cliRunDecision, string, string) {
+func decideCLIConfinement(provider, workingDir string) (cliRunDecision, string, string) {
 	if cliUnconfinedAllowed() {
+		if cliSeatbeltCertified[strings.ToLower(strings.TrimSpace(provider))] && strings.TrimSpace(workingDir) != "" && cliSeatbeltAvailable() {
+			return cliRunSeatbelt, "", ""
+		}
 		return cliRunUnconfined, "", ""
 	}
 	if strings.TrimSpace(workingDir) == "" {
@@ -107,6 +126,39 @@ func decideCLIConfinement(workingDir string) (cliRunDecision, string, string) {
 		return cliRunBridgeOnly, "", "this host cannot confine coding CLIs (no working Landlock launcher)"
 	}
 	return cliRunConfined, runner, ""
+}
+
+// applyCLISeatbelt confines the CLI on a person's own Mac with sandbox-exec:
+// the same folder grants as the Linux lock, plus the folder guard's blocked
+// paths (planning/, the raw database), which Seatbelt can refuse inside a
+// granted folder. The CLI keeps its real home (its Keychain login is tied to
+// its config folder); PrivateHome only holds the profile. If the policy cannot
+// be attached the chat still runs Full CLI unconfined, as on any Mac before.
+func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
+	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base)
+	policy.Mode = llmtypes.CLISecurityModeIsolated
+	policy.Seatbelt = true
+	policy.LandlockRunner = ""
+	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
+	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
+		log.Printf("[CLI_LANDLOCK] session %s: could not attach the Seatbelt policy (%v); Full CLI runs unconfined", sessionID, err)
+		applyFullUnconfined(llmAgent, sessionID)
+		return
+	}
+	if _, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
+		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
+	}
+	log.Printf("[CLI_LANDLOCK] session %s: %s confined by Seatbelt (reads %d, writes %d, blocked %d+%d)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), len(policy.BlockedPaths), len(policy.BlockedWritePaths))
+}
+
+// cliPolicyPath turns a folder-guard entry into the absolute path a sandbox
+// policy needs: workspace-relative entries join the docs root, absolute host
+// grants (Downloads, a project folder) stay as they are.
+func cliPolicyPath(path string) string {
+	if filepath.IsAbs(strings.TrimSpace(path)) {
+		return filepath.Clean(strings.TrimSpace(path))
+	}
+	return codingAgentWorkspaceWorkingDir(path)
 }
 
 // cliLandlockRunner finds the host's Landlock launcher (a variable for tests).
@@ -129,12 +181,18 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
 	if cfg != nil {
 		for _, rel := range cfg.ReadPaths {
-			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, codingAgentWorkspaceWorkingDir(rel))
+			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, cliPolicyPath(rel))
 		}
 		if !readOnly {
 			for _, rel := range cfg.WritePaths {
-				policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, codingAgentWorkspaceWorkingDir(rel))
+				policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, cliPolicyPath(rel))
 			}
+		}
+		for _, rel := range cfg.BlockedPaths {
+			policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, cliPolicyPath(rel))
+		}
+		for _, rel := range cfg.BlockedWritePaths {
+			policy.BlockedWritePaths = appendUniqueStrings(policy.BlockedWritePaths, cliPolicyPath(rel))
 		}
 	}
 	return policy

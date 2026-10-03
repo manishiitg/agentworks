@@ -322,3 +322,10 @@ isolation. Local unconfined mode runs with the host user's permissions.
 always confines with Full CLI inside the lock; a chat whose lock cannot be applied runs
 `mcp_only`, never unconfined. The notes above that mention the switches are history. See
 DECISIONS 2026-10-03. Next: macOS Seatbelt, Claude first.
+
+### macOS Seatbelt for Claude, 2026-10-03
+
+Built: Claude Code on a person's own Mac starts under sandbox-exec with Full CLI, using the folder
+guard's grants plus its blocked paths (denied inside granted folders, which Landlock cannot do).
+It keeps its real home for the Keychain login. Codex, Cursor, Muse, Pi and AGY stay unconfined on a
+Mac until certified. Live certification on a Mac is the next step. See DECISIONS 2026-10-03.
