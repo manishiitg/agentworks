@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deployment unification, step 1: a read-only drift report
+
+- **Decided (owner).** All servers are deployed one way with one runtime profile (docs/design/deploy_unification.md).
+- **Done.** deploy/common/runtime_profile.json is the standard profile; `./deploy.sh report [server]` prints how each running server
+  differs (agent and workspace process environment, private /tmp, kept releases, release source, slots/bin on PATH). Report only; the
+  rootless-linux deploy prints it at the end and never fails on it. First run: every server differs (state root, MCP state dir and browser
+  profile mostly unset; SparkQuill without MULTI_USER_MODE; SparkQuill, Dominion and RTS without the CLI lock settings; RTS not native;
+  Excellence and Dominion keep one release).
 ### 2026-10-03 — Codex resume adoption handles interactive options and historical startup banners
 
 A confined Codex resume copies only its explicitly selected thread into the

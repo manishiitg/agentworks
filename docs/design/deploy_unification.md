@@ -3,7 +3,9 @@
 Owner decision (2026-10-03): every server is deployed the same way, with one runtime profile, so a bug found on one server is found on all
 and a fix is tested once. Browser profiles have one setup; native workspace mode and slots behave the same everywhere.
 
-Status: **inventory done, nothing changed yet.** The inventory below was read on 2026-10-03 ~18:00 (read-only, from the running
+Status: **step 1 done** (2026-10-03): `./deploy.sh report [server]` (deploy/common/profile-report-all.sh, profile_report.py,
+runtime_profile.json) prints each server's difference from the profile, read-only, and every rootless-linux deploy prints it at the end.
+No server setting has changed yet. The inventory below was read on 2026-10-03 ~18:00 (read-only, from the running
 processes' environment, `.env`, systemd units, releases and health endpoints).
 
 ## Today: three deploy paths

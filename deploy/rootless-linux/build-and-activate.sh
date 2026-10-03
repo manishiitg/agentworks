@@ -474,4 +474,9 @@ python3 "$BUILD_DIR/prune-releases.py" "$REMOTE_APP" --apply \
   --health-url "http://127.0.0.1:$AGENT_PORT/api/health" \
   --health-url "http://127.0.0.1:$WORKSPACE_PORT/health"
 
+# How this server differs from the standard runtime profile (docs/design/deploy_unification.md). Report only for now: it never fails
+# a deploy while the servers are being aligned.
+python3 "$REPO_ROOT/deploy/common/profile_report.py" --profile "$REPO_ROOT/deploy/common/runtime_profile.json" --name "$PRODUCT" \
+  --account "$PRODUCT" --app "$REMOTE_APP" --data "$REMOTE_APP/state" --workspace-port "$WORKSPACE_PORT" || true
+
 echo "==> Done. Release $RELEASE_ID is live at https://$DOMAIN"

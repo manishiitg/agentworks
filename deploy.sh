@@ -17,6 +17,7 @@ Servers:
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
+  report [server]       how each server differs from the standard runtime profile (read-only)
 
 dominion optionally takes --activate (stage-only otherwise):
   ./deploy.sh dominion              # clone/pull, build, stage a release
@@ -324,6 +325,11 @@ deploy_finish_notice() {
   fi
   return "$rc"
 }
+
+# ./deploy.sh report [server]: how each server differs from the standard runtime profile. Read-only, deploys nothing.
+if [[ "$SERVER" == report ]]; then
+  exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
+fi
 
 deploy_start_notice
 
