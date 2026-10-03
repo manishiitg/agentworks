@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now
+
+- **Decided (owner).** "Force deploys for now": a deploy restarts the services without waiting for running agent turns to finish.
+- **Done.** `deploy.sh` passes `DEPLOY_DRAIN_SECONDS` (default 0) into the build job as `DRAIN_TIMEOUT_SECONDS`, so build-and-activate.sh's drain
+  restarts immediately. `DEPLOY_DRAIN_SECONDS=300 ./deploy.sh <server>` waits up to 5 minutes again. A running turn is cut off by a deploy.
+
 ### 2026-10-03 — User slot shells exclude the service account's Google CLI store
 
 - The shared runner treats a user slot like a restricted profile for host Google

@@ -250,7 +250,10 @@ echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH
 # Throttled below the box's shared core/RAM budget: this box also runs other
 # products, each under its own account, and a full go+npm build must not
 # starve their live services while it runs.
-"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+# DEPLOY_DRAIN_SECONDS is how long the switch-over waits for running agent turns to finish (build-and-activate.sh's
+# drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
+# DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
+"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 
 echo "==> [$PRODUCT] Verifying"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
