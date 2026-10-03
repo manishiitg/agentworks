@@ -28,6 +28,9 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("'Setup: identity and integrations'")
     // A Code adds a terminal to Ops (owner only; see showShell).
     expect(source).toContain("id: 'shell', label: 'Terminal'")
+    // The toolbar only shows it when told to: forgetting this prop hid the Terminal button (2026-10-03).
+    const surface = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
+    expect(surface).toMatch(/<WorkWorkspaceToolbar[^>]*showShell=\{showShell\}/)
     expect(source).toContain('<AutomationHubPanel')
     expect(source).not.toContain('botContent=')
     expect(source).toContain("productTriggerScope={enabledPanels?.has('triggers')")

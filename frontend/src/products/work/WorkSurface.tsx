@@ -1237,7 +1237,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               >
                 <WorkspaceTopToolbar className={layout.toolbarClassName}>
                   {tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
-                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} /> : null}
+                  {panelOpen ? <WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} /> : null}
                 </WorkspaceTopToolbar>
                 {layout.showChat ? <main data-tour="crew-chat" className={layout.chatClassName}>
                   {/* A Code's privacy notice lives in Setup → General and the
