@@ -80,12 +80,12 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
     if (wanted && state.tabs.includes(wanted)) update({ ...state, active: wanted })
   }
   const tabStrip = (
-    <div className="flex items-center gap-1 border-b border-border px-2 pt-1 text-xs" role="tablist" aria-label="Terminals">
+    <div className="flex min-w-0 items-center gap-0.5" role="tablist" aria-label="Terminals">
       {state.tabs.map(tab => {
         const selected = tab === state.active
         return (
-          <div key={tab} className={`group flex items-center rounded-t border border-b-0 ${selected ? 'border-border bg-background text-foreground' : 'border-transparent text-muted-foreground hover:bg-muted/60'}`}>
-            <button type="button" role="tab" aria-selected={selected} onClick={() => update({ ...state, active: tab })} className="flex items-center gap-1 px-2 py-1" data-testid={`code-shell-tab-${tab}`}>
+          <div key={tab} className={`group flex items-center rounded-md ${selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}>
+            <button type="button" role="tab" aria-selected={selected} onClick={() => update({ ...state, active: tab })} className="flex items-center gap-1 whitespace-nowrap px-2 py-0.5 font-medium" data-testid={`code-shell-tab-${tab}`}>
               <TerminalIcon className="h-3 w-3" /> Terminal {tab}
             </button>
             {state.tabs.length > 1 && (
@@ -357,17 +357,16 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
 
   return (
     <div className={`${active ? 'flex' : 'hidden'} min-h-0 flex-col bg-background ${expanded ? 'fixed inset-0 z-50' : 'h-full'}`} data-testid="code-shell-panel" data-tab={tab}>
-      {tabStrip}
-      <div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-        <TerminalIcon className="h-3.5 w-3.5 shrink-0" />
-        <span className="font-medium text-foreground">Terminal</span>
-        <span className="flex items-center gap-1.5" aria-live="polite">
+      {/* One header: the terminals' tabs, this one's state, then its actions. */}
+      <div className="flex items-center gap-1.5 border-b border-border px-2 py-1 text-xs text-muted-foreground">
+        {tabStrip}
+        <span className="ml-1 flex shrink-0 items-center gap-1.5" aria-live="polite" title={`${statusLabel} · runs in this Code’s folder`}>
           <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden />
           {state === 'connecting' || state === 'reconnecting' ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : null}
-          {statusLabel}
+          {/* Connected is the dot alone; anything else is said in words. */}
+          <span className={state === 'connected' ? 'sr-only' : ''}>{statusLabel}</span>
         </span>
-        <span className="hidden min-w-0 flex-1 truncate sm:block">· runs in this Code’s folder</span>
-        <span className="flex-1 sm:hidden" />
+        <span className="flex-1" />
         <button type="button" className={toolbarButton} title={`Search (${shellShortcutLabel('search', IS_MAC)})`} aria-label="Search the terminal" onClick={() => runAction('search')}><Search className="h-3.5 w-3.5" /></button>
         <div ref={menuRef} className="relative">
           <button type="button" className={toolbarButton} title="Terminal menu" aria-label="Terminal menu" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)} data-testid="code-shell-menu">
