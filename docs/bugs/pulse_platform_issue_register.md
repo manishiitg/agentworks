@@ -1,3 +1,10 @@
+## Muse on a confined host: runtime folder, refused messages, probe folders — PLAT-417
+
+[PLAT-417](pulse_platform/coding-agent-bridge/plat-417.md), fixed on `main`, not
+deployed: registry_io warning (own runtime folder), "another run is still
+starting" (retry), probe folder leak (sweep as the slot user). The mid-run
+auth-file error is open.
+
 ## Codex Spark dropped; allowed-models 422 on a stale saved model — PLAT-416
 
 [PLAT-416](pulse_platform/coding-agent-bridge/plat-416.md), P2, fixed on `main`; deploy pending. A model the account does not allow now runs on the first allowed one instead of failing the chat.
