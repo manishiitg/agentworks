@@ -1,8 +1,8 @@
 ## Codex resumed chats cancelled after confinement migration — PLAT-392
 
 [PLAT-392](pulse_platform/coding-agent-bridge/plat-392.md), fixed in the shared
-provider and validated with a real resumed Sol conversation on SparkQuill;
-release deployment pending. Only the selected thread is adopted into its
+provider, deployed to SparkQuill and verified with a real resumed Sol conversation.
+The release and the affected restored conversation passed live checks. Only the selected thread is adopted into its
 private home, and an old resume banner cannot block a newly ready pane.
 
 ## Gmail sender widening requires owner confirmation — PLAT-391

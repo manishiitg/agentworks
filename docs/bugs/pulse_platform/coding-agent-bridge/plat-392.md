@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed in shared provider; validated on SparkQuill host; deployment pending |
+| State | fixed and deployed to SparkQuill; shared provider `648234b` |
 | Date | 2026-10-03 |
 | Owner | coding-agent-bridge |
 
@@ -40,4 +40,8 @@ sandbox test fails on the unchanged provider baseline as well.
 
 The affected existing rollout was copied into its private CLI home atomically,
 without overwriting an existing private copy or changing its source. The builder
-pins the shared fix; release deployment and health checks are the final step.
+pins the shared fix. SparkQuill release `sparkquill-7fc2ae97-20261003181010`
+runs provider `648234b`; all three services, the shared provider/account APIs,
+parent/child defaults, and the restored rollout passed live checks. The public
+login page returns HTTP 200. Other deployments must update their provider build
+to receive these shared fixes.

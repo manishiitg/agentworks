@@ -43,7 +43,7 @@ private CLI home, parsing the model/profile/config options before that ID.
 A newer Codex ready header supersedes an older `Resuming session` banner in
 scrollback. The original rollout and existing private copies are retained.
 Shared provider `648234b`, validated with a real two-turn resumed conversation
-on SparkQuill. [PLAT-392](bugs/pulse_platform/coding-agent-bridge/plat-392.md).
+and deployed to SparkQuill in `sparkquill-7fc2ae97-20261003181010`. [PLAT-392](bugs/pulse_platform/coding-agent-bridge/plat-392.md).
 
 ### 2026-10-03 — Deploy Slack notices are silent by default again
 
