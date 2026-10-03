@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Full CLI: own subagents; run_in_background only for read-only reviewers and long loops — PLAT-397
+
+- **Decided (owner).** With native tools on, in-turn parallel work uses the CLI's own subagents; steps are
+  already background calls. `run_in_background` is kept for read-only reviewers and supervision loops that
+  outlive the turn.
+- **Why.** Native subagents cover in-turn work but inherit write rights and end with the turn.
+- **Where.** `native-subagents` in `cmd/server/prompt_sections.go`; workflow-tools guidance.
+  [PLAT-397](bugs/pulse_platform/coding-agent-bridge/plat-397.md).
+
 ### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
 
 - **Decided (owner).** With native tools on, `diff_patch_workspace_file` is not offered; the CLI edits with

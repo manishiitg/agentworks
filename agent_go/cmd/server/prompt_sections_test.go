@@ -332,3 +332,22 @@ func TestProjectWorkspaceMapResolvesAuthorizedAbsolutePaths(t *testing.T) {
 		}
 	}
 }
+
+// Full CLI chats are told to use their own subagents and to keep
+// run_in_background for read-only reviewers and long supervision loops;
+// bridge-only chats, which have no subagents, are not.
+func TestNativeSubagentsGuidanceOnlyWithNativeTools(t *testing.T) {
+	section := sectionByName(t, "native-subagents")
+	if !section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: true}) {
+		t.Fatal("a Full CLI chat must get the subagent guidance")
+	}
+	if section.Applies(promptContext{Provider: "claude-code", NativeCodingTools: false}) {
+		t.Fatal("a bridge-only chat has no subagents of its own")
+	}
+	text := section.Build(promptContext{})
+	for _, want := range []string{"own subagents", "read_only", "execute_step", "run_in_background"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("guidance misses %q: %s", want, text)
+		}
+	}
+}

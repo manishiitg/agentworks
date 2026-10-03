@@ -206,7 +206,17 @@ var promptSections = []promptSection{
 		Applies: func(c promptContext) bool { return c.CLIToolEnvironment != "" && !c.NativeCodingTools },
 		Build:   func(c promptContext) string { return c.CLIToolEnvironment },
 	},
+	{
+		// Full CLI has its own subagents; run_in_background stays for what they
+		// cannot do (PLAT-397).
+		Name:    "native-subagents",
+		Applies: func(c promptContext) bool { return c.NativeCodingTools },
+		Build:   func(promptContext) string { return nativeSubagentsGuidance },
+	},
 }
+
+const nativeSubagentsGuidance = `## Subagents and background work
+Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly. Use ` + "`run_in_background`" + `, where it is available, only for (1) an independent reviewer that must stay read-only (` + "`access_mode=\"read_only\"`" + `; your own subagents can write whatever you can) and (2) a long supervision loop that should keep going after this turn, such as running steps, reading results, fixing and rerunning.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.

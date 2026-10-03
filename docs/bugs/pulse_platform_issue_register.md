@@ -1,3 +1,9 @@
+## Full CLI uses its own subagents; run_in_background narrowed — PLAT-397
+
+[PLAT-397](pulse_platform/coding-agent-bridge/plat-397.md), fixed on `main`, not
+deployed: in-turn parallel work goes to the CLI's own subagents;
+`run_in_background` only for read-only reviewers and long supervision loops.
+
 ## Full mode: no bridge edit tool — PLAT-396
 
 [PLAT-396](pulse_platform/coding-agent-bridge/plat-396.md), fixed on `main`, not
