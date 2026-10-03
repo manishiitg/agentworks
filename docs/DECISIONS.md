@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
+
+Owner decision. The reads-only hybrid mode is gone; on means the CLI's own
+tools inside Landlock/Seatbelt, or mcp_only when it cannot be confined. Pi
+stays bridge-only. Ticket: [PLAT-390](bugs/pulse_platform/coding-agent-bridge/plat-390.md).
+
 ### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser
 
 - **Decided (owner).** Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it.
@@ -32,7 +38,6 @@ Design references for the linked runtime decisions:
 - **Scroll.** tmux no longer uses the alternate screen (`terminal-overrides smcup@:rmcup@`), so lines that scroll off reach the browser
   terminal's own scrollback: the wheel scrolls locally and smoothly. The server-driven scroll message is removed. After a reconnect the
   browser only has the visible screen; older output stays in tmux.
-
 ### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server
 
 - **Found (user).** Nothing could be selected or copied in the terminal: tmux's mouse mode (turned on for wheel scrolling) took every drag.

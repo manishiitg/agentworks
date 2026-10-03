@@ -1,3 +1,9 @@
+## Hybrid native-tools mode removed — PLAT-390
+
+[PLAT-390](pulse_platform/coding-agent-bridge/plat-390.md), P1, on `main`, not
+deployed: Native agent tools are `mcp_only` or `full` (sandboxed); Cursor and
+Muse get full modes; one prompt per CLI per mode, tested against launch options.
+
 ## Relay API products retain Google apps, exclude Slack/WhatsApp — PLAT-389
 
 [PLAT-389](pulse_platform/integrations/plat-389.md), fixed on main; deployment

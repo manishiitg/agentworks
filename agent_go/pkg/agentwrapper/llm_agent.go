@@ -717,8 +717,8 @@ func (w *LLMAgentWrapper) AddObserver(observer mcpagent.AgentEventListener) erro
 	return nil
 }
 
-// UpgradeCodingAgentToolsToFull turns a hybrid ("Native agent tools") chat
-// into Full CLI before the Agent is finalized. mcpagent applies Full CLI only
+// UpgradeCodingAgentToolsToFull turns a "Native agent tools" chat into
+// confined Full CLI before the Agent is finalized. mcpagent applies Full CLI only
 // when the CLI is confined by the Landlock launcher. It reports whether the
 // mode changed; any other mode is left alone.
 func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
@@ -727,7 +727,7 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
 	if w.finalized {
 		return false, errors.New("agent definition is already finalized")
 	}
-	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+	if !nativeAgentToolsRequested(w.runtime.Coding.AgentToolsMode) {
 		return false, nil
 	}
 	w.runtime.Coding.AgentToolsMode = "full"
@@ -742,7 +742,7 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFullUnconfined() (bool, error
 	if w.finalized {
 		return false, errors.New("agent definition is already finalized")
 	}
-	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+	if !nativeAgentToolsRequested(w.runtime.Coding.AgentToolsMode) {
 		return false, nil
 	}
 	w.runtime.Coding.AgentToolsMode = "full_unconfined"
@@ -765,6 +765,21 @@ func (w *LLMAgentWrapper) RestrictCodingAgentToolsToMCPOnly() (bool, error) {
 	}
 	w.runtime.Coding.AgentToolsMode = "mcp_only"
 	return true, nil
+}
+
+// nativeAgentToolsRequested reports a chat that asked for native tools: "full",
+// or the retired "hybrid" kept in older saved settings.
+func nativeAgentToolsRequested(mode string) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	return mode == "full" || mode == "hybrid"
+}
+
+// CodingAgentToolsMode is the coding-tools mode the chat will start with
+// (mcp_only, full or full_unconfined), after confinement was decided.
+func (w *LLMAgentWrapper) CodingAgentToolsMode() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return strings.TrimSpace(w.runtime.Coding.AgentToolsMode)
 }
 
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the

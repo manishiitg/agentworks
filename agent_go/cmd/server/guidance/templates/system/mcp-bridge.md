@@ -17,9 +17,11 @@ as direct LLM tool calls. Discover currently authorized tools with `search_tools
 keyword search misses, enumerate a group or server instead of guessing names.
 
 Provider-native file and shell availability is determined by this session's
-runtime contract. Hybrid mode may permit native reads and searches while
-requiring bridge tools for writes. Read-only native tools do not mean the
-entire session is read-only. Invoke only declared and authorized tools.
+runtime contract. With Native agent tools on, the CLI's own tools run in a
+sandbox limited to the folders granted to the chat, and protected files (a
+workflow's planning/, its raw database, instruction files) stay refused; with
+them off, files and commands go through bridge tools. Invoke only declared and
+authorized tools.
 
 ## Environment variables (pre-set)
 

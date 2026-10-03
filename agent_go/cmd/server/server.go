@@ -3962,7 +3962,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// switch (a Crew's comes through its resolved profile).
 	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
 	if workflowNativeAgentTools {
-		agentToolsMode = "hybrid"
+		agentToolsMode = "full"
 	}
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
@@ -5519,15 +5519,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[AGENT CONFIG DEBUG] Creating agent with ServerName: %s, UseCodeExecutionMode: %v", serverList, useCodeExecutionMode)
 		profileAgentToolsMode := ""
 		profileApprovalsMode := ""
-		// Hybrid enables only native read/search, skills, todos and subagents;
-		// shell and file changes still go through the bridge, so mcpagent's
-		// shell/diff routing block stays in every mode.
+		// Native agent tools request Full CLI; applyCLILandlock below decides
+		// whether it is confined, unconfined (a person's own Mac) or falls back
+		// to mcp_only. mcpagent's bridge routing block stays in every mode.
 		var profileBridgeRoutingInstructions *string
 		if resolvedProfile != nil {
 			profileAgentToolsMode = resolvedProfile.Definition.Runtime.AgentTools.Mode
 			profileApprovalsMode = resolvedProfile.Definition.Runtime.Approvals.Mode
 		} else if workflowNativeAgentTools {
-			profileAgentToolsMode = "hybrid"
+			profileAgentToolsMode = "full"
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
@@ -6781,9 +6781,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				ChannelFormatting:     buildChannelFormattingInstructions(req.BotPlatform),
 				GrantSections:         resolvedGrants.PromptSections,
 			}
+			// The mode the chat really starts with, after confinement (a full
+			// request that could not be confined is mcp_only), for workflow,
+			// Crew and Code chats alike.
+			promptCtx.NativeCodingTools = strings.HasPrefix(llmAgent.CodingAgentToolsMode(), "full")
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
-				promptCtx.NativeCodingTools = strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.AgentTools.Mode), "hybrid")
 				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
 			}
 			if len(req.WorkflowContextPaths) > 0 {

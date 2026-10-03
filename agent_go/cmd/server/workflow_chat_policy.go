@@ -184,7 +184,7 @@ func normalizeWorkflowConversationMode(req *QueryRequest, readOnly bool) {
 }
 
 // workflowChatNativeAgentTools reports whether this workflow chat turn runs
-// with the coding CLI's native tools (agent_tools hybrid). Owner decision
+// with the coding CLI's native tools (agent_tools full). Owner decision
 // 2026-09-29: on for every turn type — interactive Builder and Run chats,
 // schedules, webhooks and triggers, Pulse, Slack and WhatsApp — unless the
 // workflow's "Native agent tools" switch is off. Read-only principals stay

@@ -16,7 +16,7 @@ import (
 // That produced a real defect: the "CLI Tool Environment" section asserts "Your
 // native tools (Bash, Read, Write, etc.) are disabled" and was gated only on
 // "is this a CLI provider" — never on the profile — although the profile was in
-// scope 118 lines above. Injected into a hybrid profile it contradicted the
+// scope 118 lines above. Injected into a native-tools profile it contradicted the
 // product prompt, and the contradiction won: Codex concluded it had no shell
 // and reported the product broken. Diagnosing it meant reconstructing the
 // assembled prompt from a coding agent's session transcript, because nothing
@@ -58,8 +58,8 @@ type promptContext struct {
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
-	// NativeCodingTools is true for agent_tools.mode=hybrid: the coding CLI
-	// keeps its provider-specific native subset. Sections that describe a
+	// NativeCodingTools is true when the chat really starts in Full CLI (its
+	// own tools in a sandbox). Sections that describe a
 	// bridge-only world must not apply when this is set.
 	NativeCodingTools bool
 
@@ -256,6 +256,6 @@ func logPromptAssembly(ctx promptContext, included, skipped []string) {
 	if profile == "" {
 		profile = "-"
 	}
-	log.Printf("[PROMPT_SECTIONS] profile=%s provider=%s hybrid=%t included=%v skipped=%v",
+	log.Printf("[PROMPT_SECTIONS] profile=%s provider=%s native_tools=%t included=%v skipped=%v",
 		profile, ctx.Provider, ctx.NativeCodingTools, included, skipped)
 }

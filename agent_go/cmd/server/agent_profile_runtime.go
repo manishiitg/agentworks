@@ -66,11 +66,13 @@ func agentProfileToolsMode(profile *resolvedAgentProfile) string {
 	return normalizeAgentToolsMode(profile.Definition.Runtime.AgentTools.Mode)
 }
 
-// normalizeAgentToolsMode maps an agent_tools mode to "hybrid" or "mcp_only"
-// (the default, and what every session started before hybrid existed used).
+// normalizeAgentToolsMode maps an agent_tools mode to "full" (Native agent
+// tools on) or "mcp_only" (the default). The retired "hybrid" in older saved
+// profiles and settings reads as "full".
 func normalizeAgentToolsMode(mode string) string {
-	if strings.EqualFold(strings.TrimSpace(mode), "hybrid") {
-		return "hybrid"
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "full", "hybrid":
+		return "full"
 	}
 	return "mcp_only"
 }
@@ -367,7 +369,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// Everyone who may chat with a Code (owner, co-owner, editor) gets
 		// native tools; viewers never reach this turn.
 		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "hybrid"
+			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
 			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
@@ -393,7 +395,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// policy (agentprofiles validation); the switch is on by default, so a
 		// profile without one keeps AgentWorks-only tools instead of failing.
 		if crewOwned && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "hybrid"
+			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
 			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {

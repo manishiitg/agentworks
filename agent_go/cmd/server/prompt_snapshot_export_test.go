@@ -131,7 +131,7 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 	if strings.Contains(prompt, "builder-reference") || !strings.Contains(prompt, "attached `agent-browser` skill") {
 		t.Fatal("browser pointer targets an unavailable skill")
 	}
-	if !strings.Contains(prompt, "native read-only tools") {
+	if !strings.Contains(prompt, "Your own tools are enabled") {
 		t.Fatal("Code lost its resolved native-tool mode")
 	}
 	if !strings.Contains(prompt, "runtime-http-tools") || !strings.Contains(prompt, "project-memory") {

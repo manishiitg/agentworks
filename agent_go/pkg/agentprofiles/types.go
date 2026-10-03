@@ -42,9 +42,9 @@ type RuntimePolicy struct {
 	RequireProviderToken bool                `json:"require_provider_token,omitempty" yaml:"require_provider_token,omitempty"`
 	Capabilities         RuntimeCapabilities `json:"capabilities" yaml:"capabilities"`
 	// AgentTools selects whether a coding provider receives only AgentWorks MCP
-	// tools (mcp_only) or provider-native tools (hybrid). Hybrid may retain the
-	// MCP execute_shell_command bridge; only APITransport native_shell is
-	// mutually exclusive with that bridge route.
+	// tools (mcp_only) or its own tools in a sandbox (full; the retired
+	// "hybrid" reads as full). Full keeps the MCP execute_shell_command bridge;
+	// only APITransport native_shell is mutually exclusive with that route.
 	// Empty preserves mcp_only for existing profiles.
 	AgentTools AgentToolsPolicy `json:"agent_tools,omitempty" yaml:"agent_tools,omitempty"`
 	// Approvals controls the native-tool approval policy when AgentTools enables

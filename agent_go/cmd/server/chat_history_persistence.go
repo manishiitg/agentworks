@@ -62,8 +62,9 @@ type ChatHistoryAgentRuntime struct {
 	// replace the native coding-agent session.
 	ChatPolicyRoleKey string `json:"chat_policy_role_key,omitempty"`
 	AgentProfileKey   string `json:"agent_profile_key,omitempty"`
-	// AgentToolsMode is the profile's agent_tools mode ("hybrid" or
-	// "mcp_only") the native session was started with.
+	// AgentToolsMode is the profile's agent_tools mode ("full", or "mcp_only";
+	// older sessions may say "hybrid", read as full) the native session was
+	// started with.
 	AgentToolsMode     string                       `json:"agent_tools_mode,omitempty"`
 	Kind               string                       `json:"kind,omitempty"`
 	Provider           string                       `json:"provider,omitempty"`

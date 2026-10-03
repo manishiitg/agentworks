@@ -65,15 +65,15 @@ func (e *providerAccountsEnv) queryToolsMode(t *testing.T, user, sessionID strin
 // Owner decision 2026-09-28: native tools are on by default everywhere. A
 // Builder turn on someone else's shared account keeps the workflow's
 // configured mode (hybrid), and so does a Code turn.
-func TestProviderAccountsSharedAccountAndCodeTurnsAreHybrid(t *testing.T) {
+func TestProviderAccountsSharedAccountAndCodeTurnsAreFull(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
 	env.setWorkflowW(t, account.ID)
-	if mode, code := env.queryToolsMode(t, "bob", "bob-builder"); mode != "hybrid" {
-		t.Fatalf("bob's Builder turn on Alice's shared account decided %q (status %d), want hybrid", mode, code)
+	if mode, code := env.queryToolsMode(t, "bob", "bob-builder"); mode != "full" {
+		t.Fatalf("bob's Builder turn on Alice's shared account decided %q (status %d), want full", mode, code)
 	}
-	if mode, _ := env.queryToolsMode(t, "alice", "alice-builder"); mode != "hybrid" {
-		t.Fatalf("alice's own Builder turn decided %q, want hybrid", mode)
+	if mode, _ := env.queryToolsMode(t, "alice", "alice-builder"); mode != "full" {
+		t.Fatalf("alice's own Builder turn decided %q, want full", mode)
 	}
 	// The final account still decides admission.
 	if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/", "alice", map[string]interface{}{"sharing": map[string]interface{}{"mode": "private"}}, map[string]string{"connectionID": account.ID}); w.Code != http.StatusNoContent {
@@ -105,15 +105,15 @@ func TestProviderAccountsSharedAccountAndCodeTurnsAreHybrid(t *testing.T) {
 		}
 		return normalizeAgentToolsMode(resolved.Definition.Runtime.AgentTools.Mode)
 	}
-	if mode := codeTurn(); mode != "hybrid" {
-		t.Fatalf("Code turn with no switch set decided %q, want hybrid", mode)
+	if mode := codeTurn(); mode != "full" {
+		t.Fatalf("Code turn with no switch set decided %q, want full", mode)
 	}
 	env.mock.mu.Lock()
 	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{"native_agent_tools":false}}`
 	env.mock.mu.Unlock()
 	// No switch any more (2026-09-29): an older Code's stored "off" is ignored.
-	if mode := codeTurn(); mode != "hybrid" {
-		t.Fatalf("a Code with a stored off decided %q, want hybrid: native tools are always on", mode)
+	if mode := codeTurn(); mode != "full" {
+		t.Fatalf("a Code with a stored off decided %q, want full: native tools are always on", mode)
 	}
 }
 

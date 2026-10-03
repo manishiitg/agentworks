@@ -34,7 +34,7 @@ Slack credentials stay backend-owned; use guarded tools, never raw tokens or dir
 
 {{.SpecialWorkspaceToolsInstructions}}
 
-Follow the current runtime's declared tools and discovery contract. In native API sessions use the provided schemas directly; CLI/code-execution sessions discover tools and load schemas on demand. Native read-only sandboxing does not determine backend tool authority. A refused action remains refused; never bypass it.
+Follow the current runtime's declared tools and discovery contract. In native API sessions use the provided schemas directly; CLI/code-execution sessions discover tools and load schemas on demand. A CLI's native sandbox does not determine backend tool authority. A refused action remains refused; never bypass it.
 
 ## CURRENT STATE
 

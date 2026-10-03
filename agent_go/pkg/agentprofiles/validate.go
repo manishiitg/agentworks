@@ -127,24 +127,23 @@ func Validate(profile Profile) error {
 	if err := validateRuntime(profile.Runtime); err != nil {
 		return err
 	}
-	if strings.EqualFold(strings.TrimSpace(profile.Runtime.AgentTools.Mode), "hybrid") {
+	if mode := strings.ToLower(strings.TrimSpace(profile.Runtime.AgentTools.Mode)); mode == "full" || mode == "hybrid" {
 		if !profile.ToolPolicy.IsAllowlist() {
-			return fmt.Errorf("runtime agent_tools.mode=hybrid requires tool_policy.mode=%q", ToolPolicyModeAllowlist)
+			return fmt.Errorf("runtime agent_tools.mode=full requires tool_policy.mode=%q", ToolPolicyModeAllowlist)
 		}
 	}
-	// The exclusion is between the two API transports, not between hybrid and
-	// the bridge shell. native_shell replaces execute_shell_command, so having
-	// both is genuinely ambiguous — but hybrid alone does not imply the CLI can
-	// reach product APIs from its own shell. Codex cannot: it operates through a
+	// The exclusion is between the two API transports, not between native
+	// tools and the bridge shell. native_shell replaces execute_shell_command,
+	// so having both is genuinely ambiguous — but native tools alone do not
+	// imply the CLI can reach product APIs from its own shell. Codex cannot: it operates through a
 	// JS sandbox with no network and no environment, so the bridge shell is its
 	// only path. Requiring hybrid profiles to drop it left Codex with no way to
 	// call any product API at all. See
 	// docs/design/product_api_transport_for_coding_agents.md.
-	// Coding agents never get a native shell (2026-09-24): hybrid grants only
-	// native read/search, skills, todos and subagents, so a native_shell
-	// transport would leave the CLI with no route to product APIs.
+	// A native shell is sandboxed and has no product credentials, so product
+	// APIs always go through the bridge transport.
 	if strings.EqualFold(strings.TrimSpace(profile.Runtime.APITransport.Mode), "native_shell") {
-		return fmt.Errorf("runtime api_transport.mode=native_shell is unsupported: coding agents never get a native shell; use the bridge transport")
+		return fmt.Errorf("runtime api_transport.mode=native_shell is unsupported: product APIs go through the bridge transport")
 	}
 	return nil
 }
@@ -160,7 +159,8 @@ func validateRuntime(runtime RuntimePolicy) error {
 	if transport != "auto" && transport != "tmux" && transport != "structured" {
 		return fmt.Errorf("invalid runtime transport %q", runtime.Transport)
 	}
-	if mode := strings.ToLower(strings.TrimSpace(runtime.AgentTools.Mode)); mode != "" && mode != "mcp_only" && mode != "hybrid" {
+	// "hybrid" is the retired name for "full", kept so older profiles load.
+	if mode := strings.ToLower(strings.TrimSpace(runtime.AgentTools.Mode)); mode != "" && mode != "mcp_only" && mode != "full" && mode != "hybrid" {
 		return fmt.Errorf("invalid runtime agent_tools.mode %q", runtime.AgentTools.Mode)
 	}
 	if mode := strings.ToLower(strings.TrimSpace(runtime.Approvals.Mode)); mode != "" && mode != "provider_auto" && mode != "approve_all" {

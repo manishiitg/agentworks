@@ -337,7 +337,6 @@ func TestPrepareCustomToolsUsesNarrowRequiredHumanToolBaseline(t *testing.T) {
 		"slack",
 		"google_workspace_cli",
 		"get_human_input_request",
-		"list_approved_fixer_decisions",
 		"answer_human_input_request",
 		"mark_human_input_consumed",
 		"dismiss_duplicate_human_input_request",
