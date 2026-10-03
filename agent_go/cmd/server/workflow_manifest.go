@@ -997,15 +997,19 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
 		return fmt.Errorf("Relays do not support Pulse")
 	}
+	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
+		return fmt.Errorf("Relays do not support Slack connections")
+	}
 	if m.Kind == "relay" && m.Capabilities.Notifications != nil {
 		notifications := m.Capabilities.Notifications
 		unsupportedChannel := func(channels []string) bool {
 			return slices.ContainsFunc(channels, func(channel string) bool {
-				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp")
+				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp") || strings.EqualFold(strings.TrimSpace(channel), "slack")
 			})
 		}
-		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) {
-			return fmt.Errorf("Relays do not support WhatsApp notification channels")
+		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) ||
+			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" || len(notifications.RunSummarySlackWebhookSecretNames) > 0 || len(notifications.PulseSummarySlackWebhookSecretNames) > 0 {
+			return fmt.Errorf("Relays do not support Slack or WhatsApp notifications")
 		}
 	}
 	if m.Label == "" {

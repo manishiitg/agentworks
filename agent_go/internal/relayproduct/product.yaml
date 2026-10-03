@@ -66,8 +66,6 @@ chat:
       - list_gmail_connections
       - update_gmail_connection_grants
       - google_workspace_cli
-      - slack
-      - send_slack_message
       - get_notification_history
       - get_cost_summary
       - get_schedule_runs

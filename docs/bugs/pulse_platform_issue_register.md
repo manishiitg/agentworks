@@ -1,3 +1,9 @@
+## Relay API products retain Google apps, exclude Slack/WhatsApp — PLAT-389
+
+[PLAT-389](pulse_platform/integrations/plat-389.md), fixed on main; deployment
+pending. Reuses authorized Google connections and removes Relay Slack surfaces,
+with manifest and runtime enforcement.
+
 ## Provider setup and product model selection — PLAT-386
 
 [PLAT-386](pulse_platform/frontend-chat/plat-386.md), fixed on main; included in

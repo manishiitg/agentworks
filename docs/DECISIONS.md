@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Relays keep Google apps and exclude Slack/WhatsApp
+
+Relays are API products with schedules and selected tools/skills. Keep Drive,
+Sheets, Calendar and Gmail through the shared authorized Google connection and
+service-grant tools. Remove Slack from the Relay product manifest and UI; reject
+Slack/WhatsApp configuration and block retained Slack tool routes at runtime.
+Plan creation requires no Google connection. This reverses the earlier Relay
+Slack scope per the user. Ticket: [PLAT-389](bugs/pulse_platform/integrations/plat-389.md).
+
 ### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now
 
 - **Decided (owner).** "Force deploys for now": a deploy restarts the services without waiting for running agent turns to finish.

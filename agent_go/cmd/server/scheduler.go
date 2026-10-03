@@ -592,11 +592,15 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
 	}
 	if manifest.Kind == "relay" {
+		sctx.Capabilities.SlackConnectionID = ""
 		notifications := WorkflowNotificationConfig{}
 		if sctx.Capabilities.Notifications != nil {
 			notifications = *sctx.Capabilities.Notifications
 		}
-		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "whatsapp")
+		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
+		notifications.SlackWebhookSecretName = ""
+		notifications.RunSummarySlackWebhookSecretNames = nil
+		notifications.PulseSummarySlackWebhookSecretNames = nil
 		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {

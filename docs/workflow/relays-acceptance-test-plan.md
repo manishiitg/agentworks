@@ -19,7 +19,7 @@ A case passes only after the saved graph or configuration is visible, a real run
 | R6 | Builder and UI round trip | Builder chat creates/edits graph and trigger; Graph, Triggers and execution logs reflect saved state without reload | Passed 2026-09-28; live graph refresh verified |
 | R7 | Restart durability | Completed run remains pollable after agent restart; an interrupted in-flight run has an honest terminal state | Passed; node resume deferred |
 | R8 | Isolation and permissions | Relay capabilities come from `product.yaml`; no Crew/AgentWorks chat route or WhatsApp route; callers without visibility cannot execute; visible readers can execute and only poll their own API runs | Partially passed; no-route claim checked in config, not live |
-| R9 | Optional integrations | Selected MCP tool/skill, Gmail, Slack, model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
+| R9 | Optional integrations | Selected MCP tool/skill, authorized Google apps (Drive, Sheets, Calendar, Gmail), model selection, and run-scoped browser each work when configured | Not verified; configured accounts needed, browser gap known |
 | R10 | Versioned publish and draft isolation | Builder publishes v1; draft edit leaves v1 stable; v2 becomes active; explicit v1 remains callable and idempotent | Passed 2026-09-28 on isolated preview |
 
 ## Live evidence
