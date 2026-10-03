@@ -39,7 +39,6 @@ profile:
     - animated-learning-video
     - reading-book
     - publish
-    - notify
     - backup
   tools:
     - id: sparkquill.set-child-profile
@@ -102,7 +101,6 @@ profile:
       - execute_shell_command
       - diff_patch_workspace_file
       - read_image
-      - notify_user
       - agent_browser
       - list_secrets
       - set_workflow_secret
@@ -177,21 +175,21 @@ profile:
   schedules:
     - id: pulse
       name: Check-in
-      description: Quill reviews the child's progress, school subjects and watched school websites, rebuilds the holistic progress page, then notifies the parent with the headline.
+      description: Quill reviews the child's progress, school subjects and watched school websites, rebuilds the holistic progress page, saves a summary in the check-in history.
       enabled: false
       # Its own conversation, session and coding-CLI process — never the
       # parent's live chat. Without this a scheduled run reused that exact
       # session, so a check-in firing while the parent was mid-chat collided
       # on the same tmux-backed process. Its turns are invisible to the
-      # parent's own transcript, so notify_user is the only way anything
-      # from a check-in reaches them.
+      # parent's own transcript; the parent reviews the saved check-in
+      # history and Progress tab.
       isolated: true
       cadence_hours: 24
       quiet_minutes: 10
       max_deferral_hours: 4
       messages:
         - "This is an automated check-in, in your own separate check-in history — not the parent's chat, which cannot see this. Your main job: check the child's progress and school subjects from real evidence in the workspace (activities, attempts, materials, school papers), check the watched school website(s) with agent_browser - call agent_browser(command=\"status\") first, log in with saved secrets where needed, check memory/browser-notes.md before navigating and save what you learn there - and rebuild the holistic progress page at reports/progress.html by following your create-progress-report skill — full regeneration every time, with today's date inside. Cover every subject with evidence, what she can and cannot do yet, and what to work on next. Then write ONE short, warm message as your reply (the parent is not technical; no files, paths or JSON)."
-        - "This automated check-in is done and the progress page is rebuilt. Decide what is ACTUALLY worth telling the parent, lead with what matters most — what changed, the one gap to act on — and call notify_user EXACTLY ONCE with a short title and a brief plain message (1-3 sentences) pointing at the refreshed Progress tab. If truly nothing meaningful happened, still send one honest line so the parent knows the check-in ran."
+        - "This automated check-in is done and the progress page is rebuilt. Decide what is ACTUALLY worth telling the parent, lead with what matters most — what changed, the one gap to act on — and save a brief plain summary (1-3 sentences) in this check-in history, pointing at the refreshed Progress tab. If nothing meaningful happened, say so. This summary stays in the check-in history; do not claim a notification was sent."
   built_in: true
 
 profiles:
@@ -242,7 +240,6 @@ profiles:
         - execute_shell_command
         - diff_patch_workspace_file
         - read_image
-        - notify_user
         - open_file
         - celebrate
         - show_scene

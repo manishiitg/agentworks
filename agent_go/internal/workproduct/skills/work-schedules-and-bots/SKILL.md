@@ -136,15 +136,20 @@ saved address, target, ordered rules, readiness and delivery activity. Do the co
 with tools; never instruct the user to find an Enable button or route editor.
 
 1. Inspect `get_gmail_trigger` and `list_gmail_connections`. If `configured`
-   is false, an operator must enable Pub/Sub for this deployment first.
+   is false, read `setup.admin_setup` and explain Google sign-in versus automatic
+   receiving. Give the Google Cloud topic/subscription checklist, exact public
+   push endpoint and all three GMAIL_INBOUND environment variables. Setup needs
+   Google Cloud project permissions and server access, not only an app admin
+   role. Do not stop at asking an administrator; never request credentials.
 2. Use `setup.oauth_clients` and `setup.can_connect_account` from
    `get_gmail_trigger`. Choose an existing usable account matching the owner's
    requested mailbox; do not ask the human to find connection IDs. If several
    accounts fit, ask which email address. If none exists, call
    `manage_gmail_trigger(action="connect")`: one eligible deployed OAuth client
    is selected automatically; if several exist, use an exact returned
-   `client_name`. If the returned client list is empty, an operator must finish
-   the deployed OAuth-client/topic setup first. It returns `connection_id` and `reconnect_url`. Code owners
+   `client_name`. If the returned client list is empty, explain that no registered OAuth client
+   is mapped to an inbound topic; sign-in may already work. Give the
+   `setup.admin_setup` checklist to finish the client/topic mapping. It returns `connection_id` and `reconnect_url`. Code owners
    can connect private accounts; shared Crew/workflow accounts retain the
    administrator requirement. Never substitute shared credentials for Code.
    Reuse an existing pending connection ID instead of creating duplicates.

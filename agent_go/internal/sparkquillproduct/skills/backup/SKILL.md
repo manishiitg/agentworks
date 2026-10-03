@@ -12,7 +12,7 @@ destination this family uses — never suggest GitHub, Drive, S3, or anything el
 and never suggest a different destination "for images" — `hf upload` handles
 binaries fine.
 
-Same config vs status contract as `publish`/`notify` elsewhere in this app:
+Same config vs status contract as `publish` elsewhere in this app:
 
 - `backup.json` (workspace root) — declarative config: `enabled`, `repo_id`
   (the parent's HF username + a repo name, e.g. `janedoe/sparkquill-backup`).

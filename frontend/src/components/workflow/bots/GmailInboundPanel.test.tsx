@@ -33,10 +33,24 @@ describe('Gmail incoming email settings', () => {
   it('offers setup help when the deployment is disabled and sends it to this workflow Builder', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })
     await render()
-    expect(host.textContent).toContain('An administrator needs to enable')
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('Google sign-in connects your account')
+    expect(host.textContent).toContain('GMAIL_INBOUND_TOPICS')
+    expect(host.querySelector('details')?.open).toBe(false)
     await ask()
     expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ workspacePath: 'Workflow/test', message: expect.stringContaining('Inspect get_gmail_trigger') })
     expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains a missing client mapping even when the receiver is enabled and shows its public event URL', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: true, route: null, deliveries: [], setup: {
+      oauth_clients: [], can_connect_account: false,
+      admin_setup: { push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', required_access: '', explanation: '', environment_variables: [], steps: [], empty_client_list: '', local_setup: '', documentation_url: '' },
+    } })
+    await render()
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('https://video.realtrainingsys.com/api/hooks/gmail/events')
+    expect(host.textContent).not.toContain('No Gmail trigger configured')
   })
 
   it('uses the project chat override rather than looking up a workflow for a Code project', async () => {
@@ -162,7 +176,10 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })
     await render('Workflow/new')
     await act(async () => resolveOld(enabled))
-    expect(host.textContent).toContain('An administrator needs to enable')
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('Google sign-in connects your account')
+    expect(host.textContent).toContain('GMAIL_INBOUND_TOPICS')
+    expect(host.querySelector('details')?.open).toBe(false)
     expect(host.textContent).not.toContain(enabled.route!.address)
   })
 

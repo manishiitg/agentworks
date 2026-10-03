@@ -105,3 +105,18 @@ account has Gmail read access. It does not replay deliveries or run the workflow
 Recent email activity is the saved trigger delivery history, not a mailbox read.
 
 Operator setup and internals: `docs/gmail-inbound.md`.
+
+## When incoming email is not set up
+
+The Incoming email pane now explains that Google sign-in and automatic receiving
+are separate. Its expandable setup checklist shows the Google Cloud requirements,
+server environment variable names and this deployment's public event URL. Ask AI
+passes the same request to Builder, and `get_gmail_trigger.setup.admin_setup`
+returns the deployment-specific checklist without credentials.
+
+`configured: false` means the receiving service is disabled. An empty
+`setup.oauth_clients` means no registered OAuth client is mapped to an inbound
+topic; Google sign-in can still be configured. Setup needs Google Cloud project
+permissions plus server environment access. Being an app administrator alone
+does not grant those permissions. The operator follows [the setup runbook](gmail-inbound.md),
+then Builder connects a mailbox with read consent and verifies readiness.

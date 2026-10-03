@@ -19,6 +19,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
+
+The platform `notify_user` tool belongs only to saved workflows. Relay's shared
+runner does not grant it, and SparkQuill check-ins save updates in their own
+history and Progress tab. Tool factories and product allowlists cannot bypass
+this boundary. Incoming Gmail's read-only pane and Builder explain Google sign-in
+versus receiving, the deployment's event URL and the Google Cloud/server checklist.
+Infrastructure setup requires cloud and server access; an app admin role alone
+is insufficient. Account consent and rules stay in Builder. Ticket:
+[PLAT-379](bugs/pulse_platform/integrations/plat-379.md).
+
 ### 2026-10-03 — Relay commands follow its product; prompt inspection stays private
 
 - Relay's `product.yaml` owns its command catalog as well as its builder prompt,

@@ -168,7 +168,7 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 		"get_file_link", "list_secrets", "list_accessible_workflows",
 		"list_attached_workflows", "list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run",
 		"list_project_schedules", "list_project_triggers",
-		"human_feedback", "notify_user", "manage_custom_commands",
+		"human_feedback", "manage_custom_commands",
 		"attach_work_folder", "list_work_folders",
 	} {
 		if !gate.Admit(allowed) {

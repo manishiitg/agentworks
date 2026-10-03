@@ -70,7 +70,7 @@ func (api *StreamingAPI) connectGmailTriggerAccount(ctx context.Context, workspa
 		clients := gmailTriggerOAuthClients(config)
 		if clientName == "" {
 			if len(clients) == 0 {
-				return "", fmt.Errorf("an administrator must register an OAuth client with a configured Gmail Pub/Sub topic first")
+				return "", fmt.Errorf("No registered OAuth client is mapped to an inbound topic. Google sign-in may already work; read get_gmail_trigger.setup.admin_setup for the receiving setup checklist.")
 			}
 			if len(clients) != 1 {
 				return "", fmt.Errorf("choose an exact deployed OAuth client from get_gmail_trigger.setup.oauth_clients: %v", clients)

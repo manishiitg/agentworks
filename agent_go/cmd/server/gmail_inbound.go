@@ -363,7 +363,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 			existing = &target
 		}
 		scope, _ := gmailRequestScope(r, target.WorkspacePath)
-		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r)}}
+		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r), "admin_setup": gmailInboundAdminSetup(config)}}
 		if existing != nil {
 			if m, e := api.gmailInbound.Store.MailboxStatus(r.Context(), existing.ConnectionID); e == nil {
 				response["watch_ready"] = m.Cursor != ""

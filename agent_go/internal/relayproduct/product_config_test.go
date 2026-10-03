@@ -47,7 +47,7 @@ func TestBuilderSurfaceIsRelaySpecific(t *testing.T) {
 	if len(tools) == 0 || !BuilderAllowsTool("add_step") || !BuilderAllowsTool("manage_workflow_webhook") {
 		t.Fatal("Relay Builder is missing graph or trigger tools")
 	}
-	for _, excluded := range []string{"create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request"} {
+	for _, excluded := range []string{"create_slack_bot_route", "configure_slack_bot", "manage_group", "create_human_input_request", "notify_user"} {
 		if BuilderAllowsTool(excluded) {
 			t.Errorf("Relay Builder admits %s", excluded)
 		}

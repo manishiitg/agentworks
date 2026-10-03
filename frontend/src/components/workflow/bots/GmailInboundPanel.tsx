@@ -9,7 +9,7 @@ import { buildAskAIMessage } from '../../../utils/askAIMessage'
 const setupMessage = buildAskAIMessage({
   view: 'Incoming email',
   summary: 'Help me connect Gmail and choose what incoming email should start.',
-  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. For different actions, configure ordered named rules with stable IDs: a Crew/Code instruction or a workflow saved route and groups for each rule. First matching enabled rule wins; no match skips mail. Read the saved rules and preserve untouched rules and their IDs before replacing the list. Common filters restrict every rule. Only widen senders when I ask. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. If the deployment is not configured, explain what its administrator must enable; never request credentials in chat or edit server credential files. Return the receiving address and verified readiness. The Incoming email panel is read-only.',
+  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. For different actions, configure ordered named rules with stable IDs: a Crew/Code instruction or a workflow saved route and groups for each rule. First matching enabled rule wins; no match skips mail. Read the saved rules and preserve untouched rules and their IDs before replacing the list. Common filters restrict every rule. Only widen senders when I ask. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. If the deployment is not configured, read setup.admin_setup and explain Google sign-in versus automatic receiving. Give the Google Cloud and server checklist with the exact push_endpoint and all three GMAIL_INBOUND environment variables. Explain the required Google Cloud permissions and server access; an app admin role alone is insufficient. An empty oauth_clients list means no eligible OAuth-client/topic mapping, not necessarily missing sign-in. Do not stop at asking an administrator; never request credentials in chat or edit server credential files. Return the receiving address and verified readiness. The Incoming email panel is read-only.',
 })
 
 const fetchMessage = buildAskAIMessage({
@@ -105,8 +105,26 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
   return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={setupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
-      {state && !state.configured && <p className="text-muted-foreground">An administrator needs to enable Gmail incoming email for this deployment.</p>}
-      {state?.configured && !route && <p className="text-muted-foreground">No Gmail trigger configured. Ask Builder to link a connected account.</p>}
+      {state && (!state.configured || state.setup?.oauth_clients.length === 0) && <div className="space-y-2 rounded-md border p-3">
+        <p className="font-medium">Automatic incoming email is not set up</p>
+        <p className="text-muted-foreground">Google sign-in connects your account. To start chats or workflows when mail arrives, this server also needs Google Pub/Sub, Google's mailbox event delivery service. Saved filters alone cannot receive mail.</p>
+        <p className="text-muted-foreground">One-time setup requires Google Cloud project permissions and access to this server's environment settings. An app administrator role alone does not provide those permissions.</p>
+        <details>
+          <summary className="cursor-pointer font-medium">Setup checklist</summary>
+          <ol className="mt-2 list-decimal space-y-2 pl-5 text-muted-foreground">
+            <li>Use the Google Cloud project that owns your Google sign-in OAuth client. Enable the Gmail and Pub/Sub APIs.</li>
+            <li>Create a Pub/Sub topic. Give <code className="break-all">gmail-api-push@system.gserviceaccount.com</code> the Pub/Sub Publisher role on that topic.</li>
+            <li>Create an authenticated push subscription with a service account and permission for Pub/Sub to create its authentication tokens. Use the same public HTTPS email event URL for the endpoint and audience.</li>
+            <li>Set <code>GMAIL_INBOUND_TOPICS</code> (OAuth client name → full topic name), <code>GMAIL_INBOUND_AUDIENCE</code> (event URL), and <code>GMAIL_INBOUND_PUSH_EMAIL</code> (push service account email) in the server environment, then restart the backend.</li>
+            <li>Ask Builder to verify setup, connect your mailbox with read access, and configure its incoming email rules.</li>
+          </ol>
+          {state.setup?.admin_setup?.push_endpoint && <p className="mt-2">This deployment's event URL: <code className="break-all">{state.setup.admin_setup.push_endpoint}</code></p>}
+          <p className="mt-2 text-muted-foreground">An empty OAuth client list can mean the topic mapping is missing even when Google sign-in works. Local development needs a public HTTPS tunnel.</p>
+          <a className="mt-2 inline-block underline" href="https://developers.google.com/workspace/gmail/api/guides/push" target="_blank" rel="noreferrer">Google setup documentation</a>
+        </details>
+        <p className="text-xs text-muted-foreground">Ask AI above for setup instructions for this deployment. Account connections and email rules are configured through Builder.</p>
+      </div>}
+      {state?.configured && state.setup?.oauth_clients.length !== 0 && !route && <p className="text-muted-foreground">No Gmail trigger configured. Ask Builder to link a connected account.</p>}
       {route && <div className="space-y-2 rounded-md border p-3">
         <p className="font-medium">{route.name || 'Gmail trigger'} · {route.enabled ? 'Enabled' : 'Disabled'}</p>
         <p className="text-muted-foreground">Receiving account: {account?.email || account?.display_name || route.connection_id}</p>

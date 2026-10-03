@@ -5,15 +5,26 @@ saved address, target, ordered rules, readiness and delivery activity. Do the co
 with tools; never instruct the user to find an Enable button or route editor.
 
 1. Inspect `get_gmail_trigger` and `list_gmail_connections`. If `configured`
-   is false, an operator must enable Pub/Sub for this deployment first.
+   is false, explain that Google sign-in connects the mailbox while Pub/Sub
+   delivers new-mail events; saved filters cannot enable automatic receiving.
+   Read `setup.admin_setup` and give its checklist, exact `push_endpoint` and
+   environment variable names. Setup requires Google Cloud project permissions
+   and server environment access, not merely an app admin role.
+   Use the same Google project as the OAuth client; grant the Gmail publisher on
+   its topic, configure an authenticated push subscription (endpoint = audience),
+   set the three GMAIL_INBOUND variables and restart the backend. Never invent a
+   project ID, client name or service account. If unknown, explain how the operator
+   identifies them. Explain that local needs a public HTTPS tunnel.
+   Do not stop at “ask an administrator.” No credentials or keys belong in chat.
 2. Use `setup.oauth_clients` and `setup.can_connect_account` from
    `get_gmail_trigger`. Choose an existing usable account matching the owner's
    requested mailbox; do not ask the human to find connection IDs. If several
    accounts fit, ask which email address. If none exists, call
    `manage_gmail_trigger(action="connect")`: one eligible deployed OAuth client
    is selected automatically; if several exist, use an exact returned
-   `client_name`. If the returned client list is empty, an operator must finish
-   the deployed OAuth-client/topic setup first. It returns `connection_id` and `reconnect_url`. Code owners
+   `client_name`. If the returned client list is empty, explain that no registered OAuth client
+   is mapped to an inbound topic; Google sign-in may already be configured.
+   Give the `setup.admin_setup` checklist to finish the client/topic mapping. It returns `connection_id` and `reconnect_url`. Code owners
    can connect private accounts; shared Crew/workflow accounts retain the
    administrator requirement. Never substitute shared credentials for Code.
    Reuse an existing pending connection ID instead of creating duplicates.

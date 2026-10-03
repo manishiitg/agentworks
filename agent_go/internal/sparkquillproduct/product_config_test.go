@@ -57,6 +57,28 @@ func TestManifestDeclaresParentAndChild(t *testing.T) {
 	}
 }
 
+func TestSparkQuillDoesNotOfferWorkflowNotifications(t *testing.T) {
+	for _, profile := range BuiltinAgentProfiles() {
+		for _, name := range profile.ToolPolicy.Enabled {
+			if name == "notify_user" {
+				t.Fatalf("%s exposes workflow notifications", profile.ID)
+			}
+		}
+		for _, name := range profile.Skills {
+			if name == "notify" {
+				t.Fatalf("%s still attaches the notification skill", profile.ID)
+			}
+		}
+		for _, schedule := range profile.Schedules {
+			for _, message := range schedule.Messages {
+				if strings.Contains(message, "notify_user") {
+					t.Fatalf("%s check-in still requests notifications", profile.ID)
+				}
+			}
+		}
+	}
+}
+
 func TestProfileCommandsAreCompleteAndUnique(t *testing.T) {
 	profiles := BuiltinAgentProfiles()
 	for i := range profiles {

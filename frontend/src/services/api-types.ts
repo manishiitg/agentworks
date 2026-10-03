@@ -3878,6 +3878,11 @@ export interface GmailInboundRule {
 }
 
 export interface GmailInboundState {
+  setup?: {
+    oauth_clients: string[]
+    can_connect_account: boolean
+    admin_setup?: { push_endpoint: string; required_access: string; explanation: string; environment_variables: string[]; steps: string[]; empty_client_list: string; local_setup: string; documentation_url: string }
+  }
   configured: boolean
   route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string; filters?: GmailInboundFilters; rules?: GmailInboundRule[] } | null
   watch_ready?: boolean

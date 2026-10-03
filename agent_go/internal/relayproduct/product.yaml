@@ -68,7 +68,6 @@ chat:
       - google_workspace_cli
       - slack
       - send_slack_message
-      - notify_user
       - get_notification_history
       - get_cost_summary
       - get_schedule_runs

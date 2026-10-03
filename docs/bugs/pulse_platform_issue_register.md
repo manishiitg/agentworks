@@ -1,3 +1,9 @@
+## Workflow notifications and Gmail setup guidance — PLAT-379
+
+[PLAT-379](pulse_platform/integrations/plat-379.md), implemented and locally validated; deployment pending. `notify_user` is workflow-only. Incoming Gmail
+explains Google Cloud/server setup in its pane and Builder instead of an
+unexplained administrator warning.
+
 ## Relay commands and system prompt inspection — PLAT-378
 
 [PLAT-378](pulse_platform/frontend-chat/plat-378.md), implemented and locally

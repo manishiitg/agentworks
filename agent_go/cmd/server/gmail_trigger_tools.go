@@ -290,7 +290,7 @@ func (api *StreamingAPI) waitGmailWorkflowRun(ctx context.Context, d *gmailinbou
 }
 
 func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, session, workspace string) error {
-	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing, ordered rules and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The right pane is read-only. If configured=false, an operator must enable Pub/Sub first.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing, ordered rules and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The right pane is read-only. If configured=false, explain setup.admin_setup in plain language and give its deployment-specific endpoint and checklist; do not just tell the user to ask an administrator.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, nil)
 	}, "gmail_connection_management"); err != nil {
 		return err
@@ -355,7 +355,7 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 	action, _ := args["action"].(string)
 	if action == "connect" {
 		if api.gmailInbound == nil {
-			return "", fmt.Errorf("an administrator must configure Gmail Pub/Sub first")
+			return "", fmt.Errorf("Automatic incoming email is not enabled on this server. Read get_gmail_trigger.setup.admin_setup for the Google Cloud and server setup checklist; Google sign-in alone does not enable it.")
 		}
 		return api.connectGmailTriggerAccount(ctx, workspace, config, args)
 	}

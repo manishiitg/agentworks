@@ -302,6 +302,36 @@ func TestGmailManagementHTTPIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestGmailBuilderExplainsDeploymentSetupWhenDisabled(t *testing.T) {
+	api, ctx, _ := gmailTriggerFixture(t)
+	api.gmailInbound = nil
+	t.Setenv("GMAIL_INBOUND_TOPICS", "")
+	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
+	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "")
+	t.Setenv("PUBLIC_URL", "https://video.realtrainingsys.com")
+	result, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status struct {
+		Configured bool `json:"configured"`
+		Setup      struct {
+			Clients []string `json:"oauth_clients"`
+			Admin   struct {
+				Endpoint string   `json:"push_endpoint"`
+				Access   string   `json:"required_access"`
+				Steps    []string `json:"steps"`
+			} `json:"admin_setup"`
+		} `json:"setup"`
+	}
+	if err := json.Unmarshal([]byte(result), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Configured || len(status.Setup.Clients) != 0 || status.Setup.Admin.Endpoint != "https://video.realtrainingsys.com/api/hooks/gmail/events" || len(status.Setup.Admin.Steps) != 5 || !strings.Contains(status.Setup.Admin.Access, "server environment") {
+		t.Fatalf("missing actionable deployment help: %s", result)
+	}
+}
+
 func TestGmailBuilderFiltersPreserveBindingAndCanBeCleared(t *testing.T) {
 	api, ctx, _ := gmailTriggerFixture(t)
 	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"subject_contains": []string{" Invoice "}, "has_attachments": false, "new_threads_only": true}}

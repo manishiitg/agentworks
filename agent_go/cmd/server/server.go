@@ -4619,6 +4619,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[MANIFEST] WARNING: No workflow.json found for preset %s - workflow will run with request defaults only. Run migration: POST /api/workflows/migrate", req.PresetQueryID)
 		}
 
+		allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(manifestWorkspacePath))
+
 		// --- Post-load processing: browser configuration ---
 		// Runs after either manifest or preset loading has populated the config variables.
 
@@ -5678,6 +5680,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
 			}
 		}
+		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
@@ -11407,6 +11410,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID)
 	api.guardPulseResultExecutor(allExecutors, sessionID)
+	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 
 	// Track preset's global secret selection (overrides req.SelectedGlobalSecrets which is nil for phase chat)
 	var presetGlobalSecretNames *[]string
