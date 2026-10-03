@@ -33,5 +33,5 @@ easy to miss (social-media had two since 2026-09-25/28).
 
 - Done: `decision_apply_list_test.go`; panel test for Apply in chat; workflow
   component tests pass.
-- Left: header activity badges count only unanswered decisions; decide whether
-  unapplied ones should count too.
+- Done: the header activity badges and the org dashboard count unanswered
+  plus answered-not-applied decisions (`needsYouDecisions`, owner decision).

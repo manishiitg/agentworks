@@ -190,7 +190,7 @@ export const OrgDashboard: React.FC<OrgDashboardProps> = ({ workflows, selectedW
       const paths = workflows.map(workflow => workflow.workspacePath)
       const [notifications, humanInputs] = await Promise.all([
         paths.length ? agentApi.getOrgDashboardNotifications(paths, 10) : Promise.resolve({ success: true, workflows: [] }),
-        paths.length ? agentApi.listReportHumanInputsAggregate(paths, 'pending').catch(() => ({ success: false, inputs: [] as ReportHumanInput[] })) : Promise.resolve({ success: true, inputs: [] as ReportHumanInput[] }),
+        paths.length ? agentApi.listNeedsYouDecisionsAggregate(paths).catch(() => ({ success: false, inputs: [] as ReportHumanInput[] })) : Promise.resolve({ success: true, inputs: [] as ReportHumanInput[] }),
       ])
       const notificationByPath = new Map((notifications.workflows || []).map(item => [item.workspace_path, item]))
       const results = workflows.map((workflow): WorkflowDashEntry => {

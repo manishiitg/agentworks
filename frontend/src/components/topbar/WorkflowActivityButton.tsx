@@ -23,7 +23,7 @@ export function WorkflowActivityButton({ workspacePath, onOpen }: WorkflowActivi
     try {
       const [notifications, humanInputs] = await Promise.all([
         agentApi.getOrgDashboardNotifications([workspacePath], 1),
-        agentApi.listReportHumanInputsAggregate([workspacePath], 'pending').catch(() => ({ success: false, inputs: [] })),
+        agentApi.listNeedsYouDecisionsAggregate([workspacePath]).catch(() => ({ success: false, inputs: [] })),
       ])
       if (request === refreshSequence.current) {
         const inputs = humanInputs.inputs || []

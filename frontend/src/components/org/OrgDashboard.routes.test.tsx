@@ -4,9 +4,15 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import type { OrgDashboardNotification } from '../../services/api-types'
 
-vi.mock('../../services/api', () => ({ agentApi: {
-  getOrgDashboardNotifications: vi.fn(), listReportHumanInputsAggregate: vi.fn(),
-} }))
+vi.mock('../../services/api', () => {
+  const agentApi = {
+    getOrgDashboardNotifications: vi.fn(), listReportHumanInputsAggregate: vi.fn(),
+    // The dashboard asks for unanswered plus answered-not-applied decisions; the
+    // tests set the decisions through the aggregate mock.
+    listNeedsYouDecisionsAggregate: (paths: string[]) => agentApi.listReportHumanInputsAggregate(paths, 'pending'),
+  }
+  return { agentApi }
+})
 import { agentApi } from '../../services/api'
 import { OrgDashboard } from './OrgDashboard'
 
