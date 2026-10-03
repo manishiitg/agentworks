@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { agentApi } from '../../../services/api'
-import type { GmailConnection, GmailInboundState } from '../../../services/api-types'
+import type { GmailConnection, GmailInboundFilters, GmailInboundRule, GmailInboundState } from '../../../services/api-types'
 import { Button } from '../../ui/Button'
 import { FormSection } from '../../ui/FormSection'
 import { AskAIButton } from '../AskAIButton'
@@ -9,14 +9,53 @@ import { buildAskAIMessage } from '../../../utils/askAIMessage'
 const setupMessage = buildAskAIMessage({
   view: 'Incoming email',
   summary: 'Help me connect Gmail and choose what incoming email should start.',
-  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. Only widen senders when I ask. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. If the deployment is not configured, explain what its administrator must enable; never request credentials in chat or edit server credential files. Return the receiving address and verified readiness. The Incoming email panel is read-only.',
+  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. For different actions, configure ordered named rules with stable IDs: a Crew/Code instruction or a workflow saved route and groups for each rule. First matching enabled rule wins; no match skips mail. Read the saved rules and preserve untouched rules and their IDs before replacing the list. Common filters restrict every rule. Only widen senders when I ask. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. If the deployment is not configured, explain what its administrator must enable; never request credentials in chat or edit server credential files. Return the receiving address and verified readiness. The Incoming email panel is read-only.',
 })
 
 const fetchMessage = buildAskAIMessage({
   view: 'Incoming email',
   summary: 'Fetch recent matching Gmail emails and show them in this chat.',
-  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Use the saved connection_id, or the only readable account if no trigger is set; ask which mailbox if several fit. Read recent Gmail messages with google_workspace_cli through the supported Google tools/API bridge. When a trigger exists, search its receiving address and apply its saved sender and content rules, including OR alternatives; explain any condition you cannot verify. Show recent matches with sender, subject, received time and a brief summary. Do not treat saved delivery activity as freshly fetched email. Mailbox reading does not require Pub/Sub to be enabled. If read consent is missing, explain how to connect it. This request is to read and summarize mail; do not change settings, replay deliveries, start the saved workflow or send replies. Never request credentials in chat.',
+  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Use the saved connection_id, or the only readable account if no trigger is set; ask which mailbox if several fit. Read recent Gmail messages with google_workspace_cli through the supported Google tools/API bridge. When a trigger exists, search its receiving address and apply its saved sender and content rules, including OR alternatives and ordered rules. Identify which enabled rule each message matches without running its action; explain any condition you cannot verify. Show recent matches with sender, subject, received time and a brief summary. Do not treat saved delivery activity as freshly fetched email. Mailbox reading does not require Pub/Sub to be enabled. If read consent is missing, explain how to connect it. This request is to read and summarize mail; do not change settings, replay deliveries, start the saved workflow or send replies. Never request credentials in chat.',
 })
+
+function filterConditions(filters?: GmailInboundFilters) {
+  return [
+    ...(filters?.sender_allowlist?.length ? [`Sender is ${filters.sender_allowlist.join(' OR ')}`] : []),
+    ...(filters?.subject_contains || []).map(term => `Subject contains “${term}”`),
+    ...(filters?.body_contains || []).map(term => `Body contains “${term}”`),
+    ...(filters?.subject_contains_any?.length ? [`Subject contains any: ${filters.subject_contains_any.map(term => `“${term}”`).join(' OR ')}`] : []),
+    ...(filters?.body_contains_any?.length ? [`Body contains any: ${filters.body_contains_any.map(term => `“${term}”`).join(' OR ')}`] : []),
+    ...(filters?.has_attachments === undefined ? [] : [filters.has_attachments ? 'Has attachments' : 'No attachments']),
+    ...(filters?.new_threads_only ? ['New threads only'] : []),
+  ]
+}
+
+function workflowAction(rule: { step_id?: string; route_selections?: Record<string, string> | null }) {
+  return rule.step_id ? `Step ${rule.step_id}` : Object.keys(rule.route_selections || {}).length ? Object.entries(rule.route_selections!).map(([step, branch]) => `${step} → ${branch}`).join(', ') : 'Full workflow'
+}
+
+function EmailRuleCard({ rule, order, workflow, commonFilters }: { rule: GmailInboundRule; order: number; workflow?: boolean; commonFilters?: GmailInboundFilters }) {
+  const conditions = filterConditions(rule.filters)
+  const senderList = rule.filters?.sender_allowlist?.length ? rule.filters.sender_allowlist : commonFilters?.sender_allowlist
+  return <li className="min-w-0 space-y-2 rounded-md border bg-background/50 p-3">
+    <div className="flex items-start gap-2">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">{order}</span>
+      <p className="min-w-0 flex-1 break-words font-medium">{rule.name}</p>
+      <span className={`shrink-0 text-xs ${rule.enabled === false ? 'text-muted-foreground' : 'text-primary'}`}>{rule.enabled === false ? 'Paused' : 'Enabled'}</span>
+    </div>
+    <p className="break-words text-xs text-muted-foreground">Senders: {senderList?.length ? senderList.join(' OR ') : 'Owner email only'}</p>
+    <p className="break-words text-xs text-muted-foreground">Matches: {conditions.length ? conditions.join(' · ') : 'Any email allowed by the common policy'}{conditions.length > 1 ? ' (all condition groups must match)' : ''}</p>
+    {rule.filters?.allow_automatic && <p className="text-xs text-muted-foreground">Automated notifications from listed senders: Allowed</p>}
+    {workflow ? <>
+      <p className="break-words text-xs"><span className="font-medium">Runs: </span>{workflowAction(rule)}</p>
+      {!!rule.group_names?.length && <p className="break-words text-xs text-muted-foreground">Groups: {rule.group_names.join(', ')}</p>}
+    </> : <div className="rounded border bg-muted/30 p-2 text-xs">
+      <p className="mb-1 font-medium">Message to chat</p>
+      <p className="whitespace-pre-wrap break-words">{rule.instruction}</p>
+      <p className="mt-1 text-muted-foreground">Incoming email is included as context.</p>
+    </div>}
+  </li>
+}
 
 function errorMessage(error: unknown): string {
   const response = (error as { response?: { data?: unknown } })?.response?.data
@@ -61,16 +100,9 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
   const route = state?.route
   const account = connections.find(connection => connection.id === route?.connection_id)
   const filters = route?.filters
-  const conditions = [
-    ...(filters?.sender_allowlist?.length ? [`Sender is ${filters.sender_allowlist.join(' OR ')}`] : []),
-    ...(filters?.subject_contains || []).map(term => `Subject contains “${term}”`),
-    ...(filters?.body_contains || []).map(term => `Body contains “${term}”`),
-    ...(filters?.subject_contains_any?.length ? [`Subject contains any: ${filters.subject_contains_any.map(term => `“${term}”`).join(' OR ')}`] : []),
-    ...(filters?.body_contains_any?.length ? [`Body contains any: ${filters.body_contains_any.map(term => `“${term}”`).join(' OR ')}`] : []),
-    ...(filters?.has_attachments === undefined ? [] : [filters.has_attachments ? 'Has attachments' : 'No attachments']),
-    ...(filters?.new_threads_only ? ['New threads only'] : []),
-  ]
-  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose the workflow route, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={setupMessage} />}>
+  const conditions = filterConditions(filters)
+  const rules = route?.rules || []
+  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={setupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {state && !state.configured && <p className="text-muted-foreground">An administrator needs to enable Gmail incoming email for this deployment.</p>}
@@ -80,13 +112,18 @@ export function GmailInboundPanel({ workspacePath, connections = [], refreshToke
         <p className="text-muted-foreground">Receiving account: {account?.email || account?.display_name || route.connection_id}</p>
         <div className="break-all font-mono text-xs">{route.address}</div>
         <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(route.address); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>
-        <p className="text-muted-foreground">Starts: {route.workflow_trigger ? route.step_id ? `Step ${route.step_id}` : Object.keys(route.route_selections || {}).length ? Object.entries(route.route_selections!).map(([step, branch]) => `${step} → ${branch}`).join(', ') : 'Full workflow' : 'A project chat; replies continue the same chat'}</p>
-        {!!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
-        <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · {filters?.sender_allowlist?.length ? 'Listed senders only' : 'Owner email only'}</p>
+        {!rules.length && <p className="text-muted-foreground">Starts: {route.workflow_trigger ? workflowAction(route) : 'A project chat; replies continue the same chat'}</p>}
+        {!rules.length && !!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
+        <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · {rules.length ? 'Sender policy is shown on each rule' : filters?.sender_allowlist?.length ? 'Listed senders only' : 'Owner email only'}</p>
         {filters?.allow_automatic && <p className="text-muted-foreground">Automated notifications from listed senders: Allowed</p>}
-        <p className="text-muted-foreground">Filters: {conditions.length ? `${conditions.join(' · ')} (all condition groups must match)` : 'None'}</p>
+        <p className="text-muted-foreground">{rules.length ? 'Common filters' : 'Filters'}: {conditions.length ? `${conditions.join(' · ')} (all condition groups must match)` : 'None'}</p>
+        {!!rules.length && <section className="space-y-2 border-t pt-3" aria-label="Email rules">
+          <h4 className="font-medium">Email rules · {rules.length}</h4>
+          <p className="text-xs text-muted-foreground">Checked in order. The first matching enabled rule runs; no match skips the email. Ask Builder to add, change, pause, or reorder rules.</p>
+          <ol className="space-y-2">{rules.map((rule, index) => <EmailRuleCard key={rule.id} rule={rule} order={index + 1} workflow={route.workflow_trigger} commonFilters={filters} />)}</ol>
+        </section>}
         <p className="text-muted-foreground">{!route.enabled ? 'Incoming email is disabled.' : state?.error ? state.error : state?.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
-        {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
+        {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.rule_name ? `${d.rule_name} · ` : d.rule_id ? `${d.rule_id} · ` : ''}{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
       </div>}
       <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={fetchMessage} label="Fetch emails" />
       <p className="text-xs text-muted-foreground">Fetch matching emails into chat. Recent email activity shows saved trigger deliveries.</p>

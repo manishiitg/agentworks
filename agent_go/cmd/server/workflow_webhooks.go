@@ -48,6 +48,7 @@ type WorkflowWebhookValueMapping = workflowtrigger.ValueMapping
 type WorkflowWebhookPayloadMappings = workflowtrigger.PayloadMappings
 
 type WorkflowWebhookDelivery struct {
+	gmailRuleID     string            // Internal admission metadata, never decoded from a request.
 	Group           string            `json:"group,omitempty"`
 	Variables       map[string]string `json:"variables,omitempty"`
 	RunID           string            `json:"run_id"`
@@ -182,6 +183,12 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 		}
 		if _, err := gmailinbound.NormalizeFilters(s.Gmail.Filters); err != nil {
 			return err
+		}
+		if _, err := gmailinbound.NormalizeRules(s.Gmail.Rules, true); err != nil {
+			return err
+		}
+		if len(s.Gmail.Rules) > 0 && (s.Webhook.InputMode != "raw" || s.Webhook.PayloadMappings != nil || len(s.Webhook.AllowedVariables) > 0) {
+			return errors.New("Gmail rules use saved bindings and raw email input, never payload-selected routing")
 		}
 	} else if isFunctionTriggerKind(s.Kind) {
 		if err := validateWorkflowFunctionSpec(s.Function); err != nil {

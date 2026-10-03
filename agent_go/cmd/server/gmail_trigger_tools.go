@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 // Gmail is a trigger source, not another public per-workflow webhook.
 type WorkflowGmailTriggerConfig struct {
+	Rules        []gmailinbound.Rule   `json:"rules,omitempty"`
 	Filters      *gmailinbound.Filters `json:"filters,omitempty"`
 	ConnectionID string                `json:"connection_id"`
 	Address      string                `json:"address"`
@@ -28,6 +30,7 @@ func (s WorkflowSchedule) IsGmailTrigger() bool {
 }
 
 type gmailTriggerInput struct {
+	Rules           []gmailinbound.Rule   `json:"rules"`
 	Filters         *gmailinbound.Filters `json:"filters"`
 	WorkspacePath   string                `json:"workspace_path"`
 	ConnectionID    string                `json:"connection_id"`
@@ -45,6 +48,13 @@ func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gma
 		return err
 	}
 	route.Filters = filters
+	route.Rules, err = gmailinbound.NormalizeRules(route.Rules, route.WorkflowTrigger)
+	if err != nil {
+		return err
+	}
+	if len(route.Rules) > 0 && (route.RouteSelections != nil || len(route.GroupNames) > 0 || route.StepID != "") {
+		return fmt.Errorf("put workflow bindings inside each email rule")
+	}
 	if !route.WorkflowTrigger {
 		if len(mailboxEmail) > 0 {
 			return api.gmailInbound.Store.SaveRoute(ctx, route, mailboxEmail[0])
@@ -59,23 +69,43 @@ func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gma
 	}
 	previousSchedules := append([]WorkflowSchedule(nil), manifest.Schedules...)
 	groups := normalizeScheduleGroupNames(route.GroupNames)
+	if len(route.Rules) > 0 {
+		groups = nil
+		for i := range route.Rules {
+			rule := &route.Rules[i]
+			rule.GroupNames = normalizeScheduleGroupNames(rule.GroupNames)
+			if route.Enabled {
+				rule.GroupNames, err = validateScheduleGroupNamesForWorkspace(ctx, route.WorkspacePath, rule.GroupNames)
+				if err != nil {
+					return fmt.Errorf("email rule %s: %w", rule.ID, err)
+				}
+				if err := validateWebhookTarget(ctx, route.WorkspacePath, rule.StepID, rule.RouteSelections); err != nil {
+					return fmt.Errorf("email rule %s: %w", rule.ID, err)
+				}
+			}
+			groups = append(groups, rule.GroupNames...)
+		}
+		groups = normalizeScheduleGroupNames(groups)
+	}
 	if route.Enabled {
 		if err := directWebhookPreflight(manifest); err != nil {
 			return err
 		}
-		groups, err = validateScheduleGroupNamesForWorkspace(ctx, route.WorkspacePath, groups)
-		if err != nil {
-			return err
-		}
-		if err := validateWebhookTarget(ctx, route.WorkspacePath, route.StepID, route.RouteSelections); err != nil {
-			return err
+		if len(route.Rules) == 0 {
+			groups, err = validateScheduleGroupNamesForWorkspace(ctx, route.WorkspacePath, groups)
+			if err != nil {
+				return err
+			}
+			if err := validateWebhookTarget(ctx, route.WorkspacePath, route.StepID, route.RouteSelections); err != nil {
+				return err
+			}
 		}
 	}
 	name := route.Name
 	if name == "" {
 		name = "Incoming Gmail"
 	}
-	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseMode: "off", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters}}
+	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseMode: "off", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}}
 	index := -1
 	for i, existing := range manifest.Schedules {
 		if existing.ID == route.ID {
@@ -126,6 +156,33 @@ func (api *StreamingAPI) gmailWorkflowTrigger(ctx context.Context, route gmailin
 		if err := validateWebhookSchedule(sched); err != nil {
 			return nil, WorkflowSchedule{}, err
 		}
+		if len(route.Rules) > 0 || len(sched.Gmail.Rules) > 0 {
+			if !reflect.DeepEqual(route.Rules, sched.Gmail.Rules) || !reflect.DeepEqual(route.Filters, sched.Gmail.Filters) {
+				return nil, WorkflowSchedule{}, fmt.Errorf("Gmail rule configuration changed; ask Builder to configure it")
+			}
+			if route.SelectedRuleID != "" {
+				if _, err := route.SelectedRule(); err != nil {
+					return nil, WorkflowSchedule{}, err
+				}
+				sched, err = gmailRuleSchedule(sched, route.SelectedRuleID)
+				if err != nil {
+					return nil, WorkflowSchedule{}, err
+				}
+			} else {
+				// Inspection validates every active binding, but never chooses a rule.
+				for _, rule := range sched.Gmail.Rules {
+					if rule.IsEnabled() {
+						if err := validateWebhookTarget(ctx, route.WorkspacePath, rule.StepID, rule.RouteSelections); err != nil {
+							return nil, WorkflowSchedule{}, err
+						}
+						if _, err := validateScheduleGroupNamesForWorkspace(ctx, route.WorkspacePath, rule.GroupNames); err != nil {
+							return nil, WorkflowSchedule{}, err
+						}
+					}
+				}
+				return manifest, sched, nil
+			}
+		}
 		if err := validateWebhookTarget(ctx, route.WorkspacePath, sched.Webhook.StepID, sched.RouteSelections); err != nil {
 			return nil, WorkflowSchedule{}, err
 		}
@@ -139,6 +196,28 @@ func (api *StreamingAPI) gmailWorkflowTrigger(ctx context.Context, route gmailin
 
 // Reuse the authenticated trigger pipeline, its durable run IDs and exact route
 // execution. Email contents are payload data, never configuration or a plan.
+// Resolve only a server-selected rule ID against the current saved manifest.
+// Neither email JSON nor webhook payload mappings can supply this selection.
+func gmailRuleSchedule(sched WorkflowSchedule, ruleID string) (WorkflowSchedule, error) {
+	if !sched.IsGmailTrigger() || sched.Gmail == nil || sched.Webhook == nil {
+		return WorkflowSchedule{}, fmt.Errorf("target is not a Gmail trigger")
+	}
+	if len(sched.Gmail.Rules) == 0 && ruleID == "" {
+		return sched, nil
+	}
+	for _, rule := range sched.Gmail.Rules {
+		if rule.ID == ruleID && rule.IsEnabled() {
+			sched.RouteSelections, sched.GroupNames = rule.RouteSelections, rule.GroupNames
+			sched.Name += " · " + rule.Name
+			webhook := *sched.Webhook
+			webhook.StepID = rule.StepID
+			sched.Webhook = &webhook
+			return sched, nil
+		}
+	}
+	return WorkflowSchedule{}, fmt.Errorf("selected Gmail rule is missing or disabled")
+}
+
 func (api *StreamingAPI) dispatchGmailWorkflowTrigger(ctx context.Context, d *gmailinbound.Delivery) error {
 	if api.scheduler == nil {
 		return fmt.Errorf("workflow scheduler unavailable")
@@ -158,7 +237,10 @@ func (api *StreamingAPI) dispatchGmailWorkflowTrigger(ctx context.Context, d *gm
 	if err := api.gmailInbound.Store.Finish(ctx, *d, "running", nil); err != nil {
 		return err
 	}
-	receiver := webhookReceiver{start: api.scheduler.triggerSavedSchedule, existing: api.scheduler.existingWebhookRun}
+	receiver := webhookReceiver{start: func(workspacePath, scheduleID, originSessionID string, input *WorkflowWebhookDelivery) (string, error) {
+		input.gmailRuleID = d.RuleID
+		return api.scheduler.triggerSavedSchedule(workspacePath, scheduleID, originSessionID, input)
+	}, existing: api.scheduler.existingWebhookRun}
 	result, err := receiver.deliver(userCtx, manifest.ID, d.Route.WorkspacePath, sched, d.ID, "gmail.message", body)
 	if err != nil {
 		return err
@@ -208,12 +290,32 @@ func (api *StreamingAPI) waitGmailWorkflowRun(ctx context.Context, d *gmailinbou
 }
 
 func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, session, workspace string) error {
-	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The right pane is read-only. If configured=false, an operator must enable Pub/Sub first.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	if err := reg.RegisterCustomTool("get_gmail_trigger", "Inspect this target's incoming Gmail trigger, receiving address, saved routing, ordered rules and filters, readiness, delivery activity and setup options (eligible OAuth client names and account-connect permission). Read before and after changing it. The right pane is read-only. If configured=false, an operator must enable Pub/Sub first.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "additionalProperties": false}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, nil)
 	}, "gmail_connection_management"); err != nil {
 		return err
 	}
-	return reg.RegisterCustomTool("manage_gmail_trigger", "Connect, configure or disable this target's unique incoming-email trigger as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Use action=connect to create an account or request read consent on connection_id and return a Google consent link; the human must authorize, then inspect again before configure. Existing account-management permissions apply. client_name is only for connect; omit when one deployed OAuth client is eligible. For workflows discover saved route IDs/groups with manage_workflow_webhook(action=list), then configure route_selections and group_names (or step_id). Optional filters: sender_allowlist accepts exact email addresses or @domains; any listed sender matches (OR), and an omitted/empty list keeps owner-only access. Only widen senders when the interactive owner requests it. Existing subject_contains/body_contains require every keyword; subject_contains_any/body_contains_any require any listed keyword. Condition groups use AND; literal matching ignores case. allow_automatic explicitly permits notifications from the allowlist; auto-replies, bounces, spam and trash remain blocked. Omitted filters are preserved; filters={} clears them; a supplied filters object replaces the whole filter set. New threads only rejects replies and threads already accepted here. No filters by default. Crew/Code email starts isolated project chats. reply/enabled default true on first setup. Disable preserves the address. No arbitrary target, wildcard senders, UI setup forms or direct gog watch changes. Return address, filter summary and verified readiness; saving alone does not prove live delivery.", map[string]interface{}{
+	filterSchema := map[string]interface{}{"type": "object", "additionalProperties": false, "properties": map[string]interface{}{
+		"sender_allowlist":     map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "Any exact email address or exact @domain matches. No wildcard/display name. In common filters, omitted/empty keeps owner-only access. In a rule, omitted/empty inherits the common sender policy; an explicit rule list also intersects any explicit common list. Only set when the owner explicitly requests these senders."},
+		"subject_contains_any": map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "At least one subject phrase must match (OR)."},
+		"body_contains_any":    map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "At least one body phrase must match (OR)."},
+		"allow_automatic":      map[string]interface{}{"type": "boolean", "description": "Explicitly allow automated notifications from sender_allowlist (required). Never permits auto-replies, bounces, spam or trash."},
+		"subject_contains":     map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
+		"body_contains":        map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
+		"has_attachments":      map[string]interface{}{"type": "boolean", "description": "True requires attachments; false requires no attachments; omit for either."},
+		"new_threads_only":     map[string]interface{}{"type": "boolean"},
+	}}
+	ruleSchema := map[string]interface{}{"type": "array", "maxItems": 20, "description": "Ordered named rules; first authorized match wins. Omission preserves rules. A supplied list replaces all; [] restores legacy single-action mode (supply workflow binding when clearing). Preserve stable IDs on edits. No match skips the email.", "items": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"id", "name"}, "properties": map[string]interface{}{
+		"id":               map[string]interface{}{"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$", "description": "Stable unique rule ID chosen by Builder; do not ask the user for IDs."},
+		"name":             map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 120},
+		"enabled":          map[string]interface{}{"type": "boolean", "description": "Defaults true; false pauses just this rule."},
+		"filters":          filterSchema,
+		"instruction":      map[string]interface{}{"type": "string", "maxLength": 16384, "description": "Crew/Code only: saved chat instruction, with incoming email supplied separately as untrusted context."},
+		"route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}, "description": "Workflow only: exact saved branches; {} explicitly selects the full workflow."},
+		"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow only: required saved variable groups."},
+		"step_id":          map[string]interface{}{"type": "string", "description": "Workflow only: standalone saved step, instead of route_selections."},
+	}}}
+	return reg.RegisterCustomTool("manage_gmail_trigger", "Connect, configure or disable this target's unique incoming-email trigger as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Use action=connect to create an account or request read consent on connection_id and return a Google consent link; the human must authorize, then inspect again before configure. Existing account-management permissions apply. client_name is only for connect; omit when one deployed OAuth client is eligible. For workflows discover saved route IDs/groups with manage_workflow_webhook(action=list). Use ordered rules for different actions: each has stable id, name, enabled (default true), filters and either a Crew/Code instruction or a workflow route_selections and group_names (or step_id). First authorized match wins; unmatched mail is skipped. Common filters restrict every rule. Per-rule senders inherit common senders or owner-only unless explicitly selected. Rules use one address/watch. Omitted rules are preserved; a supplied array replaces all rules. [] restores the legacy single action (supply its workflow binding). Never combine rules with top-level workflow bindings. Preserve rule IDs and untouched rules when editing. Without rules, configure legacy route_selections and group_names (or step_id). Optional filters: sender_allowlist accepts exact email addresses or @domains; any listed sender matches (OR), and an omitted/empty list keeps owner-only access. Only widen senders when the interactive owner requests it. Existing subject_contains/body_contains require every keyword; subject_contains_any/body_contains_any require any listed keyword. Condition groups use AND; literal matching ignores case. allow_automatic explicitly permits notifications from the allowlist; auto-replies, bounces, spam and trash remain blocked. Omitted filters are preserved; filters={} clears them; a supplied filters object replaces the whole filter set. New threads only rejects replies and threads already accepted here. No filters by default. Crew/Code email starts isolated project chats. reply/enabled default true on first setup. Disable preserves the address. No arbitrary target, wildcard senders, UI setup forms or direct gog watch changes. Return address, filter summary and verified readiness; saving alone does not prove live delivery.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":        map[string]interface{}{"type": "string", "enum": []string{"connect", "configure", "disable"}},
 			"client_name":   map[string]interface{}{"type": "string", "description": "Only for connect: exact configured OAuth client; do not invent names."},
@@ -222,16 +324,8 @@ func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, 
 			"route_selections": map[string]interface{}{"type": "object", "additionalProperties": map[string]interface{}{"type": "string"}},
 			"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
 			"step_id":          map[string]interface{}{"type": "string"},
-			"filters": map[string]interface{}{"type": "object", "additionalProperties": false, "properties": map[string]interface{}{
-				"sender_allowlist":     map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "Any exact email address or exact @domain matches. No wildcard/display name. Omitted or empty keeps owner-only access. Only set when the owner explicitly requests these senders."},
-				"subject_contains_any": map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "At least one subject phrase must match (OR)."},
-				"body_contains_any":    map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}, "description": "At least one body phrase must match (OR)."},
-				"allow_automatic":      map[string]interface{}{"type": "boolean", "description": "Explicitly allow automated notifications from sender_allowlist (required). Never permits auto-replies, bounces, spam or trash."},
-				"subject_contains":     map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
-				"body_contains":        map[string]interface{}{"type": "array", "maxItems": 10, "items": map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 256}},
-				"has_attachments":      map[string]interface{}{"type": "boolean", "description": "True requires attachments; false requires no attachments; omit for either."},
-				"new_threads_only":     map[string]interface{}{"type": "boolean"},
-			}},
+			"filters":          filterSchema,
+			"rules":            ruleSchema,
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		return api.gmailTriggerToolRequest(ctx, session, workspace, args)
@@ -277,7 +371,7 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 	input := gmailTriggerInput{WorkspacePath: workspace, Name: "Incoming Gmail", Enabled: true, Reply: true}
 	if current.Route != nil {
 		r := current.Route
-		input = gmailTriggerInput{WorkspacePath: workspace, ConnectionID: r.ConnectionID, Name: r.Name, Enabled: r.Enabled, Reply: r.Reply, RouteSelections: r.RouteSelections, GroupNames: r.GroupNames, StepID: r.StepID, Filters: r.Filters}
+		input = gmailTriggerInput{WorkspacePath: workspace, ConnectionID: r.ConnectionID, Name: r.Name, Enabled: r.Enabled, Reply: r.Reply, RouteSelections: r.RouteSelections, GroupNames: r.GroupNames, StepID: r.StepID, Filters: r.Filters, Rules: r.Rules}
 	}
 	if action == "disable" && current.Route == nil {
 		return "", fmt.Errorf("no Gmail trigger exists")
@@ -300,7 +394,34 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 		}
 		values[key] = value
 	}
-	if current.Route == nil && !isProjectWorkspacePath(workspace) {
+	if raw, supplied := args["rules"]; supplied {
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return "", err
+		}
+		var rules []gmailinbound.Rule
+		if err := json.Unmarshal(encoded, &rules); err != nil {
+			return "", err
+		}
+		if len(rules) > 0 {
+			for _, key := range []string{"route_selections", "group_names", "step_id"} {
+				if _, supplied := args[key]; supplied {
+					return "", fmt.Errorf("put workflow bindings inside each email rule")
+				}
+			}
+			values["route_selections"], values["group_names"], values["step_id"] = nil, nil, ""
+		} else if !isProjectWorkspacePath(workspace) {
+			if _, supplied := args["group_names"]; !supplied {
+				return "", fmt.Errorf("supply a legacy workflow binding when clearing email rules")
+			}
+			if _, supplied := args["route_selections"]; !supplied {
+				if _, supplied := args["step_id"]; !supplied {
+					return "", fmt.Errorf("supply route_selections or step_id when clearing email rules")
+				}
+			}
+		}
+	}
+	if current.Route == nil && !isProjectWorkspacePath(workspace) && args["rules"] == nil {
 		if _, ok := args["group_names"]; !ok {
 			return "", fmt.Errorf("discover and supply workflow group_names before creating a Gmail trigger")
 		}

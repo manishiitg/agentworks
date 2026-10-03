@@ -252,7 +252,7 @@ func TestGmailBuilderProjectTriggersAndPrivateCodeAccounts(t *testing.T) {
 		mock.files[root+"/product.json"] = `{"schema_version":1,"product":"` + profile + `","id":"project-` + profile + `","title":"App","session_id":"app"}`
 		mock.files[root+"/workflow.json"] = `{"schema_version":1,"product":"` + profile + `","id":"project-` + profile + `","title":"App"}`
 		mock.mu.Unlock()
-		args := map[string]interface{}{"action": "configure", "connection_id": "mail", "enabled": true}
+		args := map[string]interface{}{"action": "configure", "connection_id": "mail", "enabled": true, "rules": []gmailinbound.Rule{{ID: "x", Name: "X", Instruction: "Send X message. " + strings.Repeat("Saved task. ", 800)}, {ID: "y", Name: "Y", Instruction: "Send Y message"}}}
 		if product == "Code" {
 			if _, err := api.gmailTriggerToolRequest(ctx, "human", root, args); err == nil {
 				t.Fatal("Code attached shared Google credential")
@@ -281,7 +281,7 @@ func TestGmailBuilderProjectTriggersAndPrivateCodeAccounts(t *testing.T) {
 		var result struct {
 			Triggers []productWebhookResponse `json:"triggers"`
 		}
-		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || len(result.Triggers) != 1 || result.Triggers[0].Kind != "gmail" || result.Triggers[0].Path != "" || result.Triggers[0].Gmail == nil {
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || len(result.Triggers) != 1 || result.Triggers[0].Kind != "gmail" || result.Triggers[0].Path != "" || result.Triggers[0].Gmail == nil || len(result.Triggers[0].Gmail.Rules) != 2 {
 			t.Fatalf("%s Gmail absent from trigger list: %d %s", product, w.Code, w.Body.String())
 		}
 	}

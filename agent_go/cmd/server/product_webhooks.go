@@ -280,7 +280,7 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 				if name == "" {
 					name = "Incoming Gmail"
 				}
-				responses = append(responses, productWebhookResponse{ID: route.ID, Name: name, Enabled: route.Enabled, Kind: "gmail", RunDestination: runDestinationIsolated, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters}})
+				responses = append(responses, productWebhookResponse{ID: route.ID, Name: name, Enabled: route.Enabled, Kind: "gmail", RunDestination: runDestinationIsolated, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}})
 			}
 		}
 	}

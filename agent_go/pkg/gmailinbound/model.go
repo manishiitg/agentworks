@@ -13,6 +13,8 @@ import (
 )
 
 type Route struct {
+	Rules           []Rule            `json:"rules,omitempty"`
+	SelectedRuleID  string            `json:"-"` // Selected durably at admission, never supplied by email.
 	Filters         *Filters          `json:"filters,omitempty"`
 	Name            string            `json:"name,omitempty"`
 	WorkflowTrigger bool              `json:"workflow_trigger,omitempty"`
@@ -65,6 +67,8 @@ type Message struct {
 }
 type Delivery struct {
 	ID        string
+	RuleID    string
+	RuleName  string
 	Route     Route
 	Message   Message
 	SessionID string

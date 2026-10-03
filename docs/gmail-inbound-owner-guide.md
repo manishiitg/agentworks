@@ -39,6 +39,34 @@ Open Recent email activity on the project: every delivery shows waiting, running
 
 Common causes: read access was revoked (reconnect the account), the address was disabled, the mail came from a different sender, or the deployment's mail receiving isn't configured (an operator task — see the operator doc).
 
+## Different emails, different actions
+
+Ask Builder: “For this Crew, emails about training should send X to the chat;
+Notion updates should send Y.” For a workflow, ask: “Help emails run Support;
+invoices run Billing.” Builder discovers the saved route names and creates
+named rules. The Email and Triggers panes show their order, conditions, saved
+message or route, and Enabled/Paused state. Recent email activity names the
+matched rule. Configuration remains in Builder chat.
+
+The first matching enabled rule runs. If several match, the earlier rule wins;
+if none matches, the email is skipped. Ask Builder to reorder or pause a rule,
+or change its instruction or route. All rules share the same receiving address
+and mailbox watch. Existing single-action setups continue to work.
+
+Common filters apply to every rule. A rule can have its own sender list; without
+one it inherits the common sender policy, or your email only when there is no
+common list. An explicit common sender list also restricts every rule. Ask
+Builder to use rule-specific sender lists for different sources. Automatic
+notifications still need explicit opt-in with a sender list.
+
+Crew/Code chats are separate per sender, email thread and matched rule; replies
+matching the same rule continue that chat. A workflow email starts a fresh run
+of that rule's saved route. “New threads only” on a rule applies to that rule;
+as a common filter it applies across the target. Changing rules does not replay
+old mail. Queued mail keeps its original rule ID; pausing/removing it or changing
+conditions can skip that delivery. Edits to the same rule's action apply when
+queued work starts.
+
 ## Inbox filters (ask the Builder)
 
 Examples you can say in the project's Builder chat:

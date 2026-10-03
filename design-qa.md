@@ -1,3 +1,29 @@
+# Ordered Gmail action rules QA
+
+- Evidence: `/tmp/agentworks-gmail-action-qa/project.png`, `workflow.png`,
+  `workflow-narrow.png`, `crew-narrow.png`, `crew-light.png`.
+- Production shared Incoming email component rendered with sample responses for
+  Crew, Code and workflows. No live OAuth, mailbox reads or trigger runs.
+- Default viewport 1280×720, full-page captures for both rule cards. Narrow
+  right-pane check at 420×800: viewport and document both measure 420px.
+  Temporary viewport override reset after testing.
+- Ordered cards show rule name/order, sender policy, conditions, saved chat
+  instruction or exact route/groups, and Enabled/Paused state. Common filters
+  remain separate; first-match behavior is explained. No configuration editors.
+- Expanded activity visibly names the matched rule. Existing Ask AI and Fetch
+  emails actions remain the Builder/chat entry points; automated UI tests verify
+  the setup message includes stable IDs and preservation of untouched rules.
+- Dark and light narrow layouts inspected; text wraps without horizontal overflow.
+  Existing typography and color tokens retained. No scoped layout findings.
+- Backend Gmail/webhook regressions, full inbound package race tests, relevant
+  frontend tests and production frontend build passed. Live Gmail remains untested.
+
+final result: passed
+
+---
+
+## Previous QA reports (preserved)
+
 # Gmail sender rules and Google access disclosure QA
 
 - Evidence: `/tmp/agentworks-gmail-rules-qa/collapsed.png`,

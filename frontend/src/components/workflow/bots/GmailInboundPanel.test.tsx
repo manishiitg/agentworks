@@ -115,6 +115,46 @@ describe('Gmail incoming email settings', () => {
     expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Fetch emails'])
   })
 
+  it('shows ordered project rules, saved messages, paused state and matched activity read-only', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, rules: [
+      { id: 'rts', name: 'Training requests', filters: { sender_allowlist: ['@realtrainingsys.com'], subject_contains_any: ['Real Training', 'RTS'] }, instruction: 'Send X message' },
+      { id: 'notion', name: 'Notion updates', enabled: false, filters: { sender_allowlist: ['updates@vendor.example'], allow_automatic: true }, instruction: 'Send Y message' },
+    ] }, deliveries: [{ id: 'delivery', status: 'completed', session_id: 'chat', rule_id: 'rts', rule_name: 'Training requests' }] })
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    const cards = [...host.querySelectorAll('[aria-label="Email rules"] ol > li')]
+    expect(cards).toHaveLength(2)
+    expect(cards[0].textContent).toContain('1Training requestsEnabled')
+    expect(cards[0].textContent).toContain('Send X message')
+    expect(cards[0].textContent).toContain('Senders: @realtrainingsys.com')
+    expect(cards[1].textContent).toContain('2Notion updatesPaused')
+    expect(cards[1].textContent).toContain('Send Y message')
+    expect(host.textContent).toContain('first matching enabled rule runs')
+    expect(host.textContent).toContain('Training requests · completed')
+    expect(host.querySelector('select, input, textarea, form')).toBeNull()
+    await ask()
+    expect(onAsk.mock.calls[0][0]).toContain('ordered named rules with stable IDs')
+    expect(onAsk.mock.calls[0][0]).toContain('preserve untouched rules and their IDs')
+  })
+
+  it('shows each workflow binding and inherited senders instead of an apparent full-workflow default', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, workflow_trigger: true, filters: { sender_allowlist: ['@realtrainingsys.com'] }, rules: [
+      { id: 'support', name: 'Support', filters: { subject_contains: ['help'] }, route_selections: { triage: 'support' }, group_names: ['prod'] },
+      { id: 'billing', name: 'Billing', filters: { subject_contains: ['invoice'] }, route_selections: { triage: 'billing' }, group_names: ['finance'] },
+      { id: 'audit', name: 'Audit', step_id: 'audit-step', group_names: ['prod'] },
+    ] } })
+    await render()
+    expect(host.textContent).toContain('Runs: triage → support')
+    expect(host.textContent).toContain('Runs: triage → billing')
+    expect(host.textContent).toContain('Runs: Step audit-step')
+    expect(host.textContent).toContain('Groups: finance')
+    expect(host.textContent).toContain('Common filters: Sender is @realtrainingsys.com')
+    expect(host.textContent).not.toContain('Starts: Full workflow')
+    expect(host.textContent).not.toContain('Message to chat')
+    expect(host.querySelectorAll('[aria-label="Email rules"] ol > li')).toHaveLength(3)
+    expect(host.querySelector('select, input, textarea, form')).toBeNull()
+  })
+
   it('ignores a late response from the previously selected workspace', async () => {
     let resolveOld!: (value: GmailInboundState) => void
     vi.mocked(agentApi.getGmailInboundRoute).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))

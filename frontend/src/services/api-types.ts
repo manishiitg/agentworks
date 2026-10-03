@@ -3277,7 +3277,7 @@ export interface WorkflowNotificationInfoResponse {
 // Scheduled Jobs
 export interface ScheduledJob {
   kind?: string
-  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters }
+  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   id: string
@@ -3866,10 +3866,21 @@ export interface GmailInboundFilters {
   new_threads_only?: boolean
 }
 
+export interface GmailInboundRule {
+  id: string
+  name: string
+  enabled?: boolean
+  filters?: GmailInboundFilters
+  instruction?: string
+  route_selections?: Record<string, string> | null
+  group_names?: string[]
+  step_id?: string
+}
+
 export interface GmailInboundState {
   configured: boolean
-  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string; filters?: GmailInboundFilters } | null
+  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string; filters?: GmailInboundFilters; rules?: GmailInboundRule[] } | null
   watch_ready?: boolean
   error?: string
-  deliveries: { id: string; status: string; session_id: string; error?: string }[]
+  deliveries: { id: string; status: string; session_id: string; error?: string; rule_id?: string; rule_name?: string }[]
 }

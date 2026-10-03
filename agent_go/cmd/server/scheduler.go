@@ -1284,6 +1284,13 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	if sched == nil {
 		return "", fmt.Errorf("schedule %s not found in manifest at %s", scheduleID, workspacePath)
 	}
+	if input != nil && (input.gmailRuleID != "" || sched.IsGmailTrigger() && sched.Gmail != nil && len(sched.Gmail.Rules) > 0) {
+		selected, err := gmailRuleSchedule(*sched, input.gmailRuleID)
+		if err != nil {
+			return "", err
+		}
+		sched = &selected
+	}
 	sctx := buildScheduleContext(workspacePath, manifest, *sched)
 	sctx.TriggerSource = "manual"
 	if sched.ScheduleType == "webhook" {

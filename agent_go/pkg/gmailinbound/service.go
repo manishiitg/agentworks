@@ -186,13 +186,7 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			if !matched {
 				continue
 			}
-			if !r.Filters.AcceptsMessageKind(message) {
-				continue
-			}
-			if e = s.Authorize(ctx, r, message); e != nil {
-				continue
-			}
-			if e = s.Store.Enqueue(ctx, r, message); e != nil {
+			if e = s.Store.EnqueueAuthorized(ctx, r, message, s.Authorize); e != nil {
 				return e
 			}
 		}

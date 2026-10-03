@@ -252,6 +252,64 @@ Read-only Gmail access works without enabling Pub/Sub; incoming automation still
 requires the deployment configuration. The agent explains any saved condition
 it cannot verify from mailbox data.
 
+## Ordered action rules
+
+`manage_gmail_trigger(action="configure", rules=[...])` creates up to 20 named
+rules behind the same target/owner address and mailbox watch. Each rule has a
+stable `id`, a display `name`, `enabled` (omitted means true), optional `filters`,
+and a target-specific action. Crew/Code require `instruction`; workflows require
+`route_selections` plus `group_names`, or `step_id` plus groups. An explicit empty
+route map is persisted as `{}` and selects the full workflow. Rules and
+legacy top-level workflow bindings cannot be supplied together. Builder obtains
+saved route/group IDs from the plan and existing trigger tools.
+
+```json
+{"action":"configure","connection_id":"mail","rules":[
+  {"id":"support","name":"Support requests","filters":{"subject_contains_any":["help","refund"]},"route_selections":{"triage":"support"},"group_names":["prod"]},
+  {"id":"billing","name":"Invoices","filters":{"subject_contains":["invoice"]},"route_selections":{"triage":"billing"},"group_names":["prod"]}
+]}
+```
+
+IDs and bindings in this example must be replaced with discovered saved values.
+For a project rule the action is instead `"instruction":"Send X message"`,
+with no workflow fields. One authenticated email starts at most one action:
+select the first enabled rule whose sender authorization, common filters and
+rule filters match. No match skips it. Rule sender lists inherit the common
+list/owner-only policy when omitted; an explicit rule list still intersects any
+explicit common list. Common content filters always restrict every rule.
+Automatic notifications require opt-in and an explicit sender list at either
+level; blocked message kinds remain blocked.
+
+Rule selection, new-thread reservation and delivery deduplication are atomic.
+Per-rule new-thread checks reserve a thread for that rule; the common flag
+reserves it across all rules for the target. SQLite adds `rule_id` and
+`rule_name` columns while retaining existing dedup keys and deliveries. Queue
+claims retain the originally selected ID, recheck current sender/content
+policies, and reject removed or paused rules without selecting a replacement.
+Action edits for that ID apply when execution starts. History names the
+originally matched rule. Rule edits never replay compact delivery records.
+
+Workflow rules live in the existing `kind=gmail` schedule. Its top-level group
+list is the union needed for manifest validation; execution uses only the
+selected rule's saved groups and route/step. A private in-process rule selection
+is resolved again against the manifest when the scheduler starts. No email JSON
+field can supply that selection. Gmail rule schedules require raw email input
+and prohibit payload mappings/allowed-variable overrides. The public webhook
+receiver continues to reject Gmail triggers.
+
+Crew/Code prepend the saved instruction separately from incoming untrusted
+email context; conversation IDs include target, sender, Gmail thread and stable
+rule ID. Different actions therefore use different isolated project chats.
+The shared Email/Triggers panel displays ordered cards, conditions, instruction
+or route, Enabled/Paused state and matched delivery history. Setup and changes
+remain Builder-only; public management HTTP is read-only.
+
+Omitted rules preserve the list. A supplied array replaces all rules; Builder
+must retain untouched rules and IDs. `enabled=false` pauses just one rule.
+`rules=[]` restores legacy single-action behavior; workflows must explicitly
+supply its replacement binding and groups. Existing routes without rules keep
+their original chat identity, dedup keys and behavior.
+
 ## Sync direction
 
 Normal delivery retains Gmail history-based incremental sync, watch renewal,

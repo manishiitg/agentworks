@@ -19,6 +19,34 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
+
+- **Decision (user).** One Crew/Code can use different saved messages for different
+  email filters; one workflow can bind different filters to different saved
+  routes. Configure up to 20 ordered named rules through Builder. First eligible
+  match runs once; no match skips mail. One target address/watch is retained.
+- **Permissions.** Common filters restrict every rule. Rule sender lists inherit
+  common/owner-only policy unless explicitly selected, and intersect an explicit
+  common list. Only the interactive owner configures rules. Gmail authentication,
+  blocked message kinds, credential scope and current target access stay enforced.
+- **Execution.** Durable deliveries pin the selected stable rule ID and retain
+  legacy dedup keys. Reordering never redirects queued mail. Removed/paused rules
+  or changed conditions reject/skip it; current actions for the same ID apply at
+  start. Email JSON cannot choose routes: the scheduler resolves an internal rule
+  selection against the saved manifest with exact groups/routes and raw payload.
+  Crew/Code include the saved instruction and untrusted email context separately;
+  different rules get isolated chats, replies matching the same rule continue it.
+- **Builder/UI.** A provided array replaces all rules; omitted rules preserve them;
+  clearing restores legacy single-action behavior with explicit workflow binding.
+  Email and Triggers show ordered cards, conditions, saved actions, paused state
+  and matched rule in activity. Builder owns all configuration. Updated packaged
+  skills and system guidance describe setup without asking users for IDs or forms.
+- **Validation.** Admission/dedup/migration, queued edits, sender authorization,
+  saved workflow bindings, project actions and read-only UI have regression tests.
+  No live mailbox or RTS deployment is part of this change.
+- **Files.** `pkg/gmailinbound/{rules,store,service}.go`, server Gmail trigger tools,
+  scheduler/webhook dispatch, `GmailInboundPanel`, shared Builder guidance and guides.
+
 ### 2026-10-03 — Relays shares Crew and Code's introduction layout
 
 - The no-selection Relays page uses `ProductIntro`, shared with Crew and Code,
