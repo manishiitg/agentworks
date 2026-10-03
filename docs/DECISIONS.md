@@ -13,6 +13,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The local terminal had the real home folder, which the sandbox forbids
+
+- **Found (user, local terminal).** `bash: /Users/mipl/.bash_profile: Operation not permitted`, `git` unable to read `~/.gitconfig`, `codex` unable
+  to read `~/.codex/config.toml`. In native mode (the local app) the sandboxed command keeps the real `HOME` so host tools find their config
+  (`privateSandboxHome`), but Code's strict sandbox forbids reading it. The terminal now gets a private home inside the project
+  (`<project>/.sandbox-cache/home`) when it does not run as a slot; slots and servers already had one. `claude` and `codex` are not on the
+  sandbox's PATH and have no login there: the coding agents run through the chat, not the terminal.
+- **Test.** `interactive_shell_darwin_test.go` now runs natively and fails with exactly these errors without the fix.
+- **Terminal icon** changed to the plain `>_` (`Terminal`) in the toolbar and the panel header.
+
 ### 2026-10-03 — Qualify Cursor's RTS account through the installed CLI
 
 - Tested RTS / Video Studio on its AWS EC2 host (the deployment named RTS in

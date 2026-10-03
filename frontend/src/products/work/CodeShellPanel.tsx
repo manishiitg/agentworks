@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { Loader2, Power, RefreshCw, SquareTerminal } from 'lucide-react'
+import { Loader2, Power, RefreshCw, Terminal as TerminalIcon } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 
 type ShellState = 'connecting' | 'connected' | 'closed' | 'stopped'
@@ -72,7 +72,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-        <SquareTerminal className="h-3.5 w-3.5" />
+        <TerminalIcon className="h-3.5 w-3.5" />
         <span className="min-w-0 flex-1 truncate">
           Terminal · this workspace’s files, sandboxed
           {state === 'connecting' ? <><Loader2 className="ml-2 inline h-3 w-3 animate-spin" /> connecting…</> : null}

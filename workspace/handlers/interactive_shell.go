@@ -246,6 +246,11 @@ func StartInteractiveShell(c *gin.Context) {
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
 	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color", shellQuote(filepath.Join(dir, "tmp")))
+	if slot == "" {
+		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
+			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
+		}
+	}
 	tmuxStart := fmt.Sprintf("%s -f /dev/null -S %s new-session -d -s %s -x %d -y %d %s -l",
 		shellQuote(realTmux()), shellQuote(socket), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
@@ -389,6 +394,30 @@ func SweepInteractiveShells(c *gin.Context) {
 		stopped++
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "stopped": stopped})
+}
+
+// interactiveShellHome is the private home folder of a terminal that does not run as a slot: <project>/.sandbox-cache/home, inside the
+// folder the shell may write. In native mode (a Mac or a single-user machine) the sandboxed command otherwise keeps the real HOME so
+// host CLIs find their config, but the sandbox forbids reading it, so every tool that looks at ~ (bash's profile, git's config, a
+// CLI's settings) prints "Operation not permitted". The servers already give the shell tool such a home.
+func interactiveShellHome(docsDir string, writePaths []string, workingDir string) string {
+	root := workingDir
+	for _, wp := range writePaths {
+		physical := wp
+		if !filepath.IsAbs(physical) {
+			physical = filepath.Join(docsDir, physical)
+		}
+		physical = filepath.Clean(physical)
+		if workingDir == physical || strings.HasPrefix(workingDir+string(filepath.Separator), physical+string(filepath.Separator)) {
+			root = physical
+			break
+		}
+	}
+	home := filepath.Join(root, ".sandbox-cache", "home")
+	if err := os.MkdirAll(filepath.Join(home, ".config"), 0o700); err != nil {
+		return ""
+	}
+	return home
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

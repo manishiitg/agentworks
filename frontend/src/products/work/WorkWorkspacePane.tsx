@@ -10,7 +10,7 @@ import {
   Monitor,
   Route,
   Server,
-  SquareTerminal,
+  Terminal,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -69,7 +69,7 @@ const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIc
 const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
   { id: 'files', label: 'Files', icon: Files },
   // Code only: a terminal in this workspace, run as your own account and sandboxed to it (see showShell).
-  { id: 'shell', label: 'Terminal', icon: SquareTerminal },
+  { id: 'shell', label: 'Terminal', icon: Terminal },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'costs', label: 'Costs and usage', icon: DollarSign },
 ]

@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -24,6 +26,8 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
 	}
 	gin.SetMode(gin.TestMode)
+	// The local app runs the workspace natively: the sandboxed shell inherits the real environment, real HOME included.
+	t.Setenv("NATIVE_WORKSPACE", "true")
 	// Outside /var/folders, which the strict profile grants as scratch space.
 	docs, err := os.MkdirTemp(".", "zz-darwin-docs-")
 	if err != nil {
@@ -58,6 +62,13 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 	socket, _ := data["socket"].(string)
 	if !strings.HasPrefix(socket, "/private/tmp/") || !interactiveShellRunning(socket) {
 		t.Fatalf("socket %q must be the real path and the shell must be running", socket)
+	}
+	// The shell's home is private to the project, so nothing in it tries to read the real home ("Operation not permitted").
+	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "echo HOME=$HOME; ls ~/.bash_profile 2>&1; git config --global -l 2>&1 | head -1; echo END", "Enter").Run()
+	time.Sleep(1500 * time.Millisecond)
+	screen, _ := exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
+	if !strings.Contains(string(screen), "HOME="+filepath.Join(docs, own, ".sandbox-cache", "home")) || strings.Contains(string(screen), "Operation not permitted") {
+		t.Fatalf("the shell must have a private home and no denied reads: %s", screen)
 	}
 	if code, _ := call("/stop", map[string]any{"shell_id": id}); code != http.StatusOK || interactiveShellRunning(socket) {
 		t.Fatal("stop did not end the shell")
