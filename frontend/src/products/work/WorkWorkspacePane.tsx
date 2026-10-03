@@ -123,11 +123,13 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
   // owner. A Code has no such audience, so it never shows them.
   const isCode = useProjectProduct().profileId === 'code'
   const hasSuggestions = !isCode
-  // A Code keeps its working tools together in Ops (always open): Browser
-  // moves there, and the Database view is not offered.
-  const viewButtons = isCode ? VIEW_BUTTONS.filter(item => item.id !== 'browser') : VIEW_BUTTONS
+  // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
+  // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
+  const viewButtons = isCode
+    ? [...VIEW_BUTTONS.filter(item => item.id !== 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    : VIEW_BUTTONS
   const opsButtons = isCode
-    ? [...OPS_BUTTONS.filter(item => item.id !== 'database' && item.id !== 'costs'), ...VIEW_BUTTONS.filter(item => item.id === 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
     : OPS_BUTTONS
   const visibleViews = (readOnly
     ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
@@ -146,20 +148,23 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     ? []
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
   // Ops and Setup are always open and show icons only.
+  // No empty frame when every view moved elsewhere.
+  const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
+      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+    </div>
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
       <TooltipProvider delayDuration={150}>
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <div className="inline-flex h-8 items-center divide-x divide-border rounded-lg border border-border bg-muted/60 py-0.5 shadow-sm">
-          {/* No empty frame when every view moved elsewhere (a Code's are in Ops). */}
-          {visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
-            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
-          </div>}
+          {/* A Crew shows its views first; a Code shows them (Automation, Costs) after its working tools. */}
+          {!isCode && viewsGroup}
           {/* Ops and Setup show their icons only: always open, no label. */}
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
+          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
+          {isCode && viewsGroup}
           {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
             <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
