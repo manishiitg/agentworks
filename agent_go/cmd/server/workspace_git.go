@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -157,8 +158,37 @@ func workspaceGitConfined(base, dir string) (string, bool) {
 	return realDir, true
 }
 
+// workspaceGitPlatformIgnore lists folders the platform keeps inside a project for its own use (per-person tool homes, CLI state). They belong to the
+// sandbox users, are often unreadable to the service, and must never reach a person's repository: without this the panel listed them as changes, warned
+// about every folder it could not open, and "Commit all" would have added them.
+const workspaceGitPlatformIgnore = "# Platform-private folders: never part of a project\n.sandbox-cache/\n"
+
+var (
+	workspaceGitExcludesOnce sync.Once
+	workspaceGitExcludesPath string
+)
+
+// workspaceGitExcludesFile writes the platform ignore list once per process and returns its path ("" when it cannot be written; git then runs as before).
+func workspaceGitExcludesFile() string {
+	workspaceGitExcludesOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "agentworks-git-excludes-")
+		if err != nil {
+			return
+		}
+		file := filepath.Join(dir, "ignore")
+		if os.WriteFile(file, []byte(workspaceGitPlatformIgnore), 0o600) == nil {
+			workspaceGitExcludesPath = file
+		}
+	})
+	return workspaceGitExcludesPath
+}
+
 func workspaceGitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	full := append([]string{
+	config := []string{}
+	if excludes := workspaceGitExcludesFile(); excludes != "" {
+		config = append(config, "-c", "core.excludesFile="+excludes)
+	}
+	full := append(append(config, []string{
 		"--no-optional-locks",
 		"-c", "core.fsmonitor=false",
 		"-c", "core.hooksPath=/dev/null",
@@ -172,7 +202,7 @@ func workspaceGitCommand(ctx context.Context, dir string, args ...string) *exec.
 		// or a .git file (gitdir: elsewhere) cannot redirect git outside it.
 		"--git-dir", filepath.Join(dir, ".git"),
 		"--work-tree", dir,
-	}, args...)
+	}...), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = []string{
