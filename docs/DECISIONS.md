@@ -28,6 +28,19 @@ Design references for the linked runtime decisions:
 - **Where.** Read grants in `cmd/server/server.go`, `delegation.go`, `tool_setup.go`.
   [PLAT-395](bugs/pulse_platform/security-sandbox/plat-395.md).
 
+### 2026-10-03 — Workflow Models tab: one Model card, per-role list behind a switch
+
+- **Decided (owner).** The workflow Models tab shows one Model card (agent + model on a line, reasoning-effort buttons inside, account chooser only when
+  more than one account is usable) that sets every role to the same value. "Use different models for different roles" (off by default, on at load when
+  the saved roles differ) reveals a compact list: role name, one-line description, one summary button opening a popover with the existing pickers, a dot
+  for a customised role and a reset arrow. Turning the switch off asks inline, then sets every role to High reasoning's value. "Use provider defaults
+  for all roles" stays.
+- **Unchanged.** Role ids (tier_1..3, builder_llm, pulse_llm) and the saved `llm_config` format: no schema or API change. A provider-profile workflow
+  (roles following the provider's differing defaults) opens with the switch off and the card showing High reasoning's default, with a note.
+- **Where.** `components/workflow/WorkflowRoleModels.tsx`, `RoleModelPopover.tsx`, `utils/roleModelSummary.ts`, `WorkflowLLMConfigurationPanel.tsx`
+  (the "Models per role" collapsible and its localStorage flag are gone); `ProviderAccounts` selection-only picker now uses the same label/select size.
+  Crew, Code and Relay (builder-only) screens are unaffected.
+
 ### 2026-10-03 — Composer layout: terminal and attach left; New chat, commands, mic, send right. Workflow page: no Native agent tools toggle
 
 - **Decided (owner).** In every chat input the live-view (terminal) toggle and the attach button sit on the left; New chat, the commands (wand), the mic and send

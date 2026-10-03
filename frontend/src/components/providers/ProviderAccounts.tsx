@@ -514,9 +514,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       </div>}
 
       {onSelect && !formOnly && (
-        <label className={`${selectionOnly ? '' : 'mt-4'} block text-xs font-medium text-gray-700 dark:text-gray-300`}>
-          Account to use
-          <select aria-label="Provider account" disabled={disabled || busy} value={selectedValue} onChange={event => onSelect(event.target.value)} className={inputClass}>
+        <label className={selectionOnly ? 'block min-w-0 space-y-1' : 'mt-4 block text-xs font-medium text-gray-700 dark:text-gray-300'}>
+          {selectionOnly ? <span className="text-[10px] font-medium uppercase text-muted-foreground">Account to use</span> : 'Account to use'}
+          <select aria-label="Provider account" disabled={disabled || busy} value={selectedValue} onChange={event => onSelect(event.target.value)} className={selectionOnly ? 'h-9 w-full min-w-0 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-50' : inputClass}>
             {selectedMissing && <option value={selectedValue} disabled>{selectedRecord ? `${selectedRecord.display_name} (${selectedUnavailableText})` : `Selected account: ${selectedUnavailableText}`}</option>}
             {ACCOUNT_GROUPS.map(groupSpec => {
               const records = selectable.filter(record => groupSpec.relations.includes(accountRelation(record)))

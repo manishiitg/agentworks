@@ -119,6 +119,8 @@ describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
         <WorkflowLLMConfigurationPanel workspacePath="/project" onChange={onChange}
           llmConfig={{ schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'gpt-6' } }} />,
       ))
+      // Roles differ (only the Builder is set), so the compact list is shown; its popover holds the pickers.
+      await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label^="Builder:"]')?.click())
       const agents = Array.from(host.querySelectorAll<HTMLSelectElement>('select[aria-label="Coding agent or provider"]'))
       expect(agents.length).toBeGreaterThan(0)
       for (const agent of agents) {
@@ -290,7 +292,7 @@ describe('workflow account tree', () => {
       expect(host.textContent).not.toContain('Needs setup')
       expect(host.textContent).toContain('Personal B (private)')
       expect(host.textContent).not.toContain('Needs login')
-      expect(host.textContent).not.toContain('Admin-managed account')
+      expect(host.querySelector('[aria-label="Claude Code accounts"]')?.textContent).not.toContain('Admin-managed account')
       const providerBranch = host.querySelector<HTMLButtonElement>('[aria-label="Show Claude Code accounts"]')?.parentElement?.parentElement
       expect(providerBranch?.textContent).toContain('Claude Code')
       expect(providerBranch?.textContent).toContain('Personal B')
