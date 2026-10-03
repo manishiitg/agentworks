@@ -18,29 +18,51 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
-// Place connections (docs/design/personal_mcp_attach.md): someone who can
-// edit a workflow, or who owns a Crew or a Code, adds an MCP server there with
-// their own login (their Gmail, Drive, GitHub, ...). It then works there like
-// any other MCP server: every chat and run of that workflow, Crew or Code
-// uses it, including schedules, triggers, calls and Slack channels. The
-// person accepts that when adding it. It belongs to that one place: it never
-// shows anywhere else. A Code is a place like a Crew (there is no separate
-// "personal" kind of MCP connection).
-//
-// Storage reuses the personal store (catalog add, sign-in apps, sealed
-// tokens) under a store id per (person, place), so a Crew's Gmail login is
-// never the same as the person's Code Gmail. The server-owned index says what
-// each place has; nothing in the editable workflow.json can add one:
-//
-//	<state root>/personal-mcp/attachments.json
-//	  { "<workspace root>": [ { "owner": "<user id>", "server": "gmail", ... } ] }
+// The server-owned attachment index links a user's private MCP to a project.
+// Only that owner can see or run it, even when the project is shared. New
+// connections reuse the user's private store across projects; legacy per-place
+// stores remain sealed at their original paths. Shared connections live in Vault.
 
 const placeMCPAttachmentsFile = "attachments.json"
 
 type placeMCPAttachment struct {
 	Owner      string `json:"owner"`
+	Scope      string `json:"scope,omitempty"`
 	Server     string `json:"server"`
 	AttachedAt string `json:"attached_at,omitempty"`
+}
+
+// New connections reuse the owner's private store across projects. Existing
+// place stores keep their paths (encrypted files use path-bound AAD).
+func attachmentStore(a placeMCPAttachment, root string) string {
+	if a.Scope == "user" {
+		return a.Owner
+	}
+	return placeMCPStoreID(a.Owner, root)
+}
+func privateStoreForAttachment(owner, server, root string) string {
+	items, _ := placeMCPAttachmentsFor(root)
+	for _, a := range items {
+		if a.Owner == owner && a.Server == server {
+			return attachmentStore(a, root)
+		}
+	}
+	return owner
+}
+func recordPrivateMCP(owner, server, root string) error {
+	placeMCPMu.Lock()
+	defer placeMCPMu.Unlock()
+	all, err := readPlaceMCPAttachmentsLocked()
+	if err != nil {
+		return err
+	}
+	for _, a := range all[root] {
+		if a.Owner == owner && a.Server == server {
+			return nil
+		}
+	}
+	all[root] = append(all[root], placeMCPAttachment{Owner: owner, Server: server, Scope: "user", AttachedAt: time.Now().UTC().Format(time.RFC3339)})
+	return writePlaceMCPAttachmentsLocked(all)
 }
 
 // placeMCPStoreID is the personal-store id of owner's connections in root.
@@ -250,11 +272,14 @@ func attachedMCPServersForRoot(ctx context.Context, root string) ([]string, mcpc
 	names := make([]string, 0, len(attachments))
 	overrides := mcpclient.RuntimeOverrides{}
 	for _, a := range attachments {
+		if a.Owner != mcpCaller(ctx) {
+			continue
+		}
 		if !placeMCPCanAttach(ctx, a.Owner, root) {
 			log.Printf("[PLACE_MCP] skipping %s in %s: the person who added it can no longer edit it", a.Server, root)
 			continue
 		}
-		internal, cfg, err := placeMCPServerConfig(placeMCPStoreID(a.Owner, root), a.Server)
+		internal, cfg, err := placeMCPServerConfig(attachmentStore(a, root), a.Server)
 		if err != nil {
 			log.Printf("[PLACE_MCP] skipping %s in %s: %v", a.Server, root, err)
 			continue
@@ -276,10 +301,13 @@ func placeMCPSignedInInternalNames(ctx context.Context, root string) map[string]
 		return out
 	}
 	for _, a := range attachments {
+		if a.Owner != mcpCaller(ctx) {
+			continue
+		}
 		if !placeMCPCanAttach(ctx, a.Owner, root) {
 			continue
 		}
-		store := placeMCPStoreID(a.Owner, root)
+		store := attachmentStore(a, root)
 		internal, _, err := placeMCPServerConfig(store, a.Server)
 		if err != nil {
 			continue
@@ -305,8 +333,8 @@ func placeMCPRoot(w http.ResponseWriter, userID, raw string) (string, bool) {
 	return root, true
 }
 
-// GET /api/mcp/place?workspace_path=: a workflow's or Crew's own connections,
-// for anyone who can read it (never tokens or secrets).
+// GET /api/mcp/place?workspace_path=: only the caller's project connections,
+// after project read authorization (never tokens or secrets).
 func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Request) {
 	userID, ok := placeMCPUser(w, r)
 	if !ok {
@@ -341,7 +369,10 @@ func (api *StreamingAPI) handleListPlaceMCP(w http.ResponseWriter, r *http.Reque
 	dir, _ := loadUserDirectory()
 	rows := make([]row, 0, len(attachments))
 	for _, a := range attachments {
-		store := placeMCPStoreID(a.Owner, root)
+		if a.Owner != userID {
+			continue
+		}
+		store := attachmentStore(a, root)
 		servers, _ := listPlaceMCPServers(store)
 		var server *placeMCPServer
 		for i := range servers {
@@ -399,13 +430,18 @@ func (api *StreamingAPI) handleAddPlaceMCP(w http.ResponseWriter, r *http.Reques
 	}
 	// Credential headers are built from the adder's own personal secrets
 	// (Setup > Secrets), resolved when the connection is made.
-	store := placeMCPStoreID(userID, root)
-	saved, status, err := api.addPlaceMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
+	store := privateStoreForAttachment(userID, request.Name, root)
+	saved, exists := privateMCPByCatalog(userID, request.Catalog)
+	var status int
+	var err error
+	if request.Catalog == "" || !exists {
+		saved, status, err = api.addPlaceMCP(r.Context(), store, request.placeMCPServer, request.Catalog)
+	}
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
 	}
-	if err := recordPlaceMCP(userID, saved.Name, root); err != nil {
+	if err := recordPrivateMCP(userID, saved.Name, root); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -441,7 +477,7 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 	if clientID := strings.TrimSpace(body.ClientID); clientID != "" {
 		entered = &registeredClient{ClientID: clientID, ClientSecret: strings.TrimSpace(body.ClientSecret)}
 	}
-	authURL, discovery, status, err := api.startPlaceMCPSignIn(placeMCPStoreID(userID, root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
+	authURL, discovery, status, err := api.startPlaceMCPSignIn(privateStoreForAttachment(userID, mux.Vars(r)["name"], root), mux.Vars(r)["name"], deriveOAuthRedirectURI(r), entered)
 	if err != nil {
 		writeAgentProfileError(w, status, err.Error())
 		return
@@ -454,8 +490,8 @@ func (api *StreamingAPI) handleConnectPlaceMCP(w http.ResponseWriter, r *http.Re
 }
 
 // DELETE /api/mcp/place/{name}?workspace_path=&owner=: remove a connection
-// from a workflow or Crew, with its login. The person who added it may always
-// remove it; anyone else who can edit the place may remove it too.
+// from a workflow or Crew. Only its owner may detach it. New private logins
+// are retained for that owner's other projects.
 func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
@@ -473,8 +509,8 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 	if owner == "" {
 		owner = userID
 	}
-	if owner != userID && !placeMCPCanAttach(r.Context(), userID, root) {
-		writeAgentProfileError(w, http.StatusForbidden, "only the person who added it, or someone who can edit here, can remove it")
+	if owner != userID {
+		writeAgentProfileError(w, http.StatusForbidden, "only the owner can remove a private connection")
 		return
 	}
 	name := mux.Vars(r)["name"]
@@ -488,10 +524,13 @@ func (api *StreamingAPI) handleRemovePlaceMCP(w http.ResponseWriter, r *http.Req
 
 // removePlaceMCP removes owner's connection from root with its login.
 func removePlaceMCP(owner, name, root string) error {
-	store := placeMCPStoreID(owner, root)
+	store := privateStoreForAttachment(owner, name, root)
 	if err := forgetPlaceMCP(owner, name, root); err != nil {
 		return err
 	}
+	if store == owner {
+		return nil
+	} // Detach here; keep the private account for other projects.
 	if err := removePlaceMCPServer(store, name); err != nil {
 		log.Printf("[PLACE_MCP] remove %s from %s: %v", name, root, err)
 	}

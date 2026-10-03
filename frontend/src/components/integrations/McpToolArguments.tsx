@@ -1,5 +1,5 @@
 /** Raw JSON schema display shared by server and group tool cards. */
-export function GatewayToolArguments({ schema, rawSchema }: { schema?: string | null; rawSchema?: Record<string, unknown> }) {
+export function McpToolArguments({ schema, rawSchema }: { schema?: string | null; rawSchema?: Record<string, unknown> }) {
   let schemaText = 'Schema not provided.'
   if (rawSchema) schemaText = JSON.stringify(rawSchema, null, 2)
   else if (schema) {

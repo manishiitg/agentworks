@@ -32,7 +32,7 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 	if sessionID != "" {
 		owner := ""
 		if api.eventStore != nil {
-			owner = api.eventStore.GetSessionOwner(sessionID)
+			owner = api.mcpSessionPerson(sessionID)
 		}
 		if owner == "" {
 			return "", fmt.Errorf("MCP tool session owner is unavailable")
@@ -48,25 +48,26 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
-// OAuth discovery metadata is platform-wide. userID remains in this signature
-// for compatibility with callers that also use it for audit attribution.
-func (api *StreamingAPI) mcpToolStatusForUser(name, userID string, cfg mcpclient.MCPServerConfig) ToolStatus {
-	_ = userID
-	if cfg.OAuth != nil {
-		if strings.TrimSpace(cfg.OAuth.TokenFile) == "" {
-			oauth := *cfg.OAuth
-			oauth.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
-			cfg.OAuth = &oauth
-		}
-		if !hasOAuthTokenFile(cfg) {
-			return ToolStatus{Name: name, Server: name, Status: "not_connected", RequiresOAuth: true}
-		}
-		if entry, ok := mcpcache.GetCacheManager(api.logger).Get(mcpcache.GenerateUnifiedCacheKey(name, cfg)); ok {
-			return api.convertCacheEntryToToolStatus(entry)
-		}
-		return ToolStatus{Name: name, Server: name, Status: "not_loaded"}
+// Connection status and tool metadata come only from this person's store.
+func (api *StreamingAPI) mcpToolStatusForUser(name, person string, _ mcpclient.MCPServerConfig) ToolStatus {
+	private, found := privateMCPByCatalog(person, name)
+	if !found {
+		return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}
 	}
-	api.toolStatusMux.RLock()
-	defer api.toolStatusMux.RUnlock()
-	return api.toolStatus[name]
+	internal, cfg, err := placeMCPServerConfig(person, private.Name)
+	if err != nil {
+		return ToolStatus{Name: name, Server: name, Status: "error", Connection: connectionAvailable}
+	}
+	dir, _ := placeMCPDir(person)
+	if !placeMCPServerConnected(dir, person, private) {
+		return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable, RequiresOAuth: private.OAuth != nil}
+	}
+	if entry, ok := mcpcache.GetCacheManager(api.logger).Get(mcpcache.GenerateUnifiedCacheKey(internal, cfg)); ok {
+		status := api.convertCacheEntryToToolStatus(entry)
+		status.Name = name
+		status.Server = name
+		status.Connection = connectionConnected
+		return status
+	}
+	return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected, RequiresOAuth: private.OAuth != nil}
 }

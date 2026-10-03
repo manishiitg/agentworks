@@ -66,8 +66,7 @@ type ToolStatus struct {
 	ToolsEnabled  int                    `json:"toolsEnabled"`
 	FunctionNames []string               `json:"function_names"`
 	Tools         []mcpclient.ToolDetail `json:"tools,omitempty"` // Only populated for detailed requests
-	// Platform connection state — "connected" (an administrator connected this
-	// server for AgentWorks) or "available" (catalog only).
+	// Caller's private connection state: "connected" or "available" (catalog only).
 	// Distinct from Status, which reports whether the server is reachable.
 	Connection string `json:"connection"`
 	// OAuth requirement, read from config rather than probed. A server needs
@@ -288,21 +287,13 @@ func (api *StreamingAPI) discoverServerToolsDetailed(ctx context.Context, server
 
 // handleGetTools handles GET requests to retrieve all tools
 func (api *StreamingAPI) handleGetTools(w http.ResponseWriter, r *http.Request) {
-	// Retain caller identity for audit; connection status is platform-wide.
-	userID := GetUserIDFromContext(r.Context())
-
-	// Return cached results immediately if available
-	api.toolStatusMux.RLock()
-	cachedResults := make([]ToolStatus, 0, len(api.toolStatus))
-	for _, status := range api.toolStatus {
-		cachedResults = append(cachedResults, status)
+	// Connection status is private to the authenticated caller.
+	userID := mcpCaller(r.Context())
+	if !activeMCPPerson(userID) {
+		writeUsersError(w, 401, "sign in first")
+		return
 	}
-	api.toolStatusMux.RUnlock()
-
-	// Sort results alphabetically by server name
-	sort.Slice(cachedResults, func(i, j int) bool {
-		return cachedResults[i].Name < cachedResults[j].Name
-	})
+	w.Header().Set("Cache-Control", "no-store")
 
 	// Always show all configured servers, not just cached ones
 	// This ensures users see all servers including those that are loading or failed
@@ -316,37 +307,24 @@ func (api *StreamingAPI) handleGetTools(w http.ResponseWriter, r *http.Request) 
 		cfg = api.mcpConfig
 	}
 
-	// Create map of cached results for easy lookup
-	cachedMap := make(map[string]ToolStatus)
-	for _, status := range cachedResults {
-		cachedMap[status.Name] = status
-	}
-
-	// Read the overlay once for the whole response, not once per server.
-	overlay := api.loadOverlayServerNames()
-
-	// Create comprehensive results showing ALL configured servers
-	// Apply shared platform connection status to each result.
 	allResults := make([]ToolStatus, 0, len(cfg.MCPServers))
-	for serverName, serverConfig := range cfg.MCPServers {
-		connection := connectionState(serverName, serverConfig, overlay, userID)
-		if cachedStatus, exists := cachedMap[serverName]; exists && serverConfig.OAuth == nil {
-			// Use cached result and apply platform connection state.
-			userStatus := api.getToolStatusForUser(cachedStatus, userID)
-			userStatus.Connection = connection
-			allResults = append(allResults, userStatus)
-		} else {
-			// Create fallback result for servers not yet discovered
-			allResults = append(allResults, ToolStatus{
-				Name:          serverName,
-				Server:        serverName,
-				Status:        "not_loaded", // Discovery starts only on explicit use
-				Connection:    connection,
-				Description:   serverConfig.Description,
-				ToolsEnabled:  0,
-				FunctionNames: []string{},
-			})
+	for name, config := range cfg.MCPServers {
+		status := api.mcpToolStatusForUser(name, userID, config)
+		status.Description = config.Description
+		status.RequiresOAuth = config.OAuth != nil
+		allResults = append(allResults, status)
+	}
+	private, _ := listPlaceMCPServers(userID)
+	for _, server := range private {
+		if _, catalog := cfg.MCPServers[server.Name]; catalog {
+			continue
 		}
+		if server.Catalog != "" {
+			if _, catalog := cfg.MCPServers[server.Catalog]; catalog {
+				continue
+			}
+		}
+		allResults = append(allResults, api.mcpToolStatusForUser(server.Name, userID, mcpclient.MCPServerConfig{}))
 	}
 
 	// Sort results alphabetically by server name
@@ -367,32 +345,24 @@ func (api *StreamingAPI) handleGetToolDetail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Retain caller identity for audit; discovery uses the shared connection.
-	userID := GetUserIDFromContext(r.Context())
+	// Discovery resolves only the caller's private or permitted Vault connection.
+	userID := mcpCaller(r.Context())
 
 	// If no cached detailed results, fetch them and cache
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	result, err := api.discoverServerToolsDetailed(ctx, serverName)
+	result, err := api.discoverGovernedServerTools(ctx, userID, serverName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// mcpcache already stores metadata using the resolved credential/config key.
-	// Do not recache it under the base configuration or share OAuth tool lists.
-	cfg, configErr := api.loadMergedConfig()
-	if configErr == nil && cfg.MCPServers[serverName].OAuth == nil {
-		api.toolStatusMux.Lock()
-		api.toolStatus[serverName] = *result
-		api.toolStatusMux.Unlock()
-	}
-
-	// Return result with user-specific OAuth status
-	userStatus := api.getToolStatusForUser(*result, userID)
+	// The cache is already keyed by the isolated runtime configuration. Do not
+	// copy private metadata into the platform cache or consult platform tokens.
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&userStatus)
+	json.NewEncoder(w).Encode(result)
 }
 
 // handleSetEnabledTools handles POST requests to set enabled tools
@@ -840,38 +810,6 @@ func (api *StreamingAPI) stopPeriodicRefresh() {
 		api.discoveryTicker = nil
 		api.logger.Info("⏹️ Stopped periodic tool discovery refresh")
 	}
-}
-
-// getToolStatusForUser returns the shared platform OAuth status.
-func (api *StreamingAPI) getToolStatusForUser(status ToolStatus, userID string) ToolStatus {
-	_ = userID
-	if status.RequiresOAuth {
-		cfg, err := api.loadMergedConfig()
-		if err != nil {
-			return status
-		}
-		serverCfg, err := cfg.GetServer(status.Server)
-		if err != nil || serverCfg.OAuth == nil {
-			return status
-		}
-		tokenFile := serverCfg.OAuth.TokenFile
-		if strings.TrimSpace(tokenFile) == "" {
-			tokenFile = getUserTokenFilePath(platformMCPTokenUserID, status.Server)
-		}
-		expandedPath := expandPath(tokenFile)
-		if _, err := os.Stat(expandedPath); err == nil {
-			// User has authenticated - clear the OAuth required flag
-			status.RequiresOAuth = false
-			status.Error = ""
-			// The old status predates authentication. Metadata remains idle until
-			// explicitly requested; do not advertise a nonexistent loading job.
-			if status.Status == "not_connected" {
-				status.Status = "not_loaded"
-			}
-			// Note: The tools may still be empty if discovery failed for other reasons
-		}
-	}
-	return status
 }
 
 // --- MCP/CUSTOM/VIRTUAL EXECUTION APIs MOVED TO mcpagent/executor ---

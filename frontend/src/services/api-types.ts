@@ -125,7 +125,7 @@ export interface AgentQueryRequest {
   delegation_tier_config?: DelegationTierConfig
   // Decrypted secrets to pass to backend (injected into agent system prompt, never in query text)
   decrypted_secrets?: Array<{ name: string; value: string }>
-  // Selected global secret names to include (if omitted, all global secrets are included)
+  // Selected global secret names to include (if omitted, no global secrets are included)
   selected_global_secrets?: string[]
   // Workspace paths of workflows to inject context for (via # selector in chat)
   workflow_context_paths?: string[]
@@ -3564,7 +3564,7 @@ export interface WorkflowCapabilities {
   selected_tools: string[]
   selected_skills: string[]
   selected_secrets: string[]
-  selected_global_secret_names: string[] | null // null = all, [] = none
+  selected_global_secret_names: string[] | null // null = none, [] = none
   browser_mode: string
   cdp_ports?: number[]
   use_code_execution_mode: boolean

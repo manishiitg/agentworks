@@ -36,7 +36,7 @@ function buildWorkflowPresetsFromManifests(): CustomPreset[] {
       selectedTools: caps?.selected_tools || [],
       selectedSkills: caps?.selected_skills || [],
       selectedSecrets: caps?.selected_secrets || [],
-      selectedGlobalSecretNames: caps?.selected_global_secret_names ?? null,
+      selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
       browserMode: (caps?.browser_mode || 'none') as CustomPreset['browserMode'],
       cdpPorts: caps?.cdp_ports || [],
       useCodeExecutionMode: caps?.use_code_execution_mode || false,

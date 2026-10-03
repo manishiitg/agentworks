@@ -3,7 +3,7 @@ import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { resolveWorkSurfaceLayout } from '../../products/work/workSurfaceLayoutResolver'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 
-/** Complete split workspace used by Crew, Code and CapLayer. Product surfaces
+/** Complete split workspace used by Crew, Code and Vault. Product surfaces
  * supply content; pane geometry, tabs row and reopen controls have one owner. */
 export function ProductWorkspaceShell({
   chatOpen, panelOpen, splitRatio, mobilePreview = false, splitRef,

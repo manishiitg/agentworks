@@ -252,8 +252,7 @@ export function WorkModelsPanel({
           </button>
           {modelPickerOpen && (
             <div className="border-t border-border px-4 pb-4 pt-3">
-              <p className="text-xs text-muted-foreground">The provider's Builder model is selected by default. You can change the model at any time.</p>
-              <TierModelSelector
+                            <TierModelSelector
                 models={selectableModels}
                 selectedModelId={currentModelId}
                 onSelect={selectModel}
@@ -262,14 +261,13 @@ export function WorkModelsPanel({
             </div>
           )}
         </section>
-        {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent or model relaunches this project's retained session on the next message while keeping the project chat history.</p>}
+        {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Applies on the next message. Chat history is kept.</p>}
         {canCheckUsage && usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-sm font-medium text-foreground">Provider usage</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">View limits for the connected {selectedOption?.label || 'provider'} account.</p>
-              </div>
+                              </div>
               <button
                 type="button"
                 onClick={() => void checkUsage()}
@@ -316,7 +314,6 @@ export function WorkModelsPanel({
       <WorkspaceViewHeader
         icon={BrainCircuit}
         title="Project agent configuration"
-        subtitle="Choose the coding agent and model this project uses. You can change either at any time."
         actions={<WorkspaceViewActions
           workspacePath={workspacePath}
           message="Help me choose between the coding agents available for this project. Explain the practical differences before changing anything."

@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ChatHistoryConversation, CostConversation } from '../../services/api-types'
 import { formatUSD } from '../workflow/costs/helpers'
-import { pricingCoverageText } from '../../utils/costTokens'
-import CostTokenBreakdown from './CostTokenBreakdown'
+import CostTokenBreakdown, { CostPricingNotice } from './CostTokenBreakdown'
 
 const ConversationRenderer = lazy(() => import('../ui/ConversationRenderer').then(module => ({ default: module.ConversationRenderer })))
 
@@ -64,7 +63,6 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
   if (rows.length === 0) return null
   return <section className="mt-4 space-y-2">
     <h4 className="text-sm font-semibold text-foreground">Conversations behind this cost</h4>
-    <p className="text-xs text-muted-foreground">Expand a conversation for the cost of each recorded turn or agent run, then view its chat. Cache totals come from provider usage; reasons for cache misses are not included in the report.</p>
     {ordered.slice(0, limit).map(row => {
       const key = `${row.workflow_id}:${row.user_id}:${row.session_id}:${row.source_platform ?? ""}`
       const executions = Object.entries(row.by_execution || {}).sort(([, a], [, b]) => b.first_seen.localeCompare(a.first_seen))
@@ -74,7 +72,7 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
           <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} recorded {executions.length === 1 ? 'turn / agent run' : 'turns / agent runs'} · {row.first_seen.slice(0, 10)} to {row.last_seen.slice(0, 10)} (UTC)</span>
         </summary>
         <div className="mt-3"><CostTokenBreakdown compact usage={row} /></div>
-        {pricingCoverageText(row) && <p className="mt-2 text-xs text-muted-foreground">{pricingCoverageText(row)}</p>}
+        <CostPricingNotice usage={row} className="mt-2" />
         <button type="button" className="mt-3 text-xs text-primary underline" onClick={() => setChat(chat === key ? null : key)}>{chat === key ? 'Hide chat' : 'View chat'}</button>
         {chat === key && <ChatPreview key={key} conversation={row} />}
         <div className="mt-3 max-h-[30rem] space-y-2 overflow-auto">
@@ -82,7 +80,7 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
             <summary className="cursor-pointer text-xs">{new Date(turn.first_seen).toISOString().replace('T', ' ').slice(0, 19)} UTC · {turn.scope.replaceAll('_', ' ')} <span className="float-right font-mono">{turn.total_cost_usd === 0 && turn.unpriced_call_count ? 'Not priced' : formatUSD(turn.total_cost_usd)}</span></summary>
             <div className="mt-2"><CostTokenBreakdown compact usage={turn} /></div>
             <p className="mt-2 text-xs text-muted-foreground">Models: {Object.keys(turn.by_model || {}).join(', ') || 'Not recorded'}</p>
-            {pricingCoverageText(turn) && <p className="mt-1 text-xs text-muted-foreground">{pricingCoverageText(turn)}</p>}
+            <CostPricingNotice usage={turn} className="mt-1" />
           </details>)}
         </div>
       </details>

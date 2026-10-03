@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqlpolicy"
@@ -17,9 +18,11 @@ import (
 // Public SQL tables contain governance metadata. Credentials and key hashes
 // remain only in the encrypted configuration row, with the key outside chat.
 var publicSchema = []string{
+	`CREATE TABLE IF NOT EXISTS vault_secrets(name TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,managed INTEGER NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS group_secret_grants(group_id TEXT NOT NULL,secret_name TEXT NOT NULL,PRIMARY KEY(group_id,secret_name))`,
 	`CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY, name TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, email TEXT NOT NULL)`,
-	`CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '')`,
 	`CREATE TABLE IF NOT EXISTS group_members(group_id TEXT NOT NULL,user_id TEXT NOT NULL,PRIMARY KEY(group_id,user_id))`,
 	`CREATE TABLE IF NOT EXISTS connectors(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,provider TEXT NOT NULL,label TEXT NOT NULL,status TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS tools(public_name TEXT PRIMARY KEY,connector_id TEXT NOT NULL,upstream_name TEXT NOT NULL,description TEXT NOT NULL,input_schema TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL)`,
@@ -30,7 +33,7 @@ var publicSchema = []string{
 	`CREATE TABLE IF NOT EXISTS published_permissions(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,name TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,rules_json TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS policy_history(sequence INTEGER PRIMARY KEY,event_json TEXT NOT NULL)`,
 }
-var publicTables = []string{"workspaces", "users", "groups", "group_members", "connectors", "tools", "user_tool_grants", "group_tool_grants", "group_server_grants", "permission_drafts", "published_permissions", "policy_history"}
+var publicTables = []string{"vault_secrets", "group_secret_grants", "workspaces", "users", "groups", "group_members", "connectors", "tools", "user_tool_grants", "group_tool_grants", "group_server_grants", "permission_drafts", "published_permissions", "policy_history"}
 var editableTables = map[string]bool{"groups": true, "group_members": true, "user_tool_grants": true, "group_tool_grants": true, "permission_drafts": true}
 
 // EnableSQLWorkspace binds this project's SQL surface to one workspace. SQL
@@ -48,6 +51,34 @@ func (s *MemoryStore) EnableSQLWorkspace(id string) error {
 	p.sqlWorkspace = id
 	for _, q := range publicSchema {
 		if _, err := p.db.Exec(q); err != nil {
+			return err
+		}
+	}
+	// Existing project databases predate optional group descriptions.
+	columns, err := p.db.Query(`PRAGMA table_info(groups)`)
+	if err != nil {
+		return err
+	}
+	hasDescription := false
+	for columns.Next() {
+		var cid, notNull, pk int
+		var name, kind string
+		var defaultValue any
+		if err = columns.Scan(&cid, &name, &kind, &notNull, &defaultValue, &pk); err != nil {
+			columns.Close()
+			return err
+		}
+		if name == "description" {
+			hasDescription = true
+		}
+	}
+	err = columns.Err()
+	columns.Close()
+	if err != nil {
+		return err
+	}
+	if !hasDescription {
+		if _, err = p.db.Exec(`ALTER TABLE groups ADD COLUMN description TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -93,11 +124,29 @@ func (p *sqlitePersistence) project(tx *sql.Tx, state durableState) error {
 			}
 		}
 	}
+	for _, v := range state.SecretResources {
+		if v.WorkspaceID == w {
+			if err := exec(`INSERT INTO vault_secrets VALUES(?,?,?)`, v.Name, v.WorkspaceID, v.Managed); err != nil {
+				return err
+			}
+		}
+	}
+	for gid, names := range state.SecretGrants {
+		if g, ok := state.Groups[gid]; ok && g.WorkspaceID == w {
+			for name, allowed := range names {
+				if allowed {
+					if err := exec(`INSERT INTO group_secret_grants VALUES(?,?)`, gid, name); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
 	for _, v := range state.Groups {
 		if v.WorkspaceID != w {
 			continue
 		}
-		if err := exec(`INSERT INTO groups VALUES(?,?,?)`, v.ID, v.WorkspaceID, v.Name); err != nil {
+		if err := exec(`INSERT INTO groups(id,workspace_id,name,description) VALUES(?,?,?,?)`, v.ID, v.WorkspaceID, v.Name, v.Description); err != nil {
 			return err
 		}
 		for uid := range state.Members[v.ID] {
@@ -453,23 +502,30 @@ func (s *MemoryStore) MutateSQL(ctx context.Context, workspaceID, actor string, 
 func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error {
 	old := s.durableState()
 	groups := map[string]Group{}
-	rows, err := tx.Query(`SELECT id,workspace_id,name FROM groups`)
+	rows, err := tx.Query(`SELECT id,workspace_id,name,description FROM groups`)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var g Group
-		if err = rows.Scan(&g.ID, &g.WorkspaceID, &g.Name); err != nil {
+		if err = rows.Scan(&g.ID, &g.WorkspaceID, &g.Name, &g.Description); err != nil {
 			rows.Close()
 			return err
 		}
-		if !sqlIdentity.MatchString(g.ID) || g.WorkspaceID != w || strings.TrimSpace(g.Name) == "" || len(g.Name) > 100 {
+		if !sqlIdentity.MatchString(g.ID) || g.WorkspaceID != w || strings.TrimSpace(g.Name) == "" || len(g.Name) > 100 || utf8.RuneCountInString(g.Description) > MaxGroupDescriptionLength {
 			rows.Close()
 			return errors.New("invalid group identity/name/workspace")
 		}
 		if previous, ok := old.Groups[g.ID]; ok && previous.WorkspaceID != w {
 			rows.Close()
 			return errors.New("group ID belongs to another workspace")
+		}
+		if previous, ok := old.Groups[g.ID]; ok && previous.BuiltIn {
+			if previous.Name != g.Name {
+				rows.Close()
+				return errors.New("built-in group name cannot be changed")
+			}
+			g.BuiltIn = true
 		}
 		groups[g.ID] = g
 	}
@@ -482,6 +538,11 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 		if g.WorkspaceID != w {
 			continue
 		}
+		if g.BuiltIn {
+			if _, exists := groups[id]; !exists {
+				return errors.New("built-in group cannot be deleted")
+			}
+		}
 		delete(state.Groups, id)
 		state.Members[id] = map[string]bool{}
 		state.GroupGrants[id] = map[string]bool{}
@@ -489,6 +550,7 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 			delete(state.Members, id)
 			delete(state.GroupGrants, id)
 			delete(state.GroupServers, id)
+			delete(state.SecretGrants, id)
 			for key, k := range state.Keys {
 				if k.GroupID == id {
 					delete(state.Keys, key)
@@ -588,6 +650,12 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 			delete(state.Drafts, id)
 		}
 	}
+	for gid, g := range groups {
+		if g.BuiltIn && !reflect.DeepEqual(state.Members[gid], old.Members[gid]) {
+			return errors.New("built-in group membership is automatic")
+		}
+	}
+
 	rows, err = tx.Query(`SELECT id,workspace_id,group_id,name,version,rules_json FROM permission_drafts`)
 	if err != nil {
 		return err

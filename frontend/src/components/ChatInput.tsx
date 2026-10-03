@@ -32,9 +32,7 @@ import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { useCanWriteWorkflow } from '../hooks/useCanWriteWorkflow'
 import { chromeCdpInstallCommand, chromeCdpLaunchCommand, chromeCdpVerifyCommand, chromeCdpZipUrl } from '../utils/cdpSetup'
 import { CHAT_TOOL_COMMAND_EVENT, chatToolCommandFromEvent } from '../utils/chatToolEvents'
-import { buildAgentProfileEngineGroups, loadAgentProfileCapabilityEnabled, loadAgentProfileProviderOptions, loadAgentProfileRuntime, type AgentProfileProviderOption, type AgentProfileRuntime } from '../utils/agentProfileCapabilities'
-import { llmConfigService, type ModelMetadata } from '../services/llm-config-api'
-import ModelReasoningControl from './ui/ModelReasoningControl'
+import { loadAgentProfileCapabilityEnabled, loadAgentProfileProviderOptions, loadAgentProfileRuntime, type AgentProfileProviderOption, type AgentProfileRuntime } from '../utils/agentProfileCapabilities'
 import NewChatControl from './ui/NewChatControl'
 import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButton'
 import { readVoiceAutoSendPref } from '../products/sparkquill/voiceAutoSend'
@@ -489,7 +487,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // surfaceVariant made it ignore the project's saved provider/model.
   const isProductProfile = Boolean(agentProfileId)
   // SparkQuill's own composer groups controls the opposite way from every
-  // other product: attachment/commands/model on the left, mic+send on the
+  // other product: attachment/commands on the left, mic+send on the
   // right. Scoped to its two profiles so AgentWorks and Video Studio keep
   // the default arrangement.
   const sparkQuillComposerLayout = agentProfileId === 'sparkquill' || agentProfileId === 'sparkquill-child'
@@ -502,15 +500,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const platformVoiceAvailable = useCapabilitiesStore(state => state.capabilities?.voice?.available ?? false)
   const [profileVoiceEnabled, setProfileVoiceEnabled] = useState(false)
   const voiceCapabilityEnabled = isProductProfile ? profileVoiceEnabled : platformVoiceAvailable
-  // Model switcher for product surfaces. The profile declares its runtimes
-  // (product.yaml runtime.provider_options: Claude Code, Codex…); the
-  // platform's model catalog supplies the models each of those offers. A
-  // choice lands on the tab (sent as `engine` + `model_id` on every profile
-  // query) and is announced for the product to persist. Products may allow
-  // provider changes after a turn; the shared runner relaunches the retained
-  // conversation on the selected CLI when necessary.
+  // Provider metadata identifies the selected runtime; model changes live in workspace settings.
   const [engineOptions, setEngineOptions] = useState<AgentProfileProviderOption[]>([])
-  const [modelCatalog, setModelCatalog] = useState<ModelMetadata[]>([])
   useEffect(() => {
     if (!isProductProfile || !agentProfileId) {
       setEngineOptions([])
@@ -520,9 +511,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     void loadAgentProfileProviderOptions(agentProfileId, agentProfileVersion).then((options) => {
       if (!cancelled) setEngineOptions(options)
     })
-    void llmConfigService.getModelMetadata().then((r) => {
-      if (!cancelled) setModelCatalog(Array.isArray(r?.models) ? r.models : [])
-    }).catch(() => undefined)
     return () => { cancelled = true }
   }, [isProductProfile, agentProfileId, agentProfileVersion])
 
@@ -533,7 +521,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // A product with no shipped commands still needs the slash entry point so
   // users can create and use project-scoped custom commands.
   const productCommandsAvailable = true
-  const chatHasTurns = useMemo(() => (activeTabEvents ?? []).some((e) => e.type === 'user_message'), [activeTabEvents])
   const profileSessionRuntime = useChatStore(state => activeTab?.sessionId
     ? state.activeSessionsCache.find(session => session.session_id === activeTab.sessionId)?.runtime
     : undefined)
@@ -544,42 +531,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     || engineOptions.find((o) => o.default)?.id
     || engineOptions[0]?.id
     || ''
-  const engineGroups = useMemo(() => {
-    return buildAgentProfileEngineGroups(engineOptions, modelCatalog)
-  }, [engineOptions, modelCatalog])
-  const currentGroup = engineGroups.find((g) => g.option.id === currentEngine)
+  const currentOption = engineOptions.find(option => option.id === currentEngine)
   const currentModel = activeTab?.metadata?.agentProfileModelID
     || profileSessionRuntime?.model_id
-    || (currentGroup?.option.model_id ?? '')
-    || currentGroup?.models[0]?.id
+    || currentOption?.model_id
     || ''
-  const defaultReasoningEffort = typeof currentGroup?.option.options?.reasoning_effort === 'string' ? currentGroup.option.options.reasoning_effort : undefined
-  const metadataMatchesEngine = metadataEngine === currentEngine
-  const currentReasoningEffort = (currentGroup?.option.provider === 'agy-cli' ? currentModel.match(/-(low|medium|high)$/)?.[1] : undefined)
-    || (metadataMatchesEngine ? activeTab?.metadata?.agentProfileReasoningEffort : undefined)
-    || defaultReasoningEffort
-    || currentGroup?.reasoningLevels[0]?.id
-    || ''
-  const selectProductEngine = useCallback((engine: string, modelId: string, reasoningEffort?: string) => {
-    if (!activeTabId || !agentProfileId) return
-    const group = engineGroups.find(candidate => candidate.option.id === engine)
-    if (group?.option.provider === 'agy-cli') {
-      const bakedEffort = modelId.match(/-(low|medium|high)$/)?.[1]
-      if (bakedEffort) {
-        if (modelId === currentModel && reasoningEffort && reasoningEffort !== bakedEffort) {
-          const nextModel = modelId.replace(/-(low|medium|high)$/, `-${reasoningEffort}`)
-          if (group.models.some(candidate => candidate.id === nextModel)) modelId = nextModel
-          else reasoningEffort = bakedEffort
-        } else {
-          reasoningEffort = bakedEffort
-        }
-      }
-    }
-    useChatStore.getState().setTabMetadata(activeTabId, { agentProfileEngine: engine, agentProfileModelID: modelId, ...(reasoningEffort ? { agentProfileReasoningEffort: reasoningEffort } : {}) })
-    window.dispatchEvent(new CustomEvent('agentworks:product-engine-selected', {
-      detail: { profileId: agentProfileId, tabId: activeTabId, engine, provider: group?.option.provider, modelId, reasoningEffort },
-    }))
-  }, [activeTabId, agentProfileId, engineGroups, currentModel])
 
   // "New chat" for product surfaces, offered when the profile declares
   // runtime.capabilities.new_conversation; the product owns what happens.
@@ -794,7 +750,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     // A product's saved project selection is its source of truth. It must win
     // while an older retained session is being relaunched with a new model.
-    const selectedProfileProvider = currentGroup?.option.provider?.trim()
+    const selectedProfileProvider = currentOption?.provider?.trim()
     const selectedProfileModel = currentModel.trim()
     if (isProductProfile && activeTab?.metadata?.agentProfileEngine && selectedProfileProvider && selectedProfileModel) {
       return {
@@ -826,7 +782,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     activeTab?.metadata?.agentProfileEngine,
     agentProfileRuntime?.model_id,
     agentProfileRuntime?.provider,
-    currentGroup?.option.provider,
+    currentOption?.provider,
     currentModel,
     isMultiAgentMode,
     isProductProfile,
@@ -3320,20 +3276,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       {sparkleEl}
                       {isProductSurface && newConversationEnabled && (
                         <NewChatControl
-                          engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id }))}
+                          engines={engineOptions.map(option => ({ id: option.id, label: option.label || option.id }))}
                           onStart={requestNewConversation}
-                        />
-                      )}
-                      {isProductProfile && agentProfileId !== 'caplayer' && engineGroups.some((g) => g.models.length > 0) && (
-                        <ModelReasoningControl
-                          engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id, models: g.models }))}
-                          currentEngineId={currentEngine}
-                          currentModelId={currentModel}
-                          engineChangeable={agentProfileId === 'work' || !chatHasTurns}
-                          reasoningLevels={currentGroup?.reasoningLevels ?? []}
-                          currentReasoningEffort={currentReasoningEffort}
-                          defaultReasoningEffort={defaultReasoningEffort}
-                          onSelect={selectProductEngine}
                         />
                       )}
                     {/* Browser access lives in the chat header for multi-agent mode. */}
@@ -3818,6 +3762,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         <MCPDetailsModal
           onClose={() => closeDialog('mcpDetails')}
           onOpenConfigEditor={() => openDialog('mcpConfig')}
+          selectedServers={manualSelectedServers}
+          onSelectedServersChange={servers => {
+            if (!activeTabId) return
+            const next = servers.length ? servers : ['NO_SERVERS']
+            setTabConfig(activeTabId, { selectedServers: next })
+            setChatSelectedServers(next)
+          }}
         />
       )}
       {showMCPConfig && (

@@ -5,15 +5,15 @@ description: Use and connect this {{product}}'s MCP connections (Linear, Asana, 
 
 # {{product}} MCP
 
-A {{product}} has its own MCP connections, added with its owner's own sign-in
-(their Linear, Notion, ...). Every chat here uses them as that person,
-schedules, triggers and bots included. They belong to this {{product}} only and
-never appear in another one.
+Connections are private to the authenticated person, even in a shared {{product}}.
+Shared MCPs belong in Vault and require group permissions on every tool call.
 
 - **See what is connected.** Call `manage_my_mcp_servers` with `list`:
   `this_code_has` names the connections and whether each is `connected`;
   `catalog` is what can be added; `you_can_connect` says whether this person
-  may. Use `search_tools(server_name="<exact-name>")` to find its registered tools, then `get_api_spec(tool_name="<returned-name>")` for a schema.
+  may. `vault` lists shared connections permitted by their groups; use
+  `manage_my_mcp_servers(action="select", server="<vault name>")` to select one
+  for this Code, or `deselect` to remove it from the selection. First call `search_tools(query="<provider or task>")` to find registered tools. Use the exact runtime `server_name` returned by that search to narrow subsequent searches, then `get_api_spec(tool_name="<returned-name>")` for a schema. Private names and Vault selection IDs from the connection list are not runtime server names.
 - **Server names.** Connected servers appear as `u<id>__<name>`, for example
   `u3f2a...__googlegmail`. Use that exact name in tool calls. When you talk to
   the person, say "your Gmail connection" and never show the `u<id>__` id.
@@ -33,9 +33,9 @@ never appear in another one.
 - **Providers that need an OAuth app.** When `connect` says so, send the person
   to **Integrations > MCP** to finish it. Never ask for passwords, API keys
   or OAuth client secrets in chat. A server that takes an API key uses a secret
-  the owner adds under **Setup > Secrets**, and the connection names it.
+  the person stores privately; a connection refers to its secret name.
 - **Remove one.** `manage_my_mcp_servers` with `remove` and the connection's
-  `name` deletes it and its login. Say which connection you are removing first.
+  `name` detaches it from this project; their private account can be reused elsewhere. Say which connection you are removing first.
 - **When a call fails.** "not available in this chat" means the connection was
   removed or its owner lost access. Run `list`, then connect it again. A
   direct tool that is missing is not a failure: use the bridge.

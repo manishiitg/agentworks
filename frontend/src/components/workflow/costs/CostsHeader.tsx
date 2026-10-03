@@ -1,7 +1,6 @@
-import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
+import CostTokenBreakdown, { CostPricingNotice } from '../../providers/CostTokenBreakdown'
 import React from 'react'
 import type { CostSummary } from '../../../services/api-types'
-import { pricingCoverageText } from '../../../utils/costTokens'
 import { DollarSign, Coins } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatUSD, formatTokens } from './helpers'
@@ -66,7 +65,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
           </div>
         )}
         {scopedCosts && <div className="w-full"><CostTokenBreakdown usage={scopedCosts.total} /></div>}
-        {scopedCosts && pricingCoverageText(scopedCosts.total) && <div className="w-full text-muted-foreground">{pricingCoverageText(scopedCosts.total)}</div>}
+        {scopedCosts && <CostPricingNotice usage={scopedCosts.total} className="w-full" />}
         </div>
       ) : undefined}
     />

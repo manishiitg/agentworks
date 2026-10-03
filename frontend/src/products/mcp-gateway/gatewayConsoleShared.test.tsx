@@ -26,13 +26,13 @@ it('deduplicates one outage and refreshes all failed sections with one Retry act
   const refreshParent = vi.fn()
   const refreshReview = vi.fn()
   await render(<GatewayFeedbackBoundary>
-    <ConsoleStale message="CapLayer service unavailable" onRetry={refreshParent} />
-    <ConsoleError message="CapLayer service unavailable" onRetry={refreshParent} />
-    <ConsoleError message="CapLayer service unavailable" onRetry={refreshReview} />
+    <ConsoleStale message="Vault service unavailable" onRetry={refreshParent} />
+    <ConsoleError message="Vault service unavailable" onRetry={refreshParent} />
+    <ConsoleError message="Vault service unavailable" onRetry={refreshReview} />
     <p>Previously loaded permissions</p>
   </GatewayFeedbackBoundary>)
   expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1)
-  expect(container.textContent?.match(/CapLayer service unavailable/g)).toHaveLength(1)
+  expect(container.textContent?.match(/Vault service unavailable/g)).toHaveLength(1)
   expect(container.textContent).toContain('Previously loaded permissions')
   expect(container.textContent).toContain('may be outdated')
   expect(container.querySelectorAll('button')).toHaveLength(1)
@@ -63,7 +63,7 @@ it('clears the shared warning after recovery and uses the latest section callbac
 it('recovers the real group, membership and permissions loaders from one gateway outage', async () => {
   let unavailable = false
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    let body: unknown = { error: 'CapLayer service unavailable' }
+    let body: unknown = { error: 'Vault service unavailable' }
     if (!unavailable) {
       if (url.endsWith('/groups')) body = { groups: [{ ID: 'g', WorkspaceID: 'w', Name: 'Readers' }] }
       else if (url.endsWith('/users')) body = { users: [] }

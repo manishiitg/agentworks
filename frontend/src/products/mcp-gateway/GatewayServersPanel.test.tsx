@@ -95,8 +95,8 @@ describe('GatewayServersPanel', () => {
     expect(connected.textContent).toContain('Tools not loaded')
     expect(refreshTools).toHaveBeenCalledOnce()
     expect(container!.querySelector('[aria-label="Available servers"]')).toBeNull()
-    expect(container!.querySelector('[data-testid="gateway-add-custom"]')).toBeNull()
-    expect(container!.textContent).toContain('2 results')
+    expect(container!.querySelector('[data-testid="mcp-add-custom"]')).toBeNull()
+    expect(container!.textContent).toContain('3 results')
     expect(container!.textContent).not.toContain('Linear')
   })
 
@@ -108,7 +108,7 @@ describe('GatewayServersPanel', () => {
     expect(available.textContent).not.toContain('Notion')
     expect(available.textContent).toContain('Linear')
     expect(available.textContent).toContain('Connect with OAuth')
-    expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Connect to gateway')
+    expect(container!.querySelector('[data-testid="gateway-add-linear"]')!.textContent).toContain('Connect')
     expect(container!.textContent).toContain('2 results')
   })
 
@@ -159,7 +159,7 @@ describe('GatewayServersPanel', () => {
 
     expect(container!.textContent).toContain('Linear')
     expect(container!.textContent).not.toContain('Notion')
-    expect(container!.textContent).toContain('1 server')
+    expect(container!.textContent).toContain('1 result')
   })
 
   it('expands a gateway server to show its tools with args and descriptions', async () => {

@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: { getProviderManifest: vi.fn(), getProviderModels: vi.fn(), startProviderSetup: vi.fn(), cancelProviderSetup: vi.fn(), getProviderConnections: vi.fn(), getProviderAccountCosts: vi.fn(async () => ({ providers: [] })), getProductDefaults: vi.fn(async () => ({})), setProductDefaults: vi.fn() },
   providerApiErrorText: (_error: unknown, fallback: string) => fallback,
@@ -19,6 +20,7 @@ vi.mock('./GuidedProviderTerminal', () => ({
 
 import { llmConfigService, type ProviderManifestEntry } from '../../services/llm-config-api'
 import CodingProvidersPanel from './CodingProvidersPanel'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { CODING_PROVIDER_GUIDES } from './codingProviderGuides'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -215,8 +217,9 @@ describe('CodingProvidersPanel', () => {
       expect(terminal?.textContent).toBe('Terminal setup-1')
       await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
       expect(onClose).not.toHaveBeenCalled()
-      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Back from providers"]')!.click())
+      await act(async () => Array.from(host.querySelectorAll('header button')).find(button => button.textContent?.trim() === 'Back to Goals')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
       expect(onClose).toHaveBeenCalledOnce()
+      expect(openProductWorkspace).toHaveBeenCalledWith('agentworks')
       await act(async () => root.render(renderPage(false)))
       expect(host.querySelector('[data-testid="guided-terminal"]')).toBe(terminal)
       await act(async () => root.render(renderPage(true)))

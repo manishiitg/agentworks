@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { GatewayToolArguments } from './GatewayToolArguments'
+import { McpToolArguments } from './McpToolArguments'
 
 /** One tool layout for connected MCPs and group permissions. */
-export function GatewayToolCard({ name, description, status, schema, rawSchema, selection, children }: {
+export function McpToolCard({ name, description, status, schema, rawSchema, selection, children }: {
   name: string; description?: string; status?: string; schema?: string | null;
   rawSchema?: Record<string, unknown>; selection?: ReactNode; children?: ReactNode
 }) {
@@ -20,7 +20,7 @@ export function GatewayToolCard({ name, description, status, schema, rawSchema, 
       <summary aria-label={`Arguments for ${name}`} className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronDown className="h-3 w-3 -rotate-90 transition-transform group-open/arguments:rotate-0" aria-hidden />Arguments
       </summary>
-      <div className="mt-2 w-full" aria-label={`${name} arguments`}><GatewayToolArguments schema={schema} rawSchema={rawSchema} /></div>
+      <div className="mt-2 w-full" aria-label={`${name} arguments`}><McpToolArguments schema={schema} rawSchema={rawSchema} /></div>
     </details>
     {children && <div className="mt-3 space-y-2">{children}</div>}
   </div>

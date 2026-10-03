@@ -223,6 +223,13 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	api.reportRunSessions.Store(sessionID, reportRunScope{workspacePath: workspacePath, userID: userID})
 	defer api.reportRunSessions.Delete(sessionID)
 
+	scopedSecrets := api.loadSelectedSecrets(ctx, userID, workspacePath, selection.secrets)
+	if err := validateVaultSecretSelection(ctx, userID, scopedSecrets, &selection.secrets); err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
+	if err := validateVaultSecretSelection(ctx, userID, scopedSecrets, selection.globalSecrets); err != nil {
+		return map[string]any{"success": false, "error": err.Error()}
+	}
 	env := api.reportRunEnv(ctx, userID, workspacePath, selection, sessionID)
 	secretValues := make([]string, 0, len(env))
 	for key, value := range env {
@@ -311,7 +318,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 // and an MCP bridge session scoped to the workflow's selected servers.
 func (api *StreamingAPI) reportRunEnv(ctx context.Context, userID, workspacePath string, selection reportRunSelection, sessionID string) map[string]string {
 	env := map[string]string{}
-	secrets := mergeGlobalSecrets(api.loadSelectedSecrets(ctx, userID, workspacePath, selection.secrets), selection.globalSecrets)
+	secrets := api.mergeGlobalSecretsFor(ctx, userID, api.loadSelectedSecrets(ctx, userID, workspacePath, selection.secrets), selection.globalSecrets)
 	for _, secret := range secrets {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
@@ -364,6 +371,6 @@ func (api *StreamingAPI) resolveReportRunMCPServer(ctx context.Context, sessionI
 	if err != nil {
 		return nil, true, fmt.Errorf("load current MCP configuration: %w", err)
 	}
-	resolved, err := resolveSelectedMCPServer(catalog, runtimeMCPServers(selection.servers), selection.tools, scope.userID, server, tool)
+	resolved, err := api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(selection.servers), selection.tools, scope.userID, server, tool)
 	return resolved, true, err
 }

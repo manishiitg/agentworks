@@ -22,11 +22,11 @@ describe('product surface deployment configuration', () => {
     expect(hasGatewaySSO()).toBe(false)
   })
 
-  it('opts into CapLayer when a gateway URL is configured', () => {
+  it('opts into Vault when a gateway URL is configured', () => {
     vi.stubGlobal('window', {
       __APP_RUNTIME_CONFIG__: { gatewayUrl: 'http://127.0.0.1:18745' },
     })
-    expect(enabledProductSurfaces()).toEqual(['agentworks', 'work', 'mcp-gateway'])
+    expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'mcp-gateway'])
   })
 
   it('removes CapLayer from an explicit allowlist when its endpoint is withdrawn', () => {

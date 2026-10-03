@@ -157,6 +157,15 @@ func NewBaseAgent(
 	cliSecurityPolicy *llmtypes.CLISecurityPolicy, // Server-resolved immutable CLI security policy
 	runtimeOverrides mcpclient.RuntimeOverrides, // Runtime config overrides for MCP servers (e.g., output directories)
 ) (*BaseAgent, error) {
+	if common.ScopeAgentMCP != nil {
+		names, overrides, aliases, err := common.ScopeAgentMCP(ctx, mcpSessionID, serverNames, runtimeOverrides)
+		if err != nil {
+			return nil, err
+		}
+		serverNames = names
+		runtimeOverrides = overrides
+		selectedTools = common.RemapMCPToolSelection(selectedTools, aliases)
+	}
 	generation := mcpagent.GenerationRuntimeConfig{
 		Provider:    internalLLM.Provider(provider),
 		Temperature: temperature,
@@ -215,9 +224,16 @@ func NewBaseAgent(
 
 	mcpSources := make([]mcpagent.MCPToolSource, 0, len(serverNames))
 	for _, serverName := range serverNames {
+		if common.ScopeAgentMCP != nil && common.IsBuiltinToolCategory(serverName) {
+			continue
+		}
 		if name := strings.TrimSpace(serverName); name != "" {
 			mcpSources = append(mcpSources, mcpagent.MCPToolSource{Name: name})
 		}
+	}
+
+	if common.ScopeAgentMCP != nil && len(mcpSources) == 0 {
+		mcpSources = []mcpagent.MCPToolSource{{Name: mcpclient.NoServers}}
 	}
 
 	// Create the agent from one identity value. Runtime options remain on the

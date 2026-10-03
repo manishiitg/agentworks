@@ -1,76 +1,274 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
+import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SecretSelectionSection } from './SecretSelectionSection'
-import { secretsApi } from '../../api/secrets'
+const api = vi.hoisted(() => ({
+  getGlobalSecrets: vi.fn(),
+  listWorkflowSecrets: vi.fn(),
+  decrypt: vi.fn(),
+  revealGlobalSecret: vi.fn(),
+  saveGlobalSecret: vi.fn(),
+  deleteGlobalSecret: vi.fn(),
+  storeWorkflowSecret: vi.fn(),
+  deleteWorkflowSecret: vi.fn(),
+  encrypt: vi.fn(),
+}))
+vi.mock('../../api/secrets', () => ({ secretsApi: api }))
+vi.mock('../integrations/OpenVaultButton', () => ({
+  OpenVaultButton: () => null,
+}))
+vi.mock('../../hooks/useCanWriteWorkflow', () => ({
+  useCanWriteWorkflow: () => true,
+}))
+const clipboardWrite = vi.fn()
+let host: HTMLDivElement
+let root: ReturnType<typeof createRoot>
+beforeEach(() => {
+  vi.resetAllMocks()
+  clipboardWrite.mockResolvedValue(undefined)
+  vi.stubGlobal('navigator', { clipboard: { writeText: clipboardWrite } })
+  api.getGlobalSecrets.mockResolvedValue([{ name: 'TEAM_KEY', managed: true }])
+  api.listWorkflowSecrets.mockResolvedValue([
+    { name: 'PROJECT_KEY', encrypted_value: 'encrypted' },
+  ])
+  host = document.createElement('div')
+  document.body.append(host)
+  root = createRoot(host)
+})
+afterEach(async () => {
+  await act(async () => root.unmount())
+  host.remove()
+  vi.unstubAllGlobals()
+})
+async function click(label: string) {
+  const element =
+    host.querySelector(`[aria-label="${label}"]`) ??
+    [...host.querySelectorAll('button')].find((b) => b.textContent === label)
+  expect(element).toBeTruthy()
+  await act(async () => {
+    ;(element as HTMLElement).click()
+  })
+}
+describe('shared secrets permissions UI', () => {
+  it('project Vault choices never expose central value or management actions', async () => {
+    const select = vi.fn().mockResolvedValue(undefined)
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          workflowPath="Workflow/test"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+          selectedGlobalSecrets={null}
+          onGlobalSecretChange={select}
+        />,
+      ),
+    )
+    await click('Vault')
+    expect(
+      host
+        .querySelector('[aria-label="Use TEAM_KEY"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('false')
+    expect(host.textContent).not.toContain('Rotate')
+    expect(host.querySelector('[aria-label="Reveal TEAM_KEY"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Copy TEAM_KEY"]')).toBeNull()
+    await click('Use TEAM_KEY')
+    expect(select).toHaveBeenCalledWith(['TEAM_KEY'])
+    expect(api.revealGlobalSecret).not.toHaveBeenCalled()
+    expect(api.getGlobalSecrets).toHaveBeenCalledWith(false)
+  })
+  it('retains selection and shows save failures', async () => {
+    const select = vi.fn().mockRejectedValue(new Error('Permission revoked'))
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          workflowPath="Workflow/test"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+          selectedGlobalSecrets={[]}
+          onGlobalSecretChange={select}
+        />,
+      ),
+    )
+    await click('Vault')
+    await click('Use TEAM_KEY')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      'Permission revoked',
+    )
+    expect(
+      host
+        .querySelector('[aria-label="Use TEAM_KEY"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('false')
+  })
+  it('offers metadata-only group grants without any reveal control', async () => {
+    const grant = vi.fn().mockResolvedValue(undefined)
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          mode="group"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+          groupSelectedNames={[]}
+          onGroupAccessChange={grant}
+        />,
+      ),
+    )
+    expect(host.querySelector('[aria-label="Allow TEAM_KEY"]')).toBeNull()
+    await click('Add secrets')
+    await click('Allow TEAM_KEY')
+    expect(grant).toHaveBeenCalledWith('TEAM_KEY', true)
+    expect(host.textContent).not.toContain('Rotate')
+    expect(api.getGlobalSecrets).toHaveBeenCalledWith(true)
+    expect(host.querySelector('input[type="password"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Copy TEAM_KEY"]')).toBeNull()
+  })
+  it('shows assigned secrets immediately and leaves available secrets collapsed', async () => {
+    api.getGlobalSecrets.mockResolvedValue([
+      { name: 'ASSIGNED_KEY' },
+      { name: 'AVAILABLE_KEY' },
+    ])
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          mode="group"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+          groupSelectedNames={['ASSIGNED_KEY']}
+        />,
+      ),
+    )
+    expect(
+      host
+        .querySelector('[aria-label="Allow ASSIGNED_KEY"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('true')
+    expect(host.querySelector('[aria-label="Allow AVAILABLE_KEY"]')).toBeNull()
+    expect(host.textContent).toContain('1 assigned')
+    await click('Add secrets')
+    expect(
+      host
+        .querySelector('[aria-label="Allow AVAILABLE_KEY"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('false')
+    expect(api.revealGlobalSecret).not.toHaveBeenCalled()
+  })
+  it('Vault management can reveal and hide explicitly without rendering values initially', async () => {
+    api.revealGlobalSecret.mockResolvedValue({ value: 'dummy-managed-value' })
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          mode="vault"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      ),
+    )
+    expect(host.textContent).not.toContain('dummy-managed-value')
+    await click('Reveal TEAM_KEY')
+    expect(host.textContent).toContain('dummy-managed-value')
+    await click('Hide TEAM_KEY')
+    expect(host.textContent).not.toContain('dummy-managed-value')
+  })
+  it('drops a late reveal after changing projects', async () => {
+    let resolveReveal!: (result: { value: string }) => void
+    api.decrypt.mockReturnValue(
+      new Promise((resolve) => {
+        resolveReveal = resolve
+      }),
+    )
+    const renderProject = (workflowPath: string) =>
+      root.render(
+        <SecretSelectionSection
+          workflowPath={workflowPath}
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      )
+    await act(async () => renderProject('Workflow/first'))
+    await click('Reveal PROJECT_KEY')
+    await act(async () => renderProject('Workflow/second'))
+    await act(async () => resolveReveal({ value: 'dummy-first-project-value' }))
+    expect(host.textContent).not.toContain('dummy-first-project-value')
+  })
 
-const mocks = vi.hoisted(() => ({ admin: true, fetch: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({user:{is_admin:mocks.admin},isMultiUserMode:true,isMultiUserModeChecked:true}) }))
-vi.mock('../../hooks/useCanWriteWorkflow', () => ({useCanWriteWorkflow:()=>true, READ_ONLY_TITLE:'Read only'}))
-vi.mock('../../api/secrets', () => ({secretsApi:{promoteWorkflowSecret:vi.fn(),saveGlobalSecret:vi.fn(),deleteGlobalSecret:vi.fn(),decrypt:vi.fn(),revealGlobalSecret:vi.fn()}}))
-vi.mock('../../stores', () => {
- const state={secrets:[],globalSecrets:[{name:'GLOBAL_TOKEN',managed:true},{name:'ENV_TOKEN'}],storedUserSecrets:[],workflowSecretsByPath:{'Workflow/test':[{name:'LOCAL_TOKEN',encrypted_value:'cipher'}]},fetchGlobalSecrets:mocks.fetch,fetchStoredUserSecrets:mocks.fetch,fetchWorkflowSecrets:mocks.fetch,addWorkflowSecret:vi.fn(),removeWorkflowSecret:vi.fn()}
- return {useSecretsStore:(selector:(state:unknown)=>unknown)=>selector(state)}
-})
-Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
-const cleanups:(()=>void)[]=[]
-beforeEach(()=>{mocks.admin=true})
-afterEach(()=>{cleanups.splice(0).forEach(fn=>fn());vi.clearAllMocks()})
-async function mount(extraProps: Record<string, unknown> = {}){
- const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
- await act(async()=>root.render(<SecretSelectionSection selectedSecrets={['LOCAL_TOKEN']} onSecretChange={()=>{}} onGlobalSecretChange={()=>{}} workflowPath="Workflow/test" {...extraProps}/>))
- cleanups.push(()=>{act(()=>root.unmount());host.remove()});return host
-}
-// The shared confirmation dialog portals to document.body, outside the mount
-// host. Its buttons carry no aria-label, unlike the row action buttons.
-function dialogButton(text: string){
- const found=Array.from(document.querySelectorAll('button')).find(b=>b.textContent===text && !b.getAttribute('aria-label'))
- expect(found).not.toBeUndefined()
- return found as HTMLButtonElement
-}
-it('promotes by name and source without revealing the value',async()=>{
- const host=await mount()
- const button=host.querySelector('button[aria-label="Make LOCAL_TOKEN global"]') as HTMLButtonElement
- expect(button).not.toBeNull()
- await act(async()=>button.click())
- expect(document.body.textContent).toContain('Make LOCAL_TOKEN global?')
- expect(document.body.textContent).toContain('available server-wide to all users and workflows')
- await act(async()=>dialogButton('Make global').click())
- expect(secretsApi.promoteWorkflowSecret).toHaveBeenCalledWith('Workflow/test','LOCAL_TOKEN')
- expect(secretsApi.decrypt).not.toHaveBeenCalled()
- expect(host.textContent).toContain('LOCAL_TOKEN is global')
- expect(host.querySelector('button[aria-label="Delete global GLOBAL_TOKEN"]')).not.toBeNull()
- expect(host.querySelector('button[aria-label="Delete global ENV_TOKEN"]')).toBeNull()
-})
-it('hides server-wide management from ordinary workflow owners',async()=>{
- mocks.admin=false;const host=await mount()
- expect(host.textContent).toContain('GLOBAL_TOKEN')
- expect(host.querySelector('button[aria-label="Make LOCAL_TOKEN global"]')).toBeNull()
- expect(host.querySelector('button[aria-label="Delete global GLOBAL_TOKEN"]')).toBeNull()
- expect(host.querySelector('button[aria-label="Reveal global GLOBAL_TOKEN"]')).toBeNull()
-})
-it('reveals a global value inline for admins',async()=>{
- const host=await mount()
- vi.mocked(secretsApi.revealGlobalSecret).mockResolvedValue({value:'shh-global'})
- expect(host.querySelector('button[aria-label="Reveal global ENV_TOKEN"]')).not.toBeNull()
- await act(async()=> (host.querySelector('button[aria-label="Reveal global GLOBAL_TOKEN"]') as HTMLButtonElement).click())
- expect(secretsApi.revealGlobalSecret).toHaveBeenCalledWith('GLOBAL_TOKEN')
- expect(host.textContent).toContain('shh-global')
- await act(async()=> (host.querySelector('button[aria-label="Reveal global GLOBAL_TOKEN"]') as HTMLButtonElement).click())
- expect(host.textContent).not.toContain('shh-global')
-})
-it('does not promote when the admin cancels the scope confirmation',async()=>{
- const host=await mount()
- await act(async()=> (host.querySelector('button[aria-label="Make LOCAL_TOKEN global"]') as HTMLButtonElement).click())
- await act(async()=>dialogButton('Cancel').click())
- expect(secretsApi.promoteWorkflowSecret).not.toHaveBeenCalled()
- expect(document.body.textContent).not.toContain('Make LOCAL_TOKEN global?')
-})
-it('shows a badge only on global rows',async()=>{
- const host=await mount({workspaceSecretHeading:'Box secrets'})
- expect(host.textContent).toContain('Box secrets')
- expect(host.textContent).toContain('Global')
- expect(host.textContent).not.toContain('Automation')
- expect(host.textContent).not.toContain('Project')
+  it('copies a Vault value without rendering it', async () => {
+    api.revealGlobalSecret.mockResolvedValue({ value: 'dummy-copy-value' })
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          mode="vault"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      ),
+    )
+    await click('Copy TEAM_KEY')
+    expect(api.revealGlobalSecret).toHaveBeenCalledWith('TEAM_KEY')
+    expect(clipboardWrite).toHaveBeenCalledWith('dummy-copy-value')
+    expect(host.textContent).not.toContain('dummy-copy-value')
+    expect(host.querySelector('[aria-label="Copied TEAM_KEY"]')).toBeTruthy()
+  })
+  it('copies project values through the authorized project decrypt route', async () => {
+    api.decrypt.mockResolvedValue({ value: 'dummy-project-copy' })
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          workflowPath="Workflow/first"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      ),
+    )
+    await click('Copy PROJECT_KEY')
+    expect(api.decrypt).toHaveBeenCalledWith('encrypted', 'Workflow/first')
+    expect(clipboardWrite).toHaveBeenCalledWith('dummy-project-copy')
+    expect(host.textContent).not.toContain('dummy-project-copy')
+  })
+  it('does not copy a cached revealed value when access has been revoked', async () => {
+    api.revealGlobalSecret.mockResolvedValueOnce({ value: 'dummy-revealed' })
+    await act(async () =>
+      root.render(
+        <SecretSelectionSection
+          mode="vault"
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      ),
+    )
+    await click('Reveal TEAM_KEY')
+    api.revealGlobalSecret.mockRejectedValueOnce(new Error('Access denied'))
+    await click('Copy TEAM_KEY')
+    expect(clipboardWrite).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      'Could not copy',
+    )
+  })
+  it('drops a pending copy after changing projects', async () => {
+    let resolveCopy!: (result: { value: string }) => void
+    api.decrypt.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCopy = resolve
+      }),
+    )
+    const renderProject = (workflowPath: string) =>
+      root.render(
+        <SecretSelectionSection
+          workflowPath={workflowPath}
+          selectedSecrets={[]}
+          onSecretChange={() => {}}
+        />,
+      )
+    await act(async () => renderProject('Workflow/first'))
+    await click('Copy PROJECT_KEY')
+    await act(async () => renderProject('Workflow/second'))
+    await act(async () => resolveCopy({ value: 'dummy-old-project' }))
+    expect(clipboardWrite).not.toHaveBeenCalled()
+    expect(
+      host
+        .querySelector('[aria-label="Copy PROJECT_KEY"]')
+        ?.hasAttribute('disabled'),
+    ).toBe(false)
+  })
 })

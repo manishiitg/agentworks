@@ -15,6 +15,8 @@ export interface GatewayGroup {
   ID: string
   WorkspaceID: string
   Name: string
+  Description?: string
+  BuiltIn?: boolean
 }
 
 export interface GatewayConnector {
@@ -44,6 +46,20 @@ export interface GatewayTool {
   Version: number
   Fingerprint: string
   ApprovedFingerprint: string
+}
+
+export interface GatewayAuditSettings {
+  provider: 'sqlite' | 'clickhouse' | 'off' | 'memory'
+  enabled: boolean
+  retention_seconds: number
+  write_mode?: 'async' | 'durable'
+  pending_writes?: number
+  write_failures?: number
+  write_healthy?: boolean
+}
+
+export function getAuditSettings(base: string): Promise<GatewayAuditSettings> {
+  return request(base, '/api/admin/audit/settings')
 }
 
 export interface GatewayAuditEvent {
@@ -197,12 +213,12 @@ export function listGroups(base: string): Promise<{ groups: GatewayGroup[] }> {
   return request(base, '/api/admin/groups')
 }
 
-export function createGroup(base: string, id: string, name: string): Promise<{ id: string }> {
-  return post(base, '/api/admin/groups', { ID: id, Name: name })
+export function createGroup(base: string, id: string, name: string, description = ''): Promise<{ id: string }> {
+  return post(base, '/api/admin/groups', { ID: id, Name: name, ...(description ? { Description: description } : {}) })
 }
 
-export function renameGroup(base: string, id: string, name: string): Promise<{ status: string }> {
-  return post(base, `/api/admin/groups/${encodeURIComponent(id)}`, { Name: name })
+export function renameGroup(base: string, id: string, name: string, description?: string): Promise<{ status: string }> {
+  return post(base, `/api/admin/groups/${encodeURIComponent(id)}`, { Name: name, ...(description !== undefined ? { Description: description } : {}) })
 }
 
 export function listGroupKeys(base: string, groupId: string): Promise<{ keys: GatewayAPIKey[] }> {
@@ -397,4 +413,8 @@ export interface GatewayGroupPermission {
 
 export function listGroupPermissions(base: string, groupId: string): Promise<{ permissions: GatewayGroupPermission[] }> {
   return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/permissions`)
+}
+
+export function listGroupSecrets(base: string, groupId: string): Promise<{ secrets: { name: string; managed: boolean }[] }> {
+  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/secrets`)
 }

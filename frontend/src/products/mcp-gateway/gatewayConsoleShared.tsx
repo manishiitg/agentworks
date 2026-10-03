@@ -21,7 +21,7 @@ export function GatewayFeedbackBoundary({ children }: { children: ReactNode }) {
   const messages = [...new Set([...failures.values()].map(failure => failure.message))]
   return <FailureContext.Provider value={register}>
     {messages.length > 0 && <div className="space-y-2 rounded border border-destructive/40 bg-destructive/5 p-3" role="alert">
-      <p className="flex items-center gap-2 font-medium text-foreground"><AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />Could not refresh CapLayer</p>
+      <p className="flex items-center gap-2 font-medium text-foreground"><AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />Could not refresh Vault</p>
       {[...failures.values()].some(failure => failure.stale) && <p className="text-muted-foreground">Previously loaded data is still shown and may be outdated.</p>}
       {messages.map(message => <p key={message} className="text-muted-foreground">{message}</p>)}
       <Button variant="outline" size="xs" onClick={() => {

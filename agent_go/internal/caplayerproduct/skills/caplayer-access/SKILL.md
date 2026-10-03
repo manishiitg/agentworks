@@ -23,7 +23,7 @@ SQL tools can change explicitly requested membership and simple tool assignments
 
 # Project SQLite tools
 
-CapLayer exposes the same query_workflow_db and mutate_workflow_db SQL tool contracts as Crew/workflows. The gateway resolves this project's database; never supply a path. Start with action=describe and optionally table=<name>.
+Vault exposes the same query_workflow_db and mutate_workflow_db SQL tool contracts as Crew/workflows. The gateway resolves this project's database; never supply a path. Start with action=describe and optionally table=<name>.
 
 - Read tables: workspaces, users, groups, group_members, connectors, tools, user_tool_grants, group_tool_grants, group_server_grants, permission_drafts, published_permissions and policy_history.
 - Mutable tables: groups (id, workspace_id, name), group_members (group_id, user_id), user_tool_grants (user_id, public_name), group_tool_grants (group_id, public_name), permission_drafts (id, workspace_id, group_id, name, version, rules_json).

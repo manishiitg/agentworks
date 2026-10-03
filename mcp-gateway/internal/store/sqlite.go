@@ -21,24 +21,26 @@ import (
 // Configuration snapshots keep related records and policy tombstones in one
 // SQLite transaction. High-volume call audits/review queues remain separate.
 type durableState struct {
-	Format       int
-	Workspaces   map[string]Workspace
-	Users        map[string]User
-	Groups       map[string]Group
-	Members      map[string]map[string]bool
-	Connectors   map[string]Connector
-	Bearers      map[string]string
-	Tools        map[string]ToolSnapshot
-	ToolVersions map[string][]ToolSnapshot
-	Grants       map[string]map[string]bool
-	GroupGrants  map[string]map[string]bool
-	GroupServers map[string]map[string]bool
-	Drafts       map[string]access.Package
-	Live         map[string]access.Package
-	Governed     map[string]map[string]bool
-	History      map[string][]PolicyEvent
-	Keys         map[string]APIKey
-	PII          map[string]pii.Rule
+	SecretResources map[string]SecretResource
+	SecretGrants    map[string]map[string]bool
+	Format          int
+	Workspaces      map[string]Workspace
+	Users           map[string]User
+	Groups          map[string]Group
+	Members         map[string]map[string]bool
+	Connectors      map[string]Connector
+	Bearers         map[string]string
+	Tools           map[string]ToolSnapshot
+	ToolVersions    map[string][]ToolSnapshot
+	Grants          map[string]map[string]bool
+	GroupGrants     map[string]map[string]bool
+	GroupServers    map[string]map[string]bool
+	Drafts          map[string]access.Package
+	Live            map[string]access.Package
+	Governed        map[string]map[string]bool
+	History         map[string][]PolicyEvent
+	Keys            map[string]APIKey
+	PII             map[string]pii.Rule
 }
 type sqlitePersistence struct {
 	db           *sql.DB
@@ -52,7 +54,7 @@ type sqlitePersistence struct {
 }
 
 func (s *MemoryStore) durableState() durableState {
-	return durableState{1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.piiRules}
+	return durableState{s.secretResources, s.secretGrants, 1, s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer, s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers, s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.piiRules}
 }
 func (s *MemoryStore) restore(data []byte) error {
 	var state durableState
@@ -62,6 +64,13 @@ func (s *MemoryStore) restore(data []byte) error {
 	if state.Format != 1 || state.Workspaces == nil || state.Users == nil || state.Groups == nil || state.Members == nil || state.Connectors == nil || state.Bearers == nil || state.Tools == nil || state.ToolVersions == nil || state.Grants == nil || state.GroupGrants == nil || state.GroupServers == nil || state.Drafts == nil || state.Live == nil || state.Governed == nil || state.History == nil || state.Keys == nil || state.PII == nil {
 		return errors.New("unsupported or incomplete gateway configuration")
 	}
+	if state.SecretResources == nil {
+		state.SecretResources = map[string]SecretResource{}
+	}
+	if state.SecretGrants == nil {
+		state.SecretGrants = map[string]map[string]bool{}
+	}
+	s.secretResources, s.secretGrants = state.SecretResources, state.SecretGrants
 	s.workspaces, s.users, s.groups, s.members, s.connectors, s.connectorBearer = state.Workspaces, state.Users, state.Groups, state.Members, state.Connectors, state.Bearers
 	s.tools, s.toolVersions, s.grants, s.groupGrants, s.groupServers = state.Tools, state.ToolVersions, state.Grants, state.GroupGrants, state.GroupServers
 	s.packageDrafts, s.packageLive, s.governedTools, s.policyEvents, s.apiKeys, s.piiRules = state.Drafts, state.Live, state.Governed, state.History, state.Keys, state.PII

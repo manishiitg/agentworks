@@ -21,12 +21,12 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   new chat or session. Verify availability without printing the secret value.
 - {{product}} stores attached secret names in `workflow.json` under
   `capabilities.selected_secrets`, using the AgentWorks workflow contract.
-  Secret values remain encrypted outside the manifest. Respect the user's
-  selections in **Setup > Secrets**; do not attach an unrelated credential.
+  Secret values remain encrypted outside the manifest. Shared Vault credentials also require the executing user's current group permission. Respect the user's
+  selections in **Integrations > Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets. To reuse a
   credential across projects, an administrator must explicitly promote the
   source project/workflow secret with `manage_global_secret(action="promote")`
-  or **Make global** in Setup > Secrets. Then explicitly select that global
+  or create it through Vault > Secrets. Grant use to an existing group in Vault > Access > Permissions > Secrets, then explicitly select that shared
   name in each destination {{product}} project with
   `update_project_global_secret_selection(action="select", name="NAME")`.
   Call `list_secrets` first and use an exact name from `global.names`. {{product}} persists this allowlist in

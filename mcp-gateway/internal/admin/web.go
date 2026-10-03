@@ -102,7 +102,7 @@ func (a *Admin) uiDashboard(w http.ResponseWriter, r *http.Request) {
 		"Connectors": len(a.Store.ListConnectors(a.WorkspaceID)),
 		"Tools":      len(tools),
 		"Grants":     grantCount,
-		"Audit":      a.Store.AuditCount(),
+		"Audit":      auditCount(a.Store, a.WorkspaceID),
 		"MCPURL":     a.PublicURL + "/mcp",
 	})
 }
@@ -151,7 +151,7 @@ func (a *Admin) uiGroupsAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	back(w, r, "/admin/groups", a.CreateGroup(r.PostForm.Get("id"), r.PostForm.Get("name")))
+	back(w, r, "/admin/groups", a.CreateGroupWithDescription(r.PostForm.Get("id"), r.PostForm.Get("name"), r.PostForm.Get("description")))
 }
 
 func (a *Admin) uiGroupMembers(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +295,17 @@ func (a *Admin) uiAudit(w http.ResponseWriter, r *http.Request) {
 	csvURL := "/api/admin/audit?" + export.Encode()
 	export.Set("format", "json")
 	jsonURL := "/api/admin/audit?" + export.Encode()
-	render(w, "audit", map[string]any{"Rows": a.Store.QueryAudit(filter), "Usage": a.Store.SummarizeAudit(filter), "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
+	rows, err := a.Store.ReadAudit(filter)
+	if err != nil {
+		http.Error(w, "audit storage unavailable", 503)
+		return
+	}
+	usage, err := a.Store.ReadAuditSummary(filter)
+	if err != nil {
+		http.Error(w, "audit storage unavailable", 503)
+		return
+	}
+	render(w, "audit", map[string]any{"Rows": rows, "Usage": usage, "Filter": q, "CSVURL": csvURL, "JSONURL": jsonURL})
 }
 
 func (a *Admin) renderPII(w http.ResponseWriter, r *http.Request, result string) {
@@ -380,4 +390,12 @@ func (a *Admin) uiPIITest(w http.ResponseWriter, r *http.Request) {
 		result += ": " + masked
 	}
 	a.renderPII(w, r, result)
+}
+
+func auditCount(s *store.MemoryStore, workspace string) int {
+	summary, err := s.ReadAuditSummary(store.AuditFilter{WorkspaceID: workspace})
+	if err != nil {
+		return 0
+	}
+	return summary.Total
 }

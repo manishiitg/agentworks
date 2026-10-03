@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
-import { Settings, Copy, ArrowLeft, Eye, CalendarClock } from 'lucide-react'
+import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { hasWorkflowCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
 import { useModeStore } from '../stores/useModeStore'
@@ -23,7 +23,7 @@ import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
 import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
-import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarActions, ProductTopBarMain, ProductNavigationLabel } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
 import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
@@ -64,7 +64,7 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     selectedTools: caps?.selected_tools || [],
     selectedSkills: caps?.selected_skills || [],
     selectedSecrets: caps?.selected_secrets || [],
-    selectedGlobalSecretNames: caps?.selected_global_secret_names ?? null,
+    selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
     browserMode: (caps?.browser_mode || 'none') as CustomPreset['browserMode'],
     cdpPorts: caps?.cdp_ports || [],
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
@@ -612,7 +612,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
   return (
     <>
-      <ProductTopBar>
+      <ProductTopBar sidebar>
           {/* Product and current automation */}
           <ProductTopBarMain>
             <RuntimeBrandLogo className="mr-1" />
@@ -621,24 +621,14 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
 
             {productControl}
 
-            {isGlobalPage && (
-              <button
-                type="button"
-                onClick={returnToWorkspace}
-                className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="Back to workspace"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Back</span>
-              </button>
-            )}
+
 
             {isEffectiveReadOnly && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex shrink-0 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                     <Eye className="w-3 h-3" />
-                    <span>Read-only</span>
+                    <span className="sr-only">Read-only</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
@@ -811,11 +801,13 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                     data-tour="global-schedules"
                     aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
                     aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
+                    data-product-navigation-action
                     className={`relative rounded-md p-1.5 transition-colors ${showSchedulesOverview && !showProviders && !showWorkflowsOverview
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
                   >
-                    <CalendarClock className="h-4 w-4" />
+                    <CalendarClock className="h-4 w-4 shrink-0" />
+                    <ProductNavigationLabel>Schedules & triggers</ProductNavigationLabel>
                     {schedulerPaused === true && (
                       <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-1 ring-background" />
                     )}
@@ -824,7 +816,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                 <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
               </Tooltip>}
 
-              <span className="mx-0.5 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+              <span className="mx-0.5 h-px w-full bg-border" />
               <WorkspaceTopBarControls
                 onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
                 onOpenShortcuts={reduced ? undefined : () => setShowShortcuts(true)}

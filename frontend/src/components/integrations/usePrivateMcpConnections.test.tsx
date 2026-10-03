@@ -2,10 +2,12 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
+import { TooltipProvider } from '../ui/tooltip'
 
 const placeMock = vi.hoisted(() => ({
+  tools: vi.fn(async () => ({ status: 'ok', tools: [{ name: 'read_file', description: 'Read one file', server: 'gmail', parameters: { path: { type: 'string' } }, required: ['path'] }] })),
   list: vi.fn(async () => [
-    { name: 'gmail', catalog: 'GoogleGmail', url: 'https://gmailmcp.googleapis.com/mcp/v1', owner: 'u1', owner_name: 'manish', mine: false, connected: true, active: true },
+    { name: 'gmail', catalog: 'GoogleGmail', url: 'https://gmailmcp.googleapis.com/mcp/v1', owner: 'u1', owner_name: 'manish', mine: true, connected: true, active: true },
   ]),
   add: vi.fn(async () => ({ name: 'googledrive', oauth: false })),
   connect: vi.fn(async () => ({})),
@@ -19,23 +21,27 @@ const catalogMock = vi.hoisted(() => ({
 vi.mock('../../api/placeMcp', () => ({ placeMcpApi: placeMock }))
 const catalogFn = vi.hoisted(() => vi.fn())
 vi.mock('../../api/mcpCatalog', () => ({ mcpCatalogApi: { catalog: catalogFn } }))
-vi.mock('../../api/secrets', () => ({ secretsApi: { listWorkflowSecrets: vi.fn(async () => [{ name: 'LINEAR_KEY' }]) } }))
+const secretsApi = vi.hoisted(() => ({ get: vi.fn(async () => ({ data: { secrets: [{ name: 'LINEAR_KEY' }] } })), post: vi.fn(async () => ({ data: {} })) }))
+vi.mock('../../services/api', () => ({ default: secretsApi }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
-vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
+vi.mock('../../products/work/McpAppsSection', () => ({ McpAppsSection: () => null }))
 
-import { PlaceMcpSection } from './PlaceMcpSection'
+import { usePrivateMcpConnections } from '../../components/integrations/usePrivateMcpConnections'
+import { McpConnectionsPanel } from '../../components/integrations/McpConnectionsPanel'
+function PrivateBrowser(props: Parameters<typeof usePrivateMcpConnections>[0]) { const model = usePrivateMcpConnections(props); return <McpConnectionsPanel {...model}>{model.dialogs}</McpConnectionsPanel> }
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 catalogFn.mockImplementation(async () => catalogMock.entries)
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); catalogFn.mockImplementation(async () => catalogMock.entries); catalogMock.entries = [{ name: 'googledrive', catalog: 'GoogleDrive', sign_in: true, needs_client: false }] })
 
-async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk: (message: string) => Promise<void> = async () => undefined) {
+async function render(canEdit: boolean, noun = 'workflow', path = 'Workflow/w', onAsk?: (message: string) => Promise<void>) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => { root.render(<PlaceMcpSection workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} />) })
+  await act(async () => { root.render(<TooltipProvider><PrivateBrowser workspacePath={path} placeNoun={noun} canEdit={canEdit} onAsk={onAsk} /></TooltipProvider>) })
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  if (canEdit) { await act(async () => { host.querySelector<HTMLButtonElement>('button[role="tab"][title="Available"]')!.click() }) }
   return host
 }
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
@@ -46,27 +52,29 @@ const openPicker = async (_host: HTMLElement) => { await settle() }
 it('lists the connections with whose login they use', async () => {
   const host = await render(false)
   expect(host.textContent).toContain('GoogleGmail')
-  expect(host.textContent).toContain("manish's login")
+  expect(host.textContent).toContain("your login")
   expect(host.textContent).toContain('Connected')
   // A viewer who cannot edit adds nothing: no connector list.
-  expect(host.textContent).not.toContain('Available')
-  expect(host.querySelector('input[aria-label="Search connectors"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Available servers"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Available servers"]')).toBeNull()
 })
 
 it('Connect sends the request to the agent chat, no popup, and says whose login it uses', async () => {
   const onAsk = vi.fn(async (_message: string) => undefined)
   const host = await render(true, 'Crew', 'Workflow/w', onAsk)
   // The rule is a plain line on the page, not a dialog in the way.
-  expect(host.textContent).toContain('uses the login of the person who added it')
+  expect(host.textContent).toContain('private to you')
   expect(host.textContent).toContain('Available')
-  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('Google apps tab')
-  expect(host.querySelector('[data-testid="mcp-google-pointer"]')?.textContent).toContain('GITHUB_TOKEN')
-  await act(async () => { button(host, 'GoogleDrive').click() })
+  expect(host.textContent).toContain('Google apps tab')
+  expect(host.textContent).toContain('GITHUB_TOKEN')
+  await act(async () => { host.querySelector('[aria-label="Available servers"] button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await settle()
   expect(document.body.textContent).not.toContain('with my login')
   // The chat does the connecting (and sends back any sign-in link); the screen adds nothing itself.
   expect(onAsk).toHaveBeenCalledTimes(1)
   expect(String(onAsk.mock.calls[0][0])).toContain('Connect GoogleDrive')
+  expect(String(onAsk.mock.calls[0][0])).toContain('First read the attached work-mcp skill')
+  expect(String(onAsk.mock.calls[0][0])).toContain('Check the connection status')
   expect(placeMock.add).not.toHaveBeenCalled()
 })
 
@@ -78,11 +86,11 @@ it('names the Code and shows service marks for a sign-in group', async () => {
   ]
   placeMock.add.mockResolvedValueOnce({ name: 'googledrive', oauth: true }).mockResolvedValueOnce({ name: 'googlecalendar', oauth: true })
   const host = await render(true, 'Code', 'Chats/Code/projects/p1')
-  expect(host.textContent).toContain('everyone who uses this Code uses it as that person')
+  expect(host.textContent).toContain('Sharing a Code does not share your MCP accounts')
   await openPicker(host)
-  expect(host.querySelector('[data-testid="mcp-group-google"]')).not.toBeNull()
-  await act(async () => { (host.querySelector('button[aria-label="Add Drive"]') as HTMLButtonElement).click() })
-  await act(async () => { (host.querySelector('button[aria-label="Add Calendar"]') as HTMLButtonElement).click() })
+  expect(host.querySelector('[aria-label="Google Workspace"]')).not.toBeNull()
+  await act(async () => { (host.querySelector('input[aria-label="Add GoogleDrive"]') as HTMLButtonElement).click() })
+  await act(async () => { (host.querySelector('input[aria-label="Add GoogleCalendar"]') as HTMLButtonElement).click() })
   await act(async () => { button(host, 'Connect 2 services').click() })
   await settle()
   expect(placeMock.add.mock.calls).toEqual([['Chats/Code/projects/p1', 'GoogleDrive'], ['Chats/Code/projects/p1', 'GoogleCalendar']])
@@ -95,9 +103,9 @@ it('asks for your own OAuth app when the provider has none registered', async ()
   placeMock.list.mockResolvedValue([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: false, active: true }])
   placeMock.connect.mockResolvedValueOnce({ status: 'needs_client_id', redirect_uri: 'https://app.example.com/api/oauth/callback' } as never)
   const host = await render(true, 'Code', 'Chats/Code/projects/p1')
-  await act(async () => { button(host, 'Sign in').click() })
+  await act(async () => { button(host, 'Connected').click() }); await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Actions for GoogleGmail"]')!.click() }); await act(async () => { button(host, 'Sign in').click() })
   await settle()
-  expect(host.querySelector('[data-testid="place-mcp-client-prompt"]')?.textContent).toContain('https://app.example.com/api/oauth/callback')
+  expect(host.querySelector('[data-testid="mcp-client-prompt"]')?.textContent).toContain('https://app.example.com/api/oauth/callback')
   const set = (label: string, value: string) => {
     const input = host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
@@ -105,16 +113,16 @@ it('asks for your own OAuth app when the provider has none registered', async ()
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
   await act(async () => { set('OAuth client ID', 'cid.apps.googleusercontent.com'); set('OAuth client secret', 'shh') })
-  await act(async () => { [...host.querySelectorAll('[data-testid="place-mcp-client-prompt"] button')].find(b => b.textContent === 'Sign in')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+  await act(async () => { [...host.querySelectorAll('[data-testid="mcp-client-prompt"] button')].find(b => b.textContent === 'Sign in')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await settle()
   expect(placeMock.connect).toHaveBeenLastCalledWith('Chats/Code/projects/p1', 'gmail', { clientId: 'cid.apps.googleusercontent.com', clientSecret: 'shh' })
-  placeMock.list.mockResolvedValue([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://gmailmcp.googleapis.com/mcp/v1', owner: 'u1', owner_name: 'manish', mine: false, connected: true, active: true }])
+  placeMock.list.mockResolvedValue([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://gmailmcp.googleapis.com/mcp/v1', owner: 'u1', owner_name: 'manish', mine: true, connected: true, active: true }])
 })
 
-it('adds a server that is not listed, with an API-key header from the project secrets', async () => {
+it('adds a server that is not listed, with an API-key header from private secrets', async () => {
   const host = await render(true, 'Crew', 'Chats/Work/projects/p1')
   await openPicker(host)
-  await act(async () => { button(host, 'Add a server that is not listed').click() })
+  await act(async () => { button(host, 'Add custom server').click() })
   await settle()
   const set = (label: string, value: string, tag: 'input' | 'select' = 'input') => {
     const element = host.querySelector(`${tag}[aria-label="${label}"]`) as HTMLInputElement | HTMLSelectElement
@@ -149,7 +157,7 @@ it('reports a failed connector list with a retry, and an empty one plainly', asy
   const empty = await render(true, 'Crew', 'Chats/Work/projects/p2')
   await openPicker(empty)
   await settle()
-  expect(empty.textContent).toContain('No connectors with sign-in are set up on this server')
+  expect(empty.textContent).toContain('No servers available to add')
 })
 
 // A sign-in finishing in the other tab turns a connection to "connected"; the chat is told through
@@ -166,4 +174,40 @@ it('tells the chat when a connection becomes connected, not on first load', asyn
   expect(host).toBeTruthy()
   expect(onAsk).toHaveBeenCalledTimes(1)
   expect(String(onAsk.mock.calls[0][0])).toContain('Linear is now connected in this Crew')
+})
+
+
+it('stores a new custom key privately and sends only its reference to the project', async () => {
+  const host = await render(true, 'Code', 'Chats/Code/projects/p1')
+  await act(async () => { button(host, 'Add custom server').click() })
+  await settle()
+  const set = (label: string, value: string) => {
+    const input = host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  await act(async () => { set('Server name', 'my_linear'); set('Server URL', 'https://mcp.linear.app/mcp'); set('API key header', 'Authorization'); set('Private API key', 'test-private-key') })
+  expect((button(host, 'Add server') as HTMLButtonElement).disabled).toBe(false)
+  await act(async () => { button(host, 'Add server').click() })
+  await settle()
+  expect(secretsApi.post).toHaveBeenCalledWith('/api/me/secrets', { name: 'MCP_MY_LINEAR_KEY', value: 'test-private-key' })
+  expect(placeMock.add).toHaveBeenCalledWith('Chats/Code/projects/p1', {
+    name: 'my_linear', url: 'https://mcp.linear.app/mcp', headers: { Authorization: { secret: 'MCP_MY_LINEAR_KEY', format: 'Bearer {}' } },
+  })
+  expect(JSON.stringify(placeMock.add.mock.calls)).not.toContain('test-private-key')
+  expect(host.querySelector('input[aria-label="Private API key"]')).toBeNull()
+})
+
+it('discovers private tools only when expanded and shows the shared JSON schema layout', async () => {
+  placeMock.list.mockResolvedValueOnce([{ name: 'gmail', catalog: 'GoogleGmail', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: true, active: true }])
+  const host = await render(false)
+  expect(placeMock.tools).not.toHaveBeenCalled()
+  await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="Show tools on GoogleGmail"]')!.click() })
+  await settle()
+  expect(placeMock.tools).toHaveBeenCalledWith('gmail')
+  expect(host.querySelector('[data-tool-card="read_file"]')).not.toBeNull()
+  const args = host.querySelector<HTMLElement>('summary[aria-label="Arguments for read_file"]')!
+  await act(async () => { args.click() })
+  expect(host.querySelector('pre[aria-label="Input JSON schema"]')?.textContent).toContain('"path"')
+  expect(host.querySelector('pre')?.textContent).toContain('"required"')
 })

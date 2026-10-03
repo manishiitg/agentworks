@@ -65,8 +65,8 @@ export class OAuthApi {
    * Start OAuth flow for a server
    * Returns OAuthDiscoveryResponse if server needs a client_id, otherwise OAuthStartResponse
    */
-  async startOAuthFlow(serverName: string, clientId?: string, clientSecret?: string): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
-    const body: OAuthStartRequest = { server_name: serverName };
+  async startOAuthFlow(serverName: string, clientId?: string, clientSecret?: string, scope: 'private' | 'vault' = 'private'): Promise<OAuthStartResponse | OAuthDiscoveryResponse> {
+    const body = { server_name: serverName, scope } as OAuthStartRequest & { scope: string };
     if (clientId) {
       body.client_id = clientId;
       if (clientSecret) body.client_secret = clientSecret;
@@ -89,9 +89,9 @@ export class OAuthApi {
   /**
    * Get OAuth token status for a server
    */
-  async getOAuthStatus(serverName: string): Promise<OAuthStatusResponse> {
+  async getOAuthStatus(serverName: string, scope: 'private' | 'vault' = 'private'): Promise<OAuthStatusResponse> {
     const response = await fetch(
-      `${this.baseUrl}/api/oauth/status?server_name=${encodeURIComponent(serverName)}`,
+      `${this.baseUrl}/api/oauth/status?server_name=${encodeURIComponent(serverName)}&scope=${scope}`,
       { headers: getAuthHeaders() }
     );
 
@@ -106,11 +106,11 @@ export class OAuthApi {
   /**
    * Logout from OAuth (remove token)
    */
-  async logout(serverName: string): Promise<void> {
+  async logout(serverName: string, scope: 'private' | 'vault' = 'private'): Promise<void> {
     const response = await fetch(`${this.baseUrl}/api/oauth/logout`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ server_name: serverName }),
+      body: JSON.stringify({ server_name: serverName, scope }),
     });
 
     if (!response.ok) {

@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// CapLayer management uses the same authenticated identity and role checks as
+// Vault management uses the same authenticated identity and role checks as
 // the rest of the product. The gateway service credential stays on the server.
 func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
@@ -26,7 +26,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if !currentUserIsAdmin(r) || !userAllowedProduct(claims, "mcp-gateway") {
-		writeUsersError(w, http.StatusForbidden, "CapLayer management requires an administrator account")
+		writeUsersError(w, http.StatusForbidden, "Vault management requires an administrator account")
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/caplayer")
@@ -64,7 +64,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 	}
 	target, secret, err := capLayerServiceConfig()
 	if err != nil {
-		writeUsersError(w, http.StatusServiceUnavailable, "CapLayer service is not configured")
+		writeUsersError(w, http.StatusServiceUnavailable, "Vault service is not configured")
 		return
 	}
 	if r.Method == http.MethodPost && strings.HasPrefix(path, "/api/admin/groups/") && strings.HasSuffix(path, "/members") {
@@ -102,7 +102,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		resp, err := client.Do(req)
 		if err != nil {
-			writeUsersError(w, http.StatusBadGateway, "CapLayer service unavailable")
+			writeUsersError(w, http.StatusBadGateway, "Vault service unavailable")
 			return
 		}
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
@@ -138,7 +138,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 			// product login. Avoid sending the browser into an auth retry loop.
 			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 				resp.Body.Close()
-				body := `{"error":"CapLayer service authentication is not configured correctly"}`
+				body := `{"error":"Vault service authentication is not configured correctly"}`
 				resp.Body = io.NopCloser(strings.NewReader(body))
 				resp.StatusCode = http.StatusBadGateway
 				resp.ContentLength = int64(len(body))
@@ -152,7 +152,7 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			writeUsersError(w, http.StatusBadGateway, "CapLayer service unavailable")
+			writeUsersError(w, http.StatusBadGateway, "Vault service unavailable")
 		},
 	}
 	proxy.ServeHTTP(w, r)
@@ -190,12 +190,12 @@ func capLayerAgentAccess(ctx context.Context, userID, operation string, argument
 	claims := &UserClaims{UserID: userID}
 	access := userAccessForClaims(claims)
 	if userID == "" || !access.Admin || access.Disabled || !userAllowedProduct(claims, "mcp-gateway") {
-		return "", errors.New("CapLayer management requires an administrator account")
+		return "", errors.New("Vault management requires an administrator account")
 	}
 	switch operation {
 	case "inspect_environment", "inspect_tool", "save_draft", "connect_server":
 	default:
-		return "", errors.New("unsupported CapLayer operation")
+		return "", errors.New("unsupported Vault operation")
 	}
 	payload, err := json.Marshal(map[string]any{"operation": operation, "arguments": arguments})
 	if err != nil {
@@ -208,11 +208,11 @@ func capLayerAgentRequest(ctx context.Context, userID, path string, payload json
 	claims := &UserClaims{UserID: userID}
 	access := userAccessForClaims(claims)
 	if userID == "" || !access.Admin || access.Disabled || !userAllowedProduct(claims, "mcp-gateway") {
-		return "", errors.New("CapLayer management requires an administrator account")
+		return "", errors.New("Vault management requires an administrator account")
 	}
 	target, secret, err := capLayerServiceConfig()
 	if err != nil {
-		return "", errors.New("CapLayer service is not configured")
+		return "", errors.New("Vault service is not configured")
 	}
 	target.Path = strings.TrimRight(target.Path, "/") + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
@@ -225,18 +225,18 @@ func capLayerAgentRequest(ctx context.Context, userID, path string, payload json
 	client := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", errors.New("CapLayer service unavailable")
+		return "", errors.New("Vault service unavailable")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
 	if err != nil || len(body) > 2*1024*1024 {
-		return "", errors.New("CapLayer response exceeded limit")
+		return "", errors.New("Vault response exceeded limit")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
-			return "", errors.New("CapLayer service authentication failed")
+			return "", errors.New("Vault service authentication failed")
 		}
-		return "", fmt.Errorf("CapLayer operation failed (%d): %s", resp.StatusCode, body)
+		return "", fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, body)
 	}
 	return string(body), nil
 }

@@ -30,7 +30,9 @@ describe('GatewayPIIPanel', () => {
     const root = createRoot(container)
     await act(async () => { root.render(<GatewayPIIPanel base={BASE} />) })
     await act(async () => {})
-    expect(container.textContent).toContain('The default protection is active')
+    expect(container.textContent).toContain('Default protection')
+    expect(container.querySelector('[aria-label="Data type"]')).toBeNull()
+    await act(async () => { (container!.querySelector('[role="tab"][title="Test"]') as HTMLButtonElement).click() })
     const sample = container.querySelector('[aria-label="PII sample"]') as HTMLTextAreaElement
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(sample, 'alice@example.com')
@@ -39,5 +41,7 @@ describe('GatewayPIIPanel', () => {
     await act(async () => { ([...container!.querySelectorAll('button')].find(button => button.textContent === 'Test policy') as HTMLButtonElement).click() })
     expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/pii/test`, expect.objectContaining({ method: 'POST' }))
     expect(container.textContent).toContain('[REDACTED:email]')
+    expect(fetchMock.mock.calls.filter(([url, init]) => url.endsWith('/api/admin/pii/rules') && init?.method === 'POST')).toHaveLength(0)
+    await act(async () => { root.unmount() })
   })
 })

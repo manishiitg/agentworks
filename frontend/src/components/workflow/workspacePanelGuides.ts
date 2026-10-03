@@ -249,7 +249,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: surface === 'crew' ? 'Set this Crew member’s name, icon, role, and purpose.' : 'Set this workflow’s name, icon, objective, and success criteria.',
     howTo: 'Review the current identity, then save changes that describe what this work should accomplish.',
   }),
-  'Identity · Secrets': surface => ({
+  'Integrations · Secrets': surface => ({
     purpose: `Choose saved credentials this ${surface === 'crew' ? 'Crew project' : 'workflow'} may use.`,
     howTo: 'Select only the secrets needed for its work. Secret values remain hidden; do not paste them into chat.',
   }),

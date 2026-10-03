@@ -5,6 +5,7 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
@@ -76,7 +77,11 @@ type Group struct {
 	ID          string
 	WorkspaceID string
 	Name        string
+	Description string
+	BuiltIn     bool
 }
+
+const MaxGroupDescriptionLength = 1000
 
 // GroupGrant binds a group to one registered tool.
 type GroupGrant struct {
@@ -178,6 +183,8 @@ type MemoryStore struct {
 	persistence     *sqlitePersistence
 	workspaces      map[string]Workspace
 	users           map[string]User
+	secretResources map[string]SecretResource
+	secretGrants    map[string]map[string]bool
 	groups          map[string]Group
 	members         map[string]map[string]bool // group ID -> user IDs
 	connectors      map[string]Connector
@@ -194,6 +201,7 @@ type MemoryStore struct {
 	governedTools   map[string]map[string]bool // workspace -> names ever governed by a live package
 	policyEvents    map[string][]PolicyEvent
 	apiKeys         map[string]APIKey // by SHA-256 of token
+	auditBinding    auditBinding
 	audit           []AuditEvent
 	auditStart      int // oldest event in the bounded ring after it fills
 	piiRules        map[string]pii.Rule
@@ -205,6 +213,8 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		workspaces:      map[string]Workspace{},
 		users:           map[string]User{},
+		secretResources: map[string]SecretResource{},
+		secretGrants:    map[string]map[string]bool{},
 		groups:          map[string]Group{},
 		members:         map[string]map[string]bool{},
 		connectors:      map[string]Connector{},
@@ -234,6 +244,18 @@ func (s *MemoryStore) AddUser(u User) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	s.users[u.ID] = u
+	for gid, group := range s.groups {
+		if group.BuiltIn {
+			if s.members[gid] == nil {
+				s.members[gid] = map[string]bool{}
+			}
+			if group.WorkspaceID == u.WorkspaceID {
+				s.members[gid][u.ID] = true
+			} else {
+				delete(s.members[gid], u.ID)
+			}
+		}
+	}
 }
 
 func (s *MemoryStore) GetUser(id string) (User, bool) {
@@ -278,7 +300,12 @@ func (s *MemoryStore) ListGroups(workspaceID string) []Group {
 			out = append(out, g)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].BuiltIn != out[j].BuiltIn {
+			return out[i].BuiltIn
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
@@ -294,6 +321,9 @@ func (s *MemoryStore) AddMember(groupID, userID string) {
 func (s *MemoryStore) RemoveMember(groupID, userID string) {
 	s.mu.Lock()
 	defer s.persistUnlock()
+	if s.groups[groupID].BuiltIn {
+		return
+	}
 	delete(s.members[groupID], userID)
 }
 
@@ -871,10 +901,20 @@ func (s *MemoryStore) GroupHasServer(groupID, connectorID string) bool {
 
 // RenameGroup changes a group's display name.
 func (s *MemoryStore) RenameGroup(groupID, name string) {
+	s.UpdateGroup(groupID, &name, nil)
+}
+
+// UpdateGroup updates only supplied metadata; descriptions do not affect grants.
+func (s *MemoryStore) UpdateGroup(groupID string, name, description *string) {
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if g, ok := s.groups[groupID]; ok {
-		g.Name = name
+		if name != nil && !g.BuiltIn {
+			g.Name = *name
+		}
+		if description != nil {
+			g.Description = *description
+		}
 		s.groups[groupID] = g
 	}
 }
@@ -991,7 +1031,12 @@ func (s *MemoryStore) UserGrantsFor(userID string) []string {
 	return out
 }
 
-func (s *MemoryStore) AppendAudit(e AuditEvent) {
+func (s *MemoryStore) AppendAudit(e AuditEvent) error {
+	if b := s.auditProvider(); b != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return b.Append(ctx, e)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e.GroupIDs = append([]string(nil), e.GroupIDs...)
@@ -1002,9 +1047,10 @@ func (s *MemoryStore) AppendAudit(e AuditEvent) {
 	if len(s.audit) >= maxAuditEvents {
 		s.audit[s.auditStart] = e
 		s.auditStart = (s.auditStart + 1) % maxAuditEvents
-		return
+		return nil
 	}
 	s.audit = append(s.audit, e)
+	return nil
 }
 
 // auditAt returns the ith oldest event. The caller must hold s.mu.

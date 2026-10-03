@@ -26,10 +26,10 @@ input,select,button{font:inherit;padding:.25rem .5rem;margin:.1rem .25rem .1rem 
 .stat b{font-size:1.5rem;display:block}
 .tag{font-size:.75rem;border:1px solid #888;padding:0 .35rem;margin-left:.4rem;white-space:nowrap}`
 
-const pageNav = `<nav><strong>CapLayer</strong> · MCP Gateway &nbsp; <a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/pii">PII policy</a><a href="/admin/audit">audit</a><form class="inline" method="post" action="/admin/logout"><button type="submit">Sign out</button></form></nav>`
+const pageNav = `<nav><strong>Vault</strong> · MCP Gateway &nbsp; <a href="/admin/">dashboard</a><a href="/admin/connectors">connectors</a><a href="/admin/tools">tools</a><a href="/admin/users">users</a><a href="/admin/groups">groups</a><a href="/admin/pii">PII policy</a><a href="/admin/audit">audit</a><form class="inline" method="post" action="/admin/logout"><button type="submit">Sign out</button></form></nav>`
 
 var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": func(values ...string) []string { return values }}).Parse(`
-{{define "dashboard"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Dashboard</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "dashboard"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Dashboard</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Dashboard</h1>
 <div class="grid">
 <div class="stat"><b>{{.Users}}</b>users</div>
@@ -44,7 +44,7 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 <p class="muted">Clients sign in through OAuth discovery. Claude and other clients find the endpoints automatically from this URL.</p>
 </body></html>{{end}}
 
-{{define "users"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Users</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "users"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Users</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Users</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
 <table><tr><th>id</th><th>email</th><th>groups</th><th>direct grants</th></tr>
@@ -54,21 +54,22 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 <form method="post" action="/admin/users/add"><input name="id" placeholder="user id" required> <input name="email" placeholder="email" size="30" required> <button>Add</button></form>
 </body></html>{{end}}
 
-{{define "groups"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Groups</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "groups"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Groups</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Groups</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
 {{range .Rows}}{{$gid := .ID}}
 <h2><code>{{.ID}}</code> — {{.Name}}</h2>
+{{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
 <p><span class="muted">Members:</span> {{range .Members}}<code>{{.}}</code> <form class="inline" method="post" action="/admin/groups/members"><input type="hidden" name="group" value="{{$gid}}"><input type="hidden" name="user" value="{{.}}"><input type="hidden" name="action" value="remove"><button title="remove">×</button></form>{{else}}<span class="muted">none</span>{{end}}</p>
 <form method="post" action="/admin/groups/members"><input type="hidden" name="group" value="{{.ID}}"><select name="user">{{range $.Users}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select> <button>Add member</button></form>
 <p><span class="muted">Tool grants:</span> {{range .Grants}}<code>{{.}}</code> {{else}}<span class="muted">none</span>{{end}}</p>
 <form method="post" action="/admin/grants/set"><input type="hidden" name="group" value="{{.ID}}"><select name="tool">{{range $.Tools}}<option value="{{.PublicName}}">{{.PublicName}}</option>{{end}}</select> <button name="action" value="grant">Grant</button> <button name="action" value="revoke">Revoke</button></form>
 {{end}}
 <h2>Add group</h2>
-<form method="post" action="/admin/groups/add"><input name="id" placeholder="group id" required> <input name="name" placeholder="display name" required> <button>Add</button></form>
+<form method="post" action="/admin/groups/add"><input name="id" placeholder="group id" required> <input name="name" placeholder="display name" required> <input name="description" placeholder="description (optional)" maxlength="1000"> <button>Add</button></form>
 </body></html>{{end}}
 
-{{define "connectors"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Connectors</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "connectors"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Connectors</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Connectors</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
 <table><tr><th>label</th><th>provider</th><th>instance</th><th>upstream</th><th>status</th><th>tools</th><th></th></tr>
@@ -84,7 +85,7 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 <form method="post" action="/admin/connectors/add"><input type="hidden" name="mode" value="custom"><input name="provider" placeholder="provider key" required> <input name="url" placeholder="https://…/mcp" size="40" required> <input name="label" placeholder="label"> <input name="slug" placeholder="slug" size="12"> <button>Add + sync</button></form>
 </body></html>{{end}}
 
-{{define "tools"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Tools</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "tools"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Tools</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Tools</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
 <table><tr><th>public name</th><th>connector</th><th>upstream</th><th>status</th><th>users</th><th>groups</th><th>grant</th><th>review</th></tr>
@@ -100,7 +101,7 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 </table>
 </body></html>{{end}}
 
-{{define "audit"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Audit</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "audit"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Audit</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>Audit (latest first)</h1>
 <form method="get"><input name="user" placeholder="user" value="{{.Filter.Get "user"}}"><input name="group" placeholder="group" value="{{.Filter.Get "group"}}"><input name="client" placeholder="client" value="{{.Filter.Get "client"}}"><input name="connector" placeholder="connector" value="{{.Filter.Get "connector"}}"><input name="tool" placeholder="tool" value="{{.Filter.Get "tool"}}"><select name="decision"><option value="">any decision</option><option value="allow">allow</option><option value="deny">deny</option></select><select name="outcome"><option value="">any outcome</option><option value="ok">ok</option><option value="denied">denied</option><option value="upstream_error">upstream error</option></select><input type="date" name="after" value="{{.Filter.Get "after"}}"><input type="date" name="before" value="{{.Filter.Get "before"}}"><button>Filter</button></form>
 <p><a href="{{.CSVURL}}">Export filtered CSV</a> · <a href="{{.JSONURL}}">Export filtered JSON</a></p>
@@ -113,7 +114,7 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 </table>
 </body></html>{{end}}
 
-{{define "pii"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · PII policy</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
+{{define "pii"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · PII policy</title><style>` + pageCSS + `</style></head><body>` + pageNav + `
 <h1>PII policy</h1>
 {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
 <p class="muted">Deterministic regex and checksum checks. Email and US phone numbers are masked by default; SSNs, valid credit cards, and known API key formats are blocked. Opaque results are blocked. Detection is best effort.</p>
@@ -139,9 +140,9 @@ var pages = template.Must(template.New("admin").Funcs(template.FuncMap{"list": f
 {{range .Reviews}}<tr><td><code>{{.ID}}</code></td><td>{{.UserID}}</td><td>{{.PublicName}}</td><td>{{.Direction}}</td><td>{{range .DataTypes}}{{.}} {{end}}</td><td>{{.Status}}</td><td>{{if eq .Status "pending"}}<form method="post" action="/admin/pii/reviews/approve"><input type="hidden" name="id" value="{{.ID}}"><button>Approve retry</button></form>{{end}}</td></tr>{{end}}</table>
 </body></html>{{end}}
 
-{{define "login"}}<!doctype html><html><head><meta charset="utf-8"><title>CapLayer · Admin login</title></head>
+{{define "login"}}<!doctype html><html><head><meta charset="utf-8"><title>Vault · Admin login</title></head>
 <body style="font-family:system-ui;max-width:24rem;margin:4rem auto">
-<h1>CapLayer</h1><p>MCP Gateway admin</p>
+<h1>Vault</h1><p>MCP Gateway admin</p>
 {{if .Err}}<p style="color:red">Wrong token.</p>{{end}}
 <form method="post"><input type="password" name="token" size="32" placeholder="admin token" autofocus>
 <button>Sign in</button></form>

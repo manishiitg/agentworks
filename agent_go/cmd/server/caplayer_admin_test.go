@@ -200,17 +200,17 @@ func TestCapLayerProfileHasNoGeneralShellOrLivePolicyTools(t *testing.T) {
 	if err := registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if len(profile.Tools) != 3 || profile.Tools[0].ID != "caplayer.access" {
+	if len(profile.Tools) != 4 || profile.Tools[0].ID != "caplayer.access" {
 		t.Fatal("unexpected governance tool surface")
 	}
-	if len(profile.Runtime.BridgeTools) != 3 || profile.Runtime.BridgeTools[0] != "manage_caplayer_access" {
+	if len(profile.Runtime.BridgeTools) != 4 || profile.Runtime.BridgeTools[0] != "manage_caplayer_access" {
 		t.Fatal("tool is not directly reachable without shell")
 	}
 	if profile.Runtime.Workspace.Root != "Chats/CapLayer" || profile.Runtime.Conversation.Mode != "singleton" {
 		t.Fatal("not a durable isolated product chat")
 	}
 	for _, name := range profile.ToolPolicy.Enabled {
-		if name != "manage_caplayer_access" && name != "query_workflow_db" && name != "mutate_workflow_db" {
+		if name != "manage_caplayer_access" && name != "query_workflow_db" && name != "mutate_workflow_db" && name != "manage_vault_secret_access" {
 			t.Fatalf("unexpected tool %s", name)
 		}
 	}

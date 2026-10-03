@@ -25,8 +25,8 @@ describe('isWorkWorkspaceViewEnabled', () => {
 describe('isWorkIdentityTabEnabled', () => {
   it('always enables General and gates the rest on their panel', () => {
     expect(isWorkIdentityTabEnabled('general', new Set())).toBe(true)
-    expect(isWorkIdentityTabEnabled('secrets', new Set())).toBe(false)
-    expect(isWorkIdentityTabEnabled('secrets', new Set(['secrets']))).toBe(true)
+    expect(isWorkIntegrationTabEnabled('secrets', new Set())).toBe(false)
+    expect(isWorkIntegrationTabEnabled('secrets', new Set(['secrets']))).toBe(true)
     expect(isWorkIdentityTabEnabled('folders', new Set(['folders']))).toBe(true)
     expect(isWorkIdentityTabEnabled('models', new Set(['models']))).toBe(true)
   })

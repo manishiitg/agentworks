@@ -878,7 +878,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		}
 
 		// Merge global secrets with parent's decrypted secrets — inject names into prompt (values are in env vars)
-		allDelegationSecrets := mergeGlobalSecrets(parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
+		allDelegationSecrets := api.mergeGlobalSecretsFor(ctx, subAgentUserID, parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
 		if len(allDelegationSecrets) > 0 {
 			_ = subAgent.AddInstructions(buildSecretNamesPrompt(allDelegationSecrets))
 			log.Printf("[DELEGATION] Injected %d secret names (not values) into sub-agent system prompt", len(allDelegationSecrets))
@@ -934,7 +934,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 		toolCategories := workspaceRegistry.Categories
 		log.Printf("[USER_ID_DEBUGGING] Sub-agent workspace executors: created with explicit userID=%q sessionID=%q", subAgentUserID, sessionID)
 		// Inject secrets as environment variables for sub-agent shell execution (SECRET_ prefix for whitelist)
-		delegationSecrets := mergeGlobalSecrets(parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
+		delegationSecrets := api.mergeGlobalSecretsFor(ctx, subAgentUserID, parentReq.DecryptedSecrets, parentReq.SelectedGlobalSecrets)
 		if subAgentEnv != nil && len(delegationSecrets) > 0 {
 			for _, s := range delegationSecrets {
 				subAgentEnv["SECRET_"+s.Name] = s.Value

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
@@ -254,5 +255,67 @@ func TestConfigurationFailureReturns503AndDeniesCalls(t *testing.T) {
 	}
 	if _, err := policy.Authorize(s, identity, tool.PublicName); err == nil {
 		t.Fatal("storage failure did not deny calls")
+	}
+}
+
+func TestGroupDescriptionsAPI(t *testing.T) {
+	s := store.NewMemoryStore()
+	s.AddWorkspace(store.Workspace{ID: "w"})
+	s.AddGroup(store.Group{ID: "foreign", WorkspaceID: "other", Name: "Other", Description: "Private"})
+	a := &Admin{Store: s, WorkspaceID: "w", HumanToken: "secret"}
+	mux := http.NewServeMux()
+	a.APIRoutes(mux)
+	request := func(method, path, token string, body any) *httptest.ResponseRecorder {
+		t.Helper()
+		encoded, _ := json.Marshal(body)
+		r := httptest.NewRequest(method, path, bytes.NewReader(encoded))
+		r.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		return rec
+	}
+	if got := request("POST", "/api/admin/groups", "secret", map[string]string{"ID": "g", "Name": "Readers", "Description": "  Support read access  "}); got.Code != 201 {
+		t.Fatal(got.Code, got.Body.String())
+	}
+	s.AddUser(store.User{ID: "u", WorkspaceID: "w"})
+	s.AddMember("g", "u")
+	s.AddGroupGrant(store.GroupGrant{GroupID: "g", PublicName: "read"})
+	for _, change := range []struct {
+		body       map[string]string
+		name, desc string
+	}{
+		{map[string]string{"Name": "Support"}, "Support", "Support read access"},
+		{map[string]string{"Description": "New purpose"}, "Support", "New purpose"},
+		{map[string]string{"Description": ""}, "Support", ""},
+	} {
+		if got := request("POST", "/api/admin/groups/g", "secret", change.body); got.Code != 200 {
+			t.Fatal(got.Code, got.Body.String())
+		}
+		group, _ := s.GetGroup("g")
+		if group.Name != change.name || group.Description != change.desc || !s.GroupHasTool("g", "read") || len(s.MembersOf("g")) != 1 {
+			t.Fatal("metadata update changed unrelated group state", group)
+		}
+	}
+	for _, check := range []struct {
+		path, token string
+		body        map[string]string
+		status      int
+	}{
+		{"/api/admin/groups/g", "wrong", map[string]string{"Description": "Unauthorized"}, 401},
+		{"/api/admin/groups/foreign", "secret", map[string]string{"Description": "Cross workspace"}, 400},
+		{"/api/admin/groups/g", "secret", map[string]string{"Description": strings.Repeat("x", store.MaxGroupDescriptionLength+1)}, 400},
+		{"/api/admin/groups", "secret", map[string]string{"ID": "too-long", "Name": "Long", "Description": strings.Repeat("x", store.MaxGroupDescriptionLength+1)}, 400},
+	} {
+		if got := request("POST", check.path, check.token, check.body); got.Code != check.status {
+			t.Fatal(got.Code, got.Body.String())
+		}
+	}
+	group, _ := s.GetGroup("foreign")
+	if group.Description != "Private" {
+		t.Fatal("cross workspace edit succeeded")
+	}
+	got := request("GET", "/api/admin/groups", "secret", nil)
+	if got.Code != 200 || !bytes.Contains(got.Body.Bytes(), []byte(`"Description":""`)) || bytes.Contains(got.Body.Bytes(), []byte("Private")) {
+		t.Fatal(got.Code, got.Body.String())
 	}
 }

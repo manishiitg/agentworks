@@ -11,7 +11,7 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
   if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
-  if (view === 'mcp') return enabledPanels.has('mcp') || enabledPanels.has('skills') || enabledPanels.has('bots')
+  if (view === 'mcp') return enabledPanels.has('mcp') || enabledPanels.has('skills') || enabledPanels.has('bots') || enabledPanels.has('secrets')
   return enabledPanels.has(view)
 }
 
@@ -23,6 +23,7 @@ export function isWorkIdentityTabEnabled(tab: WorkIdentityTab, enabledPanels?: S
 
 export function isWorkIntegrationTabEnabled(tab: WorkIntegrationTab, enabledPanels?: Set<string>): boolean {
   if (!enabledPanels) return true
+  if (tab === 'secrets') return enabledPanels.has('secrets')
   if (tab === 'apps') return enabledPanels.has('mcp')
   if (tab === 'skills') return enabledPanels.has('skills')
   if (tab === 'cli') return true

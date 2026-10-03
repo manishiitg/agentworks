@@ -199,7 +199,7 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if err != nil {
 		return CreatedCrew{}, err
 	}
-	servers, pending, err := s.validateCrewCreationServers(req.Servers)
+	servers, pending, err := s.validateCrewCreationServers(ctx, userID, req.Servers)
 	if err != nil {
 		return CreatedCrew{}, err
 	}
@@ -207,7 +207,7 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if err != nil {
 		return CreatedCrew{}, err
 	}
-	globalSecrets, err := s.validateCrewCreationGlobalSecrets(req.GlobalSecrets)
+	globalSecrets, err := s.validateCrewCreationGlobalSecrets(ctx, userID, req.GlobalSecrets)
 	if err != nil {
 		return CreatedCrew{}, err
 	}
@@ -801,7 +801,7 @@ type crewCreationAvailability struct {
 // Unknown servers fail the call; configured-but-disconnected servers are
 // selected and reported as pending so the Builder can ask the user to
 // connect exactly those.
-func (s *ProductScheduleService) validateCrewCreationServers(names []string) ([]string, []PendingConnection, error) {
+func (s *ProductScheduleService) validateCrewCreationServers(ctx context.Context, userID string, names []string) ([]string, []PendingConnection, error) {
 	checked, err := validateCrewCreationNames("server", names)
 	if err != nil {
 		return nil, nil, err
@@ -809,7 +809,7 @@ func (s *ProductScheduleService) validateCrewCreationServers(names []string) ([]
 	servers := make([]string, 0, len(checked))
 	var pending []PendingConnection
 	for _, name := range checked {
-		canonical, connected, err := s.probeCrewCreationMCPServer(name)
+		canonical, connected, err := s.probeCrewCreationMCPServer(ctx, userID, name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -821,22 +821,28 @@ func (s *ProductScheduleService) validateCrewCreationServers(names []string) ([]
 	return servers, pending, nil
 }
 
-func (s *ProductScheduleService) probeCrewCreationMCPServer(name string) (string, bool, error) {
+func (s *ProductScheduleService) probeCrewCreationMCPServer(ctx context.Context, userID, name string) (string, bool, error) {
 	if s != nil && s.crewAvailability != nil && s.crewAvailability.MCPServer != nil {
 		return s.crewAvailability.MCPServer(name)
 	}
 	if s == nil || s.api == nil {
 		return "", false, fmt.Errorf("MCP configuration is unavailable")
 	}
+	if own, found := privateMCPByCatalog(userID, name); found {
+		dir, _ := placeMCPDir(userID)
+		return own.Name, placeMCPServerConnected(dir, userID, own), nil
+	}
+	if resolved, err := s.api.resolveGovernedMCP(ctx, userID, name); err == nil {
+		return vaultSelectionName(resolved.Name), true, nil
+	}
+	// Catalog entries can be selected as pending, but legacy shared credentials
+	// are never considered a connected account for the creator.
 	catalog, err := s.api.loadMergedConfig()
 	if err != nil {
 		return "", false, fmt.Errorf("load MCP configuration: %w", err)
 	}
-	canonical, config, err := resolveMCPServerName(catalog, name)
-	if err != nil {
-		return "", false, err
-	}
-	return canonical, s.api.isPlatformMCPServerConnected(catalog, canonical, config), nil
+	canonical, _, err := resolveMCPServerName(catalog, name)
+	return canonical, false, err
 }
 
 // validateCrewCreationSecrets shape-checks requested project secrets and
@@ -853,7 +859,7 @@ func (s *ProductScheduleService) validateCrewCreationSecrets(ctx context.Context
 	if len(checked) == 0 {
 		return nil, nil
 	}
-	globals := s.probeCrewCreationGlobalSecrets()
+	globals := s.probeCrewCreationGlobalSecrets(ctx, userID)
 	var creatingScope map[string]bool
 	for _, name := range checked {
 		if globals[name] {
@@ -892,7 +898,7 @@ func (s *ProductScheduleService) probeCrewCreationScopedSecrets(ctx context.Cont
 
 // validateCrewCreationGlobalSecrets shape-checks requested global secrets
 // and verifies each names an existing global record.
-func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(names []string) ([]string, error) {
+func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(ctx context.Context, userID string, names []string) ([]string, error) {
 	checked, err := validateCrewCreationNames("global secret", names)
 	if err != nil {
 		return nil, err
@@ -900,7 +906,7 @@ func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(names []strin
 	if len(checked) == 0 {
 		return nil, nil
 	}
-	globals := s.probeCrewCreationGlobalSecrets()
+	globals := s.probeCrewCreationGlobalSecrets(ctx, userID)
 	for _, name := range checked {
 		if !globals[name] {
 			return nil, fmt.Errorf("global secret %q does not exist; use list_secrets to discover available globals or drop it", name)
@@ -909,12 +915,12 @@ func (s *ProductScheduleService) validateCrewCreationGlobalSecrets(names []strin
 	return checked, nil
 }
 
-func (s *ProductScheduleService) probeCrewCreationGlobalSecrets() map[string]bool {
+func (s *ProductScheduleService) probeCrewCreationGlobalSecrets(ctx context.Context, userID string) map[string]bool {
 	if s != nil && s.crewAvailability != nil && s.crewAvailability.GlobalSecrets != nil {
 		return s.crewAvailability.GlobalSecrets()
 	}
 	out := map[string]bool{}
-	for _, secret := range getGlobalSecrets() {
+	for _, secret := range visibleGlobalSecrets(ctx, userID) {
 		out[secret.Name] = true
 	}
 	return out

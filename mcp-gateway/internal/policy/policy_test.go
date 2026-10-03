@@ -108,3 +108,31 @@ func TestRemovingToolFromPackageDoesNotRestoreLegacyGrant(t *testing.T) {
 		t.Fatal("draft from before revocation republished")
 	}
 }
+
+func TestEveryoneGrantDoesNotExpandAnUnrelatedGroupKey(t *testing.T) {
+	s := store.NewMemoryStore()
+	s.AddWorkspace(store.Workspace{ID: "w"})
+	if err := s.EnsurePlatformGroup("w"); err != nil {
+		t.Fatal(err)
+	}
+	s.AddUser(store.User{ID: "user", WorkspaceID: "w"})
+	s.AddGroup(store.Group{ID: "private", WorkspaceID: "w", Name: "Private"})
+	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
+	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f"})
+	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	id := auth.Identity{UserID: "user", WorkspaceID: "w"}
+	if _, err := Authorize(s, id, "c__read"); !errors.Is(err, ErrNoGrant) {
+		t.Fatal("default group implicitly grants tool", err)
+	}
+	s.AddGroupGrant(store.GroupGrant{GroupID: store.PlatformGroupID("w"), PublicName: "c__read"})
+	if _, err := Authorize(s, id, "c__read"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Authorize(s, auth.Identity{WorkspaceID: "w", ViaGroup: "private"}, "c__read"); !errors.Is(err, ErrNoGrant) {
+		t.Fatal("default group expanded unrelated group key", err)
+	}
+	s.RevokeGroupGrant(store.PlatformGroupID("w"), "c__read")
+	if _, err := Authorize(s, id, "c__read"); !errors.Is(err, ErrNoGrant) {
+		t.Fatal("revocation ignored", err)
+	}
+}

@@ -82,8 +82,8 @@ func TestAdminSignInAppServesEveryonesGoogleConnect(t *testing.T) {
 	}
 
 	// Before the app exists, Connect still asks for a client.
-	ownerStore := placeMCPStoreID("owner", codePrivacyOwnerRoot)
-	otherStore := placeMCPStoreID("other", "_users/other/Chats/Code/projects/theirs")
+	ownerStore := "owner"
+	otherStore := "other"
 	before := personalRoute(api, (*StreamingAPI).handleAddPlaceMCP, http.MethodPost, "/x", `{"workspace_path":"Chats/Code/projects/app-c0de0001","catalog":"GoogleGmail","name":"gmail"}`, "owner", nil)
 	if before.Code != http.StatusOK {
 		t.Fatalf("add = %d %s", before.Code, before.Body.String())

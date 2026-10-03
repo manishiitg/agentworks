@@ -1,7 +1,7 @@
-import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
+import CostTokenBreakdown, { CostPricingNotice } from '../../providers/CostTokenBreakdown'
 import CostConversations from '../../providers/CostConversations'
 import React from 'react'
-import { inputTokens, totalTokens, tokenSummary, pricingCoverageText } from '../../../utils/costTokens'
+import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
 import type { CostAggregate } from '../../../services/api-types'
 import { Loader2, TrendingUp } from 'lucide-react'
 import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdown'
@@ -47,11 +47,6 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                 <section className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">Cost by activity</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {projectMode
-                        ? 'Project chat and background-agent costs from the authoritative event ledger.'
-                        : 'Builder, Pulse, workflow, and evaluation costs from the authoritative event ledger.'}
-                    </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                     {activityBreakdown.filter(category => !projectMode || category.total.total_cost_usd > 0 || totalTokens(category.total) > 0 || (category.total.unpriced_call_count ?? 0) > 0).map(category => {
@@ -59,12 +54,11 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       <div key={category.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-foreground">{projectMode && category.id === 'builder' ? 'Chat' : category.label}</div>
-                          <div className="truncate text-xs text-muted-foreground">{projectMode && category.id === 'builder' ? 'Project conversation and background coding tasks' : category.description}</div>
                         </div>
                           <div className="text-right">
                             <div className="font-mono font-semibold text-foreground">{recordedCost(category.total)}</div>
                             <div className="text-xs text-muted-foreground">{tokenSummary(category.total)}</div>
-                            <div className="text-xs text-muted-foreground">{pricingCoverageText(category.total)}</div>
+                            <CostPricingNotice usage={category.total} className="flex flex-col items-end" />
                             <div className="text-xs text-muted-foreground">LLM time: {formatDuration(category.total.llm_generation_duration_ms)}</div>
                           </div>
                       </div>
@@ -83,9 +77,6 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                         <TrendingUp className="w-4 h-4 text-primary" />
                         Daily Cost Breakdown
                       </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {projectMode ? 'Daily project totals by UTC accounting date.' : 'Daily totals by UTC accounting date using the same Builder, Pulse, Workflow, and Evaluation categories above.'}
-                      </p>
                     </div>
                   </div>
 

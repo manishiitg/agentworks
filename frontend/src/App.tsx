@@ -12,6 +12,7 @@ import { AuthWrapper } from "./components/AuthWrapper";
 import { activateTab } from "./utils/activateTab";
 import { Loader2 } from "lucide-react";
 import { WorkflowLayout } from "./components/workflow";
+import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
 import { ModePresetBar } from "./components/ModePresetBar";
 import { TerminalFocusLayout } from './components/TerminalFocusLayout'
 import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useChatStore } from "./stores";
@@ -60,10 +61,8 @@ const FileSurfaceFallback = () => (
 )
 
 const ProductSurfaceFallback = ({ label }: { label: string }) => (
-  <div className="flex h-screen flex-col bg-background">
-    <header className="flex items-center border-b border-border px-5 py-2.5">
-      <ProductSurfaceSwitcher />
-    </header>
+  <div className="flex h-screen bg-background">
+    <ProductTopBar sidebar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain></ProductTopBar>
     <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       Opening {label}…
@@ -115,6 +114,8 @@ function App() {
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const mcpAccount = useAuthStore(state => state.isAuthenticated ? state.user?.id : undefined)
+  useEffect(() => { if (mcpAccount) void useMCPStore.getState().refreshTools() }, [mcpAccount])
 
   // A dedicated deployment is an allowlist, not a visual preference. Correct
   // persisted desktop selections before rendering so a stale SparkQuill or
@@ -593,9 +594,6 @@ function App() {
     }
     hasInitializedRef.current = true
 
-    // Initialize MCP store
-    useMCPStore.getState().refreshTools()
-    
     // LLM list is refreshed after loadDefaultsFromBackend() in useLLMDefaults (so supported_providers is set)
     
     // Initialize global preset store
@@ -950,20 +948,18 @@ function App() {
         ) : productSurface === 'code' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Code" />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
         ) : productSurface === 'mcp-gateway' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="CapLayer" />}><GatewaySurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Vault" />}><GatewaySurface /></Suspense>
         ) : (
         <>
         <UpdateProgressToast />
         <GlobalHumanFeedbackPrompt />
         <TerminalFocusLayout className="h-screen bg-background flex" enabled={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage}>
-          {/* AgentWorks contains Automations and Activity. The former left
-              sidebar was removed; its controls now live in the top bar
-              (ModePresetBar → WorkspaceTopBarControls). */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-10 overflow-hidden">
+          {/* All workspace products reuse the same global navigation. */}
+          <div className="flex-1 flex min-w-0 min-h-0 relative z-10 overflow-hidden">
             {/* Global Mode & Preset Bar - only above middle content area, not sidebars */}
             <ModePresetBar />
             
-            <div className="flex-1 min-h-0 overflow-hidden relative">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative">
                 {hasOpenedWorkflowsOverview && (
                   <div className={showWorkflowsOverview && !showProviders ? 'h-full' : 'hidden'}>
                     <Suspense fallback={<FileSurfaceFallback />}>

@@ -53,3 +53,16 @@ func TestNativeEnvironmentDropsLoginAndGlobalSecrets(t *testing.T) {
 		t.Fatal("ordinary configuration was dropped")
 	}
 }
+
+func TestNativeEnvironmentDoesNotInheritVaultAuthority(t *testing.T) {
+	for _, name := range []string{"GLOBAL_SECRET_SHARED_KEY", "CAPLAYER_SERVICE_TOKEN", "CAPLAYER_SERVICE_TOKEN_FILE", "GATEWAY_HUMAN_TOKEN"} {
+		t.Setenv(name, "dummy-authority")
+	}
+	for _, kv := range buildNativeEnvironment() {
+		for _, prefix := range []string{"GLOBAL_SECRET_", "CAPLAYER_SERVICE_", "GATEWAY_HUMAN_TOKEN"} {
+			if strings.HasPrefix(kv, prefix) {
+				t.Fatalf("Vault authority inherited through %s", prefix)
+			}
+		}
+	}
+}

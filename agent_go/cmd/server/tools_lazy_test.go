@@ -72,6 +72,8 @@ func TestDiscoveryContactsOnlyRequestedServer(t *testing.T) {
 }
 
 func TestCatalogOperationsNeverConnect(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
 	var calls atomic.Int32
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -92,7 +94,7 @@ func TestCatalogOperationsNeverConnect(t *testing.T) {
 	api.invalidateServerDiscovery("unused-a", "Disconnected")
 	for i := 0; i < 3; i++ {
 		w := httptest.NewRecorder()
-		api.handleGetTools(w, httptest.NewRequest("GET", "/api/tools", nil))
+		api.handleGetTools(w, httptest.NewRequest("GET", "/api/tools", nil).WithContext(personContext("alice")))
 		var statuses []ToolStatus
 		if err := json.Unmarshal(w.Body.Bytes(), &statuses); err != nil {
 			t.Fatal(err)
@@ -101,7 +103,7 @@ func TestCatalogOperationsNeverConnect(t *testing.T) {
 			t.Fatalf("statuses: %s", w.Body.String())
 		}
 		for _, status := range statuses {
-			if status.Status != "not_loaded" {
+			if status.Status != "not_connected" {
 				t.Fatalf("unexpected status: %+v", status)
 			}
 		}

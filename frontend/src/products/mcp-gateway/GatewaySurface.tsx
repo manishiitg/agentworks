@@ -57,7 +57,7 @@ function useCapLayerChat() {
     }
     const created = await store.createChatTab('Chat', {
       mode: 'multi-agent', agentProfileId: PROFILE, agentProfileVersion: 1,
-      agentProfileWorkspace: WORKSPACE, agentProfileProjectTitle: 'CapLayer',
+      agentProfileWorkspace: WORKSPACE, agentProfileProjectTitle: 'Vault',
       agentProfileChatContract: 'profile-v1', agentProfileConversationKey: conversation.conversation_key,
       agentProfileConversationId: conversation.conversation_id,
     }, conversation.session_id)
@@ -69,7 +69,7 @@ function useCapLayerChat() {
     setTabId(created)
   }, [])
   useEffect(() => {
-    void prepare().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not open CapLayer chat'))
+    void prepare().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not open Vault chat'))
     return () => { generation.current += 1 }
   }, [prepare])
   return { tabId, error, openNew: () => void prepare(true).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not start conversation')) }
@@ -90,7 +90,22 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     const events = sessionId ? state.tabEvents[sessionId] : undefined
     return chatBusy ? undefined : events?.at(-1)?.id
   })
-  const [panel, setPanel] = useState<GatewayPanel>('access')
+  const [panel, setPanel] = useState<GatewayPanel>(() => {
+    try {
+      const requested = sessionStorage.getItem('vault.requested-panel')
+      sessionStorage.removeItem('vault.requested-panel')
+      if (gatewayPanels.some(item => item.id === requested)) return requested as GatewayPanel
+    } catch { /* Optional destination preference. */ }
+    return 'access'
+  })
+  useEffect(() => {
+    const open = (event: Event) => {
+      const requested = (event as CustomEvent).detail
+      if (gatewayPanels.some(item => item.id === requested)) setPanel(requested)
+    }
+    window.addEventListener('vault-open-panel', open)
+    return () => window.removeEventListener('vault-open-panel', open)
+  }, [])
   const [chatOpen, setChatOpen] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [previewDevice, setPreviewDevice] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(WORKSPACE))
@@ -122,19 +137,19 @@ function GatewayAdminWorkspace({ base, standalone }: { base: string; standalone:
     testId="gateway-setup-panel" splitRef={splitRef} chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={ratio}
     mobilePreview={previewDevice === 'mobile'}
     onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
-    chatProps={{ 'aria-label': 'CapLayer chat' }} workspaceProps={{ 'aria-label': 'CapLayer workspace' }}
+    chatProps={{ 'aria-label': 'Vault chat' }} workspaceProps={{ 'aria-label': 'Vault workspace' }}
     tabs={<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1" aria-label="Chat tabs">
       <GatewayChatTab tabId={tabId} chatOpen={chatOpen} openChat={() => setChatOpen(true)} />
     </div>}
-    toolbar={<nav aria-label="CapLayer workspace toolbar" className="ml-auto flex shrink-0 items-center gap-1">
-      <TooltipProvider delayDuration={150}><WorkspaceToolbarFrame aria-label="CapLayer sections">
+    toolbar={<nav aria-label="Vault workspace toolbar" className="ml-auto flex shrink-0 items-center gap-1">
+      <TooltipProvider delayDuration={150}><WorkspaceToolbarFrame aria-label="Vault sections">
         <div className="inline-flex items-center gap-0.5 px-0.5">{gatewayPanels.map(({ id, label, icon }) => <WorkspaceToolbarButton key={id} active={panel === id} icon={icon} label={label} onClick={() => setPanel(id)} />)}</div>
       </WorkspaceToolbarFrame></TooltipProvider>
     </nav>}
     chat={error ? <div role="alert" className="p-6 text-sm text-destructive">{error}</div> : tabId ? <div className="min-h-0 flex-1">
-      <ChatArea tabId={tabId} compact showCompactRuntimeLoading showProductSteerAction showProductTerminalControl
+      <ChatArea tabId={tabId} compact showProductSteerAction showProductTerminalControl
         composerPlaceholder="Connect an MCP server or describe an access policy…" onNewChat={openNew}
-        landingContent={<ProductChatLandingCard icon={ShieldCheck} title="Set up access with CapLayer"
+        landingContent={<ProductChatLandingCard icon={ShieldCheck} title="Set up access with Vault"
           description="Ask the assistant to connect an MCP server, inspect its tools, or prepare an access policy for review."
           examples={['Connect a custom MCP server', 'Show connected MCP servers and their tools', 'Create a draft for a team with read access', 'Restrict tool calls to one organization or project']} />}
       />
@@ -160,17 +175,17 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
     window.addEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
     return () => window.removeEventListener(GATEWAY_AUTH_REQUIRED_EVENT, onAuthRequired)
   }, [checkAuth])
-  return <div className="flex h-screen min-h-0 flex-col bg-background" data-testid="gateway-surface">
+  return <div className="flex h-screen min-h-0 bg-background" data-testid="gateway-surface">
     <UpdateProgressToast /><GlobalHumanFeedbackPrompt />
     <ModePresetBar reduced walkthroughPaused />
-    <div className="relative min-h-0 flex-1 overflow-hidden">
+    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <LlmModalHost />
       {showSchedules && !showProviders && <SchedulesPage />}
       {adminPage && !showProviders && <AdminPages />}
       <div className={showProviders || showSchedules || adminPage ? 'hidden' : 'h-full'}>
-        {!base ? <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">CapLayer needs an MCP Gateway endpoint for this deployment.</div>
+        {!base ? <div className="grid h-full place-items-center p-6 text-sm text-muted-foreground">Vault needs an MCP Gateway endpoint for this deployment.</div>
           : user?.is_admin === true ? <GatewayAdminWorkspace base={base} standalone={standalone} />
-          : <main className="grid h-full place-items-center p-6 text-sm text-muted-foreground" role="status">CapLayer management requires an administrator account. Your product administrator manages this access in Users &amp; access.</main>}
+          : <main className="grid h-full place-items-center p-6 text-sm text-muted-foreground" role="status">Vault management requires an administrator account. Your product administrator manages this access in Users &amp; access.</main>}
       </div>
     </div>
   </div>

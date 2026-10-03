@@ -1,3 +1,4 @@
+import { SparkQuillSecretsPanel } from './SparkQuillSecretsPanel'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Activity as PulseIcon,
@@ -929,22 +930,6 @@ export default function LearningApp() {
       return next
     })
   }
-  // The composer's model switcher (ChatInput, product surfaces) announces a
-  // choice; SparkQuill keeps engine as the family's shared setting
-  // (family.json) so it holds across relaunches, but the model is saved
-  // under whichever role's composer this came from — see FamilyFile's
-  // comment on why parent and child must not share one model field.
-  useEffect(() => {
-    const onEngine = (e: Event) => {
-      const detail = (e as CustomEvent<{ profileId?: string; engine?: string; modelId?: string }>).detail
-      if (!detail?.engine || (detail.profileId !== PARENT_PROFILE_ID && detail.profileId !== 'sparkquill-child')) return
-      const { engine, modelId } = detail
-      const role = detail.profileId === PARENT_PROFILE_ID ? 'parent' : 'child'
-      api.selectEngine(role, engine, modelId).catch(() => undefined).finally(() => applyFamilyEngineToOpenTabs(role, engine, modelId))
-    }
-    window.addEventListener('agentworks:product-engine-selected', onEngine)
-    return () => window.removeEventListener('agentworks:product-engine-selected', onEngine)
-  }, [])
   // Messages Quill sent the parent (notify_user: a check-in's summary, a
   // heads-up). They stay on screen until the parent dismisses them; the
   // dismissals are remembered per event id so a relaunch does not bring a
@@ -1118,17 +1103,9 @@ export default function LearningApp() {
     persistVoiceAutoSendPref(on)
   }
   const [goalPopoverOpen, setGoalPopoverOpen] = useState(false)
-  // Secrets (credentials the parent saves for Quill's tools, e.g. a school
-  // portal login) — settings-form only, never through chat, so a value typed
-  // here never touches the model or the persisted conversation transcript.
-  const [secretNames, setSecretNames] = useState<string[]>([])
-  const [secretNameDraft, setSecretNameDraft] = useState('')
-  const [secretValueDraft, setSecretValueDraft] = useState('')
-  const [savingSecret, setSavingSecret] = useState(false)
-  const [deletingSecret, setDeletingSecret] = useState<string | null>(null)
   const waOpen = useWhatsAppStore((s) => s.waOpen)
   const setWaOpen = useWhatsAppStore((s) => s.setWaOpen)
-  const [connectorSection, setConnectorSection] = useState<'whatsapp' | 'browser'>('whatsapp')
+  const [connectorSection, setConnectorSection] = useState<'whatsapp' | 'browser' | 'secrets'>('whatsapp')
   // WhatsApp pairing is offered only when the parent profile declares the
   // whatsapp capability in its product.yaml (the platform's connector then
   // routes the parent's own chat to Quill); without it the Connectors panel
@@ -1787,38 +1764,6 @@ export default function LearningApp() {
     const id = window.setInterval(refreshVoiceStatus, 1500)
     return () => window.clearInterval(id)
   }, [settingsOpen, refreshVoiceStatus, voiceStatus])
-
-  // Secret names (never values) — loaded whenever Settings is opened.
-  useEffect(() => {
-    if (!settingsOpen) return
-    let cancelled = false
-    api.secrets()
-      .then((names) => { if (!cancelled) setSecretNames(names) })
-      .catch(() => { if (!cancelled) setSecretNames([]) })
-    return () => { cancelled = true }
-  }, [settingsOpen])
-
-  const saveSecret = () => {
-    const name = secretNameDraft.trim()
-    const value = secretValueDraft.trim()
-    if (!name || !value) return
-    setSavingSecret(true)
-    api.saveSecret(name, value)
-      .then((names) => {
-        setSecretNames(names)
-        setSecretNameDraft('')
-        setSecretValueDraft('')
-      })
-      .finally(() => setSavingSecret(false))
-  }
-
-  const deleteSecret = (name: string) => {
-    setDeletingSecret(name)
-    api.deleteSecret(name)
-      .then((names) => setSecretNames(names))
-      .finally(() => setDeletingSecret(null))
-  }
-
 
   const savePulseConfig = (patch: { enabled?: boolean; cadence_hours?: number; watch_sites?: string[]; preferred_hour?: number; preferred_hour_set?: boolean }) => {
     setSavingPulse(true)
@@ -3209,10 +3154,11 @@ export default function LearningApp() {
                     {waEnabled && (
                       <button type="button" className={connectorSection === 'whatsapp' ? 'is-active' : ''} onClick={() => setConnectorSection('whatsapp')}>WhatsApp</button>
                     )}
+                    <button type="button" className={connectorSection === 'secrets' ? 'is-active' : ''} onClick={() => setConnectorSection('secrets')}>Secrets</button>
                     <button type="button" className={connectorSection === 'browser' ? 'is-active' : ''} onClick={() => setConnectorSection('browser')}>Browser</button>
                   </nav>
                   <div className="fl-connectors-panel">
-                    {connectorSection === 'whatsapp' ? (
+                    {connectorSection === 'secrets' ? <SparkQuillSecretsPanel /> : connectorSection === 'whatsapp' ? (
                       <div className="fl-connector-card">
                         {(waStatus?.accounts?.length ?? 0) > 0 && (
                           <>
@@ -3469,54 +3415,6 @@ export default function LearningApp() {
                     </label>
                   </div>
 
-                  <p className="fl-drawer-label" style={{ marginTop: '20px' }}>Secrets</p>
-                  <p className="fl-note">Credentials Quill's tools can use — e.g. a school portal login. Saved here, never through chat, so a value you type below never appears in any saved conversation. Quill only ever sees the name, never the value.</p>
-                  {secretNames.length > 0 && (
-                    <ul className="fl-wa-account-list">
-                      {secretNames.map((name) => (
-                        <li key={name} className="fl-wa-account-row">
-                          <span>{name}</span>
-                          <button
-                            className="fl-ghost-btn"
-                            type="button"
-                            onClick={() => deleteSecret(name)}
-                            disabled={deletingSecret === name}
-                          >
-                            {deletingSecret === name ? 'Removing…' : 'Remove'}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="form-row">
-                    <label>
-                      <span>Name</span>
-                      <input
-                        type="text"
-                        placeholder="e.g. school portal password"
-                        value={secretNameDraft}
-                        onChange={(e) => setSecretNameDraft(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>Value</span>
-                      <input
-                        type="password"
-                        placeholder="the credential itself"
-                        value={secretValueDraft}
-                        onChange={(e) => setSecretValueDraft(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') saveSecret() }}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    className="fl-ghost-btn"
-                    onClick={saveSecret}
-                    disabled={savingSecret || !secretNameDraft.trim() || !secretValueDraft.trim()}
-                  >
-                    {savingSecret ? 'Saving…' : 'Save secret'}
-                  </button>
                   {hasGatewaySSO() && (
                     <div style={{ marginTop: '24px' }}>
                       <p className="fl-drawer-label">Account</p>

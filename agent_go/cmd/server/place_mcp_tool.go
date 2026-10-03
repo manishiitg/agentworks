@@ -18,16 +18,17 @@ import (
 func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, person, codeRoot, redirectURI string) error {
 	root := cleanAttachRoot(codeRoot)
 	return reg.RegisterCustomTool("manage_my_mcp_servers",
-		"Manage this Code's MCP connections (the owner's own logins: their Gmail, Drive, GitHub, ...). "+
+		"Manage your private MCP connections (your own logins: their Gmail, Drive, GitHub, ...). "+
 			"list: the catalog of servers that can be connected and the ones this Code has. "+
 			"connect: add a catalog server (catalog) or an https URL (name + url) to this Code with the owner's own login, and return the sign-in link for them to open. "+
-			"remove: delete a connection and its login. "+
+			"remove: detach your private connection from this Code. select/deselect: choose a permitted Vault connection for this Code using its exact server name. Shared connections and grants are managed in Vault. "+
 			"Never ask for passwords, API keys or OAuth client secrets in chat; when a provider needs the user's own OAuth app, send them to the MCP section of Integrations to finish. Changes apply from the user's next message.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
-				"action":  map[string]interface{}{"type": "string", "enum": []string{"list", "connect", "remove"}},
+				"action":  map[string]interface{}{"type": "string", "enum": []string{"list", "connect", "remove", "select", "deselect"}},
 				"catalog": map[string]interface{}{"type": "string", "description": "Catalog server name from list (e.g. GitHub, GoogleGmail, Linear)."},
+				"server":  map[string]interface{}{"type": "string", "description": "Exact Vault connection name returned by list, for select or deselect."},
 				"name":    map[string]interface{}{"type": "string", "description": "The connection's name (lowercase), for a custom URL or remove."},
 				"url":     map[string]interface{}{"type": "string", "description": "https MCP URL, for a server that is not in the catalog."},
 			},
@@ -49,12 +50,16 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 				if !placeMCPCanAttach(ctx, person, root) {
 					return "", fmt.Errorf("only this Code's owner can connect servers to it")
 				}
-				store := placeMCPStoreID(person, root)
-				saved, _, err := api.addPlaceMCP(ctx, store, placeMCPServer{Name: name, URL: url}, catalogName)
-				if err != nil {
-					return "", err
+				store := privateStoreForAttachment(person, name, root)
+				saved, exists := privateMCPByCatalog(person, catalogName)
+				if catalogName == "" || !exists {
+					var err error
+					saved, _, err = api.addPlaceMCP(ctx, store, placeMCPServer{Name: name, URL: url}, catalogName)
+					if err != nil {
+						return "", err
+					}
 				}
-				if err := recordPlaceMCP(person, saved.Name, root); err != nil {
+				if err := recordPrivateMCP(person, saved.Name, root); err != nil {
 					return "", err
 				}
 				if saved.OAuth == nil {
@@ -68,6 +73,37 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 					return fmt.Sprintf("Added %s to this Code, but this provider needs the user's own OAuth app. Ask them to open Integrations → MCP, click Sign in on %s, and enter their app's client ID and secret there (never in chat). Callback URL to register on the app: %s", saved.Name, saved.Name, discovery.RedirectURI), nil
 				}
 				return fmt.Sprintf("Added %s to this Code. Ask the user to open this link to sign in with their own account: %s — it is available from their next message after signing in.", saved.Name, authURL), nil
+			case "select", "deselect":
+				if !placeMCPCanAttach(ctx, person, root) {
+					return "", fmt.Errorf("only this Code's owner can select Vault connections")
+				}
+				requested, _ := args["server"].(string)
+				requested = vaultSelectionName(strings.TrimSpace(requested))
+				if !strings.HasPrefix(requested, "vault_") {
+					return "", fmt.Errorf("use an exact Vault connection name returned by list")
+				}
+				if action == "select" {
+					resolved, err := api.resolveGovernedMCP(ctx, person, requested)
+					if err != nil {
+						return "", err
+					}
+					requested = vaultSelectionName(resolved.Name)
+				}
+				if err := updateProductSelectedServers(ctx, "code", root, func(current []string) []string {
+					next := []string{}
+					for _, server := range current {
+						if vaultSelectionName(server) != requested {
+							next = append(next, server)
+						}
+					}
+					if action == "select" {
+						next = append(next, requested)
+					}
+					return next
+				}); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("%s %s for this Code. Changes apply from the next message; Vault permissions are enforced on every call.", action, requested), nil
 			case "remove":
 				if name == "" {
 					return "", fmt.Errorf("name is required")
@@ -78,7 +114,7 @@ func (api *StreamingAPI) registerPlaceMCPTool(reg definitionToolRegistrar, perso
 				if err := removePlaceMCP(person, name, root); err != nil {
 					return "", err
 				}
-				return fmt.Sprintf("Removed %s and its login from this Code.", name), nil
+				return fmt.Sprintf("Removed %s from this Code. Your private login is kept for other projects.", name), nil
 			}
 			return "", fmt.Errorf("action must be list, connect or remove")
 		}, "mcp_connections")
@@ -98,7 +134,10 @@ func (api *StreamingAPI) placeMCPToolList(ctx context.Context, person, root stri
 	}
 	have := []connection{}
 	for _, a := range attachments {
-		store := placeMCPStoreID(a.Owner, root)
+		if a.Owner != person {
+			continue
+		}
+		store := attachmentStore(a, root)
 		servers, _ := listPlaceMCPServers(store)
 		for _, server := range servers {
 			if server.Name != a.Server {
@@ -115,6 +154,11 @@ func (api *StreamingAPI) placeMCPToolList(ctx context.Context, person, root stri
 	for _, entry := range api.placeMCPCatalog() {
 		catalog = append(catalog, map[string]interface{}{"catalog": entry.Catalog, "description": entry.Description, "needs_own_oauth_app": entry.NeedsClient})
 	}
-	data, _ := json.Marshal(map[string]interface{}{"this_code_has": have, "catalog": catalog, "you_can_connect": placeMCPCanAttach(ctx, person, root)})
+	vault, vaultErr := vaultServersFor(ctx, person)
+	vaultError := ""
+	if vaultErr != nil {
+		vaultError = vaultErr.Error()
+	}
+	data, _ := json.Marshal(map[string]interface{}{"this_code_has": have, "catalog": catalog, "vault": vault, "vault_error": vaultError, "you_can_connect": placeMCPCanAttach(ctx, person, root)})
 	return string(data), nil
 }

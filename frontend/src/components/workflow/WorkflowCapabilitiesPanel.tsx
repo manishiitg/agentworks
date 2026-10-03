@@ -2,8 +2,7 @@ import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabiliti
 import { SettingsCard } from '../ui/SettingsCard'
 import { ToggleRow } from '../ui/ToggleRow'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LoaderCircle, Save, Search } from 'lucide-react'
-import { ToolSelectionSection } from '../ToolSelectionSection'
+import { LoaderCircle, Save } from 'lucide-react'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import { SecretSelectionSection } from '../secrets/SecretSelectionSection'
@@ -12,8 +11,7 @@ import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowRelaySlackPanel from './WorkflowRelaySlackPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
-import ConnectorsBrowser from '../connectors/ConnectorsBrowser'
-import { PlaceMcpSection } from '../../products/work/PlaceMcpSection'
+import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
 import { agentApi, workflowManifestApi } from '../../services/api'
 import type { WorkflowCapabilities } from '../../services/api-types'
 import { useMCPStore } from '../../stores/useMCPStore'
@@ -21,10 +19,8 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { isSelectedServer } from '../../utils/mcpServerAlias'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
-import { useAuthStore } from '../../stores/useAuthStore'
 import { AskAIButton } from './AskAIButton'
 import type { Skill } from '../../types/skills'
 import { getWorkspaceView, type CapabilityViewId } from './workspaceViews'
@@ -46,19 +42,19 @@ type McpTab = IntegrationTabId
 
 const MCP_TABS: Array<{ value: McpTab; label: string }> = [
   { value: 'apps', label: 'MCPs' },
+  { value: 'secrets', label: 'Secrets' },
   { value: 'skills', label: 'Skills' },
   { value: 'slack', label: 'Slack' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'gmail', label: 'Gmail' },
   { value: 'cli', label: 'Connect' },
 ]
-const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'slack' || option.value === 'gmail')
+const RELAY_MCP_TABS = MCP_TABS.filter(option => option.value === 'apps' || option.value === 'skills' || option.value === 'secrets' || option.value === 'slack' || option.value === 'gmail')
 
 type IdentityTab = IdentityTabId
 
 const IDENTITY_TABS: Array<{ value: IdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
-  { value: 'secrets', label: 'Secrets' },
   { value: 'folders', label: 'Connected work' },
   { value: 'llm', label: 'Models' },
   { value: 'upgrades', label: 'Upgrades' },
@@ -76,7 +72,7 @@ const EMPTY_CAPABILITIES: WorkflowCapabilities = {
   selected_tools: [],
   selected_skills: [],
   selected_secrets: [],
-  selected_global_secret_names: null,
+  selected_global_secret_names: [],
   browser_mode: 'none',
   use_code_execution_mode: false,
 }
@@ -99,7 +95,7 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
   },
   identity: {
     title: 'Identity',
-    description: 'Name, icon, purpose, secrets, connected work, LLMs, and platform upgrades for this workflow.',
+    description: 'Name, icon, purpose, connected work, LLMs, and platform upgrades for this workflow.',
     savesViaManifest: false,
   },
   browser: {
@@ -122,33 +118,14 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
   const [cdpConnected, setCdpConnected] = useState<boolean | null>(null)
   const [cdpError, setCdpError] = useState<string | null>(null)
   const [cdpChecking, setCdpChecking] = useState(false)
-  const toolList = useMCPStore(state => state.toolList)
   const refreshTools = useMCPStore(state => state.refreshTools)
   const [refreshingServers, setRefreshingServers] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const mcpTabs = relayMode ? RELAY_MCP_TABS : MCP_TABS
   const [tab, setTab] = usePersistentTab<McpTab>(relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp', 'apps', mcpTabs.map(option => option.value))
   const activeMcpTab = mcpTabs.some(option => option.value === tab) ? tab : mcpTabs[0].value
   const identityTabs = relayMode ? RELAY_IDENTITY_TABS : IDENTITY_TABS
   const [identityTab, setIdentityTab] = usePersistentTab<IdentityTab>(relayMode ? 'relays.tab.workflow-identity' : 'agentworks.tab.workflow-identity', 'general', identityTabs.map(option => option.value))
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
-  // "Available to select for this workflow" means connected -- you can't
-  // meaningfully pick tools from a server nobody has authenticated yet. A
-  // not-yet-connected server only belongs in the "Connect a new MCP server"
-  // browser below, not this checklist. Still include an already-selected
-  // server even if it's since been disconnected, so it stays visible/
-  // manageable here instead of silently vanishing from the workflow's config.
-  const availableServers = useMemo(() => {
-    const connected = toolList
-      .filter(tool => tool.connection === 'connected' && tool.server)
-      .map(tool => tool.server as string)
-    return [...new Set([...connected, ...capabilities.selected_servers])]
-  }, [toolList, capabilities.selected_servers])
-  const selectedAvailableServers = useMemo(() => availableServers.filter(serverName => isSelectedServer(capabilities.selected_servers, serverName)), [availableServers, capabilities.selected_servers])
-  const unselectedAvailableServers = useMemo(() => availableServers.filter(serverName => !isSelectedServer(capabilities.selected_servers, serverName)), [availableServers, capabilities.selected_servers])
-  const canManagePlatformMCP = useAuthStore(state =>
-    state.user?.is_admin === true || (state.isMultiUserModeChecked && !state.isMultiUserMode),
-  )
   const copy = SECTION_COPY[section]
   const view = getWorkspaceView(section)
 
@@ -257,9 +234,10 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
     }
   }, [])
 
-  const persist = useCallback((next: WorkflowCapabilities): Promise<void> => {
+  const persist = useCallback((next: WorkflowCapabilities, rejectOnError = false): Promise<void> => {
     if (!workspacePath) {
       setError('This panel needs an active workflow folder before it can save.')
+      if (rejectOnError) return Promise.reject(new Error('This panel needs an active workflow folder before it can save.'))
       return Promise.resolve()
     }
     const targetPath = workspacePath
@@ -296,6 +274,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
         if (latest.current.workspacePath === targetPath) {
           setError(cause instanceof Error ? cause.message : 'Unable to save workflow capabilities')
         }
+        if (rejectOnError) throw cause
       } finally {
         if (version === saveVersion.current && latest.current.workspacePath === targetPath) setSaving(false)
       }
@@ -319,7 +298,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
             : section === 'identity'
               ? `Identity · ${identityTabs.find(option => option.value === activeIdentityTab)?.label ?? 'General'}`
               : undefined}
-          subtitle={relayMode && section === 'mcp' ? 'Choose the MCP tools, skills, Slack app, and Gmail account this Relay may use.' : relayMode && section === 'identity' ? 'Name, delete, and choose the Builder model for this Relay.' : copy.description}
           actions={(
             <WorkspaceViewActions
               workspacePath={workspacePath}
@@ -366,136 +344,20 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
             )}
             {section === 'mcp' && (
               <div>
-                {!relayMode && (activeMcpTab === 'apps' || activeMcpTab === 'skills') && (
-                  <>
-                <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                  <div className="min-w-0 flex-1 basis-48">
-                    <p className="text-sm font-semibold text-foreground">{"Can't find what you need?"}</p>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                      {canManagePlatformMCP
-                        ? 'The builder can connect an app or find a skill for you. New connections are shared with everyone.'
-                        : 'Only an admin can connect new apps. Everything below is ready to use.'}
-                    </p>
-                  </div>
-                  <AskAIButton
-                    workspacePath={!canWriteWorkflow || !canManagePlatformMCP ? null : workspacePath ?? null}
-                    label={canManagePlatformMCP ? 'Ask builder to help' : "Why can't I add one?"}
-                    message={canManagePlatformMCP
-                      ? searchQuery.trim()
-                        ? `Help me find ${JSON.stringify(searchQuery.trim())} for this workflow. Search both the app catalog and the skills library, on the web and in the local lists. If it is an app, help me connect it, reminding me before authorization that the account will be shared by every AgentWorks user and product; if it is a skill, add it to this workflow. Verify it works, then confirm briefly.`
-                        : `Help me add an app connection or a skill to this workflow. Ask what I want to connect or which capability I need, then search the app catalog and the skills library and help me set it up. Before authorizing any shared account, remind me that it will be shared by every AgentWorks user and product.`
-                      : `Explain how shared app connections work in AgentWorks, why only an administrator can connect a new one, and how I can use already-connected apps and skills in this workflow. Do not attempt to change configuration.`}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                </div>
-                  </>
-                )}
                 <div key={activeMcpTab === 'apps' ? 'apps' : `${activeMcpTab}:${tabNonce}`}>
-                {activeMcpTab === 'apps' && (
+                {activeMcpTab === 'apps' && workspacePath && (
                   <>
-                    {workspacePath && (
-                      <div className="mt-3 border-t border-border pt-3">
-                        <PlaceMcpSection workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow} />
-                      </div>
-                    )}
-                    {relayMode && availableServers.length === 0 && (
-                      <p className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">No MCP servers are connected yet. Connected servers will appear here for this Relay to use.</p>
-                    )}
-                    {selectedAvailableServers.length > 0 && (
-                      <div className="mt-3 border-t border-border pt-3">
-                        <div className="mb-3 text-sm font-medium text-muted-foreground">
-                          {relayMode ? 'This Relay' : 'This workflow'}
-                        </div>
-                        <ToolSelectionSection
-                          stepId="workflow-selected"
-                          availableServers={selectedAvailableServers}
-                          selectedServers={capabilities.selected_servers}
-                          selectedTools={capabilities.selected_tools}
-                          onServerChange={(selected_servers) => {
-                            const next = { ...capabilities, selected_servers }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          onToolChange={(selected_tools) => {
-                            const next = { ...capabilities, selected_tools }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          onSelectionChange={(selected_servers, selected_tools) => {
-                            const next = { ...capabilities, selected_servers, selected_tools }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          agentMode="workflow"
-                          hideHeader
-                          manageOwnScroll={false}
-                          disabled={!canWriteWorkflow}
-                        />
-                      </div>
-                    )}
-                    {unselectedAvailableServers.length > 0 && (
-                      <div className="mt-3 border-t border-border pt-3">
-                        <div className="mb-1 text-sm font-medium text-muted-foreground">
-                          Platform connected
-                        </div>
-                        <p className="mb-3 text-xs leading-5 text-muted-foreground">
-                          Shared with everyone. Tick one to let this {relayMode ? 'Relay' : 'workflow'} use it.
-                        </p>
-                        <ToolSelectionSection
-                          stepId="workflow-available"
-                          availableServers={unselectedAvailableServers}
-                          selectedServers={capabilities.selected_servers}
-                          selectedTools={capabilities.selected_tools}
-                          onServerChange={(selected_servers) => {
-                            const next = { ...capabilities, selected_servers }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          onToolChange={(selected_tools) => {
-                            const next = { ...capabilities, selected_tools }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          onSelectionChange={(selected_servers, selected_tools) => {
-                            const next = { ...capabilities, selected_servers, selected_tools }
-                            setCapabilities(next)
-                            void persist(next)
-                          }}
-                          agentMode="workflow"
-                          hideHeader
-                          manageOwnScroll={false}
-                          disabled={!canWriteWorkflow}
-                        />
-                      </div>
-                    )}
-                    {!relayMode && <div className="relative mt-3 shrink-0">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search apps"
-                        aria-label="Search apps"
-                        className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-                      />
-                    </div>}
-                    {!relayMode && <div className="mt-3 border-t border-border pt-3">
-                      <div className="mb-3 text-sm font-medium text-muted-foreground">
-                        Connect a new app
-                      </div>
-                      <ConnectorsBrowser
-                        compact
-                        workspacePath={workspacePath}
-                        manageOwnScroll={false}
-                        query={searchQuery}
-                        hideSearch
-                        hideConnectedSection
-                        hideBanner
-                      />
-                    </div>}
+                    <ProjectMcpPanel workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow}
+                      selectedServers={capabilities.selected_servers}
+                      onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }} />
                   </>
                 )}
-                {activeMcpTab === 'skills' && (
+                {activeMcpTab === 'secrets' && <SecretSelectionSection
+                  workflowPath={workspacePath || ''} selectedSecrets={capabilities.selected_secrets}
+                  selectedGlobalSecrets={capabilities.selected_global_secret_names ?? []}
+                  onSecretChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next,true);setCapabilities(next) }}
+                  onGlobalSecretChange={async names => { const next = { ...latest.current.capabilities, selected_global_secret_names:names ?? [] }; await persist(next,true);setCapabilities(next) }} />}
+                {activeMcpTab === 'skills'  && (
                   <div className="mt-3 border-t border-border pt-3">
                     <SkillsManagerPanel
                       compact
@@ -566,43 +428,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
               <div key={`${activeIdentityTab}:${identityTabNonce}`}>
                 {activeIdentityTab === 'general' && (
                   <WorkflowIdentityPanel workspacePath={workspacePath} relayMode={relayMode} />
-                )}
-                {!relayMode && activeIdentityTab === 'secrets' && (
-                  // Only the workflow's own checklist lives here: the workflow
-                  // box plus globals. Values are managed through the rows below
-                  // or the builder; the pane scrolls as a whole and the list
-                  // takes only its own height.
-                  <div>
-                    <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                      <div className="min-w-0 flex-1 basis-48">
-                        <p className="text-sm font-semibold text-foreground">Need a hand with secrets?</p>
-                        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                          The builder can save a secret for you or explain what is attached. Values stay hidden — never paste one in chat.
-                        </p>
-                      </div>
-                      <AskAIButton
-                        workspacePath={!canWriteWorkflow ? null : workspacePath ?? null}
-                        label="Ask AI to manage secrets"
-                        message={getIdentityTabAskAIMessage('secrets')}
-                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                    </div>
-                    <SecretSelectionSection
-                      selectedSecrets={capabilities.selected_secrets}
-                      onSecretChange={(selected_secrets) => {
-                        const next = { ...capabilities, selected_secrets }
-                        setCapabilities(next)
-                        void persist(next)
-                      }}
-                      selectedGlobalSecrets={capabilities.selected_global_secret_names}
-                      onGlobalSecretChange={(selected_global_secret_names) => {
-                        const next = { ...capabilities, selected_global_secret_names }
-                        setCapabilities(next)
-                        void persist(next)
-                      }}
-                      workflowPath={workspacePath || ''}
-                    />
-                  </div>
                 )}
                 {!relayMode && activeIdentityTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />

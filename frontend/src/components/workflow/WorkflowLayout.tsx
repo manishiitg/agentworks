@@ -2310,9 +2310,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
               Select {isRelaySurface ? 'a Relay' : 'an Automation'}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              {isRelaySurface
-                ? 'Choose a relay from the top bar, or use the plus button to create one. Build its graph in chat and inspect it beside the conversation.'
-                : 'Choose an automation from the top bar, or use the plus button to create one. Build it in chat and inspect its plan and dashboard beside the conversation.'}
+              Open the workspace selector to choose {isRelaySurface ? 'a Relay' : 'an automation'} or create a new one.
+              Build it in chat and inspect it beside the conversation.
             </p>
             </div>
           </div>

@@ -20,8 +20,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/admin"
@@ -85,11 +87,11 @@ func validateExposure(bind, publicURL string) error {
 	// production deployment requirements are implemented. This check cannot detect an independently configured
 	// reverse proxy, which operators must keep private.
 	if !loopbackURL(publicURL) {
-		return errors.New("public CapLayer is unavailable until individual MCP sign-in and production deployment requirements are configured")
+		return errors.New("public Vault is unavailable until individual MCP sign-in and production deployment requirements are configured")
 	}
 	ip := net.ParseIP(bind)
 	if bind != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return errors.New("CapLayer alpha must bind to loopback")
+		return errors.New("Vault alpha must bind to loopback")
 	}
 	return nil
 }
@@ -127,7 +129,7 @@ func localAdminToken(stateDir string) (string, error) {
 	return token, nil
 }
 
-func run() error {
+func run() (runErr error) {
 	port := env("GATEWAY_PORT", "8080")
 	upstreamURL := env("GATEWAY_UPSTREAM_URL", "https://mcp.context7.com/mcp")
 	provider := env("GATEWAY_PROVIDER", "context7")
@@ -185,9 +187,27 @@ func run() error {
 	defer st.Close()
 	st.AddWorkspace(store.Workspace{ID: "w1", Name: "m0"})
 	st.AddUser(store.User{ID: human.ID, WorkspaceID: "w1", Email: human.Email})
+	if err := st.EnsurePlatformGroup("w1"); err != nil {
+		return fmt.Errorf("initialize Platform group: %w", err)
+	}
 	if err := st.EnableSQLWorkspace("w1"); err != nil {
 		return fmt.Errorf("initialize project SQL tables: %w", err)
 	}
+	if os.Getenv("GATEWAY_BOOTSTRAP_ONLY") == "1" {
+		log.Print("Vault installation initialized: Platform group is ready")
+		return st.PersistenceError()
+	}
+	auditOptions, err := store.AuditOptionsFromEnv(stateDir)
+	if err != nil {
+		return err
+	}
+	auditBackend, err := store.OpenAuditBackend(auditOptions)
+	if err != nil {
+		return fmt.Errorf("initialize audit storage: %w", err)
+	}
+	defer func() { runErr = errors.Join(runErr, auditBackend.Close()) }()
+	st.SetAuditBackend(auditBackend)
+	log.Printf("Vault audit provider: %s (write mode: %s)", auditBackend.Info().Provider, auditBackend.Info().WriteMode)
 	if os.Getenv("GATEWAY_DEMO") != "" {
 		seedDemo(st)
 	}
@@ -293,7 +313,35 @@ func run() error {
 	}
 
 	log.Printf("gateway: listening on %s:%s (upstream %s)", bind, port, upstreamURL)
-	return http.ListenAndServe(net.JoinHostPort(bind, port), admin.LocalhostCORS(mux))
+	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv := &http.Server{Addr: net.JoinHostPort(bind, port), Handler: admin.LocalhostCORS(mux)}
+	return serveUntilStopped(shutdownCtx, srv)
+}
+
+// Stop accepting calls, finish in-flight handlers, then let run's defer drain
+// audit writes. SIGKILL/power loss can still lose uncommitted async events.
+func serveUntilStopped(ctx context.Context, srv *http.Server) error {
+	done := make(chan error, 1)
+	go func() { done <- srv.ListenAndServe() }()
+	select {
+	case err := <-done:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		_ = srv.Close()
+		return fmt.Errorf("gateway shutdown: %w", err)
+	}
+	if err := <-done; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func loopbackURL(raw string) bool {
@@ -329,7 +377,7 @@ func productAPIBase(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// The launcher supplies the actual CapLayer project folder. Standalone callers
+// The launcher supplies the actual Vault project folder. Standalone callers
 // without a workspace retain the established state-directory location.
 func gatewayConfigurationPaths(stateDir string) (string, string) {
 	path := filepath.Join(stateDir, "gateway.sqlite")

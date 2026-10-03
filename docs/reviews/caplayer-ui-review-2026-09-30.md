@@ -1,5 +1,7 @@
 # CapLayer UI review — 2026-09-30
 
+Current behavior and remaining limits: [Vault implementation status](../design/vault-current-state.md), updated 2026-10-03. Entries below are chronological; later fixes supersede earlier findings.
+
 ## Scope
 
 Reviewed CapLayer against Goals, Crew and Code after the repeated reports of inconsistent UI. Main was merged at `03278a7e3`, incorporating `origin/main` at `893aead81`. This report supersedes the earlier primitive-only UI review.
@@ -276,8 +278,155 @@ Committed the current implementation as `378b0202b`, then merged `origin/main` a
 
 ### Remaining findings
 
-1. **Shared connection ownership bypasses CapLayer groups.** Connecting from CapLayer uses the platform OAuth flow and publishes a shared AgentWorks connection. A user able to select that shared connector elsewhere can use it through the normal product path without CapLayer group restrictions. Encryption protects stored credentials but does not enforce gateway-only use. Reuse the authorization implementation with separate CapLayer ownership before treating group policies as the organization's access boundary.
+1. **Shared connection ownership bypasses CapLayer groups — addressed by the later private/Vault ownership work below.** Connecting from CapLayer uses the platform OAuth flow and publishes a shared AgentWorks connection. A user able to select that shared connector elsewhere can use it through the normal product path without CapLayer group restrictions. Encryption protects stored credentials but does not enforce gateway-only use. Reuse the authorization implementation with separate CapLayer ownership before treating group policies as the organization's access boundary.
 2. **AUTH_SECRET rotation does not cover OAuth credentials.** OAuth token/client encryption derives its key from AUTH_SECRET, but `rotate-auth-secret` currently rotates provider keys and workflow secret documents only. It does not enumerate platform/personal OAuth files. Changing the secret through this command can leave those credentials unreadable and require reauthorization. Add complete OAuth rekeying or refuse rotation when uncovered stores exist.
 3. **Legacy plaintext migration is not fail closed.** Startup logs an error from `sealPlainPlatformCredentials` and continues; the platform sealer also accepts legacy plaintext JSON. A failed migration can leave usable plaintext credentials on disk. Custom token-file paths outside the claimed roots are likewise not covered by this sealer. Enforce an approved credential root and refuse insecure legacy state, or disable affected connections until migration succeeds.
 
 This audit covers the merged source, automated tests and local file metadata. It does not verify a running Linux deployment. The already-running local backend has not been rebuilt/restarted with the newly merged environment-hardening changes.
+
+## Product rename: Vault (2026-10-01)
+
+Renamed the visible product to Vault, with the picker description "Tools, skills, and access". Updated the shared product picker, page title/favicon, account product labels, workspace accessibility labels, onboarding/errors, assistant profile/prompt/skill, standalone entry, gateway admin templates and current product documentation. Existing profile IDs, API routes, environment variables and `Chats/CapLayer` storage remain compatible so saved chats and permissions retain their location.
+
+TypeScript and 35 focused frontend tests passed, along with the focused CapLayer backend tests. Rebuilt and restarted the local product backend with this rename and the latest main security changes; its health endpoint is healthy. Startup revealed an unquoted colon in Google AI's embedded skill description under the newly strict frontmatter parser. Quoted that YAML scalar and verified the existing complete generation-skill registration test passes. Browser verification shows Vault and its new description in the shared picker; screenshot: `/tmp/vault-product-renamed-20261001.jpg`.
+
+
+## Platform MCP ownership: private connections and Vault (2026-10-01)
+
+Crew, Code and workflow integrations now share **My MCPs** and **Vault** sections.
+Ordinary chat MCP details also expose Vault. My MCPs uses the authenticated
+person's sealed store; project sharing never transfers their external login.
+Vault lists only the current group's granted tools, shows their raw argument
+schemas, and loads shared connections through the gateway. Global catalog
+entries remain templates. Removed the deployment-wide account-sharing prompts
+and normal connection admin gate; explicit Vault OAuth setup still requires a
+central administrator. Custom keys are entered in a password field, stored
+privately, and attached using a secret reference.
+
+Runtime constructors, native coding-agent execution bridges, Crew creation and
+workflow preflight resolve the same ownership boundary. Pool names isolate
+users and Vault delegations; every shared call checks current gateway policy.
+Account switching clears private MCP UI metadata and rejects late responses.
+
+[Architecture, migration notes and test results](../design/vault-mcp-ownership.md)
+record the enforcement and rollout behavior. Focused backend checks, 47 frontend
+tests and the production build passed. The full host suite has catalog/Pulse
+fixture failures and timed out; live browser QA was blocked by CDP timeouts.
+Old globally shared accounts require Vault connections plus group grants, or
+private reauthorization. AUTH_SECRET OAuth key rotation remains open.
+
+
+## Shared navigation, integrations and secrets follow-up (2026-10-03)
+
+The shared application retains the thin left navigation rail and original product
+icons, including Relay after main integration. Global pages have return controls;
+runtime health moved to the account menu. The obsolete composer model control
+was removed across products; runtime model selection belongs in the shared Models
+panel. Connected/available MCP views use the shared integrations component and
+common tool rows. Crew/Code/workflow views hide tool details; Vault group and
+server views retain expandable full-width JSON schemas.
+
+Secrets now live under Integrations across products. Vault manages platform
+values, groups grant use, and each project explicitly selects permitted names.
+The common secret UI has compact rows, copy/rotation icons, a larger Add secret
+button below, assigned group selections and stable checkbox updates. Platform
+bootstrap and group descriptions persist. Provider rotation, copied-value
+revocation, external MCP secret export and current runtime selection behavior are
+specified in [the secrets design](../design/vault-secrets.md).
+
+## Audit and PII follow-up (2026-10-03)
+
+Audit uses readable identity/MCP filters, More options and CSV/JSON export; Logs
+is the default subtab and Analysis loads only on selection. Calling app denotes
+the client, separately from user and upstream MCP. Audit stores metadata only.
+Local SQLite, server ClickHouse with a durable delivery spool, and Off are
+configurable. Local retention cannot exceed 24 hours.
+
+The new async mode admits copied metadata to one bounded writer queue (1,024
+waiting plus at most 256 in flight). Failed batches retry and reject admissions
+while unhealthy; queue overflow and flush failures are explicit. SIGINT/SIGTERM
+drains accepted events after stopping requests. Durable remains the installation
+default; the current preview explicitly enables async. Crash loss before commit
+and errors after upstream execution remain documented limits.
+
+PII now has Protection/Test/Reviews with reduced text. Rule creation/edit/delete
+controls were removed; existing custom rules are read-only in this UI. Regex and
+checksum enforcement remains synchronous before forwarding/returning payloads.
+Logging neither stores nor rescans raw payloads. PII review state is still bounded
+memory, not durable. No model performs detection.
+
+Verification: the focused gateway store/PII/MCP/admin/server race suite, frontend
+TypeScript and gateway build passed. Local allowed/blocked calls were recorded
+without the synthetic SSN value; all five events survived graceful restart with
+zero pending writes/failures. Browser showed SQLite / Async / 24h and the events.
+Isolated mean admission was 0.199 µs async versus 5.01 ms durable; PII scan means
+were 0.105/0.427/6.98 ms for approximately 1/4/64 KiB. These are not full request
+latencies or a supported RPS. Details and p95/p99 are in
+[the implementation summary](../design/vault-current-state.md).
+
+## Confirmed identity design (2026-10-03)
+
+The user confirmed platform SSO as the identity source for Vault consumers,
+including people who use its MCP endpoint from Claude without using other
+products. People > Users continues to reuse the shared account/role editor.
+The attempted separate external-user directory changes were withdrawn before
+backend deployment; no external accounts or grants were created.
+
+A platform identity is separate from product access and tool/secret grants.
+Individual MCP OAuth consent must still be wired to verified platform SSO users;
+the local alpha's static consent identity does not implement that team flow.
+This remains a release boundary, documented in the current-state summary.
+
+The restored shared Users screen was verified in the in-app browser. TypeScript,
+24 Surface/Groups frontend tests and the existing active-product-identity backend
+regression passed after withdrawal. The live backend was not replaced, no new
+external account/grant was created, and the browser remains open.
+
+## Shared user editor and Relay product list (2026-10-03)
+
+Vault’s Users adapter now sets a required invitation product on the existing
+UsersAdminPanel. Vault is checked/locked for new users and included in submitted
+products after each form reset. Other products remain optional; admin accounts
+retain the existing implicit all-products behavior. Existing account grants are
+not changed merely by opening the panel. Global and workflow user pages retain
+the same shared Viewer/Editor/Creator/Admin creation and editing controls.
+
+Relay was missing from both the backend product inventory and the frontend main
+product filter. Added its registered surface for workflow/Relay deployments and
+used the shared product-label map. Dedicated unrelated deployments do not acquire
+it. The isolated preview configuration also now includes Relays. Existing Relay
+workflow access rules remain authoritative. TypeScript, 21 tests in three frontend
+suites and focused backend registration/role/identity checks passed.
+
+Rebuilt the product executable, restarted the local backend and confirmed
+`/api/health` returns 200. In-app browser verification shows all four invitation
+roles, Vault checked/disabled, optional Relays access and Relays in product
+navigation. No live account was created. The preview tab remains open.
+
+### User form styling and slot provisioning boundary (2026-10-03)
+
+The shared role editor now uses the existing Radix Select with concise role
+descriptions, labeled fields, product selection chips and a separate submit row.
+Creation and account-role editing use the same picker. Keyboard selection and
+submitted role/product behavior are covered in the component regressions.
+
+The user clarified that "slots" means the root-provisioned Linux execution
+accounts used by RTS and Excellence. The attempted relocation to global-only
+account creation and local navigation visibility change were withdrawn. The UI
+still does not provision slots or check them when granting execution products;
+the current-state document records this unresolved boundary. No account, role,
+grant or remote provisioning was changed during inspection.
+
+### Vault-only user form correction (2026-10-03)
+
+Supersedes the earlier checked-Vault-plus-optional-products UI. The shared
+editor now accepts `vaultOnly`; the Vault adapter enables it. Invitations expose
+only email and submit a Viewer account with only `mcp-gateway` product access.
+Platform role changes, product toggles and Code reviewer controls are absent
+from the Vault account list. Group permissions determine MCP and secret access.
+Existing accounts' grants are not rewritten. The global editor is unchanged.
+
+TypeScript and 15 focused tests passed, including successive Vault-only payloads
+and absence of platform permission controls. Verified the form in the in-app
+browser. No live account was created. This UI restriction does not replace the
+pending backend slot checks for global/account-API execution grants.

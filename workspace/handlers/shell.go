@@ -39,6 +39,38 @@ func resolveGuardWritePath(wp, docsDir string) (string, error) {
 	return physicalPath, nil
 }
 
+// Explicit host grants are supported only by the single-user local native
+// launcher. Server deployments keep every write grant inside docsDir.
+// Even locally, the service never creates a directory outside docsDir.
+func guardWritePathToCreate(wp, docsDir string) (string, error) {
+	physicalPath, err := resolveGuardWritePath(wp, docsDir)
+	if err == nil {
+		return physicalPath, nil
+	}
+	if os.Getenv("LOCAL_MODE") != "true" || os.Getenv("MULTI_USER_MODE") != "false" || os.Getenv("NATIVE_WORKSPACE") != "true" {
+		return "", err
+	}
+	if !filepath.IsAbs(wp) {
+		return "", err
+	}
+	for _, part := range strings.Split(wp, string(filepath.Separator)) {
+		if part == ".." {
+			return "", err
+		}
+	}
+	// A workspace path that redirects outside through a symlink is never a
+	// host grant. The host supplies external grants as explicit absolute roots.
+	rel, relErr := filepath.Rel(filepath.Clean(docsDir), filepath.Clean(wp))
+	if relErr != nil || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		return "", err
+	}
+	info, statErr := os.Stat(wp)
+	if statErr != nil || !info.IsDir() {
+		return "", err
+	}
+	return "", nil
+}
+
 // ExecuteShellCommand handles POST /api/execute
 func ExecuteShellCommand(c *gin.Context) {
 	var req models.ExecuteShellRequest
@@ -173,11 +205,10 @@ func ExecuteShellCommand(c *gin.Context) {
 	if req.FolderGuard != nil && req.FolderGuard.Enabled {
 		// Pre-create write path directories in the real filesystem before isolation.
 		// The mount script relies on these existing so it can bind-mount them as writable.
-		// Each path is resolved exactly as the isolator resolves it and must stay
-		// inside the workspace boundary: an unvalidated MkdirAll here would create
-		// directories anywhere (absolute paths, .. escapes, symlink redirects).
+		// Only create workspace paths. The single-user local native launcher
+		// may keep existing host-folder grants without a service-side MkdirAll.
 		for _, wp := range req.FolderGuard.WritePaths {
-			physicalPath, wpErr := resolveGuardWritePath(wp, docsDir)
+			physicalPath, wpErr := guardWritePathToCreate(wp, docsDir)
 			if wpErr != nil {
 				c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 					Success: false,
@@ -185,6 +216,9 @@ func ExecuteShellCommand(c *gin.Context) {
 					Error:   wpErr.Error(),
 				})
 				return
+			}
+			if physicalPath == "" {
+				continue
 			}
 			if mkErr := os.MkdirAll(physicalPath, 0755); mkErr != nil {
 				log.Printf("[SHELL ISOLATOR] Warning: failed to pre-create write path %s: %v", physicalPath, mkErr)

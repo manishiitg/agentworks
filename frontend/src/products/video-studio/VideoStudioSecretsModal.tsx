@@ -1,4 +1,4 @@
-import { KeyRound, X } from 'lucide-react'
+import { PlugZap, X } from 'lucide-react'
 import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { updateProductProjectSelections } from '../../platform/chat/productProjects'
 import { useChatStore } from '../../stores/useChatStore'
@@ -26,18 +26,18 @@ export function VideoStudioSecretsModal({ project, tabId, onProjectChange, onClo
         className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-xl"
         onClick={event => event.stopPropagation()}
         role="dialog"
-        aria-label="Project secrets"
+        aria-label="Integrations"
       >
         <div className="mb-4 flex shrink-0 items-center justify-between">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" />
-            <h3 className="text-lg font-semibold text-foreground">Project secrets</h3>
+            <PlugZap className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">Integrations · Secrets</h3>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground"
-            aria-label="Close project secrets"
+            aria-label="Close integrations"
           >
             <X className="h-5 w-5" />
           </button>
@@ -45,9 +45,9 @@ export function VideoStudioSecretsModal({ project, tabId, onProjectChange, onClo
         <div className="min-h-0 flex-1 overflow-y-auto">
           <SecretSelectionSection
             selectedSecrets={project.selectedSecrets}
-            onSecretChange={secrets => { void persist({ selectedSecrets: secrets }) }}
+            onSecretChange={secrets => persist({ selectedSecrets: secrets })}
             selectedGlobalSecrets={project.selectedGlobalSecrets}
-            onGlobalSecretChange={secrets => { void persist({ selectedGlobalSecrets: secrets || [] }) }}
+            onGlobalSecretChange={secrets => persist({ selectedGlobalSecrets: secrets || [] })}
             persistExplicitGlobalSelection
             workflowPath={project.workspacePath}
             workspaceNoun="project"

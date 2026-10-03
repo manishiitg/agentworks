@@ -1,10 +1,10 @@
-# Centrally managed Sentry access through CapLayer
+# Centrally managed Sentry access through Vault
 
-**Status:** design proposal. The current CapLayer gateway is a single-user local alpha. It does not yet provide company SSO, durable group policies, or a credential vault for team deployment.
+**Status:** design proposal. The current Vault gateway is a single-user local alpha. It does not yet provide company SSO, durable group policies, or a credential vault for team deployment.
 
 ## Goal and trust boundary
 
-A central team configures the Sentry connection and grants employees access through company identity groups. Employees connect Claude or another MCP client to CapLayer, authenticate to CapLayer, and never receive the upstream Sentry token. CapLayer records the employee, group, connection, operation, decision, and outcome for each call. Sentry sees the centrally managed credential rather than the individual employee; native Sentry attribution to each employee would require individual or delegated Sentry credentials.
+A central team configures the Sentry connection and grants employees access through company identity groups. Employees connect Claude or another MCP client to Vault, authenticate to Vault, and never receive the upstream Sentry token. Vault records the employee, group, connection, operation, decision, and outcome for each call. Sentry sees the centrally managed credential rather than the individual employee; native Sentry attribution to each employee would require individual or delegated Sentry credentials.
 
 The central team must verify which Sentry credential type supports the required MCP operations. Sentry [documents direct remote token forwarding](https://github.com/getsentry/sentry-mcp/blob/main/README.md#remote-with-an-explicit-sentry-token), while its local setup [specifies a user auth token](https://github.com/getsentry/sentry-mcp/blob/main/README.md#stdio-vs-remote). Do not assume an internal integration token supports every operation without testing it. Store the chosen credential in a server-side vault, rotate it, and give it only the required Sentry API scopes.
 
@@ -17,15 +17,15 @@ Sentry supports scoped MCP URLs:
 | Organization | `https://mcp.sentry.dev/mcp/acme` |
 | Project | `https://mcp.sentry.dev/mcp/acme/payments` |
 
-For a Payments team, the central admin registers the Payments connection, binds it to the Payments identity group, and selects allowed tools. CapLayer routes that group's calls only to the registered upstream URL and injects the central credential. Sentry says a scoped session removes constrained organization/project parameters from applicable schemas, injects their values server-side, and validates resource access. Sentry's `update_issue` implementation fetches the issue and checks its actual project against the session constraint before writing. See [Sentry's scoped-session guide](https://github.com/getsentry/sentry-mcp/blob/main/docs/specs/subpath-constraints.md) and [`update_issue` source](https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-core/src/tools/catalog/update-issue.ts).
+For a Payments team, the central admin registers the Payments connection, binds it to the Payments identity group, and selects allowed tools. Vault routes that group's calls only to the registered upstream URL and injects the central credential. Sentry says a scoped session removes constrained organization/project parameters from applicable schemas, injects their values server-side, and validates resource access. Sentry's `update_issue` implementation fetches the issue and checks its actual project against the session constraint before writing. See [Sentry's scoped-session guide](https://github.com/getsentry/sentry-mcp/blob/main/docs/specs/subpath-constraints.md) and [`update_issue` source](https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-core/src/tools/catalog/update-issue.ts).
 
-This is the preferred Sentry design when the central team wants an entire Sentry project or organization exposed through a known upstream boundary. It is specific to Sentry's MCP implementation, not a general MCP URL convention. The path constrains this MCP session; it does not make the underlying Sentry credential project-specific. Employees must have no route to the credential or an unrestricted CapLayer connection.
+This is the preferred Sentry design when the central team wants an entire Sentry project or organization exposed through a known upstream boundary. It is specific to Sentry's MCP implementation, not a general MCP URL convention. The path constrains this MCP session; it does not make the underlying Sentry credential project-specific. Employees must have no route to the credential or an unrestricted Vault connection.
 
-For direct-token mode, Sentry documents `?skills=inspect,triage` to limit enabled skill groups. CapLayer's current connector URL validator rejects query parameters. A future implementation should store skill selection as structured configuration and construct only approved upstream URLs; it should not accept arbitrary credential-bearing query strings. Skill selection does not replace CapLayer's group grants and call checks.
+For direct-token mode, Sentry documents `?skills=inspect,triage` to limit enabled skill groups. Vault's current connector URL validator rejects query parameters. A future implementation should store skill selection as structured configuration and construct only approved upstream URLs; it should not accept arbitrary credential-bearing query strings. Skill selection does not replace Vault's group grants and call checks.
 
-## Way 2: CapLayer policy on tool arguments
+## Way 2: Vault policy on tool arguments
 
-CapLayer discovers each exposed tool through `tools/list` and retains its `inputSchema`. The schema tells us declared argument names, types, allowed values where present, and individually required fields. It does not necessarily express cross-field rules or prove which organization owns an opaque resource ID. For example, Sentry's `update_issue` accepts `organizationSlug`, `issueId`, or `issueUrl`, but its runtime requires `issueUrl` **or** `organizationSlug` plus `issueId`, and at least one of `status` or `assignedTo`. It has no `projectSlug` argument. See the [MCP tool specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) and [Sentry's `update_issue` source](https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-core/src/tools/catalog/update-issue.ts).
+Vault discovers each exposed tool through `tools/list` and retains its `inputSchema`. The schema tells us declared argument names, types, allowed values where present, and individually required fields. It does not necessarily express cross-field rules or prove which organization owns an opaque resource ID. For example, Sentry's `update_issue` accepts `organizationSlug`, `issueId`, or `issueUrl`, but its runtime requires `issueUrl` **or** `organizationSlug` plus `issueId`, and at least one of `status` or `assignedTo`. It has no `projectSlug` argument. See the [MCP tool specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) and [Sentry's `update_issue` source](https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-core/src/tools/catalog/update-issue.ts).
 
 A centrally reviewed Sentry policy can attach conditions to a group and tool:
 
@@ -39,7 +39,7 @@ Regex is useful for input format checks, such as a slug pattern. Exact matching,
 
 ## How the two ways fit together
 
-Use a Sentry-scoped connection as the project or organization boundary, then apply CapLayer tool and argument rules for the employee's role. For example, the Payments readers and triagers can share the same `/mcp/acme/payments` upstream connection while only triagers receive `update_issue`. A narrower argument policy can allow only `status: resolved` for a particular group. Both checks run on every call; hiding a tool in `tools/list` is not sufficient authorization.
+Use a Sentry-scoped connection as the project or organization boundary, then apply Vault tool and argument rules for the employee's role. For example, the Payments readers and triagers can share the same `/mcp/acme/payments` upstream connection while only triagers receive `update_issue`. A narrower argument policy can allow only `status: resolved` for a particular group. Both checks run on every call; hiding a tool in `tools/list` is not sufficient authorization.
 
 ## Minimum verification before team use
 
@@ -47,4 +47,4 @@ Use a Sentry-scoped connection as the project or organization boundary, then app
 - Confirm each group receives only its approved connection and tools in `tools/list`; directly calling a hidden tool must be denied.
 - Attempt reads and writes against a second organization and project using explicit slugs, issue URLs, issue IDs, search queries, and `execute_sentry_tool` nested arguments. All cross-scope calls must fail before returning data or changing state.
 - Verify schema changes and newly discovered catalog operations are denied until reviewed.
-- Verify audit records identify the CapLayer employee and never expose the Sentry token.
+- Verify audit records identify the Vault employee and never expose the Sentry token.

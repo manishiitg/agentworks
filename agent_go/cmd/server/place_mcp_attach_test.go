@@ -46,7 +46,7 @@ func TestPlaceMCPConnectionLifecycle(t *testing.T) {
 	_, api := readAccessRouterWithAPI(t)
 	withMCPConnectionsRoot(t)
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
-	ctx := context.Background()
+	ctx := personContext("alice")
 	do := func(handler http.HandlerFunc, method, target, user, body string, vars map[string]string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, target, strings.NewReader(body))
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))

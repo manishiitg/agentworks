@@ -342,10 +342,9 @@ func setPersonalMCPEnabledNames(userID, codeRoot string, names []string) error {
 	return writePlaceMCPJSON(filepath.Join(dir, "enabled.json"), enabled)
 }
 
-// ---- legacy personal secrets -------------------------------------------
-// Header servers now use their project's secrets (headerSecretValue). A
-// person's own secrets remain only so the migration can copy them into the
-// Code that used them (personal_mcp_migrate.go).
+// ---- private personal secrets -------------------------------------------
+// New private header connections use the owner's sealed secrets. Legacy
+// per-place stores keep their project secret resolver for compatibility.
 
 var personalSecretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
@@ -378,7 +377,7 @@ func setPersonalSecret(userID, name, value string) error {
 	return writePlaceMCPJSON(filepath.Join(dir, "secrets.json"), secrets)
 }
 
-// personalSecretValue resolves one of the person's own legacy secrets.
+// personalSecretValue resolves one secret from this person's sealed store.
 func personalSecretValue(userID, name string) (string, error) {
 	placeMCPMu.Lock()
 	defer placeMCPMu.Unlock()

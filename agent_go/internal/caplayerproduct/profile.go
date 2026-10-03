@@ -15,7 +15,7 @@ const WorkspaceRoot = "Chats/CapLayer"
 //go:embed system-prompt.md skills/caplayer-access/SKILL.md
 var files embed.FS
 
-// CapLayer uses the same provider catalog, conversation runtime and composer
+// Vault uses the same provider catalog, conversation runtime and composer
 // as Crew. Its own tool allowlist contains only governance operations.
 func BuiltinAgentProfile() agentprofiles.Profile {
 	runtime := workproduct.BuiltinAgentProfile().Runtime
@@ -23,7 +23,7 @@ func BuiltinAgentProfile() agentprofiles.Profile {
 	// CLI rollout must not turn this draft assistant into a general executor.
 	runtime.AgentTools = agentprofiles.AgentToolsPolicy{Mode: "mcp_only"}
 	runtime.APITransport = agentprofiles.APITransportPolicy{}
-	runtime.BridgeTools = []string{"manage_caplayer_access", "query_workflow_db", "mutate_workflow_db"}
+	runtime.BridgeTools = []string{"manage_caplayer_access", "query_workflow_db", "mutate_workflow_db", "manage_vault_secret_access"}
 	runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: "fixed", Root: WorkspaceRoot}
 	runtime.Conversation = agentprofiles.ConversationPolicy{Mode: "singleton"}
 	runtime.Capabilities = agentprofiles.RuntimeCapabilities{
@@ -37,11 +37,11 @@ func BuiltinAgentProfile() agentprofiles.Profile {
 	}
 	prompt, _ := files.ReadFile("system-prompt.md")
 	return agentprofiles.Profile{
-		ID: ProfileID, Name: "CapLayer", Version: 1, BuiltIn: true,
+		ID: ProfileID, Name: "Vault", Version: 1, BuiltIn: true,
 		Scope:                agentprofiles.ProfileScopeProject,
 		SystemPromptTemplate: string(prompt), Skills: []string{"caplayer-access"},
-		Tools:      []agentprofiles.ToolBinding{{ID: "caplayer.access"}, {ID: "caplayer.database.query"}, {ID: "caplayer.database.mutate"}},
-		ToolPolicy: agentprofiles.ToolPolicy{Mode: "allowlist", Enabled: []string{"manage_caplayer_access", "query_workflow_db", "mutate_workflow_db"}}, Runtime: runtime,
+		Tools:      []agentprofiles.ToolBinding{{ID: "caplayer.access"}, {ID: "caplayer.database.query"}, {ID: "caplayer.database.mutate"}, {ID: "caplayer.secrets"}},
+		ToolPolicy: agentprofiles.ToolPolicy{Mode: "allowlist", Enabled: []string{"manage_caplayer_access", "query_workflow_db", "mutate_workflow_db", "manage_vault_secret_access"}}, Runtime: runtime,
 	}
 }
 

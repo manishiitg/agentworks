@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
@@ -178,6 +179,10 @@ func (a *Admin) CreateUser(id, email string) error {
 }
 
 func (a *Admin) CreateGroup(id, name string) error {
+	return a.CreateGroupWithDescription(id, name, "")
+}
+
+func (a *Admin) CreateGroupWithDescription(id, name, description string) error {
 	if !validID.MatchString(id) {
 		return errors.New("invalid group id")
 	}
@@ -188,7 +193,11 @@ func (a *Admin) CreateGroup(id, name string) error {
 	if _, ok := a.Store.GetGroup(id); ok {
 		return errors.New("group exists")
 	}
-	a.Store.AddGroup(store.Group{ID: id, WorkspaceID: a.WorkspaceID, Name: name})
+	description = strings.TrimSpace(description)
+	if utf8.RuneCountInString(description) > store.MaxGroupDescriptionLength {
+		return errors.New("group description must be at most 1000 characters")
+	}
+	a.Store.AddGroup(store.Group{ID: id, WorkspaceID: a.WorkspaceID, Name: name, Description: description})
 	return nil
 }
 
@@ -196,6 +205,9 @@ func (a *Admin) SetMember(groupID, userID string, add bool) error {
 	g, ok := a.Store.GetGroup(groupID)
 	if !ok || g.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown group")
+	}
+	if g.BuiltIn {
+		return errors.New("built-in group membership is automatic")
 	}
 	u, ok := a.Store.GetUser(userID)
 	if !ok || u.WorkspaceID != a.WorkspaceID {
@@ -415,17 +427,37 @@ func (a *Admin) SetGroupGrant(groupID, publicName string, grant bool) error {
 	return nil
 }
 
-// RenameGroup changes a group's display name.
+// RenameGroup changes a group's display name, preserving its description.
 func (a *Admin) RenameGroup(id, name string) error {
+	return a.UpdateGroup(id, &name, nil)
+}
+
+func (a *Admin) UpdateGroup(id string, name, description *string) error {
 	g, ok := a.Store.GetGroup(id)
 	if !ok || g.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown group")
 	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return errors.New("invalid group name")
+	if name == nil && description == nil {
+		return errors.New("provide a group name or description")
 	}
-	a.Store.RenameGroup(id, name)
+	if name != nil {
+		trimmed := strings.TrimSpace(*name)
+		if g.BuiltIn && trimmed != g.Name {
+			return errors.New("built-in group name cannot be changed")
+		}
+		if trimmed == "" {
+			return errors.New("invalid group name")
+		}
+		name = &trimmed
+	}
+	if description != nil {
+		trimmed := strings.TrimSpace(*description)
+		if utf8.RuneCountInString(trimmed) > store.MaxGroupDescriptionLength {
+			return errors.New("group description must be at most 1000 characters")
+		}
+		description = &trimmed
+	}
+	a.Store.UpdateGroup(id, name, description)
 	return nil
 }
 
@@ -552,6 +584,8 @@ func (b *adminResponseBuffer) Write(data []byte) (int, error) {
 
 // APIRoutes mounts the JSON admin API.
 func (a *Admin) APIRoutes(mux *http.ServeMux) {
+	a.runtimeRoutes(mux)
+	a.secretRoutes(mux)
 	a.accessRoutes(mux)
 	a.databaseRoutes(mux)
 	a.setupRoutes(mux)
@@ -593,13 +627,13 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/groups", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var in struct {
-				ID, Name string
+				ID, Name, Description string
 			}
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 				writeErr(w, 400, err)
 				return
 			}
-			if err := a.CreateGroup(in.ID, in.Name); err != nil {
+			if err := a.CreateGroupWithDescription(in.ID, in.Name, in.Description); err != nil {
 				writeErr(w, 400, err)
 				return
 			}
@@ -618,13 +652,13 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			return
 		}
 		var in struct {
-			Name string
+			Name, Description *string
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
-		if err := a.RenameGroup(r.PathValue("id"), in.Name); err != nil {
+		if err := a.UpdateGroup(r.PathValue("id"), in.Name, in.Description); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
@@ -989,6 +1023,13 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}))
+	mux.HandleFunc("/api/admin/audit/settings", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, a.Store.AuditInfo())
+	}))
 	mux.HandleFunc("/api/admin/audit", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1016,7 +1057,11 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 				filter.Limit = n
 			}
 		}
-		events := a.Store.QueryAudit(filter)
+		events, err := a.Store.ReadAudit(filter)
+		if err != nil {
+			writeErr(w, http.StatusServiceUnavailable, errors.New("audit storage unavailable"))
+			return
+		}
 		if format == "csv" {
 			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 			w.Header().Set("Content-Disposition", `attachment; filename="gateway-audit.csv"`)
@@ -1047,7 +1092,12 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, a.Store.SummarizeAudit(filter))
+		summary, err := a.Store.ReadAuditSummary(filter)
+		if err != nil {
+			writeErr(w, http.StatusServiceUnavailable, errors.New("audit storage unavailable"))
+			return
+		}
+		writeJSON(w, http.StatusOK, summary)
 	}))
 	mux.HandleFunc("/api/admin/catalog", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

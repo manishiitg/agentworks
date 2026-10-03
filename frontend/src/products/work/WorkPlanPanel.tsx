@@ -19,7 +19,6 @@ export function WorkPlanPanel({ workspacePath, onAsk, onCreatePlan }: { workspac
     <WorkspaceViewHeader
       icon={Route}
       title="Plan"
-      subtitle="The saved steps for this Crew project"
       actions={<WorkspaceViewActions
         workspacePath={workspacePath}
         message="Explain this Crew project's plan and help me revise it if needed."

@@ -22,7 +22,12 @@ it('shows fresh/cache split and opens the associated chat without starting a run
     expect(host.textContent).toContain('1 recorded turn / agent run')
     expect(host.textContent).toContain('Fresh input200')
     expect(host.textContent).toContain('Cached input (read)800')
-    expect(host.textContent).toContain('80.0% of input was read from cache')
+    const tokenDetails = Array.from(host.querySelectorAll('details')).find(detail => detail.querySelector('summary')?.textContent === '80.0% of input cached · Token details')!
+    expect(tokenDetails).toBeDefined()
+    expect(tokenDetails.open).toBe(false)
+    await act(async () => { tokenDetails.querySelector('summary')!.click() })
+    expect(tokenDetails.open).toBe(true)
+    expect(tokenDetails.textContent).toContain('Fresh input and cache reads add up to total input; output is separate.')
     const view = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'View chat')!
     await act(async () => { view.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(agentApi.getChatHistoryResumeConversation).toHaveBeenCalledWith('product-health', row.workflow_id, 50, 0, false, true)

@@ -4,7 +4,6 @@ import { Fingerprint, FolderOpen, Loader2, Lock, Tag, Target, Trash2 } from 'luc
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
-import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
 import { Button } from '../../components/ui/Button'
 import { IconUploadField } from '../../components/ui/IconUploadField'
 import { SettingsCard } from '../../components/ui/SettingsCard'
@@ -27,11 +26,10 @@ import type { CrewTemplateId } from './crewTemplates'
 import { CrewTemplatePicker } from './CrewTemplatePicker'
 import type { WorkRuntimeSelection } from './workTabs'
 
-export type WorkIdentityTab = 'general' | 'secrets' | 'folders' | 'models'
+export type WorkIdentityTab = 'general' | 'folders' | 'models'
 
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
-  { value: 'secrets', label: 'Secrets' },
   { value: 'folders', label: 'Connected work' },
   { value: 'models', label: 'Models' },
 ]
@@ -41,7 +39,6 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
     general: hasIdentity
       ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
       : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
-    secrets: `Help me with this ${noun} project's saved passwords and keys. Ask what's needed without asking me to reveal values in chat.`,
     folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed.`,
     models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
   }
@@ -78,7 +75,6 @@ function CodeGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity, onD
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Name"
-        description="How this workspace appears in your list."
       >
         <div>
           <Label className="mb-2 block">Workspace name</Label>
@@ -171,7 +167,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Name and icon"
-        description="How this project appears across AgentWorks."
       >
         <div>
           <Label className="mb-2 block">Project name</Label>
@@ -202,7 +197,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
       <SettingsCard
         icon={<Target aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Purpose"
-        description="Role and purpose are required. They keep the agent consistent across chats, schedules, and bots."
       >
         <div>
           <Label className="mb-2 block">Role (required)</Label>
@@ -373,7 +367,6 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
         icon={Fingerprint}
         title={product.hasIdentity ? 'Identity' : 'Setup'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
-        subtitle={product.hasIdentity ? 'Name, icon, purpose, secrets, connected work, and models for this project.' : 'Name, secrets, connected work, and models for this workspace.'}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
@@ -400,18 +393,6 @@ export function WorkIdentityPanel({ workspacePath, projectTitle, projectDescript
           onInstallTemplate={onInstallTemplate}
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
-        />}
-        {activeTab === 'secrets' && <SecretSelectionSection
-          selectedSecrets={selectedSecrets}
-          onSecretChange={secrets => { void onSelectedSecretsChange(secrets) }}
-          selectedGlobalSecrets={selectedGlobalSecrets}
-          onGlobalSecretChange={secrets => { void onSelectedGlobalSecretsChange(secrets || []) }}
-          persistExplicitGlobalSelection
-          workflowPath={workspacePath}
-          workspaceNoun="project"
-          workspaceSecretHeading="Project secrets"
-          showGlobalSecrets
-          allowGlobalPromotion
         />}
         {activeTab === 'folders' && <div className="space-y-4">
           <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
@@ -462,7 +443,7 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
     <SettingsCard title="Agent tools" ariaLabel="Native agent tools">
       <ToggleRow
         label="Native agent tools"
-        description="On by default. Let the coding agent use its native read and search tools; available tools vary by CLI. File changes still go through AgentWorks. Applies to Claude Code, Codex, Cursor, Muse and Antigravity."
+        description="Use the coding agent's native tools."
         checked={enabled}
         disabled={!onChange || saving}
         disabledTitle={onChange ? 'Saving…' : 'Only the owner can change this.'}

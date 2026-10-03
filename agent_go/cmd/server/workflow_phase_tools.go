@@ -225,7 +225,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 					if caps.SelectedGlobalSecretNames != nil {
 						effectiveSecretSelection = caps.SelectedGlobalSecretNames
 					}
-					allRefreshedSecrets := mergeGlobalSecrets(refreshedScopedSecrets, effectiveSecretSelection)
+					allRefreshedSecrets := api.mergeGlobalSecretsFor(context.Background(), userID, refreshedScopedSecrets, effectiveSecretSelection)
 					var secretEntries []orchestrator.SecretEntry
 					for _, s := range allRefreshedSecrets {
 						secretEntries = append(secretEntries, orchestrator.SecretEntry{Name: s.Name, Value: s.Value})

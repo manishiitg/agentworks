@@ -23,7 +23,7 @@ const TAB_STATUS_DOT: Record<'busy' | 'completed' | 'ready', { cls: string; labe
   ready: { cls: 'bg-muted-foreground/60', label: 'Ready' },
 }
 
-/** The shared Chat tab pill used by workflows, Work, and CapLayer. */
+/** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride,
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false,

@@ -23,4 +23,9 @@ describe('products an admin can grant', () => {
     expect(selectableProducts(['code'], ['agentworks', 'code'])).toEqual(['code'])
     expect(selectableProducts([], ['code'])).toEqual([])
   })
+  it('offers Relays only when hosted and enabled, including beside Goals and Vault', () => {
+    expect(selectableProducts(['agentworks', 'relays', 'mcp-gateway'], ['agentworks', 'relays', 'mcp-gateway'])).toEqual(['agentworks', 'relays', 'mcp-gateway'])
+    expect(selectableProducts(['agentworks', 'relays'], ['agentworks'])).toEqual(['agentworks'])
+    expect(selectableProducts(['agentworks'], ['agentworks', 'relays'])).toEqual(['agentworks'])
+  })
 })

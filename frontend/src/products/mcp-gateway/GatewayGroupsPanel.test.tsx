@@ -1,10 +1,19 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GatewayGroupsPanel } from './GatewayGroupsPanel'
 
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => 'http://127.0.0.1:18745', getAuthToken: () => 'product-jwt' }))
+
+const secretAPI = vi.hoisted(() => ({ getGlobalSecrets: vi.fn(), setVaultSecretAccess: vi.fn() }))
+vi.mock('../../api/secrets', () => ({ secretsApi: secretAPI }))
+vi.mock('../../components/integrations/OpenVaultButton', () => ({ OpenVaultButton: () => null }))
+vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: () => true }))
+beforeEach(() => {
+  secretAPI.getGlobalSecrets.mockResolvedValue([{ name: 'TEAM_KEY' }, { name: 'SECOND_KEY' }, { name: 'THIRD_KEY' }])
+  secretAPI.setVaultSecretAccess.mockResolvedValue(undefined)
+})
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -39,6 +48,7 @@ function healthyFetch(): (url: string) => Promise<Response> {
     if (url.includes('/permissions')) return Promise.resolve(jsonResponse(200, { permissions: [{ public_name: 'notion__search', allowed: false, governed: false, source: '' }] }))
     if (url.endsWith('/api/admin/access/packages')) return Promise.resolve(jsonResponse(200, { packages: [] }))
     if (url.endsWith('/api/admin/access/history')) return Promise.resolve(jsonResponse(200, { events: [] }))
+    if (url.endsWith('/secrets')) return Promise.resolve(jsonResponse(200, { secrets: [] }))
     if (url.includes('/members')) return Promise.resolve(jsonResponse(200, { members: ['alice'] }))
     if (url.includes('/servers')) return Promise.resolve(jsonResponse(200, { servers: [] }))
     if (url.includes('/api/admin/grants')) return Promise.resolve(jsonResponse(200, { group_grants: [] }))
@@ -87,6 +97,50 @@ describe('GatewayGroupsPanel', () => {
     expect(container!.textContent).not.toContain('Whole server')
     expect(container!.querySelector('[aria-label="Remove Notion from group"]')).not.toBeNull()
     expect(container!.querySelector('[data-testid="gateway-permissions"]')).not.toBeNull()
+  })
+
+  it('keeps secret controls mounted and the add list open while refreshing after a saved grant', async () => {
+    let refreshSecrets: ((value: Response) => void) | undefined
+    let reads = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/secrets')) {
+        reads += 1
+        if (reads === 1) return Promise.resolve(jsonResponse(200, { secrets: [{ name: 'TEAM_KEY' }] }))
+        return new Promise<Response>(resolve => { refreshSecrets = resolve })
+      }
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock)
+    const section = container!.querySelector('[aria-label="Group secrets"]')
+    expect(section).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Allow TEAM_KEY"]')?.getAttribute('aria-checked')).toBe('true')
+    await act(async () => { ([...container!.querySelectorAll('button')].find(b => b.textContent === 'Add secrets') as HTMLButtonElement).click() })
+    await act(async () => { (container!.querySelector('[aria-label="Allow SECOND_KEY"]') as HTMLButtonElement).click() })
+    expect(secretAPI.setVaultSecretAccess).toHaveBeenCalledWith('eng', 'SECOND_KEY', true)
+    expect(reads).toBe(2)
+    expect(container!.querySelector('[aria-label="Group secrets"]')).toBe(section)
+    expect(container!.textContent).not.toContain('Loading secret permissions')
+    expect(container!.querySelector('[aria-label="Available secrets"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Allow SECOND_KEY"]')?.getAttribute('aria-checked')).toBe('true')
+    await act(async () => { refreshSecrets!(jsonResponse(200, { secrets: [{ name: 'TEAM_KEY' }, { name: 'SECOND_KEY' }] })) })
+    expect(container!.querySelector('[aria-label="Group secrets"]')).toBe(section)
+    expect(container!.querySelector('[aria-label="Allow THIRD_KEY"]')).not.toBeNull()
+  })
+
+  it('shows Platform as built-in with automatic platform membership and an immutable name', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/api/admin/groups')) return Promise.resolve(jsonResponse(200, { groups: [{ ID: 'everyone-w1', WorkspaceID: 'w1', Name: 'Platform', BuiltIn: true, Description: 'Share tools across products' }] }))
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock, true)
+    expect(container!.textContent).toContain('Built-in')
+    expect(container!.textContent).toContain('All platform users · membership is automatic')
+    expect(container!.textContent).toContain('a@x.com')
+    expect(container!.querySelector('[aria-label="Remove alice from everyone-w1"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Add member to everyone-w1"]')).toBeNull()
+    await act(async () => { (container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click() })
+    expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).disabled).toBe(true)
+    expect((container!.querySelector('[aria-label="Group description"]') as HTMLTextAreaElement).disabled).toBe(false)
   })
 
   it('offers creation and membership management only in the group directory', async () => {
@@ -171,6 +225,9 @@ describe('GatewayGroupsPanel', () => {
 
     await act(async () => {
       setInputValue(container!.querySelector('[data-testid="gateway-group-name-input"]') as HTMLInputElement, 'Data Science')
+      const field = container!.querySelector('[aria-label="New group description"]') as HTMLTextAreaElement
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'Data team tools')
+      field.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => {})
     expect(container!.textContent).toContain('data-science')
@@ -188,7 +245,7 @@ describe('GatewayGroupsPanel', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE}/api/caplayer/api/admin/groups`,
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ ID: 'data-science', Name: 'Data Science' }) }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ ID: 'data-science', Name: 'Data Science', Description: 'Data team tools' }) }),
     )
   })
 
@@ -203,20 +260,46 @@ describe('GatewayGroupsPanel', () => {
       return healthyFetch()(url)
     })
     await act(async () => {
-      ;(container!.querySelector('[aria-label="Rename group"]') as HTMLButtonElement).click()
+      ;(container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click()
     })
     await act(async () => {
       setInputValue(container!.querySelector('[data-testid="gateway-group-rename-input"]') as HTMLInputElement, 'Platform')
     })
     await act(async () => {
-      ;(container!.querySelector('[aria-label="Save group name"]') as HTMLButtonElement).click()
+      ;(container!.querySelector('[aria-label="Save group details"]') as HTMLButtonElement).click()
     })
     await act(async () => {})
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE}/api/caplayer/api/admin/groups/eng`,
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'Platform' }) }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'Platform', Description: '' }) }),
     )
+  })
+
+  it('shows group descriptions in Access and can update or clear them without losing the name', async () => {
+    let description = 'Support read tools'
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/admin/groups')) return Promise.resolve(jsonResponse(200, { groups: [{ ID: 'eng', WorkspaceID: 'w1', Name: 'Engineering', Description: description }] }))
+      if (url.endsWith('/api/admin/groups/eng') && init?.method === 'POST') {
+        description = JSON.parse(init.body as string).Description
+        return Promise.resolve(jsonResponse(200, { status: 'renamed' }))
+      }
+      return healthyFetch()(url)
+    })
+    await renderPanel(fetchMock)
+    expect(container!.querySelector('[data-testid="gateway-group-description"]')?.textContent).toBe('Support read tools')
+    for (const value of ['Tools for on-call support', '']) {
+      await act(async () => { (container!.querySelector('[aria-label="Edit group"]') as HTMLButtonElement).click() })
+      expect((container!.querySelector('[aria-label="Group name"]') as HTMLInputElement).value).toBe('Engineering')
+      await act(async () => {
+        const field = container!.querySelector('[aria-label="Group description"]') as HTMLTextAreaElement
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, value)
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      await act(async () => { (container!.querySelector('[aria-label="Save group details"]') as HTMLButtonElement).click() })
+      expect(fetchMock).toHaveBeenCalledWith(`${BASE}/api/caplayer/api/admin/groups/eng`, expect.objectContaining({ method: 'POST', body: JSON.stringify({ Name: 'Engineering', Description: value }) }))
+      expect(container!.querySelector('[data-testid="gateway-group-description"]')?.textContent ?? '').toBe(value)
+    }
   })
 
   it('creates an API key and shows the token once', async () => {

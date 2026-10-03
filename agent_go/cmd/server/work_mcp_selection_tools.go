@@ -20,7 +20,7 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 		return fmt.Errorf("Crew MCP selection requires an active Crew project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect platform connection state. Selecting is allowed only when the server is already connected platform-wide; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectMCPServerSelectionTool, "Select or deselect one MCP server for the active Crew project. First use list_mcp_servers to inspect your private connections and permitted Vault servers. Selecting is allowed only when the server is connected privately or granted through Vault; this tool does not install, authenticate, reconnect, edit, or remove a server. The durable project selection is written to workflow.json. Newly selected server tools become available on the next user message because the current agent turn was launched with its previous MCP scope.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "server"},
@@ -42,12 +42,16 @@ func (api *StreamingAPI) registerWorkMCPSelectionTool(registrar definitionToolRe
 		if err != nil {
 			return "", fmt.Errorf("load MCP configuration: %w", err)
 		}
-		canonical, config, err := resolveMCPServerName(catalog, requested)
-		if err != nil {
-			return "", err
-		}
-		if action == "select" && !api.isPlatformMCPServerConnected(catalog, canonical, config) {
-			return "", fmt.Errorf("MCP server %q is not connected platform-wide; install and authorize it with install_mcp_server first (requires admin access; in single-user setups the user is the admin), then select it", canonical)
+		canonical := requested
+		if action == "select" {
+			resolved, resolveErr := api.resolveGovernedMCP(ctx, userID, requested)
+			if resolveErr != nil {
+				return "", resolveErr
+			}
+			canonical = vaultSelectionName(resolved.Name)
+			if private, found := privateMCPByCatalog(userID, requested); found {
+				canonical = private.Name
+			}
 		}
 
 		if err := updateProductSelectedServers(ctx, "work", workspacePath, func(current []string) []string {
@@ -103,17 +107,4 @@ func resolveMCPServerName(catalog *mcpclient.MCPConfig, requested string) (strin
 		}
 	}
 	return "", mcpclient.MCPServerConfig{}, fmt.Errorf("MCP server %q is not configured; use list_mcp_servers or search_mcp_catalog first", requested)
-}
-
-func (api *StreamingAPI) isPlatformMCPServerConnected(catalog *mcpclient.MCPConfig, canonical string, config mcpclient.MCPServerConfig) bool {
-	overlay := api.loadOverlayServerNames()
-	connectedCanonical := false
-	for name := range overlay {
-		resolved, _, err := resolveMCPServerName(catalog, name)
-		if err == nil && resolved == canonical {
-			connectedCanonical = true
-			break
-		}
-	}
-	return connectionState(canonical, config, map[string]bool{canonical: connectedCanonical}, platformMCPTokenUserID) == connectionConnected
 }

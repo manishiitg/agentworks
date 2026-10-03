@@ -76,7 +76,7 @@ func run() error {
 	// Create a sample once; never overwrite files the user changes in tests.
 	sample, err := os.OpenFile(filepath.Join(files, "README.md"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err == nil {
-		_, writeErr := sample.WriteString("# CapLayer local MCP test\n\nOnly this test folder is accessible to the filesystem server.\nSynthetic PII sample: test.person@example.test\n")
+		_, writeErr := sample.WriteString("# Vault local MCP test\n\nOnly this test folder is accessible to the filesystem server.\nSynthetic PII sample: test.person@example.test\n")
 		closeErr := sample.Close()
 		if writeErr != nil {
 			return writeErr

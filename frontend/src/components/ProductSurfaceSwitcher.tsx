@@ -1,3 +1,4 @@
+import { useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Check, ChevronDown, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
@@ -5,15 +6,15 @@ import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { DominionMark } from '../products/dominion/DominionMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
-import { CapLayerMark } from '../products/mcp-gateway/CapLayerMark'
+import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { CodeMark } from '../products/work/CodeMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
-import { useAppStore } from '../stores/useAppStore'
+import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { applyRuntimeBranding } from '../runtime-branding'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import { cn } from '../lib/utils'
-import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 
 type ProductSurfaceSwitcherProps = {
   className?: string
@@ -38,12 +39,12 @@ const products: Array<{
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
   { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
-  { id: 'mcp-gateway', label: 'CapLayer', description: 'Governed access to tools for every AI agent', icon: CapLayerMark },
+  { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
 ]
 
 export function ProductSurfaceSwitcher({ className, standalone = false }: ProductSurfaceSwitcherProps) {
+  const sidebar = useProductNavigationSidebar()
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
-  const setProductSurface = useProductSurfaceStore((state) => state.setProductSurface)
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -60,9 +61,9 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
 
   useEffect(() => {
     if (standalone || productSurface === 'mcp-gateway') {
-      document.title = 'CapLayer'
+      document.title = 'Vault'
       const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
-      if (favicon) favicon.href = '/caplayer.svg'
+      if (favicon) favicon.href = '/vault.svg'
       return
     }
     document.title = 'AgentWorks'
@@ -72,19 +73,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
   const activateProduct = (product: ProductSurface) => {
     setOpen(false)
     if (standalone) return
-    setProductSurface(product)
-    if (product !== 'agentworks' && product !== 'relays') return
-
-    const presetStore = useGlobalPresetStore.getState()
-    const activePreset = presetStore.getActivePreset('workflow')
-    if (activePreset && (activePreset.workflowKind === 'relay') !== (product === 'relays')) {
-      presetStore.clearActivePreset('workflow')
-      presetStore.setSelectedPresetFolder(null)
-    }
-    const appStore = useAppStore.getState()
-    appStore.setModeCategory('workflow')
-    appStore.setShowWorkflowsOverview(product === 'agentworks')
-    appStore.setShowSchedulesOverview(false)
+    openProductWorkspace(product)
   }
 
   useEffect(() => {
@@ -102,6 +91,32 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [open])
+
+  if (sidebar) return (
+    <TooltipProvider delayDuration={200}>
+      <div role="group" aria-label="Products" className="flex flex-col gap-1 border-b border-border pb-3">
+        {visibleProducts.map(product => {
+          const Icon = product.icon
+          const active = product.id === (standalone ? 'mcp-gateway' : productSurface)
+          return <Tooltip key={product.id}>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label={product.label} aria-current={active ? 'page' : undefined}
+                data-tour-products={visibleProductIDs.join(' ')}
+                onClick={() => activateProduct(product.id)}
+                data-product-navigation-action
+                className={`relative grid h-9 w-full place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+                {active && <span aria-hidden="true" className="absolute -left-2 h-4 w-0.5 rounded-r bg-primary" />}
+                <Icon className="h-5 w-5 shrink-0" title="" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{product.label}</TooltipContent>
+          </Tooltip>
+        })}
+      </div>
+    </TooltipProvider>
+  )
 
   return (
     <div
@@ -123,7 +138,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
         <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div role="menu" aria-label="Products" className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
+        <div role="menu" aria-label="Products" className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 max-w-[calc(100vw-5rem)] rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-950/15 dark:border-slate-700 dark:bg-slate-900">
           {visibleProducts.map((product) => {
             const active = (standalone ? 'mcp-gateway' : productSurface) === product.id
             const Icon = product.icon

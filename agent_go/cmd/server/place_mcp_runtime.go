@@ -37,7 +37,18 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
 		return resolved, err
 	}
-	return api.resolveWorkshopMCPServer(ctx, sessionID, server, tool)
+	resolved, err := api.resolveWorkshopMCPServer(ctx, sessionID, server, tool)
+	if resolved != nil || err != nil {
+		return resolved, err
+	}
+	person := ""
+	if api.eventStore != nil {
+		person = api.mcpSessionPerson(sessionID)
+	}
+	if sessionID == "" {
+		person = mcpCaller(ctx)
+	}
+	return api.resolveGovernedMCP(ctx, person, server)
 }
 
 // resolveCodeMCPServer decides every MCP call from a Code session. isCode is
@@ -59,14 +70,14 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	// One of this Code's own connections, by its internal name or by its
 	// plain name (what the person sees); found is false when it is not one.
 	place := func(name string) (*executor.ResolvedMCPServer, bool) {
-		names, overrides := attachedMCPServersForRoot(ctx, pin.CodeRoot)
+		names, overrides := attachedMCPServersForRoot(context.WithValue(ctx, common.UserIDKey, pin.Person), pin.CodeRoot)
 		for _, internal := range names {
 			plain := placeMCPPlainName(internal)
 			if internal != name && !strings.EqualFold(plain, name) {
 				continue
 			}
 			if override, ok := overrides[internal]; ok && override.Server != nil {
-				return &executor.ResolvedMCPServer{Name: internal, Config: *override.Server, ConnectionSessionID: "global"}, true
+				return &executor.ResolvedMCPServer{Name: internal, Config: *override.Server, ConnectionSessionID: internal}, true
 			}
 		}
 		return nil, false
@@ -94,7 +105,7 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	if err != nil {
 		return nil, true, fmt.Errorf("load current MCP configuration: %w", err)
 	}
-	resolved, err := resolveSelectedMCPServer(catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, pin.Person, server, tool)
+	resolved, err := api.resolveScopedGovernedMCP(ctx, catalog, runtimeMCPServers(manifest.Capabilities.SelectedServers), manifest.Capabilities.SelectedTools, pin.Person, server, tool)
 	return resolved, true, err
 }
 

@@ -2246,6 +2246,7 @@ export const useChatStore = create<ChatState>()(
 
       discardChatStateForAccountChange: () => {
         invalidateChatIdentity()
+        useMCPStore?.getState?.()?.reset?.()
         pendingActiveSessionsFetch = null
         const state = get()
 

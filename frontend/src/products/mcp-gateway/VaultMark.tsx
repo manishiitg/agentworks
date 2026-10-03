@@ -1,15 +1,15 @@
 import type { ComponentPropsWithoutRef } from 'react'
 import { cn } from '../../lib/utils'
 
-type CapLayerMarkProps = ComponentPropsWithoutRef<'svg'> & {
+type VaultMarkProps = ComponentPropsWithoutRef<'svg'> & {
   title?: string
 }
 
-export function CapLayerMark({
+export function VaultMark({
   className,
-  title = 'CapLayer',
+  title = 'Vault',
   ...props
-}: CapLayerMarkProps) {
+}: VaultMarkProps) {
   return (
     <svg
       viewBox="0 0 64 64"

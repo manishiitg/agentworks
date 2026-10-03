@@ -9,6 +9,7 @@ import (
 )
 
 func TestWorkGlobalSecretSelectionToolPersistsExistingGlobal(t *testing.T) {
+	withVaultSecretGrant(t, "user-1", "GITHUB_TOKEN_READ_ONLY")
 	const workspacePath = "_users/user-1/Chats/Work/projects/release"
 	const manifestPath = workspacePath + "/workflow.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{

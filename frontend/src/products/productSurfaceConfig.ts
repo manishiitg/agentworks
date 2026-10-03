@@ -2,6 +2,11 @@ export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'domini
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
+export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
+  agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio', dominion: 'Dominion',
+  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault',
+}
+
 type ProductRuntimeConfig = {
   defaultProductSurface?: unknown
   enabledProductSurfaces?: unknown
@@ -22,7 +27,7 @@ export function isProductSurface(value: unknown): value is ProductSurface {
  * Returns the products intentionally exposed by this deployment.  Leaving the
  * runtime setting out is the ordinary AgentWorks localhost case, which ships
  * the automation, Relays, and built-in Crew surfaces together.
- * A configured gateway URL opts a local deployment into the CapLayer alpha.
+ * A configured gateway URL opts a local deployment into the Vault alpha.
  * Dedicated product shells can replace this with their own allowlist.
  */
 export function enabledProductSurfaces(): ProductSurface[] {

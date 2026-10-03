@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 func managedGlobalTestAPI(t *testing.T) *StreamingAPI {
 	t.Helper()
 	api, _ := sharedSecretsTestAPI(t)
+	withManagedVaultPermissions(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","admin":true,"can_create":true,"products":[]},{"id":"a1","username":"owner","can_create":true,"products":[]},{"id":"c3","username":"reader","can_create":false,"products":[]}]}`)
 	previous := managedGlobals
 	managedGlobals = map[string]string{}
@@ -56,7 +58,7 @@ func TestManagedGlobalPromotionPermissionsPersistenceAndResolution(t *testing.T)
 		t.Fatal("source attachment did not survive promotion/reload")
 	}
 	names := []string{name}
-	merged := mergeGlobalSecrets(nil, &names)
+	merged := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names)
 	if len(merged) != 1 || merged[0].Value != value {
 		t.Fatal("other workflows cannot resolve selected global")
 	}
@@ -190,7 +192,7 @@ func TestManagedGlobalToolPromotesFromAnotherWorkflow(t *testing.T) {
 		t.Fatal("source attachment broken")
 	}
 	names := []string{name}
-	if resolved := mergeGlobalSecrets(nil, &names); len(resolved) != 1 || resolved[0].Value != value {
+	if resolved := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names); len(resolved) != 1 || resolved[0].Value != value {
 		t.Fatal("destination cannot use promoted global")
 	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","username":"admin","can_create":true,"products":[]}]}`)
@@ -224,7 +226,7 @@ func TestManagedGlobalPromotionAcceptsOwnedCrewProject(t *testing.T) {
 		t.Fatalf("Crew promotion: %d %s", rec.Code, rec.Body.String())
 	}
 	names := []string{name}
-	resolved := mergeGlobalSecrets(nil, &names)
+	resolved := api.mergeGlobalSecretsFor(ctx, "admin", nil, &names)
 	if len(resolved) != 1 || resolved[0].Name != name || resolved[0].Value != value {
 		t.Fatalf("destination could not resolve Crew-promoted global: %#v", resolved)
 	}
@@ -260,4 +262,38 @@ func TestGlobalRevealIsAdminOnly(t *testing.T) {
 	if rec := reveal("admin", ""); rec.Code != http.StatusBadRequest {
 		t.Fatalf("empty reveal: %d, want 400", rec.Code)
 	}
+}
+
+// This persistence fixture supplies explicit test group grants. Registration alone
+// does not grant access in production (covered by store and runtime isolation tests).
+func withManagedVaultPermissions(t *testing.T) {
+	t.Helper()
+	token := strings.Repeat("s", 32)
+	grants := map[string][]string{
+		"admin": {"PROMOTED_TOKEN", "CROSS_WORKFLOW_TOKEN", "CREW_SHARED_TOKEN", "MANAGED_TOKEN", "TOOL_TOKEN"},
+		"a1":    {"PROMOTED_TOKEN", "CROSS_WORKFLOW_TOKEN"}, "c3": {"PROMOTED_TOKEN"},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(401)
+			return
+		}
+		if r.URL.Path == "/api/admin/runtime/secrets" {
+			rows := []map[string]string{}
+			for _, n := range grants[r.Header.Get("X-CapLayer-Actor")] {
+				rows = append(rows, map[string]string{"name": n})
+			}
+			json.NewEncoder(w).Encode(map[string]any{"secrets": rows})
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/admin/secrets") {
+			w.WriteHeader(204)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CAPLAYER_SERVICE_URL", srv.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", token)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
 }

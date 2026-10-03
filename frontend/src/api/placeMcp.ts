@@ -1,10 +1,8 @@
 import api from '../services/api'
 import type { PersonalMcpConnectResult, PersonalMcpHeader } from './mcpCatalog'
+import type { ToolDefinition } from '../stores/types'
 
-// A Code's, Crew's or workflow's own MCP connections (docs/design/
-// personal_mcp_attach.md): added there by its owner (or, for a workflow,
-// someone who can edit it), with their own login, and used by every chat and
-// run there like any other MCP server.
+// Private MCP connections use the caller's login. Shared access is governed by Vault.
 
 export interface PlaceMcpServer {
   name: string
@@ -29,6 +27,10 @@ export interface PlaceMcpCustomServer {
 }
 
 export const placeMcpApi = {
+  tools: async (name: string): Promise<ToolDefinition> => {
+    const response = await api.get('/api/tools/detail', { params: { server_name: name } })
+    return response.data
+  },
   list: async (workspacePath: string): Promise<PlaceMcpServer[]> => {
     const response = await api.get('/api/mcp/place', { params: { workspace_path: workspacePath } })
     return response.data.servers || []

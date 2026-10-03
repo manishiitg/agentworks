@@ -146,7 +146,9 @@ func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.C
 		}
 		out := make([]mcp.Tool, 0, len(result.Tools))
 		for _, t := range result.Tools {
-			if policy.Visible(st, id, t.Name) {
+			snap, found := st.GetTool(t.Name)
+			connector, scoped := ctx.Value(connectorKey{}).(string)
+			if policy.Visible(st, id, t.Name) && (!scoped || (found && snap.ConnectorID == connector)) {
 				out = append(out, t)
 			}
 		}
@@ -391,7 +393,19 @@ func (g *Gateway) register(snap store.ToolSnapshot, upstreamTool mcp.Tool) {
 
 // handleCall is the authoritative enforcement point: authenticate (done by
 // middleware) → authorize → upstream invoke with timeout → audit everything.
-func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req mcp.CallToolRequest) (result *mcp.CallToolResult, callErr error) {
+	var auditErr error
+	appendAudit := func(e store.AuditEvent) {
+		if err := g.store.AppendAudit(e); err != nil {
+			auditErr = err
+		}
+	}
+	defer func() {
+		if auditErr != nil {
+			result = nil
+			callErr = fmt.Errorf("audit persistence failed; the tool may already have executed; do not retry automatically")
+		}
+	}()
 	id, _ := auth.FromContext(ctx)
 	callID := newCallID()
 	start := time.Now()
@@ -419,7 +433,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	}
 
 	deny := func(err error) (*mcp.CallToolResult, error) {
-		g.store.AppendAudit(store.AuditEvent{
+		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 			GroupIDs:    groups,
@@ -431,6 +445,9 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		return nil, fmt.Errorf("denied: %w", err)
 	}
 
+	if connector, scoped := ctx.Value(connectorKey{}).(string); scoped && snap.ConnectorID != connector {
+		return deny(policy.ErrNoGrant)
+	}
 	if _, err := policy.Authorize(g.store, id, snap.PublicName); err != nil {
 		return deny(err)
 	}
@@ -467,7 +484,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		if scanErr != nil {
 			action = pii.Block
 		}
-		g.store.AppendAudit(store.AuditEvent{
+		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
 			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
 			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
@@ -487,7 +504,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	defer cancel()
 	res, err := up.Call(callCtx, snap.UpstreamName, args)
 	if err != nil {
-		g.store.AppendAudit(store.AuditEvent{
+		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 			GroupIDs:    groups,
@@ -505,7 +522,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		if scanErr != nil || action == pii.Review {
 			action = pii.Block
 		}
-		g.store.AppendAudit(store.AuditEvent{
+		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(), WorkspaceID: id.WorkspaceID,
 			UserID: id.UserID, ClientID: id.ClientID, GroupIDs: groups, ConnectorID: snap.ConnectorID,
 			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
@@ -514,13 +531,17 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		})
 		return nil, fmt.Errorf("output blocked by PII policy (call %s)", callID)
 	}
-	g.store.AppendAudit(store.AuditEvent{
+	outcome, auditError := store.OutcomeOK, ""
+	if res != nil && res.IsError {
+		outcome, auditError = store.OutcomeUpstreamError, "upstream tool reported error"
+	}
+	appendAudit(store.AuditEvent{
 		ID: callID, CallID: callID, Timestamp: start.UTC(),
 		WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 		GroupIDs:    groups,
 		ConnectorID: snap.ConnectorID,
 		PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
-		Decision: store.DecisionAllow, Outcome: store.OutcomeOK,
+		Decision: store.DecisionAllow, Outcome: outcome, ErrorText: auditError,
 		DurationMs:   time.Since(start).Milliseconds(),
 		PIIAction:    combinedPIIAction(inputDecision.Action, outputDecision.Action),
 		PIIDataTypes: append(inputDecision.DataTypes, outputDecision.DataTypes...),
@@ -766,4 +787,24 @@ func outputSchemaBytes(t mcp.Tool) []byte {
 		return raw
 	}
 	return encoded
+}
+
+// ProductHandler is mounted only behind the host service credential. Identity
+// and connector scope come from the authenticated host, never browser headers.
+// Use a separate stateless transport so a retained MCP session cannot switch users.
+type connectorKey struct{}
+
+func (g *Gateway) ProductHandler(identity func(*http.Request) (auth.Identity, string, bool)) http.Handler {
+	transport := server.NewStreamableHTTPServer(g.mcp, server.WithEndpointPath("/api/admin/runtime/mcp"), server.WithStateLess(true),
+		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context { return r.Context() }))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, connector, ok := identity(r)
+		if !ok {
+			http.Error(w, "service authentication required", http.StatusUnauthorized)
+			return
+		}
+		ctx := auth.WithIdentity(r.Context(), id)
+		ctx = context.WithValue(ctx, connectorKey{}, connector)
+		transport.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

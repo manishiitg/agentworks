@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,7 +70,7 @@ func TestSQLBatchesRollbackAndProtectedTablesStayProtected(t *testing.T) {
 	ctx := context.Background()
 	for _, req := range []SQLMutation{
 		{Statements: []SQLStatement{{SQL: `UPDATE groups SET name='bad' WHERE id='g'`}, {SQL: `INSERT INTO group_members VALUES('g','unknown')`}}},
-		{SQL: `UPDATE tools SET status='active'`}, {SQL: `UPDATE gateway_configuration SET revision=0`}, {SQL: `DELETE FROM published_permissions`}, {SQL: `ATTACH DATABASE '/tmp/anything' AS other`}, {SQL: `UPDATE groups SET name='bad';DELETE FROM groups`}, {SQL: `WITH "UPDATE" AS (SELECT 1) UPDATE gateway_configuration SET revision=0`}, {SQL: `INSERT INTO groups VALUES('other','foreign','Foreign')`},
+		{SQL: `UPDATE tools SET status='active'`}, {SQL: `UPDATE gateway_configuration SET revision=0`}, {SQL: `DELETE FROM published_permissions`}, {SQL: `ATTACH DATABASE '/tmp/anything' AS other`}, {SQL: `UPDATE groups SET name='bad';DELETE FROM groups`}, {SQL: `WITH "UPDATE" AS (SELECT 1) UPDATE gateway_configuration SET revision=0`}, {SQL: `INSERT INTO groups(id,workspace_id,name) VALUES('other','foreign','Foreign')`},
 	} {
 		if _, err := s.MutateSQL(ctx, "w", "admin", req); err == nil {
 			t.Fatalf("unsafe mutation accepted: %+v", req)
@@ -89,7 +90,7 @@ func TestSQLBatchesRollbackAndProtectedTablesStayProtected(t *testing.T) {
 		t.Fatal("cross-workspace query")
 	}
 	q, err := s.QuerySQL(ctx, "w", SQLQuery{Action: "describe", Table: "groups"})
-	if err != nil || len(q.Rows) != 3 {
+	if err != nil || len(q.Rows) != 4 {
 		t.Fatal(q, err)
 	}
 }
@@ -145,5 +146,54 @@ func TestExternalSQLWriteDeniesUntilRestart(t *testing.T) {
 	}
 	if s.PersistenceError() == nil {
 		t.Fatal("external mutation did not invalidate authorization")
+	}
+}
+
+func TestGroupDescriptionMigratesAndSurvivesSQLAndRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+	s, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AddWorkspace(Workspace{ID: "w"})
+	s.AddGroup(Group{ID: "g", WorkspaceID: "w", Name: "Readers"})
+	// Simulate the pre-description public projection of an existing workspace.
+	if _, err = s.persistence.db.Exec(`CREATE TABLE groups(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,name TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.EnableSQLWorkspace("w"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err = s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `UPDATE groups SET description=? WHERE id=?`, Params: []any{"Read-only tools for support", "g"}}); err != nil {
+		t.Fatal(err)
+	}
+	group, _ := s.GetGroup("g")
+	if group.Description != "Read-only tools for support" || group.Name != "Readers" {
+		t.Fatal(group)
+	}
+	s.RenameGroup("g", "Support")
+	if err = s.PersistenceError(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.EnableSQLWorkspace("w"); err != nil {
+		t.Fatal(err)
+	}
+	q, err := s.QuerySQL(ctx, "w", SQLQuery{SQL: `SELECT name,description FROM groups WHERE id='g'`})
+	if err != nil || len(q.Rows) != 1 || q.Rows[0]["description"] != "Read-only tools for support" || q.Rows[0]["name"] != "Support" {
+		t.Fatal(q, err)
+	}
+	if _, err = s.MutateSQL(ctx, "w", "admin", SQLMutation{SQL: `UPDATE groups SET description=? WHERE id='g'`, Params: []any{strings.Repeat("x", MaxGroupDescriptionLength+1)}}); err == nil {
+		t.Fatal("oversized description accepted")
+	}
+	group, _ = s.GetGroup("g")
+	if group.Description != "Read-only tools for support" {
+		t.Fatal("failed update changed description")
 	}
 }

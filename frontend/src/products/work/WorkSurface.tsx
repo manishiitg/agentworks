@@ -37,7 +37,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type ProductEngineSelectionDetail, type WorkRuntimeSelection } from './workTabs'
+import { belongsToWorkProject, findCanonicalWorkProjectTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, type WorkRuntimeSelection } from './workTabs'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
 import { type RunsOnSelection } from './RunsOnPicker'
@@ -941,24 +941,6 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
     }
   }, [enabledWorkspacePanels, product.defaultView, selectWorkspaceView, selected?.id, selected?.shared, sharedPanels, workspaceView])
 
-  useEffect(() => {
-    if (!selected) return
-    const handleEngineSelection = (event: Event) => {
-      const detail = (event as CustomEvent<ProductEngineSelectionDetail>).detail
-      const sourceTabId = detail?.tabId || tabId
-      const sourceTab = sourceTabId ? useChatStore.getState().chatTabs[sourceTabId] : undefined
-      if (detail?.profileId !== product.profileId || !detail.engine || !detail.modelId || !sourceTab || !belongsToWorkProject(sourceTab, selected.id)) return
-      void changeWorkRuntime({
-        engine: detail.engine!,
-        provider: detail.provider,
-        modelId: detail.modelId!,
-        reasoningEffort: detail.reasoningEffort,
-      })
-    }
-    window.addEventListener('agentworks:product-engine-selected', handleEngineSelection)
-    return () => window.removeEventListener('agentworks:product-engine-selected', handleEngineSelection)
-  }, [changeWorkRuntime, product.profileId, selected, tabId])
-
   useEffect(() => stopSplitDrag, [selected?.id, stopSplitDrag])
 
   const setSplitRatio = useCallback((next: number, persist = false) => {
@@ -1038,7 +1020,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
 
   return (
     <ProjectProductProvider value={product}>
-    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 flex-col bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1084,7 +1066,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
       <div
         data-ui-workspace={selected?.workspacePath}
         data-ui-view={selected ? workPresentationView(workspaceView) : undefined}
-        className="relative min-h-0 flex-1 overflow-hidden"
+        className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
       >
         <LlmModalHost />
         {showSchedulesOverview && !showProviders && <SchedulesPage />}
@@ -1247,7 +1229,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                   />
               }
               workspace={<>
-                  {tabId || selected.shared?.role === 'viewer' ? (
+                  {tabId || Boolean(selected.shared) ? (
                     <><span hidden data-ui-view-mounted /><WorkWorkspacePane
                         key={`${selected.id}:${workspaceViewRefresh}`}
                         workspacePath={selected.workspacePath}

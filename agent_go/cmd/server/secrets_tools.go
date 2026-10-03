@@ -65,7 +65,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 				}
 				sourcePath = readRoots[0]
 			}
-			globals := getGlobalSecrets()
+			globals := visibleGlobalSecrets(ctx, userID)
 			globalNames := make([]string, 0, len(globals))
 			for _, gs := range globals {
 				globalNames = append(globalNames, gs.Name)
@@ -110,7 +110,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 	}
 
 	if canManageGlobalSecrets(userID) {
-		if err := registerTool("manage_global_secret", "Admin-only server-wide secret management. action=promote moves an existing secret from source_workflow_path (defaults to the active project or workflow) into the encrypted global store. Admins can promote from another accessible Crew project or workflow without switching chats; existing source attachments continue working. Other projects and workflows may explicitly select it from Global Secrets. action=set creates or updates a managed global value; action=delete removes a managed global. Environment globals cannot be changed here. Promotion never overwrites a global name. Values are never returned. Only promote when the user intends server-wide access.", map[string]interface{}{
+		if err := registerTool("manage_global_secret", "Admin-only server-wide secret management. action=promote moves an existing secret from source_workflow_path (defaults to the active project or workflow) into the encrypted global store. Admins can promote from another accessible Crew project or workflow without switching chats; existing source attachments continue working. Other projects and workflows may explicitly select it from Global Secrets. action=set creates or updates a managed global value; action=delete removes a managed global. Environment globals cannot be changed here. Promotion never overwrites a global name. Values are never returned. Promotion registers the secret in Vault; existing groups receive no automatic grant.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"action":               map[string]interface{}{"type": "string", "enum": []string{"promote", "set", "delete"}},
 				"name":                 map[string]interface{}{"type": "string"},
@@ -147,7 +147,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 			if err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("Global secret %q: %s completed. No value returned. Global changes apply to new turns and runs; select this name in each destination project's or workflow's Global Secrets.", name, action), nil
+			return fmt.Sprintf("Global secret %q: %s completed. No value returned. Grant use permission to a group in Vault, then select this name in each destination project's or workflow's Global Secrets.", name, action), nil
 		}); err != nil {
 			return err
 		}

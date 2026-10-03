@@ -14,7 +14,7 @@ vi.mock('../../services/api', () => ({
   authApi: { listAdminUsers: async () => ({ users: [], products: [] }) },
   agentApi: { getToolDetail: vi.fn(), resolveAgentProfileConversation: chatRuntime.resolve, startNewAgentProfileConversation: chatRuntime.startNew },
 }))
-vi.mock('../../components/ModePresetBar', () => ({ ModePresetBar: () => <header data-testid="shared-header"><button aria-label="Switch product">CapLayer</button></header> }))
+vi.mock('../../components/ModePresetBar', () => ({ ModePresetBar: () => <header data-testid="shared-header"><button aria-label="Switch product">Vault</button></header> }))
 vi.mock('../../components/ChatArea', () => ({ default: ({ tabId, landingContent, composerPlaceholder }: any) => <div data-testid="shared-chat-area" data-tab-id={tabId}>{landingContent}<div data-testid="tour-chat-input-area"><textarea data-testid="chat-input-textarea" placeholder={composerPlaceholder} /></div></div> }))
 vi.mock('../../components/GlobalHumanFeedbackPrompt', () => ({ GlobalHumanFeedbackPrompt: () => null }))
 vi.mock('../../components/UpdateProgressToast', () => ({ UpdateProgressToast: () => null }))
@@ -108,10 +108,10 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.querySelector('[data-testid="gateway-surface"]')).not.toBeNull()
-    const menu = container!.querySelector('[aria-label="CapLayer sections"]')
+    const menu = container!.querySelector('[aria-label="Vault sections"]')
     expect(menu).not.toBeNull()
-    expect(menu!.closest('[aria-label="CapLayer workspace toolbar"]')).not.toBeNull()
-    expect(container!.textContent).toContain('CapLayer')
+    expect(menu!.closest('[aria-label="Vault workspace toolbar"]')).not.toBeNull()
+    expect(container!.textContent).toContain('Vault')
     for (const label of ['Connected MCPs', 'Available MCPs', 'People', 'Audit', 'Models', 'Connect']) {
       expect(menu!.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
     }
@@ -124,7 +124,7 @@ describe('GatewaySurface', () => {
     for (const label of ['Mobile preview', 'Tablet preview', 'Laptop preview']) {
       expect(container!.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
     }
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault chat"]')).not.toBeNull()
     const composer = container!.querySelector('[data-testid="tour-chat-input-area"]')!
     expect(composer).not.toBeNull()
     expect(composer.querySelector('[aria-label="New conversation"]')).toBeNull()
@@ -132,7 +132,7 @@ describe('GatewaySurface', () => {
     expect(composer.textContent).not.toContain('Choose model')
     expect(composer.textContent).not.toContain('New chat')
     expect(container!.querySelector('[aria-label="Chat tabs"]')!.textContent).toContain('Chat')
-    expect(container!.textContent).not.toContain('CapLayer assistant')
+    expect(container!.textContent).not.toContain('Vault assistant')
     expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/api/admin/users'))).toHaveLength(1)
   })
 
@@ -142,19 +142,19 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.querySelector('[aria-label="Gateway workspace"]')).toBeNull()
-    const sections = container!.querySelector('[aria-label="CapLayer sections"]')!
+    const sections = container!.querySelector('[aria-label="Vault sections"]')!
     const servers = sections.querySelector('[aria-label="Connected MCPs"]') as HTMLButtonElement
     expect(container!.querySelectorAll('[aria-label="Connected MCPs"]')).toHaveLength(1)
     await act(async () => { servers.click() })
     await act(async () => {})
-    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+    expect(container!.querySelector('[data-testid="mcp-connections-panel"]')).not.toBeNull()
     expect(container!.querySelector('[aria-label="Available servers"]')).toBeNull()
-    const chat = container!.querySelector('[aria-label="CapLayer chat"]')
+    const chat = container!.querySelector('[aria-label="Vault chat"]')
     await act(async () => { (sections.querySelector('[aria-label="Available MCPs"]') as HTMLButtonElement).click() })
     await act(async () => {})
     expect(container!.querySelector('[aria-label="Available servers"]')).not.toBeNull()
     expect(container!.querySelector('[aria-label="Connected servers"]')).toBeNull()
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).toBe(chat)
+    expect(container!.querySelector('[aria-label="Vault chat"]')).toBe(chat)
   })
 
   it('shows users and groups as tabs inside People', async () => {
@@ -162,7 +162,7 @@ describe('GatewaySurface', () => {
     vi.stubGlobal('fetch', vi.fn(healthyFetch()))
     await renderSurface()
 
-    const sections = container!.querySelector('[aria-label="CapLayer sections"]')!
+    const sections = container!.querySelector('[aria-label="Vault sections"]')!
     await act(async () => { (sections.querySelector('[aria-label="People"]') as HTMLButtonElement).click() })
     await act(async () => {})
     const tabs = container!.querySelector('[role="tablist"][aria-label="People tabs"]')!
@@ -178,26 +178,26 @@ describe('GatewaySurface', () => {
     vi.stubGlobal('fetch', vi.fn(healthyFetch()))
     await renderSurface()
 
-    const chat = container!.querySelector('[aria-label="CapLayer chat"]')
+    const chat = container!.querySelector('[aria-label="Vault chat"]')
     const servers = container!.querySelector('[aria-label="Connected MCPs"]') as HTMLButtonElement
     expect(servers).toBeDefined()
     await act(async () => { servers!.click() })
     await act(async () => {})
 
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).toBe(chat)
+    expect(container!.querySelector('[aria-label="Vault chat"]')).toBe(chat)
     expect(container!.querySelector('[data-testid="chat-input-textarea"]')).not.toBeNull()
-    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+    expect(container!.querySelector('[data-testid="mcp-connections-panel"]')).not.toBeNull()
   })
 
-  it('uses the same product shell for the independent CapLayer build', async () => {
+  it('uses the same product shell for the independent Vault build', async () => {
     stubGatewayUrl(null)
     vi.stubGlobal('fetch', vi.fn(healthyFetch()))
     await renderSurface(true)
 
     expect(container!.querySelector('[data-testid="gateway-surface"]')).not.toBeNull()
     expect(container!.querySelector('[aria-label="Switch product"]')).not.toBeNull()
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).not.toBeNull()
-    expect(container!.querySelector('[aria-label="CapLayer sections"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault chat"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault sections"]')).not.toBeNull()
   })
 
   it('shows an error with retry instead of hanging when the gateway is down', async () => {
@@ -208,7 +208,7 @@ describe('GatewaySurface', () => {
     await renderSurface()
 
     expect(container!.textContent).toContain('Gateway is unreachable')
-    expect(container!.querySelector('[aria-label="CapLayer sections"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault sections"]')).not.toBeNull()
     const callsBefore = fetchMock.mock.calls.length
     expect(callsBefore).toBeGreaterThan(0)
 
@@ -271,14 +271,14 @@ describe('GatewaySurface', () => {
     vi.stubGlobal('fetch', vi.fn(healthyFetch()))
     await renderSurface()
     await act(async () => { (container!.querySelector('[aria-label="Collapse chat panel"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Vault chat"]')).toBeNull()
     await act(async () => { (container!.querySelector('[aria-label="Show chat panel"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[aria-label="CapLayer chat"]')).not.toBeNull()
+    expect(container!.querySelector('[aria-label="Vault chat"]')).not.toBeNull()
     await act(async () => { (container!.querySelector('[aria-label="Collapse workspace panel"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[aria-label="CapLayer workspace"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="Vault workspace"]')).toBeNull()
     await act(async () => { (container!.querySelector('[aria-label="Show workspace"]') as HTMLButtonElement).click() })
     await act(async () => { (container!.querySelector('[aria-label="Connected MCPs"]') as HTMLButtonElement).click() })
-    expect(container!.querySelector('[data-testid="gateway-servers"]')).not.toBeNull()
+    expect(container!.querySelector('[data-testid="mcp-connections-panel"]')).not.toBeNull()
   })
 
   it('opens the shared durable profile chat and does not use the legacy setup transport', async () => {
@@ -300,6 +300,6 @@ describe('GatewaySurface', () => {
 
     await renderSurface()
 
-    expect(container!.textContent).toContain('CapLayer needs an MCP Gateway endpoint')
+    expect(container!.textContent).toContain('Vault needs an MCP Gateway endpoint')
   })
 })

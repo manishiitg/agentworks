@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: vi.fn() }))
+vi.mock('./RuntimeHealthControl', () => ({ default: () => <div>Runtime health details</div> }))
 vi.mock('./ChangePasswordDialog', () => ({ default: () => null }))
 import { useAuthStore } from '../../stores/useAuthStore'
 import { TooltipProvider } from '../ui/tooltip'
@@ -59,6 +60,25 @@ describe('Account menu availability', () => {
       await act(async () => host.querySelector('button')!.click())
       await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Help & walkthrough'))!.click())
       expect(onOpenWalkthrough).toHaveBeenCalledOnce()
+      expect(host.querySelector('[role="menu"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+  it('opens runtime health from the account menu and can return to account', async () => {
+    vi.mocked(useAuthStore).mockReturnValue({ user: { id: 'user', username: 'Alex' }, isMultiUserMode: false, logout: vi.fn() })
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<TooltipProvider><AccountControl /></TooltipProvider>))
+      expect(host.textContent).not.toContain('Runtime health details')
+      await act(async () => host.querySelector('button')!.click())
+      const runtime = host.querySelector<HTMLButtonElement>('[role="menuitem"]')!
+      expect(runtime.textContent).toContain('Runtime health')
+      await act(async () => runtime.click())
+      expect(host.querySelector('[role="dialog"][aria-label="Runtime health"]')).not.toBeNull()
+      expect(host.textContent).toContain('Runtime health details')
+      await act(async () => Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Back to account'))!.click())
+      expect(host.querySelector('[role="menu"][aria-label="Account"]')).not.toBeNull()
+      expect(host.textContent).not.toContain('Runtime health details')
+      await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
       expect(host.querySelector('[role="menu"]')).toBeNull()
     } finally { await act(async () => root.unmount()); host.remove() }
   })

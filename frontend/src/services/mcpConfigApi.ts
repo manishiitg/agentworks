@@ -138,11 +138,11 @@ export class MCPConfigApi {
    * OAuth servers return { status: 'oauth_required' } and must go through
    * the authorization flow instead.
    */
-  async connectServer(serverName: string, apiKey?: string): Promise<MCPConnectResponse> {
+  async connectServer(serverName: string, apiKey?: string, scope: 'private' | 'vault' = 'private'): Promise<MCPConnectResponse> {
     const response = await fetch(`${this.baseUrl}/api/mcp/connect`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ server_name: serverName, api_key: apiKey }),
+      body: JSON.stringify({ server_name: serverName, api_key: apiKey, scope }),
     });
 
     if (!response.ok) {
@@ -155,11 +155,11 @@ export class MCPConfigApi {
   /**
    * Disconnect a platform server — removes its overlay entry and OAuth token.
    */
-  async disconnectServer(serverName: string): Promise<MCPConnectResponse> {
+  async disconnectServer(serverName: string, scope: 'private' | 'vault' = 'private'): Promise<MCPConnectResponse> {
     const response = await fetch(`${this.baseUrl}/api/mcp/disconnect`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ server_name: serverName }),
+      body: JSON.stringify({ server_name: serverName, scope }),
     });
 
     if (!response.ok) {

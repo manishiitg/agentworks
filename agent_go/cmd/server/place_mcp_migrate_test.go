@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
@@ -38,7 +37,7 @@ func TestMigrationMovesCodeConnectionsOntoPlaces(t *testing.T) {
 	previous := projectSecretReader
 	t.Cleanup(func() { projectSecretReader = previous })
 	projectSecretReader = api.projectSecretValue
-	ctx := context.Background()
+	ctx := personContext("alice")
 	codeX := "_users/alice/Chats/Code/projects/x"
 	codeY := "_users/alice/Chats/Code/projects/y"
 	bobs := "_users/bob/Chats/Code/projects/z"

@@ -628,7 +628,7 @@ type WorkflowCapabilities struct {
 	SelectedTools             []string                       `json:"selected_tools"`
 	SelectedSkills            []string                       `json:"selected_skills"`
 	SelectedSecrets           []string                       `json:"selected_secrets"`
-	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"` // nil = all, [] = none
+	SelectedGlobalSecretNames *[]string                      `json:"selected_global_secret_names"` // nil = none, [] = none
 	BrowserMode               string                         `json:"browser_mode"`
 	CDPPorts                  []int                          `json:"cdp_ports,omitempty"`
 	UseCodeExecutionMode      bool                           `json:"use_code_execution_mode"`

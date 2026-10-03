@@ -1,12 +1,15 @@
+import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
+import { secretsApi } from '../../api/secrets'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Copy, KeyRound, Loader2, Pencil, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { SettingsCard, SettingsCount, SettingsEmpty } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Checkbox } from '../../components/ui/checkbox'
 import { Input } from '../../components/ui/Input'
+import { Textarea } from '../../components/ui/Textarea'
 import { WorkspaceViewTabs } from '../../components/workflow/WorkspaceViewTabs'
 import { GatewayGroupPolicyReview } from './GatewayGroupPolicyReview'
-import { GatewayToolCard } from './GatewayToolCard'
+import { McpToolCard } from '../../components/integrations/McpToolCard'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import {
   addMember,
@@ -15,6 +18,7 @@ import {
   listConnectors,
   listGroupKeys,
   listGroupPermissions,
+  listGroupSecrets,
   listAccessPackages,
   listGroupServers,
   listGroups,
@@ -62,6 +66,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [groupSearch, setGroupSearch] = useState('')
   const [groupName, setGroupName] = useState('')
+  const [groupDescription, setGroupDescription] = useState('')
   const [createMembers, setCreateMembers] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
@@ -70,6 +75,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   const [memberPick, setMemberPick] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState('')
+  const [descriptionDraft, setDescriptionDraft] = useState('')
   const [renameBusy, setRenameBusy] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
 
@@ -112,12 +118,13 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
     setAdding(true)
     setAddError(null)
     try {
-      await createGroup(base, id, name)
+      await createGroup(base, id, name, groupDescription.trim())
       for (const userId of createMembers) {
         await addMember(base, id, userId)
       }
       setShowCreate(false)
       setGroupName('')
+      setGroupDescription('')
       setCreateMembers(new Set())
       setSelectedId(id)
       bump()
@@ -165,7 +172,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
     setRenameBusy(true)
     setRenameError(null)
     try {
-      await renameGroup(base, group.ID, renameDraft.trim())
+      await renameGroup(base, group.ID, renameDraft.trim(), descriptionDraft.trim())
       setRenaming(false)
       bump()
     } catch (err: unknown) {
@@ -178,7 +185,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   if (loading) return <ConsoleLoading label="Loading groups…" />
   if (!data) return <ConsoleError message={error ?? 'Failed to load.'} onRetry={bump} />
 
-  const members = group && memberData?.groupId === group.ID ? memberData.members : []
+  const members = group?.BuiltIn ? data.users.map(user => user.ID) : group && memberData?.groupId === group.ID ? memberData.members : []
   const candidates = data.users.filter((u) => !members.includes(u.ID))
   const derivedId = slugifyId(groupName)
 
@@ -197,13 +204,14 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
         {data.groups.length > 0 && <div className="space-y-2" data-testid="gateway-group-select" aria-label="Choose a group">
           {data.groups.length > 1 && <Input aria-label="Find a group" placeholder="Find a group…" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} />}
           <div className="flex max-h-44 flex-col gap-1.5 overflow-y-auto">
-            {data.groups.filter(g => (g.Name || g.ID).toLowerCase().includes(groupSearch.trim().toLowerCase())).map(g => <Button
+            {data.groups.slice().sort((a, b) => Number(!!b.BuiltIn) - Number(!!a.BuiltIn)).filter(g => (g.Name || g.ID).toLowerCase().includes(groupSearch.trim().toLowerCase())).map(g => <Button
               key={g.ID} variant="outline" size="sm" aria-label={`Select group ${g.Name || g.ID}`} aria-pressed={g.ID === selectedId}
               onClick={() => setSelectedId(g.ID)}
               className={`h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left ${g.ID === selectedId ? 'border-primary/50 bg-primary/10 text-foreground hover:bg-primary/15' : 'text-muted-foreground'}`}
             >
               <UsersRound className={g.ID === selectedId ? 'shrink-0 text-primary' : 'shrink-0'} />
               <span className="min-w-0 flex-1 break-words">{g.Name || g.ID}</span>
+              {g.BuiltIn && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Built-in</span>}
               {g.ID === selectedId && <Check className="shrink-0 text-primary" aria-hidden />}
             </Button>)}
             {!data.groups.some(g => (g.Name || g.ID).toLowerCase().includes(groupSearch.trim().toLowerCase())) && <SettingsEmpty>No groups match your search.</SettingsEmpty>}
@@ -214,40 +222,30 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
         ) : (
           <div className="mt-4 border-t border-border pt-4">
             {renaming ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  aria-label="Group name"
-                  value={renameDraft}
-                  onChange={(e) => setRenameDraft(e.target.value)}
-                  className="max-w-xs"
-                  data-testid="gateway-group-rename-input"
-                />
-                <Button size="xs" disabled={renameBusy} onClick={() => void onRename()} aria-label="Save group name">
-                  {renameBusy ? <Loader2 className="animate-spin" /> : <Check />}
-                  Save
-                </Button>
-                <Button variant="ghost" size="xs" onClick={() => setRenaming(false)} aria-label="Cancel rename">
-                  <X />
-                </Button>
-                <span className="font-mono text-[11px] text-muted-foreground">id: {group.ID} (never changes)</span>
+              <div className="space-y-2">
+                <Input aria-label="Group name" value={renameDraft} onChange={e => setRenameDraft(e.target.value)} disabled={renameBusy || group.BuiltIn} data-testid="gateway-group-rename-input" />
+                <Textarea aria-label="Group description" placeholder="Description (optional)" value={descriptionDraft} onChange={e => setDescriptionDraft(e.target.value)} maxLength={1000} rows={2} disabled={renameBusy} className="text-xs md:text-xs" />
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="ghost" size="xs" disabled={renameBusy} onClick={() => setRenaming(false)} aria-label="Cancel group edit">Cancel</Button>
+                  <Button size="xs" disabled={renameBusy} onClick={() => void onRename()} aria-label="Save group details">
+                    {renameBusy ? <Loader2 className="animate-spin" /> : <Check />}Save
+                  </Button>
+                </div>
               </div>
             ) : (
-              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
-                {group.Name || group.ID}
-                {directoryOnly && <span className="font-mono text-[11px] font-normal text-muted-foreground">{group.ID}</span>}
-                {directoryOnly && <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
+              <div className="space-y-1">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                  {group.Name || group.ID}
+                  {directoryOnly && <span className="font-mono text-[11px] font-normal text-muted-foreground">{group.ID}</span>}
+                  <Button variant="ghost" size="xs" onClick={() => {
                     setRenameDraft(group.Name || group.ID)
+                    setDescriptionDraft(group.Description || '')
                     setRenameError(null)
                     setRenaming(true)
-                  }}
-                  aria-label="Rename group"
-                >
-                  <Pencil />
-                </Button>}
-              </p>
+                  }} aria-label="Edit group" title="Edit name and description"><Pencil /></Button>
+                </p>
+                {group.Description && <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground" data-testid="gateway-group-description">{group.Description}</p>}
+              </div>
             )}
             {renameError && (
               <p className="mt-1 text-destructive" role="alert">
@@ -262,13 +260,13 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             </div>}
             {(directoryOnly || detailTab === 'users') && <div className="mt-3" role="tabpanel" aria-label="Group users">
               {membersLoading && <ConsoleLoading label="Loading group users…" />}
-              <p className="mb-1 text-muted-foreground">{plural(members.length, 'member')}</p>
+              <p className="mb-1 text-muted-foreground">{group.BuiltIn ? 'All platform users · membership is automatic' : plural(members.length, 'member')}</p>
               {members.length > 0 && (
                 <ul className="flex flex-wrap gap-1.5">
                   {members.map((m) => (
                     <li key={m} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px]">
                       {data.users.find(u => u.ID === m)?.Email || m}
-                      {directoryOnly && <button
+                      {directoryOnly && !group.BuiltIn && <button
                         onClick={() => void onRemoveMember(m)}
                         disabled={memberBusy || membersLoading}
                         className="text-muted-foreground hover:text-destructive disabled:opacity-50"
@@ -280,7 +278,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
                   ))}
                 </ul>
               )}
-              {directoryOnly && candidates.length > 0 && (
+              {directoryOnly && !group.BuiltIn && candidates.length > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   <select
                     aria-label={`Add member to ${group.ID}`}
@@ -305,6 +303,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
               {showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
             </div>}
             {!directoryOnly && detailTab === 'permissions' && <div role="tabpanel" aria-label="Group permissions" className="mt-4 space-y-6">
+              <GroupSecretPermissions key={`secrets:${group.ID}`} base={base} groupId={group.ID} attempt={attempt} onChanged={bump} />
               <GroupPermissions key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} />
               <GatewayGroupPolicyReview key={`policies:${group.ID}`} base={base} groupId={group.ID} revision={`${revision ?? ''}:${attempt}`} onChanged={bump} chatBusy={chatBusy} />
             </div>}
@@ -322,6 +321,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             className="max-w-md"
             data-testid="gateway-group-name-input"
           />
+          <Textarea aria-label="New group description" placeholder="Description (optional)" value={groupDescription} onChange={e => setGroupDescription(e.target.value)} maxLength={1000} rows={2} disabled={adding} className="mt-2 max-w-md text-xs md:text-xs" />
           {derivedId && <p className="mt-1 text-muted-foreground">id: <span className={codeClass}>{derivedId}</span></p>}
         </div>
         {data.users.length > 0 && (
@@ -658,7 +658,7 @@ function GroupPermissions({
                       const currentRules = policies.filter(p => p.status === 'published').flatMap(p => p.rules.filter(r => r.public_name === t.PublicName))
                       const restricted = granted && currentRules.length > 0 && currentRules.every(r => r.conditions.length > 0)
                       return (
-                        <GatewayToolCard key={t.PublicName} name={t.UpstreamName} description={t.Description} schema={t.InputSchema}
+                        <McpToolCard key={t.PublicName} name={t.UpstreamName} description={t.Description} schema={t.InputSchema}
                           status={t.Status !== 'active' ? 'Unavailable — tool needs approval' : granted ? restricted ? 'Allowed with restrictions' : 'Allowed' : 'No access'}
                           selection={<Checkbox checked={granted} disabled={full || governed || busy !== null || t.Status !== 'active'}
                             onCheckedChange={v => void run(`tool:${t.PublicName}`, () => setGrant(base, { group: groupId }, t.PublicName, v === true))}
@@ -679,7 +679,7 @@ function GroupPermissions({
                             {currentRules.length > 1 && <p className="text-muted-foreground">A call is allowed when it satisfies any one published rule. All conditions in that rule must match.</p>}
 
                           </div>}
-                        </GatewayToolCard>
+                        </McpToolCard>
                       )
                     })}
                   </div>
@@ -706,4 +706,38 @@ function GroupPermissions({
       />
     </SettingsCard>
   )
+}
+
+function GroupSecretPermissions({ base, groupId, attempt, onChanged }: {
+  base: string; groupId: string; attempt: number; onChanged: () => void
+}) {
+  const [names, setNames] = useState<string[]>([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const hasLoaded = useRef(false)
+  useEffect(() => {
+    let cancelled = false
+    setError('')
+    if (!hasLoaded.current) setLoading(true)
+    listGroupSecrets(base, groupId).then(result => {
+      if (!cancelled) {
+        setNames(result.secrets.map(s => s.name))
+        hasLoaded.current = true
+      }
+    }).catch(e => {
+      if (!cancelled) setError(gatewayErrorMessage(e))
+    }).finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [base, groupId, attempt])
+  if (loading && !hasLoaded.current) return <ConsoleLoading label="Loading secret permissions…" />
+  if (error && !hasLoaded.current) return <ConsoleError message={error} onRetry={onChanged} />
+  return <div>
+    {error && <ConsoleStale message={error} onRetry={onChanged} />}
+    <SecretSelectionSection mode="group" selectedSecrets={[]} onSecretChange={() => {}} groupSelectedNames={names}
+      onGroupAccessChange={async (name, allowed) => {
+        await secretsApi.setVaultSecretAccess(groupId, name, allowed)
+        setNames(current => allowed ? [...new Set([...current, name])] : current.filter(n => n !== name))
+        onChanged()
+      }} />
+  </div>
 }

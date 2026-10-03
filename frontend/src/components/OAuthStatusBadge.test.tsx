@@ -14,7 +14,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); 
 it('reuses an existing shared sign-in without starting another OAuth flow or polling catalog rows', async () => {
  vi.mocked(oauthApi.getOAuthStatus).mockResolvedValue({ valid: true } as never)
  const changed = vi.fn(); const div = document.createElement('div'); const root = createRoot(div)
- await act(async () => { root.render(<OAuthStatusBadge serverName="Test" requiresOAuth connection="available" reuseAuthentication connectLabel="Connect with OAuth" onAuthChange={changed} />) })
+ await act(async () => { root.render(<OAuthStatusBadge scope="vault" serverName="Test" requiresOAuth connection="available" reuseAuthentication connectLabel="Connect with OAuth" onAuthChange={changed} />) })
  expect(oauthApi.getOAuthStatus).not.toHaveBeenCalled()
  expect(div.textContent).toContain('Connect with OAuth')
  await act(async () => { div.querySelector('button')!.click() })
@@ -29,9 +29,9 @@ it('uses the existing login flow and stops its completion poll on unmount', asyn
  vi.mocked(oauthApi.getOAuthStatus).mockResolvedValue({ valid: false } as never)
  vi.mocked(oauthApi.startOAuthFlow).mockResolvedValue({ auth_url: 'http://localhost/authorize', state: 'test' } as never)
  const div = document.createElement('div'); const root = createRoot(div)
- await act(async () => root.render(<OAuthStatusBadge serverName="Test" requiresOAuth connection="available" reuseAuthentication />))
+ await act(async () => root.render(<OAuthStatusBadge scope="vault" serverName="Test" requiresOAuth connection="available" reuseAuthentication />))
  await act(async () => div.querySelector('button')!.click())
- expect(oauthApi.startOAuthFlow).toHaveBeenCalledWith('Test', undefined, undefined)
+ expect(oauthApi.startOAuthFlow).toHaveBeenCalledWith('Test', undefined, undefined, 'vault')
  expect(open).toHaveBeenCalledWith('http://localhost/authorize', '_blank')
  await act(async () => root.unmount())
  const calls = vi.mocked(oauthApi.getOAuthStatus).mock.calls.length

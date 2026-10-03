@@ -33,8 +33,8 @@ var (
 	oauthFlowsMu sync.RWMutex
 )
 
-// MCP authentication is deployment-wide. The initiating user is retained in
-// audit logs, while every AgentWorks product resolves this shared credential.
+// The legacy platform credential namespace is reserved for Vault. Ordinary
+// product connections use the authenticated person's sealed private store.
 const platformMCPTokenUserID = "_platform"
 
 const platformMCPConnectionSessionID = "mcp-platform"
@@ -107,6 +107,7 @@ func deriveOAuthRedirectURIFromEnv() string {
 
 // OAuthLoginRequest represents a request to start OAuth flow
 type OAuthLoginRequest struct {
+	Scope      string `json:"scope,omitempty"`
 	ServerName string `json:"server_name"`
 	ClientID   string `json:"client_id,omitempty"` // User-provided client_id for servers without DCR
 	// ClientSecret goes with ClientID for providers whose OAuth apps are
@@ -117,6 +118,7 @@ type OAuthLoginRequest struct {
 // MCPConnectRequest represents a request to connect a server. APIKey is optional
 // and only meaningful for servers with no oauth block.
 type MCPConnectRequest struct {
+	Scope      string `json:"scope,omitempty"`
 	ServerName string `json:"server_name"`
 	APIKey     string `json:"api_key,omitempty"`
 }
@@ -153,6 +155,7 @@ type OAuthStatusResponse struct {
 
 // OAuthLogoutRequest represents a request to logout (remove token)
 type OAuthLogoutRequest struct {
+	Scope      string `json:"scope,omitempty"`
 	ServerName string `json:"server_name"`
 }
 
@@ -666,6 +669,14 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if req.Scope == "" || req.Scope == "private" {
+		api.startPrivateOAuth(w, r, req)
+		return
+	}
+	if !vaultOAuthScope(w, r, req.Scope) {
+		return
+	}
+
 	// The caller identity is audit provenance; the saved connection is shared.
 	userID := GetUserIDFromContext(r.Context())
 	// Derive redirect URI from PUBLIC_URL env var (for production) or incoming request (for local)
@@ -697,6 +708,15 @@ func (api *StreamingAPI) handleOAuthStatus(w http.ResponseWriter, r *http.Reques
 	serverName := r.URL.Query().Get("server_name")
 	if serverName == "" {
 		http.Error(w, "server_name query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	scope := r.URL.Query().Get("scope")
+	if scope == "" || scope == "private" {
+		privateOAuthStatus(w, r, serverName)
+		return
+	}
+	if !vaultOAuthScope(w, r, scope) {
 		return
 	}
 
@@ -792,6 +812,14 @@ func (api *StreamingAPI) handleOAuthLogout(w http.ResponseWriter, r *http.Reques
 
 	if req.ServerName == "" {
 		http.Error(w, "server_name is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Scope == "" || req.Scope == "private" {
+		disconnectPrivateCatalog(w, r, req.ServerName)
+		return
+	}
+	if !vaultOAuthScope(w, r, req.Scope) {
 		return
 	}
 
@@ -897,10 +925,6 @@ func (api *StreamingAPI) invalidateServerDiscovery(serverName, logMessage string
 // overlay. OAuth servers are redirected to the authorization flow instead — the
 // overlay write happens on callback success.
 func (api *StreamingAPI) handleConnectServer(w http.ResponseWriter, r *http.Request) {
-	if isMCPConfigLocked() {
-		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
-		return
-	}
 
 	var req MCPConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -909,6 +933,19 @@ func (api *StreamingAPI) handleConnectServer(w http.ResponseWriter, r *http.Requ
 	}
 	if req.ServerName == "" {
 		http.Error(w, "server_name is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Scope == "" || req.Scope == "private" {
+		api.connectPrivateCatalog(w, r, req)
+		return
+	}
+	if !vaultOAuthScope(w, r, req.Scope) {
+		return
+	}
+	// The lock protects the shared catalog; private account stores are separate.
+	if isMCPConfigLocked() {
+		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
 		return
 	}
 
@@ -967,13 +1004,9 @@ func (api *StreamingAPI) handleConnectServer(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-// handleDisconnectServer removes a server from the platform overlay and its
-// shared OAuth token if it has one.
+// handleDisconnectServer removes the caller's private connection by default.
+// Explicit Vault scope removes shared credential metadata and requires admin access.
 func (api *StreamingAPI) handleDisconnectServer(w http.ResponseWriter, r *http.Request) {
-	if isMCPConfigLocked() {
-		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
-		return
-	}
 
 	var req MCPConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -982,6 +1015,19 @@ func (api *StreamingAPI) handleDisconnectServer(w http.ResponseWriter, r *http.R
 	}
 	if req.ServerName == "" {
 		http.Error(w, "server_name is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Scope == "" || req.Scope == "private" {
+		disconnectPrivateCatalog(w, r, req.ServerName)
+		return
+	}
+	if !vaultOAuthScope(w, r, req.Scope) {
+		return
+	}
+	// The lock protects the shared catalog; private account stores are separate.
+	if isMCPConfigLocked() {
+		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
 		return
 	}
 
