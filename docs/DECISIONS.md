@@ -2,8 +2,14 @@
 
 A running log for people and coding agents working on this repository. Read it
 before changing behaviour it covers; add an entry (newest first) when you make
-or reverse a decision, and move an open issue to a decision once it is settled.
-Each entry says what was decided, why, and where it lives in the code.
+or reverse a decision. Each entry says what was decided, why, and where it lives
+in the code, and links its platform ticket.
+
+This file is not where work is tracked. Every bug, fix or feature has a platform
+ticket (`docs/bugs/pulse_platform/<area>/plat-NNN.md`, listed in
+`docs/bugs/pulse_platform_issue_register.md`) holding its state, what is done
+and what is left; that ticket is the source of truth. Add an entry here only
+for a decision that changes behaviour, keep it short, and link the ticket.
 
 Design references for the linked runtime decisions:
 

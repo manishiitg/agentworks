@@ -1,3 +1,10 @@
+## Scripted steps could not write the workflow database — PLAT-372
+
+[PLAT-372](pulse_platform/step-execution/plat-372.md), P1, **fixed** on `main`
+(`7ce796701`), RTS deploy pending: a scripted step's script writes as the
+group session, which never had the DB grant, so salesoutreach lead discovery
+saved nothing from 2026-09-27.
+
 ## External crew/workflow interaction follow-ups — PLAT-365–370
 
 The 2026-09-28 bidirectional MCP review found these. Three are fixed on
