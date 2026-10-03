@@ -152,10 +152,15 @@ func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 }
 
 // cliPolicyPath turns a folder-guard entry into the absolute path a sandbox
-// policy needs: workspace-relative entries join the docs root, absolute host
-// grants (Downloads, a project folder) stay as they are.
+// policy needs: workspace-relative entries join the docs root. An absolute
+// host grant (Downloads, a project folder) is kept only on a person's own Mac;
+// on a server it is dropped ("" — the caller skips it), so a folder named in a
+// workflow can never widen a CLI's sandbox beyond the workspace there.
 func cliPolicyPath(path string) string {
 	if filepath.IsAbs(strings.TrimSpace(path)) {
+		if !cliUnconfinedAllowed() {
+			return ""
+		}
 		return filepath.Clean(strings.TrimSpace(path))
 	}
 	return codingAgentWorkspaceWorkingDir(path)
@@ -181,18 +186,26 @@ func cliLandlockPolicyForSession(sessionID, provider, workingDir string, base *l
 	policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, workingDir)
 	if cfg != nil {
 		for _, rel := range cfg.ReadPaths {
-			policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, cliPolicyPath(rel))
+			if path := cliPolicyPath(rel); path != "" {
+				policy.WorkspaceReadPaths = appendUniqueStrings(policy.WorkspaceReadPaths, path)
+			}
 		}
 		if !readOnly {
 			for _, rel := range cfg.WritePaths {
-				policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, cliPolicyPath(rel))
+				if path := cliPolicyPath(rel); path != "" {
+					policy.WorkspaceWritePaths = appendUniqueStrings(policy.WorkspaceWritePaths, path)
+				}
 			}
 		}
 		for _, rel := range cfg.BlockedPaths {
-			policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, cliPolicyPath(rel))
+			if path := cliPolicyPath(rel); path != "" {
+				policy.BlockedPaths = appendUniqueStrings(policy.BlockedPaths, path)
+			}
 		}
 		for _, rel := range cfg.BlockedWritePaths {
-			policy.BlockedWritePaths = appendUniqueStrings(policy.BlockedWritePaths, cliPolicyPath(rel))
+			if path := cliPolicyPath(rel); path != "" {
+				policy.BlockedWritePaths = appendUniqueStrings(policy.BlockedWritePaths, path)
+			}
 		}
 	}
 	return policy

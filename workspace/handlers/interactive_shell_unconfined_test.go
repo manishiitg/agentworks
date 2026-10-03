@@ -18,6 +18,7 @@ func TestInteractiveShellUnconfinedIsLocalOnly(t *testing.T) {
 		{"a Mac with per-user accounts opt-in", "darwin", "true", "optin", false},
 		{"a Linux server with per-user accounts", "linux", "true", "on", false},
 	}
+	t.Setenv("MULTI_USER_MODE", "")
 	for _, c := range cases {
 		interactiveShellHostOS = c.hostOS
 		t.Setenv("NATIVE_WORKSPACE", c.native)
@@ -25,5 +26,17 @@ func TestInteractiveShellUnconfinedIsLocalOnly(t *testing.T) {
 		if got := interactiveShellUnconfinedAllowed(); got != c.want {
 			t.Errorf("%s: allowed = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestInteractiveShellUnconfinedNeverOnAMultiUserMac(t *testing.T) {
+	orig := interactiveShellHostOS
+	t.Cleanup(func() { interactiveShellHostOS = orig })
+	interactiveShellHostOS = "darwin"
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("AGENTWORKS_SLOTS", "")
+	t.Setenv("MULTI_USER_MODE", "true")
+	if interactiveShellUnconfinedAllowed() {
+		t.Fatal("allowed on a multi-user server")
 	}
 }

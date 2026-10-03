@@ -40,13 +40,16 @@ func resolveGuardWritePath(wp, docsDir string) (string, error) {
 }
 
 // isExistingHostGrant reports whether a write path outside the workspace
-// boundary is an already-existing absolute directory that is safe to leave to
+// boundary, on a person's own machine, is an already-existing absolute directory that is safe to leave to
 // the isolator: it is not created or resolved through anything, so the
 // boundary check's concern (directories created anywhere as the service
 // account) does not apply. A missing path, a relative path, any ".." segment
 // and anything lexically inside the workspace (symlink redirects) still fail.
 func isExistingHostGrant(wp, docsDir string) bool {
-	if !filepath.IsAbs(wp) {
+	// Only on a person's own Mac (the terminal's rule): on a server, Linux or
+	// NATIVE_WORKSPACE alike, a folder named in a workflow must not reach outside
+	// the workspace, whoever owns that workflow.
+	if !filepath.IsAbs(wp) || !interactiveShellUnconfinedAllowed() {
 		return false
 	}
 	for _, segment := range strings.Split(filepath.ToSlash(wp), "/") {

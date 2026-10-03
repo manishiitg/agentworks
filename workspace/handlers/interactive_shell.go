@@ -189,6 +189,7 @@ var interactiveShellHostOS = runtime.GOOS
 func interactiveShellUnconfinedAllowed() bool {
 	return interactiveShellHostOS == "darwin" &&
 		strings.EqualFold(strings.TrimSpace(os.Getenv("NATIVE_WORKSPACE")), "true") &&
+		os.Getenv("MULTI_USER_MODE") != "true" &&
 		!slots.Enabled()
 }
 

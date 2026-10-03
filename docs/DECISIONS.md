@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Folders outside the workspace reach a sandbox only on a person's own Mac
+
+A workflow's `folder_access` needs the same admin-assigned roots as a Work
+folder, and absolute host grants (including the host Downloads) never reach a
+server's CLI or shell sandbox. Ticket: [PLAT-383](bugs/pulse_platform/security-sandbox/plat-383.md).
+
 ### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu)
 
 - **Decided (user).** Up to 3 terminals per person per Code (tabs); the toolbar actions live in one menu in the top bar with keyboard shortcuts.

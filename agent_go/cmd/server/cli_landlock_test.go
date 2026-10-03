@@ -67,6 +67,10 @@ func TestDecideCLIConfinementWithoutSandboxExec(t *testing.T) {
 func TestCLISandboxPolicyPaths(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	origOS := cliHostOS
+	t.Cleanup(func() { cliHostOS = origOS })
+	cliHostOS = "darwin"
+	t.Setenv("MULTI_USER_MODE", "")
 	const session = "cli-policy-paths-test"
 	common.SetSessionFolderGuard(session, []string{"Workflow/w"}, []string{"Workflow/w", "/Users/someone/Downloads"})
 	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
@@ -93,5 +97,25 @@ func TestCLISandboxPolicyPaths(t *testing.T) {
 	}
 	if !has(policy.BlockedWritePaths, codingAgentWorkspaceWorkingDir("Workflow/w/planning/")) {
 		t.Errorf("blocked write path missing: %v", policy.BlockedWritePaths)
+	}
+}
+
+// On a server an absolute host grant never reaches the CLI's sandbox policy.
+func TestCLISandboxPolicyDropsHostGrantsOnServers(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	origOS := cliHostOS
+	t.Cleanup(func() { cliHostOS = origOS })
+	const session = "cli-policy-server-test"
+	common.SetSessionFolderGuard(session, []string{"Workflow/w", "/srv/secrets"}, []string{"Workflow/w", "/home/someone"})
+	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
+	for _, tc := range []struct{ os, multiUser string }{{"linux", ""}, {"linux", "true"}, {"darwin", "true"}} {
+		cliHostOS = tc.os
+		t.Setenv("MULTI_USER_MODE", tc.multiUser)
+		policy := cliLandlockPolicyForSession(session, "claude-code", "/w/run", nil)
+		for _, p := range append(append([]string{}, policy.WorkspaceReadPaths...), policy.WorkspaceWritePaths...) {
+			if p == "/srv/secrets" || p == "/home/someone" {
+				t.Errorf("%s multi-user=%q: host grant %s reached the policy", tc.os, tc.multiUser, p)
+			}
+		}
 	}
 }

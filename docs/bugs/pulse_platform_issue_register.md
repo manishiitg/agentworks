@@ -1,3 +1,10 @@
+## Absolute host grants reached server sandboxes — PLAT-383
+
+[PLAT-383](pulse_platform/security-sandbox/plat-383.md), P1, **fixed** on `main`:
+workflow `folder_access` had no assigned-roots check and absolute grants reached
+server CLI and shell sandboxes; now root-checked on update and kept only on a
+person's own Mac.
+
 ## Browser toolbar and manual copy/paste — PLAT-382
 
 [PLAT-382](pulse_platform/browser/plat-382.md), implemented and locally verified;

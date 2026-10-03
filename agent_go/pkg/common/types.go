@@ -92,13 +92,21 @@ func expandHomePath(path string) string {
 	return path
 }
 
-// CDPHostDownloadsPath returns the host Downloads path only for CDP mode.
-// Headless browser downloads should stay inside workspace folders.
+// CDPHostDownloadsPath returns the host Downloads path only for CDP mode on a
+// person's own machine. Headless browser downloads should stay inside
+// workspace folders. A multi-user server never grants it (that folder belongs
+// to the service account and would be shared by everyone), and neither does a
+// server that is not in local mode unless a deployment names the folder
+// explicitly (PI_HOST_DOWNLOADS_PATH/HOST_DOWNLOADS_PATH).
 func CDPHostDownloadsPath(browserMode string) string {
-	if strings.EqualFold(strings.TrimSpace(browserMode), "cdp") {
-		return HostDownloadsPath()
+	if !strings.EqualFold(strings.TrimSpace(browserMode), "cdp") || os.Getenv("MULTI_USER_MODE") == "true" {
+		return ""
 	}
-	return ""
+	explicit := strings.TrimSpace(os.Getenv("PI_HOST_DOWNLOADS_PATH")) != "" || strings.TrimSpace(os.Getenv("HOST_DOWNLOADS_PATH")) != ""
+	if !explicit && os.Getenv("LOCAL_MODE") != "true" {
+		return ""
+	}
+	return HostDownloadsPath()
 }
 
 // CDPHostDownloadsReadPath is the compatibility name used by callers that
