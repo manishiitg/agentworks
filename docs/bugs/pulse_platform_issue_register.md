@@ -1,3 +1,9 @@
+## Relays product introduction — PLAT-373
+
+[PLAT-373](pulse_platform/frontend-chat/plat-373.md), implemented and locally
+verified; deployment pending. Relays shares Crew and Code's intro layout and
+opens its existing creation dialog with the account create permission.
+
 ## Scripted steps could not write the workflow database — PLAT-372
 
 [PLAT-372](pulse_platform/step-execution/plat-372.md), P1, **fixed** on `main`

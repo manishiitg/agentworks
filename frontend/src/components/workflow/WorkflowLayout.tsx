@@ -55,6 +55,7 @@ import {
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
 import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
+import { RelayIntro } from './RelayIntro'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
 
 // Helper component to get observerId and render ChatArea
@@ -2299,22 +2300,21 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   if (!activeWorkflowPreset && !workspacePath) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-
-        <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
-            <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-            <span className="text-4xl">🚀</span>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              Select {isRelaySurface ? 'a Relay' : 'an Automation'}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              {isRelaySurface
-                ? 'Choose a relay from the top bar, or use the plus button to create one. Build its graph in chat and inspect it beside the conversation.'
-                : 'Choose an automation from the top bar, or use the plus button to create one. Build it in chat and inspect its plan and dashboard beside the conversation.'}
-            </p>
-            </div>
+        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+          <div className="flex min-h-full items-center justify-center py-6">
+            {isRelaySurface ? <RelayIntro /> : (
+              <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
+                <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                  <span className="text-4xl">🚀</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Select an Automation</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Choose an automation from the top bar, or use the plus button to create one. Build it in chat and inspect its plan and dashboard beside the conversation.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

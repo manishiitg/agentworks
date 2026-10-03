@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Relays shares Crew and Code's introduction layout
+
+- The no-selection Relays page uses `ProductIntro`, shared with Crew and Code,
+  to explain graph building, draft testing and published API versions. Its
+  create button uses the existing preset dialog and account create permission.
+  Relays' guided walkthrough stays disabled.
+- Implementation and verification: [PLAT-373](bugs/pulse_platform/frontend-chat/plat-373.md).
+
 ### 2026-10-03 — macOS Seatbelt confines Claude on a person's own Mac
 
 - On a single-user Mac, Claude Code now starts under `sandbox-exec` with Full CLI

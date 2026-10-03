@@ -357,6 +357,14 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     setWorkspaceMinimized(true)
   }, [canCreateWorkflows, setWorkspaceMinimized])
 
+  // Intro pages reuse the same creation dialog and permission check as the plus button.
+  const showPresetCreate = useCommandDialogStore(s => s.showPresetCreate)
+  useEffect(() => {
+    if (!showPresetCreate || presetModeCategory !== 'workflow' || reduced) return
+    useCommandDialogStore.getState().closeDialog('presetCreate')
+    handleAddWorkflow()
+  }, [showPresetCreate, presetModeCategory, reduced, handleAddWorkflow])
+
   // Listen for external trigger to open preset settings (e.g. from workflow toolbar)
   const showPresetSettings = useCommandDialogStore(s => s.showPresetSettings)
   useEffect(() => {

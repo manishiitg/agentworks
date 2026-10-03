@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => {
     workflowPresetsLoaded: false, loading: false, activePreset: null,
     showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null,
     showLLMModal: false, workflows: [], activeSessionsCache: [], chatTabs: {},
-    activeTabId: null, showPresetSettings: false,
+    activeTabId: null, showPresetSettings: false, showPresetCreate: false, canCreate: true,
+    closeDialog: (dialog: string) => { if (dialog === 'presetCreate') state.showPresetCreate = false },
+    addToast: vi.fn(),
     refreshPresets: async () => {}, getActivePreset: () => state.activePreset,
     getPresetsForMode: () => state.workflowPresets, isPresetActive: () => false,
     setWorkspaceMinimized: noop, setModeCategory: noop, getAgentModeFromCategory: () => 'workflow',
@@ -29,9 +31,9 @@ vi.mock('../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore:
 vi.mock('../stores', () => ({ useChatStore: mocks.store, useLLMStore: mocks.store }))
 vi.mock('../services/api', () => ({ agentApi: {}, workflowManifestApi: {} }))
 vi.mock('../utils/workflowSessionRestore', () => ({ openWorkflowPresetPage: vi.fn() }))
-vi.mock('../utils/workflowPermissions', () => ({ hasWorkflowCreateAccess: () => true, isWorkflowReadOnly: () => false }))
+vi.mock('../utils/workflowPermissions', () => ({ hasWorkflowCreateAccess: () => mocks.state.canCreate, isWorkflowReadOnly: () => false }))
 vi.mock('../hooks/useGlobalSchedulerPaused', () => ({ useGlobalSchedulerPaused: () => false }))
-vi.mock('./PresetModal', () => ({ default: () => null }))
+vi.mock('./PresetModal', () => ({ default: ({ isOpen, editingPreset, fixedWorkflowKind }: any) => isOpen ? <div data-testid="preset-modal">{editingPreset ? 'edit' : 'create'}:{fixedWorkflowKind}</div> : null }))
 vi.mock('./GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => null }))
 vi.mock('./ProductSurfaceSwitcher', () => ({ ProductSurfaceSwitcher: () => null }))
 vi.mock('./WorkspaceTopBarControls', () => ({ default: () => null }))
@@ -66,7 +68,7 @@ beforeEach(() => {
   } })
   delete (window as any).__llmDiscoveryOnboardingState
   delete window.electronAPI
-  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false })
+  Object.assign(mocks.state, { workflowPresetsLoaded: false, activePreset: null, workflowPresets: [], showLLMModal: false, loading: false, showPresetCreate: false, canCreate: true })
   mocks.renderedTours.length = 0
   host = document.createElement('div')
   document.body.append(host)
@@ -130,4 +132,21 @@ it('allows manual help during startup', async () => {
   await render()
   await act(async () => window.dispatchEvent(new Event('open-workflow-walkthrough')))
   expect(tour()?.textContent).toBe('empty-automation')
+})
+
+
+it('opens the existing creation dialog for an intro request, even with an active preset', async () => {
+  mocks.state.activePreset = { id: 'existing', label: 'Existing automation' }
+  mocks.state.showPresetCreate = true
+  await render()
+  expect(host.querySelector('[data-testid="preset-modal"]')?.textContent).toBe('create:workflow')
+  expect(mocks.state.showPresetCreate).toBe(false)
+})
+
+it('rejects intro creation requests when the account cannot create', async () => {
+  mocks.state.canCreate = false
+  mocks.state.showPresetCreate = true
+  await render()
+  expect(host.querySelector('[data-testid="preset-modal"]')).toBeNull()
+  expect(mocks.state.showPresetCreate).toBe(false)
 })

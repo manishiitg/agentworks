@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, PanelLeftOpen, PanelRightOpen, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Loader2, PanelLeftOpen, PanelRightOpen, Sparkles, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
+import { ProductIntro } from '../../components/ProductIntro'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import { TerminalFocusLayout } from '../../components/TerminalFocusLayout'
@@ -1133,75 +1134,29 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
             <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
               {sessionsLoading || creating ? (
                 <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
-              ) : !product.hasIdentity ? (
-                <div data-tour="code-empty-state" className="flex max-w-xl flex-col items-center px-6 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 [@media(max-height:600px)]:hidden">
-                    <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;/&gt;</span>
-                  </div>
-                  <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">A private workspace to code in</h2>
-                  <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
-                    Files, an editor and a terminal on the team server, with a coding agent beside them. Your workspaces stay private to you.
-                  </p>
-                  <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
-                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                      <span className="block font-medium text-foreground">Files and a terminal</span>
-                      Your own project folder, an editor, and a terminal sandboxed to this workspace.
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                      <span className="block font-medium text-foreground">A coding agent beside you</span>
-                      Ask it to write, run and fix code here. It can call the Crews and workflows you can use.
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                      <span className="block font-medium text-foreground">Private to you</span>
-                      Files, chats and credentials belong to your account. Sharing a link does not give another person access.
-                    </div>
-                  </div>
-                  <p className="mx-auto mt-4 max-w-lg text-xs leading-5 text-muted-foreground">Admins and {product.noun} reviewers on this server can read your {product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.</p>
-                  <button
-                    data-tour="code-create"
-                    type="button"
-                    onClick={openCreateProject}
-                    className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Create your first {product.itemNoun}
-                  </button>
-                </div>
               ) : (
-                <div data-tour="crew-empty-state" className="flex max-w-xl flex-col items-center px-6 text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
-                    <span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">&lt;&gt;</span>
-                  </div>
-                  <div className="mt-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{product.noun}</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Your AI workspace for any project</h2>
-                    <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
-                      Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.
-                    </p>
-                    <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
-                      <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                        <span className="block font-medium text-foreground">Chat and create</span>
-                        Ask questions, research, write, analyze, and keep the context together.
-                      </div>
-                      <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                        <span className="block font-medium text-foreground">Code and operate</span>
-                        Work with files, code, the browser, terminal, skills, and MCP tools.
-                      </div>
-                      <div className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-                        <span className="block font-medium text-foreground">Run automatically</span>
-                        Continue work with schedules, triggers, background tasks, and bots.
-                      </div>
-                    </div>
-                    <button
-                      data-tour="crew-create"
-                      type="button"
-                      onClick={openCreateProject}
-                      className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Create your first {product.itemNoun}
-                    </button>
-                  </div>
-                </div>
+                <ProductIntro
+                  tour={product.hasIdentity ? 'crew-empty-state' : 'code-empty-state'}
+                  product={product.noun}
+                  icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{product.hasIdentity ? '<>' : '</>'}</span>}
+                  title={product.hasIdentity ? 'Your AI workspace for any project' : 'A private workspace to code in'}
+                  description={product.hasIdentity
+                    ? 'Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.'
+                    : 'Files, an editor and a terminal on the team server, with a coding agent beside them. Your workspaces stay private to you.'}
+                  features={product.hasIdentity ? [
+                    { title: 'Chat and create', description: 'Ask questions, research, write, analyze, and keep the context together.' },
+                    { title: 'Code and operate', description: 'Work with files, code, the browser, terminal, skills, and MCP tools.' },
+                    { title: 'Run automatically', description: 'Continue work with schedules, triggers, background tasks, and bots.' },
+                  ] : [
+                    { title: 'Files and a terminal', description: 'Your own project folder, an editor, and a terminal sandboxed to this workspace.' },
+                    { title: 'A coding agent beside you', description: 'Ask it to write, run and fix code here. It can call the Crews and workflows you can use.' },
+                    { title: 'Private to you', description: 'Files, chats and credentials belong to your account. Sharing a link does not give another person access.' },
+                  ]}
+                  footer={product.hasIdentity ? undefined : `Admins and ${product.noun} reviewers on this server can read your ${product.noun} workspaces' chats, files and costs. It is read-only, and every view is logged.`}
+                  createTour={product.hasIdentity ? 'crew-create' : 'code-create'}
+                  createLabel={`Create your first ${product.itemNoun}`}
+                  onCreate={openCreateProject}
+                />
               )}
             </div>
           ) : (

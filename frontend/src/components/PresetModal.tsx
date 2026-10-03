@@ -527,7 +527,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         <div className="flex flex-shrink-0 flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <h2 className="min-w-0 text-lg font-semibold text-foreground sm:text-2xl">
             {effectiveAgentMode === 'workflow'
-              ? (editingPreset ? 'Edit Automation' : 'Add Automation')
+              ? `${editingPreset ? 'Edit' : 'Add'} ${workflowKind === 'relay' ? 'Relay' : 'Automation'}`
               : (editingPreset ? 'Edit Preset' : 'Add New Preset')}
           </h2>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -599,7 +599,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                     id="preset-label"
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
-                    placeholder="Enter automation name..."
+                    placeholder={workflowKind === 'relay' ? 'Enter relay name...' : 'Enter automation name...'}
                     autoFocus
                     required
                   />
@@ -607,14 +607,14 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
               </div>
               <div>
                 <p id="preset-icon-help" className="text-xs text-gray-500 dark:text-gray-400">
-                  Optional. Use an emoji or short symbol; otherwise the automation’s initial is used.
+                  Optional. Use an emoji or short symbol; otherwise the {workflowKind === 'relay' ? 'relay' : 'automation'}’s initial is used.
                 </p>
                 {showRunsOn && (
                   <RunsOnPicker profileId="workflow" accountsProduct="" saveAccount="when-needed" options={runsOnOptions} onChange={setRunsOn} />
                 )}
                 {!editingPreset && (
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    Saved under <span className="font-mono">{selectedFolder?.filepath || 'Workflow/workflow'}</span>. Models, secrets and connectors are set up inside the workflow.
+                    Saved under <span className="font-mono">{selectedFolder?.filepath || 'Workflow/workflow'}</span>. Models, secrets and connectors are set up inside the {workflowKind === 'relay' ? 'relay' : 'workflow'}.
                   </p>
                 )}
               </div>
