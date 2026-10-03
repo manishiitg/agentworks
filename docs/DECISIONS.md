@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A platform session never loads a person's own CLI config or MCP servers (Codex on a Mac) — PLAT-418
+
+- **Decided.** Whatever the home is, a coding CLI in a platform session runs with a config of its own: on a
+  Mac, Codex gets `CODEX_HOME = <private home>/.codex` (login linked in), like Landlock already did. The
+  person's own MCP servers, plugins and settings do not load next to the platform's tools.
+- **Why.** A chat answered from the owner's own AgentWorks MCP connection (their real workflows) instead of
+  the platform's tools. Their home stays open to the CLI's shell; their *config* is not part of the session.
+- **Where.** `llmtypes.SandboxHomeEnvironment`, `clisandbox.prepareSeatbeltCodexHome`.
+  [PLAT-418](bugs/pulse_platform/coding-agent-bridge/plat-418.md).
+
 ### 2026-10-04 — Codex `gpt-5.3-codex-spark` is no longer offered — PLAT-416
 
 OpenAI refuses it for Codex signed in with a ChatGPT account, and the platform cannot tell which accounts could use it, so it is not offered anywhere (visible catalog, auto-published fast models, web search,

@@ -85,6 +85,19 @@ trust screen and approval stops (`--trust`, `--add-dir`, `--force`; `--force`
 keeps hooks), Agy's stale `statusLine`, and Codex loading the person's own MCP
 servers. All six CLIs pass both layers on macOS (provider `fc8c84e`, mcpagent `83276c0`).
 
+## Contract updates (2026-10-04)
+
+- A third command, `agent_go test cli-step-contract`, covers workflow steps (an agent
+  step and a scripted step); the measured permission map is PLAT-419.
+- The chat contract also runs the harness script directly under the Seatbelt profile
+  the server wrote for the chat (a Mac), so the server-computed grants are tested
+  without depending on a model's willingness; the model-driven part covers trust
+  screens, approvals and the CLI's own edit tool, retried up to three times (Muse
+  reads the script and cites the project's rules, then declines).
+- Server tests need their own `AGENTWORKS_STATE_ROOT` (`--state-root`) and must be
+  stopped by port: a test server that shared the real state folder exposed the
+  owner's personal MCP connections to chats (PLAT-418).
+
 ## Left
 
 - Agy not run live: not logged in on this Mac.

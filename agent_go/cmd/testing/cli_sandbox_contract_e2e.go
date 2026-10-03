@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -87,41 +88,77 @@ var cliSandboxContractCmd = &cobra.Command{
 		if err := client.ensureUserAuth(ctx); err != nil {
 			return err
 		}
-		sessionID := "cli-sandbox-contract-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
-		fmt.Printf("cli-sandbox-contract provider=%s model=%s bridge_only=%v session=%s workflow=%s\n", provider, model, bridgeOnly, sessionID, layout.relMain)
+		// A model may decline an attempt (Muse reads the script and cites the
+		// project's workflow rules), so a turn is retried, up to three times, with
+		// a fresh chat; the contract passes when one attempt satisfies every check.
+		const attempts = 3
+		var lastErr error
+		for attempt := 1; attempt <= attempts; attempt++ {
+			fmt.Printf("attempt %d/%d\n", attempt, attempts)
+			failures, err := func() ([]string, error) {
+				sessionID := "cli-sandbox-contract-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+				fmt.Printf("cli-sandbox-contract provider=%s model=%s bridge_only=%v session=%s workflow=%s\n", provider, model, bridgeOnly, sessionID, layout.relMain)
 
-		prompt := layout.prompt(bridgeOnly)
-		since := 0
-		if resp, _, err := client.getEvents(ctx, sessionID); err == nil {
-			since = advanceE2ECursor(since, resp.LastProcessedIndex)
-		}
-		if _, err := client.startQuery(ctx, sessionID, provider, model, prompt); err != nil {
-			return fmt.Errorf("start the contract turn: %w", err)
-		}
-		final, raw, events, err := client.waitForCompletion(ctx, sessionID, since)
-		if err != nil {
-			return fmt.Errorf("the turn did not finish (a trust or approval screen also ends here): %w", err)
-		}
-		defer func() { _ = client.stopSession(ctx, sessionID) }()
-		fmt.Printf("final answer:\n%s\n", truncateE2E(final, 3500))
+				prompt := layout.prompt(bridgeOnly)
+				started := time.Now()
+				since := 0
+				if resp, _, err := client.getEvents(ctx, sessionID); err == nil {
+					since = advanceE2ECursor(since, resp.LastProcessedIndex)
+				}
+				if _, err := client.startQuery(ctx, sessionID, provider, model, prompt); err != nil {
+					return nil, fmt.Errorf("start the contract turn: %w", err)
+				}
+				final, raw, events, err := client.waitForCompletion(ctx, sessionID, since)
+				if err != nil {
+					return nil, fmt.Errorf("the turn did not finish (a trust or approval screen also ends here): %w", err)
+				}
+				defer func() { _ = client.stopSession(ctx, sessionID) }()
+				fmt.Printf("final answer:\n%s\n", truncateE2E(final, 3500))
 
-		// Everything the session recorded (tool results and the assistant's
-		// messages), so a marker the CLI printed anywhere counts.
-		transcript := final + "\n" + raw
-		for _, event := range events {
-			if data, marshalErr := json.Marshal(event); marshalErr == nil {
-				transcript += "\n" + string(data)
+				// Everything the session recorded (tool results and the assistant's
+				// messages), so a marker the CLI printed anywhere counts.
+				transcript := final + "\n" + raw
+				for _, event := range events {
+					if data, marshalErr := json.Marshal(event); marshalErr == nil {
+						transcript += "\n" + string(data)
+					}
+				}
+				if _, all, allErr := client.getEventsSince(ctx, sessionID, 0); allErr == nil {
+					transcript += "\n" + all
+				}
+				// Model-independent layer (a Mac): the same script, run directly under the
+				// Seatbelt profile the server wrote for this chat. A model may decline to run
+				// a script that tries forbidden things; the profile cannot.
+				underProfile := ""
+				if runtime.GOOS == "darwin" && !bridgeOnly {
+					underProfile = layout.runUnderChatProfile(ctx, cliSandboxContractFlags.stateRoot, provider, started)
+					if underProfile != "" {
+						fmt.Printf("ran the script under the chat's Seatbelt profile (%d bytes of output)\n", len(underProfile))
+						transcript += "\n" + underProfile
+					} else {
+						fmt.Println("note: no Seatbelt profile found for this chat; relying on the model's run of the script")
+					}
+				}
+				if underProfile == "" && !strings.Contains(transcript, "== check 1") {
+					return nil, fmt.Errorf("inconclusive: the CLI declined to run the checks and no sandbox profile was available to run them directly")
+				}
+				return layout.verify(transcript, bridgeOnly), nil
+			}()
+			if err != nil {
+				lastErr = err
+				continue
 			}
-		}
-		if _, all, allErr := client.getEventsSince(ctx, sessionID, 0); allErr == nil {
-			transcript += "\n" + all
-		}
-		failures := layout.verify(transcript, bridgeOnly)
-		if len(failures) > 0 {
+			if len(failures) == 0 {
+				lastErr = nil
+				break
+			}
 			for _, failure := range failures {
 				fmt.Printf("FAIL %s\n", failure)
 			}
-			return fmt.Errorf("%d sandbox contract check(s) failed for %s", len(failures), provider)
+			lastErr = fmt.Errorf("%d sandbox contract check(s) failed for %s", len(failures), provider)
+		}
+		if lastErr != nil {
+			return lastErr
 		}
 		fmt.Printf("PASS cli-sandbox-contract provider=%s\n", provider)
 		return nil
@@ -150,6 +187,12 @@ type cliSandboxContractLayout struct {
 }
 
 func newCLISandboxContractLayout(docs, stateRoot string, keep bool, provider, model string) (*cliSandboxContractLayout, func(), error) {
+	return newCLISandboxContractLayoutFor(docs, stateRoot, keep, provider, model, false)
+}
+
+// newCLISandboxContractLayoutFor builds the fixtures; stepOnly skips the
+// extras that only apply to an interactive chat on a person's own Mac.
+func newCLISandboxContractLayoutFor(docs, stateRoot string, keep bool, provider, model string, stepOnly bool) (*cliSandboxContractLayout, func(), error) {
 	id := strings.ReplaceAll(uuid.NewString(), "-", "")[:10]
 	l := &cliSandboxContractLayout{docs: docs, tokens: map[string]string{}}
 	// The main workflow is a valid workflow fixture (manifest, plan, variables).
@@ -209,7 +252,7 @@ func newCLISandboxContractLayout(docs, stateRoot string, keep bool, provider, mo
 
 	// On a person's own Mac: their home is open to the CLI, the app's own state
 	// folder (every chat's runtime, logins, the server token) is not.
-	if runtime.GOOS == "darwin" && !bridgeOnlyProvider(provider) {
+	if runtime.GOOS == "darwin" && !bridgeOnlyProvider(provider) && !stepOnly {
 		if home, err := os.UserHomeDir(); err == nil {
 			dir := filepath.Join(home, ".agentworks-contract-"+id)
 			created = append(created, dir)
@@ -339,4 +382,30 @@ func (l *cliSandboxContractLayout) verify(reply string, bridgeOnly bool) []strin
 		}
 	}
 	return failures
+}
+
+// runUnderChatProfile finds the Seatbelt profile the server wrote for this chat
+// (newest one for the provider since the turn started) and runs the harness
+// script under it, returning the script's output ("" when no profile exists).
+func (l *cliSandboxContractLayout) runUnderChatProfile(ctx context.Context, stateRoot, provider string, since time.Time) string {
+	root := strings.TrimSpace(stateRoot)
+	if root == "" {
+		if cfg, err := os.UserConfigDir(); err == nil {
+			root = filepath.Join(cfg, "AgentWorks", "state")
+		}
+	}
+	matches, _ := filepath.Glob(filepath.Join(root, "cli-runtimes", "v1", "*", ".sandbox-cache", "cli-home", provider, "agentworks-cli-seatbelt.sb"))
+	var newest string
+	var newestTime time.Time
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err == nil && info.ModTime().After(since.Add(-5*time.Second)) && info.ModTime().After(newestTime) {
+			newest, newestTime = match, info.ModTime()
+		}
+	}
+	if newest == "" {
+		return ""
+	}
+	out, _ := exec.CommandContext(ctx, "/usr/bin/sandbox-exec", "-f", newest, "/bin/sh", l.scriptPath()).CombinedOutput() // #nosec G204 -- fixture paths
+	return string(out)
 }

@@ -1,3 +1,15 @@
+## Codex on a Mac: own CODEX_HOME, personal MCP servers off — PLAT-418
+
+[PLAT-418](pulse_platform/coding-agent-bridge/plat-418.md), fixed on `main`, not
+deployed (Mac only): Codex loaded the person's own MCP servers and could not see
+its session profile; it now runs with its own `CODEX_HOME` like under Landlock.
+
+## What a workflow step may do (measured) — PLAT-419
+
+[PLAT-419](pulse_platform/security-sandbox/plat-419.md), open question for the
+owner: the permission map of agent steps vs scripted steps, from the new
+`cli-step-contract`.
+
 ## Muse on a confined host: runtime folder, refused messages, probe folders — PLAT-417
 
 [PLAT-417](pulse_platform/coding-agent-bridge/plat-417.md), fixed on `main`, not

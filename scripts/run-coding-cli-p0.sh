@@ -256,7 +256,13 @@ for raw_provider in "${provider_list[@]}"; do
   # bridge-only shape.
   go -C "$ROOT_DIR/agent_go" run . test cli-sandbox-contract \
     --server-url "$SERVER_URL" --workspace-docs "$WORKSPACE_DOCS" \
-    --provider "$provider" --timeout 10m
+    --provider "$provider" --timeout 12m
+
+  # And the permissions a workflow's own steps run with: an agent step (bridge
+  # shell) and a scripted step, started through a real chat. Verdicts from disk.
+  go -C "$ROOT_DIR/agent_go" run . test cli-step-contract \
+    --server-url "$SERVER_URL" --workspace-docs "$WORKSPACE_DOCS" \
+    --provider "$provider" --timeout 12m
 
   # The release-blocking application contract must exercise the CLI with the
   # real MCP agent bridge active. This launches a plan step, performs a bridge

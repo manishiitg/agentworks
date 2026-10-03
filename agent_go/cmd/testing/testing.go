@@ -97,4 +97,5 @@ func initTestingCommands() {
 	TestingCmd.AddCommand(codingAgentBackgroundE2ECmd)
 	TestingCmd.AddCommand(workflowAutoNotificationE2ECmd)
 	TestingCmd.AddCommand(cliSandboxContractCmd)
+	TestingCmd.AddCommand(cliStepContractCmd)
 }
