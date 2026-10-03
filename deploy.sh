@@ -277,7 +277,9 @@ echo "==> [$PRODUCT] Done."
 # A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
 # URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
 # or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
-# With neither set nothing is sent, and a failed post never fails or delays a deploy.
+# OFF by default (2026-10-03): nothing is posted unless DEPLOY_SLACK_NOTIFY=1 is set for that run, e.g.
+#   DEPLOY_SLACK_NOTIFY=1 ./deploy.sh confida
+# With no webhook set nothing is sent either, and a failed post never fails or delays a deploy.
 deploy_notify() {
   local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
   [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
@@ -297,6 +299,7 @@ deploy_label() {
 }
 
 deploy_start_notice() {
+  case "${DEPLOY_SLACK_NOTIFY:-}" in 1|true|yes|on) ;; *) return 0 ;; esac
   [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
   local head_line
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
