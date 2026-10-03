@@ -1,3 +1,9 @@
+## Full CLI native writes ignored blocked paths on Linux — PLAT-384
+
+[PLAT-384](pulse_platform/security-sandbox/plat-384.md), P1, **stopgap** on `main`:
+Linux chats with blocked paths inside writable folders stay hybrid until the
+Landlock launcher hides them; the launcher enforcement is open.
+
 ## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384
 
 [PLAT-384](pulse_platform/cost-telemetry/plat-384.md), P2, RTS indexes backed up,
