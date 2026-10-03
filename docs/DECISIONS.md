@@ -19,6 +19,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Mac: Seatbelt for every coding CLI, home open; no unconfined mode — PLAT-394
+
+- **Decided (owner).** On a person's own Mac every CLI runs Full CLI under Seatbelt. Their home stays open
+  (settings, logins, terminal config); only AgentWorks' workspace data outside the chat's grants, the folder
+  guard's blocked paths, and opening/scripting other apps are refused. `full_unconfined` is gone; a Mac that
+  cannot sandbox runs bridge-only.
+- **Why.** The owner wants agents to keep the same reach as the person on their own machine; the risk is the
+  platform's own data and escapes through other apps, not the person's home.
+- **Where.** `internal/clisandbox/seatbelt.go` (provider), `cmd/server/cli_landlock.go` (builder).
+  [PLAT-394](bugs/pulse_platform/security-sandbox/plat-394.md).
+
 ### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work)
 
 - **Found (user).** With tmux's alternate screen off (smcup@:rmcup@) the wheel did nothing: tmux repaints its screen instead of scrolling

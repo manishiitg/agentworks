@@ -12,8 +12,8 @@
 ## Decision (owner, 2026-10-03)
 
 "Native agent tools" has two settings: off = `mcp_only`, on = `full` — the
-CLI's own tools inside a sandbox (Landlock on Linux, Seatbelt on a Mac; on a
-Mac other CLIs run `full_unconfined` until each gets Seatbelt). If the CLI
+CLI's own tools inside a sandbox (Landlock on Linux, Seatbelt on a Mac for
+every CLI since PLAT-394; `full_unconfined` is gone). If the CLI
 cannot be confined it runs `mcp_only`. The reads-only `hybrid` middle state is
 gone; a stored `hybrid` reads as `full`.
 
@@ -52,4 +52,4 @@ native tools were told their native tools were disabled).
   with `--yolo`, `fcc28ff`); Cursor full mode stopped on its own permission
   prompts (fixed `7c1966d`).
 - Left: Linux proof of the Muse and Cursor fixes on a server; the owner's final
-  testing; Seatbelt for the other CLIs and removing `full_unconfined` (step 3).
+  testing; Seatbelt for the other CLIs and removing `full_unconfined`: done in PLAT-394.

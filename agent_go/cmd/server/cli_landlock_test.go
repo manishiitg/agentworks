@@ -7,9 +7,9 @@ import (
 )
 
 // The platform decides how coding CLIs run; there is no switch to forget.
-// Only a person's own Mac runs them unconfined. Everywhere else they are
-// locked, and if the lock cannot be applied the chat loses native tools
-// rather than running unconfined.
+// Every CLI runs locked (Seatbelt on a person's own Mac, Landlock elsewhere),
+// and if the lock cannot be applied the chat loses native tools; nothing runs
+// unconfined.
 func TestDecideCLIConfinement(t *testing.T) {
 	origOS, origRunner, origSeatbelt := cliHostOS, cliLandlockRunner, cliSeatbeltAvailable
 	t.Cleanup(func() { cliHostOS, cliLandlockRunner, cliSeatbeltAvailable = origOS, origRunner, origSeatbelt })
@@ -27,9 +27,11 @@ func TestDecideCLIConfinement(t *testing.T) {
 		want       cliRunDecision
 	}{
 		{"own Mac, Claude: Seatbelt", "claude-code", "darwin", "", "/w", noLock, cliRunSeatbelt},
-		{"own Mac, a CLI not certified for Seatbelt", "codex-cli", "darwin", "", "/w", noLock, cliRunUnconfined},
-		{"own Mac, no working folder", "claude-code", "darwin", "", "", noLock, cliRunUnconfined},
-		{"multi-user Mac never runs unconfined", "claude-code", "darwin", "true", "/w", noLock, cliRunBridgeOnly},
+		{"own Mac, Codex: Seatbelt", "codex-cli", "darwin", "", "/w", noLock, cliRunSeatbelt},
+		{"own Mac, Cursor: Seatbelt", "cursor-cli", "darwin", "", "/w", noLock, cliRunSeatbelt},
+		{"own Mac, Muse: Seatbelt", "muse-cli", "darwin", "", "/w", noLock, cliRunSeatbelt},
+		{"own Mac, no working folder fails closed", "claude-code", "darwin", "", "", noLock, cliRunBridgeOnly},
+		{"multi-user Mac has no lock, fails closed", "claude-code", "darwin", "true", "/w", noLock, cliRunBridgeOnly},
 		{"Linux server with the lock", "claude-code", "linux", "true", "/w", withLock, cliRunConfined},
 		{"Linux without MULTI_USER_MODE still locks", "codex-cli", "linux", "", "/w", withLock, cliRunConfined},
 		{"Linux whose lock is broken fails closed", "claude-code", "linux", "true", "/w", noLock, cliRunBridgeOnly},
@@ -51,14 +53,14 @@ func TestDecideCLIConfinement(t *testing.T) {
 	}
 }
 
-// A Mac without sandbox-exec keeps the old behaviour (Full CLI unconfined).
+// A Mac without sandbox-exec runs bridge-only, never unconfined.
 func TestDecideCLIConfinementWithoutSandboxExec(t *testing.T) {
 	origOS, origSeatbelt := cliHostOS, cliSeatbeltAvailable
 	t.Cleanup(func() { cliHostOS, cliSeatbeltAvailable = origOS, origSeatbelt })
 	cliHostOS, cliSeatbeltAvailable = "darwin", func() bool { return false }
 	t.Setenv("MULTI_USER_MODE", "")
-	if got, _, _ := decideCLIConfinement("claude-code", "/w"); got != cliRunUnconfined {
-		t.Fatalf("got %s, want unconfined", got)
+	if got, _, why := decideCLIConfinement("claude-code", "/w"); got != cliRunBridgeOnly || why == "" {
+		t.Fatalf("got %s (%q), want bridge_only", got, why)
 	}
 }
 

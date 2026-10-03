@@ -1,3 +1,10 @@
+## Seatbelt for every coding CLI on a Mac; full_unconfined removed — PLAT-394
+
+[PLAT-394](pulse_platform/security-sandbox/plat-394.md), P1, on `main`, Mac-only
+(servers unaffected): every CLI runs Full CLI under Seatbelt with the person's
+home open; AgentWorks data outside the chat, blocked paths and open/osascript
+are refused; nothing runs unconfined.
+
 ## Browser teaching restarted RTS Code; compact chrome and durable tabs — PLAT-393
 
 [PLAT-393](pulse_platform/browser/plat-393.md), fixed on main, deployed to RTS
