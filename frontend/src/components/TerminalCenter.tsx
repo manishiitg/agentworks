@@ -561,8 +561,8 @@ const TERMINAL_THEMES = {
 
 type TerminalTheme = (typeof TERMINAL_THEMES)[TerminalColorScheme]
 
-const RAW_XTERM_FONT_FAMILY = '"JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, "Cascadia Mono", "Fira Code", Consolas, "Liberation Mono", monospace'
-const RAW_XTERM_FONT_SIZE = 13
+export const RAW_XTERM_FONT_FAMILY = '"JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, "Cascadia Mono", "Fira Code", Consolas, "Liberation Mono", monospace'
+export const RAW_XTERM_FONT_SIZE = 13
 const RAW_XTERM_SCROLLBAR_WIDTH = 7
 const RAW_XTERM_CSS_LINE_HEIGHT = 'normal'
 export const RAW_XTERM_THEMES: Record<Theme, ITheme> = {

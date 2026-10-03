@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals
+
+- **Decision (user):** a better designed terminal, using open source out of the box. We already use xterm.js (the engine behind VS Code, Hyper,
+  Tabby and JupyterLab); ttyd/wetty/GoTTY would add a second server and bypass the slot and sandbox setup, so they were not used.
+- **Done.** `CodeShellPanel` now uses the coding-tool terminals' theme and font (`RAW_XTERM_THEMES`, `RAW_XTERM_FONT_FAMILY`), and adds the official
+  add-ons: WebGL rendering (falls back by itself), clickable links (http/https only, in a new tab), search (Ctrl/Cmd+F, highlights, Enter / Shift+Enter),
+  Unicode 11. A toolbar offers search, copy, paste, clear, text size (10-22, remembered), full screen, a status dot and a quiet automatic reconnect
+  (4 tries, 1-8 s) before it asks for a click. New packages: `@xterm/addon-webgl`, `-web-links`, `-search`, `-unicode11` (the start script's
+  `npm install` picks them up locally; servers build with `npm ci`).
+- **Checked.** Unit tests for the helpers and the wiring; the real panel rendered in a browser against a fake connection (colors, toolbar, search
+  highlight). Not yet checked against a real shell in a browser.
+
 ### 2026-10-03 — Builder chooses Gmail senders; email fetch and access disclosure
 
 - **User decision.** Owners can accept Real Training OR notification senders and
