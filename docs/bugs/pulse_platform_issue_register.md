@@ -1,3 +1,31 @@
+## Models: allowed models per account, one Model card, changes between turns — PLAT-407
+
+[PLAT-407](pulse_platform/frontend-chat/plat-407.md), fixed on `main`; deployed to Excellence only (the
+between-turns change also in the RTS build from `ad3956735`). Optional `allowed_models` per provider account enforced on
+the server; workflow Models tab with one Model card; a model or effort change waits for the running turn.
+
+## Chat composer: New chat in Code, mic, layout, toolbar order — PLAT-406
+
+[PLAT-406](pulse_platform/frontend-chat/plat-406.md), fixed on `main`; New chat deployed widely, mic and layout on
+Excellence only. No model picker in the chat input; terminal and attach left, New chat, wand, mic and send right.
+
+## Deploy behaviour and one runtime profile — PLAT-405
+
+[PLAT-405](pulse_platform/scheduler-runs/plat-405.md), fixed on `main`; step 2 (standard profile written by the
+rootless-linux deploy) still to reach Dominion and SparkQuill. Slack notices silent by default, deploys switch over at
+once, stale `.deploying` markers no longer pin releases, drift report.
+
+## Slot accounts: private home, system Chrome, socket folder, slot table, Usage terminal — PLAT-404
+
+[PLAT-404](pulse_platform/security-sandbox/plat-404.md), P1, fixed on `main`; Chrome grant deployed to Excellence only.
+Group-accessible sandbox home, one home per person in Code, `/opt/google/chrome` granted, browser socket folder always
+set, slot table readable after re-init, Usage terminal slash allowlist, tunnels allowed in the Code prompt.
+
+## Code terminal: own-account shell, tabs, colours, copy and scrolling — PLAT-403
+
+[PLAT-403](pulse_platform/frontend-chat/plat-403.md), fixed on `main`; server scroll batching on Excellence only. Real
+shell as the person's slot, up to 3 tabs, themed xterm.js, copy and wheel scroll through tmux; RTS has no terminal yet.
+
 ## Native agent tools always on for workflows and Relays — PLAT-402
 
 [PLAT-402](pulse_platform/coding-agent-bridge/plat-402.md), P3, fixed on `main`; deployed to Excellence only. No switch any more; a stored "off" is ignored.
