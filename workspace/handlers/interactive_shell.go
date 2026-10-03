@@ -52,9 +52,10 @@ func interactiveShellPromptCommand(sandboxed bool) string {
 		// (all green in the Homebrew scheme). Once per shell: GNU tools get --color=auto, BSD ls (a Mac) gets CLICOLOR.
 		cmd += `; if [ -z "$AGENTWORKS_COLOURS" ]; then AGENTWORKS_COLOURS=1; if ls --color=auto -d . >/dev/null 2>&1; then alias ls='ls --color=auto' grep='grep --color=auto' egrep='egrep --color=auto' fgrep='fgrep --color=auto' diff='diff --color=auto'; else export CLICOLOR=1; fi; fi`
 		// Ubuntu's "command not found" helper reads a database the sandbox cannot open and printed a Python crash report for any typo (or for
-		// `nvm` before it is installed). Plain bash wording instead. Then the person's own ~/.bashrc (in the private home, where `nvm` and
+		// `nvm` before it is installed). Plain bash wording instead. An empty ~/.bashrc is created if missing, because installers such as nvm say "Profile not found" and
+		// skip adding themselves without one. Then the person's own ~/.bashrc (in the private home, where `nvm` and
 		// similar installers put themselves) is read once, last, so their settings win.
-		cmd += `; if [ -z "$AGENTWORKS_RC" ]; then AGENTWORKS_RC=1; command_not_found_handle() { echo "bash: $1: command not found" >&2; return 127; }; [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"; fi`
+		cmd += `; if [ -z "$AGENTWORKS_RC" ]; then AGENTWORKS_RC=1; command_not_found_handle() { echo "bash: $1: command not found" >&2; return 127; }; [ -e "$HOME/.bashrc" ] || : > "$HOME/.bashrc" 2>/dev/null; [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"; fi`
 	}
 	return cmd
 }

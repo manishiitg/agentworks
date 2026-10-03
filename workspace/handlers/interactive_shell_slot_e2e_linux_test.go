@@ -96,7 +96,7 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	defer conn.Close()
 	// The service's own .env sits two folders above the docs folder (<app>/data/docs -> <app>/.env).
 	platformEnv := filepath.Join(filepath.Dir(filepath.Dir(docs)), ".env")
-	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; alias ls grep > aliases.txt 2>&1; nosuchcommand_zz > cnf.txt 2>&1; " +
+	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; alias ls grep > aliases.txt 2>&1; nosuchcommand_zz > cnf.txt 2>&1; mkdir -p \"$HOME/.config/zz\" > homew.txt 2>&1 && echo writable >> homew.txt; [ -f \"$HOME/.bashrc\" ] && echo bashrc > rc.txt; " +
 		"cat " + shellQuote(platformEnv) + " > env.txt 2>&1; ls " + shellQuote(filepath.Join(docs, "_users")) + " > users.txt 2>&1; " +
 		"echo done > done.txt\r"
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(script)); err != nil {
@@ -130,6 +130,14 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	// A mistyped command says "command not found" in plain words; Ubuntu's helper crashed here (it cannot open its database in the sandbox).
 	if cnf := read("cnf.txt"); !strings.Contains(cnf, "nosuchcommand_zz: command not found") || strings.Contains(cnf, "crashed") || strings.Contains(cnf, "Traceback") {
 		t.Errorf("a missing command must give the plain message: %q", cnf)
+	}
+	// The shell's private home is usable by the slot (it used to be owner-only, so nvm and other installers died with "Permission denied"),
+	// and has a ~/.bashrc, which installers say "Profile not found" without.
+	if got := read("homew.txt"); got != "writable" {
+		t.Errorf("the slot cannot write in its own HOME: %q", got)
+	}
+	if read("rc.txt") != "bashrc" {
+		t.Error("the terminal must create ~/.bashrc so installers can add themselves to it")
 	}
 	// An empty cd returns to the project folder the terminal started in, not the private home.
 	if want, err := filepath.EvalSymlinks(abs); err == nil {

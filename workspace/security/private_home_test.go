@@ -1,6 +1,7 @@
 package security
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,5 +62,25 @@ func TestSandboxHomeWithoutAnyWriteGrantIsTheCommandScratch(t *testing.T) {
 	env := privateSandboxHome([]string{"HOME=/tmp"}, filepath.Join(scratch, "home"))
 	if got := homeEnvValue(env, "HOME"); got != filepath.Join(scratch, "home") {
 		t.Fatalf("HOME = %q", got)
+	}
+}
+
+// A command that runs as a user's slot account is another user in the project's group: the private home the service creates for it must be
+// group-accessible, or the slot cannot even enter its own HOME and installers such as nvm die with "Permission denied" (Excellence 2026-10-03).
+func TestSandboxHomeIsGroupAccessibleForSlotAccounts(t *testing.T) {
+	project := t.TempDir()
+	sandboxToolEnv([]string{"HOME=/tmp"}, project, []string{project})
+	for _, dir := range []string{
+		filepath.Join(project, SandboxPersistentDirName),
+		filepath.Join(project, SandboxPersistentDirName, "home"),
+		filepath.Join(project, SandboxPersistentDirName, "home", ".config"),
+	} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o070 != 0o070 {
+			t.Errorf("%s is %v: the slot's group needs rwx", dir, info.Mode().Perm())
+		}
 	}
 }

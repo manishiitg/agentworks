@@ -183,6 +183,15 @@ func privateSandboxHome(env []string, home string) []string {
 	if err := os.MkdirAll(config, 0o700); err != nil {
 		return env
 	}
+	// The service creates these folders, but a command that runs as a user's slot account (another user, same group as the project) must
+	// be able to use them: owner-only left the slot unable to enter its own HOME, so every installer that writes under it (nvm, rustup, ...)
+	// failed with "Permission denied". The project folder around them already grants that group the same access. Best effort, like
+	// ensureScratchDir: a folder the slot made itself is not ours to change.
+	for _, dir := range []string{config, home, filepath.Dir(home)} {
+		if dir == config || dir == home || filepath.Base(dir) == SandboxPersistentDirName {
+			_ = os.Chmod(dir, 0o770|os.ModeSetgid)
+		}
+	}
 	out := make([]string, 0, len(env)+2)
 	socketDirSet := false
 	for _, kv := range env {

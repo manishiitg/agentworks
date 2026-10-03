@@ -13,6 +13,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
+
+- **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the
+  service account with mode 0700, so the slot (same group, different user) could not enter it: `mkdir: Permission denied` for any installer that writes under `$HOME`. The same
+  folder is used by the Shell tool, so it affected slot users there too.
+- **Done.** `privateSandboxHome` makes `.sandbox-cache`, `home` and `.config` group rwx + setgid every time (existing folders heal on the next start); the terminal creates an empty
+  `~/.bashrc` (installers say "Profile not found" otherwise). Verified with the real nvm installer as the slot: install, new terminal has `nvm`, `nvm install 24` gives Node 24.
+  Fixed in the shared workspace code, so Excellence, Confida and RTS get it from a normal deploy; no per-host step.
+- **Open (found while checking).** A coding agent's own nvm install landed in the platform account's real home `/srv/agents/home` (`.nvm`, `.bashrc`, `.profile` edited), not in the
+  project: that agent's shell is not on the private home, so the terminal cannot see what the agent installs, and the agent can write to a home shared by every user.
+
 ### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
 
 - **Done.** Flush the current page before viewer navigation and mark that
