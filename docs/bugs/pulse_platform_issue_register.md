@@ -1,3 +1,9 @@
+## Relay builder shell cannot inspect the host Google store — PLAT-380
+
+[PLAT-380](pulse_platform/security-sandbox/plat-380.md), confirmed on Excellence,
+open. Sandbox setup automatically grants the service account's Google CLI store;
+its inspection fails with permission denied before even `pwd` can execute.
+
 ## Workflow notifications and Gmail setup guidance — PLAT-379
 
 [PLAT-379](pulse_platform/integrations/plat-379.md), implemented and locally validated; deployment pending. `notify_user` is workflow-only. Incoming Gmail

@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Open: Relay builder shell inspects an inaccessible host Google store
+
+- Excellence's Relay builder returns exit 125 / `SANDBOX_UNAVAILABLE` before
+  executing `pwd`: the automatic Google CLI store grant points into the service
+  account's private home. This remains in main's shared isolator policy and is
+  separate from the command-menu/prompt-view fixes and Downloads boundary issue.
+- No server settings or permissions changed. Evidence and required follow-up:
+  [PLAT-380](bugs/pulse_platform/security-sandbox/plat-380.md).
+
 ### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
 
 The platform `notify_user` tool belongs only to saved workflows. Relay's shared
