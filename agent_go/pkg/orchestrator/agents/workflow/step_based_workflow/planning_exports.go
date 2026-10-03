@@ -15,6 +15,8 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -566,6 +568,10 @@ func (s *WorkshopChatSession) SetWorkshopModeOverride(mode string) {
 // exact same tool/LLM/browser/image-gen setup as normal workflow execution.
 // Built by server.go using the same preset-loading logic as the normal workflow path.
 type WorkshopConfig struct {
+	// UserID and SourcePlatform are server-resolved launch identity, never tool
+	// arguments. Detached workshop children retain it for accounting (PLAT-377).
+	UserID                 string
+	SourcePlatform         string
 	WebhookInvocation      *WebhookInvocation  // Set internally by API trigger dispatch, never from tool arguments.
 	ScheduleInvocation     *ScheduleInvocation // Set internally by saved-schedule dispatch, never from tool arguments.
 	CrewRunner             CrewStepRunner      // Set internally by the server; lets Builder-run crew steps invoke Crew triggers.
@@ -678,7 +684,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 	}
 	logger.Info(fmt.Sprintf("[WORKSHOP] Tool definitions: %v", toolNames))
 
-	sessionCtx, cancelFunc := context.WithCancel(context.Background())
+	sessionCtx, cancelFunc := newWorkshopSessionContext(ctx, cfg)
 
 	controller, err := NewStepBasedWorkflowOrchestrator(
 		ctx,
@@ -818,6 +824,25 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 		secretsAttached:        cfg.SecretsAttached,
 		workshopNotifier:       wsn,
 	}, nil
+}
+
+// Workshop work survives the request and ends when the session closes. Carry
+// its authorized identity explicitly; a bare Background silently files every
+// child LLM call under an empty user, even when the parent chat is attributed.
+func newWorkshopSessionContext(ctx context.Context, cfg *WorkshopConfig) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	userID, platform := strings.TrimSpace(cfg.UserID), strings.TrimSpace(cfg.SourcePlatform)
+	if userID == "" {
+		userID = common.SessionUserIDFromContext(ctx)
+	}
+	if platform == "" {
+		platform = costobserver.SourcePlatformFromContext(ctx)
+	}
+	if userID != "" {
+		base = context.WithValue(base, common.UserIDKey, userID)
+	}
+	base = costobserver.ContextWithSourcePlatform(base, platform)
+	return context.WithCancel(base)
 }
 
 func formatTierAgentLLM(cfg *AgentLLMConfig) string {

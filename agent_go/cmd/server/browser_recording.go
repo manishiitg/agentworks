@@ -42,24 +42,24 @@ func (api *StreamingAPI) handleBrowserRecording(w http.ResponseWriter, r *http.R
 		return
 	}
 	workspace := r.URL.Query().Get("workspace_path")
-	if request.Action != "status" {
-		level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspace)
-		if !currentUserCanWriteWorkflows(r) || manifest == nil || (level != WorkflowAccessOwner && level != WorkflowAccessWrite) {
-			http.Error(w, "Workflow write access required", 403)
-			return
-		}
+	physical, accessErr := api.browserWorkspaceAccess(r, workspace, r.URL.Query().Get("profile_id"), request.Action != "status")
+	if accessErr != nil {
+		http.Error(w, accessErr.Error(), 403)
+		return
 	}
 	endpoint := strings.TrimRight(os.Getenv("WORKSPACE_API_URL"), "/")
 	if endpoint == "" {
 		endpoint = "http://127.0.0.1:8081"
 	}
-	release, err := browser.AcquireBrowserAutomation(r.Context(), session)
-	if err != nil {
-		http.Error(w, "Browser busy", 409)
-		return
+	if request.Action != "status" {
+		release, ok := browser.TryTakeWorkspaceBrowserControl(session)
+		if !ok {
+			http.Error(w, "Return browser control before recording", 409)
+			return
+		}
+		defer release()
 	}
-	defer release()
-	payload, _ := json.Marshal(map[string]string{"action": request.Action, "workspace_path": workspace})
+	payload, _ := json.Marshal(map[string]string{"action": request.Action, "workspace_path": physical})
 	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint+"/api/browser/live/"+session+"/recording", bytes.NewReader(payload))
 	if err != nil {
 		http.Error(w, "Workspace unavailable", 502)
@@ -81,7 +81,7 @@ func (api *StreamingAPI) handleBrowserRecording(w http.ResponseWriter, r *http.R
 		Owner     string `json:"owner_session"`
 	}
 	if response.StatusCode == http.StatusOK && json.Unmarshal(body, &state) == nil {
-		browser.GetSessionTracker().SetCapture(session, state.Recording, state.Owner, workspace)
+		browser.GetSessionTracker().SetCapture(session, state.Recording, state.Owner, physical)
 	}
 	_, _ = w.Write(body)
 }

@@ -21,6 +21,7 @@ services:
       # Server Configuration
       - PORT=8080
       - DOCS_DIR=/app/workspace-docs
+      - AGENT_BROWSER_PROFILE_ROOT=${AGENT_BROWSER_PROFILE_ROOT:-/app/browser-profiles/browser-profile}
 
       # OpenAI Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY:-your_openai_api_key_here}
@@ -35,6 +36,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./workspace-docs:/app/workspace-docs
+      - browser_profiles:/app/browser-profiles
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -85,6 +87,7 @@ services:
       - WORKSPACE_API_URL=http://workspace-api:8080
       # Absolute path to workspace-docs inside the container (mounted volume)
       - WORKSPACE_DOCS_PATH=/app/workspace-docs
+      - AGENT_BROWSER_PROFILE_ROOT=${AGENT_BROWSER_PROFILE_ROOT:-/app/browser-profiles/browser-profile}
       - LOCAL_MODE=true
       - TOOL_EXECUTION_TIMEOUT=0
       - MCP_CACHE_TTL_MINUTES=10080
@@ -100,6 +103,7 @@ services:
       - agent_data:/app/data
       - ./agent_go/configs:/app/configs
       - ./workspace-docs:/app/workspace-docs
+      - browser_profiles:/app/browser-profiles
       - ./agent_go/logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -113,3 +117,4 @@ volumes:
   ollama_data:
   workspace-docs:
   agent_data:
+  browser_profiles:

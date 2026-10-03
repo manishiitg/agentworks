@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -79,9 +80,17 @@ func captureWorkspace(userID string, cfg *common.SessionShellConfig) string {
 	if cfg == nil {
 		return ""
 	}
-	if _, root := common.ClassifySessionWorkspace(userID, cfg.WorkflowPath); root != "" {
-		return root
+	for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
+		canonical := common.CanonicalSessionWorkspace(userID, candidate)
+		// Classification recognizes projects under any owner for Crew routing.
+		// Capture needs ownership: only the caller's physical prefix is stripped
+		// by canonicalization, so a remaining user prefix belongs to someone else.
+		if strings.HasPrefix(canonical, "_users/") {
+			continue
+		}
+		if _, root := common.ClassifySessionWorkspace(userID, canonical); root != "" {
+			return root
+		}
 	}
-	_, root := common.ClassifySessionWorkspace(userID, cfg.WorkingDir)
-	return root
+	return ""
 }

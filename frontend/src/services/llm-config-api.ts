@@ -121,6 +121,7 @@ export interface ProviderManifestEntry {
   runtime_command?: string
   runtime_available?: boolean
   install_command?: string
+  install_available?: boolean
   installed_version?: string
   min_supported_version?: string
   update_status?: 'supported' | 'unsupported' | 'unknown'
@@ -210,7 +211,7 @@ export interface GetModelMetadataResponse {
   models: ModelMetadata[]
 }
 
-export type ProviderSetupAction = 'authenticate' | 'inspect' | 'usage'
+export type ProviderSetupAction = 'authenticate' | 'inspect' | 'usage' | 'install'
 
 export interface ProviderSetupSession {
   id: string
@@ -359,9 +360,11 @@ export const llmConfigService = {
 
   // Usage for one account. The owner and admins get a terminal session;
   // anyone else gets the text the server collected (never a terminal).
+  // With no connectionId it is the server's own account (admins, and anyone it is available to).
   checkProviderUsage: async (
     provider: string,
-    connectionId: string,
+    connectionId?: string,
+    replaceRunning?: boolean,
   ): Promise<{ session?: ProviderSetupSession; usage_output?: string }> => {
     const response = await llmConfigApi.post('/api/provider-setup/sessions', {
       provider,
@@ -369,6 +372,7 @@ export const llmConfigService = {
       connection_id: connectionId,
       cols: 100,
       rows: 24,
+      replace_running: replaceRunning || undefined,
     })
     return response.data
   },

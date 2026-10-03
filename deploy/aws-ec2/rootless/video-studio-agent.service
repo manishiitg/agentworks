@@ -22,9 +22,7 @@ Environment=PUBLIC_URL=https://video.realtrainingsys.com
 # RTS never emails invitations (it shares the Supabase project); admins copy them.
 # PLAT-364: coding CLIs run under the Landlock launcher, confined to their
 # folder, for every user.
-Environment=AGENTWORKS_CLI_LANDLOCK=on
 # Full CLI (Claude's own shell and file edits) inside that lock, for every user.
-Environment=AGENTWORKS_CLI_FULL=on
 # The server's temp files (launch scripts, per-launch CLI configs, bridge
 # tokens) go to a private folder: coding CLIs may write the shared /tmp.
 # tmux keeps its socket in /tmp so running chats stay reachable.

@@ -314,3 +314,18 @@ opt-in applies. See [AGY Full CLI](../../../design/agy_full_native_tools.md).
 The rollout is **local only**. Do not use AGY on RTS or excellence for now. This
 change does not certify AGY's Linux Landlock behavior or shared-server account
 isolation. Local unconfined mode runs with the host user's permissions.
+
+### Switches removed; servers fail closed, 2026-10-03
+
+`AGENTWORKS_CLI_LANDLOCK`, `AGENTWORKS_CLI_FULL`, `AGENTWORKS_CLI_FULL_UNCONFINED` and
+`AGENTWORKS_TERMINAL_UNCONFINED` are gone. A person's own Mac runs Full CLI unconfined; Linux
+always confines with Full CLI inside the lock; a chat whose lock cannot be applied runs
+`mcp_only`, never unconfined. The notes above that mention the switches are history. See
+DECISIONS 2026-10-03. Next: macOS Seatbelt, Claude first.
+
+### macOS Seatbelt for Claude, 2026-10-03
+
+Built: Claude Code on a person's own Mac starts under sandbox-exec with Full CLI, using the folder
+guard's grants plus its blocked paths (denied inside granted folders, which Landlock cannot do).
+It keeps its real home for the Keychain login. Codex, Cursor, Muse, Pi and AGY stay unconfined on a
+Mac until certified. Live certification on a Mac is the next step. See DECISIONS 2026-10-03.

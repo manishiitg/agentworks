@@ -88,7 +88,7 @@ func buildProviderAccountCosts(summary *costledger.Summary, viewer string, admin
 			case key.AccountID == "":
 				row.Kind, row.Name = "unrecorded", "Unrecorded account"
 			case strings.HasPrefix(key.AccountID, "global:"):
-				row.Kind, row.Name = "server", "Server account"
+				row.Kind, row.Name = "server", adminManagedProviderAccountName
 			case isUserAccount:
 				row.Kind, row.Name, row.OwnerName = "user", record.DisplayName, logUsernameForUserID(record.OwnerUserID)
 				if record.Removed {

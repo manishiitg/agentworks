@@ -25,8 +25,12 @@ import (
 // so no CLI process, model request or business tool executes.
 func TestCodePreparedSystemPrompt(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
-	t.Setenv("AGENTWORKS_CLI_FULL_UNCONFINED", "")
-	t.Setenv("AGENTWORKS_CLI_LANDLOCK", "off")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	// Pin the platform: a person's own Mac, where coding CLIs run Full CLI unconfined.
+	origOS := cliHostOS
+	cliHostOS = "darwin"
+	t.Cleanup(func() { cliHostOS = origOS })
+	t.Setenv("MULTI_USER_MODE", "false")
 	if err := codeproduct.RegisterProductSkills(); err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +102,18 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 		t.Fatal("prepared query did not stop")
 	}
 	prompt, view := result.prompt, result.definition
+	snapshotPath, err := sessionInstructionPath("alice", "code:site")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotData, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instructionSnapshot sessionInstructionSnapshot
+	if err := json.Unmarshal(snapshotData, &instructionSnapshot); err != nil || instructionSnapshot.Content != prompt {
+		t.Fatalf("inspector does not contain the finalized system prompt: %v", err)
+	}
 	loadedReviewer, registeredProjectTool := false, false
 	for _, skill := range view.SkillDefinitions {
 		if skill.Name == "code-reviewer" && strings.Contains(skill.Content, "check requested behavior") {
@@ -115,7 +131,7 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 	if strings.Contains(prompt, "builder-reference") || !strings.Contains(prompt, "attached `agent-browser` skill") {
 		t.Fatal("browser pointer targets an unavailable skill")
 	}
-	if !strings.Contains(prompt, "native read-only tools") {
+	if !strings.Contains(prompt, "Your own tools are enabled") {
 		t.Fatal("Code lost its resolved native-tool mode")
 	}
 	if !strings.Contains(prompt, "runtime-http-tools") || !strings.Contains(prompt, "project-memory") {

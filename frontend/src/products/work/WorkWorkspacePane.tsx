@@ -10,6 +10,7 @@ import {
   Monitor,
   Route,
   Server,
+  Terminal,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -21,7 +22,7 @@ import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolb
 import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import { ReportDocumentSwitcher } from '../../components/workflow/ReportDocumentSwitcher'
-import { agentApi } from '../../services/api'
+import api, { agentApi } from '../../services/api'
 import type { PresetLLMConfig } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
@@ -48,9 +49,10 @@ const AutomationHubPanel = lazy(() => import('../../components/automation/Automa
 const ReportView = lazy(() => import('../../components/workflow/ReportViewer').then(module => ({ default: module.ReportView })))
 const DatabaseView = lazy(() => import('../../components/workflow/DatabaseView'))
 const ReportHumanInputPanel = lazy(() => import('../../components/workflow/ReportHumanInputPanel'))
+const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp'
+export type WorkWorkspaceView = 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -68,6 +70,8 @@ const VIEW_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIc
 
 const OPS_BUTTONS: Array<{ id: WorkWorkspaceView; label: string; icon: LucideIcon }> = [
   { id: 'files', label: 'Files', icon: Files },
+  // Code only: a terminal in this workspace, run as your own account and sandboxed to it (see showShell).
+  { id: 'shell', label: 'Terminal', icon: Terminal },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'costs', label: 'Costs and usage', icon: DollarSign },
 ]
@@ -99,25 +103,28 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
   return count
 }
 
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false }: { workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean }) {
   // Suggestions are Crew's: people who use a Crew suggest changes to its
   // owner. A Code has no such audience, so it never shows them.
   const isCode = useProjectProduct().profileId === 'code'
   const hasSuggestions = !isCode
-  // A Code keeps its working tools together in Ops (always open): Browser
-  // moves there, and the Database view is not offered.
-  const viewButtons = isCode ? VIEW_BUTTONS.filter(item => item.id !== 'browser') : VIEW_BUTTONS
+  // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
+  // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
+  const viewButtons = isCode
+    ? [...VIEW_BUTTONS.filter(item => item.id !== 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    : VIEW_BUTTONS
   const opsButtons = isCode
-    ? [...OPS_BUTTONS.filter(item => item.id !== 'database' && item.id !== 'costs'), ...VIEW_BUTTONS.filter(item => item.id === 'browser'), ...OPS_BUTTONS.filter(item => item.id === 'costs')]
+    ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
     : OPS_BUTTONS
   const visibleViews = (readOnly
     ? viewButtons.filter(item => item.id === 'memory' && (!enabledPanels || enabledPanels.has('memory')))
     : enabledPanels ? viewButtons.filter(item => enabledPanels.has(item.id) || item.id === 'suggestions') : viewButtons)
     .filter(item => item.id !== 'suggestions' || hasSuggestions)
   const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions, view)
-  const visibleOps = readOnly
-    ? opsButtons.filter(item => item.id === 'files')
-    : enabledPanels ? opsButtons.filter(item => enabledPanels.has(item.id)) : opsButtons
+  const visibleOps = (readOnly
+    ? opsButtons.filter(item => item.id === 'files' || item.id === 'shell')
+    : enabledPanels ? opsButtons.filter(item => item.id === 'shell' || enabledPanels.has(item.id)) : opsButtons)
+    .filter(item => item.id !== 'shell' || showShell)
   // Setup (identity, integrations) edits owner state, so someone else's
   // Crew offers no setup views at all — not even the always-on identity.
   // A Code's Share view is open to everyone in it (co-owners edit it, the
@@ -126,21 +133,24 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ workspa
     ? []
     : enabledPanels ? SETUP_BUTTONS.filter(item => isWorkWorkspaceViewEnabled(item.id, enabledPanels)) : SETUP_BUTTONS)
   // Ops and Setup are always open and show icons only.
+  // No empty frame when every view moved elsewhere.
+  const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
+      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
+    </div>
 
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
       <TooltipProvider delayDuration={150}>
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <WorkspaceToolbarFrame>
-          {/* No empty frame when every view moved elsewhere (a Code's are in Ops). */}
-          {visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
-            {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
-          </div>}
+          {/* A Crew shows its views first; a Code shows them (Automation, Costs) after its working tools. */}
+          {!isCode && viewsGroup}
           {/* Ops and Setup show their icons only: always open, no label. */}
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Operations: files, browser and costs' : 'Operations: project files, database and costs'}>
+          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
             <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
-          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name, integrations and sharing' : 'Setup: identity and integrations'}>
+          {isCode && viewsGroup}
+          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
             <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
           </WorkspaceToolbarGroup>}
         </WorkspaceToolbarFrame>
@@ -153,20 +163,32 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   const product = useProjectProduct()
   const savedMode = useChatStore(state => state.chatTabs[tabId]?.config.browserMode ?? 'auto')
   const savedPort = useChatStore(state => state.chatTabs[tabId]?.config.cdpPort ?? 9222)
-  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode)
+  const [browserMode, setBrowserMode] = useState<BrowserAutomationMode>(savedMode === 'none' ? 'auto' : savedMode)
+  const [canonicalSettings, setCanonicalSettings] = useState<{ mode: BrowserAutomationMode; port: number }>({
+    mode: savedMode === 'none' ? 'auto' : savedMode, port: savedPort,
+  })
   const [cdpPort, setCdpPort] = useState(savedPort)
+  useEffect(() => {
+    let live = true
+    api.get<{ mode: BrowserAutomationMode; port: number }>('/api/browser/workspace', {
+      params: { workspace_path: workspacePath, profile_id: product.profileId },
+    }).then(({ data }) => {
+      if (live) { setCanonicalSettings(data); setBrowserMode(data.mode); setCdpPort(data.port) }
+    }).catch(() => {})
+    return () => { live = false }
+  }, [workspacePath, product.profileId])
   const [cdpConnected, setCdpConnected] = useState<boolean | null>(null)
   const [cdpError, setCdpError] = useState<string | null>(null)
   const [cdpChecking, setCdpChecking] = useState(false)
   const [saving, setSaving] = useState(false)
   // Crew has no workspace refresh token: remount the panel to reload sessions.
   const [refreshNonce, setRefreshNonce] = useState(0)
-  const dirty = browserMode !== savedMode || cdpPort !== savedPort
+  const dirty = browserMode !== canonicalSettings.mode || cdpPort !== canonicalSettings.port
 
   useEffect(() => {
-    setBrowserMode(savedMode)
-    setCdpPort(savedPort)
-  }, [savedMode, savedPort, tabId])
+    setBrowserMode(canonicalSettings.mode)
+    setCdpPort(canonicalSettings.port)
+  }, [canonicalSettings, tabId])
 
   const checkCdpConnection = useCallback(async (port: number) => {
     if (!isBrowserCDPEnabled()) {
@@ -189,22 +211,26 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
     }
   }, [])
 
-  const save = useCallback(() => {
+  const save = useCallback(async () => {
     const store = useChatStore.getState()
     const current = store.getTab(tabId)
     const projectId = current?.metadata?.agentProfileProjectId
     setSaving(true)
-    for (const tab of Object.values(store.chatTabs)) {
-      if (tab.tabId !== tabId && (!projectId || tab.metadata?.agentProfileProjectId !== projectId)) continue
-      store.setTabConfig(tab.tabId, {
-        browserMode,
-        cdpPort,
-        enableBrowserAccess: browserMode !== 'none',
-        useCdp: browserMode === 'cdp',
+    try {
+      await api.post('/api/browser/workspace', { action: 'save', mode: browserMode, port: cdpPort }, {
+        params: { workspace_path: workspacePath, profile_id: product.profileId },
       })
+      setCanonicalSettings({ mode: browserMode, port: cdpPort })
+      for (const tab of Object.values(store.chatTabs)) {
+        if (tab.tabId !== tabId && (!projectId || tab.metadata?.agentProfileProjectId !== projectId)) continue
+        store.setTabConfig(tab.tabId, { browserMode, cdpPort, enableBrowserAccess: true, useCdp: browserMode === 'cdp' })
+      }
+    } catch {
+      store.addToast('Unable to save project browser settings', 'error')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-  }, [browserMode, cdpPort, tabId])
+  }, [browserMode, cdpPort, tabId, workspacePath, product.profileId])
 
   return (
     <BrowserWorkspacePanel
@@ -222,6 +248,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
       saving={saving}
       onSave={save}
       scopeNoun="project"
+      profileId={product.profileId}
       assistantControl={
         <WorkspaceViewActions
           workspacePath={workspacePath}
@@ -235,7 +262,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
   )
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared }: { workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const product = useProjectProduct()
   const noun = product.noun
@@ -305,7 +332,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // fallback: a stale saved view or an agent-driven view request must never
   // render an owner-only panel (identity editors, transcripts, usage)
   // for someone else's Crew.
-  if (readOnly && view !== 'memory' && view !== 'files') {
+  if (view === 'shell' && !showShell) {
+    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">The terminal is only available to the owner of this Code.</div>
+  }
+  if (readOnly && view !== 'memory' && view !== 'files' && view !== 'shell') {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
   }
 
@@ -318,6 +348,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           crewRoot={workspacePath}
           request={sharedFileRequest}
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" /></Suspense>)}
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><CodeShellPanel projectId={projectId} /></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           projectId={projectId}

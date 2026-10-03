@@ -2,6 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
+import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayMs, mapToViewport } from './WorkflowLiveBrowser'
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: api, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => 'viewer-token' }))
@@ -260,7 +261,7 @@ it('allows tall page resizing only after control and maps clicks to the new view
   await act(async () => { image.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:235,clientY:320})) })
   expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({type:'input_mouse',x:450,y:600})
   await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_control', controlling:false})}) })
-  expect(size.disabled).toBe(true)
+  expect((host.querySelector('select[aria-label="Browser page size"]') as HTMLSelectElement).disabled).toBe(true)
 })
 
 it('puts the session picker in the header instead of a separate row', async () => {
@@ -280,14 +281,14 @@ const buttonNamed = (host: HTMLElement, name: string) => [...host.querySelectorA
 it('explains the idle state in plain language without a picker or controls', async () => {
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { host, picker } = await mountBrowser()
-  expect(host.textContent).toContain('Your helper isn’t using a browser right now — it opens one when needed.')
+  expect(host.textContent).toContain('Start a browser to visit a website or show your helper a task.')
   expect(picker()).toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeUndefined()
   expect(buttonNamed(host, 'Reconnect')).toBeUndefined()
   expect(FakeSocket.instances).toHaveLength(0)
 })
 
-it('shows a starting message, then a slim live bar with page title and URL', async () => {
+it('shows a starting message, then header, tabs and one address bar', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   expect(host.textContent).toContain('Starting browser…')
@@ -299,13 +300,13 @@ it('shows a starting message, then a slim live bar with page title and URL', asy
   })
   const bar = host.querySelector('.live-browser-bar')!
   expect(bar).not.toBeNull()
-  expect(host.querySelector('header')).toBeNull()
+  expect(host.querySelector('header')).toBe(bar)
   expect(host.textContent).not.toContain('See what your helper does')
-  expect(bar.querySelector('[role="status"]')?.textContent).toBe('Live')
-  expect(bar.textContent).toContain('Pricing')
-  expect(bar.textContent).toContain('https://example.com/pricing')
-  // A single tab needs no tab strip.
-  expect(host.querySelector('[aria-label="Browser tabs"]')).toBeNull()
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('Live')
+  expect(bar.textContent).not.toContain('https://example.com/pricing')
+  expect(host.querySelector('[role="tab"]')?.textContent).toBe('Pricing')
+  expect((host.querySelector('[aria-label="Website address"]') as HTMLInputElement).value).toBe('https://example.com/pricing')
+  expect(host.querySelector('[aria-label="Browser tabs"]')).not.toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeDefined()
 })
 
@@ -418,4 +419,168 @@ it('maps pointer positions through the letterboxed frame', () => {
   expect(mapToViewport(500, 250, rect, { width: 1000, height: 1000 })).toEqual({ x: 500, y: 500 })
   expect(mapToViewport(250, 0, rect, { width: 1000, height: 1000 })).toEqual({ x: 0, y: 0 })
   expect(mapToViewport(10, 490, rect, { width: 1000, height: 1000 })).toEqual({ x: 0, y: 980 })
+})
+
+it('lets the user start a scoped browser before an agent opens one', async () => {
+ api.get.mockResolvedValue({ data: { sessions: [] } })
+ const { host } = await mountBrowser()
+ api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
+ const start = [...host.querySelectorAll('button')].find(button => button.textContent === 'Start browser')!
+ await act(async () => { start.click() })
+ expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Workflow/test', profile_id: undefined } }))
+ expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
+})
+
+it('hides startup for an existing browser and supports per-tab close while teaching', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  expect(buttonNamed(host, 'Start browser')).toBeUndefined()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    ws.onmessage?.(frameMessage())
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'recording', actions: [] } }) })
+  })
+  expect(host.querySelector('.live-browser-bar')?.textContent).toContain('Teach task')
+  expect(buttonNamed(host, 'Start browser')).toBeUndefined()
+  await act(async () => { buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click(); buttonNamed(host, 'Two')!.click() })
+  const sent = ws.send.mock.calls.map(([message]) => JSON.parse(message))
+  expect(sent).toContainEqual({ type: 'new_tab', url: 'about:blank' })
+  expect(sent).toContainEqual({ type: 'close_tab', tab: 't1' })
+  expect(sent).toContainEqual({ type: 'switch_tab', tab: 't2' })
+})
+
+it('sends review records to the helper as hidden file context with a plain chat request', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { root } = await mountBrowser()
+  const onLearn = vi.fn()
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Workflow/test" onLearn={onLearn} />) })
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'draft', goal: 'Export customers', directory: 'Workflow/test/browser-demonstrations/demo' } }) }) })
+  const prompt = onLearn.mock.calls[0][0]
+  expect(prompt).toContain('browser-demonstrations/demo/manifest.json')
+  expect(prompt).toContain('Keep the status draft')
+  expect(getDisplaySafeUserMessageContent(prompt)).toBe('Prepare my demonstrated task for reuse: Export customers.')
+})
+
+it('keeps startup and tab controls while disabling teaching in SparkQuill', async () => {
+  const onLearn = vi.fn()
+  api.get.mockResolvedValue({ data: { sessions: [] } })
+  const { root, host } = await mountBrowser()
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" allowTeaching={false} minimal onLearn={onLearn} />) })
+  api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
+  await act(async () => { buttonNamed(host, 'Start browser')!.click() })
+  expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/SparkQuill', profile_id: 'sparkquill' } }))
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    ws.onmessage?.(frameMessage())
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
+  })
+  expect(buttonNamed(host, 'Teach task')).toBeUndefined()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'draft', goal: 'Export', directory: 'Chats/SparkQuill/browser-demonstrations/demo' } }) }) })
+  expect(onLearn).not.toHaveBeenCalled()
+  expect(host.querySelector('[aria-label="Browser page size"]')).not.toBeNull()
+  await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click() })
+  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([
+    { type: 'switch_tab', tab: 't2' }, { type: 'new_tab', url: 'about:blank' }, { type: 'close_tab', tab: 't1' },
+  ]))
+})
+
+it('transfers native paste and selected copy only while controlling, including Mac shortcuts on Linux', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  const readText = vi.fn().mockResolvedValue('right-click paste\n日本語🙂')
+  vi.stubGlobal('navigator', { clipboard: { writeText, readText } })
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true, platform: 'linux' }) }) })
+  const input = host.querySelector('[aria-label="Browser keyboard input"]')!
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true })) })
+  expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({ type: 'input_keyboard', key: 'a', modifiers: 2, text: '' })
+  ws.send.mockClear()
+  const text = 'line one\n日本語🙂'.repeat(150)
+  const paste = new Event('paste', { bubbles: true, cancelable: true })
+  Object.defineProperty(paste, 'clipboardData', { value: { getData: () => text } })
+  await act(async () => { input.dispatchEvent(paste) })
+  const chunks = ws.send.mock.calls.map(([value]) => JSON.parse(value))
+  expect(chunks.every(message => message.type === 'input_text')).toBe(true)
+  expect(chunks.map(message => message.text).join('')).toBe(text)
+  expect(chunks.every(message => JSON.stringify(message).length < 16000)).toBe(true)
+  expect(paste.defaultPrevented).toBe(true)
+  ws.send.mockClear()
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true, cancelable: true })) })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'clipboard_copy', requestId: 'copy-1' }))
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'clipboard', requestId: 'copy-1', text: 'selected text' }) }) })
+  expect(writeText).toHaveBeenCalledWith('selected text')
+  // Native macOS Copy menus require a harmless local selection to emit copy.
+  expect((input as HTMLTextAreaElement).value).toBe(' ')
+  expect((input as HTMLTextAreaElement).selectionEnd).toBe(1)
+  await act(async () => { input.dispatchEvent(new Event('copy', { bubbles: true, cancelable: true })) })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'clipboard_copy', requestId: 'copy-2' }))
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'clipboard', requestId: 'copy-2', error: 'Select some text before copying.' }) }) })
+  expect(writeText).toHaveBeenCalledTimes(1)
+  const image = host.querySelector('img')!
+  await act(async () => { image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 30 })) })
+  expect(host.querySelector('[role="menu"]')).not.toBeNull()
+  await act(async () => { image.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 42, clientY: 30 })) })
+  expect(host.querySelector('[role="menu"]')).not.toBeNull()
+  ws.send.mockClear()
+  await act(async () => { buttonNamed(host, 'Paste')!.click() })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'input_text', text: 'right-click paste\n日本語🙂' }))
+  expect(host.querySelector('[role="menu"]')).toBeNull()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: false }) }) })
+  ws.send.mockClear()
+  await act(async () => { input.dispatchEvent(paste); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })) })
+  expect(ws.send).not.toHaveBeenCalled()
+})
+
+it('keeps tab controls by the tabs and navigation mutations behind manual control', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'Course Designer', url: 'https://example.com', active: true }, { tabId: 't2', title: 'Preview', url: 'https://example.com/preview', active: false }] }) }) })
+  expect(buttonNamed(host, 'New tab')?.disabled).toBe(true)
+  expect(buttonNamed(host, 'Go back')?.disabled).toBe(true)
+  expect(buttonNamed(host, 'Open site')).toBeUndefined()
+  expect(buttonNamed(host, 'Close tab')).toBeUndefined()
+  expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
+  expect(buttonNamed(host, 'Teach task')?.closest('header')).not.toBeNull()
+  expect(buttonNamed(host, 'Give back to helper')?.className).not.toMatch(/amber|bg-primary/)
+  await act(async () => { buttonNamed(host, 'Go back')!.click(); buttonNamed(host, 'Go forward')!.click(); buttonNamed(host, 'Reload page')!.click() })
+  expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
+})
+
+it('recovers a previously controlled managed browser once and never restarts teaching', async () => {
+  const managed = { browser_session: 'project-0123456789abcdef--browser', workflow_session: 'workspace', label: 'Code browser' }
+  api.get.mockResolvedValue({ data: { sessions: [managed] } })
+  const { host } = await mountBrowser(true)
+  const first = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    first.onmessage?.(frameMessage())
+    first.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    first.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'recording', goal: 'A task' } }) })
+    first.onclose?.()
+    vi.advanceTimersByTime(1000)
+  })
+  const second = FakeSocket.instances.at(-1)!
+  api.post.mockResolvedValue({ data: { browser_session: managed.browser_session } })
+  await act(async () => { second.onclose?.(); vi.advanceTimersByTime(2000) })
+  const recoveries = () => api.post.mock.calls.filter(call => call[0] === '/api/browser/workspace' && call[1]?.action === 'recover')
+  expect(recoveries()).toHaveLength(1)
+  expect(recoveries()[0][2].params.workspace_path).toBe('Workflow/test')
+  await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(15000) })
+  expect(recoveries()).toHaveLength(1)
+  expect(FakeSocket.instances.flatMap(socket => socket.send.mock.calls).some(([value]) => JSON.parse(value).type === 'teach_start')).toBe(false)
+  expect(host.textContent).not.toContain('Recording your task')
+})
+
+it('never launches a missing managed browser for a passive viewer', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [{ browser_session: 'project-0123456789abcdef--browser', workflow_session: 'workspace' }] } })
+  await mountBrowser(true)
+  await act(async () => { FakeSocket.instances.at(-1)!.onmessage?.(frameMessage()); FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(1000) })
+  await act(async () => { FakeSocket.instances.at(-1)!.onclose?.(); vi.advanceTimersByTime(2000) })
+  expect(api.post.mock.calls.some(call => call[0] === '/api/browser/workspace')).toBe(false)
 })

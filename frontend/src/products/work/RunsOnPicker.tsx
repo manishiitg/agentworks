@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, CircleAlert } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 import { llmConfigService, type ProviderConnection } from '../../services/llm-config-api'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { accountConfigured, accountRelation, accountUsable } from '../../components/providers/ProviderAccounts'
 import { loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { readLastRunsOn } from './runsOnMemory'
+import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
+import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 
 /** What a new Crew or Code runs on: the coding CLI, its model, and the account. */
 export type RunsOnSelection = {
@@ -22,7 +24,7 @@ type Choice = {
   ready: boolean
   accountLabel: string
   connectionId?: string
-  /** A server (shared) account is set up and usable for this person. */
+  /** An admin-managed account is set up and usable for this person. */
   serverReady: boolean
 }
 
@@ -39,7 +41,7 @@ function choiceFor(option: AgentProfileProviderOption, records: ProviderConnecti
   if (own) return { option, label, ready: true, accountLabel: `your account${own.identity ? ` (${own.identity})` : ''}`, connectionId: own.id, serverReady }
   const shared = usable.filter(record => accountRelation(record).startsWith('shared')).sort(newestFirst)[0]
   if (shared) return { option, label, ready: true, accountLabel: `shared by ${shared.owner_name || 'a teammate'}`, connectionId: shared.id, serverReady }
-  if (serverReady) return { option, label, ready: true, accountLabel: 'shared account', serverReady }
+  if (serverReady) return { option, label, ready: true, accountLabel: ADMIN_MANAGED_ACCOUNT_LABEL, serverReady }
   return { option, label, ready: false, accountLabel: 'not signed in', serverReady }
 }
 
@@ -51,8 +53,7 @@ const optionEffort = (option: AgentProfileProviderOption) => {
 /**
  * The "Runs on" row of the create dialogs: which coding CLI and account a new Crew or Code uses.
  * It starts on the CLI used last, else one you are signed in to, so most people just click Create;
- * a CLI you are not signed in to offers Sign in right here. The choice is saved with the project,
- * account included, so the first message works without visiting the Models tab.
+ * only installed CLIs with a ready account are offered. Setup lives in Providers.
  */
 export function RunsOnPicker({ profileId, onChange, disabled, options: givenOptions, accountsProduct = profileId, saveAccount = 'never' }: {
   /** Crew/Code product id; also the key for remembering the last choice ("workflow" for workflows). */
@@ -67,10 +68,15 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
    * Whether the chosen account is saved on the new project. 'never' (Crew, Code): the server uses
    * your own signed-in account for your own chats by itself, and a private account saved on a
    * shared Crew would fail for everyone else it is not shared with. 'when-needed' (workflows, which
-   * have no such default): saved only when no shared account is usable for you.
+   * have no such default): saved only when no admin-managed account is usable for you.
    */
   saveAccount?: 'never' | 'when-needed'
 }) {
+  const providerManifest = useLLMStore(state => state.providerManifest)
+  const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
+  const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
+  useEffect(() => { if (!providerManifestLoaded) void loadProviderManifest() }, [providerManifestLoaded, loadProviderManifest])
+
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
   const [records, setRecords] = useState<ProviderConnection[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -104,7 +110,11 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
     }
   }, [refreshAccounts])
 
-  const choices = useMemo(() => options.map(option => choiceFor(option, records)), [options, records])
+  const choices = useMemo(() => {
+    const readyIds = readyCodingProviders(providerManifest, records).map(provider => provider.id)
+    return options.filter(option => readyIds.includes(option.provider || option.id))
+      .map(option => choiceFor(option, records)).filter(choice => choice.ready)
+  }, [options, records, providerManifest])
 
   // Start on the CLI used last, else one you are signed in to (your own account first), else the
   // product default, so the default is right for most people.
@@ -114,8 +124,6 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
     return choices.find(choice => choice.option.id === last && choice.ready)
       || choices.find(choice => choice.ready && choice.accountLabel.startsWith('your account'))
       || choices.find(choice => choice.ready && choice.option.default)
-      || choices.find(choice => choice.ready)
-      || choices.find(choice => choice.option.default)
       || choices[0]
   }, [choices, profileId])
 
@@ -132,7 +140,13 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
     })
   }, [current, onChange, saveAccount])
 
-  if (!loaded || choices.length === 0 || !current) return null
+  if (!loaded || !providerManifestLoaded) return null
+  if (!current) return (
+    <div className="mt-4 text-xs text-muted-foreground" data-testid="runs-on-picker">
+      No providers are ready to use. Connect an account in{' '}
+      <button type="button" disabled={disabled} onClick={() => useLLMStore.getState().setShowLLMModal(true)} className="font-semibold text-primary hover:underline">Providers</button>.
+    </div>
+  )
 
   return (
     <div className="mt-4" data-testid="runs-on-picker">
@@ -146,25 +160,16 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
       >
         {choices.map(choice => (
           <option key={choice.option.id} value={choice.option.id}>
-            {choice.label} · {choice.ready ? choice.accountLabel : 'sign in needed'}
+            {choice.label} · {choice.accountLabel}
           </option>
         ))}
       </select>
-      {current.ready ? (
-        <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-          {saveAccount === 'never' && current.accountLabel.startsWith('your account')
-            ? `Uses ${current.accountLabel} for your chats.`
-            : `Uses ${current.accountLabel}.`} You can change it later in Models.
-        </p>
-      ) : (
-        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
-          <CircleAlert className="h-3.5 w-3.5" />
-          You are not signed in to {current.label}.
-          <button type="button" disabled={disabled} onClick={() => useLLMStore.getState().setShowLLMModal(true)} className="font-semibold text-primary hover:underline">Sign in</button>
-          <span className="text-muted-foreground">or create now and sign in later.</span>
-        </p>
-      )}
+      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+        {saveAccount === 'never' && current.accountLabel.startsWith('your account')
+          ? `Uses ${current.accountLabel} for your chats.`
+          : `Uses ${current.accountLabel}.`} You can change it later in Models.
+      </p>
     </div>
   )
 }

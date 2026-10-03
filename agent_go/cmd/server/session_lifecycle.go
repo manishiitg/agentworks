@@ -611,6 +611,11 @@ func (api *StreamingAPI) handleClearSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if err := deleteSessionInstructions(GetUserIDFromContext(r.Context()), sessionID); err != nil {
+		http.Error(w, "failed to clear prompt snapshot", http.StatusInternalServerError)
+		return
+	}
+
 	// Clear conversation and coding-agent resume state guarded by the same
 	// mutex used by query/resume paths.
 	api.conversationMux.Lock()

@@ -4,31 +4,38 @@ import { parseAgentworksProductCommands, type AgentworksProductCommand } from '.
 export const AGENTWORKS_PROFILE_ID = 'agentworks'
 export const AGENTWORKS_PROFILE_VERSION = 1
 
-let loaded: Promise<AgentworksProductCommand[]> | null = null
+const loaded = new Map<string, Promise<AgentworksProductCommand[]>>()
 
 // The workflow chat remounts on every workflow switch; load the product
 // commands once per page. A missing profile (404) is a stable answer (no
 // commands), so it is cached too; other failures may be retried.
-export function loadAgentworksProductCommands(): Promise<AgentworksProductCommand[]> {
-  if (!loaded) {
-    loaded = fetchAgentworksProductCommands().catch(error => {
-      loaded = null
+export function loadWorkflowProductCommands(profileId = AGENTWORKS_PROFILE_ID, version = AGENTWORKS_PROFILE_VERSION): Promise<AgentworksProductCommand[]> {
+  const key = `${profileId}:${version}`
+  let pending = loaded.get(key)
+  if (!pending) {
+    pending = fetchWorkflowProductCommands(profileId, version).catch(error => {
+      loaded.delete(key)
       throw error
     })
+    loaded.set(key, pending)
   }
-  return loaded
+  return pending
+}
+
+export function loadAgentworksProductCommands(): Promise<AgentworksProductCommand[]> {
+  return loadWorkflowProductCommands()
 }
 
 export function resetAgentworksProductCommandsCache(): void {
-  loaded = null
+  loaded.clear()
 }
 
-async function fetchAgentworksProductCommands(): Promise<AgentworksProductCommand[]> {
+async function fetchWorkflowProductCommands(profileId: string, version: number): Promise<AgentworksProductCommand[]> {
   const token = getAuthToken()
-  const response = await fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(AGENTWORKS_PROFILE_ID)}?version=${AGENTWORKS_PROFILE_VERSION}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(profileId)}?version=${version}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
   if (response.status === 404) return []
-  if (!response.ok) throw new Error(`Unable to load AgentWorks commands (${response.status})`)
+  if (!response.ok) throw new Error(`Unable to load ${profileId} commands (${response.status})`)
   return parseAgentworksProductCommands(await response.json() as { commands?: Array<Record<string, unknown>> })
 }

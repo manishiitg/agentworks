@@ -30,8 +30,9 @@ import (
 //
 // See docs/design/agent_tool_surface_single_source.md.
 type productToolGate struct {
-	profileID string
-	deny      func(string) bool
+	profileID             string
+	workflowNotifications bool
+	deny                  func(string) bool
 
 	// allowed is nil in observe mode: every tool passes and is recorded, so a
 	// real enabled: list can be seeded from a live session instead of guessed.
@@ -49,8 +50,8 @@ type productToolGate struct {
 }
 
 // newProductToolGate builds a gate for a resolved profile. A nil profile, or a
-// profile without tool_policy.mode=allowlist, yields observe mode: nothing is
-// filtered and every registered name is recorded.
+// profile without tool_policy.mode=allowlist, yields observe mode: no product tools are
+// filtered except workflow-only notifications, and every admitted name is recorded.
 func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 	gate := &productToolGate{}
 	if resolved == nil {
@@ -160,7 +161,18 @@ func (g *productToolGate) Allows(name string) bool {
 	return g.allowsLocked(strings.TrimSpace(name))
 }
 
+// AllowWorkflowNotifications enables the workflow-only notification capability.
+// Product profiles remain excluded even if an allowlist or tool factory declares it.
+func (g *productToolGate) AllowWorkflowNotifications(enabled bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.workflowNotifications = enabled && g.profileID == ""
+}
+
 func (g *productToolGate) allowsLocked(name string) bool {
+	if name == "notify_user" && !g.workflowNotifications {
+		return false
+	}
 	if g.deny != nil && g.deny(name) {
 		return false
 	}

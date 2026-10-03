@@ -165,6 +165,12 @@ func registerAPIRoutes(r *gin.Engine) {
 
 		// Shell execution route
 		api.POST("/execute", requireWorkspaceAPIToken(), handlers.ExecuteShellCommand)
+		// Sandboxed interactive shells (Code's plain shell); agent server only.
+		api.POST("/shell/interactive/start", requireWorkspaceAPIToken(), handlers.StartInteractiveShell)
+		api.POST("/shell/interactive/stop", requireWorkspaceAPIToken(), handlers.StopInteractiveShell)
+		api.POST("/shell/interactive/resize", requireWorkspaceAPIToken(), handlers.ResizeInteractiveShell)
+		api.POST("/shell/interactive/sweep", requireWorkspaceAPIToken(), handlers.SweepInteractiveShells)
+		api.GET("/shell/interactive/attach", requireWorkspaceAPIToken(), handlers.AttachInteractiveShell)
 		api.GET("/processes", handlers.ListWorkflowProcesses)
 		api.POST("/processes/cleanup", handlers.CleanupWorkflowProcesses)
 
@@ -190,6 +196,9 @@ func registerAPIRoutes(r *gin.Engine) {
 		// Browser process management (list/cleanup stale chromium instances)
 		api.GET("/browser/live/:session/stream", requireWorkspaceAPIToken(), handlers.BrowserLiveStream)
 		api.POST("/browser/live/:session/recording", requireWorkspaceAPIToken(), handlers.BrowserRecording)
+		api.POST("/browser/live/:session/teaching", requireWorkspaceAPIToken(), handlers.BrowserTeaching)
+		api.POST("/browser/live/:session/text", requireWorkspaceAPIToken(), handlers.BrowserViewerText)
+		api.POST("/browser/live/:session/restore-tabs", requireWorkspaceAPIToken(), handlers.BrowserRestoreTabs)
 		api.GET("/browser/processes", handlers.ListBrowserProcesses)
 		api.POST("/browser/cleanup", handlers.KillBrowserProcesses)
 

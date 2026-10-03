@@ -38,14 +38,15 @@ const CHILD_PROFILE_VERSION = 1
  * FamilyFile's comment) and this role's own model. A role that has never
  * picked a model falls back to ITS OWN profile's product.yaml default for
  * the current engine (provider_options[].model_id) rather than the other
- * role's pick or a shared legacy value. Both currently default to GPT-6 Luna
- * on Codex, but either role can choose a different model without silently
+ * role's pick or a shared legacy value. The parent defaults to GPT-6.1 Sol
+ * and the child to GPT-6 Luna on Codex; either can choose a model without
  * overwriting the other's choice.
  */
-export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?: string; model?: string }> {
+export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?: string; model?: string; connectionId?: string; reasoningEffort?: string }> {
   const state = await api.setup().catch(() => null)
   const engine = state?.engine || undefined
   const roleModel = (role === 'parent' ? state?.parent_model : state?.child_model) || undefined
+  const account = { connectionId: state?.connection_id, reasoningEffort: role === 'parent' ? state?.parent_reasoning_effort : state?.child_reasoning_effort }
   if (engine) {
     const profileID = role === 'parent' ? PARENT_PROFILE_ID : CHILD_PROFILE_ID
     const profileVersion = role === 'parent' ? PARENT_PROFILE_VERSION : CHILD_PROFILE_VERSION
@@ -53,11 +54,11 @@ export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?
     const match = options.find((o) => o.id === engine || o.provider === engine)
     // A saved model may have been removed from this profile's curated list.
     // Send the current default instead of a model the server will reject.
-    if (roleModel && (!match?.models?.length || match.models.includes(roleModel))) return { engine, model: roleModel }
-    if (match?.model_id) return { engine, model: match.model_id }
+    if (roleModel && (!match?.models?.length || match.models.includes(roleModel))) return { engine, model: roleModel, ...account }
+    if (match?.model_id) return { engine, model: match.model_id, ...account }
   }
   // Last resort: a pre-migration family.json with only the old shared field.
-  return { engine, model: roleModel || state?.model || undefined }
+  return { engine, model: roleModel || state?.model || undefined, ...account }
 }
 
 /**
@@ -68,13 +69,11 @@ export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?
  *
  * engine applies to every open tab (it is shared — which paid account the
  * family uses). model only applies to role's own tab(s): the other role's
- * tab keeps engine in sync but has its model CLEARED rather than inheriting
- * a model that was never chosen for it — an empty model_id on its next
- * query makes the backend fall back to that profile's own product.yaml
- * default for the (possibly now different) engine, exactly like a tab that
- * was never touched at all.
+ * tab preserves its own choice while using the same engine. Changing the
+ * shared engine clears the other role's model and effort so its next query
+ * falls back to that profile's defaults for the new engine.
  */
-export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: string, model?: string): void {
+export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: string, model?: string, reasoningEffort?: string, connectionId?: string): void {
   const store = useChatStore.getState()
   const roleProfileID = role === 'parent' ? PARENT_PROFILE_ID : CHILD_PROFILE_ID
   for (const tab of Object.values(store.chatTabs)) {
@@ -82,7 +81,10 @@ export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: st
     if (id !== PARENT_PROFILE_ID && id !== CHILD_PROFILE_ID) continue
     store.setTabMetadata(tab.tabId, {
       agentProfileEngine: engine,
-      agentProfileModelID: id === roleProfileID ? (model ?? '') : '',
+      ...(connectionId !== undefined ? { agentProfileConnectionID: connectionId } : tab.metadata?.agentProfileEngine !== engine ? { agentProfileConnectionID: '' } : {}),
+      ...(id === roleProfileID
+        ? { agentProfileModelID: model ?? '', ...(reasoningEffort !== undefined || tab.metadata?.agentProfileEngine !== engine ? { agentProfileReasoningEffort: reasoningEffort } : {}) }
+        : tab.metadata?.agentProfileEngine !== engine ? { agentProfileModelID: '', agentProfileReasoningEffort: undefined } : {}),
     })
   }
 }
@@ -248,6 +250,8 @@ export default function PlatformChat({ title, childName, theme, commands, landin
         agentProfileChatContract: 'profile-v1',
         agentProfileEngine: runtime.engine,
         agentProfileModelID: runtime.model,
+        agentProfileConnectionID: runtime.connectionId,
+        agentProfileReasoningEffort: runtime.reasoningEffort,
         agentProfileConversationKey: conversation.conversation_key,
         agentProfileConversationId: conversation.conversation_id,
       }, conversation.session_id)

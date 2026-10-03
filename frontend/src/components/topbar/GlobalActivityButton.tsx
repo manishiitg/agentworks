@@ -29,7 +29,7 @@ export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalA
     try {
       const [notifications, humanInputs] = await Promise.all([
         agentApi.getOrgDashboardNotifications(workspacePaths, 1),
-        agentApi.listReportHumanInputsAggregate(workspacePaths, 'pending').catch(() => ({ success: false, inputs: [] })),
+        agentApi.listNeedsYouDecisionsAggregate(workspacePaths).catch(() => ({ success: false, inputs: [] })),
       ])
       if (request !== refreshSequence.current) return
       const inputs = humanInputs.inputs || []

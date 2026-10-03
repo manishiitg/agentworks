@@ -1,16 +1,254 @@
-# Browser Automation
+# Browser: ownership, automation, live control and teaching
 
-Coding Agent Loop uses the managed `agent_browser` tool for all browser
-automation. The browser can run headlessly in the workspace or attach to a
-user-visible Chrome through CDP.
+This is the single browser guide for our products. It consolidates the former
+core browser, workflow browser-authoring and live-workflow-browser guides.
+Runtime behavior below is based on implementation and local verification on
+2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
+deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
+their own release verification. See [PLAT-393](../bugs/pulse_platform/browser/plat-393.md).
+The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
+must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
+
+## Ownership and product behavior
+
+A managed browser belongs to a workflow or product project, not to a person.
+Identity authorizes access. Builder chats, runs and delegated agents use the
+workflow browser; Crew/Code conversations use the project browser. Physical
+project paths include the owner so two owners' same-named projects stay separate.
+Deployment prefixes separate installations. Workspace-less chats retain their
+session fallback. Browsers start on demand, not when a workflow is created.
+
+| Product/surface | Implemented behavior |
+| --- | --- |
+| AgentWorks workflows and Relays | Automatic by default. Missing/legacy `none` manifest modes become `auto`; ordinary setup has no Disable browser choice. Manifest remains the canonical settings store. |
+| Crew and Code | Browser capability and current product grants remain enforced. `.browser-settings.json` in the physical project is canonical; chat/tab caches cannot override it. |
+| Work browser panel | Reads and writes those project settings through the authenticated browser API. |
+| Video Studio | Required browser and shared workflow viewer; server uses managed Chrome. |
+| SparkQuill | Parent can start and sign in through its browser drawer; teaching is hidden on this surface. Local CDP installation instructions appear only when enabled. Child browser remains explicitly disabled. |
+| Dominion | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
+
+Local supports Automatic, Managed browser and local Chrome/CDP. When
+`AGENT_BROWSER_CDP_ENABLED=false`, startup and workflow/project runtime use
+managed Chrome even if an old setting requests CDP. There is no per-user browser
+preference. Product capability/tool restrictions remain separate from mode
+migration. Missing or invalid workflow manifests still fail closed.
+
+Managed workflow/project profiles persist by default beneath the OS configuration
+folder, or `AGENT_BROWSER_PROFILE_ROOT`. Docker Compose sets the same profile base
+in both services and mounts a persistent `browser_profiles` volume, outside the
+document tree. Other split-service deployments must configure the same absolute
+profile root and make it available to the workspace service.
+Existing `AGENT_BROWSER_SHARED_PROFILE`
+configuration still takes precedence. Profiles are separate by scope; default
+persistence does not enable the legacy global shared-browser fallback. Containers
+must mount profile storage for persistence across container replacement. Explicit
+empty `AGENT_BROWSER_SHARED_PROFILE` retains the existing ephemeral override.
+
+`mcpagent` transports tools; `multi-llm-provider-go` does not choose browser scope.
+Neither dependency requires a source change for this feature.
+
+## Start browser and manual sign-in
+
+**Browser → Start browser → Take control → open site → sign in → Return control**
+works before an agent runs. Opening the panel discovers browsers; the Start button
+launches/reuses the scoped browser through the workspace service.
+
+`GET/POST /api/browser/workspace?workspace_path=...` resolves the browser identity
+on the server. POST accepts `start`, `recover` or `save`; fixed-workspace products also pass
+`profile_id`. The agent API checks product capability and workspace grants. A
+per-scope control gate rejects startup while another controller/action owns it.
+Startup preserves existing tabs and enables streaming only when necessary.
+Native `tab --json` starts/reuses Chrome; URL-less `open` resets the selected page
+in the qualified runtime. Browser commands carry the caller's account identity,
+workspace guard and the selected runtime's launch flags. Chrome's private IPC
+folder survives command cleanup. Teaching files inherit the scope's group access
+so the server account slot can review drafts and consume published skills.
+
+On the server, the user sees streamed server Chrome pixels and inputs travel
+through the authenticated live WebSocket. The website is not an application
+iframe. Sign-in stays in that scoped browser profile. Local CDP uses the attached
+Chrome's own profile and may also be controlled directly in Chrome; the viewer's
+control lease holds the same per-port lock as agent CDP commands. Sites may expire
+sessions, so saved procedures still require an active sign-in.
+
+## Tabs and reconnection
+
+Connected browser chrome has two 36 px rows: tabs and neutral actions, then
+navigation, address and connection/control status. Narrow panels use labeled
+icons and scroll the tab strip; actions do not wrap into another header.
+
+Each managed browser remembers up to 50 HTTP(S)/blank tab URLs and the selected
+page in `.agentworks-tabs.json` (0600) inside its existing private Chrome profile.
+The service snapshots the live daemon once per second while it remains running,
+even after a previously opened viewer closes. URLs retain their query/fragment
+routing; this is private browser state, distinct from sanitized teaching evidence.
+Passwords, field contents and clipboard text are not stored in the tab file.
+Startup reopens remembered pages when the new browser is blank, or selects the
+remembered page if full Chrome restored the same pages itself. Existing different
+pages always win, and repeated Start does not reset a live page. Headless shell
+cannot rely on Chrome's `--restore-last-session` flag. Local CDP leaves tab
+restoration to the user's Chrome. Unsaved form contents are not restored; changes
+within the last snapshot interval may be lost in a sudden crash.
+
+A dropped stream retries with bounded backoff. After failed reconnects, a writable
+viewer that previously held control may make one authorized managed-browser
+recovery request under the same scope/control gate. Passive watchers and Playwright
+never start a browser; local CDP recovery requires the user to reconnect Chrome.
+Starting a browser manually also resets exhausted reconnect retries. Teaching
+never resumes automatically across an unobserved gap.
+
+## Teach a browser task
+
+**Start browser → sign in → Teach task → describe the result → demonstrate →
+Finish → helper prepares the task → Try task → Save skill** is implemented for
+ordinary browser forms and controls. Diagnostic video/HAR recording stays a
+separate feature; it does not automatically become a learned task.
+
+Local settings show a compact browser choice: Automatic, Workspace browser or
+My Chrome. Connection ports, diagnostics and setup commands sit under a closed
+Advanced disclosure. Server settings describe the workspace browser without
+redundant mode choices. Start browser is in the top header; connected tabs
+have close controls and a plus button. Tab mutations require
+exclusive manual control; manually entering an address during teaching records
+an explicit navigation so replay opens it instead of waiting for a link click; closing the sole remaining tab is refused.
+
+### Capture inside the existing Chrome
+
+`workspace/browserteach` obtains the selected browser's private runtime-provided
+CDP URL and attaches to its selected page. Discovery and reviewed replay send
+fixed operations to the existing daemon through its private IPC socket. Managed diagnostic capture uses the same IPC rule. They
+do not invoke another CLI, which could restart the daemon on a version mismatch. It does not launch another browser,
+replace the profile, expose a raw CDP endpoint, or record every Chrome tab.
+The private recorder currently requires a loopback WebSocket endpoint. A local
+container connecting to host Chrome needs additional endpoint qualification.
+
+An init script and default execution-context listeners cover the current document
+and subsequent navigation. Captured actions include genuine clicks, final field
+edits (including paste/IME input), select/check/uncheck, and Enter/Escape. The
+host assigns action IDs, page/frame identity, timestamps and sanitized URLs.
+Targets store semantic role/name, stable selector candidates and row context.
+Same-process frames with a stable iframe id/name/test attribute carry a frame
+locator chain. Meaningful actions may have bounded JPEG result evidence.
+Screenshots are omitted on pages containing sensitive fields or frames, and after
+paused fields have been edited, rather than pretending those images are masked.
+
+Teaching holds the viewer's exclusive control lease, so agent actions and another
+controller cannot interleave. Other authorized viewers may watch. Recording has
+an indicator in the app and Chrome, Pause/Resume/Finish/Cancel, a ten minute limit,
+a 1,000 action limit, and a 50 MiB screenshot budget. Disconnect finalizes an
+**interrupted** demonstration and releases control; start a new demonstration
+instead of stitching an unobserved gap into a tested procedure. Interrupted and
+cancelled captures cannot be tested/published directly.
+
+Sign in before teaching. Password/OTP/token/card fields are suppressed before
+buffering values, cookies and auth headers are never collected, and URL query and
+fragment values are removed. A field edited during Pause stays excluded for the
+rest of that demonstration, including a later blur after Resume. New documents
+start paused until the host applies the recording state. This is not universal
+secret detection: ordinary page text, usernames and non-sensitive example inputs
+can be present. Review artifacts before saving them as guidance.
+
+### Draft, review, test and reuse
+
+Evidence lives in `<workspace>/browser-demonstrations/<id>/`:
+
+- `manifest.json`: goal, scope, ordered actions, reviewed guidance, variables,
+  outcome check, status and last test time.
+- `actions.jsonl`: ordered structured evidence.
+- `draft.md`: initial procedure draft.
+- `step-*.jpg`: eligible result evidence.
+
+Finish drafts the procedure and, where the panel has a helper chat, sends that
+helper a review request. The helper can propose guidance, parameters and an
+outcome in the demonstration manifest; it is told to treat site content as
+untrusted and to keep the procedure untested. The panel automatically refreshes
+the helper’s review. Users see the task goal, reusable inputs, expected result
+and readiness, then **Try task** and **Save skill**. Raw actions, selector
+warnings, repair controls, file paths and guidance editing stay out of the
+normal panel; the helper works with these records behind the scenes.
+
+Test first saves the reviewed draft, acquires the browser control gate, supplies
+the chosen example inputs, and runs the same signed-in browser. It resolves a
+fresh unique visible target for each step. Stable selectors are candidates;
+ambiguous/missing targets stop the run. Generated CSS paths are transient fresh
+resolutions, not durable recorded recipes. Observed navigation is checked rather
+than repeating a link's navigation. A page text/URL outcome check must pass.
+The UI states that trying the task performs it on the website using the chosen
+inputs. Changes to the expected result require another successful try before saving.
+
+The workspace service retains a fingerprint receipt for the exact successfully
+tested actions, guidance and check. Editing a manifest to say `tested` does not
+permit publication. A service restart requires retesting before publication.
+
+**Save skill** creates a scope-owned reusable file:
+
+- Workflows: `learnings/_global/references/browser-<id>.md`, linked from the
+  workflow's existing `learnings/_global/SKILL.md`.
+- Projects: `skills/browser-<id>/SKILL.md`. Crew/Code select that local skill in
+  their canonical `workflow.json`, so subsequent chats attach it.
+- `browser-demonstrations/INDEX.md` also indexes tested procedures; enabled product
+  runtimes point the helper to that workspace index for future taught tasks.
+
+The saved procedure references its reviewed manifest and expected outcome. It
+uses the existing managed browser tool, scope and permissions; it grants no new
+website or tool authority. The same procedure can be tested again with new input
+values. Site changes or expired sign-in may require another review/test.
+
+### Qualified coverage and remaining work
+
+The local real-Chrome check covers semantic buttons without stored selectors,
+parameter replay, sign-in retention across browser restart, actual JPEG evidence,
+repeated recorder sessions, password suppression and paused edits across
+navigation. Multi-tab qualification covers manual new tabs, switching back,
+site-created popups, closing a popup, repeated replay with fresh targets and
+privacy for a new tab selected while paused. Control/auth checks and UI review/test behavior have separate tests.
+
+This release does not promise universal browser recording. Canvas, drag actions,
+file upload and unlocatable clicks need helper review. Multi-tab procedures
+support explicitly opened/selected tabs, opener-owned popups and tab closure.
+Each test maps recorded tab identities to fresh Chrome targets before resolving
+DOM targets. Missing tabs, undeclared identities, ambiguous popups and unsupported
+navigation stop replay. Only explicitly selected tabs and their new popups are
+attached; existing unrelated Chrome tabs are excluded. Capture supports up to
+twelve simultaneously attached tabs. Cross-process/cross-origin frames, shadow DOM,
+native dialogs and protected pages need further qualification. Query/fragment
+routing may need a reviewed navigation URL because capture removes those values.
+Downloads can be initiated by a demonstrated click, but the current page text/URL
+check does not verify the downloaded artifact. Visual replay, download/dialog
+verification, native file chooser replay and broad retention/quota administration
+remain follow-up work. A video alone does not qualify these cases.
+
+See [workflow learning](../workflow/learning_architecture.md) and
+[project instructions](../design/project_instruction_files.md) for the existing
+learning conventions. Keep browser guidance here instead of creating parallel
+guides for individual products.
+
+### External reference and evidence limits
+
+[Grok Bot's official teaching flow](https://docs.x.ai/grok-bot/skills-routines-and-automations#teach-a-workflow-by-demonstration)
+records visible interaction for up to ten minutes without microphone audio,
+then produces a draft skill for testing. An
+[unofficial reconstruction's recorder](https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/source/host/extensions/teach-recording/teach-recording-service.ts#L141)
+uses FFmpeg/X11 video and dispatches `learn-from-demonstration`; it does not show
+DOM-event recording in that service. Its
+[provenance](https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/PROVENANCE.md)
+is a partial reconstruction, not official source. The learning skill is fetched
+separately, so its analysis internals are unverified. Our structured recorder is
+our own implementation, not a claim about Grok's latest implementation.
+
+## Current automation reference
+
+All normal automation uses the managed `agent_browser` tool and matching
+`agent-browser` skill. Chrome can run headlessly in the workspace or, on local
+installations where permitted, attach to a visible Chrome through CDP.
 
 ## Modes
 
 | Mode | Behavior | Typical use |
 |---|---|---|
-| `none` | Browser tools are disabled. | Workflows that do not browse. |
+| `none` | Legacy ordinary workflow/project configuration migrates to `auto`. Internal missing-manifest and explicit product capability restrictions remain separate. | Compatibility only; no ordinary UI option. |
 | `auto` | Use a reachable configured CDP browser; otherwise use headless. | Default. |
-| `headless` | Use the signed-in user’s managed Chromium. | Background and scheduled runs. |
+| `headless` | Use the workflow/project’s managed Chromium. | Background and scheduled runs. |
 | `cdp` | Attach to the configured Chrome debugging port. | Existing logins, visual QA, and sites that reject headless browsers. |
 
 The workflow manifest stores the mode under
@@ -51,8 +289,8 @@ and use labeled tabs plus a per-port select-and-act lock.
 
 Do not run the `agent-browser` CLI through the shell for browser actions. Call
 the managed `agent_browser` tool. The runtime injects and validates the CDP
-endpoint, applies session limits, serializes shared-tab actions, and keeps file
-access inside the workspace.
+endpoint, applies session limits, serializes shared-tab actions, and authorizes managed
+upload/output paths. `file://` navigation has the separate limitation below.
 
 To check whether CDP is reachable, use the backend status operation:
 
@@ -154,10 +392,10 @@ workflow must replace it.
 ## State and isolation
 
 - CDP mode uses the user's real Chrome cookies and login state.
-- Managed headless mode uses one persistent browser per workflow. Authorized users, builder sessions, runs and groups for that workflow share it; unrelated workflows are isolated. Tabs are optional; reuse the current tab or create one when useful.
+- Managed headless mode uses one browser per workflow or product project. Authorized callers share that scope; unrelated scopes are isolated. Scoped profiles persist by default; deployment services must use the same profile base. Tabs are optional; reuse the current tab or create one when useful.
 - Shared CDP concurrency is isolated by real tab IDs plus a per-port
   select-and-act lock; labels are aliases, not durable tab identities.
-- Delegated agents inherit the workflow browser. Explicit session labels do not create independent browsers. Preserve it at workflow completion. Configured CDP profiles retain their separate specialized login behavior.
+- Delegated agents inherit the workflow/project browser. Explicit session labels do not create independent browsers. Preserve it at workflow completion. Configured CDP profiles retain their separate specialized login behavior.
 - Workflow-created CDP tabs are closed automatically one hour after the final
   run releases its lease; reused user tabs are preserved.
 
@@ -319,5 +557,416 @@ There are two CDP download paths:
 - Poll for page state instead of relying on long fixed sleeps.
 - Never connect to the CDP WebSocket directly for normal actions; that bypasses
   tab locking and can race other workflows.
-- If a site rejects headless mode, change the workflow to `cdp` and record that
-  precondition in its learnings.
+- On a local installation, a site rejecting managed headless browsing may
+  require `cdp`; record that precondition in its learnings. A server with external
+  CDP disabled cannot use that workaround.
+
+## Workflow authoring
+
+### Authoring sequence
+
+1. Load the installed command guide with
+   `agent_browser(command="skills", args=["get", "core"])`.
+2. Open or select the workflow's labeled tab.
+3. Take an interactive snapshot.
+4. Identify the intended control and act with its current ref or a verified locator.
+5. Verify the expected state; re-snapshot after navigation or DOM updates,
+   switching tabs, or when ref freshness is uncertain.
+6. Save stable site knowledge to the workflow's learnings.
+
+### Persisted scripts
+
+Snapshot refs such as `@e1` are valid only for the current page state. A saved
+script may resolve a fresh ref from the current snapshot by role, accessible
+name, and surrounding context, or use a verified semantic locator or DOM hook.
+Save this locating recipe, never a snapshot's literal ref as reusable config.
+Runtime snapshots can remain as evidence. CSS discovery is not required for
+every browser step.
+
+Candidates include role plus accessible name, labels, test attributes,
+hand-written semantic `id`/`name`, and `aria-label`. None guarantees stability:
+a Like button may become Unlike. Scope repeated controls to their intended
+row/card and require one intended actionable match; do not choose the first
+match when the target is ambiguous. Verify the resulting page/business state
+before recording success or retrying.
+
+Avoid generated framework IDs, hashed class names, and `nth-child` chains.
+When the accessibility snapshot is insufficient, use a scoped read-only `eval`
+to inspect relevant DOM attributes. Do not dump the full page, read credentials,
+or click/submit through a discovery probe. Treat any discovered locator as a
+candidate to verify. The attached `agent-browser` skill's **Selector Discipline**
+section is the shared authoring and learning contract.
+
+## Live browser and manual control
+
+The Browser panel discovers managed browsers after `agent_browser open` runs.
+Select a session to watch its active tab; settings are behind the gear button.
+Opening the panel currently does not launch a browser. Closed/reaped sessions
+disappear. Browser viewing is available through the shared workflow/project
+components, subject to product access rules.
+
+Watch mode cannot send input. Take control requires workspace write access and
+an exclusive lease. Browser commands wait while manual control is held; unrelated
+workflow work can continue. Return control or Escape releases the lease. Closing
+the viewer, switching sessions or losing its connection also releases it.
+
+### Sessions and tabs
+
+A workflow/project resolves to one managed browser, which can have multiple
+tabs. Discovery may also include isolated Playwright test sessions. The session
+selector chooses the tracked browser to watch. The tab strip
+shows that session's tabs, with the active tab highlighted. The viewer displays
+one active tab at a time; it does not display all tabs simultaneously.
+
+Normal browser commands update the existing session's live view automatically.
+There is no separate viewer initialization command for each action. Session
+discovery refreshes every five seconds while the panel is mounted. Live frames
+arrive over WebSocket, with the proxy requesting a maximum of 10 frames per second.
+
+Watching follows the agent's active tab. Switching tabs changes the actual
+browser's active tab, so tab selection is enabled only after taking control.
+Users with control can click, type, scroll, and select another tab. Escape returns
+control to the agent. Manual control holds browser commands for that session;
+it does not pause the entire workflow or unrelated sessions.
+
+### Architecture
+
+```text
+Workflow Browser tab
+    │ authenticated WebSocket through the app's existing HTTPS endpoint
+    ▼
+Agent API
+    │ checks session owner and workflow; enforces watch/control mode
+    │ connects using WORKSPACE_API_URL and WORKSPACE_API_TOKEN
+    ▼
+Workspace service (same host/container environment as agent-browser)
+    │ resolves the session's .stream file to a loopback port
+    ▼
+agent-browser stream → managed headless Chrome
+```
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/browser/live/sessions?workspace_path=Workflow/<folder>` | List authorized tracked browser sessions for the selected workspace. |
+| `GET /api/browser/live/{session}/stream?workspace_path=Workflow/<folder>` | Authenticated viewer WebSocket on the agent API. |
+| `GET /api/browser/live/:session/stream` | Internal workspace-service proxy to the local session stream. |
+
+The frontend sends a heartbeat every 10 seconds. The server releases manual
+control after a disconnect or 45 seconds without an incoming message. Only one
+viewer connection can hold control of a session at a time. Other connections
+can continue watching.
+
+### Viewer controls
+
+The browser header contains control, **Teach task**, expand and overflow actions
+with the existing neutral buttons. A separate tab strip contains per-tab close
+buttons and **+** for a blank tab. Back, forward and reload sit next to one
+address field; Enter opens an HTTP(S) website (bare hostnames use HTTPS).
+**Start browser** appears in the idle header and hides once the browser is running.
+Selecting a tab can acquire exclusive control; navigation, creating/closing tabs
+and clipboard actions require that control. A busy controller is reported.
+
+After taking control, select a field and paste with Cmd+V / Ctrl+V. Select text
+and copy with Cmd+C / Ctrl+C; the viewport's right-click menu also offers Copy
+and Paste. Mac editing shortcuts map to the remote platform. Clipboard transfer
+is plain text, limited to 64 KiB per paste/selection, and never reads the server's
+OS clipboard or saves clipboard contents to disk. Multiline Unicode text is
+inserted into the existing browser's focused field through private daemon IPC;
+no browser launches or endpoint/executable selection are exposed by that route.
+Copy reads selection in the active page, open shadow roots and same-origin frames.
+Cross-origin frame selection is currently unsupported; paste uses the browser's
+focused field and remains available. Clipboard permissions/secure context are
+required by the viewer's host browser. Empty selections leave the local clipboard
+unchanged. Watch-only users cannot send clipboard or navigation actions.
+
+**Fill width** uses the panel width with vertical scrolling; **Fit page** keeps
+the whole viewport visible. Browser is a workspace view (the toolbar group is
+currently Pulse), not a Setup page; mode/connection settings remain behind its
+gear button. Implementation and qualification: [PLAT-382](../bugs/pulse_platform/browser/plat-382.md).
+
+### Runtime mode changes
+
+The RTS UI check exposed a missing-tool bug when a chat started with **No
+browser** and was later changed to **Automatic**. Persistent CLI turns reused
+the original tool registration. The follow-up release keeps the workflow
+browser tool registered and reads the current manifest on each invocation.
+Disabled, missing, or unreadable configuration cannot launch a browser. The
+regression test covers enabling and disabling the same tool instance without
+creating another chat. Shared fix: `961d22b5a`.
+
+### Builder view switching
+
+Interactive Builder guidance requests `open_workspace_view(view="browser")`
+when beginning browser navigation for the user. The tool opens the full browser
+panel; the stream updates automatically, without repeated refresh requests.
+Scheduled and unattended runs do not manipulate the foreground UI. The Builder
+should respect subsequent user view changes.
+
+When a builder workspace-view action changes the visible panel, a small toast
+identifies it, for example “Builder opened Browser”. Acknowledged UI actions
+notify only after an applied result. Reopening the same visible view or
+refreshing it does not create another switch notification.
+
+## Persistent managed profiles
+
+Scoped workflow/project profiles persist by default beneath
+`AGENT_BROWSER_PROFILE_ROOT`, or `<OS config>/agentworks/browser-profile` when
+unset. Set the existing `AGENT_BROWSER_SHARED_PROFILE` to an absolute dedicated
+base outside release folders to retain that deployment layout, for example
+`/data/video-studio/browser-profile`. Explicitly empty shared-profile configuration
+opts out of persistence. A filesystem root or relative path is rejected.
+
+In persistent headless mode, all agent session names within one workflow map to
+that workflow's `workflow-<hash>--browser` identity. Authorized users share its
+logged-in accounts; write access is still required for input and recording.
+Workflows use directories beneath
+`<configured-profile>-workflows/`; projects use
+`<configured-profile>-projects/`. Legacy fallback identities may use
+`<configured-profile>-users/`. Browser actions share a
+per-workflow control lock, and workflow completion preserves the profile. Agents
+should inspect existing tabs and avoid reset/close or clearing storage without a
+user request.
+
+The shared launch settings are defined once in `workspace/browserconfig` and
+used by automation, viewer tab controls, recording, and the browser supervisor.
+Shared mode keeps Chrome's native Linux/version user agent, `en-US`, a default
+1280x720 viewport, and UTC timezone. It retains the existing AutomationControlled
+flag. No third-party stealth plugin is installed; detection avoidance is not
+guaranteed. Browser upgrades may change the fingerprint. Existing isolated
+profiles are not merged into the new shared profile.
+
+The legacy dedicated/shared-browser deployment can install the user unit
+`deploy/aws-ec2/server/video-studio-browser.service` and
+run `video-studio-browser` from the release's `bin` directory. It supervises
+Chrome separately from the agent/workspace services and gracefully closes it
+on service stop. Enable the unit for the user's default target to restart it
+on boot. The rootless release build includes the supervisor binary.
+The profile directory must remain on persistent storage across deployments.
+Cookies and local storage were verified across a real Chrome restart; sites
+can still expire sessions or require MFA. This is login-session persistence,
+not a separately configured password manager.
+
+Do not use a global shared-browser profile as the default for new workflow/project
+launches. A dedicated legacy supervisor is distinct from per-scope browser startup.
+Profiles from older per-chat/global browsers are not automatically merged. The
+prior global “all users” rollout does not define current ownership.
+
+## Diagnostic recording (existing)
+
+Use **Start recording** / **Stop recording** in the viewer for the same
+bundle. Recording requires write access and runs on the server even if the
+viewer disconnects. It preserves the existing browser and sign-ins. This is
+diagnostic evidence capture; Teach adds structured actions
+and learning on top of browser access, without redefining diagnostic recording.
+
+The existing `workspace_browser.agent_browser` tool supports Builder's bundled
+`capture` command in managed headless mode (ephemeral or persistent profiles):
+
+```json
+{"command":"capture","args":["status"],"session":"main"}
+{"command":"capture","args":["start"],"session":"main"}
+{"command":"capture","args":["stop"],"session":"main"}
+```
+
+Ask the agent, for example: “Record the browser, network and console while you
+reproduce this issue, then save the recording.” The browser must already be
+running with the intended page selected. The agent uses the same workspace
+recording endpoint as the UI, so the Browser view's existing status polling
+reflects chat start/stop operations. No new tool or CLI binary is needed.
+
+The managed handler derives the owning workflow from trusted session settings
+and sends its current folder permissions to the workspace service. Output normally
+lands in `Workflow/<name>/browser-recordings/<capture-id>/`; a step with narrower
+write access uses its authorized working directory's `browser-recordings/`.
+The response supplies the actual directory and files. Read-only sessions may
+inspect authorized recording status but cannot start or stop a capture. Another
+workflow cannot stop an active recording or retrieve its paths. A completed
+recording does not prevent another workflow from starting a new capture.
+
+Start begins video and HAR capture and clears console/error buffers. Stop exports
+`video.webm`, `network.har`, `console.json`, `errors.json`, `manifest.json`, and
+`capture.zip`. HAR response bodies are excluded. Console/error output is a
+buffer export, not an unlimited log stream. Selected-tab video and recovery
+semantics are described below.
+
+Start/stop are idempotent. After a timeout, query status before retrying. A partial
+stop returns errors and may leave `recording=true`; inspect the result and retry
+stop when necessary. Stop captures started for the task even if reproduction
+fails, but do not automatically stop a recording that was already running. Never
+mix a bundled capture with separate native `record`/HAR start/stop commands.
+Stopping capture preserves the browser and sign-ins.
+
+This extension belongs to Builder's handler and is documented in the tool schema,
+Builder browser skill, and browser guidance. Upstream `agent-browser skills` does
+not define it. Native `record` remains video-only; external CDP currently uses
+its existing separate video/HAR/console commands instead of bundled `capture`.
+
+### Ownership and capture recovery
+
+Workflow/agent cleanup preserves workflow browsers. Idle reaping still applies when no
+capture is active. Browser commands and manual control share a per-browser lock;
+this serializes individual actions, not an entire snapshot-to-click conversation.
+Agents still need fresh snapshots and coordination for concurrent tasks. A capture
+started by a tool pins the browser to its owning root run until stopped; viewer-started
+capture is workflow-scoped. Manual user control remains available.
+
+Bundled user-browser capture encodes the selected-tab WebSocket stream with ffmpeg,
+so tab switches appear in the same video. Native `record start` remains a separate,
+single-target command; don't mix it with bundled capture. Background tabs are not
+recorded simultaneously. The manifest records browser identity, owner session,
+source, timestamps, frame count and validation. `validation=passed` means nonblank
+frames and a decodable video, not proof that the workflow achieved its goal; inspect
+the actual footage before claiming success. Never substitute an earlier run's video.
+HAR/console/error exports retain the upstream CLI's scope and may be partial.
+
+An encoder or browser disconnect marks the capture interrupted on the next status,
+stop or start call. A service restart cannot revive a cached active marker. Starting
+again creates a fresh directory/file and discards abandoned HAR state. ffmpeg is
+required in the workspace service PATH. Deploy both backend services for this change.
+
+Regression coverage: common user/alias/child routing, group-to-builder identity,
+profile isolation, viewer authorization, cleanup and capture ownership, real ffmpeg
+encoding across a simulated selected-tab change, blank footage, disconnects and stale
+capture retries. A live smoke test is required after deployment; the old rollout
+status is not a current deployment inventory.
+
+## Synthetic microphone and camera
+
+Managed headless browser launches (including the shared supervisor, tool commands,
+UI tab controls and recording) include these Chrome flags through the central
+`workspace/browserconfig.HeadlessArgs()` helper:
+
+- `--use-fake-device-for-media-stream`
+- `--use-fake-ui-for-media-stream`
+
+These provide synthetic media devices and automatic media permission handling,
+so server-side flows that require a microphone can obtain a stream. They do not
+supply the user's voice or meaningful spoken dialogue. External CDP Chrome keeps
+its own launch configuration. An already running Chrome needs one graceful
+restart to apply the flags; the persistent profile is retained, while in-memory
+page state and ongoing calls may need to be resumed.
+
+The Builder agent-browser skill explains how to verify getUserMedia and the
+application outcome without switching to an unrelated Playwright harness. A
+microphone permission success alone is not evidence that an RTS simulation started.
+
+References: [agent-browser launch options](https://agent-browser.dev/configuration),
+[Chromium media switches](https://chromium.googlesource.com/chromium/src/+/main/media/base/media_switches.cc).
+
+## Playwright test browsers
+
+JavaScript/TypeScript tests can import `test` and `expect` from the local
+`@agentworks/playwright` package instead of `@playwright/test`. See
+[fixture installation and usage](../../packages/playwright/README.md). Existing
+custom fixtures can call `attachLiveBrowser(context)` explicitly. Ordinary
+Playwright tests do not register themselves. Python sync/async and pytest suites use
+[the Python fixture/helper](../../packages/playwright-python/README.md). Both packages
+are distributed from the release through authenticated session package endpoints.
+
+The fixture connects to `/s/{session_id}/tools/browser/live` using the runner's
+existing MCP bearer credentials. The agent API derives user/workflow ownership
+from that server-owned active session and allocates a separate `pw-` session for
+each test context. The producer sends Chromium JPEG frames and page metadata,
+with no browser command channel and no public CDP port. Producer disconnect or
+45 seconds without heartbeat removes its discovery entry and closes viewers.
+
+The existing authenticated session-list/viewer endpoints include these sessions
+alongside agent-browser, including deployments using shared Chrome. Viewers see
+only their own workflow's test sessions. Control and agent-browser recording
+routes are rejected for these sessions on the server; the frontend also hides
+those controls. Playwright owns isolated contexts, teardown, and video artifacts
+in its test report. No automatic upload into a custom dashboard is performed.
+
+Validation: `AGENTWORKS_PLAYWRIGHT_LIVE_TEST=1 go -C agent_go test ./cmd/server
+-run '^TestPlaywrightFixtureLive$' -count=1` runs a real Chromium test against an
+isolated local publisher/viewer server.
+
+## Deployment and verification
+
+This uses the shared agent API and workspace service, so the same implementation
+works in native/rootless and Docker deployments. Deploy both backend
+binaries and the frontend together. Install a streaming-capable agent-browser in
+the workspace service's environment; tested with 0.37.0 and headless Chrome.
+Existing native installations may need an agent-browser upgrade; presence-only
+install checks do not upgrade an older binary. New images install the current
+agent-browser package as before.
+
+No dashboard daemon, public browser port, configured CDP endpoint, or local
+Chrome is required. `AGENT_BROWSER_CDP_ENABLED=false` remains supported. The
+headless browser uses its own internal browser protocol; that is independent of
+the app's shared-CDP mode.
+
+The browser connects to `/api/browser/live/{session}/stream` on the normal app
+API with the existing login. The agent API checks the workflow and session owner,
+then connects to `/api/browser/live/:session/stream` on `WORKSPACE_API_URL`,
+carrying `WORKSPACE_API_TOKEN`. The workspace service resolves the session's local
+`.stream` metadata and proxies to loopback. This keeps working when the agent API
+and workspace service are in separate containers. Reverse proxies must forward
+WebSocket upgrades on `/api/` (as for the existing live terminals); ingress must
+allow an idle timeout longer than 45 seconds. No session port is published.
+
+The generic workspace proxy rejects this internal stream route. The live viewer
+only forwards viewport, tab, URL and connection status messages, and accepts
+input only while its connection holds control. Shared desktop/CDP sessions are
+not listed; they can contain tabs belonging to other workflows. Discovery exposes only browsers in workspaces the caller
+can access.
+
+### Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| No browser sessions appear | Use Start browser or let an enabled agent open it. Confirm that the caller can access the selected workspace and its browser identity. A closed session is not a replayable recording; use the saved artifacts. |
+| Session appears but live view cannot connect | Check the agent-browser version, its session `.stream` metadata, and whether streaming is enabled in the workspace service's runtime environment. |
+| WebSocket connection fails | Check the existing HTTPS proxy's upgrade forwarding, `WORKSPACE_API_URL`, and matching workspace service tokens. Use Reconnect after correcting the issue. |
+| Take control reports busy | Let the current browser action finish, or have the existing controller return control, then retry. |
+| Cannot switch tabs while watching | Take control first; switching tabs affects the browser the agent is using. |
+| Take control is unavailable or denied | Confirm workflow write access. Session visibility alone does not grant control. |
+
+### Implementation files
+
+- [WorkflowLiveBrowser.tsx](../../frontend/src/components/workflow/WorkflowLiveBrowser.tsx): session discovery, viewport, tab strip, input, and connection lifecycle.
+- [WorkflowCapabilitiesPanel.tsx](../../frontend/src/components/workflow/WorkflowCapabilitiesPanel.tsx): embeds the viewer above browser settings.
+- [BrowserTeachingPanel.tsx](../../frontend/src/components/workflow/BrowserTeachingPanel.tsx): demonstration controls, draft review, test and publication.
+- [browser_workspace.go](../../agent_go/cmd/server/browser_workspace.go): authorized startup, canonical settings and teaching proxy.
+- [browser_teaching.go](../../workspace/handlers/browser_teaching.go): scoped artifacts, managed replay and tested publication.
+- [recorder.go](../../workspace/browserteach/recorder.go): private CDP attachment and structured capture.
+- [Agent API browser_live.go](../../agent_go/cmd/server/browser_live.go): workflow-scoped discovery, authenticated stream relay, and manual control.
+- [live_control.go](../../agent_go/pkg/browser/live_control.go): exclusive control gate shared with managed browser commands.
+- [executor.go](../../agent_go/pkg/browser/executor.go): waits on the control gate before running headless browser commands.
+- [Workspace browser_live.go](../../workspace/handlers/browser_live.go): resolves local stream metadata and proxies within the workspace environment.
+- [workspace_proxy.go](../../agent_go/cmd/server/workspace_proxy.go): prevents bypassing viewer access checks through the generic workspace proxy.
+
+### Existing verification commands
+
+- `cd workspace && go test ./handlers -run TestBrowserLive`
+- `cd agent_go && go test ./pkg/browser -run TestBrowserControl`
+- `cd agent_go && go test ./cmd/server -run TestLiveBrowser`
+- `cd agent_go && RUN_LIVE_BROWSER_E2E=1 go test ./cmd/server -run TestLiveBrowserRealHeadless`
+
+The opt-in integration test launches and closes its own headless browser and
+checks live frames, tabs, mouse focus and typing through the workspace proxy.
+
+Frontend validation: `cd frontend && npm run build`.
+
+Historical validation (2026-09-09, agent-browser 0.37.0): real headless
+frames, tab discovery, mouse focus, typing, workflow isolation, watch-mode input
+blocking, exclusive control, and disconnect recovery. Backend race checks and
+desktop/mobile UI checks also passed. Container topology support comes from
+routing through the workspace service; it has not been verified by a live
+rollout to each deployment.
+
+## Source map and historical rollout notes
+
+- [Conversation ownership resolver](../../agent_go/cmd/server/browser_conversation_isolation.go).
+- [Workflow browser runtime](../../agent_go/cmd/server/workflow_browser_runtime.go).
+- [Product capability runtime](../../agent_go/cmd/server/agent_profile_runtime.go).
+- [Launch/profile configuration](../../workspace/browserconfig/launch.go).
+- [Work browser settings](../../frontend/src/products/work/WorkWorkspacePane.tsx).
+- [Workflow learning](../workflow/learning_architecture.md).
+
+The former live guide contained RTS releases and rollout observations from
+2026-09-09 (`0b9593dd0`, `504c35a5e`, `34a9b1d17`, `66c9a7e07`), including a
+legacy global shared-profile deployment and then-pending Dominion/Confida work.
+Those are historical evidence in Git history, not statements of current server
+status. Deployment work must inspect the actual host and verify the current
+per-workspace identity, streaming/control and recording before reporting success.

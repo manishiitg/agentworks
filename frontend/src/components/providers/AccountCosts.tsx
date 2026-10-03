@@ -1,5 +1,6 @@
 import CostTokenBreakdown from './CostTokenBreakdown'
 import { useEffect, useState } from 'react'
+import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
 import { llmConfigService } from '../../services/llm-config-api'
@@ -24,7 +25,7 @@ const tokenText = (usage: CostAggregate) =>
 const WORK_KIND: Record<string, string> = { workflow: 'Workflow', crew: 'Crew', code: 'Code', product: 'Project', chat: 'Chat', other: 'Other' }
 
 const accountKindText = (account: ProviderAccountCost) =>
-  account.kind === 'server' ? 'Server account' : account.kind === 'unrecorded' ? 'Account not recorded' : account.owner_name ? `Owner: ${account.owner_name}` : 'User account'
+  account.kind === 'server' ? ADMIN_MANAGED_ACCOUNT_LABEL : account.kind === 'unrecorded' ? 'Account not recorded' : account.owner_name ? `Owner: ${account.owner_name}` : 'User account'
 
 function AccountRow({ account }: { account: ProviderAccountCost }) {
   const [open, setOpen] = useState(false)

@@ -60,9 +60,8 @@ The existing **Native agent tools** switch also applies to Antigravity. With
 it off, AGY uses the MCP bridge for tools. With it on, AGY can use native file
 read/search and web read/search tools; commands, writes and subagents still
 use the bridge in this hybrid mode. Local **Full CLI** enables the complete native
-toolset alongside MCP when the single-user backend starts with
-`AGENTWORKS_CLI_FULL_UNCONFINED=on`. Keep Native agent tools on for the chat;
-restart the backend after changing the flag. See [AGY Full CLI](../design/agy_full_native_tools.md)
+toolset alongside MCP on a person's own Mac (single-user; no switch needed).
+Keep Native agent tools on for the chat. See [AGY Full CLI](../design/agy_full_native_tools.md)
 for the mode contract and local certification. AGY is excluded from the RTS and
 excellence rollout for now.
 

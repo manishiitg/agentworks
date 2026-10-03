@@ -1,6 +1,7 @@
 package sparkquillproduct
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,6 +57,28 @@ func TestManifestDeclaresParentAndChild(t *testing.T) {
 	}
 }
 
+func TestSparkQuillDoesNotOfferWorkflowNotifications(t *testing.T) {
+	for _, profile := range BuiltinAgentProfiles() {
+		for _, name := range profile.ToolPolicy.Enabled {
+			if name == "notify_user" {
+				t.Fatalf("%s exposes workflow notifications", profile.ID)
+			}
+		}
+		for _, name := range profile.Skills {
+			if name == "notify" {
+				t.Fatalf("%s still attaches the notification skill", profile.ID)
+			}
+		}
+		for _, schedule := range profile.Schedules {
+			for _, message := range schedule.Messages {
+				if strings.Contains(message, "notify_user") {
+					t.Fatalf("%s check-in still requests notifications", profile.ID)
+				}
+			}
+		}
+	}
+}
+
 func TestProfileCommandsAreCompleteAndUnique(t *testing.T) {
 	profiles := BuiltinAgentProfiles()
 	for i := range profiles {
@@ -96,7 +119,7 @@ func TestProfilesRegisterOnThePlatformRegistry(t *testing.T) {
 		t.Fatalf("child profile should resolve as a built-in product profile: %+v %v", got, err)
 	}
 	names := SkillNames()
-	if len(names) < 7 || names[0] != "backup" {
+	if len(names) < 7 || !slices.IsSorted(names) || !slices.Contains(names, "backup") {
 		t.Fatalf("skills = %v", names)
 	}
 	parent, _ := registry.Resolve(ParentProfileID, 0, "anyone")
@@ -109,6 +132,35 @@ func TestProfilesRegisterOnThePlatformRegistry(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("parent declares skill %q that is not embedded and not a platform builtin skill", skill)
+		}
+	}
+}
+
+func TestLearningCreationSkillsAreParentOnlyAndDiscoverable(t *testing.T) {
+	if err := RegisterProductSkills(); err != nil {
+		t.Fatal(err)
+	}
+	profiles := BuiltinAgentProfiles()
+	for name, command := range map[string]string{
+		"animated-learning-video": "create-animated-video",
+		"reading-book":            "create-reading-book",
+	} {
+		if !slices.Contains(profiles[0].Skills, name) || !skills.IsBuiltinSkill(name) {
+			t.Fatalf("parent cannot discover built-in skill %q", name)
+		}
+		if slices.Contains(profiles[1].Skills, name) {
+			t.Fatalf("creation skill %q must not be attached to the offline child tutor", name)
+		}
+		if !slices.ContainsFunc(profiles[0].Commands, func(c agentprofiles.CommandBinding) bool { return c.Name == command }) {
+			t.Fatalf("parent has no creation command %q", command)
+		}
+		raw, err := SkillFiles.ReadFile("skills/" + name + "/SKILL.md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		frontmatter, _, err := skills.ParseSkillFile(string(raw))
+		if err != nil || frontmatter.Description == "" || skillDescription(name) != frontmatter.Description {
+			t.Fatalf("skill %q has no usable discovery description: %v", name, err)
 		}
 	}
 }

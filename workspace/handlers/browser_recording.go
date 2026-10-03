@@ -334,6 +334,42 @@ func capturePathWithin(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 func runCaptureCommand(ctx context.Context, socketDir, session string, args ...string) ([]byte, error) {
+	// Managed diagnostic recording must not upgrade the live daemon either.
+	if browserconfig.IsUserSession(session) {
+		request := map[string]any{"id": "capture-action"}
+		if len(args) == 0 {
+			return nil, fmt.Errorf("missing capture operation")
+		}
+		switch args[0] {
+		case "console", "errors":
+			request["action"] = args[0]
+			request["clear"] = len(args) == 2 && args[1] == "--clear"
+		case "network":
+			if len(args) < 3 || args[1] != "har" {
+				return nil, fmt.Errorf("unsupported capture operation")
+			}
+			switch args[2] {
+			case "start":
+				request["action"] = "har_start"
+				request["content"] = "none"
+			case "stop":
+				request["action"] = "har_stop"
+				if len(args) == 4 {
+					request["path"] = args[3]
+				}
+			default:
+				return nil, fmt.Errorf("unsupported capture operation")
+			}
+		case "record":
+			if len(args) != 2 || args[1] != "stop" {
+				return nil, fmt.Errorf("managed video uses the live stream")
+			}
+			request["action"] = "recording_stop"
+		default:
+			return nil, fmt.Errorf("unsupported capture operation")
+		}
+		return existingBrowserCommand(ctx, socketDir, session, request)
+	}
 	argv := append([]string{"--session", session}, browserconfig.HeadlessArgsForSession(session)...)
 	argv = append(argv, args...)
 	argv = append(argv, "--json")

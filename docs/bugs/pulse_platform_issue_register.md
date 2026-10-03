@@ -1,3 +1,161 @@
+## Seatbelt for every coding CLI on a Mac; full_unconfined removed — PLAT-394
+
+[PLAT-394](pulse_platform/security-sandbox/plat-394.md), P1, on `main`, Mac-only
+(servers unaffected): every CLI runs Full CLI under Seatbelt with the person's
+home open; AgentWorks data outside the chat, blocked paths and open/osascript
+are refused; nothing runs unconfined.
+
+## Browser teaching restarted RTS Code; compact chrome and durable tabs — PLAT-393
+
+[PLAT-393](pulse_platform/browser/plat-393.md), fixed on main, deployed to RTS
+and verified in `7e2ea79-20261003164344`. Two compact header rows, profile-owned tab memory, direct teaching IPC
+and bounded recovery of a previously controlled managed browser.
+
+## Codex resumed chats cancelled after confinement migration — PLAT-392
+
+[PLAT-392](pulse_platform/coding-agent-bridge/plat-392.md), fixed in the shared
+provider, deployed to SparkQuill and verified with a real resumed Sol conversation.
+The release and the affected restored conversation passed live checks. Only the selected thread is adopted into its
+private home, and an old resume banner cannot block a newly ready pane.
+
+## Gmail sender widening requires owner confirmation — PLAT-391
+
+[PLAT-391](pulse_platform/security-sandbox/plat-391.md), implemented and locally validated; deployment pending. Additional senders require a private receipt
+from the target owner's browser; agents cannot grant it. Public mailbox domains
+are rejected and existing lists require review after deployment.
+
+
+## Hybrid native-tools mode removed — PLAT-390
+
+[PLAT-390](pulse_platform/coding-agent-bridge/plat-390.md), P1, on `main`, not
+deployed: Native agent tools are `mcp_only` or `full` (sandboxed); Cursor and
+Muse get full modes; one prompt per CLI per mode, tested against launch options.
+
+## Relay API products retain Google apps, exclude Slack/WhatsApp — PLAT-389
+
+[PLAT-389](pulse_platform/integrations/plat-389.md), fixed on main; deployment
+pending. Reuses authorized Google connections and removes Relay Slack surfaces,
+with manifest and runtime enforcement.
+
+## Provider setup and product model selection — PLAT-386
+
+[PLAT-386](pulse_platform/frontend-chat/plat-386.md), fixed on main; included in
+the recorded RTS source release; app-level live qualification pending. Providers
+owns agent/account setup; products select ready accounts, models and supported
+effort. Includes the provider UI cleanup and Cursor effort forwarding.
+
+## Cursor account model availability — PLAT-387
+
+[PLAT-387](pulse_platform/frontend-chat/plat-387.md), open, reproduced on RTS.
+A curated/live catalog union still offers GLM 5.3/Flash to a key whose CLI rejects
+them; discovery and filtering need selected-account identity.
+
+## Cursor native model pricing — PLAT-388
+
+[PLAT-388](pulse_platform/cost-telemetry/plat-388.md), open, reproduced on RTS.
+Bare Grok selects Fast for this account while metadata assumes standard pricing;
+live suffix IDs also need native-mode pricing resolution.
+
+## Full CLI native writes ignored blocked paths on Linux — PLAT-385
+
+[PLAT-385](pulse_platform/security-sandbox/plat-385.md), P1, **fixed** on `main`:
+Landlock grants are split around blocked paths, so native tools cannot read or
+write planning/ or the raw database; tested under the real launcher.
+
+
+## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384
+
+[PLAT-384](pulse_platform/cost-telemetry/plat-384.md), P2, RTS indexes backed up,
+rebuilt and integrity verified. Rows and financial values were preserved.
+The original source of the index damage remains unconfirmed.
+
+## Absolute host grants reached server sandboxes — PLAT-383
+
+[PLAT-383](pulse_platform/security-sandbox/plat-383.md), P1, **fixed** on `main`:
+workflow `folder_access` had no assigned-roots check and absolute grants reached
+server CLI and shell sandboxes; now root-checked on update and kept only on a
+person's own Mac.
+
+
+## Browser toolbar and manual copy/paste — PLAT-382
+
+[PLAT-382](pulse_platform/browser/plat-382.md), deployed and verified on RTS
+(`f69f9fd-20261003144322`). Neutral three-row browser controls, native multiline
+paste and selection copy behind exclusive manual control; real guarded Linux
+paste passed. Cross-origin-frame selection copy remains a tracked follow-up.
+
+## Decisions applied only in the UI and Builder chat — PLAT-381
+
+[PLAT-381](pulse_platform/human-decisions/plat-381.md), P2, **fixed** on `main`:
+scheduled runs no longer apply answered decisions (the PLAT-093 pre-run drain is
+removed); Needs you keeps unapplied ones with "Apply in chat".
+
+## Relay builder shell cannot inspect the host Google store — PLAT-380
+
+[PLAT-380](pulse_platform/security-sandbox/plat-380.md), implemented and verified;
+deployment pending. User slot shells exclude the automatic host Google store and
+keyring environment. Old policy reproduced exit 125; corrected runner created a
+JSON plan as the slot through Excellence's launcher without host-store access.
+
+## Workflow notifications and Gmail setup guidance — PLAT-379
+
+[PLAT-379](pulse_platform/integrations/plat-379.md), implemented and locally validated; deployment pending. `notify_user` is workflow-only. Incoming Gmail
+explains Google Cloud/server setup in its pane and Builder instead of an
+unexplained administrator warning.
+
+## Relay commands and system prompt inspection — PLAT-378
+
+[PLAT-378](pulse_platform/frontend-chat/plat-378.md), implemented and locally
+verified; deployment pending. Relay commands come from its product manifest;
+hidden files offers an owner-private, read-only finalized prompt snapshot.
+
+## RTS Providers shows $242.35 as an unattributed user — PLAT-377
+
+[PLAT-377](pulse_platform/cost-telemetry/plat-377.md), P2, fixed on main for
+new workshop child runs; deployment pending. Authorized RTS historical repair
+verified 753 rows ($250.52), including the entire reported $242.35 bucket.
+Older legacy Code costs ($24.98) lack actor evidence and stay unattributed.
+Detached workshop sessions discarded the launch user and channel, so child
+steps/reviewers had workflow attribution but no user attribution.
+
+## Blocked file sent agent shells to a weaker sandbox — PLAT-374
+
+[PLAT-374](pulse_platform/security-sandbox/plat-374.md), P0, **fixed** on `main`
+(`6f630cc25`), deploy pending: a blocked `db.sqlite` inside the project pushed
+Code agent shells off Landlock onto the mount-namespace fallback, which ran as
+the service account and could read the platform `.env`.
+
+## Muse question shown as "Unknown Event Type" — PLAT-375
+
+[PLAT-375](pulse_platform/frontend-chat/plat-375.md), P2, **fixed** on `main`,
+deploy pending: the detailed chat view had no handler for
+`coding_agent_question` (PLAT-354).
+
+## Admin-managed provider terminal chdir failure — PLAT-376
+
+[PLAT-376](pulse_platform/security-sandbox/plat-376.md), P1, **fixed** on `main`,
+RTS deploy pending: a `global:` provider binding was confined like a personal
+account and started with no working folder.
+
+## Every local shell command refused — PLAT-373
+
+[PLAT-373](pulse_platform/security-sandbox/plat-373.md), P0, **fixed** on `main`:
+the folder-guard boundary check refused absolute host grants and the old
+`Downloads/` link, so every local shell command returned HTTP 400.
+
+## Relays product introduction — PLAT-373
+
+[PLAT-373](pulse_platform/frontend-chat/plat-373.md), implemented and locally
+verified; deployment pending. Relays shares Crew and Code's intro layout and
+opens its existing creation dialog with the account create permission.
+
+## Scripted steps could not write the workflow database — PLAT-372
+
+[PLAT-372](pulse_platform/step-execution/plat-372.md), P1, **fixed** on `main`
+(`7ce796701`), RTS deploy pending: a scripted step's script writes as the
+group session, which never had the DB grant, so salesoutreach lead discovery
+saved nothing from 2026-09-27.
+
 ## External crew/workflow interaction follow-ups — PLAT-365–370
 
 The 2026-09-28 bidirectional MCP review found these. Three are fixed on

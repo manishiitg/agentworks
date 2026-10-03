@@ -14,6 +14,7 @@ import { delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat,
 import { useContainerSizeTier } from './reportWidgets/tableHelpers'
 import { PlainMarkdown } from '../ui/PlainMarkdown'
 import { WORKFLOW_DECISIONS_REFRESH_EVENT } from './workflowEvents'
+import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
 // Same timing as AskAIButton's two-click confirm.
@@ -55,6 +56,14 @@ function priorityTone(priority: string): string {
   if (priority === 'high') return 'border-rose-500/40 bg-rose-500/10 text-rose-200'
   if (priority === 'low') return 'border-slate-500/30 bg-slate-500/10 text-slate-300'
   return 'border-amber-500/35 bg-amber-500/10 text-amber-200'
+}
+
+// Who or where a decision was answered, when it was not in this app (Slack, WhatsApp).
+function answeredViaLabel(input: ReportHumanInput): string {
+  const via = (input.answered_via || '').toLowerCase()
+  if (via.includes('slack')) return ' in Slack'
+  if (via.includes('whatsapp')) return ' in WhatsApp'
+  return ''
 }
 
 function selectedOptionTitle(input: ReportHumanInput): string {
@@ -191,8 +200,12 @@ export function ReportHumanInputPanel({
   }, [historyMode, workspacePath])
 
 	const pending = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'pending')
-	const history = contentMode === 'pending' ? [] : reportHumanInputHistory(visibleInputs, historyLimit)
-	if (!visibleLoading && !visibleError && pending.length === 0 && history.length === 0) {
+	// Answered but not applied yet: scheduled runs never apply decisions, so these stay
+	// in front of the person until they are applied in the Builder chat.
+	const unapplied = contentMode === 'history' ? [] : visibleInputs.filter(input => input.status === 'answered' && Boolean(input.apply_message))
+	const unappliedIds = new Set(unapplied.map(input => input.id))
+	const history = contentMode === 'pending' ? [] : reportHumanInputHistory(visibleInputs, historyLimit).filter(input => !unappliedIds.has(input.id))
+	if (!visibleLoading && !visibleError && pending.length === 0 && unapplied.length === 0 && history.length === 0) {
 		return showEmptyState ? <p className={`rounded-lg border bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground ${className}`}>No human actions are waiting for you.</p> : null
 	}
 
@@ -349,7 +362,7 @@ export function ReportHumanInputPanel({
 			{(input.status === 'answered' || input.status === 'claimed') && (
                   <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-400/[0.06] px-2 py-1.5 text-amber-100">
                     <Clock3 className="h-3.5 w-3.5 shrink-0" />
-				<span>{input.status === 'claimed' ? 'The saved decision is being processed.' : 'Decision saved — being applied in chat, or at the next run.'}</span>
+				<span>{input.status === 'claimed' ? 'The saved decision is being processed.' : 'Answered, not applied yet. Apply it in the Builder chat.'}</span>
                   </div>
                 )}
                 {input.outcome_summary && (
@@ -398,7 +411,7 @@ export function ReportHumanInputPanel({
     </div>
   )
 
-  if (pending.length === 0 && history.length > 0 && !historyOpen) {
+  if (pending.length === 0 && unapplied.length === 0 && history.length > 0 && !historyOpen) {
     const latest = history[0]
     const latestSummary = latest?.status === 'consumed' && latest.outcome_summary
       ? latest.outcome_summary
@@ -455,12 +468,12 @@ export function ReportHumanInputPanel({
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-foreground">
-              {pending.length > 0
+              {pending.length > 0 || unapplied.length > 0
                 ? `Needs your decision${workspaceLabel ? ` · ${workspaceLabel}` : ''}`
                 : `Questions and answers${workspaceLabel ? ` · ${workspaceLabel}` : ''}`}
             </div>
             <div className="text-xs text-muted-foreground">
-              {pending.length > 0
+              {pending.length > 0 || unapplied.length > 0
 				? 'Review the evidence, ask questions in chat, then approve, reject, or defer.'
                 : 'Previous questions, your answers, and their outcomes.'}
             </div>
@@ -477,6 +490,45 @@ export function ReportHumanInputPanel({
       </div>
 		{visibleError && <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{visibleError}</div>}
       <div className="mt-3 flex min-w-0 flex-col gap-2">
+        {unapplied.map(input => {
+          const applying = Boolean(drafts[input.id]?.submitting)
+          const answer = selectedOptionTitle(input)
+          return (
+            <article key={input.id} className="min-w-0 rounded-md border border-amber-400/30 bg-amber-400/[0.05] p-3">
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-amber-400/30 px-2 py-0.5 font-semibold uppercase tracking-[0.08em] text-amber-200">Answered, not applied yet</span>
+                <span className="text-muted-foreground">{inputTime(input.answered_at || input.updated_at)}</span>
+              </div>
+              <h4 className="mt-2 text-sm font-semibold leading-snug text-foreground">{input.question}</h4>
+              {(answer || input.note) && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Answered{answeredViaLabel(input)}: </span>{answer || input.note}
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={applying}
+                  onClick={async () => {
+                    updateDraft(input.id, { submitting: true })
+                    try {
+                      await sendWorkspacePaneMessageToChat({ workspacePath: input.workspace_path || workspacePath || '', message: input.apply_message || '' })
+                    } catch (err) {
+                      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not send the decision to chat.', 'error')
+                    } finally {
+                      updateDraft(input.id, { submitting: false })
+                    }
+                  }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 text-xs font-medium text-amber-100 hover:bg-amber-400/20 disabled:opacity-60"
+                >
+                  {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Apply in chat
+                </button>
+                <span className="text-[11px] text-muted-foreground">Runs never apply decisions; the Builder chat applies it where you can watch.</span>
+              </div>
+            </article>
+          )
+        })}
         {pending.map(input => {
           const draft = drafts[input.id] || { selectedOptionId: '', note: '' }
           const submitting = Boolean(draft.submitting)

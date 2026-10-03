@@ -1,6 +1,8 @@
 package browserconfig
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -100,5 +102,30 @@ func TestProjectBrowserUsesProjectsProfileRoot(t *testing.T) {
 		if !IsUserSession(session) || ProfilePathForSession(session) != root+session {
 			t.Fatalf("%s: profile %q, want under %s", session, ProfilePathForSession(session), root)
 		}
+	}
+}
+
+func TestDefaultScopedProfilesRememberLoginsWithoutGlobalSharing(t *testing.T) {
+	previous, had := os.LookupEnv(ProfileEnv)
+	os.Unsetenv(ProfileEnv)
+	defer func() {
+		if had {
+			os.Setenv(ProfileEnv, previous)
+		} else {
+			os.Unsetenv(ProfileEnv)
+		}
+	}()
+	root := t.TempDir()
+	t.Setenv(ProfileRootEnv, root)
+	a := "workflow-0123456789abcdef--browser"
+	b := "project-fedcba9876543210--browser"
+	if SharedEnabled() {
+		t.Fatal("default scoped profiles enabled global sharing")
+	}
+	if ProfilePathForSession(a) != filepath.Join(root+"-workflows", a) || ProfilePathForSession(b) != filepath.Join(root+"-projects", b) {
+		t.Fatal("scoped profile roots do not match")
+	}
+	if ProfilePathForSession("default") != "" {
+		t.Fatal("unbound browser received shared persistent profile")
 	}
 }

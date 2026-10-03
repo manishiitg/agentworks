@@ -66,11 +66,13 @@ func agentProfileToolsMode(profile *resolvedAgentProfile) string {
 	return normalizeAgentToolsMode(profile.Definition.Runtime.AgentTools.Mode)
 }
 
-// normalizeAgentToolsMode maps an agent_tools mode to "hybrid" or "mcp_only"
-// (the default, and what every session started before hybrid existed used).
+// normalizeAgentToolsMode maps an agent_tools mode to "full" (Native agent
+// tools on) or "mcp_only" (the default). The retired "hybrid" in older saved
+// profiles and settings reads as "full".
 func normalizeAgentToolsMode(mode string) string {
-	if strings.EqualFold(strings.TrimSpace(mode), "hybrid") {
-		return "hybrid"
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "full", "hybrid":
+		return "full"
 	}
 	return "mcp_only"
 }
@@ -367,7 +369,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// Everyone who may chat with a Code (owner, co-owner, editor) gets
 		// native tools; viewers never reach this turn.
 		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "hybrid"
+			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
 			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
@@ -393,7 +395,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// policy (agentprofiles validation); the switch is on by default, so a
 		// profile without one keeps AgentWorks-only tools instead of failing.
 		if crewOwned && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "hybrid"
+			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
 			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
@@ -516,6 +518,16 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 	}
 	browserRequirement := profile.Runtime.Capabilities.Browser
+	if browserRequirement != agentprofiles.CapabilityDisabled && isProjectWorkspacePath(workspacePath) {
+		settings, err := readWorkspaceBrowserSettings(ctx, agentProfileRuntimeWorkspace(userID, workspacePath))
+		if err != nil {
+			return nil, fmt.Errorf("read project browser settings: %w", err)
+		}
+		req.BrowserMode = settings.Mode
+		port := settings.Port
+		req.CdpPort = &port
+		req.CdpPorts = []int{port}
+	}
 	if browserRequirement == agentprofiles.CapabilityRequired || browserRequirement == agentprofiles.CapabilityPreferred || browserRequirement == agentprofiles.CapabilityOptional {
 		// Agent profiles declare browser capability once. The generic chat
 		// runtime then registers AgentWorks' managed agent_browser tool and
@@ -525,6 +537,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		req.EnableBrowserAccess = &browserEnabled
 		if strings.TrimSpace(req.BrowserMode) == "" || strings.EqualFold(strings.TrimSpace(req.BrowserMode), "none") {
 			req.BrowserMode = "auto"
+		}
+	}
+	if browserRequirement != agentprofiles.CapabilityDisabled {
+		physical := agentProfileRuntimeWorkspace(userID, workspacePath)
+		index := physical + "/browser-demonstrations/INDEX.md"
+		if content, found, err := readFileFromWorkspace(ctx, index); err == nil && found && strings.TrimSpace(content) != "" {
+			rendered += "\n\nSaved browser procedures for this workspace: " + index + ". When the user asks for a previously taught browser task, read this index and the matching tested procedure before acting. Resolve fresh page targets, supply the requested inputs and check the reviewed outcome. A saved procedure does not grant additional tool or website permissions.\n"
 		}
 	}
 	var resolvedKeys *llm.ProviderAPIKeys
@@ -919,7 +938,7 @@ func agentProfileChatHistoryGrants(sandbox agentprofiles.SandboxPolicy, perUserC
 
 func agentProfileReadOnlyFolders(sandbox agentprofiles.SandboxPolicy, workflowReadOnlyFolders []string) []string {
 	if sandbox.ReadOnly == nil {
-		return append([]string{"skills/", "subagents/", "Downloads/"}, workflowReadOnlyFolders...)
+		return append([]string{"skills/", "subagents/"}, workflowReadOnlyFolders...)
 	}
 	// sandbox.read_only controls the product's ambient/default read roots. An
 	// authorized # workflow reference is request/project context, not an ambient

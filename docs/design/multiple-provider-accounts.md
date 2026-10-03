@@ -1,6 +1,10 @@
 # Multiple provider accounts for workflows and Crew
 
-Status: proposed design, not implemented. Reviewed against local source on 2026-09-18.
+Status: core account selection is implemented. The Providers/product setup boundary
+is fixed on main as of 2026-10-03; rollout and live qualification status are
+tracked in [PLAT-386](../bugs/pulse_platform/frontend-chat/plat-386.md). Historical
+proposal and baseline sections below describe the design's evolution; they are
+not claims that every proposed account feature has shipped.
 
 ## Problem and intended behavior
 
@@ -20,13 +24,40 @@ The installation, provider, account connection, model, and conversation are sepa
 
 Adding an account does not reinstall a provider. Account credentials never become part of workflow files.
 
+## Current setup and selection boundary
+
+Providers owns coding-agent installation/configuration and account creation,
+login, API keys/tokens, reauthentication and removal. This is the same boundary
+locally and on a server; installation availability is separate from account
+readiness and permission to use that account. The installation's credentials are
+labeled **Admin-managed account**. Users select only accounts available to them.
+
+Workflow, Crew, Code and Relay consume configured accounts and choose models and
+supported reasoning effort. Their Models panels do not collect credentials or
+embed provider setup. Management links open Providers. A coding provider is
+selectable only when its runtime is installed and an authorized account is usable.
+A previously saved unavailable selection stays visible for diagnosis; opening the
+panel must not silently switch provider or account. Existing stored project
+credentials remain compatible until an explicit migration is defined.
+
+Reasoning choices must be offered by both the product profile and the selected
+model. Account ownership does not force the default effort. A model change keeps
+the account and drops incompatible effort; Cursor Auto/Composer manage reasoning
+without a separate selector, while Antigravity uses model variants. Forward any
+saved supported effort through the runtime adapter, not only the UI.
+
+Source behavior and verification are in PLAT-386. Cursor account-scoped model
+filtering and native pricing qualification remain open in
+[PLAT-387](../bugs/pulse_platform/frontend-chat/plat-387.md) and
+[PLAT-388](../bugs/pulse_platform/cost-telemetry/plat-388.md).
+
 ## Baseline implementation before account support
 
-The header opens `CodingProvidersPanel`, which filters the provider manifest to coding agents. Guided setup launches an allowlisted CLI command through a PTY and exposes it through WebSocket. Workflow configuration and Crew's `WorkModelsPanel` reuse the workflow provider picker.
+At the baseline, the header opened `CodingProvidersPanel`, filtered to coding agents. Guided setup launched an allowlisted CLI command through a PTY/WebSocket; Workflow and Crew reused the workflow provider picker.
 
-Current availability combines runtime installation with environment/stored authentication. It is predominantly provider-level, rather than connection-level. Workflow configuration saves a provider profile or explicit role models. Crew saves its project agent/model in `capabilities.llm_config.builder_llm`.
+Availability then combined runtime installation with environment/stored authentication at provider level. Workflow configuration saved a provider profile or explicit role models; Crew stored its project agent/model in `capabilities.llm_config.builder_llm`. The current ready-account rule is described above.
 
-Existing workflow credential support handles Claude OAuth tokens and Cursor API keys. It is useful groundwork, but is not a general multi-account system. The RTS deployment supplies shared credentials and sets `LLM_CONFIG_LOCKED=true`; that policy must be addressed before personal accounts are permitted.
+At this historical baseline, workflow credential support handled Claude OAuth tokens and Cursor API keys; it was groundwork for account support. Those product-scoped input fields have since been removed in favor of Providers account setup. The baseline RTS deployment supplied installation credentials with `LLM_CONFIG_LOCKED=true`; the later account policy is described under Core account implementation.
 
 Important source locations:
 
@@ -187,7 +218,7 @@ Cloud SDK default credential chains can silently use the server's identity. Pers
 
 Providers page: choose provider, see accessible accounts, add/name/authenticate an account, inspect status/usage, reauthenticate, or disconnect. Provider installation status remains separate from each account's status.
 
-Workflow Setup: choose provider, choose account, then use provider defaults or pin role models. Save immediately through the existing manifest update flow.
+Product Models: choose a ready provider/account, then use provider defaults or pin models and supported reasoning effort. Account setup remains in Providers. Save immediately through the existing manifest update flow.
 
 ```json
 {
@@ -318,11 +349,11 @@ Replace or supplement `LLM_CONFIG_LOCKED` with explicit controls for allowed pro
 
 Claude directory-based credential storage and credential precedence are documented in [Claude authentication](https://code.claude.com/docs/en/authentication). Cursor documents browser and API-key methods in [Cursor CLI authentication](https://docs.cursor.com/en/cli/reference/authentication).
 
-Codex home/profile behavior, Pi session directory overrides, and Muse settings isolation above are observations from local adapter code. Browser credential-store behavior for each deployed version, concurrent refresh behavior, and isolation against user-executed tools still require implementation tests. These are prerequisites, not claims that the current application already supports multiple accounts.
+Codex home/profile behavior, Pi session directory overrides, and Muse settings isolation above are observations from local adapter code. Browser credential-store behavior for each deployed version, concurrent refresh behavior, and isolation against user-executed tools require provider-specific qualification. The implementation and verification sections below distinguish covered paths from remaining work.
 
-## Implementation status (September 2026)
+## Core account implementation (September 2026)
 
-The header's coding-provider panel now supports named private connections alongside the installation's shared account. Workflow defaults, explicit role bindings, execution-step overrides, and Crew selections save `connection_id`. This is an additive schema-2 field for existing manifests. A missing ID retains legacy resolution; an explicit ID is authorized against the execution user and selected provider and cannot silently fall back to the server account.
+The header's coding-provider panel supports named private connections alongside the installation's Admin-managed account. Workflow defaults, explicit role bindings, execution-step overrides, and Crew selections save `connection_id`. This is an additive schema-2 field for existing manifests. A missing ID retains legacy resolution; an explicit ID is authorized against the execution user and selected provider and cannot silently fall back to the server account.
 
 | Coding provider | Private authentication |
 | --- | --- |

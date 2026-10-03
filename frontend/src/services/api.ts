@@ -1,4 +1,5 @@
 console.log('Cache bust: 2026-02-08-150000');
+import { needsYouDecisions } from '../utils/needsYouDecisions'
 import axios from 'axios'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../utils/chatIdentity'
 import { createRequestCoalescer } from './requestCoalescer'
@@ -1669,6 +1670,10 @@ export const agentApi = {
 
   // --- Gmail notifications and incoming conversations ---
 
+  confirmGmailSenderConsent: async (workspacePath: string, configHash: string, action: 'approve' | 'revoke'): Promise<{ approved: boolean }> => {
+    return (await api.post('/api/gmail-inbound/sender-consent', { workspace_path: workspacePath, config_hash: configHash, action })).data
+  },
+
   getGmailInboundRoute: async (workspacePath: string): Promise<import('./api-types').GmailInboundState> => {
     return (await api.get('/api/gmail-inbound/route', { params: { workspace_path: workspacePath } })).data
   },
@@ -1990,6 +1995,19 @@ export const agentApi = {
 		return response.data as ReportHumanInputsResponse
 	},
 
+	// Decisions that need the person: unanswered ones, plus answered ones that are
+	// not applied yet (runs never apply decisions; they wait for "Apply in chat").
+	listNeedsYouDecisionsAggregate: async (workspacePaths: string[]): Promise<ReportHumanInputsResponse> => {
+		const [pending, answered] = await Promise.all([
+			agentApi.listReportHumanInputsAggregate(workspacePaths, 'pending'),
+			agentApi.listReportHumanInputsAggregate(workspacePaths, 'answered'),
+		])
+		return {
+			...pending,
+			success: pending.success && answered.success,
+			inputs: needsYouDecisions(pending.inputs || [], answered.inputs || []),
+		}
+	},
 	listReportHumanInputsAggregate: async (workspacePaths: string[], status?: string, source?: string) => {
 		const response = await api.get('/api/report-human-inputs/aggregate', {
 			params: {

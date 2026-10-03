@@ -3,9 +3,12 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GmailInboundState } from '../../../services/api-types'
+import { TooltipProvider } from '../../ui/tooltip'
 
-vi.mock('../../../services/api', () => ({ agentApi: { getGmailInboundRoute: vi.fn() } }))
+vi.mock('../../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn(), confirmGmailSenderConsent: vi.fn() } }))
+vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn().mockResolvedValue({}) }))
 import { agentApi } from '../../../services/api'
+import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import { GmailInboundPanel } from './GmailInboundPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -15,9 +18,93 @@ const connections = [{ id: 'gmail', email: 'owner@example.com', display_name: 'O
 describe('Gmail incoming email settings', () => {
   let host: HTMLDivElement
   let root: Root
-  const render = async (path = 'Workflow/test') => { await act(async () => root.render(<GmailInboundPanel workspacePath={path} connections={connections} />)) }
+  const render = async (path = 'Workflow/test', onAsk?: (message: string) => void) => { await act(async () => root.render(<TooltipProvider><GmailInboundPanel workspacePath={path} connections={connections} onAsk={onAsk} /></TooltipProvider>)) }
   beforeEach(() => { vi.resetAllMocks(); vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(enabled); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
-  afterEach(async () => { await act(async () => root.unmount()); host.remove() })
+  afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
+
+  const ask = async () => {
+    const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask AI')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => button.click())
+    clock.mockReturnValue(1700)
+    await act(async () => button.click())
+  }
+
+  it('offers setup help when the deployment is disabled and sends it to this workflow Builder', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })
+    await render()
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('Google sign-in connects your account')
+    expect(host.textContent).toContain('GMAIL_INBOUND_TOPICS')
+    expect(host.querySelector('details')?.open).toBe(false)
+    await ask()
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ workspacePath: 'Workflow/test', message: expect.stringContaining('Inspect get_gmail_trigger') })
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains a missing client mapping even when the receiver is enabled and shows its public event URL', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: true, route: null, deliveries: [], setup: {
+      oauth_clients: [], can_connect_account: false,
+      admin_setup: { push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', required_access: '', explanation: '', environment_variables: [], steps: [], empty_client_list: '', local_setup: '', documentation_url: '' },
+    } })
+    await render()
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('https://video.realtrainingsys.com/api/hooks/gmail/events')
+    expect(host.textContent).not.toContain('No Gmail trigger configured')
+  })
+
+  it('uses the project chat override rather than looking up a workflow for a Code project', async () => {
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    await ask()
+    expect(onAsk).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('wait for me to complete consent'))
+    expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+  })
+
+  it('blocks sender activation until an explicit owner acknowledgement and refreshes after consent', async () => {
+    const configHash = 'a'.repeat(64)
+    const pending: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: false, config_hash: configHash, senders: ['person@gmail.com', '@realtrainingsys.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(pending)
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: true })
+    await render()
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    expect(approve.disabled).toBe(true)
+    expect(host.textContent).toContain('connected accounts and files')
+    expect(host.textContent).toContain('Additional senders are blocked')
+    expect(host.textContent).not.toContain('Ready to receive email.')
+    expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
+    await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+    expect(approve.disabled).toBe(false)
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...pending, sender_consent: { ...pending.sender_consent!, approved: true } })
+    await act(async () => approve.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'approve')
+    expect(host.textContent).toContain('Additional sender access approved')
+    expect(host.textContent).toContain('Revoke additional sender access')
+  })
+
+  it('does not offer approval for a legacy public-domain policy', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, sender_consent: { required: true, approved: false, config_hash: 'b'.repeat(64), senders: ['@gmail.com'], blocked_reason: 'Public mailbox domains are not allowed' } })
+    await render()
+    expect(host.textContent).toContain('Ask Builder to use exact addresses')
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(approve.disabled).toBe(true)
+    expect(checkbox.disabled).toBe(true)
+    expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
+  })
+
+  it('revokes approval through the owner endpoint without modifying the trigger configuration', async () => {
+    const configHash = 'c'.repeat(64)
+    const approved: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: true, config_hash: configHash, senders: ['person@example.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(approved)
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: false })
+    await render()
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...approved, sender_consent: { ...approved.sender_consent!, approved: false } })
+    const revoke = [...host.querySelectorAll('button')].find(b => b.textContent === 'Revoke additional sender access')!
+    await act(async () => revoke.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'revoke')
+    expect(host.textContent).toContain('Your approval is required')
+  })
 
   it('shows saved routing without controls that can change it', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, workflow_trigger: true, route_selections: { triage: 'support' }, group_names: ['prod'] } })
@@ -28,16 +115,103 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('Ready to receive email.')
     expect(host.textContent).toContain('Ask Builder')
     expect(host.querySelector('select, input, form')).toBeNull()
-    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Copy email address', 'Refresh email activity'])
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Fetch emails'])
   })
 
-  it('refreshes saved configuration after Builder changes it', async () => {
+  it('fetches Gmail through this target chat without merely refreshing stored activity', async () => {
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    const fetch = [...host.querySelectorAll('button')].find(b => b.textContent === 'Fetch emails')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => fetch.click())
+    clock.mockReturnValue(1700)
+    await act(async () => fetch.click())
+    expect(onAsk).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Read recent Gmail messages with google_workspace_cli'))
+    expect(onAsk.mock.calls[0][0]).toContain('Mailbox reading does not require Pub/Sub')
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+    expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+  })
+
+  it('sends Fetch emails to the workflow Builder when there is no product chat override', async () => {
+    await render()
+    const fetch = [...host.querySelectorAll('button')].find(b => b.textContent === 'Fetch emails')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => fetch.click())
+    clock.mockReturnValue(1700)
+    await act(async () => fetch.click())
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ workspacePath: 'Workflow/test', message: expect.stringContaining('Fetch recent matching Gmail emails') })
+  })
+
+  it('refreshes saved configuration when its refresh token changes', async () => {
     await render()
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, enabled: false } })
-    const refresh = [...host.querySelectorAll('button')].find(b => b.textContent === 'Refresh email activity')!
-    await act(async () => refresh.click())
+    await act(async () => root.render(<TooltipProvider><GmailInboundPanel workspacePath="Workflow/test" connections={connections} refreshToken={1} /></TooltipProvider>))
     expect(host.textContent).toContain('Incoming email is disabled.')
     expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(2)
+  })
+
+  it('explains alternative sender and phrase rules without offering setup editors', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { sender_allowlist: ['@realtrainingsys.com', 'updates@vendor.example'], subject_contains_any: ['Real Training', 'Notion'], allow_automatic: true } } })
+    await render()
+    expect(host.textContent).toContain('Sender is @realtrainingsys.com OR updates@vendor.example')
+    expect(host.textContent).toContain('Subject contains any: “Real Training” OR “Notion”')
+    expect(host.textContent).toContain('Listed senders only')
+    expect(host.textContent).toContain('Automated notifications from listed senders: Allowed')
+    expect(host.textContent).not.toContain('Owner email only')
+    expect(host.querySelector('select, input, form')).toBeNull()
+  })
+
+  it('shows combined filters read-only, including an explicit no-attachments condition', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { subject_contains: ['invoice', 'RTS'], body_contains: ['approved'], has_attachments: false, new_threads_only: true } }, deliveries: [{ id: 'skipped', status: 'filtered', session_id: '', error: 'Body does not match the required keywords' }] })
+    await render()
+    expect(host.textContent).toContain('Subject contains “invoice”')
+    expect(host.textContent).toContain('Body contains “approved”')
+    expect(host.textContent).toContain('No attachments')
+    expect(host.textContent).toContain('New threads only')
+    expect(host.textContent).toContain('all condition groups must match')
+    expect(host.textContent).toContain('Body does not match the required keywords')
+    expect(host.querySelector('select, input, form')).toBeNull()
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Fetch emails'])
+  })
+
+  it('shows ordered project rules, saved messages, paused state and matched activity read-only', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, rules: [
+      { id: 'rts', name: 'Training requests', filters: { sender_allowlist: ['@realtrainingsys.com'], subject_contains_any: ['Real Training', 'RTS'] }, instruction: 'Send X message' },
+      { id: 'notion', name: 'Notion updates', enabled: false, filters: { sender_allowlist: ['updates@vendor.example'], allow_automatic: true }, instruction: 'Send Y message' },
+    ] }, deliveries: [{ id: 'delivery', status: 'completed', session_id: 'chat', rule_id: 'rts', rule_name: 'Training requests' }] })
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    const cards = [...host.querySelectorAll('[aria-label="Email rules"] ol > li')]
+    expect(cards).toHaveLength(2)
+    expect(cards[0].textContent).toContain('1Training requestsEnabled')
+    expect(cards[0].textContent).toContain('Send X message')
+    expect(cards[0].textContent).toContain('Senders: @realtrainingsys.com')
+    expect(cards[1].textContent).toContain('2Notion updatesPaused')
+    expect(cards[1].textContent).toContain('Send Y message')
+    expect(host.textContent).toContain('first matching enabled rule runs')
+    expect(host.textContent).toContain('Training requests · completed')
+    expect(host.querySelector('select, input, textarea, form')).toBeNull()
+    await ask()
+    expect(onAsk.mock.calls[0][0]).toContain('ordered named rules with stable IDs')
+    expect(onAsk.mock.calls[0][0]).toContain('preserve untouched rules and their IDs')
+  })
+
+  it('shows each workflow binding and inherited senders instead of an apparent full-workflow default', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, workflow_trigger: true, filters: { sender_allowlist: ['@realtrainingsys.com'] }, rules: [
+      { id: 'support', name: 'Support', filters: { subject_contains: ['help'] }, route_selections: { triage: 'support' }, group_names: ['prod'] },
+      { id: 'billing', name: 'Billing', filters: { subject_contains: ['invoice'] }, route_selections: { triage: 'billing' }, group_names: ['finance'] },
+      { id: 'audit', name: 'Audit', step_id: 'audit-step', group_names: ['prod'] },
+    ] } })
+    await render()
+    expect(host.textContent).toContain('Runs: triage → support')
+    expect(host.textContent).toContain('Runs: triage → billing')
+    expect(host.textContent).toContain('Runs: Step audit-step')
+    expect(host.textContent).toContain('Groups: finance')
+    expect(host.textContent).toContain('Common filters: Sender is @realtrainingsys.com')
+    expect(host.textContent).not.toContain('Starts: Full workflow')
+    expect(host.textContent).not.toContain('Message to chat')
+    expect(host.querySelectorAll('[aria-label="Email rules"] ol > li')).toHaveLength(3)
+    expect(host.querySelector('select, input, textarea, form')).toBeNull()
   })
 
   it('ignores a late response from the previously selected workspace', async () => {
@@ -47,7 +221,10 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [] })
     await render('Workflow/new')
     await act(async () => resolveOld(enabled))
-    expect(host.textContent).toContain('An administrator needs to enable')
+    expect(host.textContent).toContain('Automatic incoming email is not set up')
+    expect(host.textContent).toContain('Google sign-in connects your account')
+    expect(host.textContent).toContain('GMAIL_INBOUND_TOPICS')
+    expect(host.querySelector('details')?.open).toBe(false)
     expect(host.textContent).not.toContain(enabled.route!.address)
   })
 

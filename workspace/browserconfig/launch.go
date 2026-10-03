@@ -10,6 +10,7 @@ import (
 
 const SharedSession = "shared-browser"
 const ProfileEnv = "AGENT_BROWSER_SHARED_PROFILE"
+const ProfileRootEnv = "AGENT_BROWSER_PROFILE_ROOT"
 
 func SharedProfile() string {
 	profile := strings.TrimSpace(os.Getenv(ProfileEnv))
@@ -40,6 +41,39 @@ func IsUserSession(session string) bool { return userSession.MatchString(session
 // managed browser got its own folder; the global shared browser still does.
 const SocketRoot = "/tmp/.agent-browser"
 
+// SandboxSocketDir is where a managed browser's socket folder lands on the host when its daemon was started from
+// inside a coding CLI's sandbox: that sandbox's private /tmp is the workspace's shared tmp folder, so
+// /tmp/.agent-browser/o/<owner> there is <docs>/tmp/.agent-browser/o/<owner> here. Without it the live view and the
+// cleanup look only in the host /tmp, find no stream, and the live view reconnects forever ("Browser restarted").
+// Empty when the session is not managed or the docs folder is unknown.
+func SandboxSocketDir(session string) string {
+	own := SocketDirForSession(session)
+	if own == SocketRoot {
+		return ""
+	}
+	docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
+	if docs == "" {
+		docs = strings.TrimSpace(os.Getenv("DOCS_DIR"))
+	}
+	if docs == "" || !filepath.IsAbs(docs) {
+		return ""
+	}
+	return filepath.Join(docs, "tmp", strings.TrimPrefix(own, "/tmp/"))
+}
+
+// SandboxSocketDirs lists every owner folder under <docs>/tmp/.agent-browser/o (see SandboxSocketDir).
+func SandboxSocketDirs() []string {
+	docs := strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH"))
+	if docs == "" {
+		docs = strings.TrimSpace(os.Getenv("DOCS_DIR"))
+	}
+	if docs == "" || !filepath.IsAbs(docs) {
+		return nil
+	}
+	owners, _ := filepath.Glob(filepath.Join(docs, "tmp", strings.TrimPrefix(SocketRoot, "/tmp/"), "o", "*"))
+	return owners
+}
+
 var managedOwner = regexp.MustCompile(`(workflow|project|session|user|guest|workspace)-([a-f0-9]{16})--browser$`)
 
 // SocketDirForSession is the socket folder of one managed browser: one per
@@ -61,7 +95,23 @@ func SocketDirForSession(session string) string {
 func ProfilePathForSession(session string) string {
 	profile := SharedProfile()
 	if profile == "" {
-		return ""
+		// Explicit legacy configuration retains its ephemeral/invalid behavior.
+		// New scoped browsers remember sign-ins without enabling global sharing.
+		if _, explicit := os.LookupEnv(ProfileEnv); explicit || (!workflowSession.MatchString(session) && !projectSession.MatchString(session)) {
+			return ""
+		}
+		base := strings.TrimSpace(os.Getenv(ProfileRootEnv))
+		if base == "" {
+			config, err := os.UserConfigDir()
+			if err != nil {
+				return ""
+			}
+			base = filepath.Join(config, "agentworks", "browser-profile")
+		}
+		if !filepath.IsAbs(base) || filepath.Clean(base) == string(filepath.Separator) {
+			return ""
+		}
+		profile = filepath.Clean(base)
 	}
 	if IsUserSession(session) {
 		profileRoot := profile + "-users"

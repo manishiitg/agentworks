@@ -429,6 +429,10 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 			http.Error(w, normalizeErr.Error(), http.StatusBadRequest)
 			return
 		}
+		if rootErr := authorizeWorkflowFolderGrants(r, manifest.FolderAccess, normalized); rootErr != nil {
+			http.Error(w, rootErr.Error(), http.StatusForbidden)
+			return
+		}
 		manifest.FolderAccess = normalized
 	}
 	if req.FolderAccessRequests != nil {

@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -219,4 +221,27 @@ func For(userID string) (slot string, enabled bool, err error) {
 		return "", true, ErrNoSlot
 	}
 	return slot, true, nil
+}
+
+// HomeOf is the slot account's own home folder, from the system's account database ("" when unknown).
+func HomeOf(slot string) string {
+	if !ValidSlot(slot) {
+		return ""
+	}
+	account, err := user.Lookup(slot)
+	if err != nil {
+		return ""
+	}
+	return account.HomeDir
+}
+
+// IsCodeProjectDir says whether dir (absolute, inside docsDir) is in a Code project (_users/<id>/Chats/Code/projects/...), where
+// commands run as the owner's slot get the slot's own home (UserHome) instead of a per-project one.
+func IsCodeProjectDir(docsDir, dir string) bool {
+	rel, err := filepath.Rel(docsDir, dir)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	return len(parts) >= 5 && parts[0] == "_users" && parts[2] == "Chats" && parts[3] == "Code" && parts[4] == "projects"
 }

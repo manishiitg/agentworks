@@ -36,8 +36,9 @@ profile:
     - process-file
     - recall-conversations
     - create-progress-report
+    - animated-learning-video
+    - reading-book
     - publish
-    - notify
     - backup
   tools:
     - id: sparkquill.set-child-profile
@@ -57,8 +58,13 @@ profile:
       interaction:
         kind: suggestions
         render: chat.suggestions
-    - id: sparkquill.find-image
   commands:
+    - name: create-animated-video
+      description: "Create an animated video"
+      prompt: "Create an animated explainer video for my child using HyperFrames, on the topic we are working on. Use her reading level and language, clear visual examples, captions and a short recap. Make it a playable learning activity I can preview and give to her."
+    - name: create-reading-book
+      description: "Create a reading book"
+      prompt: "Create illustrated reading material for my child in book format, page by page, on the topic we are working on. Match her reading level and language, with a cover, numbered pages, Previous and Next controls, and a short recap. Make the complete book a learning activity I can preview and give to her."
     - name: create-study-material
       description: "Create study material"
       prompt: "Create study material for my child on the topic she is working on \u2014 explain it properly first, then a short practice, and a summary she can reread."
@@ -95,7 +101,6 @@ profile:
       - execute_shell_command
       - diff_patch_workspace_file
       - read_image
-      - notify_user
       - agent_browser
       - list_secrets
       - set_workflow_secret
@@ -108,7 +113,6 @@ profile:
       - open_file
       - open_activity
       - suggest_actions
-      - find_image
       - image_gen
       - image_edit
   runtime:
@@ -118,15 +122,13 @@ profile:
         label: Claude Code
         provider: claude-code
         model_id: claude-sonnet-5-5
-        models: [claude-sonnet-5-5, claude-opus-5-5]
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
       - id: codex-cli
         label: Codex
         provider: codex-cli
-        model_id: gpt-6-luna
-        models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]
+        model_id: gpt-6.1-sol
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: medium
@@ -135,7 +137,6 @@ profile:
         label: Antigravity CLI (Alpha)
         provider: agy-cli
         model_id: gemini-3.8-flash-high
-        models: [gemini-3.8-flash-high, gemini-3.8-flash-medium, gemini-3.8-flash-low]
         reasoning_efforts: [low, medium, high]
         options:
           reasoning_effort: high
@@ -171,21 +172,21 @@ profile:
   schedules:
     - id: pulse
       name: Check-in
-      description: Quill reviews the child's progress, school subjects and watched school websites, rebuilds the holistic progress page, then notifies the parent with the headline.
+      description: Quill reviews the child's progress, school subjects and watched school websites, rebuilds the holistic progress page, saves a summary in the check-in history.
       enabled: false
       # Its own conversation, session and coding-CLI process — never the
       # parent's live chat. Without this a scheduled run reused that exact
       # session, so a check-in firing while the parent was mid-chat collided
       # on the same tmux-backed process. Its turns are invisible to the
-      # parent's own transcript, so notify_user is the only way anything
-      # from a check-in reaches them.
+      # parent's own transcript; the parent reviews the saved check-in
+      # history and Progress tab.
       isolated: true
       cadence_hours: 24
       quiet_minutes: 10
       max_deferral_hours: 4
       messages:
         - "This is an automated check-in, in your own separate check-in history — not the parent's chat, which cannot see this. Your main job: check the child's progress and school subjects from real evidence in the workspace (activities, attempts, materials, school papers), check the watched school website(s) with agent_browser - call agent_browser(command=\"status\") first, log in with saved secrets where needed, check memory/browser-notes.md before navigating and save what you learn there - and rebuild the holistic progress page at reports/progress.html by following your create-progress-report skill — full regeneration every time, with today's date inside. Cover every subject with evidence, what she can and cannot do yet, and what to work on next. Then write ONE short, warm message as your reply (the parent is not technical; no files, paths or JSON)."
-        - "This automated check-in is done and the progress page is rebuilt. Decide what is ACTUALLY worth telling the parent, lead with what matters most — what changed, the one gap to act on — and call notify_user EXACTLY ONCE with a short title and a brief plain message (1-3 sentences) pointing at the refreshed Progress tab. If truly nothing meaningful happened, still send one honest line so the parent knows the check-in ran."
+        - "This automated check-in is done and the progress page is rebuilt. Decide what is ACTUALLY worth telling the parent, lead with what matters most — what changed, the one gap to act on — and save a brief plain summary (1-3 sentences) in this check-in history, pointing at the refreshed Progress tab. If nothing meaningful happened, say so. This summary stays in the check-in history; do not claim a notification was sent."
   built_in: true
 
 profiles:
@@ -211,7 +212,6 @@ profiles:
         interaction:
           kind: scene
           render: chat.scene
-      - id: sparkquill.find-activity-image
     commands:
       - name: score-by-answer
         description: "Score by answer"
@@ -237,11 +237,9 @@ profiles:
         - execute_shell_command
         - diff_patch_workspace_file
         - read_image
-        - notify_user
         - open_file
         - celebrate
         - show_scene
-        - find_image
         - image_gen
         - image_edit
     runtime:
@@ -251,7 +249,6 @@ profiles:
           label: Claude Code
           provider: claude-code
           model_id: claude-sonnet-5-5
-          models: [claude-sonnet-5-5, claude-opus-5-5]
           reasoning_efforts: [low, medium, high]
           options:
             reasoning_effort: medium
@@ -259,7 +256,6 @@ profiles:
           label: Codex
           provider: codex-cli
           model_id: gpt-6-luna
-          models: [gpt-6-luna, gpt-6.1-sol, gpt-6-sol, gpt-6-astra]
           reasoning_efforts: [low, medium, high]
           options:
             reasoning_effort: high
@@ -268,7 +264,6 @@ profiles:
           label: Antigravity CLI (Alpha)
           provider: agy-cli
           model_id: gemini-3.8-flash-high
-          models: [gemini-3.8-flash-high, gemini-3.8-flash-medium, gemini-3.8-flash-low]
           reasoning_efforts: [low, medium, high]
           options:
             reasoning_effort: high

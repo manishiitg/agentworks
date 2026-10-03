@@ -35,6 +35,8 @@ interface CodingProvidersPanelProps {
   embedded?: boolean
   isOpen: boolean
   onClose: () => void
+  allowedProviderIds?: readonly string[]
+  product?: string
 }
 
 const PROVIDER_SIDEBAR_NAMES: Record<string, string> = {
@@ -49,6 +51,7 @@ const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
   'codex-cli': '/provider-icons/codex.png',
   'cursor-cli': '/provider-icons/cursor.svg',
   'pi-cli': '/provider-icons/pi.svg',
+  'agy-cli': '/provider-icons/antigravity.svg',
 }
 
 type ProviderStatus = 'ready' | 'auth' | 'missing' | 'deprecated'
@@ -128,7 +131,7 @@ function ProviderListStatus({ provider }: { provider: ProviderManifestEntry }) {
   )
 }
 
-export default function CodingProvidersPanel({ isOpen, onClose, embedded = false }: CodingProvidersPanelProps) {
+export default function CodingProvidersPanel({ isOpen, onClose, embedded = false, allowedProviderIds, product }: CodingProvidersPanelProps) {
   const [providers, setProviders] = useState<ProviderManifestEntry[]>([])
   const [providerOrder, setProviderOrder] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -168,7 +171,8 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
       const manifest = await llmConfigService.getProviderManifest()
       const order = new Map(manifest.provider_order.map((id, index) => [id, index]))
       const codingAgents = manifest.providers
-        .filter(provider => provider.integration_kind === 'coding_agent')
+        .filter(provider => provider.integration_kind === 'coding_agent' && !provider.deprecated
+          && (!allowedProviderIds || allowedProviderIds.includes(provider.id)))
         .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
       setProviders(codingAgents)
       setProviderOrder(manifest.provider_order)
@@ -180,11 +184,14 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [allowedProviderIds])
 
   useEffect(() => {
     if (!isOpen) return
     void refresh()
+    const accountsChanged = () => { void refresh() }
+    window.addEventListener('provider-connections-changed', accountsChanged)
+    return () => window.removeEventListener('provider-connections-changed', accountsChanged)
   }, [isOpen, refresh])
 
   useEffect(() => {
@@ -223,7 +230,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
     setConfirmSharedSetup(true)
   }
   const startGuidedSetup = async (action: ProviderSetupAction, replaceRunning = false) => {
-    if (!selectedProvider || !GUIDED_SETUP_PROVIDERS.has(selectedProvider.id)) return
+    if (!selectedProvider || (action !== 'install' && !GUIDED_SETUP_PROVIDERS.has(selectedProvider.id))) return
     setGuidedStarting(action)
     setGuidedError(null)
     setGuidedConflictAction(null)
@@ -410,7 +417,7 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   </div>
 
                   <div data-tour="provider-accounts">
-                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} />
+                    <ProviderAccounts key={selectedProvider.id} provider={selectedProvider.id} providerLabel={PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name} product={product} />
                   </div>
 
                   {selectedProvider.deprecated && selectedProvider.deprecation_reason && (
@@ -457,7 +464,12 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                       the page only adds what the accounts cannot show. */}
                   {selectedProvider.runtime_available !== true && (
                     <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-                      <p>This CLI is not installed on this server. A platform administrator must repair or update the deployment.</p>
+                      {selectedProvider.install_available ? <>
+                        <p>Install {selectedProvider.display_name} on this computer, then connect your account below.</p>
+                        <button type="button" disabled={guidedStarting !== null || guidedSession?.status === 'running'} onClick={() => void startGuidedSetup('install')} className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+                          {guidedStarting === 'install' ? 'Starting installation…' : `Install ${PROVIDER_SIDEBAR_NAMES[selectedProvider.id] || selectedProvider.display_name}`}
+                        </button>
+                      </> : <p>This CLI is not installed on this server. A platform administrator must repair or update the deployment.</p>}
                       {canRunGuidedSetup && selectedProvider.install_command && (
                         <pre className="mt-2 overflow-x-auto rounded-md bg-gray-950 px-3 py-2 text-xs text-gray-100"><code>{selectedProvider.install_command}</code></pre>
                       )}

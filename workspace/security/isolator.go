@@ -16,6 +16,10 @@ import (
 )
 
 type Isolator struct {
+	// UserHome, set with Slot for Code (the owner's terminal and agent shell), is the slot account's own home: HOME for the
+	// command and a write grant, so installs and logins are made once per person, not per project (owner decision 2026-10-03).
+	// Empty: the project's private home (workflows, Crew, users without a slot).
+	UserHome string
 	// Slot, when set (Linux only), runs the command as that slot account through sudo and
 	// slotctl instead of as the service account (see the slots package).
 	Slot string
@@ -61,6 +65,12 @@ type Isolator struct {
 	// browser's socket folder and profile (see scopeBrowser); when empty it
 	// keeps the shared browser grants.
 	BrowserSession string
+	// AllowPTY gives the command its own terminal devices (a private /dev/pts, see LandlockPolicy.PrivatePTS), which
+	// an interactive shell needs. Never set for ordinary commands.
+	AllowPTY bool
+	// Interactive keeps the caller's terminal as the command's standard input when it runs as a slot: the request
+	// then travels in a file in the slot's run folder instead of on stdin (slots.WrapCommandFile).
+	Interactive bool
 }
 
 const defaultBaseDir = "/app/workspace-docs"
@@ -153,6 +163,14 @@ func (iso *Isolator) sandboxAllowedPath(path string) (string, bool) {
 	return canonicalAllowedPath, true
 }
 
+// hostGogRestricted keeps the service account's Google CLI store out of user
+// slots. Its private files cannot be opened after the identity switch, and the
+// shared store/keyring must not cross that boundary even if permissions allow it.
+// Local trusted shells retain their existing direct CLI access.
+func (iso *Isolator) hostGogRestricted() bool {
+	return iso.StrictAllowlist || iso.Slot != ""
+}
+
 // ExecuteIsolated runs a command with filesystem restrictions.
 // Linux selects a verified kernel backend (Landlock first, then a proven mount
 // namespace); macOS uses sandbox-exec.
@@ -171,7 +189,7 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	browserSocket := local.scopeBrowser()
-	if home := gogconfig.TerminalHome(iso.StrictAllowlist); home != "" {
+	if home := gogconfig.TerminalHome(iso.hostGogRestricted()); home != "" {
 		if err := os.MkdirAll(home, 0700); err != nil {
 			releaseScratch()
 			return nil, nil, fmt.Errorf("prepare GOG_HOME: %w", err)
@@ -196,6 +214,16 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 		cleanup()
 		return nil, nil, err
 	}
+	// Chrome outlives this CLI invocation. Its IPC files must survive the
+	// per-command scratch cleanup, within this browser's private socket scope.
+	runtimeTmp := tmp
+	if browserSocket != "" && (command == "agent-browser" || strings.HasPrefix(strings.TrimSpace(command), "agent-browser ")) {
+		runtimeTmp = filepath.Join(browserSocket, "tmp")
+		if err := os.MkdirAll(runtimeTmp, 0700); err != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("prepare browser temporary directory: %w", err)
+		}
+	}
 	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
 		filtered := cmd.Env[:0]
 		for _, value := range cmd.Env {
@@ -203,13 +231,19 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 				filtered = append(filtered, value)
 			}
 		}
-		cmd.Env = append(filtered, key+"="+tmp)
+		cmd.Env = append(filtered, key+"="+runtimeTmp)
 	}
 	// No workflow or Crew folder to keep a home in: this command's own
 	// scratch, never the shared /tmp.
-	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(tmp, "home"))
+	cmd.Env = privateSandboxHome(cmd.Env, filepath.Join(runtimeTmp, "home"))
 	if browserSocket != "" {
 		cmd.Env = replaceEnv(cmd.Env, "AGENT_BROWSER_SOCKET_DIR", browserSocket)
+	} else if !envHas(cmd.Env, "AGENT_BROWSER_SOCKET_DIR") {
+		// The shared socket folder the sandbox grants (landlockSystemWritePaths, the private /tmp's kept paths). Without it
+		// agent-browser falls back to $XDG_RUNTIME_DIR/agent-browser (/run/user/<uid>), which no sandbox grants: in native mode
+		// (no shared HOME to replace) every Code project browser failed with "Socket directory ... is not writable" once the
+		// mount-namespace fallback, which could reach that folder, was removed (Excellence 2026-10-03).
+		cmd.Env = append(cmd.Env, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
 	}
 	pythonPath := tmp
 	filtered := cmd.Env[:0]
@@ -267,7 +301,7 @@ func (iso *Isolator) executeIsolatedMountNamespace(ctx context.Context, command 
 
 	// CRITICAL: Set safe environment (no secrets), with package-manager state
 	// routed to the workflow's persistent sandbox folder (PLAT-284).
-	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist))
+	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()))
 
 	return cmd, cleanup, nil
 }
@@ -306,7 +340,7 @@ func (iso *Isolator) executeIsolatedMacOS(ctx context.Context, command string, a
 	// leaves $HOME writable, so installs never failed here the way they did
 	// under Landlock -- but route them identically so a workflow behaves the
 	// same on a Mac as on a Linux deployment (PLAT-284).
-	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist))
+	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()))
 
 	return cmd, cleanup, nil
 }
@@ -525,6 +559,14 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 		sb.WriteString(fmt.Sprintf("  (literal \"%s\")\n", sandboxQuoted(p)))
 	}
 	sb.WriteString(")\n\n")
+
+	if iso.AllowPTY {
+		// An interactive shell (Code's terminal) makes its own pseudo-terminals: tmux's server opens /dev/ptmx and a
+		// /dev/ttysNNN, and exits at once without them ("error connecting to ... tmux.sock (Operation not permitted)").
+		sb.WriteString("; Pseudo-terminals for an interactive shell (only when one is asked for)\n")
+		sb.WriteString("(allow pseudo-tty)\n")
+		sb.WriteString("(allow file-read* file-write* file-ioctl (literal \"/dev/ptmx\") (regex #\"^/dev/ttys[0-9]+$\"))\n\n")
+	}
 
 	sb.WriteString("; Scratch space for ordinary temp files (compiler/interpreter caches, etc.)\n")
 	sb.WriteString("(allow file-read* file-write*\n")
@@ -872,4 +914,13 @@ func MergeExtraEnv(env []string, extra map[string]string) []string {
 		env = append(env, k+"="+v)
 	}
 	return env
+}
+
+func envHas(env []string, key string) bool {
+	for _, kv := range env {
+		if strings.HasPrefix(kv, key+"=") {
+			return true
+		}
+	}
+	return false
 }

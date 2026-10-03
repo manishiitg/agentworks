@@ -801,6 +801,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 
 	// Execute via client
 	opts := &ExecuteOptions{
+		UserID:           common.SessionUserIDFromContext(ctx),
 		Timeout:          timeout,
 		FolderGuard:      folderGuard,
 		WorkingDirectory: workingDir,
@@ -1774,6 +1775,9 @@ func sessionDirs() []string {
 	if owners, err := filepath.Glob(filepath.Join(browserconfig.SocketRoot, "o", "*")); err == nil {
 		dirs = append(dirs, owners...)
 	}
+	// A daemon started from a coding CLI's sandbox keeps them under the shared tmp folder (see
+	// browserconfig.SandboxSocketDir).
+	dirs = append(dirs, browserconfig.SandboxSocketDirs()...)
 	return dirs
 }
 

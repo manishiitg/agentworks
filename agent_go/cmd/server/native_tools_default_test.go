@@ -64,14 +64,14 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 		req                 QueryRequest
 		want                string
 	}{
-		{"interactive Builder chat", "alice", "chat-1", workflowTurn(QueryRequest{}), "hybrid"},
-		{"scheduled workflow turn", "alice", "schedule-w-1", workflowTurn(QueryRequest{TriggeredBy: "cron"}), "hybrid"},
-		{"webhook turn", "alice", "hook-1", workflowTurn(QueryRequest{TriggeredBy: "webhook"}), "hybrid"},
-		{"Pulse turn", "alice", "pulse-1", workflowTurn(QueryRequest{PulseLifecycleTurn: true}), "hybrid"},
-		{"Slack turn", "alice", "bot-slack--1", workflowTurn(QueryRequest{BotPlatform: "slack"}), "hybrid"},
+		{"interactive Builder chat", "alice", "chat-1", workflowTurn(QueryRequest{}), "full"},
+		{"scheduled workflow turn", "alice", "schedule-w-1", workflowTurn(QueryRequest{TriggeredBy: "cron"}), "full"},
+		{"webhook turn", "alice", "hook-1", workflowTurn(QueryRequest{TriggeredBy: "webhook"}), "full"},
+		{"Pulse turn", "alice", "pulse-1", workflowTurn(QueryRequest{PulseLifecycleTurn: true}), "full"},
+		{"Slack turn", "alice", "bot-slack--1", workflowTurn(QueryRequest{BotPlatform: "slack"}), "full"},
 		{"read-only viewer", "carol", "viewer-1", workflowTurn(QueryRequest{}), "mcp_only"},
 		{"workflow step (child session of a run)", "alice", "step-1", workflowTurn(QueryRequest{ParentSessionID: "run-1"}), "mcp_only"},
-		{"Pulse reviewer child", "alice", "pulse-child-1", workflowTurn(QueryRequest{ParentSessionID: "run-1", SessionKind: "pulse_reviewer"}), "hybrid"},
+		{"Pulse reviewer child", "alice", "pulse-child-1", workflowTurn(QueryRequest{ParentSessionID: "run-1", SessionKind: "pulse_reviewer"}), "full"},
 	}
 	for _, tc := range cases {
 		if got := env.queryDecidedToolsMode(t, tc.user, tc.session, tc.req); got != tc.want {
@@ -120,11 +120,11 @@ func TestNativeToolsOnForSlackCrewTurn(t *testing.T) {
 		}
 		return normalizeAgentToolsMode(resolved.Definition.Runtime.AgentTools.Mode)
 	}
-	if mode := crewTurn(`{"capabilities":{}}`); mode != "hybrid" {
-		t.Fatalf("Slack DM Crew turn decided %q, want hybrid", mode)
+	if mode := crewTurn(`{"capabilities":{}}`); mode != "full" {
+		t.Fatalf("Slack DM Crew turn decided %q, want full", mode)
 	}
 	// No switch any more (2026-09-29): an older Crew's stored "off" is ignored.
-	if mode := crewTurn(`{"capabilities":{"native_agent_tools":false}}`); mode != "hybrid" {
-		t.Fatalf("a Crew with a stored off decided %q, want hybrid: native tools are always on", mode)
+	if mode := crewTurn(`{"capabilities":{"native_agent_tools":false}}`); mode != "full" {
+		t.Fatalf("a Crew with a stored off decided %q, want full: native tools are always on", mode)
 	}
 }

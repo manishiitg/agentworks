@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -54,5 +56,43 @@ func TestSlackToolFullAccessOnlyForTrustedTurns(t *testing.T) {
 		if _, err := full.tools["slack"].exec(context.Background(), args); err == nil {
 			t.Fatalf("open Slack tool accepted %v", args)
 		}
+	}
+}
+
+func TestSlackFullAccessRejectsRelayTarget(t *testing.T) {
+	manifest := NewWorkflowManifest("Relay")
+	manifest.Kind = "relay"
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/relay/workflow.json": string(raw)}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	api := &StreamingAPI{}
+	_, err = api.slackCLIFullAccess(context.Background(), "relay", "Workflow/relay", "", map[string]interface{}{"method": "users.list"})
+	if err == nil || !strings.Contains(err.Error(), "Relays do not support Slack") {
+		t.Fatalf("Relay reached Slack runtime: %v", err)
+	}
+}
+
+func TestSlackRouteRejectsRetainedRelaySession(t *testing.T) {
+	manifest := NewWorkflowManifest("Relay")
+	manifest.Kind = "relay"
+	manifest.CreatedBy = "owner"
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/relay/workflow.json": string(raw)}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
+		"relay": {SessionID: "relay", UserID: "owner", WorkspacePath: "Workflow/relay"},
+	}}
+	_, err = api.authorizeSlackToolRoute(context.Background(), "relay", "C123", ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: "Workflow/relay", BotGrant: "owner"})
+	if err == nil || !strings.Contains(err.Error(), "Relays do not support Slack") {
+		t.Fatalf("retained Relay session reached Slack route: %v", err)
 	}
 }

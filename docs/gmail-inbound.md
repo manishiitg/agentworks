@@ -22,13 +22,19 @@ access is required; fixed replies use the existing notification sending
 permission, separately from agent write access. The ordinary account needs
 its Gmail send scope if replies are enabled.
 
-Version one accepts only the target owner's email, identified by the existing
-user directory. Gmail's DMARC authentication must pass for that sender's
-domain, or Gmail must identify the message as the connected account's own
-sent mail. An email address does not give outsiders the owner's private Code,
-credentials, tools, or budget. Automated replies, mailing lists, spam and
-trash are ignored. Shared-project readers cannot configure a route. Code
-continues to use only that Code's private Google connection.
+Without an explicit sender list, only the target owner's email from the user
+directory is accepted. The interactive owner can instead authorize exact
+addresses or exact `@domain` entries through `filters.sender_allowlist`. Entries
+combine with OR and replace the owner-only policy; add the owner's address too
+if it should remain accepted. A domain does not match subdomains or lookalike
+suffixes. Incoming requests run as the route owner with its existing scoped
+connection, target and workflow binding; a sender cannot change configuration.
+Gmail's DMARC authentication must still pass for the From domain, or Gmail must
+identify the message as the connected account's own sent mail. Automated
+notifications require `allow_automatic=true` plus an explicit sender list.
+Automatic replies, bounces, spam and trash remain blocked. Shared-project
+readers cannot configure a route. Code continues to use only that Code's private
+Google connection.
 
 ## Shared service, deployment-specific configuration
 
@@ -181,7 +187,167 @@ chat and Sent folder before manually continuing; replaying a partially
 executed email can repeat real tool side effects. The receiver does not
 promise exactly-once external actions across process crashes.
 
+## Inbox filters and Builder setup
+
+`manage_gmail_trigger(action="connect")` prepares a new account through an
+already deployed OAuth client, or reconnects `connection_id` with Gmail read
+access requested. If only one named OAuth client has a configured topic and
+stored credentials, it is selected automatically; otherwise Builder uses
+`get_gmail_trigger.setup.oauth_clients` to select the actual client. It returns
+a Google consent URL; the user authorizes in their browser. Connecting does
+not enable an email trigger. Existing account-management boundaries remain:
+Code owners connect private accounts, and administrators connect shared
+Crew/workflow accounts. Existing permissions and extra service grants are
+preserved on reconnect. No cloud resources or OAuth client secrets are created.
+The platform Google app uses its existing `/api/oauth/callback`; other named
+clients use `/api/human-feedback/gmail/auth/callback`.
+
+After consent, Builder inspects the connected mailbox and configures the
+exact saved workflow binding or project chat. Configuration accepts optional
+`filters`:
+
+- `sender_allowlist`: exact addresses or `@domain` entries, matched with OR;
+  omission or an empty list uses the owner-only sender policy.
+- `subject_contains` and `body_contains`: literal substrings, every keyword
+  must match (existing AND behavior).
+- `subject_contains_any` and `body_contains_any`: literal substrings, at least
+  one keyword in each configured list must match (OR alternatives).
+- `has_attachments`: true needs attachments; false needs none; omitted permits
+  either. `new_threads_only` excludes replies and previously accepted threads.
+- `allow_automatic`: opt-in for automated notifications from explicit allowed
+  senders. It requires a nonempty sender list. Auto-replied mail (including
+  parameterized Auto-Submitted values), null return-path bounces, spam and trash
+  are blocked regardless of opt-in; List-ID/auto-generated notifications may pass.
+
+Separate groups combine with AND. Keywords are case-insensitive, trimmed and
+deduplicated, with at most 10 entries per field and 256 bytes per entry. Sender
+entries are lowercase, validated plain addresses/domains; wildcards and display
+names are rejected. For example, accepting Real Training senders OR an inspected
+notification address, plus either subject phrase:
+
+```json
+{"sender_allowlist":["@realtrainingsys.com","updates@vendor.example"],"subject_contains_any":["Real Training","Notion"],"allow_automatic":true}
+```
+
+The notification address here is a placeholder; Builder inspects the actual
+sender in the owner's mailbox rather than inventing a service's email domain.
+Only widen senders when the owner requests it. Omitted filters are preserved;
+a supplied filter object replaces the entire set; `{}` clears them and restores
+owner-only sending. No content filters are added by default.
+
+New-threads-only rejects `In-Reply-To`/`References` replies and a Gmail thread
+already accepted for this target. Admission is serialized in the durable
+queue. A content-filtered message does not reserve a thread, consume execution
+queue capacity, or execute/upload attachments. It remains visible as `filtered`
+with a reason, retains its message-ID dedup key, and follows 30-day body
+retention. Sender/authentication/message-kind checks precede admission and are
+rechecked before execution and final response. Queued work rechecks content
+filters; already running executions continue. Clearing filters never replays
+previously skipped mail. The panes remain read-only.
+
+The pane's **Fetch emails** action asks the target's chat or workflow Builder to
+read and summarize recent mailbox matches using the saved rules. It does not
+reload delivery history, execute a trigger, replay mail or send a response.
+Read-only Gmail access works without enabling Pub/Sub; incoming automation still
+requires the deployment configuration. The agent explains any saved condition
+it cannot verify from mailbox data.
+
+## Ordered action rules
+
+`manage_gmail_trigger(action="configure", rules=[...])` creates up to 20 named
+rules behind the same target/owner address and mailbox watch. Each rule has a
+stable `id`, a display `name`, `enabled` (omitted means true), optional `filters`,
+and a target-specific action. Crew/Code require `instruction`; workflows require
+`route_selections` plus `group_names`, or `step_id` plus groups. An explicit empty
+route map is persisted as `{}` and selects the full workflow. Rules and
+legacy top-level workflow bindings cannot be supplied together. Builder obtains
+saved route/group IDs from the plan and existing trigger tools.
+
+```json
+{"action":"configure","connection_id":"mail","rules":[
+  {"id":"support","name":"Support requests","filters":{"subject_contains_any":["help","refund"]},"route_selections":{"triage":"support"},"group_names":["prod"]},
+  {"id":"billing","name":"Invoices","filters":{"subject_contains":["invoice"]},"route_selections":{"triage":"billing"},"group_names":["prod"]}
+]}
+```
+
+IDs and bindings in this example must be replaced with discovered saved values.
+For a project rule the action is instead `"instruction":"Send X message"`,
+with no workflow fields. One authenticated email starts at most one action:
+select the first enabled rule whose sender authorization, common filters and
+rule filters match. No match skips it. Rule sender lists inherit the common
+list/owner-only policy when omitted; an explicit rule list still intersects any
+explicit common list. Common content filters always restrict every rule.
+Automatic notifications require opt-in and an explicit sender list at either
+level; blocked message kinds remain blocked.
+
+Rule selection, new-thread reservation and delivery deduplication are atomic.
+Per-rule new-thread checks reserve a thread for that rule; the common flag
+reserves it across all rules for the target. SQLite adds `rule_id` and
+`rule_name` columns while retaining existing dedup keys and deliveries. Queue
+claims retain the originally selected ID, recheck current sender/content
+policies, and reject removed or paused rules without selecting a replacement.
+Action edits for that ID apply when execution starts. History names the
+originally matched rule. Rule edits never replay compact delivery records.
+
+Workflow rules live in the existing `kind=gmail` schedule. Its top-level group
+list is the union needed for manifest validation; execution uses only the
+selected rule's saved groups and route/step. A private in-process rule selection
+is resolved again against the manifest when the scheduler starts. No email JSON
+field can supply that selection. Gmail rule schedules require raw email input
+and prohibit payload mappings/allowed-variable overrides. The public webhook
+receiver continues to reject Gmail triggers.
+
+Crew/Code prepend the saved instruction separately from incoming untrusted
+email context; conversation IDs include target, sender, Gmail thread and stable
+rule ID. Different actions therefore use different isolated project chats.
+The shared Email/Triggers panel displays ordered cards, conditions, instruction
+or route, Enabled/Paused state and matched delivery history. Setup and changes
+remain Builder-only; public management HTTP is read-only.
+
+Omitted rules preserve the list. A supplied array replaces all rules; Builder
+must retain untouched rules and IDs. `enabled=false` pauses just one rule.
+`rules=[]` restores legacy single-action behavior; workflows must explicitly
+supply its replacement binding and groups. Existing routes without rules keep
+their original chat identity, dedup keys and behavior.
+
+## Sync direction
+
+Normal delivery retains Gmail history-based incremental sync, watch renewal,
+activation timestamps and durable message-ID deduplication. A newest-20 scan
+of the whole mailbox could discard a valid trigger behind unrelated mail, so
+it is not the default or an implemented replacement.
+
+A separate future change may bound work per sync and continue later, and use
+an explicit recent-mail cutoff for expired-cursor recovery with visible skip
+warnings. That recovery change and optional capped thread-context fetching
+remain unimplemented. Current recovery behavior is described above.
+
+Owner-facing guide: `docs/gmail-inbound-owner-guide.md`.
+
 References: [Gmail push notifications](https://developers.google.com/workspace/gmail/api/guides/push),
 [history synchronization](https://developers.google.com/workspace/gmail/api/guides/sync),
 [authenticated Pub/Sub push](https://docs.cloud.google.com/pubsub/docs/authenticate-push-subscriptions),
 and [gog watch commands](https://github.com/openclaw/gogcli/blob/main/docs/watch.md).
+
+## Owner confirmation for additional senders
+
+Builder can propose sender lists, but cannot grant them authority. Non-owner
+senders require a separate confirmation in the signed-in owner's Incoming email
+pane, covering the saved target, mailbox, filters, rule actions, enabled state
+and email replies. Review the sender list and saved actions, acknowledge the
+access granted, then approve. Use Revoke additional sender access to withdraw
+it. Configuration remains in Builder; the pane exposes only this dedicated
+security confirmation and revocation. Chat approval is insufficient.
+
+Receipts live in the private Gmail inbox database, not in writable manifests.
+Bridge, PAT, CLI/MCP OAuth and bot credentials cannot use the browser approval
+endpoint. Permissions and the configuration digest are rechecked at confirmation
+and before dispatch/reply, including queued work. An authority-bearing edit
+invalidates the receipt permanently; restoring old settings cannot revive it.
+
+Existing sender lists are not automatically approved. They need owner review
+after deployment. Public suffixes and common public mailbox domains such as
+`@gmail.com`/`@outlook.com` are rejected at configuration and approval; use exact
+addresses instead. The provider denylist is not exhaustive, so every additional
+sender or organization domain still needs explicit owner consent. DMARC checks
+remain mandatory and do not substitute for permission to run the target.

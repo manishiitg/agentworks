@@ -65,7 +65,7 @@ const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: str
     selectedSkills: caps?.selected_skills || [],
     selectedSecrets: caps?.selected_secrets || [],
     selectedGlobalSecretNames: caps?.selected_global_secret_names ?? [],
-    browserMode: (caps?.browser_mode || 'none') as CustomPreset['browserMode'],
+    browserMode: (caps?.browser_mode || 'auto') as CustomPreset['browserMode'],
     cdpPorts: caps?.cdp_ports || [],
     useCodeExecutionMode: caps?.use_code_execution_mode || false,
     llmConfig: caps?.llm_config ? { ...caps.llm_config } : undefined,
@@ -358,6 +358,14 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     setWorkspaceMinimized(true)
   }, [canCreateWorkflows, setWorkspaceMinimized])
 
+  // Intro pages reuse the same creation dialog and permission check as the plus button.
+  const showPresetCreate = useCommandDialogStore(s => s.showPresetCreate)
+  useEffect(() => {
+    if (!showPresetCreate || presetModeCategory !== 'workflow' || reduced) return
+    useCommandDialogStore.getState().closeDialog('presetCreate')
+    handleAddWorkflow()
+  }, [showPresetCreate, presetModeCategory, reduced, handleAddWorkflow])
+
   // Listen for external trigger to open preset settings (e.g. from workflow toolbar)
   const showPresetSettings = useCommandDialogStore(s => s.showPresetSettings)
   useEffect(() => {
@@ -452,7 +460,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
             selected_skills: selectedSkills || [],
             selected_secrets: selectedSecrets || [],
             selected_global_secret_names: globalSecretNamesForBackend,
-            browser_mode: editingPreset.workflowKind === 'relay' ? 'none' : (browserMode || 'none'),
+            browser_mode: browserMode || 'auto',
             cdp_ports: editingPreset.workflowKind === 'relay' ? [] : (browserMode === 'cdp' || browserMode === 'auto' ? (cdpPorts || []) : []),
             use_code_execution_mode: useCodeExecutionMode || false,
             llm_config: llmConfig || undefined,
@@ -478,7 +486,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
         editingPreset?.id,
         selectedSecrets,
         selectedGlobalSecretNames,
-        workflowKind === 'relay' ? 'none' : browserMode,
+        browserMode,
         workflowKind === 'relay' ? [] : cdpPorts,
         icon,
         workflowKind

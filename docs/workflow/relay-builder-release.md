@@ -37,3 +37,15 @@ Interrupted node resume remains deferred. Cron and calendar schedules currently 
 - Backend regression tests exercise reader acceptance (202), own polling (200/version), other-run and no-access denial (404), credential ownership, revocation, namespace readers, durable waits, and cost aggregation. The ingress test deliberately fails execution on an absent temporary runtime folder; it does not claim a new live LLM run. Frontend checks cover the visible access policy and broken-release state. Prior live preview evidence remains in the acceptance plan; no deployment or preview restart is part of these fixes.
 
 Verification: backend server build and frontend production build passed. The shared virtual-tools, costledger, costobserver, schedulerstate and Relay product package suites passed; 22 frontend regressions passed. The broader workflow executor suite has one existing failure, `TestValidateStepLLMConfigEnforcesAgyAlphaGate` (`AGY accepted without alpha flag`), reproduced unchanged on a clean `origin/main` worktree at `c48042b56`.
+
+## Integration scope (2026-10-03)
+
+Relays are API products with schedules and selected MCP tools/skills. They reuse
+the platform's authorized Google app connections for Drive, Sheets, Calendar
+and Gmail, including per-service grants; the right pane labels the existing
+connection panel **Google apps**. Plan creation needs no Google connection.
+Slack and WhatsApp connections, tools, bot routes and notifications are excluded.
+The product manifest owns the Builder tool allowlist, prompt and skill; manifest
+validation and execution-time checks enforce the same scope. Existing saved
+Slack bindings are suppressed when constructing a Relay schedule context.
+See [PLAT-389](../bugs/pulse_platform/integrations/plat-389.md).

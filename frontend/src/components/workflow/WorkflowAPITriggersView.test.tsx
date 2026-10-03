@@ -6,6 +6,7 @@ import WorkflowAPITriggersView from './WorkflowAPITriggersView'
 import { agentApi } from '../../services/api'
 import { workflowWebhooksApi } from '../../api/workflowWebhooks'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
+import { TooltipProvider } from '../ui/tooltip'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn().mockResolvedValue({ configured: true, route: null, deliveries: [] }) } }))
@@ -25,14 +26,14 @@ type MountProps = { onViewRuns?: () => void; deliveryHistory?: ReactNode; hideHe
 async function mount(props: MountProps = {}) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  await act(async () => root.render(<WorkflowAPITriggersView workspacePath="Workflow/test" {...props} />))
+  await act(async () => root.render(<TooltipProvider><WorkflowAPITriggersView workspacePath="Workflow/test" {...props} /></TooltipProvider>))
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return host
 }
 async function mountRerenderable(initial: MountProps) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  const render = async (props: MountProps) => { await act(async () => root.render(<WorkflowAPITriggersView workspacePath="Workflow/test" {...props} />)) }
+  const render = async (props: MountProps) => { await act(async () => root.render(<TooltipProvider><WorkflowAPITriggersView workspacePath="Workflow/test" {...props} /></TooltipProvider>)) }
   await render(initial)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return { host, render }

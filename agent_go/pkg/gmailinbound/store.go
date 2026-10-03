@@ -33,23 +33,55 @@ func Open(path string) (*Store, error) {
 	_, e = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,processed INTEGER NOT NULL DEFAULT 0,renew_at INTEGER NOT NULL DEFAULT 0,next_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
+CREATE TABLE IF NOT EXISTS sender_consents(route TEXT PRIMARY KEY,owner TEXT NOT NULL,config_hash TEXT NOT NULL,approved_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
+CREATE INDEX IF NOT EXISTS delivery_thread ON deliveries(route,json_extract(message,'$.thread_id'));
 UPDATE deliveries SET status='uncertain',error='Server stopped during execution; inspect the saved app thread before retrying' WHERE status IN ('running','sending');`)
 	if e != nil {
 		_ = db.Close()
 		return nil, e
+	}
+	// Older inbox databases predate named rules. Keep every existing delivery
+	// and dedup key while adding optional admission metadata.
+	for _, migration := range []struct{ name, sql string }{
+		{"rule_id", "ALTER TABLE deliveries ADD COLUMN rule_id TEXT NOT NULL DEFAULT ''"},
+		{"rule_name", "ALTER TABLE deliveries ADD COLUMN rule_name TEXT NOT NULL DEFAULT ''"},
+	} {
+		var count int
+		if e = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('deliveries') WHERE name=?", migration.name).Scan(&count); e == nil && count == 0 {
+			_, e = db.Exec(migration.sql)
+		}
+		if e != nil {
+			_ = db.Close()
+			return nil, e
+		}
 	}
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) SaveRoute(ctx context.Context, r Route, email string) error {
+	filters, err := NormalizeFilters(r.Filters)
+	if err != nil {
+		return err
+	}
+	r.Filters = filters
+	r.Rules, err = NormalizeRules(r.Rules, r.WorkflowTrigger)
+	if err != nil {
+		return err
+	}
+	r.SelectedRuleID = ""
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	// Any authority-bearing edit invalidates consent atomically. Restoring an
+	// earlier policy later cannot revive a revoked approval.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM sender_consents WHERE route=? AND (owner<>? OR config_hash<>?)`, r.ID, r.OwnerID, SenderPolicyHash(r)); e != nil {
+		return e
+	}
 	b, e := json.Marshal(r)
 	if e != nil {
 		return e
@@ -143,6 +175,12 @@ func (s *Store) SyncError(ctx context.Context, id string, err error) error {
 	return e
 }
 func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
+	return s.EnqueueAuthorized(ctx, r, m, nil)
+}
+
+// Select and reserve the first matching authorized rule atomically. Redelivery
+// keeps its original rule; a later configuration change never replays an email.
+func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, authorize func(context.Context, Route, Message) error) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
@@ -156,12 +194,60 @@ func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
 	if exists {
 		return tx.Commit()
 	}
-	var count int
-	if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM deliveries WHERE status IN ('staged','pending','running','reply','sending')`).Scan(&count); e != nil {
-		return e
+	candidates := []Route{r}
+	if len(r.Rules) > 0 {
+		candidates = nil
+		for _, rule := range r.Rules {
+			if rule.IsEnabled() {
+				candidate := r
+				candidate.SelectedRuleID = rule.ID
+				candidates = append(candidates, candidate)
+			}
+		}
 	}
-	if count >= 10000 {
-		return fmt.Errorf("email delivery queue is full")
+	reason := "No enabled email rule matched"
+	selectedID, selectedName := "", ""
+	authorized := false
+	for _, candidate := range candidates {
+		if authorize != nil {
+			if !candidate.AcceptsMessageKind(m) || authorize(ctx, candidate, m) != nil {
+				continue
+			}
+		}
+		authorized = true
+		mismatch := candidate.FilterMismatch(m)
+		if required, allRules := candidate.NewThreadScope(); mismatch == "" && required {
+			var accepted bool
+			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE route=? AND json_extract(message,'$.thread_id')=? AND status!='filtered' AND (? OR rule_id=?))`, r.ID, m.ThreadID, allRules, candidate.SelectedRuleID).Scan(&accepted); e != nil {
+				return e
+			}
+			if accepted {
+				mismatch = "New threads only: this thread has already been accepted"
+			}
+		}
+		if mismatch == "" {
+			reason = ""
+			selectedID = candidate.SelectedRuleID
+			if rule, _ := candidate.SelectedRule(); rule != nil {
+				selectedName = rule.Name
+			}
+			break
+		}
+		if len(r.Rules) == 0 {
+			reason = mismatch
+		}
+	}
+	if authorize != nil && !authorized {
+		return tx.Commit() // Preserve the existing no-history behavior for unauthorized mail.
+	}
+	if reason == "" {
+		var count int
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM deliveries WHERE status IN ('staged','pending','running','reply','sending')`).Scan(&count); e != nil {
+			return e
+		}
+		if count >= 10000 {
+			return fmt.Errorf("email delivery queue is full")
+		}
 	}
 	b, e := json.Marshal(m)
 	if e != nil {
@@ -171,11 +257,33 @@ func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
 	if receivedAt == 0 {
 		receivedAt = time.Now().UnixMilli()
 	}
-	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deliveries(id,route,message,created_at,received_at) VALUES(?,?,?,?,?)`, r.ID+":"+m.ID, r.ID, string(b), time.Now().Unix(), receivedAt)
+	status := "staged"
+	if reason != "" {
+		status = "filtered"
+	}
+	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deliveries(id,route,message,status,error,created_at,received_at,rule_id,rule_name) VALUES(?,?,?,?,?,?,?,?,?)`, r.ID+":"+m.ID, r.ID, string(b), status, reason, time.Now().Unix(), receivedAt, selectedID, selectedName)
 	if e != nil {
 		return e
 	}
 	return tx.Commit()
+}
+
+// Recheck changed filters before execution. A queued message may be the first
+// accepted message in its thread; do not count that message or later messages.
+func (s *Store) FilterReason(ctx context.Context, d Delivery) (string, error) {
+	if reason := d.Route.FilterMismatch(d.Message); reason != "" {
+		return reason, nil
+	}
+	required, allRules := d.Route.NewThreadScope()
+	if !required {
+		return "", nil
+	}
+	var earlier bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries a JOIN deliveries d ON d.id=? WHERE a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id') AND a.status!='filtered' AND (? OR a.rule_id=d.rule_id) AND (a.received_at<d.received_at OR (a.received_at=d.received_at AND a.rowid<d.rowid)))`, d.ID, allRules).Scan(&earlier)
+	if earlier {
+		return "New threads only: this thread has already been accepted", err
+	}
+	return "", err
 }
 
 // Keep compact IDs for durable deduplication, while releasing message bodies
@@ -193,7 +301,7 @@ func (s *Store) Claim(ctx context.Context) (Delivery, bool, error) {
 	var d Delivery
 	var mb, rb string
 	// Replies and subsequent turns in one email conversation stay ordered.
-	e = tx.QueryRowContext(ctx, `SELECT d.id,r.data,d.message,d.session,d.response,d.status FROM deliveries d JOIN routes r ON r.id=d.route WHERE d.status IN ('pending','reply') AND NOT EXISTS(SELECT 1 FROM deliveries a WHERE a.status IN ('running','sending') AND a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id')) ORDER BY d.received_at,d.rowid LIMIT 1`).Scan(&d.ID, &rb, &mb, &d.SessionID, &d.Response, &d.Status)
+	e = tx.QueryRowContext(ctx, `SELECT d.id,r.data,d.message,d.session,d.response,d.status,d.rule_id,d.rule_name FROM deliveries d JOIN routes r ON r.id=d.route WHERE d.status IN ('pending','reply') AND NOT EXISTS(SELECT 1 FROM deliveries a WHERE a.status IN ('running','sending') AND a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id')) ORDER BY d.received_at,d.rowid LIMIT 1`).Scan(&d.ID, &rb, &mb, &d.SessionID, &d.Response, &d.Status, &d.RuleID, &d.RuleName)
 	if errors.Is(e, sql.ErrNoRows) {
 		return d, false, nil
 	}
@@ -206,6 +314,7 @@ func (s *Store) Claim(ctx context.Context) (Delivery, bool, error) {
 	if e = json.Unmarshal([]byte(mb), &d.Message); e != nil {
 		return d, false, e
 	}
+	d.Route.SelectedRuleID = d.RuleID
 	status := "running"
 	if d.Status == "reply" {
 		status = "sending"
@@ -227,6 +336,8 @@ func (s *Store) Finish(ctx context.Context, d Delivery, status string, err error
 }
 
 type DeliveryStatus struct {
+	RuleID    string `json:"rule_id,omitempty"`
+	RuleName  string `json:"rule_name,omitempty"`
 	ID        string `json:"id"`
 	Status    string `json:"status"`
 	SessionID string `json:"session_id"`
@@ -234,7 +345,7 @@ type DeliveryStatus struct {
 }
 
 func (s *Store) History(ctx context.Context, routeID string) ([]DeliveryStatus, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,status,session,error FROM deliveries WHERE route=? ORDER BY rowid DESC LIMIT 30`, routeID)
+	rows, e := s.db.QueryContext(ctx, `SELECT id,status,session,error,rule_id,rule_name FROM deliveries WHERE route=? ORDER BY rowid DESC LIMIT 30`, routeID)
 	if e != nil {
 		return nil, e
 	}
@@ -242,7 +353,7 @@ func (s *Store) History(ctx context.Context, routeID string) ([]DeliveryStatus, 
 	out := []DeliveryStatus{}
 	for rows.Next() {
 		var d DeliveryStatus
-		if e = rows.Scan(&d.ID, &d.Status, &d.SessionID, &d.Error); e != nil {
+		if e = rows.Scan(&d.ID, &d.Status, &d.SessionID, &d.Error, &d.RuleID, &d.RuleName); e != nil {
 			return nil, e
 		}
 		out = append(out, d)

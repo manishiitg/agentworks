@@ -221,6 +221,10 @@ func landlockSystemReadPaths() []string {
 		"/sys/devices", "/sys/bus/pci/devices",
 		"/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty",
 	}
+	// The system Chrome the browser launches by default (/usr/bin/google-chrome -> /etc/alternatives -> /opt/google/chrome/google-chrome).
+	// Without it every browser start in the sandbox fails with "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied"
+	// (Excellence 2026-10-03, once the mount-namespace fallback that could reach /opt was removed). Dropped when it is not installed.
+	paths = append(paths, "/opt/google/chrome")
 	if browserPath := strings.TrimSpace(os.Getenv("AGENT_BROWSER_EXECUTABLE_PATH")); browserPath != "" {
 		if resolved, err := filepath.EvalSymlinks(browserPath); err == nil {
 			paths = append(paths, filepath.Dir(resolved))

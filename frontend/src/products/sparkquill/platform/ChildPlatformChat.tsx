@@ -191,6 +191,8 @@ export default function ChildPlatformChat({ activityDir, title, childName, theme
         agentProfileChatContract: 'profile-v1',
         agentProfileEngine: runtime.engine,
         agentProfileModelID: runtime.model,
+        agentProfileConnectionID: runtime.connectionId,
+        agentProfileReasoningEffort: runtime.reasoningEffort,
         agentProfileConversationKey: conversation.conversation_key,
         agentProfileConversationId: conversation.conversation_id,
       }, conversation.session_id)

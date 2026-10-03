@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 
-export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' | 'presetSettings'
+export type DialogName = 'skillImport' | 'mcpDetails' | 'mcpConfig' | 'models' | 'presetSettings' | 'presetCreate'
 
 interface CommandDialogState {
   showSkillImport: boolean
   showMCPDetails: boolean
   showMCPConfig: boolean
   showModels: boolean
+  showPresetCreate: boolean
   showPresetSettings: boolean
   openDialog: (dialog: DialogName) => void
   closeDialog: (dialog: DialogName) => void
@@ -19,6 +20,7 @@ const dialogKeyMap: Record<DialogName, keyof CommandDialogState> = {
   mcpConfig: 'showMCPConfig',
   models: 'showModels',
   presetSettings: 'showPresetSettings',
+  presetCreate: 'showPresetCreate',
 }
 
 export const useCommandDialogStore = create<CommandDialogState>()((set) => ({
@@ -26,6 +28,7 @@ export const useCommandDialogStore = create<CommandDialogState>()((set) => ({
   showMCPDetails: false,
   showMCPConfig: false,
   showModels: false,
+  showPresetCreate: false,
   showPresetSettings: false,
   openDialog: (dialog) => set({ [dialogKeyMap[dialog]]: true }),
   closeDialog: (dialog) => set({ [dialogKeyMap[dialog]]: false }),
@@ -34,6 +37,7 @@ export const useCommandDialogStore = create<CommandDialogState>()((set) => ({
     showMCPDetails: false,
     showMCPConfig: false,
     showModels: false,
+    showPresetCreate: false,
     showPresetSettings: false,
   }),
 }))

@@ -27,4 +27,14 @@ export const googleAppApi = {
     const started = await agentApi.startGmailConnectionAuth(created.id)
     return { id: created.id, auth_url: started.auth_url }
   },
+  /** Keep the existing connection and OAuth client, including legacy named clients. */
+  reconnect: async (id: string, req: GoogleAppConnectRequest): Promise<{ id: string; auth_url: string }> => {
+    await agentApi.updateGmailConnection(id, {
+      services: req.services,
+      allow_read_access: req.allow_read_access,
+      allow_agent_write_access: req.allow_agent_write_access,
+    })
+    const started = await agentApi.startGmailConnectionAuth(id)
+    return { id, auth_url: started.auth_url }
+  },
 }

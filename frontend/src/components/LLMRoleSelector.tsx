@@ -12,6 +12,7 @@ type LLMRoleValue = {
 
 type LLMRoleSelectorProps = {
   availableLLMs: LLMOption[]
+  allowedProviderIds?: readonly string[]
   value: LLMRoleValue | null
   onLLMSelect: (option: LLMOption) => void
   disabled?: boolean
@@ -46,10 +47,12 @@ function modelLabel(option: LLMOption): string {
 
 export default function LLMRoleSelector({
   availableLLMs,
+  allowedProviderIds,
   value,
   onLLMSelect,
   disabled = false,
 }: LLMRoleSelectorProps) {
+  const providerUnavailable = Boolean(allowedProviderIds && value?.provider && !allowedProviderIds.includes(value.provider))
   const options = useMemo(() => {
     if (!value?.provider || !value.model_id) return availableLLMs
     const exists = availableLLMs.some(option => option.provider === value.provider
@@ -103,8 +106,8 @@ export default function LLMRoleSelector({
             onChange={event => chooseFirst(options.filter(option => option.provider === event.target.value))}
           >
             {providers.map(option => (
-              <option key={option.provider} value={option.provider}>
-                {getProviderDisplayInfo(option.provider).name}
+              <option key={option.provider} value={option.provider} disabled={Boolean(allowedProviderIds && !allowedProviderIds.includes(option.provider))}>
+                {getProviderDisplayInfo(option.provider).name}{allowedProviderIds && !allowedProviderIds.includes(option.provider) ? ' (unavailable)' : ''}
               </option>
             ))}
           </select>
@@ -116,7 +119,7 @@ export default function LLMRoleSelector({
             aria-label="Model"
             className={selectClassName}
             value={selectedModel}
-            disabled={disabled || models.length === 0}
+            disabled={disabled || providerUnavailable || models.length === 0}
             onChange={event => chooseFirst(providerOptions.filter(option => option.model === event.target.value))}
           >
             {models.map(option => (
@@ -140,7 +143,7 @@ export default function LLMRoleSelector({
                   type="button"
                   aria-label={`Set reasoning effort to ${label}`}
                   aria-pressed={selected}
-                  disabled={disabled}
+                  disabled={disabled || providerUnavailable}
                   onClick={() => onLLMSelect(option)}
                   className={`h-7 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${selected
                     ? 'border-primary bg-primary/15 text-primary'

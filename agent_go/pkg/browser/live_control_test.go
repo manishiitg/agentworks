@@ -40,3 +40,55 @@ func TestBrowserControlBlocksCommandsUntilReleased(t *testing.T) {
 		t.Fatal("finished gates leaked")
 	}
 }
+
+func TestWorkspaceViewerSharesCDPCommandLock(t *testing.T) {
+	const port = 19231
+	BindViewerCDPPort("cdp-viewer-test", port)
+	defer BindViewerCDPPort("cdp-viewer-test", 0)
+	release, ok := TryTakeWorkspaceBrowserControl("cdp-viewer-test")
+	if !ok {
+		t.Fatal("cannot take local Chrome control")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if unlock, err := acquireSharedCDPLock(ctx, port); err == nil {
+		unlock()
+		release()
+		t.Fatal("agent CDP command bypassed viewer")
+	}
+	release()
+	unlock, err := acquireSharedCDPLock(context.Background(), port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release, ok := TryTakeWorkspaceBrowserControl("cdp-viewer-test"); ok {
+		release()
+		unlock()
+		t.Fatal("viewer interrupted agent CDP action")
+	}
+	unlock()
+	release, ok = TryTakeWorkspaceBrowserControl("cdp-viewer-test")
+	if !ok {
+		t.Fatal("failed CDP lock attempt leaked session gate")
+	}
+	release()
+}
+
+func TestLocalChromeStartupSharesViewerAndAgentLock(t *testing.T) {
+	const port = 19232
+	release, ok := TryTakeCDPBrowserControl(port)
+	if !ok {
+		t.Fatal("cannot lock startup")
+	}
+	if other, ok := TryTakeCDPBrowserControl(port); ok {
+		other()
+		release()
+		t.Fatal("startup bypassed active control")
+	}
+	release()
+	release, ok = TryTakeCDPBrowserControl(port)
+	if !ok {
+		t.Fatal("startup leaked CDP lock")
+	}
+	release()
+}

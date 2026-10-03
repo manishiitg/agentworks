@@ -70,15 +70,17 @@ import { withPreviewPositionScript } from './platform/previewPosition'
 import { useChatStore } from '../../stores/useChatStore'
 import { api } from './api'
 import { VoiceSettings } from './voice/VoiceSettings'
+import { LearningModelSettings } from './LearningModelSettings'
+import CodingProvidersPanel from '../../components/providers/CodingProvidersPanel'
+import { useLLMStore } from '../../stores/useLLMStore'
 import { readReminderSoundPref, persistReminderSoundPref } from './notifySound'
 import { readVoiceAutoSendPref, persistVoiceAutoSendPref } from './voiceAutoSend'
 import { buildSqAnswerText, buildSqTimerText, sanitizeSqId, sanitizeSqTimerConfigs, SQ_MAX_GAME_STATE_BYTES, sqGameStateKey, withViewerLinkBridge } from './sqOps'
 import { ChatMarkdown as SharedChatMarkdown } from '../../../shared/chat/ChatRenderer'
 import { ProductSurfaceSwitcher } from '../../components/ProductSurfaceSwitcher'
 import { hasGatewaySSO, isSingleProductDeployment } from '../productSurfaceConfig'
-import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
+import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
 import WorkflowLiveBrowser from '../../components/workflow/WorkflowLiveBrowser'
-import { llmConfigService, type ProviderSetupSession } from '../../services/llm-config-api'
 
 // The child/file viewer iframe is deliberately sandbox="allow-scripts" with
 // NO allow-same-origin (adding that would let a srcDoc page's script escape
@@ -105,11 +107,6 @@ function pres(id: string, fallbackName: string) {
   return ENGINE_PRESENTATION[id] ?? { name: fallbackName, blurb: 'Available on this computer', order: 99, preferred: false }
 }
 
-// Engines whose sign-in the server can drive through an interactive terminal
-// session (see CodingProvidersPanel.tsx's GUIDED_SETUP_PROVIDERS) — the only
-// ones this screen can offer a "Sign in" button for instead of leaving a
-// parent stuck reading a plain-text setup hint.
-const GUIDED_SETUP_ENGINES = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'pi-cli', 'muse-cli'])
 
 // Child profile options — edit here to adjust the setup form.
 // Targeting grades 6–12, with 4–5 also offered.
@@ -992,9 +989,6 @@ export default function LearningApp() {
   const setEnginesState = useSetupStore((s) => s.setEnginesState)
   const engine = useSetupStore((s) => s.engine)
   const setEngine = useSetupStore((s) => s.setEngine)
-  const testState = useSetupStore((s) => s.testState)
-  const setTestState = useSetupStore((s) => s.setTestState)
-  const testMessage = useSetupStore((s) => s.testMessage)
   const setTestMessage = useSetupStore((s) => s.setTestMessage)
 
   // The composer's quick menus come from the product (product.yaml
@@ -1036,25 +1030,6 @@ export default function LearningApp() {
   }, [setEngine, setEngines, setEnginesState])
   useEffect(() => refreshEngines(), [refreshEngines])
 
-  // Terminal-based sign-in for the engine picker above: mirrors
-  // CodingProvidersPanel.tsx's guided setup, scoped to whichever engine the
-  // parent has selected on this screen.
-  const [guidedSession, setGuidedSession] = useState<ProviderSetupSession | null>(null)
-  const [guidedStarting, setGuidedStarting] = useState(false)
-  const [guidedError, setGuidedError] = useState<string | null>(null)
-  const startEngineSignIn = useCallback(async (engineId: string) => {
-    setGuidedStarting(true)
-    setGuidedError(null)
-    try {
-      const session = await llmConfigService.startProviderSetup(engineId, 'authenticate', 100, 24)
-      setGuidedSession(session)
-    } catch (setupError) {
-      const responseMessage = (setupError as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setGuidedError(responseMessage || (setupError instanceof Error ? setupError.message : 'Could not start sign-in'))
-    } finally {
-      setGuidedStarting(false)
-    }
-  }, [])
   const childName = useFamilyStore((s) => s.childName)
   const setChildName = useFamilyStore((s) => s.setChildName)
   const grade = useFamilyStore((s) => s.grade)
@@ -1080,7 +1055,9 @@ export default function LearningApp() {
   // Files tab is the one worth watching for growth.
   const [treeTotalSize, setTreeTotalSize] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [savingEngine, setSavingEngine] = useState(false)
+  const showProviders = useLLMStore(state => state.showLLMModal)
+  const openProviders = () => useLLMStore.getState().setShowLLMModal(true)
+  const closeProviders = () => { useLLMStore.getState().setShowLLMModal(false); refreshEngines() }
   // Voice settings — the tier catalog is computed server-side against THIS
   // machine's hardware (see /api/voice/status), so the UI never has to guess
   // what an Intel vs Apple Silicon Mac can actually run.
@@ -1712,35 +1689,6 @@ export default function LearningApp() {
     return () => { cancelled = true }
   }, [screen, settingsOpen, pulsePopoverOpen])
 
-  // Which model the chosen coding agent should use. The list comes from the
-  // server (which reads the provider's real catalog) rather than being written
-  // here, so the picker cannot offer a model the agent would reject.
-  type ModelInfo = { provider: string; selected: string; default: string; models: { id: string; label: string }[] }
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null)
-  const [savingModel, setSavingModel] = useState(false)
-
-  const loadModels = useCallback(() => {
-    api.models()
-      .then((d) => setModelInfo(d))
-      .catch(() => setModelInfo(null))
-  }, [])
-
-  // Reloads when the engine changes: the catalog is per coding agent, so the
-  // previous agent's models must not linger in the picker.
-  useEffect(() => { loadModels() }, [loadModels, engine])
-
-  const saveModel = (id: string) => {
-    setSavingModel(true)
-    // Optimistic so the select doesn't snap back while the request is in
-    // flight; the reload below is the source of truth.
-    setModelInfo((cur) => (cur ? { ...cur, selected: id } : cur))
-    api.saveModel(id)
-      .then(() => loadModels())
-      .catch(() => loadModels())
-      .finally(() => setSavingModel(false))
-  }
-
-
   // Voice tier catalog — loaded whenever Settings opens. Cheap (a sysctl read
   // plus two LookPath calls), so it's refetched each time rather than cached:
   // installing a model elsewhere should be reflected on the next open.
@@ -2050,21 +1998,6 @@ export default function LearningApp() {
   const selectedEngine = engines.find((item) => item.id === engine)
   const initial = childName.trim().slice(0, 1).toUpperCase() || 'M'
 
-  const runTest = () => {
-    if (!selectedEngine) return
-    setTestState('testing')
-    setTestMessage('')
-    api.validateEngine(selectedEngine.id)
-      .then((data) => {
-        setTestState(data.valid ? 'valid' : 'invalid')
-        setTestMessage(data.message ?? (data.valid ? 'Connection works.' : 'Test failed.'))
-      })
-      .catch(() => {
-        setTestState('invalid')
-        setTestMessage('Could not run the test.')
-      })
-  }
-
   const move = (next: Screen) => {
     setScreen(next)
   }
@@ -2087,10 +2020,10 @@ export default function LearningApp() {
   const persistEngineAndContinue = () => {
     if (!selectedEngine) return
     setSaving(true)
-    api.selectEngine('parent', selectedEngine.id)
+    api.setup().then(state => state.engine === selectedEngine.id ? undefined : api.selectEngine('parent', selectedEngine.id))
       .then(() => api.setup())
       .then((state) => {
-        applyFamilyEngineToOpenTabs('parent', selectedEngine.id)
+        applyFamilyEngineToOpenTabs('parent', selectedEngine.id, state.parent_model, state.parent_reasoning_effort, state.connection_id)
         if (state.next_step === 'done') move(readHandoffSide() === 'tutor' ? 'tutor' : 'parent')
         else if (state.next_step === 'pin') move('pin')
         else move('child')
@@ -2685,8 +2618,8 @@ export default function LearningApp() {
               )}
 
               {drawerTab === 'browser' && (
-                <div className="fl-browser-view">
-                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" minimal />
+                <div className="fl-browser-view fl-platform-ui">
+                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} allowTeaching={false} minimal />
                 </div>
               )}
 
@@ -3241,10 +3174,10 @@ export default function LearningApp() {
                     ) : (
                       <div className="fl-connector-card">
                         <p className="fl-connector-status" style={browserStatus?.cli_installed ? { color: 'var(--fl-green, #2e7d32)' } : undefined}>
-                          {browserStatus === null ? 'Checking…' : browserStatus.cli_installed ? '✓ Ready' : 'Not set up yet'}
+                          {!isBrowserCDPEnabled() ? 'Open the managed browser below' : browserStatus === null ? 'Checking…' : browserStatus.cli_installed ? '✓ Ready' : 'Open browser to check setup'}
                         </p>
                         <p className="fl-note">For things like school portals — assignments, report cards, uploaded books — the safest way for Quill to check them is to use a browser you're already signed into, so it never needs your password.</p>
-                        <div className="fl-install-steps">
+                        {isBrowserCDPEnabled() && <div className="fl-install-steps">
                           <p className="fl-note"><strong>One-time setup:</strong> copy this, paste it into the Terminal app on your Mac, and press Enter.</p>
                           <div className="fl-code-row">
                             <pre className="fl-code-block"><code>curl -fsSL 'https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/scripts/install-chrome-cdp-macOS.sh' | bash</code></pre>
@@ -3261,9 +3194,10 @@ export default function LearningApp() {
                             </button>
                           </div>
                           <p className="fl-note">A new browser window opens on its own once it's done.</p>
-                        </div>
-                        <p className="fl-note">Then sign into the school portal (or anything else you'd like Quill to check) in that window, and just leave it open. From then on, Quill can look things up there whenever it's useful — it never sees or stores your password.</p>
-                        {browserStatus && !browserStatus.cli_installed && (
+                        </div>}
+                        <button type="button" className="fl-ghost-btn" onClick={()=>{setWaOpen(false);setDrawerTab('browser')}}>Open browser to sign in or teach a task</button>
+                        <p className="fl-note">Open the browser panel, take control and sign into the school portal there. Return control when finished so Quill can use the same signed-in browser.</p>
+                        {isBrowserCDPEnabled() && browserStatus && !browserStatus.cli_installed && (
                           <p className="fl-note">(Also needed once: ask whoever set this computer up to run <code>npm install -g agent-browser@latest</code>.)</p>
                         )}
                       </div>
@@ -3303,6 +3237,7 @@ export default function LearningApp() {
             />
           )}
 
+          <div className="fl-platform-ui"><CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" /></div>
           {settingsOpen && (
             <div className="fl-settings-backdrop" role="dialog" aria-modal="true" onClick={() => setSettingsOpen(false)}>
               <div className="fl-settings" onClick={(e) => e.stopPropagation()}>
@@ -3311,77 +3246,10 @@ export default function LearningApp() {
                   <button className="fl-wa-close" type="button" onClick={() => setSettingsOpen(false)} aria-label="Close">×</button>
                 </div>
                 <div className="fl-settings-body">
-                  <p className="fl-drawer-label">Which AI Quill uses</p>
-                  <p className="fl-note">The AI behind both your chat and {childName || 'your child'}’s tutor. They all work — pick whichever account you already pay for.</p>
-                  {enginesState === 'loading' ? (
-                    <p className="fl-note">Checking what’s available…</p>
-                  ) : engines.length === 0 ? (
-                    <p className="fl-note">None found on this computer yet.</p>
-                  ) : (
-                    <div className="fl-settings-engines">
-                      {engines.map((item) => {
-                        const status = engineStatus(item)
-                        const active = engine === item.id
-                        const canSignIn = !status.ready && item.runtime_available !== false && GUIDED_SETUP_ENGINES.has(item.id)
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className={`fl-settings-engine-card ${active ? 'is-active' : ''}`}
-                            disabled={(!status.ready && !canSignIn) || savingEngine}
-                            onClick={() => {
-                              if (canSignIn) {
-                                void startEngineSignIn(item.id)
-                                return
-                              }
-                              setEngine(item.id)
-                              setSavingEngine(true)
-                              api.selectEngine('parent', item.id).finally(() => { applyFamilyEngineToOpenTabs('parent', item.id); setSavingEngine(false) })
-                            }}
-                          >
-                            <span className="fl-settings-engine-col">
-                              <span className="fl-settings-engine-name">{pres(item.id, item.name).name}</span>
-                              <span className="fl-settings-engine-blurb">{pres(item.id, item.name).blurb}</span>
-                            </span>
-                            <span className={`fl-settings-engine-status ${status.ready ? 'is-ready' : ''}`}>{canSignIn ? 'Sign in' : status.label}</span>
-                            {active && <Check size={16} />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {guidedError && <p className="fl-note" style={{ color: '#b91c1c' }}>{guidedError}</p>}
-                  {guidedSession && engines.some((item) => item.id === guidedSession.provider) && (
-                    <GuidedProviderTerminal
-                      session={guidedSession}
-                      onFinished={(finished) => {
-                        setGuidedSession(finished)
-                        refreshEngines()
-                      }}
-                      onClose={() => setGuidedSession(null)}
-                    />
-                  )}
-
-                  {modelInfo && modelInfo.models.length > 0 && (
-                    <>
-                      <p className="fl-drawer-label" style={{ marginTop: '20px' }}>Which model</p>
-                      <p className="fl-note">
-                        Picks the exact model within the AI you chose above. “Recommended” is the one this app is tuned for — change it only if you specifically want a stronger or cheaper one.
-                      </p>
-                      <select
-                        className="fl-model-select"
-                        value={modelInfo.selected}
-                        disabled={savingModel}
-                        onChange={(e) => saveModel(e.target.value)}
-                      >
-                        <option value="">Recommended{modelInfo.default ? ` (${modelInfo.default})` : ''}</option>
-                        {modelInfo.models.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-
+                  <p className="fl-drawer-label">Providers and accounts</p>
+                  <p className="fl-note">Connect your AI account, check its status, or install a provider on this computer.</p>
+                  <button type="button" className="fl-ghost-btn" onClick={openProviders}>Manage providers and accounts</button>
+                  <LearningModelSettings key={engine} engine={engine} childName={childName} onEngineChange={setEngine} />
 
                   <VoiceSettings status={voiceStatus} childName={childName} onRefresh={refreshVoiceStatus} />
 
@@ -3736,90 +3604,17 @@ export default function LearningApp() {
       <section className={`learning-stage is-${screen}`}>
         {screen === 'engine' && (
           <section className="learning-panel setup-panel">
+            <div className="fl-platform-ui"><CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" /></div>
             <span className="eyebrow">01 · Choose your learning helper</span>
             <h1>Pick the AI that will help your child learn.</h1>
-            <p className="fl-lead">It runs on this computer and powers every lesson, hint, and practice session.</p>
+            <p className="fl-lead">Connect an AI account to power lessons, hints, and practice.</p>
+            <button type="button" className="fl-ghost-btn" onClick={openProviders}>Manage providers and accounts</button>
 
-            {enginesState === 'loading' && (
-              <p className="engine-note">Checking which AI teachers are installed on this computer…</p>
-            )}
-            {enginesState === 'error' && (
-              <p className="engine-note is-error">Couldn’t reach the learning service at {api.baseUrl}. Make sure it’s running, then <button type="button" className="linklike" onClick={() => window.location.reload()}>try again</button>.</p>
-            )}
-
-            {enginesState === 'ready' && (
-              <div className="engine-grid">
-                {engines.map((item) => {
-                  const status = engineStatus(item)
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`engine-card ${engine === item.id ? 'is-selected' : ''} ${status.ready ? '' : 'is-unavailable'}`}
-                      onClick={() => {
-                        setEngine(item.id)
-                        setTestState('idle')
-                        setTestMessage('')
-                        // Take the parent straight to sign-in on the first tap instead of
-                        // making them select the card, then find a separate button below.
-                        const alreadySigningIn = guidedSession?.status === 'running' && guidedSession.provider === item.id
-                        if (!status.ready && item.runtime_available !== false && GUIDED_SETUP_ENGINES.has(item.id) && !alreadySigningIn) {
-                          void startEngineSignIn(item.id)
-                        }
-                      }}
-                    >
-                      <span className="engine-icon"><Sparkles size={24} /></span>
-                      <span className="engine-content">
-                        <strong>{pres(item.id, item.name).name} {pres(item.id, item.name).preferred && <em className="preferred-badge">Recommended</em>}</strong>
-                        <small>{pres(item.id, item.name).blurb}</small>
-                      </span>
-                      <span className={`engine-status ${status.ready ? 'is-ready' : ''}`}>{status.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
+            <LearningModelSettings engine={engine} childName={childName} onEngineChange={id => { setEngine(id); refreshEngines() }} />
             <div className="setup-footer">
-              <p>
-                {selectedEngine
-                  ? (engineStatus(selectedEngine).ready
-                      ? <><CheckCircle2 size={18} /> {pres(selectedEngine.id, selectedEngine.name).name} is ready.</>
-                      : <><LockKeyhole size={18} /> {pres(selectedEngine.id, selectedEngine.name).name}: {engineStatus(selectedEngine).label.toLowerCase()}.</>)
-                  : <>Select a learning helper to continue.</>}
-                {selectedEngine && engineStatus(selectedEngine).ready && (
-                  <button type="button" className="linklike" onClick={runTest} disabled={testState === 'testing'}>
-                    {testState === 'testing' ? 'Testing…' : testState === 'valid' ? 'Test passed ✓' : testState === 'invalid' ? 'Test failed — retry' : 'Test connection'}
-                  </button>
-                )}
-                {selectedEngine && !engineStatus(selectedEngine).ready && selectedEngine.runtime_available !== false && GUIDED_SETUP_ENGINES.has(selectedEngine.id) && (
-                  <button
-                    type="button"
-                    className="linklike"
-                    onClick={() => void startEngineSignIn(selectedEngine.id)}
-                    disabled={guidedStarting || (guidedSession?.status === 'running' && guidedSession.provider === selectedEngine.id)}
-                  >
-                    {guidedStarting ? 'Opening sign-in…' : `Sign in to ${pres(selectedEngine.id, selectedEngine.name).name}`}
-                  </button>
-                )}
-              </p>
+              <p>{selectedEngine && engineStatus(selectedEngine).ready ? <><CheckCircle2 size={18} /> Your AI account is ready.</> : <>Connect and select an AI account to continue.</>}</p>
               <button className="primary-button" onClick={persistEngineAndContinue} type="button" disabled={!selectedEngine || !engineStatus(selectedEngine).ready || saving}>Continue <ArrowRight size={18} /></button>
             </div>
-            {testMessage && <p className={`engine-note ${testState === 'invalid' ? 'is-error' : ''}`}>{testMessage}</p>}
-            {guidedError && <p className="engine-note is-error">{guidedError}</p>}
-            {guidedSession && selectedEngine && guidedSession.provider === selectedEngine.id && (
-              <GuidedProviderTerminal
-                session={guidedSession}
-                onFinished={(finished) => {
-                  setGuidedSession(finished)
-                  refreshEngines()
-                }}
-                onClose={() => setGuidedSession(null)}
-              />
-            )}
-            {selectedEngine && !engineStatus(selectedEngine).ready && selectedEngine.setup_hint && (selectedEngine.runtime_available === false || !GUIDED_SETUP_ENGINES.has(selectedEngine.id)) && (
-              <details className="engine-setup"><summary>Setup details</summary><p>{selectedEngine.setup_hint}</p></details>
-            )}
           </section>
         )}
 

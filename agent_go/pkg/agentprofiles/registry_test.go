@@ -143,11 +143,11 @@ func TestValidateRejectsBothAPITransportsAtOnce(t *testing.T) {
 	profile.Runtime.AgentTools.Mode = "hybrid"
 
 	if err := Validate(profile); err != nil {
-		t.Fatalf("hybrid with the bridge shell is the supported default; it must validate: %v", err)
+		t.Fatalf("native tools with the bridge shell is the supported default; it must validate: %v", err)
 	}
 
 	profile.Runtime.APITransport.Mode = "native_shell"
-	if err := Validate(profile); err == nil || !strings.Contains(err.Error(), "never get a native shell") {
+	if err := Validate(profile); err == nil || !strings.Contains(err.Error(), "native_shell is unsupported") {
 		t.Fatalf("expected native_shell to be rejected, got %v", err)
 	}
 	profile.ToolPolicy.Enabled = []string{"show_video"}

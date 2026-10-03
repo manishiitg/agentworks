@@ -69,6 +69,9 @@ func CleanupStaleRuntimeState() {
 	if owners, err := filepath.Glob(filepath.Join(browserconfig.SocketRoot, "o", "*")); err == nil {
 		dirs = append(dirs, owners...)
 	}
+	// A daemon started from a coding CLI's sandbox keeps them under the shared tmp folder (see
+	// browserconfig.SandboxSocketDir).
+	dirs = append(dirs, browserconfig.SandboxSocketDirs()...)
 	for _, dir := range dirs {
 		cleanupDir(dir)
 	}

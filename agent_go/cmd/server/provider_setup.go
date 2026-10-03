@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,32 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 	},
 }
 
+// Install the registry's command only on a single-user desktop. A hosted
+// server owns its CLI programs through deployment, independently of accounts.
+var providerInstallHostOS = runtime.GOOS
+
+func providerInstallAvailable(provider string) bool {
+	return providerInstallHostOS == "darwin" && !IsMultiUserMode() && providerInstallCommand(provider) != ""
+}
+
+func providerSetupCommandFor(provider, action string) (providerSetupCommand, error) {
+	if action == "install" {
+		if !providerInstallAvailable(provider) {
+			return providerSetupCommand{}, errors.New("provider installation is available only on a single-user Mac; server providers are managed by deployment")
+		}
+		return providerSetupCommand{command: "/bin/bash", args: []string{"-o", "pipefail", "-lc", providerInstallCommand(provider)}}, nil
+	}
+	actions, ok := providerSetupCommands[provider]
+	if !ok {
+		return providerSetupCommand{}, fmt.Errorf("guided setup is not available for provider %q", provider)
+	}
+	spec, ok := actions[action]
+	if !ok {
+		return providerSetupCommand{}, fmt.Errorf("guided %s is not available for provider %q", action, provider)
+	}
+	return spec, nil
+}
+
 var providerSetupANSI = regexp.MustCompile(`\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.`)
 
 var providerUsageCommands = map[string]string{
@@ -133,13 +160,27 @@ type providerSetupSession struct {
 	usageSubmitted time.Time
 }
 
-// userInput forwards browser input, except to a read-only session.
+// userInput forwards browser input, except to a read-only session. In a usage session typed slash commands go through
+// the same allowlist as the coding agents' live terminals (default: /usage only), so a manager reading the account's
+// limits cannot /logout the shared account or change its settings from there.
 func (s *providerSetupSession) userInput(data string) error {
 	s.mu.Lock()
 	readOnly := s.readOnly
+	usage := s.action == "usage"
 	s.mu.Unlock()
 	if readOnly {
 		return nil
+	}
+	if usage {
+		switch decision, erase := terminalSlashGuard.decide("provider-setup:"+s.id, []byte(data)); decision {
+		case slashDrop:
+			return nil
+		case slashCancel:
+			if erase > 0 {
+				return s.write(strings.Repeat("\x7f", erase))
+			}
+			return nil
+		}
 	}
 	return s.write(data)
 }
@@ -322,15 +363,10 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 	if cleanup == nil {
 		cleanup = func() {}
 	}
-	actions, ok := providerSetupCommands[provider]
-	if !ok {
+	spec, err := providerSetupCommandFor(provider, action)
+	if err != nil {
 		cleanup()
-		return nil, fmt.Errorf("guided setup is not available for provider %q", provider)
-	}
-	spec, ok := actions[action]
-	if !ok {
-		cleanup()
-		return nil, fmt.Errorf("guided %s is not available for provider %q", action, provider)
+		return nil, err
 	}
 	if _, err := exec.LookPath(spec.command); err != nil {
 		cleanup()
@@ -408,7 +444,7 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 		cols, rows = liveAttachDefaultCols, liveAttachDefaultRows
 	}
 	// A personal account's terminal runs confined to that account's private home (provider_setup_confine.go).
-	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, bindingID != provider)
+	releaseConfinement, confineErr := confineProviderSetup(command, provider, environment, providerSetupIsPersonalBinding(provider, bindingID))
 	if confineErr != nil {
 		cancel()
 		cleanup()
@@ -588,6 +624,7 @@ func (m *providerSetupManager) remove(id string, stop bool) {
 	session := m.sessions[id]
 	delete(m.sessions, id)
 	m.mu.Unlock()
+	terminalSlashGuard.forget("provider-setup:" + id)
 	if stop && session != nil {
 		session.stop()
 	}
@@ -673,6 +710,10 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Action = strings.TrimSpace(request.Action)
 	request.WorkspacePath = strings.TrimSpace(request.WorkspacePath)
+	if request.Action == "install" && (!providerInstallAvailable(request.Provider) || request.ConnectionID != "" || request.WorkspacePath != "") {
+		http.Error(w, `{"error":"Install providers from a single-user Mac. Server installations are managed by deployment."}`, http.StatusForbidden)
+		return
+	}
 	var environment []string
 	var cleanup func()
 	caller := GetUserIDFromContext(r.Context())
@@ -981,4 +1022,12 @@ func seedClaudeTheme(home string) {
 	}
 	_ = os.MkdirAll(home, 0o700)
 	_ = os.WriteFile(path, data, 0o600)
+}
+
+// providerSetupIsPersonalBinding says whether a Providers-screen terminal belongs to a personal account (its own private
+// HOME, confined). The server's own account (binding "global:<provider>", managed by an admin, "Admin-managed account"
+// in the UI) is not one: it has no private home to confine to, and starting it under the Landlock launcher with an empty
+// working folder failed every Cursor/Claude/Codex/Muse terminal on a host that can confine (RTS 2026-10-03).
+func providerSetupIsPersonalBinding(provider, bindingID string) bool {
+	return bindingID != provider && !strings.HasPrefix(bindingID, "global:")
 }

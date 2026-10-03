@@ -643,9 +643,9 @@ type WorkflowCapabilities struct {
 	// than not delivering. An identifier, never a secret.
 	SlackConnectionID string `json:"slack_connection_id,omitempty"`
 	// NativeAgentTools ("Native agent tools") runs this workflow's Builder and
-	// Run-mode chats in agent_tools mode hybrid: the coding CLI's own read,
-	// search, skills, todos and subagents; shell and file changes stay on
-	// AgentWorks tools. Interactive chats of owners and editors only: step
+	// Run-mode chats in agent_tools mode full: the coding CLI's own tools in a
+	// sandbox limited to the chat's folders (mcp_only when it cannot be
+	// confined), with protected files refused. Interactive chats of owners and editors only: step
 	// agents, schedules, webhooks, bots and read-only users keep
 	// AgentWorks-only tools. On by default: nil means on and only an explicit
 	// false turns it off. Read it through NativeAgentToolsEnabled.
@@ -997,15 +997,19 @@ func ValidateManifest(m *WorkflowManifest) error {
 	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
 		return fmt.Errorf("Relays do not support Pulse")
 	}
+	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
+		return fmt.Errorf("Relays do not support Slack connections")
+	}
 	if m.Kind == "relay" && m.Capabilities.Notifications != nil {
 		notifications := m.Capabilities.Notifications
 		unsupportedChannel := func(channels []string) bool {
 			return slices.ContainsFunc(channels, func(channel string) bool {
-				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp")
+				return strings.EqualFold(strings.TrimSpace(channel), "whatsapp") || strings.EqualFold(strings.TrimSpace(channel), "slack")
 			})
 		}
-		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) {
-			return fmt.Errorf("Relays do not support WhatsApp notification channels")
+		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) ||
+			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" || len(notifications.RunSummarySlackWebhookSecretNames) > 0 || len(notifications.PulseSummarySlackWebhookSecretNames) > 0 {
+			return fmt.Errorf("Relays do not support Slack or WhatsApp notifications")
 		}
 	}
 	if m.Label == "" {
@@ -1830,8 +1834,8 @@ func applyManifestDefaults(m *WorkflowManifest) {
 	if m.SchemaVersion == 0 {
 		m.SchemaVersion = 1
 	}
-	if m.Capabilities.BrowserMode == "" {
-		m.Capabilities.BrowserMode = "none"
+	if m.Capabilities.BrowserMode == "" || m.Capabilities.BrowserMode == "none" {
+		m.Capabilities.BrowserMode = "auto"
 	}
 	if m.Capabilities.SelectedServers == nil {
 		m.Capabilities.SelectedServers = []string{}

@@ -52,6 +52,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
   const displayName = providerName(session.provider)
   const isInspection = session.action === 'inspect'
   const isUsage = session.action === 'usage'
+  const isInstallation = session.action === 'install'
   const mountRef = useRef<HTMLDivElement | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const sessionRef = useRef(session)
@@ -194,7 +195,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
         <div className="flex min-w-0 items-center gap-2 text-xs">
           {connection === 'connecting' && <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-300" />}
           <span className={`h-2 w-2 rounded-full ${connection === 'live' ? 'bg-emerald-400' : connection === 'finished' ? 'bg-gray-400' : 'bg-amber-400'}`} />
-          <span className="truncate font-medium">{displayName} {isUsage ? 'usage' : isInspection ? 'terminal' : 'sign-in'}</span>
+          <span className="truncate font-medium">{displayName} {isInstallation ? 'installation' : isUsage ? 'usage' : isInspection ? 'terminal' : 'sign-in'}</span>
           <span className="text-gray-500">·</span>
           <span className="capitalize text-gray-400">{connection}</span>
         </div>
@@ -228,12 +229,12 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
       {/* The account terminal is for signing in and checking usage only; real work belongs in a
           Crew, Code or workflow, where tools, files and history are set up. */}
       <p data-testid="provider-terminal-purpose" className="border-b border-white/10 bg-violet-500/10 px-3 py-2 text-[11px] leading-4 text-violet-100">
-        Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew, Code or workflow.
+        {isInstallation ? `Installing ${displayName} on this computer. When installation finishes, connect your account.` : <>Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew, Code or workflow.</>}
       </p>
       <div ref={mountRef} className="h-[min(65vh,640px)] w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
       {terminalError && <p className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{terminalError}</p>}
       <p className="border-t border-white/10 px-3 py-2 text-[11px] text-gray-500">
-        {isUsage
+        {isInstallation ? `This window runs the platform's approved ${displayName} installer.` : isUsage
           ? `AgentWorks opened a restricted ${displayName} session and submitted its usage command. Close it when you finish reviewing the result.`
           : isInspection
           ? `This administrator-only window opens the approved ${displayName} CLI with the configured inspection restrictions. Use its built-in commands, then exit the CLI when finished.`
@@ -250,4 +251,3 @@ function usageCommandHint(displayName: string): string {
   if (name.includes('claude') || name.includes('muse')) return ' (type /usage)'
   return ''
 }
-

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 const (
@@ -26,6 +27,9 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 	profiles, err := mustSparkQuillManifest().BuiltinProfiles(productConfigFiles, nil)
 	if err != nil {
 		panic(fmt.Errorf("render SparkQuill prompts: %w", err))
+	}
+	for i := range profiles {
+		profiles[i] = agentprofiles.WithPlatformCodingProviders(profiles[i])
 	}
 	return profiles
 }
@@ -73,12 +77,15 @@ func RegisterProductSkills() error {
 	return registerSkillsErr
 }
 
-// skillDescription is the first non-heading line of the skill's SKILL.md,
-// which is how the family's skills describe themselves.
+// skillDescription prefers the frontmatter description, with a prose fallback
+// for older family skills that have no frontmatter.
 func skillDescription(name string) string {
 	raw, err := SkillFiles.ReadFile("skills/" + name + "/SKILL.md")
 	if err != nil {
 		return name
+	}
+	if frontmatter, _, err := skills.ParseSkillFile(string(raw)); err == nil && strings.TrimSpace(frontmatter.Description) != "" {
+		return strings.TrimSpace(frontmatter.Description)
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)

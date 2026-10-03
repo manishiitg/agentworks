@@ -150,6 +150,15 @@ func (api *StreamingAPI) slackCLIFullAccess(ctx context.Context, session, worksp
 			return "", fmt.Errorf("the bot token is backend-owned; do not pass credentials")
 		}
 	}
+	if target := strings.Trim(strings.TrimSpace(workspace), "/"); strings.HasPrefix(target, "Workflow/") {
+		manifest, found, err := ReadWorkflowManifest(ctx, target)
+		if err != nil {
+			return "", fmt.Errorf("cannot verify Slack target: %w", err)
+		}
+		if found && manifest.Kind == "relay" {
+			return "", fmt.Errorf("Relays do not support Slack")
+		}
+	}
 	connID := ""
 	if channel := stringFromRequestMap(args, "route_id"); channel != "" && slackChannelIDPattern.MatchString(channel) {
 		if _, routes, err := api.slackRoutes(ctx); err == nil {

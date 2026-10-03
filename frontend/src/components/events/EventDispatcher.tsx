@@ -424,6 +424,48 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </CompactWrapper>
     )
   }
+  // A coding agent's multiple-choice question (Muse/Claude AskUserQuestion). The clean chat shows it as an answerable
+  // card (CodingAgentQuestionCard); this detailed view shows what was asked and, once settled, what was chosen, instead
+  // of an "Unknown Event Type" JSON dump.
+  if (event.type === 'coding_agent_question') {
+    const envelope = event.data as { data?: Record<string, unknown> } | undefined
+    const data = (envelope?.data || event.data || {}) as Record<string, unknown>
+    const provider = typeof data.provider === 'string' ? data.provider : ''
+    const who = provider === 'muse-cli' ? 'Muse' : provider === 'claude-code' ? 'Claude' : 'The coding agent'
+    const kind = typeof data.kind === 'string' ? data.kind : ''
+    const record = (value: unknown) => (value && typeof value === 'object' ? value as Record<string, unknown> : {})
+    const questions = (Array.isArray(data.questions) ? data.questions : []).map(record)
+    const answers = (Array.isArray(data.answers) ? data.answers : []).map(record)
+    const settled = kind === 'settled' || answers.length > 0 || typeof data.outcome === 'string'
+    return (
+      <CompactWrapper compact={compact}>
+        <div data-testid="coding-agent-question-event" className={`rounded-md border border-violet-200 bg-violet-50/70 text-violet-900 dark:border-violet-900 dark:bg-violet-950/20 dark:text-violet-200 ${compact ? 'p-2 text-xs' : 'p-3 text-sm'}`}>
+          <span className="font-medium">{settled ? `${who}'s question answered` : `${who} asked`}</span>
+          {!settled && questions.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {questions.map((question, index) => {
+                const options = (Array.isArray(question.options) ? question.options : []).map(record).map(option => String(option.label || '')).filter(Boolean)
+                return (
+                  <li key={String(question.id || index)}>
+                    <span>{String(question.question || question.header || '')}</span>
+                    {options.length > 0 && <span className="block opacity-70">{options.join(' · ')}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {settled && answers.length > 0 && (
+            <ul className="mt-1 space-y-0.5 opacity-80">
+              {answers.map((answer, index) => (
+                <li key={String(answer.id || index)}>{String(answer.id || '')}: {(Array.isArray(answer.selected_labels) ? answer.selected_labels : []).map(String).join(', ') || '—'}</li>
+              ))}
+            </ul>
+          )}
+          {settled && answers.length === 0 && typeof data.outcome === 'string' && <p className="mt-1 opacity-80">{data.outcome}</p>}
+        </div>
+      </CompactWrapper>
+    )
+  }
   if (event.type === 'status_line') {
     const agentEvent = event.data as { data?: Record<string, unknown> } | undefined
     const data = (agentEvent?.data || event.data || {}) as Record<string, unknown>

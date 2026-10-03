@@ -191,6 +191,7 @@ export function AutomationHubPanel({
         />}
         {section === 'triggers' && entityType === 'workflow' && !relayMode && <WorkflowAPITriggersView
           workspacePath={workspacePath}
+          onAsk={onAskAI}
           deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="workflow" />}
           hideHeader
           refreshToken={triggersRefreshToken}
@@ -207,6 +208,7 @@ export function AutomationHubPanel({
         {section === 'triggers' && entityType === 'product' && productTriggerScope && <ProductAPITriggersView
           scope={productTriggerScope}
           workspacePath={workspacePath}
+          onAsk={onAskAI}
           deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
           hideHeader
           refreshToken={triggersRefreshToken}

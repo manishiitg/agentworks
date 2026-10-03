@@ -96,9 +96,9 @@ const setValue = async (input: HTMLInputElement | HTMLSelectElement, value: stri
 it('shows the server account with its origin and lets an admin change who can use it', async () => {
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
   expect(container.textContent).toContain('Used by everyone')
-  await click(await menuItem(container, 'More for the shared account', 'Who can use it'))
+  await click(await menuItem(container, 'More for the admin-managed account', 'Who can use it'))
   // Everyone / Only admins save at once, no Save button.
-  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Who can use the shared account"]')!, 'admins')
+  await setValue(container.querySelector<HTMLSelectElement>('select[aria-label="Who can use the admin-managed account"]')!, 'admins')
   expect(llmConfigService.setServerAccountAvailability).toHaveBeenCalledWith('claude-code', 'admins')
 })
 
@@ -106,7 +106,7 @@ it('says when the installation pins who can use the server account', async () =>
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([{ ...server, kind: 'admin', availability: { available_to: 'admins', text: 'Admins only', source: 'installation', pinned: true }, availability_editable: false }])
   const container = await render(<ProviderAccounts provider="claude-code" />)
   expect(container.textContent).toContain('set by the installation')
-  expect(await menuItems(container, 'More for the shared account')).not.toContain('Who can use it')
+  expect(await menuItems(container, 'More for the admin-managed account')).not.toContain('Who can use it')
 })
 
 it('groups own, shared-with-you and admin-view accounts with the right controls', async () => {
@@ -174,7 +174,7 @@ it('picker lists usable accounts in groups and keeps an unavailable selection', 
   const container = await render(<ProviderAccounts provider="claude-code" selectionOnly workspacePath="Workflow/research" selectedId="acct-erin" onSelect={vi.fn()} />)
   expect(llmConfigService.getProviderConnections).toHaveBeenCalledWith({ workspacePath: 'Workflow/research', product: undefined })
   const select = container.querySelector<HTMLSelectElement>('select[aria-label="Provider account"]')!
-  expect([...select.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['Server account', 'Your accounts', 'Shared with you'])
+  expect([...select.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['Admin-managed account', 'Your accounts', 'Shared with you'])
   expect(select.value).toBe('acct-erin')
   expect(select.options[0].textContent).toBe('Erin personal (no longer available here)')
   expect(select.textContent).toContain('Dana team (Dana)')
@@ -185,7 +185,7 @@ it('shows each account\'s status and offers the per-account actions to managers 
   await act(async () => Promise.resolve())
   expect(container.querySelector('[aria-label="Status of My Max"]')?.textContent).toBe('Signed in as me@x.com')
   expect(await menuItems(container, 'More for My Max')).toContain('Terminal (sign in, check usage)')
-  expect(await menuItems(container, 'More for the shared account')).toContain('Terminal (sign in, check usage)')
+  expect(await menuItems(container, 'More for the admin-managed account')).toContain('Terminal (sign in, check usage)')
   // The shared account is signed out, so its one button is Sign in.
   expect(buttonByText(container, 'Sign in')).toBeDefined()
   // Not a manager of Dana's account: no terminal, no sign-out.
@@ -202,8 +202,8 @@ it('shows each account\'s status and offers the per-account actions to managers 
 
 it('confirms before signing out the server account', async () => {
   const container = await render(<ProviderAccounts provider="claude-code" providerLabel="Claude Code" />)
-  await click(await menuItem(container, 'More for the shared account', 'Sign out'))
-  expect(window.confirm).toHaveBeenCalledWith('Every run that uses the Claude Code server account will stop working until someone signs in again.')
+  await click(await menuItem(container, 'More for the admin-managed account', 'Sign out'))
+  expect(window.confirm).toHaveBeenCalledWith('Every run that uses the Claude Code admin-managed account will stop working until someone signs in again.')
   expect(llmConfigService.signOutProviderAccount).toHaveBeenCalledWith('global:claude-code')
 })
 
@@ -211,4 +211,18 @@ it('shows no native-tools badge on accounts the viewer does not own', async () =
   const container = await render(<ProviderAccounts provider="claude-code" />)
   expect(container.textContent).not.toMatch(/native tools off/i)
   expect(container.textContent).toContain('Owner: Erin · Private (only Erin can use it)')
+})
+
+it('selection-only accounts hide setup choices and preserve a signed-out saved account as disabled', async () => {
+  vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([
+    { ...server, configured: false }, { ...own, configured: false }, sharedWithMe,
+  ])
+  const onSelect = vi.fn()
+  const container = await render(<ProviderAccounts provider="claude-code" selectionOnly selectedId="acct-own" onSelect={onSelect} />)
+  const select = container.querySelector<HTMLSelectElement>('select[aria-label="Provider account"]')!
+  expect(select.value).toBe('acct-own')
+  expect(select.selectedOptions[0].textContent).toContain('needs setup')
+  expect(select.selectedOptions[0].disabled).toBe(true)
+  expect([...select.options].filter(option => !option.disabled).map(option => option.value)).toEqual(['acct-dana'])
+  expect(onSelect).not.toHaveBeenCalled()
 })

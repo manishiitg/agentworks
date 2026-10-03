@@ -23,11 +23,13 @@ vi.mock('../../services/liveFeed', () => ({
     },
   },
 }))
+vi.mock('../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn(async () => ({})) }))
 vi.mock('../ui/PlainMarkdown', () => ({ PlainMarkdown: ({ content }: { content: string }) => <span>{content}</span> }))
 
 import { agentApi } from '../../services/api'
 import { openReportHumanInputAnswerInChat, sendReportHumanInputAnswerToChat } from '../../utils/reportHumanInputChat'
 import { ReportHumanInputPanel } from './ReportHumanInputPanel'
+import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 describe('decision card refresh from the server live feed', () => {
   it('moves a saved answer out of pending on a human_inputs notice, without the chat or a manual refresh', async () => {
@@ -84,6 +86,33 @@ describe('decision option click', () => {
       now.mockRestore()
       expect(sendReportHumanInputAnswerToChat).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: workspace, option: { id: 'own', title: "This workflow's own bot" } }))
       expect(openReportHumanInputAnswerInChat).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+    }
+  })
+})
+
+describe('answered decisions that are not applied yet', () => {
+  it('stay in Needs you with Apply in chat, which sends the apply message to the Builder chat', async () => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+    const workspace = 'Workflow/example'
+    const input = { id: 'decision-3', workspace_path: workspace, source: 'technical_review',
+      status: 'answered', selected_option_id: 'approve', question: 'Backfill followers?', options: [{ id: 'approve', title: 'Approve' }],
+      allow_free_text: false, created_at: '2026-10-01T00:00:00Z', apply_message: 'APPLY decision-3 NOW' } as ReportHumanInput
+    vi.mocked(agentApi.listReportHumanInputs).mockResolvedValue({ success: true, inputs: [input] })
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    try {
+      await act(async () => root.render(<ReportHumanInputPanel workspacePath={workspace} />))
+      expect(container.textContent).toContain('Needs your decision')
+      expect(container.textContent).toContain('Answered, not applied yet')
+      expect(container.textContent).toContain('Answered: Approve')
+      const apply = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Apply in chat'))
+      expect(apply).toBeTruthy()
+      await act(async () => { apply!.click() })
+      expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledWith({ workspacePath: workspace, message: 'APPLY decision-3 NOW' })
     } finally {
       await act(async () => root.unmount())
       container.remove()

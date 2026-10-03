@@ -230,6 +230,9 @@ func (api *StreamingAPI) authorizeSlackToolRoute(ctx context.Context, session, c
 			if access == WorkflowAccessNone || manifest == nil || manifest.ID != route.WorkflowID {
 				return "", fmt.Errorf("workflow route access denied")
 			}
+			if manifest.Kind == "relay" {
+				return "", fmt.Errorf("Relays do not support Slack")
+			}
 		} else if _, err := requireSlackRouteProfileOwner(trusted, api, route); err != nil {
 			return "", err
 		}

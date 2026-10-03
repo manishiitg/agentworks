@@ -178,6 +178,7 @@ func (t *SessionTracker) Remove(browserSession string) {
 			time.Since(info.createdAt).Round(time.Second), len(t.sessions)-1)
 	}
 	delete(t.sessions, browserSession)
+	BindViewerCDPPort(browserSession, 0)
 }
 
 // CountForAgent returns the number of browser sessions owned by an agent session

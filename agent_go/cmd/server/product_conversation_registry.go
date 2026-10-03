@@ -748,9 +748,9 @@ type productProjectManifest struct {
 		BrowserMode          string   `json:"browser_mode,omitempty"`
 		UseCodeExecutionMode bool     `json:"use_code_execution_mode,omitempty"`
 		// NativeAgentTools ("Native agent tools" in the crew UI) runs the crew's
-		// coding agents in agent_tools mode hybrid: native read/search, skills,
-		// todos and subagents; shell and writes stay on AgentWorks tools. On
-		// by default: nil means on, only an explicit false turns it off.
+		// coding agents in agent_tools mode full: their own tools in a sandbox
+		// limited to the crew's folders. On by default: nil means on, only an
+		// explicit false turns it off.
 		NativeAgentTools *bool `json:"native_agent_tools,omitempty"`
 	} `json:"capabilities,omitempty"`
 }

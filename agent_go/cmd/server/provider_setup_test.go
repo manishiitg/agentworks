@@ -231,6 +231,9 @@ func TestProviderUsagePromptAndTrustDetection(t *testing.T) {
 }
 
 func TestProviderSetupRejectsCommandsOutsideAllowlist(t *testing.T) {
+	originalOS := providerInstallHostOS
+	providerInstallHostOS = "linux"
+	t.Cleanup(func() { providerInstallHostOS = originalOS })
 	manager := newProviderSetupManager()
 	if _, err := manager.start("owner-1", "unknown", "install", 100, 24, nil, nil, false); err == nil {
 		t.Fatal("expected unsupported provider error")

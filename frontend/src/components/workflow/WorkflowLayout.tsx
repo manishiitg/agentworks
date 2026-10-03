@@ -14,9 +14,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
 import ChatArea, { type ChatAreaRef } from '../ChatArea'
-import { setProductCommands } from '../../commands/registry'
-import { loadAgentworksProductCommands } from '../../commands/agentworksProductData'
-import { toAgentworksCommandDefinitions } from '../../commands/agentworksProductCommands'
+import { useWorkflowProductCommands } from '../../commands/useWorkflowProductCommands'
 import { WorkflowChatTabs } from './WorkflowChatTabs'
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
@@ -55,6 +53,7 @@ import {
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
 import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
+import { RelayIntro } from './RelayIntro'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
 
 // Helper component to get observerId and render ChatArea
@@ -86,16 +85,8 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   // The agent's open_workspace_view calls open the toolbar's views here.
   useWorkflowViewPresentations(workflowTabId)
 
-  // Builder slash commands ship in agentworksproduct/product.yaml. Same mount
-  // contract as the product surfaces: register on mount, clear on unmount so
-  // a stale menu never offers flows the current surface has no backing for.
-  useEffect(() => {
-    let cancelled = false
-    loadAgentworksProductCommands()
-      .then((commands) => { if (!cancelled) setProductCommands(toAgentworksCommandDefinitions(commands)) })
-      .catch(() => { if (!cancelled) setProductCommands([]) })
-    return () => { cancelled = true; setProductCommands([]) }
-  }, [])
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
+  useWorkflowProductCommands(isRelaySurface)
 
   return (
     <ChatArea
@@ -2299,21 +2290,21 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   if (!activeWorkflowPreset && !workspacePath) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-
-        <div className="flex-1 flex items-center justify-center bg-muted">
-        <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
-            <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-            <span className="text-4xl">🚀</span>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              Select {isRelaySurface ? 'a Relay' : 'an Automation'}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              Open the workspace selector to choose {isRelaySurface ? 'a Relay' : 'an automation'} or create a new one.
-              Build it in chat and inspect it beside the conversation.
-            </p>
-            </div>
+        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+          <div className="flex min-h-full items-center justify-center py-6">
+            {isRelaySurface ? <RelayIntro /> : (
+              <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
+                <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                  <span className="text-4xl">🚀</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Select an Automation</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                    Open the workspace selector to choose or create an automation.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

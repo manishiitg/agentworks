@@ -2161,7 +2161,9 @@ export const useChatStore = create<ChatState>()(
                 sessionId: newSessionId,
                 isStreaming: false,
                 lastStreamingStartedAt: undefined,
-                viewMode: tab.metadata?.mode === 'multi-agent' ? 'terminal' : tab.viewMode,
+                // A new chat keeps the view the person was in: forcing the terminal view on every multi-agent tab sent Code's New chat
+                // to the raw terminal (2026-10-03).
+                viewMode: tab.viewMode,
                 config: stripRestoreOnlyTabConfig(tab.config),
               },
             },

@@ -241,7 +241,7 @@ func (s *SchedulerService) launchDuePulses(ctx context.Context) {
 	}
 	now := time.Now().UTC()
 	for _, item := range discovered {
-		if item.Manifest == nil || !item.Manifest.PulseEnabled() {
+		if item.Manifest == nil || !item.Manifest.PulseEnabled() || workflowSchedulesAllPaused(item.Manifest) {
 			continue
 		}
 		workspacePath := item.WorkspacePath

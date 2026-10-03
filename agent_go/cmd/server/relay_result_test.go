@@ -112,13 +112,13 @@ func TestRelayManifestKindValidation(t *testing.T) {
 		t.Fatal("Relay enabled Pulse")
 	}
 	manifest.Capabilities.SlackConnectionID = "slack-app"
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("Relay rejected a Slack connection: %v", err)
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("Relay accepted a Slack connection")
 	}
 	manifest.Capabilities.SlackConnectionID = ""
 	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"slack"}, SlackWebhookSecretName: "slack-webhook"}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("Relay rejected Slack notifications: %v", err)
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("Relay accepted Slack notifications")
 	}
 	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{RunSummaryChannels: []string{"whatsapp"}}
 	if err := ValidateManifest(manifest); err == nil {
@@ -157,11 +157,27 @@ func TestRelayManifestKindValidation(t *testing.T) {
 func TestRelayScheduledInputUsesDirectGraphContract(t *testing.T) {
 	manifest := NewWorkflowManifest("Relay")
 	manifest.Kind = "relay"
+	// Existing Relays may still have the previous Slack configuration on disk.
+	manifest.Capabilities.SlackConnectionID = "legacy-slack"
+	manifest.Capabilities.Notifications = &WorkflowNotificationConfig{
+		GmailConnectionID:                   "google-account",
+		RunSummaryChannels:                  []string{"gmail", "slack"},
+		SlackWebhookSecretName:              "legacy-webhook",
+		RunSummarySlackWebhookSecretNames:   []string{"legacy-run-webhook"},
+		PulseSummarySlackWebhookSecretNames: []string{"legacy-pulse-webhook"},
+	}
 	sctx := buildScheduleContext("Workflow/relay", manifest, WorkflowSchedule{GroupNames: []string{"prod"}, TriggerPayload: json.RawMessage(`{"question":"status"}`)})
 	if sctx.WorkflowKind != "relay" || sctx.Capabilities.Notifications == nil ||
-		strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "slack") ||
+		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "slack") ||
 		!strings.Contains(strings.Join(sctx.Capabilities.Notifications.ExcludeChannels, ","), "whatsapp") {
 		t.Fatalf("Relay schedule context = %+v", sctx)
+	}
+	if sctx.Capabilities.SlackConnectionID != "" || sctx.Capabilities.Notifications.SlackWebhookSecretName != "" ||
+		len(sctx.Capabilities.Notifications.RunSummarySlackWebhookSecretNames) != 0 || len(sctx.Capabilities.Notifications.PulseSummarySlackWebhookSecretNames) != 0 {
+		t.Fatalf("Relay retained legacy Slack credentials: %+v", sctx.Capabilities)
+	}
+	if sctx.Capabilities.Notifications.GmailConnectionID != "google-account" || manifest.Capabilities.SlackConnectionID != "legacy-slack" || manifest.Capabilities.Notifications.SlackWebhookSecretName != "legacy-webhook" {
+		t.Fatal("schedule sanitization changed Google access or mutated the saved manifest")
 	}
 	input, err := relayScheduledInput(sctx, "run-1")
 	if err != nil {

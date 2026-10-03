@@ -6,6 +6,7 @@ import WorkflowLiveBrowser from './WorkflowLiveBrowser'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WorkspaceViewActions, type WorkspaceViewActionsProps } from './WorkspaceViewActions'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
+import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 interface BrowserWorkspacePanelProps {
   workspacePath: string | null
@@ -23,6 +24,7 @@ interface BrowserWorkspacePanelProps {
   onSave?: () => void
   assistantControl?: ReactNode
   scopeNoun?: 'workflow' | 'project'
+  profileId?: string
 }
 
 /**
@@ -46,6 +48,7 @@ export function BrowserWorkspacePanel({
   onSave,
   assistantControl,
   scopeNoun = 'workflow',
+  profileId,
 }: BrowserWorkspacePanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const walkthrough = <WorkspacePanelGuideButton topic="Browser" />
@@ -61,9 +64,12 @@ export function BrowserWorkspacePanel({
     })
     : <>{assistantControl}{walkthrough}</>
 
+  const learn = isValidElement<WorkspaceViewActionsProps>(assistantControl) ? assistantControl.props.onAsk : undefined
+  const onLearn = learn ?? (workspacePath ? (message: string) => sendWorkspacePaneMessageToChat({ workspacePath, message }) : undefined)
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
-      <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} showGuide={false} toolbar={<>
+      <WorkflowLiveBrowser workspacePath={workspacePath} scopeNoun={scopeNoun} profileId={profileId} onLearn={onLearn} showGuide={false} toolbar={<>
         <WorkspaceViewIconButton label="Browser settings" icon={Settings2} onClick={() => setSettingsOpen(value => !value)} />
         {guidedAssistantControl}
       </>} />
@@ -71,7 +77,7 @@ export function BrowserWorkspacePanel({
         <div
           role="dialog"
           aria-label="Browser settings"
-          className="absolute inset-x-2 top-12 z-10 max-h-[calc(100%-4rem)] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl"
+          className="absolute left-2 right-2 top-12 z-10 ml-auto max-w-lg max-h-[calc(100%-4rem)] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl"
         >
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-medium">Browser settings</h3>

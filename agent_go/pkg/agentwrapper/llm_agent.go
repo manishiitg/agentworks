@@ -735,8 +735,8 @@ func (w *LLMAgentWrapper) AddObserver(observer mcpagent.AgentEventListener) erro
 	return nil
 }
 
-// UpgradeCodingAgentToolsToFull turns a hybrid ("Native agent tools") chat
-// into Full CLI before the Agent is finalized. mcpagent applies Full CLI only
+// UpgradeCodingAgentToolsToFull turns a "Native agent tools" chat into
+// confined Full CLI before the Agent is finalized. mcpagent applies Full CLI only
 // when the CLI is confined by the Landlock launcher. It reports whether the
 // mode changed; any other mode is left alone.
 func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
@@ -745,26 +745,44 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFull() (bool, error) {
 	if w.finalized {
 		return false, errors.New("agent definition is already finalized")
 	}
-	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+	if !nativeAgentToolsRequested(w.runtime.Coding.AgentToolsMode) {
 		return false, nil
 	}
 	w.runtime.Coding.AgentToolsMode = "full"
 	return true, nil
 }
 
-// UpgradeCodingAgentToolsToFullUnconfined is UpgradeCodingAgentToolsToFull without the lock: the
-// CLI runs with the person's own rights. Only the server's single-user gate calls it.
-func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFullUnconfined() (bool, error) {
+// RestrictCodingAgentToolsToMCPOnly takes a chat's native CLI tools away
+// (hybrid or full become mcp_only) before the Agent is
+// finalized: the server's fail-closed path when the CLI cannot be confined.
+// It reports whether the mode changed.
+func (w *LLMAgentWrapper) RestrictCodingAgentToolsToMCPOnly() (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.finalized {
 		return false, errors.New("agent definition is already finalized")
 	}
-	if !strings.EqualFold(strings.TrimSpace(w.runtime.Coding.AgentToolsMode), "hybrid") {
+	mode := strings.ToLower(strings.TrimSpace(w.runtime.Coding.AgentToolsMode))
+	if mode == "" || mode == "mcp_only" {
 		return false, nil
 	}
-	w.runtime.Coding.AgentToolsMode = "full_unconfined"
+	w.runtime.Coding.AgentToolsMode = "mcp_only"
 	return true, nil
+}
+
+// nativeAgentToolsRequested reports a chat that asked for native tools: "full",
+// or the retired "hybrid" kept in older saved settings.
+func nativeAgentToolsRequested(mode string) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	return mode == "full" || mode == "hybrid" || mode == "full_unconfined" // the last two are retired names of full
+}
+
+// CodingAgentToolsMode is the coding-tools mode the chat will start with
+// (mcp_only or full), after confinement was decided.
+func (w *LLMAgentWrapper) CodingAgentToolsMode() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return strings.TrimSpace(w.runtime.Coding.AgentToolsMode)
 }
 
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the

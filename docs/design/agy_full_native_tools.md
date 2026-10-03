@@ -9,16 +9,13 @@ instead of silently reducing Full CLI to hybrid.
 | `mcp_only` | MCP tools; native file operations, shell and delegation denied. |
 | `hybrid` | MCP plus native file/web reads and searches; native writes, shell and subagents denied. |
 | `full` | Full native toolset, requiring an enforced Linux Landlock launch policy. Linux AGY certification remains open. |
-| `full_unconfined` | Full native toolset on an explicitly opted-in single-user local host. |
+| `full_unconfined` | Full native toolset on a person's own Mac (single-user). |
 
 ## Enable locally
 
-Start the single-user backend with
-`AGENTWORKS_CLI_FULL_UNCONFINED=on`. Keep **Native agent tools** enabled for the
-chat. The local `agent_go/run_server_with_logging.sh` runner defaults the Full CLI
-flag to `on`; set it to `off` to keep hybrid. Restart the backend when changing
-its environment; an existing native session must be relaunched to adopt a new tool mode. The server rejects the
-unconfined upgrade in multi-user mode. A chat with native tools off stays
+On a person's own Mac (single-user) Full CLI is on with no switch. Keep **Native agent tools** enabled for the
+chat; an existing native session must be relaunched to adopt a new tool mode. The server never
+runs it unconfined in multi-user mode or on Linux. A chat with native tools off stays
 `mcp_only`.
 
 Local Full CLI permits AGY's own reads, searches, file creation and editing,

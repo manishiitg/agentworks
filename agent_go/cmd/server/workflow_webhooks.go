@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
@@ -47,6 +48,7 @@ type WorkflowWebhookValueMapping = workflowtrigger.ValueMapping
 type WorkflowWebhookPayloadMappings = workflowtrigger.PayloadMappings
 
 type WorkflowWebhookDelivery struct {
+	gmailRuleID     string            // Internal admission metadata, never decoded from a request.
 	Group           string            `json:"group,omitempty"`
 	Variables       map[string]string `json:"variables,omitempty"`
 	RunID           string            `json:"run_id"`
@@ -178,6 +180,15 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 	if s.IsGmailTrigger() {
 		if s.Gmail == nil || s.Gmail.ConnectionID == "" || s.Gmail.Address == "" || s.Caller != nil || s.Function != nil || s.Webhook == nil || s.Webhook.EncryptedSecret != "" || s.Webhook.AuthMode != "" {
 			return errors.New("Gmail triggers require a mailbox binding and issue no webhook secret")
+		}
+		if _, err := gmailinbound.NormalizeFilters(s.Gmail.Filters); err != nil {
+			return err
+		}
+		if _, err := gmailinbound.NormalizeRules(s.Gmail.Rules, true); err != nil {
+			return err
+		}
+		if len(s.Gmail.Rules) > 0 && (s.Webhook.InputMode != "raw" || s.Webhook.PayloadMappings != nil || len(s.Webhook.AllowedVariables) > 0) {
+			return errors.New("Gmail rules use saved bindings and raw email input, never payload-selected routing")
 		}
 	} else if isFunctionTriggerKind(s.Kind) {
 		if err := validateWorkflowFunctionSpec(s.Function); err != nil {

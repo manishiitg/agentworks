@@ -1307,8 +1307,12 @@ func applyMultiAgentCapabilitiesToRequest(req *QueryRequest, caps WorkflowCapabi
 		req.NotificationRunSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.RunSummarySlackWebhookSecretNames...)
 		req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 	}
-	if req.BrowserMode == "" {
-		req.BrowserMode = "none"
+	if req.BrowserMode == "" || req.BrowserMode == "none" {
+		req.BrowserMode = "auto"
+	}
+
+	if req.BrowserMode == "cdp" && !browser.CDPEnabled() {
+		req.BrowserMode = "headless"
 	}
 
 	enableBrowser := req.BrowserMode == "auto" || req.BrowserMode == "headless" || req.BrowserMode == "cdp"
@@ -2421,6 +2425,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// A Code workspace's plain shell: sandboxed, one per person with editor access.
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
+	codeShellReaperOnce.Do(func() { go codeShellReaper() })
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stop", api.handleCodeShellStop).Methods("POST", "OPTIONS")
 	// Platform OAuth client secrets written inline before they moved to
 	// sealed client files.
 	if err := api.migratePlatformClientSecrets(); err != nil {
@@ -2650,6 +2658,8 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// Browser session tracking API
 	apiRouter.HandleFunc("/browser/sessions", api.handleGetBrowserSessions).Methods("GET")
+	apiRouter.HandleFunc("/browser/workspace", api.handleWorkspaceBrowser).Methods("GET", "POST")
+	apiRouter.HandleFunc("/browser/live/{session}/teaching", api.handleBrowserTeaching).Methods("POST")
 	apiRouter.HandleFunc("/browser/live/sessions", api.handleLiveBrowserSessions).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/stream", api.handleLiveBrowserStream).Methods("GET")
 	apiRouter.HandleFunc("/browser/live/{session}/recording", api.handleBrowserRecording).Methods("GET", "POST")
@@ -2667,6 +2677,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/live", api.handleLiveFeed).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/reconnect", api.handleReconnectSession).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/status", api.handleGetSessionStatus).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/instructions", api.handleGetSessionInstructions).Methods("GET")
 	// The product raw view receives only its owning chat's main terminal. All
 	// child-pane enumeration and controls remain behind runtime diagnostics.
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal", api.handleGetMainTerminal).Methods("GET", "OPTIONS")
@@ -3923,7 +3934,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// switch (a Crew's comes through its resolved profile).
 	workflowNativeAgentTools := resolvedProfile == nil && api.workflowChatNativeAgentTools(r.Context(), req, sessionID, currentUserIsReadOnly)
 	if workflowNativeAgentTools {
-		agentToolsMode = "hybrid"
+		agentToolsMode = "full"
 	}
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
@@ -4030,6 +4041,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CHAT_HISTORY] Product definition changed for session %s; relaunching the coding CLI and resuming its native session where supported", sessionID)
 	}
 	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !requestLLMConfigOverridesManifest(req) {
+		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
+		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
+		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
+		// when it runs, this check sees no running turn and relaunches with the new runtime.
+		if api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+			return
+		}
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)
 	}
 	// Automated schedule and webhook turns must preserve turn boundaries. They
@@ -4051,7 +4069,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if retainedWorkflowCompatible {
-		r = r.WithContext(contextWithSessionMode(r.Context(), crewSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
+		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
 	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
@@ -4599,6 +4617,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// If no manifest was found, log a warning. The workflow will run with request defaults only.
 			log.Printf("[MANIFEST] WARNING: No workflow.json found for preset %s - workflow will run with request defaults only. Run migration: POST /api/workflows/migrate", req.PresetQueryID)
 		}
+
+		allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(manifestWorkspacePath))
 
 		// --- Post-load processing: browser configuration ---
 		// Runs after either manifest or preset loading has populated the config variables.
@@ -5498,15 +5518,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[AGENT CONFIG DEBUG] Creating agent with ServerName: %s, UseCodeExecutionMode: %v", serverList, useCodeExecutionMode)
 		profileAgentToolsMode := ""
 		profileApprovalsMode := ""
-		// Hybrid enables only native read/search, skills, todos and subagents;
-		// shell and file changes still go through the bridge, so mcpagent's
-		// shell/diff routing block stays in every mode.
+		// Native agent tools request Full CLI; applyCLILandlock below decides
+		// whether it is confined, unconfined (a person's own Mac) or falls back
+		// to mcp_only. mcpagent's bridge routing block stays in every mode.
 		var profileBridgeRoutingInstructions *string
 		if resolvedProfile != nil {
 			profileAgentToolsMode = resolvedProfile.Definition.Runtime.AgentTools.Mode
 			profileApprovalsMode = resolvedProfile.Definition.Runtime.Approvals.Mode
 		} else if workflowNativeAgentTools {
-			profileAgentToolsMode = "hybrid"
+			profileAgentToolsMode = "full"
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)
 		forceStructuredCodingAgent := codingAgentUsesStructuredTransportForChat(finalProvider, allowPersistentInteractive)
@@ -5659,6 +5679,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
 			}
 		}
+		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
@@ -6150,12 +6171,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Downloads/", "Workflow/"}, additionalFolders...)
+					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Workflow/"}, additionalFolders...)
 					readPaths = append(readPaths, resolvedGrants.ReadOnlyExtra...)
 					readPaths = append(readPaths, workflowReadOnlyFolders...)
 					workspace.SetSessionFolderGuard(sessionID,
 						readPaths,
-						append([]string{perUserChatsWrite, "Downloads/", perUserChatHistory}, additionalFolders...),
+						append([]string{perUserChatsWrite, perUserChatHistory}, additionalFolders...),
 					)
 					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 						log.Printf("[MULTI-AGENT FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -6179,7 +6200,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
 				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
+				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
 				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
@@ -6228,11 +6249,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// those readable for the CLI but outside the agent's write authority.
 			protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
-			landlockEmail := ""
-			if claims := GetUserFromContext(r.Context()); claims != nil {
-				landlockEmail = claims.Email
-			}
-			applyCLILandlock(llmAgent, currentUserID, landlockEmail, sessionID, finalProvider, chatWorkingDir, cliSecurityPolicy)
+			applyCLILandlock(llmAgent, sessionID, finalProvider, chatWorkingDir, cliSecurityPolicy)
 
 			// Report the selected filesystem skills, not a restriction. Every
 			// branch above grants "skills/" wholesale, and this list is used
@@ -6768,10 +6785,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				ChannelFormatting:     buildChannelFormattingInstructions(req.BotPlatform),
 				GrantSections:         resolvedGrants.PromptSections,
 			}
+			// The mode the chat really starts with, after confinement (a full
+			// request that could not be confined is mcp_only), for workflow,
+			// Crew and Code chats alike.
+			promptCtx.NativeCodingTools = strings.HasPrefix(llmAgent.CodingAgentToolsMode(), "full")
 			if resolvedProfile != nil {
 				promptCtx.ProfileID = resolvedProfile.Definition.ID
-				promptCtx.NativeCodingTools = strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.Runtime.AgentTools.Mode), "hybrid")
-				promptCtx.WorkspaceFilesDisabled = !promptCtx.NativeCodingTools && !toolGate.Allows("execute_shell_command") && !toolGate.Allows("diff_patch_workspace_file")
 				promptCtx.FeatureExtensions = agentprofiles.FeaturePromptExtensions(resolvedProfile.Definition)
 			}
 			if len(req.WorkflowContextPaths) > 0 {
@@ -7307,6 +7326,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Preserve the finalized prompt for its owner's read-only workspace
+		// inspector, including API providers and chats restored after a restart.
+		if api.eventStore != nil && api.eventStore.IsDurableChatSession(sessionID) {
+			if err := saveSessionInstructions(GetUserIDFromContext(r.Context()), sessionID, req.SelectedFolder, mcpagent.ReadAgentSystemPrompt(streamCtx, llmAgent.GetUnderlyingAgent())); err != nil {
+				log.Printf("[INSTRUCTIONS] Failed to save prompt snapshot for session %s: %v", sessionID, err)
+			}
+		}
+
 		if api.internalPreparedAgent != nil && api.internalPreparedAgent(streamCtx, llmAgent.GetUnderlyingAgent()) {
 			_ = llmAgent.Close()
 			return
@@ -7829,7 +7856,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
-		chatQuery = withSessionMode(crewSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly), chatQuery)
+		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly), chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)
@@ -11370,6 +11397,8 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	workshopLLMConfig.APIKeys = workshopAPIKeys
 
 	cfg := &todo_creation_human.WorkshopConfig{
+		UserID:            currentUserID,
+		SourcePlatform:    req.BotPlatform,
 		WorkspacePath:     workspacePath,
 		RunFolder:         runFolder,
 		MCPConfigPath:     api.mcpConfigPath,
@@ -11388,6 +11417,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID)
 	api.guardPulseResultExecutor(allExecutors, sessionID)
+	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 
 	// Track preset's global secret selection (overrides req.SelectedGlobalSecrets which is nil for phase chat)
 	var presetGlobalSecretNames *[]string

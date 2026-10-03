@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
@@ -79,6 +80,15 @@ func contextWithSessionMode(ctx context.Context, notice string) context.Context 
 func sessionModeFromContext(ctx context.Context) string {
 	notice, _ := ctx.Value(sessionModeNoticeKey{}).(string)
 	return notice
+}
+
+// agentSessionModeForTurn carries current access guidance into fresh and
+// retained turns. Codex's built-in sandbox is distinct from platform tools.
+func agentSessionModeForTurn(req QueryRequest, currentUserID string, resolvedProfile *resolvedAgentProfile, readOnly bool) string {
+	if resolvedProfile != nil && resolvedProfile.Definition.ID == sparkquillproduct.ParentProfileID && !readOnly {
+		return sessionModeOpen + "\nYou are in SparkQuill Parent Mode. Use the admitted platform tools, including execute_shell_command, to create and save requested lessons in the family workspace. Codex's read-only sandbox applies to its built-in tools; it does not make the platform workspace tools viewing-only. Those tools enforce the actual folder and access permissions. Use them for authorised writes and report their actual errors if denied; do not ask the parent to enable editing merely because the CLI reports read-only.\n" + sessionModeClose
+	}
+	return crewSessionModeForTurn(req, currentUserID, resolvedProfile, readOnly)
 }
 
 // crewSessionModeForTurn is the notice for this turn, or "" for an owner or editor.

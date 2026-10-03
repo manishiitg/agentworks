@@ -22,7 +22,7 @@ import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
 import { PulseReviewFocusDialog } from './commands/PulseReviewFocusDialog'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { findCommand, findProductCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
+import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
@@ -432,9 +432,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // workflow builder input behave like product-profile chat.
   const activeTab = useChatStore(state =>
     activeTabId ? state.chatTabs[activeTabId] : undefined
-  )
-  const activeTabEvents = useChatStore(state =>
-    activeTab?.sessionId ? state.tabEvents[activeTab.sessionId] : undefined
   )
   // Main tmux is a first-class alternate view of this chat. Child-terminal
   // inspection is still developer-only, but opening the main pane must not
@@ -1058,6 +1055,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return isWorkflowMode && presetId ? state.getWorkflowById(presetId)?.workspace_path : undefined
   }) || activeWorkflowWorkspacePath || workflowPhaseWorkspacePath || workspaceActiveFolder
   const canWriteCommandWorkflow = useCanWriteWorkflow(commandWorkflowPath?.replace(/\/+$/, ''))
+  const useProductCommandCatalog = isProductProfile || (isRelaySurface && isWorkflowMode)
   const customCommandWorkspacePath = agentProfileWorkspace || (isWorkflowMode ? commandWorkflowPath : undefined) || undefined
   
   // Get queued messages from tab config
@@ -2021,7 +2019,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return cmd.validate(ctx)
   }, [buildCommandContext])
 
-  const canSelectPulseReview = !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+  const canSelectPulseReview = !isRelaySurface && !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
   useEffect(() => {
     if (pulseReviewPicker && (!canSelectPulseReview || pulseReviewPicker.tabId !== activeTabId || pulseReviewPicker.workspacePath !== commandWorkflowPath)) {
       setPulseReviewPicker(null)
@@ -2057,10 +2055,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const commandArgs = (firstSpace >= 0 ? withoutSlash.slice(firstSpace + 1) : '').trim()
     if (!commandName) return false
 
-    const cmd = isProductProfile
-      ? findProductCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+    const cmd = useProductCommandCatalog
+      ? findProductOrUserCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
       : findCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-    if (!cmd && !isProductProfile) {
+    if (!cmd && !useProductCommandCatalog) {
       const modeScopedCommand = findCommandAnyMode(commandName)
       if (modeScopedCommand && commandModeCategory) {
         if (commandModeCategory === 'workflow' && modeScopedCommand.modes?.includes('workflow')) {
@@ -2098,7 +2096,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, isProductProfile])
+  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog])
 
   const getSubmitBlockReason = useCallback((): string | null => {
     if (!queryToSubmit?.trim()) return null
@@ -2363,7 +2361,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     closeComposerPickers()
 
     // Look up and execute the command from the registry
-    const cmd = isProductProfile
+    const cmd = useProductCommandCatalog
       ? findProductOrUserCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
       : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
     if (!cmd && findCommandAnyMode(command)) {
@@ -2404,7 +2402,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
     else setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, isProductProfile])
+  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
@@ -3194,20 +3192,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
-                {showNewChatAction && onNewChat ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={onNewChat}
-                    disabled={isTurnInFlight}
-                    className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground"
-                    aria-label="Start a new chat"
-                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New chat
-                  </Button>
-                ) : null}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3223,51 +3207,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       <TooltipContent side="top">
                         <p>Runtime status · {chatInputStatusLine}</p>
                       </TooltipContent>
-                  </Tooltip>
-                )}
-                {activeTabId && shouldShowLiveTerminalControl(
-                  liveTerminalOffered,
-                  isProductSurface,
-                  isInteractiveWorkflowBuilderChat,
-                  showProductTerminalControl,
-                ) && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant={terminalViewSelected ? 'secondary' : 'outline'}
-                        size="icon"
-                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
-                        className="h-7 w-7 p-0"
-                        aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                      >
-                        <Terminal className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
-                      </p>
-                      {terminalUsage.map((line, index) => (
-                        <p
-                          key={`${line.label}-${index}`}
-                          data-testid="chat-input-terminal-usage"
-                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
-                        >
-                          {line.text}
-                        </p>
-                      ))}
-                      {terminalSessionUsage.map((line, index) => (
-                        <p
-                          key={`session-${index}`}
-                          data-testid="chat-input-terminal-session-usage"
-                          className="font-mono text-[11px] opacity-70"
-                        >
-                          {line}
-                        </p>
-                      ))}
-                    </TooltipContent>
                   </Tooltip>
                 )}
                 {/* Server and LLM Selection — hidden in workflow phase chat (servers come from preset) */}
@@ -3610,6 +3549,69 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
+                      {/* New chat and the live view sit with the send controls, on the right (owner 2026-10-03). */}
+                      {showNewChatAction && onNewChat ? (
+                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
+                  <button
+                    type="button"
+                    onClick={onNewChat}
+                    disabled={isTurnInFlight}
+                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Start a new chat"
+                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
+                    data-testid="chat-new-chat"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
+                      New chat
+                    </span>
+                  </button>
+                ) : null}
+                      {activeTabId && shouldShowLiveTerminalControl(
+                  liveTerminalOffered,
+                  isProductSurface,
+                  isInteractiveWorkflowBuilderChat,
+                  showProductTerminalControl,
+                ) && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant={terminalViewSelected ? 'secondary' : 'outline'}
+                        size="icon"
+                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
+                        className="h-7 w-7 p-0"
+                        aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
+                      >
+                        <Terminal className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
+                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
+                      </p>
+                      {terminalUsage.map((line, index) => (
+                        <p
+                          key={`${line.label}-${index}`}
+                          data-testid="chat-input-terminal-usage"
+                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
+                        >
+                          {line.text}
+                        </p>
+                      ))}
+                      {terminalSessionUsage.map((line, index) => (
+                        <p
+                          key={`session-${index}`}
+                          data-testid="chat-input-terminal-session-usage"
+                          className="font-mono text-[11px] opacity-70"
+                        >
+                          {line}
+                        </p>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                       {!nativeTerminalTools && attachmentEl}
                       {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary
@@ -3677,7 +3679,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         modeCategory={commandModeCategory}
         workshopMode={commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined}
         canWriteWorkflow={canWriteCommandWorkflow}
-        agentProfileId={activeTab?.metadata?.agentProfileId}
+        agentProfileId={isRelaySurface && isWorkflowMode ? 'relays' : activeTab?.metadata?.agentProfileId}
         workspacePath={customCommandWorkspacePath}
         {...(isWorkflowMode && !canWriteCommandWorkflow ? {} : {
           onCreateCommand: handleCreateCommand,

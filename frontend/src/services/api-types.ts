@@ -497,6 +497,8 @@ export interface ReportHumanInput {
 	claimed_at?: string
 	claim_expires_at?: string
 	apply_contract?: ReportHumanInputApplyContract
+  /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
+  apply_message?: string
 }
 
 export interface ReportHumanInputsResponse {
@@ -3277,7 +3279,7 @@ export interface WorkflowNotificationInfoResponse {
 // Scheduled Jobs
 export interface ScheduledJob {
   kind?: string
-  gmail?: { connection_id: string; address: string; reply: boolean }
+  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
   pulse_mode?: 'off' | 'basic' | 'full'
   pulse_mode_reason?: string
   id: string
@@ -3855,10 +3857,38 @@ export interface WorkFolderAddRequest {
 }
 
 /** Server-owned email routing; separate from agent Gmail write permissions. */
+export interface GmailInboundFilters {
+  sender_allowlist?: string[]
+  subject_contains?: string[]
+  body_contains?: string[]
+  subject_contains_any?: string[]
+  body_contains_any?: string[]
+  allow_automatic?: boolean
+  has_attachments?: boolean
+  new_threads_only?: boolean
+}
+
+export interface GmailInboundRule {
+  id: string
+  name: string
+  enabled?: boolean
+  filters?: GmailInboundFilters
+  instruction?: string
+  route_selections?: Record<string, string> | null
+  group_names?: string[]
+  step_id?: string
+}
+
 export interface GmailInboundState {
+  sender_consent?: { required: boolean; approved: boolean; config_hash: string; senders: string[]; blocked_reason?: string }
+  setup?: {
+    oauth_clients: string[]
+    can_connect_account: boolean
+    admin_setup?: { push_endpoint: string; required_access: string; explanation: string; environment_variables: string[]; steps: string[]; empty_client_list: string; local_setup: string; documentation_url: string }
+  }
   configured: boolean
-  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string } | null
+  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string; filters?: GmailInboundFilters; rules?: GmailInboundRule[] } | null
   watch_ready?: boolean
   error?: string
-  deliveries: { id: string; status: string; session_id: string; error?: string }[]
+  deliveries: { id: string; status: string; session_id: string; error?: string; rule_id?: string; rule_name?: string }[]
 }

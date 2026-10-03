@@ -5,6 +5,7 @@ import { Copy, Webhook } from 'lucide-react'
 import { apiTriggerURL, productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
+import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 
@@ -13,7 +14,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to update project triggers'
 }
 
-export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void }) {
+export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
   const [gmailCounts, setGmailCounts] = useState({ active: 0, paused: 0 })
@@ -77,7 +78,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
     />}
     <div className="space-y-4 p-4">
     <p className="text-xs leading-relaxed text-muted-foreground">Webhooks let outside systems (GitHub, CI) start work. Each one runs in the Crew's main chat or in its own continuing conversation. Other Crews, workflows and MCP/CLI tools call this Crew through Functions instead. {!deliveryHistory && onViewRuns && <button type="button" className="underline text-foreground" onClick={onViewRuns}>View delivery history</button>}</p>
-    {workspacePath && <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onCounts={setGmailCounts} />}
+    {workspacePath && <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onCounts={setGmailCounts} onAsk={onAsk ?? (message => sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message }).then(() => undefined))} />}
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <h3 className="text-sm font-medium">New secret for {issued.name}</h3>

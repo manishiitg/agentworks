@@ -13,20 +13,10 @@ Use `{{.RunFolder}}` as the primary retained run when it is relevant to the
 selected issue's proof boundary.{{end}}
 
 1. Load and apply `read_skill(skills=[{"name":"builder-reference","path":"references/pulse-fixer-practices.md"}])`, then load and apply `read_skill(skills=[{"name":"builder-reference","path":"references/fix-verification.md"}])`.
-2. Use `pulse_run_id="current"`. Call
-   `list_approved_fixer_decisions(workspace_path=<this workflow>)` exactly once
-   before ordinary queue selection. Each returned candidate is an **explicit
-   operator-approved mandatory Fixer handoff**: it overrides normal
-   `repair_eligible` filtering. Read the exact `get_human_input_request` record
-   and then its returned public PUL issue with `get_pulse_state(...,
-   detail="full", issue_ids=[...])`. Apply only its `approved_scope`, checks,
-   proof boundary, and failure policy; never consume it when that bounded repair
-   cannot be proved. A candidate with no linked PUL id is a lifecycle defect:
-   preserve it and state that it could not be safely repaired, rather than
-   selecting unrelated work.
+2. Use `pulse_run_id="current"`. Answered operator decisions are never applied
+   here: they are applied in the Builder chat where the owner can watch.
 3. Read the saved Gate worklist and
-   `get_pulse_state(view="backlog", detail="compact")` exactly once. If there
-   was an approved candidate, it is the first repair bundle. Otherwise work
+   `get_pulse_state(view="backlog", detail="compact")` exactly once. Work
    through the whole index in impact order (goal-blinding and main-output
    issues first), requesting `detail="full"` only for the issue IDs you are
    about to work on. Read their typed review records, attempts, verification,

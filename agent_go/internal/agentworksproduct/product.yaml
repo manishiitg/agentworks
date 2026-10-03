@@ -220,7 +220,6 @@ chat:
       - install_mcp_server
       - install_skill
       - list_executions
-      - list_approved_fixer_decisions
       - list_gmail_connections
       - get_gmail_trigger
       - list_mcp_servers
@@ -301,7 +300,6 @@ chat:
       - get_human_input_request
       - list_executions
       - list_mcp_servers
-      - list_approved_fixer_decisions
       - list_schedules
       - list_secrets
       - list_skills

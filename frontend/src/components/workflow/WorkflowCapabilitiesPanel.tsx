@@ -8,7 +8,6 @@ import PlaybooksPanel from '../playbooks/PlaybooksPanel'
 import { SecretSelectionSection } from '../secrets/SecretSelectionSection'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
-import WorkflowRelaySlackPanel from './WorkflowRelaySlackPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
 import { ProjectMcpPanel } from '../integrations/ProjectMcpPanel'
@@ -304,8 +303,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
               message={section === 'mcp'
                 ? relayMode && activeMcpTab === 'apps'
                   ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
-                  : relayMode && activeMcpTab === 'slack'
-                    ? 'Help me connect Slack to this Relay for agent tool calls and notifications. Inspect its selected Slack app and explain what setup is needed. Do not set up a Slack chat route for this Relay.'
+                  : relayMode && activeMcpTab === 'gmail'
+                    ? 'Help me connect Google apps to this Relay, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
                   : getIntegrationTabAskAIMessage(activeMcpTab)
                 : section === 'identity'
                   ? relayMode
@@ -399,11 +398,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, rela
                 {!relayMode && activeMcpTab === 'slack' && (
                   <div className="mt-3">
                     <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="slack" />
-                  </div>
-                )}
-                {relayMode && activeMcpTab === 'slack' && (
-                  <div className="mt-3">
-                    <WorkflowRelaySlackPanel workspacePath={workspacePath} />
                   </div>
                 )}
                 {!relayMode && activeMcpTab === 'whatsapp' && (

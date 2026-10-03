@@ -39,36 +39,39 @@ func resolveGuardWritePath(wp, docsDir string) (string, error) {
 	return physicalPath, nil
 }
 
-// Explicit host grants are supported only by the single-user local native
-// launcher. Server deployments keep every write grant inside docsDir.
-// Even locally, the service never creates a directory outside docsDir.
-func guardWritePathToCreate(wp, docsDir string) (string, error) {
-	physicalPath, err := resolveGuardWritePath(wp, docsDir)
-	if err == nil {
-		return physicalPath, nil
+// isExistingHostGrant reports whether a write path outside the workspace
+// boundary, on a person's own machine, is an already-existing absolute directory that is safe to leave to
+// the isolator: it is not created or resolved through anything, so the
+// boundary check's concern (directories created anywhere as the service
+// account) does not apply. A missing path, a relative path, any ".." segment
+// and anything lexically inside the workspace (symlink redirects) still fail.
+func isExistingHostGrant(wp, docsDir string) bool {
+	// Only on a person's own Mac (the terminal's rule): on a server, Linux or
+	// NATIVE_WORKSPACE alike, a folder named in a workflow must not reach outside
+	// the workspace, whoever owns that workflow.
+	if !filepath.IsAbs(wp) || !interactiveShellUnconfinedAllowed() {
+		return false
 	}
-	if os.Getenv("LOCAL_MODE") != "true" || os.Getenv("MULTI_USER_MODE") != "false" || os.Getenv("NATIVE_WORKSPACE") != "true" {
-		return "", err
-	}
-	if !filepath.IsAbs(wp) {
-		return "", err
-	}
-	for _, part := range strings.Split(wp, string(filepath.Separator)) {
-		if part == ".." {
-			return "", err
+	for _, segment := range strings.Split(filepath.ToSlash(wp), "/") {
+		if segment == ".." {
+			return false
 		}
 	}
-	// A workspace path that redirects outside through a symlink is never a
-	// host grant. The host supplies external grants as explicit absolute roots.
-	rel, relErr := filepath.Rel(filepath.Clean(docsDir), filepath.Clean(wp))
-	if relErr != nil || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
-		return "", err
+	clean := filepath.Clean(wp)
+	if rel, err := filepath.Rel(docsDir, clean); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
 	}
-	info, statErr := os.Stat(wp)
-	if statErr != nil || !info.IsDir() {
-		return "", err
+	info, err := os.Stat(clean)
+	return err == nil && info.IsDir()
+}
+
+// Compatibility helper: existing local host roots are never created here.
+func guardWritePathToCreate(wp, docsDir string) (string, error) {
+	physicalPath, err := resolveGuardWritePath(wp, docsDir)
+	if err != nil && os.Getenv("LOCAL_MODE") == "true" && os.Getenv("MULTI_USER_MODE") == "false" && os.Getenv("NATIVE_WORKSPACE") == "true" && isExistingHostGrant(wp, docsDir) {
+		return "", nil
 	}
-	return "", nil
+	return physicalPath, err
 }
 
 // ExecuteShellCommand handles POST /api/execute
@@ -208,7 +211,13 @@ func ExecuteShellCommand(c *gin.Context) {
 		// Only create workspace paths. The single-user local native launcher
 		// may keep existing host-folder grants without a service-side MkdirAll.
 		for _, wp := range req.FolderGuard.WritePaths {
-			physicalPath, wpErr := guardWritePathToCreate(wp, docsDir)
+			physicalPath, wpErr := resolveGuardWritePath(wp, docsDir)
+			if wpErr != nil && isExistingHostGrant(wp, docsDir) {
+				// A folder the person granted outside the workspace (Downloads,
+				// a project folder): it already exists and is mounted as it is.
+				// It is never created here.
+				continue
+			}
 			if wpErr != nil {
 				c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 					Success: false,
@@ -234,8 +243,15 @@ func ExecuteShellCommand(c *gin.Context) {
 		}
 
 		// Use isolated execution with filesystem restrictions
+		// A Code command run as its owner's slot gets the slot's own home: one home per person for Code, shared by the terminal
+		// and the agent (installs and logins made once). Workflows and Crew keep their per-project home.
+		userHome := ""
+		if userSlot != "" && slots.IsCodeProjectDir(docsDir, workingDir) {
+			userHome = slots.HomeOf(userSlot)
+		}
 		isolator := &security.Isolator{
 			Slot:              userSlot,
+			UserHome:          userHome,
 			ExtraEnv:          slotExtraEnv,
 			ReadPaths:         req.FolderGuard.ReadPaths,
 			WritePaths:        req.FolderGuard.WritePaths,

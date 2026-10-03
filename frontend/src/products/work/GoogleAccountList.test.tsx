@@ -45,7 +45,10 @@ describe('Google accounts in a Code', () => {
     cleanups.push(() => window.removeEventListener(CHANGE_GOOGLE_ACCESS_EVENT, seen))
     await act(async () => { root.render(<GoogleAccountList connections={[account({})]} busyId={null} onSendTest={vi.fn()} onToggle={vi.fn()} onReconnect={vi.fn()} onRemove={vi.fn()} />) })
     expect(host.textContent).toContain('me@x.com')
-    expect(host.textContent).toContain('Gmail: read · Drive, Calendar: read')
+    expect(host.textContent).toContain('Current agent access')
+    expect(host.textContent).toContain('Gmail: Read only')
+    expect(host.textContent).toContain('Drive: Read only')
+    expect(host.textContent).toContain('Docs: No access')
     expect(host.textContent).not.toContain('Raw granted scopes')
     const change = [...host.querySelectorAll('button')].find(button => button.textContent === 'Change access')!
     await act(async () => { change.click() })

@@ -27,7 +27,11 @@ func main() {
 		os.Exit(125)
 	}
 	var policy security.LandlockPolicy
-	err = json.NewDecoder(config).Decode(&policy)
+	// A field this launcher does not know is a rule it would silently not enforce (an older launcher ignored hidden_paths and a
+	// blocked file stayed readable): refuse the policy instead.
+	decoder := json.NewDecoder(config)
+	decoder.DisallowUnknownFields()
+	err = decoder.Decode(&policy)
 	_ = config.Close()
 	if *configPath == "/proc/self/fd/3" {
 		_ = unix.Close(3)

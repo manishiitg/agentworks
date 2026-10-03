@@ -16,7 +16,7 @@ import (
 // That produced a real defect: the "CLI Tool Environment" section asserts "Your
 // native tools (Bash, Read, Write, etc.) are disabled" and was gated only on
 // "is this a CLI provider" — never on the profile — although the profile was in
-// scope 118 lines above. Injected into a hybrid profile it contradicted the
+// scope 118 lines above. Injected into a native-tools profile it contradicted the
 // product prompt, and the contradiction won: Codex concluded it had no shell
 // and reported the product broken. Diagnosing it meant reconstructing the
 // assembled prompt from a coding agent's session transcript, because nothing
@@ -60,8 +60,8 @@ type promptContext struct {
 	// HasTriggerAutoNotifyTool is set only after the tool is registered for
 	// this chat. Keep its guidance paired with the actual tool surface.
 	HasTriggerAutoNotifyTool bool
-	// NativeCodingTools is true for agent_tools.mode=hybrid: the coding CLI
-	// keeps its provider-specific native subset. Sections that describe a
+	// NativeCodingTools is true when the chat really starts in Full CLI (its
+	// own tools in a sandbox). Sections that describe a
 	// bridge-only world must not apply when this is set.
 	NativeCodingTools bool
 
@@ -103,7 +103,7 @@ This project runs on a server that other people's projects share. Keep to your o
 
 - Create project files in your working folder. Write to explicitly listed read_write attached folders only through guarded file tools. Never use "~" (the CLI's private hidden folder), "/tmp" or unlisted host folders as project storage; files there are invisible to the user.
 - Read only your working folder and additional paths explicitly authorized in this prompt, including the signed-in user's chat history for requested history lookups. Follow each listed access level and use guarded tools where required. Never inspect unlisted server folders or other people's projects. Never read environment variables, ".env" files, credentials or keys that were not given to you for this task.
-- Do not install, start or expose remote-access or hosting tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, VPNs, tunnels, reverse proxies, port forwarders, or anything that listens for connections from outside this project. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only.
+- Do not install, start or expose remote-access tools: browser IDEs (code-server and similar), SSH or remote-desktop servers, or VPNs. Do not bind any port to all network interfaces or the public internet. A local dev server for the project is fine when it listens on 127.0.0.1 only. A tunnel (cloudflared, ngrok and similar) is allowed when the user asks for one: say once that it makes the app reachable by anyone with the link.
 - Do not install or run anything harmful or unrelated to the project: cryptocurrency miners, scanners, botnets, credential or data harvesters, or tools that try to get around this environment's limits or other people's access controls. Do not run other autonomous coding agents or piped remote install scripts ("curl ... | bash") to set up such tools.
 - Use ordinary project dependencies (npm, pip, go modules) inside the working folder. If a request needs something outside these rules, say so and ask the user instead of doing it.`
 
@@ -259,6 +259,6 @@ func logPromptAssembly(ctx promptContext, included, skipped []string) {
 	if profile == "" {
 		profile = "-"
 	}
-	log.Printf("[PROMPT_SECTIONS] profile=%s provider=%s hybrid=%t included=%v skipped=%v",
+	log.Printf("[PROMPT_SECTIONS] profile=%s provider=%s native_tools=%t included=%v skipped=%v",
 		profile, ctx.Provider, ctx.NativeCodingTools, included, skipped)
 }

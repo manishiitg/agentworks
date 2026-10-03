@@ -503,13 +503,12 @@ func isPathAllowedByFolderGuard(cleanedPath, allowedPath string) bool {
 }
 
 func chatModeWriteFolders(additionalWriteFolders ...string) []string {
-	allowedWriteFolders := []string{"Downloads/"}
-	allowedWriteFolders = append(allowedWriteFolders, additionalWriteFolders...)
+	allowedWriteFolders := append([]string{}, additionalWriteFolders...)
 	return cleanFolderGuardFolders(allowedWriteFolders)
 }
 
 func workflowPhaseWriteFolders(workflowFolder string, additionalWriteFolders ...string) []string {
-	allowedWriteFolders := []string{"Downloads/"}
+	var allowedWriteFolders []string
 	workflowFolder = strings.TrimSpace(workflowFolder)
 	if workflowFolder != "" {
 		allowedWriteFolders = append(allowedWriteFolders, workflowFolder)
@@ -675,7 +674,7 @@ func wrapExecutorsWithFolderGuard(executors map[string]func(ctx context.Context,
 				} else {
 					ctx = context.WithValue(ctx, common.FolderGuardAllowedWriteFolderKey, shellAllowedFolders)
 				}
-				readFolders := []string{"Downloads/", "skills/", "subagents/", "Workflow/"}
+				readFolders := []string{"skills/", "subagents/", "Workflow/"}
 				readFolders = append(readFolders, shellAllowedFolders...)
 				readFolders = append(readFolders, readOnlyFolders...)
 				readFolders = cleanFolderGuardFolders(readFolders)
@@ -802,7 +801,7 @@ func wrapExecutorsWithPlanFolderGuard(executors map[string]func(ctx context.Cont
 				// For prototype mode (planFolder starts with "Projects/"), the project
 				// folder is self-contained — no extra reads needed.
 				if strings.HasPrefix(planFolder, "Chats") {
-					shellReadFolders = append(shellReadFolders, "skills/", "subagents/", "Downloads/")
+					shellReadFolders = append(shellReadFolders, "skills/", "subagents/")
 				}
 				ctx = context.WithValue(ctx, common.FolderGuardReadPathsKey, shellReadFolders)
 				// Inject the session-level default working directory so execute_shell_command

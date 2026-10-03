@@ -592,11 +592,15 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
 	}
 	if manifest.Kind == "relay" {
+		sctx.Capabilities.SlackConnectionID = ""
 		notifications := WorkflowNotificationConfig{}
 		if sctx.Capabilities.Notifications != nil {
 			notifications = *sctx.Capabilities.Notifications
 		}
-		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "whatsapp")
+		notifications.ExcludeChannels = append(append([]string(nil), notifications.ExcludeChannels...), "slack", "whatsapp")
+		notifications.SlackWebhookSecretName = ""
+		notifications.RunSummarySlackWebhookSecretNames = nil
+		notifications.PulseSummarySlackWebhookSecretNames = nil
 		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {
@@ -1283,6 +1287,13 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 	}
 	if sched == nil {
 		return "", fmt.Errorf("schedule %s not found in manifest at %s", scheduleID, workspacePath)
+	}
+	if input != nil && (input.gmailRuleID != "" || sched.IsGmailTrigger() && sched.Gmail != nil && len(sched.Gmail.Rules) > 0) {
+		selected, err := gmailRuleSchedule(*sched, input.gmailRuleID)
+		if err != nil {
+			return "", err
+		}
+		sched = &selected
 	}
 	sctx := buildScheduleContext(workspacePath, manifest, *sched)
 	sctx.TriggerSource = "manual"
@@ -3919,18 +3930,11 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 		})
 	}
 
-	// Apply answered operator decisions before the run, not after it, so this
-	// run behaves the way the operator already asked (PLAT-093), before the first
-	// schedule message. Failure to read the store
-	// is not a reason to skip the run: log it and continue unchanged.
-	if sctx.WebhookInput == nil {
-		if pending, listErr := listReportHumanInputs(ctx, sctx.WorkspacePath, "answered", ""); listErr != nil {
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Could not read answered decisions for the pre-run drain (continuing): %v", listErr)
-		} else if decisionTurns := scheduledDecisionPreflightTurns(pending); len(decisionTurns) > 0 {
-			turns = append(decisionTurns, turns...)
-			s.sessionLogf(sctx, sessionID, "[SCHEDULER] Running %d structured answered-decision preflight turn(s) before this run's first schedule message", len(decisionTurns))
-		}
-	}
+	// Scheduled runs never apply operator decisions (owner decision
+	// 2026-10-03, replacing the PLAT-093 pre-run drain). A decision is applied
+	// in the workflow's Builder chat: in the turn that answers it, or from the
+	// "Apply in chat" button Needs you shows for every answered decision that
+	// is not applied yet.
 	// Unanswered decisions are not executable instructions and must never be
 	// silently inferred. Surface them to the first normal schedule turn so the
 	// agent can preserve the current approved behavior around the affected

@@ -6,14 +6,14 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type ModelMetadata, type ProviderSetupSession } from '../../services/llm-config-api'
-import { useAuthStore } from '../../stores/useAuthStore'
+import { llmConfigService, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
+import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, modelReasoningLevels, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
+import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -51,16 +51,17 @@ export function WorkModelsPanel({
   const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
   const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
+  const [cursorModels, setCursorModels] = useState<DynamicModelEntry[]>([])
+  const [accounts, setAccounts] = useState<ProviderConnection[] | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
+  // What the server collected for someone who may see usage but not open a terminal on the account.
+  const [usageText, setUsageText] = useState<string | null>(null)
   const usageSessionRef = useRef<ProviderSetupSession | null>(null)
   const [usageStarting, setUsageStarting] = useState(false)
   const [usageError, setUsageError] = useState<string | null>(null)
   const [usageConflict, setUsageConflict] = useState(false)
-  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
-  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const canCheckUsage = !isMultiUserMode || isAdmin
 
   useEffect(() => {
     usageSessionRef.current = usageSession
@@ -85,29 +86,72 @@ export function WorkModelsPanel({
     if (!providerManifestLoaded) void loadProviderManifest()
   }, [loadProviderManifest, providerManifestLoaded])
 
+  useEffect(() => {
+    let cancelled = false
+    setAccounts(null)
+    const refreshAccounts = () => {
+      void llmConfigService.getProviderConnections({ workspacePath, product: product.profileId }).then(records => {
+        if (!cancelled) setAccounts(records)
+      }).catch(() => { if (!cancelled) setAccounts([]) })
+    }
+    refreshAccounts()
+    window.addEventListener('provider-connections-changed', refreshAccounts)
+    return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refreshAccounts) }
+  }, [workspacePath, product.profileId])
+
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [loaded] = await Promise.all([
+      const [loaded, records] = await Promise.all([
         loadAgentProfileProviderOptions(effectiveProfileId, effectiveProfileVersion),
+        llmConfigService.getProviderConnections({ workspacePath, product: effectiveProfileId }),
         loadProviderManifest(),
       ])
       setOptions(loaded)
+      setAccounts(records)
     } finally {
       setRefreshing(false)
     }
-  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion])
+  }, [loadProviderManifest, effectiveProfileId, effectiveProfileVersion, workspacePath])
 
-  const modelCatalog = useMemo(
-    () => providerManifest.flatMap(provider => provider.models || []),
-    [providerManifest],
-  )
+  const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
+  const cursorReady = readyProviders.some(provider => provider.id === 'cursor-cli')
+  useEffect(() => {
+    let cancelled = false
+    setCursorModels([])
+    if (cursorReady) {
+      void llmConfigService.getProviderModels('cursor-cli').then(result => {
+        if (!cancelled) setCursorModels(result.models || [])
+      }).catch(() => undefined)
+    }
+    return () => { cancelled = true }
+  }, [cursorReady, accounts, workspacePath, product.profileId])
+
+  const modelCatalog = useMemo(() => {
+    const models = readyProviders.flatMap(provider => provider.models || [])
+    if (!cursorReady) return models
+    const known = new Set(models.filter(model => model.provider === 'cursor-cli').map(model => model.model_id))
+    // The installed CLI can offer additional models beyond the curated catalog.
+    // Keep curated metadata/pricing for known IDs, and retain the exact CLI ID
+    // for new choices rather than converting them into the Auto router.
+    for (const model of cursorModels) {
+      if (!model.model_id || known.has(model.model_id)) continue
+      known.add(model.model_id)
+      models.push({
+        provider: 'cursor-cli', model_id: model.model_id, model_name: model.model_name,
+        context_window: model.context_window || 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
+      })
+    }
+    return models
+  }, [readyProviders, cursorReady, cursorModels])
   const engineGroups = useMemo(
     // Work intentionally offers the full platform catalog for each CLI. The
     // profile's model list may be present in an older running server until it
     // restarts, so do not let that stale curation hide the new project picker.
-    () => buildAgentProfileEngineGroups(options.map(option => ({ ...option, models: undefined })), modelCatalog),
-    [modelCatalog, options],
+    () => buildAgentProfileEngineGroups(options
+      .filter(option => readyProviders.some(provider => provider.id === option.provider))
+      .map(option => ({ ...option, models: undefined })), modelCatalog),
+    [readyProviders, modelCatalog, options],
   )
   const workProviderIds = useMemo(
     () => options.map(option => option.provider || option.id),
@@ -160,6 +204,18 @@ export function WorkModelsPanel({
       output_cost_per_1m: 0,
     } satisfies ModelMetadata)
   }, [currentGroup?.models, modelCatalog, selectedOption?.provider])
+  const requestedReasoningEffort = savedSelection?.reasoningEffort
+    || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
+    || selectedDefaults.reasoningEffort
+  const levelsForModel = (modelId: string, option = selectedOption) => modelReasoningLevels(option,
+    modelCatalog.find(model => model.provider === option?.provider && model.model_id === modelId))
+  const reasoningLevels = levelsForModel(currentModelId)
+  const effortForModel = (modelId: string, requested: string | undefined, option = selectedOption) => {
+    const levels = levelsForModel(modelId, option)
+    return [requested, defaultForOption(option).reasoningEffort, levels[0]?.id]
+      .find(effort => effort && levels.some(level => level.id === effort))
+  }
+  const currentReasoningEffort = effortForModel(currentModelId, requestedReasoningEffort)
   const currentModelLabel = selectableModels.find(model => model.model_id === currentModelId)?.model_name
     || currentModelId
     || 'Provider default'
@@ -176,15 +232,12 @@ export function WorkModelsPanel({
     setUsageError(null)
     setUsageConflict(false)
     try {
-      const session = await llmConfigService.startProviderSetup(
-        selectedOption.provider,
-        'usage',
-        100,
-        24,
-        undefined,
-        replaceRunning,
-      )
-      setUsageSession(session)
+      setUsageText(null)
+      // The account this project uses: its own connection, else the server's. The server decides what the caller may
+      // do with it: a terminal for the account's owner and admins, read-only text for anyone else it is available to.
+      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, savedSelection?.connectionId, replaceRunning)
+      if (result.session) setUsageSession(result.session)
+      else setUsageText(result.usage_output || 'No usage output.')
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status
       const responseMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -204,13 +257,12 @@ export function WorkModelsPanel({
       connectionId: config.connection_id,
       provider: option.provider,
       modelId: defaults.modelId,
-      reasoningEffort: defaults.reasoningEffort,
+      reasoningEffort: effortForModel(defaults.modelId, defaults.reasoningEffort, option),
     })
   }
 
   const selectModel = (modelId: string) => {
     if (!selectedOption) return
-    const metadataMatchesProvider = tab?.metadata?.agentProfileEngine === selectedOption.id
     void onRuntimeChange({
       engine: selectedOption.id,
       connectionId: savedSelection?.connectionId,
@@ -218,7 +270,18 @@ export function WorkModelsPanel({
       modelId,
       reasoningEffort: selectedOption.provider === 'agy-cli'
         ? modelId.match(/-(low|medium|high)$/)?.[1]
-        : (metadataMatchesProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined) || selectedDefaults.reasoningEffort,
+        : effortForModel(modelId, currentReasoningEffort),
+    })
+  }
+
+  const selectReasoningEffort = (reasoningEffort: string) => {
+    if (!selectedOption || !reasoningLevels.some(level => level.id === reasoningEffort)) return
+    void onRuntimeChange({
+      engine: selectedOption.id,
+      connectionId: savedSelection?.connectionId,
+      provider: selectedOption.provider,
+      modelId: currentModelId,
+      reasoningEffort,
     })
   }
 
@@ -236,6 +299,7 @@ export function WorkModelsPanel({
           splitPiProviders={false}
           showModelsPerRole={false}
           configurationSource="agent_profile"
+          product={product.profileId}
         />
         <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
           <button
@@ -246,7 +310,7 @@ export function WorkModelsPanel({
           >
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-foreground">Model</h3>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{currentModelLabel}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{currentModelLabel}{reasoningLevels.length > 0 && currentReasoningEffort ? ` · ${currentReasoningEffort} reasoning` : ''}</p>
             </div>
             <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${modelPickerOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -260,9 +324,28 @@ export function WorkModelsPanel({
               />
             </div>
           )}
+          {/* Reasoning effort belongs to the model: shown inside the Model card, not as a separate box. */}
+          {reasoningLevels.length > 0 && (
+          <div className="border-t border-border px-4 py-3">
+            <p className="text-xs font-medium text-foreground">Reasoning effort</p>
+            <div role="group" aria-label="Reasoning effort" className="mt-2 flex flex-wrap gap-2">
+              {reasoningLevels.map(level => (
+                <button
+                  key={level.id}
+                  type="button"
+                  aria-pressed={currentReasoningEffort === level.id}
+                  onClick={() => selectReasoningEffort(level.id)}
+                  className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${currentReasoningEffort === level.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
+                >
+                  {level.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Applies on the next message. Chat history is kept.</p>}
-        {canCheckUsage && usageSupported && (
+        {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -278,6 +361,9 @@ export function WorkModelsPanel({
                 Check usage
               </button>
             </div>
+            {usageText && (
+              <pre aria-label="Provider usage output" className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">{usageText}</pre>
+            )}
             {usageSession && (
               <div className="mt-3">
                 <GuidedProviderTerminal

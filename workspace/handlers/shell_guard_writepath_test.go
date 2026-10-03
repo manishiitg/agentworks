@@ -135,3 +135,63 @@ func TestExecuteShellRejectsEscapingWritePath(t *testing.T) {
 		t.Fatalf("escaping write path was created on disk: %v", err)
 	}
 }
+
+// A folder the person granted outside the workspace (Downloads, a project
+// folder) is accepted when it already exists, and is never created; everything
+// the boundary check exists to stop is still refused.
+func TestIsExistingHostGrant(t *testing.T) {
+	docsDir := t.TempDir()
+	granted := t.TempDir() // outside docsDir, exists
+	file := filepath.Join(granted, "a-file")
+	if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	escapeLink := filepath.Join(docsDir, "escape")
+	if err := os.Symlink(granted, escapeLink); err != nil {
+		t.Fatal(err)
+	}
+
+	origOS := interactiveShellHostOS
+	t.Cleanup(func() { interactiveShellHostOS = origOS })
+	interactiveShellHostOS = "darwin"
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("AGENTWORKS_SLOTS", "")
+	t.Setenv("MULTI_USER_MODE", "")
+	for _, wp := range []string{granted, granted + "/"} {
+		if !isExistingHostGrant(wp, docsDir) {
+			t.Errorf("isExistingHostGrant(%q) = false, want true", wp)
+		}
+	}
+	for name, wp := range map[string]string{
+		"missing outside path":         filepath.Join(granted, "does-not-exist"),
+		"a file, not a directory":      file,
+		"relative path":                "Downloads",
+		".. escape":                    filepath.Join(granted, "..", "evil"),
+		"symlink redirect in the docs": filepath.Join(escapeLink, "sub"),
+		"inside the workspace":         docsDir,
+	} {
+		if isExistingHostGrant(wp, docsDir) {
+			t.Errorf("%s: isExistingHostGrant(%q) = true, want false", name, wp)
+		}
+	}
+	// A server never passes an outside folder through, however it was named.
+	t.Setenv("NATIVE_WORKSPACE", "false")
+	if isExistingHostGrant(granted, docsDir) {
+		t.Error("accepted an outside folder outside native mode")
+	}
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("AGENTWORKS_SLOTS", "on")
+	if isExistingHostGrant(granted, docsDir) {
+		t.Error("accepted an outside folder with per-user accounts on")
+	}
+	t.Setenv("AGENTWORKS_SLOTS", "")
+	interactiveShellHostOS = "linux"
+	if isExistingHostGrant(granted, docsDir) {
+		t.Error("accepted an outside folder on a Linux server in native mode")
+	}
+	interactiveShellHostOS = "darwin"
+	t.Setenv("MULTI_USER_MODE", "true")
+	if isExistingHostGrant(granted, docsDir) {
+		t.Error("accepted an outside folder on a multi-user server")
+	}
+}

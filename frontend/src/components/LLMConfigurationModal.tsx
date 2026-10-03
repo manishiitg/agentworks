@@ -10,6 +10,7 @@ import { LibraryTab } from './llm/LibraryTab'
 import ModalPortal from './ui/ModalPortal'
 import { useCanWriteWorkflow } from '../hooks/useCanWriteWorkflow'
 import { effectiveLLMUnderLock } from '../utils/effectiveLLM'
+import { installedCodingProviders } from '../utils/providerCatalogFilter'
 
 interface LLMConfigurationModalProps {
   isOpen: boolean
@@ -68,8 +69,7 @@ export default function LLMConfigurationModal({ isOpen, onClose }: LLMConfigurat
 
   // Only coding-agent CLIs are configurable; direct API providers are retired.
   const manifestProviderEntries = useMemo(() => (
-    providerManifest.filter(entry =>
-      entry.integration_kind === 'coding_agent' &&
+    installedCodingProviders(providerManifest).filter(entry =>
       isProviderSupported(entry.id as LLMProvider)
     )
   ), [isProviderSupported, providerManifest])
@@ -169,8 +169,8 @@ export default function LLMConfigurationModal({ isOpen, onClose }: LLMConfigurat
   }, [isOpen, defaultsLoaded, loadDefaultsFromBackend, providerManifestLoaded, loadProviderManifest])
 
   const getManifestEntry = useCallback((providerId: string): ProviderManifestEntry | undefined => {
-    return providerManifest.find(p => p.id === providerId)
-  }, [providerManifest])
+    return manifestProviderEntries.find(p => p.id === providerId)
+  }, [manifestProviderEntries])
 
   // Handle Escape key
   useEffect(() => {
@@ -199,8 +199,8 @@ export default function LLMConfigurationModal({ isOpen, onClose }: LLMConfigurat
             {(() => {
               const effective = effectiveLLMUnderLock(modePrimaryConfig, true, publishedLLMs)
               const name = effective ? (providerManifest.find(p => p.id === effective.provider)?.display_name ?? effective.provider) : null
-              const others = providerManifest
-                .filter(p => p.integration_kind === 'coding_agent' && p.id !== effective?.provider)
+              const others = manifestProviderEntries
+                .filter(p => p.id !== effective?.provider)
                 .map(p => p.display_name)
                 .sort((a, b) => a.localeCompare(b))
               return (

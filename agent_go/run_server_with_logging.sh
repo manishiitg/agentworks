@@ -6,6 +6,11 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Products the local app offers in its switcher. Code is on by default here too (the frontend's own default
+# leaves it out); override with a JSON array, e.g. AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'.
+# Defined up here: the runtime config is also written by the early exits (e.g. --only-frontend), before the rest of the setup runs.
+ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\"]}"
+
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
 # of origin/main; agents work in their own worktrees and push to main. A clean checkout on main
@@ -648,6 +653,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "${FRONTEND_URL}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL}",
   cdpEnabled: true,
+  enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${RUNTIME_APP_NAME}",
   faviconUrl: "${RUNTIME_FAVICON_URL}"${ONLY_FRONTEND_GATEWAY_LINE}
 };
@@ -1329,6 +1335,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   workspaceApiBaseUrl: "${frontend_api_base_url}/api/wp",
   workspaceServiceUrl: "${WORKSPACE_API_URL:-${LOCALHOST_BASE_URL}:${WORKSPACE_PORT}}",
   cdpEnabled: true,
+  enabledProductSurfaces: ${ENABLED_PRODUCT_SURFACES_JSON},
   appName: "${runtime_app_name}",
   faviconUrl: "${runtime_favicon_url}"${gateway_config_line}
 };
@@ -1344,9 +1351,8 @@ export MULTI_USER_MODE="false"
 # Enable local mode (enables CDP browser connection and other local-only features)
 export LOCAL_MODE="true"
 
-# Full CLI on a person's own machine (PLAT-364): Claude and Codex get their own shell and file
-# edits, unconfined. The server refuses it in multi-user mode. Set to "off" to keep hybrid.
-export AGENTWORKS_CLI_FULL_UNCONFINED="${AGENTWORKS_CLI_FULL_UNCONFINED:-on}"
+# Coding CLIs and Code's terminal need no switch (PLAT-364): on a Mac they run Full CLI unconfined,
+# on Linux always inside the Landlock lock (bridge tools only if the lock cannot be applied).
 
 # Log all agent prompts (system prompt + user message) to logs/agent_prompts/
 export LOG_AGENT_PROMPTS="true"

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -844,7 +845,27 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 			}
 			version = parsed
 		}
-		profile, err := registry.Resolve(mux.Vars(r)["id"], version, GetUserIDFromContext(r.Context()))
+		profileID := mux.Vars(r)["id"]
+		profile, err := registry.Resolve(profileID, version, GetUserIDFromContext(r.Context()))
+		// Relay's product catalog is readable here, but its chats keep using
+		// the authorized workflow Builder path, not generic profile execution.
+		if profileID == "relays" {
+			if !productEnabled("relays") {
+				writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
+				return
+			}
+			profiles, catalogErr := relayproduct.BuiltinAgentProfiles()
+			if catalogErr != nil {
+				writeAgentProfileError(w, http.StatusInternalServerError, "product catalog unavailable")
+				return
+			}
+			profile, err = profiles[0], nil
+			profile.Product = "relays"
+			if version != 0 && version != profile.Version {
+				writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
+				return
+			}
+		}
 		if err != nil {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return

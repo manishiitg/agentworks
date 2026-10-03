@@ -37,7 +37,8 @@ func TestEveryProviderOptionDeclaresAnOwnReasoningEffort(t *testing.T) {
 	}
 }
 
-// Both profiles default to Codex with GPT-6 Luna. Claude Code remains a
+// The parent defaults to GPT-6.1 Sol and the child to GPT-6 Luna on Codex.
+// Claude Code remains a
 // selectable engine with Sonnet 5.5 as its default and Opus 5.5 as an option.
 func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 	profiles := BuiltinAgentProfiles()
@@ -60,7 +61,7 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 		profileID, optionID, wantModel, wantEffort string
 	}{
 		{"sparkquill", "claude-code", "claude-sonnet-5-5", "high"},
-		{"sparkquill", "codex-cli", "gpt-6-luna", "medium"},
+		{"sparkquill", "codex-cli", "gpt-6.1-sol", "medium"},
 		{"sparkquill", "agy-cli", "gemini-3.8-flash-high", "high"},
 		{"sparkquill-child", "claude-code", "claude-sonnet-5-5", "medium"},
 		{"sparkquill-child", "codex-cli", "gpt-6-luna", "high"},
@@ -77,21 +78,8 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 			if o.Default != (o.ID == "codex-cli") {
 				t.Errorf("%s/%s: default=%t, want Codex as the only default", p.ID, o.ID, o.Default)
 			}
-			wantModels := []string{"gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra"}
-			if o.ID == "claude-code" {
-				wantModels = []string{"claude-sonnet-5-5", "claude-opus-5-5"}
-			} else if o.ID == "agy-cli" {
-				wantModels = []string{"gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"}
-			}
-			if len(o.Models) != len(wantModels) {
-				t.Errorf("%s/%s: models=%v, want %v", p.ID, o.ID, o.Models, wantModels)
-				continue
-			}
-			for i, want := range wantModels {
-				if o.Models[i] != want {
-					t.Errorf("%s/%s: models=%v, want %v", p.ID, o.ID, o.Models, wantModels)
-					break
-				}
+			if len(o.Models) != 0 {
+				t.Errorf("%s/%s narrows the shared model catalog: %v", p.ID, o.ID, o.Models)
 			}
 		}
 	}

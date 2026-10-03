@@ -17,6 +17,7 @@ Servers:
   sparkquill            SparkQuill rootless Linux deployment
   excellence            agents.excellencetechnologies.in (Code only, rootless Linux)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
+  report [server]       how each server differs from the standard runtime profile (read-only)
 
 dominion optionally takes --activate (stage-only otherwise):
   ./deploy.sh dominion              # clone/pull, build, stage a release
@@ -250,7 +251,10 @@ echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH
 # Throttled below the box's shared core/RAM budget: this box also runs other
 # products, each under its own account, and a full go+npm build must not
 # starve their live services while it runs.
-"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+# DEPLOY_DRAIN_SECONDS is how long the switch-over waits for running agent turns to finish (build-and-activate.sh's
+# drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
+# DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
+"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 
 echo "==> [$PRODUCT] Verifying"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
@@ -277,7 +281,9 @@ echo "==> [$PRODUCT] Done."
 # A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
 # URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
 # or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
-# With neither set nothing is sent, and a failed post never fails or delays a deploy.
+# OFF by default (owner, 2026-10-03: "for now make Slack posts silent"); post for one run with
+#   DEPLOY_SLACK_NOTIFY=1 ./deploy.sh confida
+# With no webhook set nothing is sent either, and a failed post never fails or delays a deploy.
 deploy_notify() {
   local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
   [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
@@ -297,6 +303,7 @@ deploy_label() {
 }
 
 deploy_start_notice() {
+  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) return 0 ;; esac
   [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
   local head_line
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
@@ -308,6 +315,7 @@ deploy_start_notice() {
 
 deploy_finish_notice() {
   local rc="$1" took=""
+  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) trap - EXIT; return "$rc" ;; esac
   [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
   trap - EXIT
   if [[ "$rc" == "0" ]]; then
@@ -317,6 +325,11 @@ deploy_finish_notice() {
   fi
   return "$rc"
 }
+
+# ./deploy.sh report [server]: how each server differs from the standard runtime profile. Read-only, deploys nothing.
+if [[ "$SERVER" == report ]]; then
+  exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
+fi
 
 deploy_start_notice
 

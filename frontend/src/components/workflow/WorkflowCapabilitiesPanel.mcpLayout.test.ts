@@ -71,7 +71,7 @@ describe('Workflow MCP panel layout', () => {
 
 
 
-  it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills, Slack, and Gmail', () => {
+  it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills and Google apps', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
     expect(panel).toContain("relayMode ? 'relays.tab.workflow-mcp' : 'agentworks.tab.workflow-mcp'")
@@ -84,7 +84,8 @@ describe('Workflow MCP panel layout', () => {
     expect(panel).toContain("ariaLabel: 'Integrations'")
     expect(panel).toContain('fixedChannel="slack"')
     expect(panel).toContain('fixedChannel="whatsapp"')
-    expect(panel).toContain('<WorkflowRelaySlackPanel workspacePath={workspacePath} />')
+    expect(panel).not.toContain('WorkflowRelaySlackPanel')
+    expect(panel).toContain("label: 'Google apps'")
   })
 
   it('embeds bots and gmail inside the Integrations tabs instead of standalone views', () => {

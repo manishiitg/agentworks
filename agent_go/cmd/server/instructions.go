@@ -22,7 +22,6 @@ type workspacePaths struct {
 	Chats       string
 	Skills      string
 	Workflow    string
-	Downloads   string
 	Subagents   string
 	Config      string
 	ChatHistory string
@@ -47,7 +46,6 @@ func newWorkspacePaths(docsRoot, chatsFolder string) workspacePaths {
 		Chats:       resolveWorkspacePath(docsRoot, chatsFolder),
 		Skills:      resolveWorkspacePath(docsRoot, "skills"),
 		Workflow:    resolveWorkspacePath(docsRoot, "Workflow"),
-		Downloads:   resolveWorkspacePath(docsRoot, "Downloads"),
 		Subagents:   resolveWorkspacePath(docsRoot, "subagents"),
 		Config:      resolveWorkspacePath(docsRoot, "config"),
 		ChatHistory: resolveWorkspacePath(docsRoot, strings.TrimSuffix(chatsFolder, "/Chats")+"/chat_history"),
@@ -74,7 +72,6 @@ func GetWorkspaceMap(docsRoot, chatsFolder string) string {
 | ` + "`" + p.ChatHistory + "/`" + ` | read/write | Past conversation histories |
 | ` + "`" + p.Skills + "/`" + ` | read-only | Skill definitions (SKILL.md + supporting files) |
 | ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — create with ` + "`create_workflow`" + `; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
-| ` + "`" + p.Downloads + "/`" + ` | read-only | Downloaded files and browser content |
 
 ### Chats Folder Organization
 
@@ -127,8 +124,7 @@ func getWorkflowPhaseWorkspaceMapForMode(docsRoot, workflowFolder, mode string) 
 		access = "Run may read workflow artifacts and execute authorized business work; it cannot edit workflow design, config, learnings, KB, measurement, or report files."
 	}
 	return "\n## Workspace\n\nWorkspace docs root: `" + docsRoot + "`. Active workflow: `" + active + "/`. " + access +
-		"\nOther workflows are read-only. `config/` is tool-only. Use quoted absolute paths under the docs root in shell commands. Store workflow outputs and scratch artifacts under the active workflow, not Chats. `" +
-		resolveWorkspacePath(docsRoot, "Downloads") + "/` is available for downloads/browser artifacts. Read `builder-reference/references/file-layout.md` for paths and log schemas.\n"
+		"\nOther workflows are read-only. `config/` is tool-only. Use quoted absolute paths under the docs root in shell commands. Store workflow outputs, scratch and browser artifacts under the active workflow, not Chats. Read `builder-reference/references/file-layout.md` for paths and log schemas.\n"
 }
 
 // GetWorkspaceReference returns detailed reference documentation for workspace config,

@@ -562,3 +562,36 @@ func TestProductSameProviderModelSwitchRetiresDurableSession(t *testing.T) {
 		t.Fatal("old model's durable session survived")
 	}
 }
+
+func TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration(t *testing.T) {
+	t.Setenv("AGENT_PRODUCTS", "relays")
+	registry := agentprofiles.NewRegistry()
+	req := profileRouteRequest(http.MethodGet, "/api/agent-profiles/relays?version=1", nil, "alice")
+	req = mux.SetURLVars(req, map[string]string{"id": "relays"})
+	w := httptest.NewRecorder()
+	getAgentProfileHandler(registry)(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("catalog read: %d %s", w.Code, w.Body.String())
+	}
+	var profile agentprofiles.Profile
+	if err := json.Unmarshal(w.Body.Bytes(), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if profile.ID != "relays" || len(profile.Commands) != 6 {
+		t.Fatalf("wrong catalog: %+v", profile.Commands)
+	}
+	for _, command := range profile.Commands {
+		if command.Name == "publish" && !strings.Contains(command.Prompt, "publish_relay") {
+			t.Fatal("wrong publish prompt")
+		}
+	}
+	if _, err := registry.Resolve("relays", 1, "alice"); err == nil {
+		t.Fatal("catalog enabled generic profile execution")
+	}
+	t.Setenv("AGENT_PRODUCTS", "code")
+	w = httptest.NewRecorder()
+	getAgentProfileHandler(registry)(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatal("disabled Relay catalog was exposed")
+	}
+}

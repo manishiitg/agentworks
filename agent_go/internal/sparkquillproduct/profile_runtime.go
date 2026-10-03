@@ -31,14 +31,19 @@ type FamilyState struct {
 	// profile's provider_options ids, written by onboarding/Settings and sent
 	// as `engine` on every turn. It must round-trip through every Go-side
 	// rewrite of family.json (set_child_profile etc.) or the choice is lost.
-	Engine      string   `json:"engine,omitempty"`
-	// Model is the family's chosen model within that runtime (the composer's
-	// switcher); empty means the option's own default. Round-trips like Engine.
-	Model       string   `json:"model,omitempty"`
-	Child       *Child   `json:"child,omitempty"`
-	ParentLabel string   `json:"parent_label,omitempty"`
-	PinHash     string   `json:"pin_hash,omitempty"`
-	WatchSites  []string `json:"watch_sites,omitempty"`
+	Engine string `json:"engine,omitempty"`
+	// Model is the legacy shared model. Settings now save a model and effort
+	// for each role, with one platform account shared by the family.
+	Model                 string   `json:"model,omitempty"`
+	ParentModel           string   `json:"parent_model,omitempty"`
+	ChildModel            string   `json:"child_model,omitempty"`
+	ConnectionID          string   `json:"connection_id,omitempty"`
+	ParentReasoningEffort string   `json:"parent_reasoning_effort,omitempty"`
+	ChildReasoningEffort  string   `json:"child_reasoning_effort,omitempty"`
+	Child                 *Child   `json:"child,omitempty"`
+	ParentLabel           string   `json:"parent_label,omitempty"`
+	PinHash               string   `json:"pin_hash,omitempty"`
+	WatchSites            []string `json:"watch_sites,omitempty"`
 }
 
 // The family workspace layout. Tools, the inbox note and the prompt all read
@@ -195,8 +200,6 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 		"sparkquill.open-activity":            openActivityFactory(workspaceAPIURL),
 		"sparkquill.celebrate":                celebrateFactory(),
 		"sparkquill.show-scene":               showSceneFactory(),
-		"sparkquill.find-image":               findImageFactory(workspaceAPIURL, false),
-		"sparkquill.find-activity-image":      findImageFactory(workspaceAPIURL, true),
 	}
 	for id, factory := range factories {
 		if err := registry.RegisterToolFactory(id, factory); err != nil {

@@ -215,7 +215,20 @@ PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRI
 chmod +x "$BUILD_DIR"/bin/*
 ln -sfn "$REMOTE_APP/logs" "$BUILD_DIR/logs"
 
-if [[ "${PERSIST_MCP_STATE:-false}" == "true" ]]; then
+# The standard runtime profile (deploy/common/runtime_profile.json, docs/design/deploy_unification.md): the same settings on every
+# product, written below into .env and both services like EXTRA_ENV (a product's own EXTRA_ENV entry for the same key still wins).
+mapfile -t STANDARD_ENV < <(python3 - "$REPO_ROOT/deploy/common/runtime_profile.json" "$REMOTE_APP" "$REMOTE_APP/state" <<'PY'
+import json, sys
+profile, app, data = sys.argv[1:]
+for key, value in json.load(open(profile))["same_everywhere"].items():
+    print(f"{key}={value.replace('{app}', app).replace('{data}', data)}")
+PY
+)
+EXTRA_ENV=("${STANDARD_ENV[@]}" "${EXTRA_ENV[@]:-}")
+install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/mcp" "$REMOTE_APP/state/browser-profile"
+
+if true; then
+  # MCP state lives in state/mcp on every product now (the profile sets AGENTWORKS_MCP_STATE_DIR): carry a release's user config over once.
   mcp_state="$REMOTE_APP/state/mcp"
   install -d -m 0700 "$mcp_state"
   legacy_mcp="$REMOTE_APP/current/configs/mcp_servers_${PRODUCT}_user.json"
@@ -473,5 +486,10 @@ rm -f "$BUILD_DIR/.deploying"
 python3 "$BUILD_DIR/prune-releases.py" "$REMOTE_APP" --apply \
   --health-url "http://127.0.0.1:$AGENT_PORT/api/health" \
   --health-url "http://127.0.0.1:$WORKSPACE_PORT/health"
+
+# How this server differs from the standard runtime profile (docs/design/deploy_unification.md). Report only for now: it never fails
+# a deploy while the servers are being aligned.
+python3 "$REPO_ROOT/deploy/common/profile_report.py" --profile "$REPO_ROOT/deploy/common/runtime_profile.json" --name "$PRODUCT" \
+  --account "$PRODUCT" --app "$REMOTE_APP" --data "$REMOTE_APP/state" --workspace-port "$WORKSPACE_PORT" || true
 
 echo "==> Done. Release $RELEASE_ID is live at https://$DOMAIN"

@@ -134,6 +134,7 @@ func build(t *testing.T, factory agentprofiles.ToolFactory, rt agentprofiles.Too
 
 func TestFamilyStateToolsWriteFamilyJSONAndMirrors(t *testing.T) {
 	fake, sink, rt, url := newToolHarness(t)
+	fake.files["_users/u1/Chats/SparkQuill/family.json"] = `{"engine":"codex-cli","parent_model":"gpt-6.1-sol","child_model":"gpt-6-luna","connection_id":"family-account","parent_reasoning_effort":"medium","child_reasoning_effort":"high"}`
 	ctx := context.Background()
 
 	profile := build(t, setChildProfileFactory(url), rt)
@@ -153,6 +154,9 @@ func TestFamilyStateToolsWriteFamilyJSONAndMirrors(t *testing.T) {
 	}
 	if state.Child == nil || state.Child.Name != "Maya" || state.Child.Grade != "6" || state.Child.Board != "CBSE" || state.ParentLabel != "mom" {
 		t.Fatalf("family.json = %+v", state)
+	}
+	if state.Engine != "codex-cli" || state.ParentModel != "gpt-6.1-sol" || state.ChildModel != "gpt-6-luna" || state.ConnectionID != "family-account" || state.ParentReasoningEffort != "medium" || state.ChildReasoningEffort != "high" {
+		t.Fatalf("family profile update discarded AI settings: %+v", state)
 	}
 	if !strings.Contains(fake.files["_users/u1/Chats/SparkQuill/memory/child-profile.json"], `"Maya"`) {
 		t.Fatalf("memory mirrors missing: %v", fake.files)

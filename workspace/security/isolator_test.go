@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -940,5 +941,47 @@ func TestStrictSandboxNetworkPolicy(t *testing.T) {
 	}
 	if out := run(noNetwork); strings.Contains(out, "No module") || strings.Contains(out, "python3: command not found") {
 		t.Skipf("python3 unavailable inside the sandbox: %s", out)
+	}
+}
+
+func TestManagedBrowserIPCOutlivesCommandScratch(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "")
+	root := t.TempDir()
+	session := fmt.Sprintf("workflow-%016x--browser", time.Now().UnixNano())
+	socket := browserconfig.SocketDirForSession(session)
+	defer os.RemoveAll(socket)
+	iso := &Isolator{BaseDir: root, WorkDir: root, ReadPaths: []string{root}, WritePaths: []string{root}, BrowserSession: session}
+	cmd, cleanup, err := iso.ExecuteIsolated(context.Background(), "agent-browser --session "+session+" tab --json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := ""
+	for _, value := range cmd.Env {
+		if strings.HasPrefix(value, "TMPDIR=") {
+			temporary = strings.TrimPrefix(value, "TMPDIR=")
+		}
+	}
+	if temporary != filepath.Join(socket, "tmp") {
+		cleanup()
+		t.Fatal("browser IPC not scoped", temporary)
+	}
+	marker := filepath.Join(temporary, "ipc")
+	if err := os.WriteFile(marker, []byte("alive"), 0600); err != nil {
+		cleanup()
+		t.Fatal(err)
+	}
+	cleanup()
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatal("browser IPC removed with command", err)
+	}
+	cmd, cleanup, err = iso.ExecuteIsolated(context.Background(), "printf normal-command", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	for _, value := range cmd.Env {
+		if value == "TMPDIR="+temporary {
+			t.Fatal("ordinary command reused browser IPC scratch")
+		}
 	}
 }

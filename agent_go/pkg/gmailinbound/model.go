@@ -13,6 +13,9 @@ import (
 )
 
 type Route struct {
+	Rules           []Rule            `json:"rules,omitempty"`
+	SelectedRuleID  string            `json:"-"` // Selected durably at admission, never supplied by email.
+	Filters         *Filters          `json:"filters,omitempty"`
 	Name            string            `json:"name,omitempty"`
 	WorkflowTrigger bool              `json:"workflow_trigger,omitempty"`
 	RouteSelections map[string]string `json:"route_selections,omitempty"`
@@ -51,6 +54,7 @@ type Message struct {
 	ID            string       `json:"id"`
 	ReceivedAt    int64        `json:"received_at"`
 	ThreadID      string       `json:"thread_id"`
+	IsReply       bool         `json:"is_reply,omitempty"`
 	From          string       `json:"from"`
 	Recipients    []string     `json:"recipients"`
 	Subject       string       `json:"subject"`
@@ -58,10 +62,13 @@ type Message struct {
 	RFCMessageID  string       `json:"rfc_message_id"`
 	Authenticated bool         `json:"authenticated"`
 	Automatic     bool         `json:"automatic"`
+	Blocked       bool         `json:"blocked,omitempty"` // Spam, trash, bounces and automatic replies.
 	Attachments   []Attachment `json:"attachments,omitempty"`
 }
 type Delivery struct {
 	ID        string
+	RuleID    string
+	RuleName  string
 	Route     Route
 	Message   Message
 	SessionID string
@@ -110,6 +117,7 @@ func (r RawMessage) Parse(account string) (Message, error) {
 		return Message{}, fmt.Errorf("invalid sender")
 	}
 	m := Message{ID: r.ID, ThreadID: r.ThreadID, From: strings.ToLower(from.Address), Subject: r.Payload.header("Subject"), RFCMessageID: r.Payload.header("Message-ID")}
+	m.IsReply = strings.TrimSpace(r.Payload.header("In-Reply-To")) != "" || strings.TrimSpace(r.Payload.header("References")) != ""
 	m.ReceivedAt, _ = strconv.ParseInt(r.InternalDate, 10, 64)
 	if subject, e := new(mime.WordDecoder).DecodeHeader(m.Subject); e == nil {
 		m.Subject = subject
@@ -120,11 +128,14 @@ func (r RawMessage) Parse(account string) (Message, error) {
 			m.Recipients = append(m.Recipients, strings.ToLower(a.Address))
 		}
 	}
-	m.Automatic = r.Payload.header("Auto-Submitted") != "" && !strings.EqualFold(r.Payload.header("Auto-Submitted"), "no")
+	autoSubmission := strings.ToLower(strings.TrimSpace(strings.SplitN(r.Payload.header("Auto-Submitted"), ";", 2)[0]))
+	m.Automatic = autoSubmission != "" && autoSubmission != "no"
 	m.Automatic = m.Automatic || r.Payload.header("List-ID") != "" || r.Payload.header("Return-Path") == "<>"
+	m.Blocked = autoSubmission == "auto-replied" || strings.TrimSpace(r.Payload.header("Return-Path")) == "<>"
 	for _, label := range r.LabelIDs {
 		if label == "SPAM" || label == "TRASH" {
 			m.Automatic = true
+			m.Blocked = true
 		}
 		if label == "SENT" && strings.EqualFold(from.Address, account) {
 			m.Authenticated = true

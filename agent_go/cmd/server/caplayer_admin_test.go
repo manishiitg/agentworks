@@ -229,9 +229,9 @@ func TestCapLayerProfileHasNoGeneralShellOrLivePolicyTools(t *testing.T) {
 
 func TestCapLayerRuntimeRejectsInheritedSecretsAndNativeToolRollout(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
-	t.Setenv(cliFullEnv, "on")
-	t.Setenv(cliLandlockEnv, "on")
-	t.Setenv(cliFullUnconfinedEnv, "on")
+	t.Setenv("AGENTWORKS_CLI_FULL", "on")
+	t.Setenv("AGENTWORKS_CLI_LANDLOCK", "on")
+	t.Setenv("AGENTWORKS_CLI_FULL_UNCONFINED", "on")
 	withMemoryUserDirectory(t, `{"users":[{"id":"admin","role":"admin","products":[]}]}`)
 	registry := agentprofiles.NewRegistry()
 	profile := caplayerproduct.BuiltinAgentProfile()

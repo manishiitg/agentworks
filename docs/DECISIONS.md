@@ -2,8 +2,14 @@
 
 A running log for people and coding agents working on this repository. Read it
 before changing behaviour it covers; add an entry (newest first) when you make
-or reverse a decision, and move an open issue to a decision once it is settled.
-Each entry says what was decided, why, and where it lives in the code.
+or reverse a decision. Each entry says what was decided, why, and where it lives
+in the code, and links its platform ticket.
+
+This file is not where work is tracked. Every bug, fix or feature has a platform
+ticket (`docs/bugs/pulse_platform/<area>/plat-NNN.md`, listed in
+`docs/bugs/pulse_platform_issue_register.md`) holding its state, what is done
+and what is left; that ticket is the source of truth. Add an entry here only
+for a decision that changes behaviour, keep it short, and link the ticket.
 
 Design references for the linked runtime decisions:
 
@@ -12,6 +18,906 @@ Design references for the linked runtime decisions:
 - [Workflow step output links and artifact lifetime](design/project_instruction_files.md#workflow-step-outputs).
 
 ## Decisions
+
+### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome)
+
+- **Found (user).** "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied" starting the Code browser on Excellence:
+  /usr/bin/google-chrome resolves to /opt/google/chrome, which the Landlock sandbox did not grant. It worked before PLAT-374 only because the
+  mount-namespace fallback (removed) could see /opt.
+- **Done.** `/opt/google/chrome` is in landlockSystemReadPaths (read + execute, dropped when absent); TestSystemChromeRunsInsideTheSandbox
+  runs the real Chrome in the sandbox. Applies to every Linux server.
+
+### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order
+
+- **Decided (owner).** The mic is on for Code (it needs the server's speech engine: Excellence has it); New chat and the live-view toggle sit
+  on the right with the send controls; Code's workspace toolbar reads Dashboard | Files, Terminal, Browser | Automation, Costs | Setup.
+- **Done.** product.yaml (code) declares `voice: preferred`; ChatInput renders New chat and the live-view control inside the send controls;
+  WorkWorkspaceToolbar orders a Code's groups as above (a Crew's order is unchanged).
+- **Note.** "Unable to load project browser sessions" and "Could not stop the session" seen right after a deploy were the 502 window while the
+  agent restarted (deploys no longer wait for turns); both work on a retry.
+### 2026-10-03 — Mac: Seatbelt for every coding CLI, home open; no unconfined mode — PLAT-394
+
+- **Decided (owner).** On a person's own Mac every CLI runs Full CLI under Seatbelt. Their home stays open
+  (settings, logins, terminal config); only AgentWorks' workspace data outside the chat's grants, the folder
+  guard's blocked paths, and opening/scripting other apps are refused. `full_unconfined` is gone; a Mac that
+  cannot sandbox runs bridge-only.
+- **Why.** The owner wants agents to keep the same reach as the person on their own machine; the risk is the
+  platform's own data and escapes through other apps, not the person's home.
+- **Where.** `internal/clisandbox/seatbelt.go` (provider), `cmd/server/cli_landlock.go` (builder).
+  [PLAT-394](bugs/pulse_platform/security-sandbox/plat-394.md).
+
+### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work)
+
+- **Found (user).** With tmux's alternate screen off (smcup@:rmcup@) the wheel did nothing: tmux repaints its screen instead of scrolling
+  it, so the browser's scrollback never held the history.
+- **Done.** The override is removed; the wheel sends `{"type":"scroll","lines":N}` again, at most once per animation frame (deltas add
+  up), and the workspace runs one tmux command per message (`if-shell #{pane_in_mode} '' 'copy-mode -e'; send-keys -X -N N scroll-up`).
+  The first keystroke after scrolling back cancels the history view. tmux's mouse stays off, so copy still works.
+
+### 2026-10-03 — A model or reasoning-effort change applies between turns, never mid-turn
+
+- **Decided (owner).** "Reasoning or model change should apply only when the agent has completed turns."
+- **Found.** Changing Muse's reasoning effort while a turn ran, then sending a message, relaunched the retained CLI at once
+  (interruptWorkflowPolicySession): the running turn was cancelled ("muse tmux session … died before run completion").
+- **Done.** When the runtime changed and a turn is running, the message waits in the durable turn queue; when it runs, nothing is in
+  flight and the CLI relaunches with the new model/effort (server.go, before interruptWorkflowPolicySession).
+
+### 2026-10-03 — Compact browser chrome and recovery preserve the working browser
+
+Browser tabs and actions share one compact row, with navigation beneath it.
+Managed workflow/project browsers remember their open URLs and selected tab in
+private profile storage and reopen them on startup. Teaching and replay attach
+to the existing daemon over fixed IPC operations, avoiding CLI version changes
+that restart Chrome. A writable viewer that had control may recover a dropped
+managed browser once; passive viewers and local CDP do not launch browsers.
+Interrupted teaching stays interrupted. Ticket:
+[PLAT-393](bugs/pulse_platform/browser/plat-393.md).
+
+### 2026-10-03 — Deployment unification, step 2: the standard profile is written by the rootless-linux deploy
+
+- **Done.** build-and-activate.sh reads deploy/common/runtime_profile.json and writes every same_everywhere setting into .env and both
+  services (like EXTRA_ENV, verified in the running processes): NATIVE_WORKSPACE, CDP off, CLI lock and Full CLI, AGENTWORKS_STATE_ROOT,
+  AGENTWORKS_MCP_STATE_DIR (state/mcp on every product; a release's MCP user config is carried over once) and
+  AGENT_BROWSER_SHARED_PROFILE=<app>/state/browser-profile. Applies to Excellence, Confida, SparkQuill.
+- **Decided.** MULTI_USER_MODE is per server: SparkQuill is single-user (data in _users/default); switching it on would hide that data.
+  No rollback step (owner: "if anything goes down it's fine").
+
+### 2026-10-03 — Deployment unification, step 1: a read-only drift report
+
+- **Decided (owner).** All servers are deployed one way with one runtime profile (docs/design/deploy_unification.md).
+- **Done.** deploy/common/runtime_profile.json is the standard profile; `./deploy.sh report [server]` prints how each running server
+  differs (agent and workspace process environment, private /tmp, kept releases, release source, slots/bin on PATH). Report only; the
+  rootless-linux deploy prints it at the end and never fails on it. First run: every server differs (state root, MCP state dir and browser
+  profile mostly unset; SparkQuill without MULTI_USER_MODE; SparkQuill, Dominion and RTS without the CLI lock settings; RTS not native;
+  Excellence and Dominion keep one release).
+### 2026-10-03 — Codex resume adoption handles interactive options and historical startup banners
+
+A confined Codex resume copies only its explicitly selected thread into the
+private CLI home, parsing the model/profile/config options before that ID.
+A newer Codex ready header supersedes an older `Resuming session` banner in
+scrollback. The original rollout and existing private copies are retained.
+Shared provider `648234b`, validated with a real two-turn resumed conversation
+and deployed to SparkQuill in `sparkquill-7fc2ae97-20261003181010`. [PLAT-392](bugs/pulse_platform/coding-agent-bridge/plat-392.md).
+
+### 2026-10-03 — Deploy Slack notices are silent by default again
+
+- **Decided (owner).** "For now make Slack posts silent": `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1`.
+
+### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks
+
+- **Decided (owner).** "Our platform should be secure; people can already do anything from the terminal": the Code agent may set up a tunnel
+  (cloudflared, ngrok) when the user asks, saying once that the app becomes reachable by anyone with the link.
+- **Done.** codeHostSafetyInstructions no longer forbids tunnels, reverse proxies and port forwarders; it still forbids browser IDEs,
+  SSH/remote-desktop servers and VPNs (the 2026-09-30 code-server incident) and binding ports to all interfaces.
+
+### 2026-10-03 — Gmail sender exceptions require separate owner confirmation
+
+Builder may propose sender lists, but cannot authorize non-owner email. Only the
+target owner's signed-in browser can grant a private, configuration-bound receipt;
+agent tools, chat confirmations and writable manifests cannot grant it. Changes
+to sender policy, actions, mailbox, replies or enabled state revoke consent; old
+allowlists require review. Common public mailbox domains and public suffixes are
+rejected. The pane remains read-only for configuration, with a dedicated owner
+security confirmation/revocation. Ticket:
+[PLAT-391](bugs/pulse_platform/security-sandbox/plat-391.md).
+
+### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal)
+
+- **Found (user).** "Cannot start browser: Socket directory '/run/user/990/agent-browser' is not writable". A project browser
+  (`agents--project-…`) is not a per-user session, so it gets no scoped socket folder, and in native mode nothing set
+  AGENT_BROWSER_SOCKET_DIR, so agent-browser used $XDG_RUNTIME_DIR. That worked only under the mount-namespace fallback removed by
+  PLAT-374 (6f630cc25).
+- **Done.** A sandboxed command without a scoped browser socket always gets AGENT_BROWSER_SOCKET_DIR=/tmp/.agent-browser, the folder
+  the sandbox grants. New chat button: icon only in the composer's neutral colours; "New chat" slides out on hover/focus.
+
+### 2026-10-03 — Native agent tools: off = mcp_only, on = full in a sandbox (hybrid removed)
+
+Owner decision. The reads-only hybrid mode is gone; on means the CLI's own
+tools inside Landlock/Seatbelt, or mcp_only when it cannot be confined. Pi
+stays bridge-only. Ticket: [PLAT-390](bugs/pulse_platform/coding-agent-bridge/plat-390.md).
+
+### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser
+
+- **Decided (owner).** Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it.
+  Workflows and Crew keep per-project homes (unattended, shareable, bot-triggered).
+- **Found (user).** The Code agent's shell had HOME=/srv/agents/home (native mode keeps the real host HOME in privateSandboxHome), so it
+  did not see the terminal's nvm and ran Node 22 while the terminal ran Node 24.
+- **Done.** A Code command run as the owner's slot (terminal, and the agent's execute_shell_command in a Code project) gets the slot's own
+  home (`/srv/<app>/slots/home/<slot>`) as HOME plus a Landlock write grant (`Isolator.UserHome`); nvm's default Node from that home leads
+  PATH, so a non-interactive `sh -c` runs the same node. Other slot commands get the project's private home whatever the native setting
+  (`SlotHomeEnv`). Users without a slot keep the per-project home. Verified on Excellence and Confida.
+- **Scroll.** tmux no longer uses the alternate screen (`terminal-overrides smcup@:rmcup@`), so lines that scroll off reach the browser
+  terminal's own scrollback: the wheel scrolls locally and smoothly. The server-driven scroll message is removed. After a reconnect the
+  browser only has the visible screen; older output stays in tmux.
+### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server
+
+- **Found (user).** Nothing could be selected or copied in the terminal: tmux's mouse mode (turned on for wheel scrolling) took every drag.
+  Also a pre-fix shell kept being reused: tmux answers a refused client with "access not allowed" and exit 0, which read as running.
+- **Done.** tmux runs with its mouse off, so a drag is the browser's own selection. The page turns the wheel into `{"type":"scroll","lines":N}`
+  (the agent server forwards only resize and scroll, rebuilt from their fields); the workspace runs tmux `copy-mode -e` + `scroll-up/down`, and
+  the first keystroke after scrolling back sends `{"type":"scroll","cancel":true}` so typing reaches the shell. `interactiveShellRunning`
+  treats "access not allowed" as not running. Verified on a Mac and on Excellence/Confida (normal and as a user's slot).
+### 2026-10-03 — Relays keep Google apps and exclude Slack/WhatsApp
+
+Relays are API products with schedules and selected tools/skills. Keep Drive,
+Sheets, Calendar and Gmail through the shared authorized Google connection and
+service-grant tools. Remove Slack from the Relay product manifest and UI; reject
+Slack/WhatsApp configuration and block retained Slack tool routes at runtime.
+Plan creation requires no Google connection. This reverses the earlier Relay
+Slack scope per the user. Ticket: [PLAT-389](bugs/pulse_platform/integrations/plat-389.md).
+
+### 2026-10-03 — Deploys switch over at once (no wait for running turns), for now
+
+- **Decided (owner).** "Force deploys for now": a deploy restarts the services without waiting for running agent turns to finish.
+- **Done.** `deploy.sh` passes `DEPLOY_DRAIN_SECONDS` (default 0) into the build job as `DRAIN_TIMEOUT_SECONDS`, so build-and-activate.sh's drain
+  restarts immediately. `DEPLOY_DRAIN_SECONDS=300 ./deploy.sh <server>` waits up to 5 minutes again. A running turn is cut off by a deploy.
+
+### 2026-10-03 — User slot shells exclude the service account's Google CLI store
+
+- The shared runner treats a user slot like a restricted profile for host Google
+  CLI credentials: neither automatic store grants nor host GOG/keyring environment
+  cross that account boundary. This fixes Relay Builder admission without adding
+  a product-specific sandbox or widening service-home permissions.
+- Trusted local shells retain direct CLI access. Authorized per-connection Google
+  operations keep using the existing platform tool. Implementation and verification:
+  [PLAT-380](bugs/pulse_platform/security-sandbox/plat-380.md).
+
+### 2026-10-03 — Folders outside the workspace reach a sandbox only on a person's own Mac
+
+A workflow's `folder_access` needs the same admin-assigned roots as a Work
+folder, and absolute host grants (including the host Downloads) never reach a
+server's CLI or shell sandbox. Ticket: [PLAT-383](bugs/pulse_platform/security-sandbox/plat-383.md).
+
+### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu)
+
+- **Decided (user).** Up to 3 terminals per person per Code (tabs); the toolbar actions live in one menu in the top bar with keyboard shortcuts.
+- **Done.** The stream/stop routes take `tab` (1..3; anything else is refused, which is the cap); tab 1 keeps the pre-tab shell id so a running
+  terminal carries over. The panel shows a tab strip (`+`, close stops that shell), keeps hidden tabs connected, and remembers the tabs per Code.
+  Search stays in the toolbar; copy, paste, clear, text size, colours, full screen and new terminal are in a `⋯` menu with their shortcuts
+  (⌘ on a Mac; Ctrl+Shift+C/V/K elsewhere so Ctrl+C stays the shell's interrupt; Alt+1..3 switches tabs).
+- **Found (user, Excellence).** (1) A slot terminal kept the service account's HOME: a login shell read `/srv/agents/home/.profile`
+  ("Permission denied") and did not share the agent's home. (2) tmux 3.3+ refuses clients of another user, and the slot's tmux runs in the
+  sandbox's user namespace where the service arrives as the overflow user: the service could not see or stop a slot shell, so every start
+  left another tmux server running (five for one terminal). (3) With mouse on, tmux's right-click menu (split, kill, respawn) covered the
+  browser's menu.
+- **Done.** Every sandboxed terminal gets the project's private home (group-accessible). Slot shells grant `server-access -a -w` to the
+  overflow user (the socket's file mode still limits who can connect: the slot and the service). tmux's prefix and right-click bindings are
+  removed; the wheel still scrolls. The launcher refuses a policy with fields it does not know (an old launcher ignored `hidden_paths`).
+  Verified on Excellence and Confida as a user's slot: HOME in the project, service reaches the shell, bindings off, Stop leaves no tmux server.
+- **Open.** Four orphaned tmux servers of one user's Code terminal from before this fix are still running on Excellence (left for the user to decide).
+### 2026-10-03 — Manual browser clipboard stays with the controlled browser
+
+Use native local clipboard gestures to copy the active page selection and insert
+plain text into the existing scoped browser's focused field. Require current
+write access and exclusive control for every transfer; never use the shared
+server OS clipboard. Browser controls use the selected neutral header/tab/address
+layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/plat-382.md).
+
+### 2026-10-03 — Scheduled runs never apply decisions; the UI and Builder chat do
+
+Owner decision: decisions are applied only where the person can watch. The
+pre-run decision drain (PLAT-093) is removed; an answered decision is applied in
+the Builder chat, by the answering turn or Needs you's "Apply in chat". Ticket:
+[PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
+
+### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
+
+The platform `notify_user` tool belongs only to saved workflows. Relay's shared
+runner does not grant it, and SparkQuill check-ins save updates in their own
+history and Progress tab. Tool factories and product allowlists cannot bypass
+this boundary. Incoming Gmail's read-only pane and Builder explain Google sign-in
+versus receiving, the deployment's event URL and the Google Cloud/server checklist.
+Infrastructure setup requires cloud and server access; an app admin role alone
+is insufficient. Account consent and rules stay in Builder. Ticket:
+[PLAT-379](bugs/pulse_platform/integrations/plat-379.md).
+
+### 2026-10-03 — Relay commands follow its product; prompt inspection stays private
+
+- Relay's `product.yaml` owns its command catalog as well as its builder prompt,
+  skill and tools. The shared composer selects commands by product and excludes
+  Pulse for Relay; the existing profile endpoint exposes metadata without adding
+  a generic Relay execution mode.
+- Generated instructions remain outside editable workspaces. The existing
+  hidden-file policy exposes a virtual, read-only `AGENTS.md` view of the selected
+  chat's last finalized prompt. Owner-private snapshots persist across restart,
+  recheck workspace access, and are removed on clear/delete.
+- Implementation, checks and deployment status: [PLAT-378](bugs/pulse_platform/frontend-chat/plat-378.md).
+
+### 2026-10-03 — Workshop child costs retain the authorized launch identity
+
+The server records the launch user and channel in WorkshopConfig. Detached
+workshop sessions carry those values into their step and background agents,
+while keeping their lifetime controlled by session Close rather than the HTTP
+request. Missing identities stay unknown; current workflow ownership is not
+evidence of who launched a historical run. [PLAT-377](bugs/pulse_platform/cost-telemetry/plat-377.md).
+
+### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only
+
+- **Decided (user).** The chat input has no model picker (models change in the right-side panel). Code gets a New chat button; it must replace the current chat, never open a
+  parallel one: Code always has one active tab.
+- **Done.** Code's composer shows the existing New chat action (owner only, not on a shared Code). It stops the running session, rotates the project's conversation on the
+  server (the project manifest gets a new session id, so the coding agent starts a fresh conversation) and resets the same tab. The previous conversation stays listed.
+- **Model picker removed (user).** The chat input no longer renders a model/reasoning picker on any surface (it was only shown for `inputVariant="product"`: Video Studio,
+  Dominion, SparkQuill). Models change in each product's own settings; a workflow's model lives in its LLM configuration panel, not in the chat box.
+
+### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals
+
+- **Found (user).** A manager of a shared provider account gets a live terminal for Usage, and could type `/logout` (or change settings) for everyone on the account.
+- **Done.** In a `usage` setup session, typed input goes through the same slash allowlist as the coding agents' live terminals (`AGENTWORKS_TERMINAL_SLASH_COMMANDS`,
+  default `/usage` only): other slash lines are erased, menu navigation is dropped. Non-managers still get server-collected text. Supersedes the unpushed
+  "usage read-only for everyone" branch (managers keep the live view).
+### 2026-10-03 — The old workspace `Downloads/` folder is no longer granted
+
+Folder guards stop granting `Downloads/` and prompts stop pointing at it; outputs
+and browser artifacts go to the chat or workflow folder. It was a leftover whose
+local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/security-sandbox/plat-373.md).
+
+### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account
+
+- **Found.** A Code agent installed nvm into the service account's home (`/srv/agents/home`). Traced: every Code agent shell call blocks the project's `db/db.sqlite`
+  (inside the writable project). Landlock cannot carve a subpath out of a grant, so `landlockPolicy()` failed and `ExecuteIsolated` silently fell back to the
+  mount-namespace backend. That backend ignores `Isolator.Slot` (ran as the service account, "root" in its namespace) and left the host as the service account sees it:
+  replayed as a slot user on Excellence it read the platform `.env` (server secrets) and could write the service home and the release folder. Other users' trees stayed hidden.
+  Affects every server with slots or Landlock (Excellence, Confida, RTS) since blocked paths were added to Code; the terminal was not affected (no blocked paths).
+- **Done.** Blocked paths inside a granted path become `HiddenPaths`: the launcher mounts an empty, mode-000, read-only placeholder over each (like the read-only overlays for
+  blocked-write paths). A policy Landlock cannot carry is refused, never downgraded; a slot command never uses the mount-namespace backend. Verified on Excellence as the user's
+  slot with the new launcher: runs as the slot, `db.sqlite` unreadable and read-only, `.env` unreadable, service home not writable, project writable, `HOME` is
+  `<project>/.sandbox-cache/home` (the same home as the Code terminal, so agent and terminal now share installs and logins, as the user asked).
+- **Open.** The launcher binary must ship with the release (normal deploy). Secrets in `.env` were readable by Code agent shells until deployed: rotation is the owner's call.
+  `TestLandlockEnforcesExternalFolderAccess` fails on Excellence with the released launcher too (pre-existing, not this change): a blocked-write folder that is only a read path
+  accepted a write; to investigate. A missing blocked file (e.g. `db.sqlite-wal`) cannot be hidden and could be created.
+### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
+
+- **Decision (user).** One Crew/Code can use different saved messages for different
+  email filters; one workflow can bind different filters to different saved
+  routes. Configure up to 20 ordered named rules through Builder. First eligible
+  match runs once; no match skips mail. One target address/watch is retained.
+- **Permissions.** Common filters restrict every rule. Rule sender lists inherit
+  common/owner-only policy unless explicitly selected, and intersect an explicit
+  common list. Only the interactive owner configures rules. Gmail authentication,
+  blocked message kinds, credential scope and current target access stay enforced.
+- **Execution.** Durable deliveries pin the selected stable rule ID and retain
+  legacy dedup keys. Reordering never redirects queued mail. Removed/paused rules
+  or changed conditions reject/skip it; current actions for the same ID apply at
+  start. Email JSON cannot choose routes: the scheduler resolves an internal rule
+  selection against the saved manifest with exact groups/routes and raw payload.
+  Crew/Code include the saved instruction and untrusted email context separately;
+  different rules get isolated chats, replies matching the same rule continue it.
+- **Builder/UI.** A provided array replaces all rules; omitted rules preserve them;
+  clearing restores legacy single-action behavior with explicit workflow binding.
+  Email and Triggers show ordered cards, conditions, saved actions, paused state
+  and matched rule in activity. Builder owns all configuration. Updated packaged
+  skills and system guidance describe setup without asking users for IDs or forms.
+- **Validation.** Admission/dedup/migration, queued edits, sender authorization,
+  saved workflow bindings, project actions and read-only UI have regression tests.
+  No live mailbox or RTS deployment is part of this change.
+- **Files.** `pkg/gmailinbound/{rules,store,service}.go`, server Gmail trigger tools,
+  scheduler/webhook dispatch, `GmailInboundPanel`, shared Builder guidance and guides.
+
+### 2026-10-03 — Relays shares Crew and Code's introduction layout
+
+- The no-selection Relays page uses `ProductIntro`, shared with Crew and Code,
+  to explain graph building, draft testing and published API versions. Its
+  create button uses the existing preset dialog and account create permission.
+  Relays' guided walkthrough stays disabled.
+- Implementation and verification: [PLAT-373](bugs/pulse_platform/frontend-chat/plat-373.md).
+
+### 2026-10-03 — macOS Seatbelt confines Claude on a person's own Mac
+
+- On a single-user Mac, Claude Code now starts under `sandbox-exec` with Full CLI
+  (multi-llm-provider-go `clisandbox.SeatbeltArgs`/`SeatbeltCmd`, policy field
+  `Seatbelt`). Other CLIs stay Full CLI unconfined on a Mac until each is
+  certified (`cliSeatbeltCertified`).
+- Profile: allow by default; deny reads and writes under the home, `/Users`,
+  `/Volumes` and `/Network`; reopen the chat's folder-guard read/write grants,
+  the launch files, the CLI install, and Claude's own config (`~/.claude`,
+  `~/.claude.json*`, its cache, read-only Keychain files). The folder guard's
+  blocked paths are denied last, so `planning/`, `AGENTS.md` and the raw
+  `db.sqlite` are refused inside granted folders — something Landlock cannot
+  express. Network and system paths are untouched (macOS CLIs have
+  undocumented dependencies there).
+- Claude keeps its real home on a Mac: its login is a Keychain entry named after
+  its config folder, so a private home (as on Linux) would sign it out.
+- Fixed with it: the sandbox policy prefixed absolute host grants (Downloads, a
+  project folder) with the docs root, so neither lock actually granted them.
+- If sandbox-exec is missing or the policy cannot attach, a Mac falls back to
+  Full CLI unconfined, as before. Tests: `TestSeatbeltConfinesUnderTheRealSandbox`
+  (runs the real sandbox), `TestDecideCLIConfinement`, `TestCLISandboxPolicyPaths`.
+  Live certification (start, login, tools, resume) still to do.
+
+### 2026-10-03 — Providers owns agent and account setup; products select ready runtimes
+
+Configure agents, credentials and accounts in Providers. Workflow, Crew, Code
+and Relay choose an authorized ready account, model and supported reasoning
+effort. Keep effort visible when Model is collapsed; intersect profile and model
+capabilities and preserve account identity on changes. Existing credentials remain
+compatible. Implementation, verification and rollout are tracked in
+[PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
+
+- **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the
+  service account with mode 0700, so the slot (same group, different user) could not enter it: `mkdir: Permission denied` for any installer that writes under `$HOME`. The same
+  folder is used by the Shell tool, so it affected slot users there too.
+- **Done.** `privateSandboxHome` makes `.sandbox-cache`, `home` and `.config` group rwx + setgid every time (existing folders heal on the next start); the terminal creates an empty
+  `~/.bashrc` (installers say "Profile not found" otherwise). Verified with the real nvm installer as the slot: install, new terminal has `nvm`, `nvm install 24` gives Node 24.
+  Fixed in the shared workspace code, so Excellence, Confida and RTS get it from a normal deploy; no per-host step.
+- **Open (found while checking).** A coding agent's own nvm install landed in the platform account's real home `/srv/agents/home` (`.nvm`, `.bashrc`, `.profile` edited), not in the
+  project: that agent's shell is not on the private home, so the terminal cannot see what the agent installs, and the agent can write to a home shared by every user.
+
+### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
+
+- **Done.** Flush the current page before viewer navigation and mark that
+  navigation as an explicit open. Recorded link navigation still waits for the
+  website. Opening a blank tab and then entering a URL now reproduces correctly.
+  Trusted viewer control and scoped service calls remain required for these marks.
+- **Verified.** Real Chrome recording and repeated replay across the manual
+  address change, tabs, popup and close; browser control proxy checks.
+- **RTS finding.** The service's `.config` is root-owned and its private
+  `agentworks/gog` directory was absent. Sandbox setup tried to create this
+  prerequisite before every trusted command and failed, including browser
+  startup. Create only the missing private child directories as video-studio,
+  mode 0700; retain the parent and unrelated configuration ownership. The
+  root bootstrap/template now prepare them for future hosts. No credentials
+  were copied or sandbox permissions disabled.
+- **Runtime.** Linux qualification must repeat the same profile/launch options
+  for every command; omitting them causes a blank-browser relaunch in 0.38.2.
+  The app already preserves these flags; the isolated runtime test now does too.
+
+
+### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found"
+
+- **Found (user).** The wheel did nothing; the tmux status bar showed at the bottom; `ls`/`grep` were one colour; `nvm install 24` (nvm not installed) printed Ubuntu's Python
+  "command-not-found has crashed" report, because its database cannot be opened inside the sandbox.
+- **Done.** tmux starts with `mouse on`, `history-limit 50000`, `status off` (the browser has no scrollback of its own, tmux draws the screen). A sandboxed shell sets colour
+  aliases (GNU) or `CLICOLOR` (BSD), defines a plain `command_not_found_handle`, and sources the person's own `~/.bashrc` once (the private home, where `nvm` puts itself).
+  Tested: Mac (sandboxed, unconfined, wheel), Linux non-slot, and as a user's own account on Excellence and Confida.
+- **Open.** Whether the nvm installer itself works inside the sandbox is not yet tested as a slot user.
+### 2026-10-03 — Coding CLI confinement has no switches: the platform decides, and servers fail closed
+
+- **User decision.** Test with Full native tools everywhere, never run a server
+  without the lock, and drop the environment switches so local runs and servers
+  cannot drift on a forgotten setting.
+- `AGENTWORKS_CLI_LANDLOCK`, `AGENTWORKS_CLI_FULL`, `AGENTWORKS_CLI_FULL_UNCONFINED`
+  and `AGENTWORKS_TERMINAL_UNCONFINED` are removed, with their `users:` rollout
+  lists. A chat with Native agent tools now runs:
+  - on a person's own Mac (macOS, not `MULTI_USER_MODE`): Full CLI unconfined, and
+    Code's terminal unconfined (the workspace service also requires native mode
+    and no slots);
+  - on Linux, every server included and whether or not `MULTI_USER_MODE` is set:
+    Full CLI inside the Landlock lock;
+  - when the lock cannot be applied (no working launcher, no working folder, the
+    policy cannot attach), or on a multi-user Mac: `mcp_only`, bridge tools only,
+    logged as `[CLI_LANDLOCK] SECURITY`. It never falls back to unconfined.
+- Before this, a host whose launcher failed its preflight ran CLIs unconfined
+  with one log line, and a server that forgot the switch ran them unconfined.
+  RTS confined every CLI session in its current log (Cursor and Claude, Full
+  inside the lock), so nothing changes there.
+- No emergency off switch on servers: a CLI that cannot run inside the lock
+  stays usable bridge-only instead of being exempted.
+- Next: macOS Seatbelt (Claude first) so a Mac is confined like a server.
+- Tests: `TestDecideCLIConfinement`, `TestRestrictCodingAgentToolsToMCPOnly`,
+  `TestInteractiveShellUnconfinedIsLocalOnly`.
+
+
+### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder
+
+- **Found (user).** An empty `cd` went to "some root folder" with no way to tell where it was or how to get back: in a sandboxed terminal `$HOME` is the shell's private
+  home inside the project (`.sandbox-cache/home`), which bash showed as `~`.
+- **Done.** The terminal's `PROMPT_COMMAND` defines `cd` so that no argument (or `~`) goes to the folder the terminal started in (`AGENTWORKS_START_DIR`); `cd -`,
+  `cd <path>` and `cd ..` are unchanged. The prompt names the folder (`${PWD##*/}`), so the private home reads `home`, not `~`. An unconfined terminal (the person's own
+  machine, real home) keeps the normal `cd`. Tested on a Mac (sandboxed and unconfined) and as a user's own account on Excellence and Confida.
+
+### 2026-10-03 — Code's terminal: Homebrew colours and a short prompt
+
+- **Decision (user).** The terminal was plain white on black (it only set a background; xterm's default text is white), and on a server the prompt was
+  `user@host:/srv/agents/data/docs/_users/<id>/Chats/Code/projects/<project>/code$`, wider than the screen.
+- **Colours.** A Homebrew scheme (macOS Terminal's classic profile: black, bright green `#28fe14`, a green cursor, a full 16-colour palette) is the default;
+  a palette button in the toolbar switches to Classic (the coding-tool terminals' look) and the choice is remembered. Homebrew's blues are lightened: the
+  original dark blue is unreadable on black, and `ls` prints directories in it.
+- **Prompt.** The shell sets `PROMPT_COMMAND` so the prompt is just the current folder's name in bold (`code $`); bash runs it before every prompt, so it holds
+  whatever `/etc/bash.bashrc` or a profile sets `PS1` to. A shell already running keeps its old prompt until Stop and Start.
+- **Checked.** Frontend tests (palette, readability of the blues, wiring); on a Mac the sandboxed and the unconfined shell show `a $`; on Excellence a
+  user's own-account shell reports the short `PS1`. One non-slot Linux e2e run failed on a loaded server and did not fail again in five re-runs (those tests
+  use fixed waits).
+
+### 2026-10-03 — Browser teaching presents reusable skills and supports tabs
+
+- **Decision (user).** Keep browser internals out of the ordinary product flow.
+  Move Start browser into the top header, compact local settings and place
+  Chrome connection details under Advanced. Server uses the workspace browser.
+- **Teach UI.** The helper reviews the private manifest. The panel refreshes it
+  automatically and shows goal, inputs, expected result, readiness, Try task and
+  Save skill. Raw actions, locator warnings, step removal, guidance editing and
+  artifact paths are no longer shown. A failed try stays unsaved and offers a
+  request for helper adjustment; successful-test receipt checks remain required.
+- **Tabs.** Allow manual creation, selection and closing while teaching. Bind
+  each recorded page to a fresh target during replay; resolve site-created
+  popups by their mapped opener and refuse ambiguity. Existing unrelated Chrome
+  tabs are not automatically recorded. Closed targets leave capture listeners;
+  new attachments preserve Pause. Keep at least one tab open in the viewer.
+  Address-bar navigation is marked by the trusted viewer as an explicit open
+  and flushed before changing pages, so reuse does not wait for a missing click.
+- **Verification.** Real Chrome covers opening a tab, switching back, a popup,
+  closing it, repeated replay with fresh IDs and privacy for tabs selected while
+  paused. Control and trusted-launch flags remain required for tab commands.
+- **Deployment.** RTS deployment was requested for user testing. Release and
+  server runtime verification follow the existing guarded deployment script.
+  RTS upgrades an older agent-browser in its service account tool prefix to
+  0.38.2, the minimum version providing the qualified teaching primitives.
+- **Guide.** See [Browser](core/browser.md) for storage conventions and remaining
+  unsupported interactions; the reusable file belongs to its workflow/project.
+
+### 2026-10-03 — Deploy notices in Slack are back on by default (reverses the opt-in earlier the same day)
+
+- **Decision (user).** `deploy.sh` posts "deploying" and "finished" (or the "finished with a problem" warning) to the Slack channel again. Silence one run with
+  `DEPLOY_SLACK_NOTIFY=0` (or `false`, `no`, `off`). The webhook is read from `DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`
+  as before; with none set nothing is sent. The false "problem" notices that made the opt-in attractive came from the early health probe, fixed on
+  2026-10-01 (deploys now wait for the agent), so a healthy release no longer reports a problem.
+- **Checked** against a local fake receiver (the real channel was not posted to): default success 2 messages, default failing run 2 messages (start + warning),
+  `=0` and `=off` none, `=1` 2; the deploy's exit code is kept in every case. Both the start and finish notice respect the switch.
+
+### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals
+
+- **Decision (user):** a better designed terminal, using open source out of the box. We already use xterm.js (the engine behind VS Code, Hyper,
+  Tabby and JupyterLab); ttyd/wetty/GoTTY would add a second server and bypass the slot and sandbox setup, so they were not used.
+- **Done.** `CodeShellPanel` now uses the coding-tool terminals' theme and font (`RAW_XTERM_THEMES`, `RAW_XTERM_FONT_FAMILY`), and adds the official
+  add-ons: WebGL rendering (falls back by itself), clickable links (http/https only, in a new tab), search (Ctrl/Cmd+F, highlights, Enter / Shift+Enter),
+  Unicode 11. A toolbar offers search, copy, paste, clear, text size (10-22, remembered), full screen, a status dot and a quiet automatic reconnect
+  (4 tries, 1-8 s) before it asks for a click. New packages: `@xterm/addon-webgl`, `-web-links`, `-search`, `-unicode11` (the start script's
+  `npm install` picks them up locally; servers build with `npm ci`).
+- **Checked.** Unit tests for the helpers and the wiring; the real panel rendered in a browser against a fake connection (colors, toolbar, search
+  highlight). Not yet checked against a real shell in a browser.
+
+### 2026-10-03 — Builder chooses Gmail senders; email fetch and access disclosure
+
+- **User decision.** Owners can accept Real Training OR notification senders and
+  alternative subject/body phrases through Builder. This extends the previous
+  owner-only sender decision; omitted/cleared sender lists retain that default.
+- **Rules.** Exact email and exact `@domain` entries match with OR, never display
+  names, wildcards, subdomain suffixes or unauthenticated From headers. Existing
+  keyword arrays remain AND; new `*_contains_any` arrays use OR. Groups combine
+  with AND. Only interactive owners configure; allowed senders run the saved
+  owner scope and workflow binding without receiving configuration authority.
+- **Notifications.** Explicit sender lists may opt into automated notifications.
+  Auto-replies, bounces, spam and trash remain blocked. Admission, queued work
+  and final response recheck authorization; removing a sender can prevent a final
+  email response even when the task has already started.
+- **UI.** Incoming email stays read-only across Crew, Workflow and Code. Replace
+  delivery-status refresh with Fetch emails, which sends a read-and-summarize
+  request to the target's chat/Builder using its saved mailbox and rules. It can
+  read Gmail without Pub/Sub and does not execute or replay the saved trigger.
+  Google Change access opens/closes from its header and keeps unsaved choices
+  while collapsed. The collapsed header shows the unsaved change count.
+- **Implementation.** `pkg/gmailinbound` and server trigger authorization/tools;
+  `GmailInboundPanel`, `GoogleAccountConnect`; shared Builder skill and owner guide.
+  Backend admission/authentication regressions and UI action/state tests cover
+  the behavior. Source changes only; this task does not deploy to RTS.
+
+### 2026-10-03 — Granted folders outside the workspace pass the folder-guard write-path check (amends 2026-09-30)
+- The 2026-09-30 boundary check rejected every absolute write path outside the
+  workspace with HTTP 400. Local sessions legitimately carry such grants
+  (Downloads, a project folder), so every shell command from those sessions
+  failed with "Invalid folder guard write path" — including bare `pwd` — and
+  scheduled Pulses and Code chats could do nothing.
+- The hole that check closed was directories created anywhere as the service
+  account. An absolute path outside the workspace is now accepted only when it
+  already exists as a directory, and it is never created or resolved through
+  anything. A missing outside path, a relative path, any `..` segment, a file,
+  and anything lexically inside the workspace (symlink redirects) still fail
+  with 400 and create nothing; the 400-and-nothing-created handler test is
+  unchanged.
+- Tests: `TestIsExistingHostGrant` in `shell_guard_writepath_test.go`.
+
+### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined)
+
+- **Decision (user):** the terminal should have the same settings as the coding agents, locally and on servers.
+- **Local (done).** On a person's own machine the coding agents run with full native tools unconfined, real home and rights
+  (`AGENTWORKS_CLI_FULL_UNCONFINED`, on by default in the start script, refused by the agent server on a multi-user server). The terminal now
+  follows that same switch: the agent server sends `unconfined`, and the workspace service honours it only when `AGENTWORKS_TERMINAL_UNCONFINED=on`
+  (the start script derives it from the switch above), `NATIVE_WORKSPACE=true` and per-user accounts are off. So `git`, `codex`, `claude` find their
+  normal config in the real home. Tests: `TestInteractiveShellUnconfinedIsLocalOnly` (six cases incl. servers) and a Mac end-to-end check that the
+  unconfined shell has the readable real home while a non-requested one stays sandboxed.
+- **Server (unchanged, deliberately).** The terminal keeps the strict Landlock sandbox and runs as the person's own account, which is stronger than the
+  chat coding tools get today (they run as the shared platform account except for the one rollout user). Aligning the server terminal *down* to the chat
+  tools' rollout would weaken it; making the chat tools match the terminal is the open "widen CLI-as-slot" item.
+
+### 2026-10-03 — The local terminal had the real home folder, which the sandbox forbids
+
+- **Found (user, local terminal).** `bash: /Users/mipl/.bash_profile: Operation not permitted`, `git` unable to read `~/.gitconfig`, `codex` unable
+  to read `~/.codex/config.toml`. In native mode (the local app) the sandboxed command keeps the real `HOME` so host tools find their config
+  (`privateSandboxHome`), but Code's strict sandbox forbids reading it. The terminal now gets a private home inside the project
+  (`<project>/.sandbox-cache/home`) when it does not run as a slot; slots and servers already had one. `claude` and `codex` are not on the
+  sandbox's PATH and have no login there: the coding agents run through the chat, not the terminal.
+- **Test.** `interactive_shell_darwin_test.go` now runs natively and fails with exactly these errors without the fix.
+- **Terminal icon** changed to the plain `>_` (`Terminal`) in the toolbar and the panel header.
+
+### 2026-10-03 — Browser startup, scope settings and structured teaching implemented
+
+- **Decision (user).** Implement the browser ownership, manual sign-in and teaching
+  design discussed above. Ordinary workflow `none`/missing modes now migrate to
+  `auto`; server deployments with CDP disabled use managed Chrome even for old
+  CDP settings. SparkQuill child and Dominion restrictions remain enforced.
+- **Done.** Shared browser panels can start/reuse the scope's browser before an
+  agent runs. Project `.browser-settings.json` is canonical. Managed scope
+  profiles persist by default without enabling the legacy global shared browser;
+  explicit existing ephemeral/profile environment overrides retain their intent.
+- **Teaching.** The private CDP recorder captures genuine DOM actions in the
+  existing selected Chrome, navigation and eligible visual evidence. Exclusive
+  manual control also blocks agent CDP actions. Login precedes teaching; sensitive
+  fields and paused edits are excluded. Disconnect/timeout yields interrupted
+  evidence, not a tested skill. The helper reviews a draft in the scope; the user
+  reviews parameters, guidance and a page outcome before real-action replay.
+- **Reuse.** Publication requires a service-held successful-test fingerprint.
+  Workflows link a learning reference from `_global/SKILL.md`; projects save under
+  `skills/`, Crew/Code select the skill, and product prompts point to the scope's
+  tested-procedure index. No per-user browser/learning store was introduced.
+- **Server handoff.** Browser shell requests carry the trusted account identity
+  and a scope guard. Startup lists tabs instead of calling URL-less `open`, which
+  resets the page in the qualified runtime. Local CDP startup takes the shared port lock too. Viewer/teaching commands retain the
+  selected runtime launch flags; attached CDP never acquires managed profile
+  flags. Chrome IPC uses its private scope directory beyond command cleanup.
+  Docker Compose shares a persistent profile volume and the same absolute profile
+  base between services, avoiding different container-home defaults.
+  Teaching files inherit the workspace group so Linux account slots can review
+  the draft and read published skills without opening another account's scope.
+- **Verified locally.** Authenticated workspace-service startup through replay
+  and publication, repeated Start retaining the signed-in page, real Chrome
+  capture/replay, semantic targeting, parameter
+  input, sign-in persistence on restart, JPEG evidence, repeated sessions and
+  password/paused-navigation privacy; Go race checks, API/control tests and the
+  production frontend build. Runtime proof uses agent-browser 0.38.2. Deployment
+  updates/restarts are not performed by this source change.
+- **Baseline test limits.** Broader product checks still fail on
+  `TestPrivateCodeCallerIsSeparateFromCrewWithSameProjectID`,
+  `TestSalesCrewCatalogHasInstallableRoles`, and `TestCodePreparedSystemPrompt`
+  (missing Claude deployment token). All three also fail in a separate clean
+  `origin/main` worktree; they are not introduced by the browser change.
+- **Open coverage.** Multi-tab replay, cross-process frames, shadow DOM, canvas,
+  native dialogs/uploads and downloaded-artifact outcome validation need further
+  qualification. Page text/URL checks do not prove a download. CDP recorder
+  connections currently require loopback; host-Chrome/container attachment needs
+  qualification. Broad retention/quota administration remains follow-up work.
+- **Guide.** [Browser](core/browser.md) is the consolidated reference, updated with
+  implemented behavior, runtime requirements and exact remaining limitations.
+
+
+### 2026-10-03 — Google service permission cards and resumed Claude quota notices
+
+- Google account setup uses the existing Google Workspace brand marks, service
+  cards and explicit Add/Remove controls across products. Existing accounts show
+  all six services' saved agent permissions; Change access keeps the saved value
+  visible alongside unsaved selections. Cancel restores new-account defaults.
+- Permissions remain account-owner/admin controlled. Removing Gmail agent access
+  leaves server notification sending available; removing a service restricts
+  agent access and does not claim to revoke the Google OAuth token. Changes keep
+  the connection ID and its OAuth client, then request Google consent as before.
+- RTS investigation: at 2026-10-03 08:25 UTC the resumed SDE Code session reported
+  quota exhaustion while its native transcript recorded successful tool calls.
+  Its only native quota notice was from October 1. Resume redraw made historical
+  scrollback appear new before a structured usage statusline was available.
+  The provider now considers quota notices only after the latest nonempty user
+  prompt, preserving fresh walls, empty-composer cases and other fatal statuses.
+  Provider fix: `e38d33f`; regression tests live in
+  `claudecode_resumed_quota_test.go` in the provider repo.
+- Validation: Google permission component/integration tests, production frontend
+  build and dark/light/narrow visual checks; Claude adapter tests. Live RTS still
+  needs a deployment of these changes; this investigation did not restart it.
+
+### 2026-10-03 — Cursor offers GLM and Grok choices plus the CLI's live list
+
+Offer documented Cursor models and preserve exact live CLI selectors alongside
+curated metadata. Catalog presence does not establish availability for an account;
+Codex GLM requires a separately configured compatible provider/gateway. Completed
+catalog work is in [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md);
+account inventory and native pricing follow-ups are
+[PLAT-387](bugs/pulse_platform/frontend-chat/plat-387.md) and
+[PLAT-388](bugs/pulse_platform/cost-telemetry/plat-388.md).
+
+### 2026-10-03 — My local product-list change wrote an invalid runtime config (empty value)
+
+- **Found (user, local: Code still missing from the switcher).** The generated `frontend/public/runtime-config.js` had
+  `enabledProductSurfaces: ,`: the variable was defined in the middle of `run_server_with_logging.sh`, after the early path (`--only-frontend`)
+  had already written the file. An empty value is a syntax error, so the whole config was ignored. It is now defined at the top of the
+  script, and I tested the real writer function (output parsed by node, with and without the override).
+
+### 2026-10-03 — The terminal did not start on a Mac with the strict sandbox (two causes)
+
+- **Found (user, local):** the Terminal tab showed "disconnected"; the server log said "error connecting to /tmp/.agentworks-shells/.../tmux.sock
+  (Operation not permitted)". My Mac check had used the lenient sandbox; Code uses the strict one. Two causes, both Mac-only:
+  (1) the strict profile did not allow terminal devices, so tmux could not create its pty and its server exited ("fork failed: Operation not
+  permitted" when run by hand); (2) `/tmp` is a link to `/private/tmp`, the strict profile grants the real folder and will not follow the link,
+  so a socket named through `/tmp` was refused. Now the profile allows pseudo-ttys only when a terminal is requested (`AllowPTY`), and the
+  shells folder is named by its real path (`interactiveShellRootPath`). Linux is unaffected (its tests pass on Excellence).
+- **Test:** `interactive_shell_darwin_test.go` (strict guard, real socket path, stop). The earlier Linux attach/escape checks also pass on
+  a Mac with the strict guard when the test's other project is outside `/var/folders` (which the strict profile grants as scratch).
+
+### 2026-10-03 — Project reasoning controls and creation account names
+
+Project model and supported effort choices remain editable for admin-managed
+accounts. New-project selection uses the same account labels/readiness policy as
+Models; Antigravity effort follows its model variant. See
+[PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-03 — The terminal starts on a Mac (tmux by full path)
+
+- **Found (user asked whether the terminal shows locally).** On macOS the shell did not start: the sandbox's trimmed PATH lacks Homebrew's
+  folder, so `tmux` was "not found". The workspace service now runs tmux by its full path (`/usr/bin/tmux`, else the one on the service's
+  PATH), for the start and the attach. Checked on a Mac: the shell starts, writes only inside its project, and cannot read or write
+  another project; typing through the attach works. The Linux tests (Excellence, slot and non-slot) still pass. Inside a Mac shell
+  `tmux` itself is not on PATH (same trimmed PATH as the agent's shell tool).
+
+### 2026-10-03 — Google account sign-in and compact layout across products
+
+- **Decided.** The shared Email panel selects the platform Google app flow for
+  Code, Crew, workflow and relay targets. It no longer depends on a Code-only
+  product check or rejects owner-prefixed Code paths. Local and deployed
+  instances use the same flow; deployments without a Google app retain the
+  legacy client-upload fallback.
+- **Permissions.** Code accounts remain private to their owner; shared accounts
+  remain admin-managed. The unified form respects existing read-only permission
+  checks and describes the correct account scope. Default-account selection is
+  preserved in the compact account menu.
+- **Existing accounts.** Change access updates and reauthorizes the existing
+  connection ID with its existing OAuth client, preserving trigger references
+  and legacy clients. Send-only access is not silently promoted to read access.
+  Change-access events are scoped to the displayed workspace.
+- **Validation.** Component tests cover all target paths, prefixed Code, shared
+  readers, legacy reconnection, workspace isolation and missing-app fallback.
+  The owner requested an RTS deployment of latest main for Gmail testing;
+  Pub/Sub provisioning remains a separate prerequisite, checked during rollout.
+
+### 2026-10-03 — Project model choices require a ready account; remove older Codex choices
+
+Product model selectors require an installed CLI and an authorized usable account.
+Preserve unavailable saved selections for diagnosis without selecting a replacement.
+Remove GPT-5.5/GPT-5.4 from new Codex choices while retaining saved-session metadata.
+See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-03 — Deploy notices in Slack are opt-in
+
+- **Decision (user).** `deploy.sh` no longer posts to the Slack channel by default (it posted "deploying" and "finished" for every deploy,
+  including false "problem" notices). Set `DEPLOY_SLACK_NOTIFY=1` for a run to get them back; the webhook settings are unchanged
+  (`DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`). Change: aa70c8802.
+
+### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
+
+- **Found (user, after the Excellence deploy):** no Terminal option in Code. Two pieces of the 2026-09-28 code were lost when it was ported
+  onto today's files: `WorkSurface` never passed `showShell` to the toolbar (which hides the button by default), and the pane imported
+  the panel but never rendered it. My tests had checked the label text and the server side, not that the button was wired up.
+- **Done.** Both restored. Source tests pin the toolbar prop and the pane's render line; a render test checks the button appears for a Code
+  the caller owns and nowhere else. Still not clicked through in a real browser.
+
+### 2026-10-03 — The Models screen's usage check asks about the project's own account, and is shown to everyone the server allows
+
+- **Question (user).** Providers got the usage-access fixes; does Models (Setup → Models in a Code/Crew) check usage with the same security?
+- **Answer.** The server side is the same: both screens call `POST /api/provider-setup/sessions` with action `usage`
+  (`handleStartProviderSetup`): a user account's owner and admins get a terminal; someone the account is shared with, or anyone the
+  server account is available to, gets read-only text collected by the server (never a terminal); anyone else gets 403. Tested in
+  `provider_accounts_e2e_test.go`.
+- **Gaps found in the Models screen (UI only), fixed.** (1) The button was hidden unless admin (`canCheckUsage`), so ordinary users never
+  saw usage even where the server allows it. (2) It never sent the project's connection id, so it always asked about the **server's own
+  account**, not the account the project uses. It now sends the project's connection (`checkProviderUsage(provider, connectionId)`),
+  is shown to everyone, opens the terminal for those the server gives one and shows read-only text for the rest.
+
+### 2026-10-03 — Browser ownership and teaching plan; guides consolidated
+
+- **Agreed direction (user).** A browser belongs to a workflow or product project
+  (Crew/Code etc.), not to a person. Local supports managed browser/CDP; server
+  uses managed Chrome. Normal setup should not ask users to disable browsing.
+  Deliberate product restrictions, including SparkQuill child, remain enforced.
+- **Current source.** `browser_conversation_isolation.go` already resolves per
+  workflow/project. Persistent profiles require deployment configuration. Mode
+  defaults/settings still differ across products; workflow `none` remains active.
+- **Proposed, not implemented.** Let a user start/reuse the scoped browser and
+  sign in before an agent runs. Teach records the existing browser's structured
+  DOM actions plus lifecycle/visual evidence, then drafts a scope-owned procedure
+  for reviewed parameters, replay and outcome validation. Login stays outside
+  teaching; interruption and unsupported capture remain explicit.
+- **Open.** Implement start/sign-in, canonical project settings and legacy-mode
+  migration; qualify the private recorder attachment and sensitive-input handling;
+  build teaching/replay. This commit changes documentation only, not defaults,
+  permissions, browser startup or deployment configuration.
+- **Guide.** [One browser reference](core/browser.md) now includes automation,
+  live viewing/control, diagnostic capture, authoring and the staged teaching plan.
+  Superseded guides were removed and indexes updated. Historical rollout notes
+  do not establish today's server status. External Grok reconstruction evidence
+  is labeled unofficial, with its unverified learning internals stated.
+
+### 2026-10-03 — Local runs offer Code in the product switcher
+
+- **Found (user, local).** The start script's runtime config never set `enabledProductSurfaces`, so the frontend used its own default
+  (`agentworks`, `relays`, `work`) and Code never showed locally.
+- **Done.** `agent_go/run_server_with_logging.sh` now writes `enabledProductSurfaces` with Code included; override with
+  `AGENTWORKS_ENABLED_PRODUCT_SURFACES='["agentworks","work"]'`.
+- **The 401 on Crew in the same session** came from a frontend started before the local checkout was updated: it still called the workspace
+  service directly (`/api/documents...` on port 18744), which now needs the server's token. Current code goes through the agent's `/api/wp`.
+  Restarting the local frontend/desktop app after an update clears it.
+
+
+### 2026-10-03 — Providers page uses the main header's Back and Antigravity's icon
+
+- Embedded Providers uses the application header's Back control; remove the
+  duplicate arrow beside Available providers. Standalone modal Providers keeps
+  its Close control. Leaving the embedded page still retains any guided terminal.
+- Add Antigravity's official favicon to both frontend and server static provider
+  assets and map `agy-cli` to it instead of the generic terminal icon.
+
+### 2026-10-03 — Installation provider accounts are called Admin-managed accounts
+
+Label installation credentials **Admin-managed account** consistently across
+Providers and product selection. Keep the Providers header Back control and use
+provider brand icons. See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-03 — Setup model choices show installed coding providers only
+
+Keep uninstalled coding providers in Providers management, outside product model
+selection. The later ready-account decision also requires a usable account.
+See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
+### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28)
+
+- **Decision (user, 2026-10-03).** Code gets a Terminal tab again: a real shell on the server in the Code's folder. The
+  2026-09-28 removal ("the user decided it wasn't needed") is reversed on the user's request; what changed is that every
+  person now has their own Linux account (slot), so a raw shell no longer runs as the shared service account.
+- **Design.** The old panel (commits 7affa8a90 / dc8cdb8c4) was ported, not reverted (the code had moved on). The agent
+  server authorizes the owner (Code is owner-only, so the terminal is too), builds the Code's Folder Guard and stamps the
+  user on every call; the workspace service starts a tmux server in the same Landlock sandbox as the shell tool (private
+  /tmp, private /dev/pts) and attaches from inside it. **Where slots are on, all of it runs as the caller's slot**:
+  `slots.WrapCommandFile` leaves the request in a file in the slot's run folder so the terminal stays the command's stdin
+  (the stdin form of `WrapCommand` cannot), the tmux files live in `<slot run folder>/shells/<id>` (group-shared with the
+  service; tmux makes its socket owner-only, so it is `chmod 0660` after start), and **a person without a slot gets no
+  terminal** (403) instead of a shell as the service account. Hosts without slots keep the old sandboxed behaviour.
+- **Scratch folders** the platform creates for a sandboxed command (`.tmp`, `.cache`, ...) are now group-writable: a slot
+  could not create a temp file in its own TMPDIR (the private-terminal launcher failed on this).
+- **Not on RTS yet.** A raw shell can reach the instance role through IMDS; that exposure is still open there.
+- **Known limit.** Code's sandbox is strict, so this works. A *non-strict* guard as a slot still fails on a host where the platform's
+  Gmail tool config folder is service-only (Excellence: `stat .../gog: permission denied`); that affects non-strict workflow
+  shells too and is tracked as the open gog-config gap.
+- **Tests.** Real-sandbox shell tests on a Linux host (`interactive_shell_e2e_linux_test.go`, including private PTY) and
+  `interactive_shell_slot_e2e_linux_test.go`, run on Confida: the shell is the user's slot, has a pty, cannot read the
+  service `.env` or list other people's folders. Sweep of orphaned shells: `interactive_shell_sweep_test.go`.
+
+### 2026-10-03 — Re-running the slot setup for Excellence took Confida's slot table away again
+
+- **Found.** `provision-slots.sh init` for the default product resets `/etc/agentworks` to 0750 root:agents. Confida's
+  service reads its table through that folder (`o+x` on it, added after the 2026-10-01 incident), so after Excellence's
+  init (done during the 2026-10-02 slot-program refresh) Confida's shells would have failed with "slot table
+  unavailable". Found while testing the terminal on Confida; `chmod 0751 /etc/agentworks` fixed it by hand.
+- **Done.** The script now sets `o+x` on `/etc/agentworks` unconditionally after creating the folder.
+
+### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
+
+- **UI.** Incoming email's read-only card offers the shared Ask AI button in
+  both Email and Triggers, including when deployment setup is missing. It sends
+  Gmail setup guidance to the target's interactive chat; Crew/Code use their
+  project chat callback and workflow targets use Builder. Consent and trigger
+  configuration remain in Builder tools, with no direct pane mutations.
+- **Excellence diagnosis and configuration.** The live agent's Google app was
+  absent under its current HOME `/srv/agents/home`; Gmail inbound environment
+  settings were also absent. Imported the matching downloaded web OAuth client
+  (project `excellence-jobs-b45cc`, callback on the Excellence domain) using the
+  running binary's `server set-mcp-app` command and the live service environment,
+  as the service account. Verified the sealed file is service-owned and 0600.
+  No code deployment or restart. Google account consent remains a human step.
+- **Open rollout requirement.** Google sign-in app configuration does not enable
+  Gmail inbound delivery: Pub/Sub, topic mapping and receiver authentication
+  still need operator setup on Excellence before triggers can be enabled.
+
+### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them
+
+- **Found.** Confida kept 15 releases (14 GB) and Excellence 5, because the pruner keeps any release with a
+  `.deploying` marker. The rootless deploy removes the marker only on its very last line, so a deploy that exited after the
+  release went live but before that line (the false "exit 7" health probe, fixed 2026-10-01) left it behind.
+  14 of 15 Confida releases and 4 of 5 Excellence releases carried one. All were in fact finished and not in use.
+- **Done.** Removed the stale markers by hand and pruned with `--keep` for the two newest previous releases (rollback
+  copies): Confida 15 -> 3 (10 GB), Excellence 5 -> 3. Also cleared both Go build caches (7 GB + 5 GB, rebuilt by the next
+  deploy) and set `/etc/logrotate.d/agentworks` (100 MB, 3 copies) for the product logs. The pruner now ignores a
+  `.deploying` marker older than 6 hours (test: `test_a_stale_deploying_marker_does_not_pin_a_release`).
+- **Context.** The shared Hetzner disk hit 100% on 2026-10-02 (issue #260); free space is now 71 GB.
+
+### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
+
+- **Found (Mayur, Code on excellence; same pattern in a second session).** A shell command ran 5 minutes; Muse recorded
+  `timed_out` at exactly 5:00 (its own tool-call limit) and the very next call failed with "api-bridge: MCP stdio
+  connection is closed". The Muse process had no `mcpbridge` child any more and never reconnects, so every file write
+  and shell call failed for the rest of that session. Checked across all Muse sessions: the two sessions that ever
+  saw "connection is closed" both had a `timed_out` call ~6 s before the first failure. No OOM, no deploy, no platform
+  kill (nothing in the platform kills `mcpbridge`).
+- **Why it was a race.** The bridge's own HTTP limit is also 5 minutes (`DefaultBridgeHTTPTimeout`), and Muse has no
+  documented/configurable MCP timeout (Claude and Codex get a 90-minute one through their config), so Muse's timer won.
+- **Done.** `mcpbridge` honours `MCP_BRIDGE_MAX_CALL_SECONDS` (mcpagent e9af395) and the Muse adapter sets it to 270 s on
+  its bridge entry (provider), so a slow call returns an ordinary TIMEOUT tool error (with the advice to run long jobs in
+  the background) before Muse's limit fires. Takes effect for Muse sessions started after the deploy.
+- **Still open.** A Muse session whose bridge has died is not detected and restarted automatically: it stays broken until
+  its tmux session is closed (done by hand for Mayur on 2026-10-02). The platform could check for the bridge child
+  before delivering a message and relaunch Muse (resume) when it is missing.
+
+### 2026-10-01 — Open review findings (reference skill, image bridge, gateway test)
+
+- **Open.** Workflow-chat queries with tagged references fail entirely when the
+  `work-workflow-files` reference skill cannot be loaded or attached
+  (`agent_go/cmd/server/server.go`, no-profile branch). The previous inline
+  guidance had no external dependency, so a skill-registry or network hiccup
+  could not break queries. Suggested: fall back to a minimal inline pointer
+  instead of failing the query. Found reviewing 97fa26caa; not implemented.
+- **Open.** The MCP image bridge caps each image at 20 MiB but not the image
+  count (`mcpagent` `cmd/mcpbridge`, `executor`). A hostile or buggy tool can
+  exhaust bridge memory through the uncapped HTTP body read and fill disk via
+  the persist loop. Suggested: accept roughly the first 10 images and note the
+  truncation. Found reviewing 09ea79c; not implemented.
+- **Open.** The AWS gateway login-bypass test never executes:
+  `deploy/aws-ec2/server` has no `go.mod`, so neither `gmail_gateway_test.go`
+  nor the older `auth-gateway_test.go` runs anywhere. The bypass itself
+  (exact path, POST-only) was reviewed and is correct. Suggested: wire the
+  directory into a module/CI or cover the predicate from `agent_go`. Found
+  reviewing 58b5ea934; not implemented.
+- **Open (minor).** `PushVerifier` holds its mutex across the 10s signing-key
+  fetch (`agent_go/pkg/gmailinbound/oidc.go`), stalling concurrent
+  verifications during rotation. Suggested: fetch outside the lock with a
+  double-checked refresh. Found reviewing 58b5ea934; not implemented.
+- **Open (minor).** Relay dispatch failures, including release-integrity
+  errors, still return 400 with internal text (`agent_go/cmd/server/relay_runs_api.go`).
+  Concurrency/store failures already map to 503; integrity failures should be
+  5xx too. Publishing while the Builder edits can also mix file versions (the
+  per-workspace publish mutex serializes only concurrent publishes). Found
+  re-reviewing the Relay MVP on main; not implemented. The wider N3 gap (runs
+  writing into their release folder) stays as recorded in the 2026-10-01 Relay
+  release review entry.
+
+### 2026-10-01 — Builder connects Gmail and configures narrowing inbox filters
+
+- **Decided.** Keep history-based incremental delivery. A newest-20 mailbox scan
+  could lose an eligible trigger behind unrelated mail. Bounded continuation,
+  explicit recovery-age limits/skip warnings and thread-context fetching remain
+  a separate future change; they are not claimed implemented.
+- **Done.** `manage_gmail_trigger(action=connect)` prepares a Google consent link
+  through existing account handlers and configured OAuth clients. It does not
+  enable a trigger. Code private-account ownership and shared-account admin
+  permissions remain. Platform-app links use the registered shared callback.
+  Builder guidance discovers IDs, requests human consent, verifies it, selects
+  exact saved workflow routes, and returns the address/readiness/filter summary.
+- **Filters.** Optional subject/body substrings, attachment presence and new
+  threads only narrow authenticated owner mail. All keywords/conditions use AND.
+  Replacement/clear semantics are explicit; omitted filters survive updates and
+  disable. Builder can also update a paused workflow binding without enabling
+  it; changed bindings are validated, while disabling stale bindings still works.
+  Filtered mail is durable, visible with a reason, not replayed after
+  filter changes, and follows content retention. Thread admission is serialized.
+  Queued work rechecks current filters; running work/final responses continue.
+- **UI and rollout.** Panes display filters read-only. Owner/operator docs are
+  corrected for workflow reply runs and actual sync behavior. No deployment,
+  cloud provisioning or live RTS certification is performed here.
+
+### 2026-10-01 — Live browser stuck on "Browser restarted — reconnecting…" (RTS, Code project)
+
+- **Found.** The browser of a Code project is started by the coding CLI inside its sandbox. The sandbox's private
+  `/tmp` is the workspace's shared tmp folder, so the browser's socket folder and `.stream` file land in
+  `<docs>/tmp/.agent-browser/o/<owner>/` on the host. The platform looked only in the host `/tmp`, found no stream, the
+  live view's socket closed and the page reconnected forever. The browser itself ran fine (port listening, daemon up).
+- **Done.** `browserconfig.SandboxSocketDir/SandboxSocketDirs` and their use in the live-stream lookup and the
+  session cleanup / pid lookup (`WORKSPACE_DOCS_PATH`/`DOCS_DIR`). Test: `browserconfig/sandbox_socket_test.go`.
+- **Not verified in a browser** until deployed to RTS; the `.stream` file and listening port were seen on the host.
 
 ### 2026-10-01 — Builder configures Gmail triggers; panes show read-only state
 
@@ -1382,6 +2288,10 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+
+
+
 
 ### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
 - After the answered 14:26:04 IST submission, the 14:26:25 retry reused its

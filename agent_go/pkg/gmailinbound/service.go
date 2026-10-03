@@ -166,7 +166,7 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 		if e != nil {
 			continue
 		}
-		if message.Automatic || !message.Authenticated {
+		if message.Blocked || !message.Authenticated {
 			continue
 		}
 		for _, r := range routes {
@@ -186,10 +186,7 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			if !matched {
 				continue
 			}
-			if e = s.Authorize(ctx, r, message); e != nil {
-				continue
-			}
-			if e = s.Store.Enqueue(ctx, r, message); e != nil {
+			if e = s.Store.EnqueueAuthorized(ctx, r, message, s.Authorize); e != nil {
 				return e
 			}
 		}
@@ -220,6 +217,15 @@ func (s *Service) deliverNext(ctx context.Context) {
 			status = "reply_failed"
 		}
 		_ = s.Store.Finish(context.WithoutCancel(ctx), d, status, e)
+		return
+	}
+	reason, e := s.Store.FilterReason(ctx, d)
+	if e != nil {
+		_ = s.Store.Finish(ctx, d, "failed", e)
+		return
+	}
+	if reason != "" {
+		_ = s.Store.Finish(ctx, d, "filtered", errors.New(reason))
 		return
 	}
 	e = s.Dispatch(ctx, &d)

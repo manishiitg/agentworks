@@ -97,8 +97,10 @@ while p not in ("/", ""):
   # A product's folder below /etc/agentworks is only reachable if every parent is searchable: /etc/agentworks
   # belongs to the first product's group (excellence's agents, 0750), which would hide another product's folder
   # from its own service ("slot table unavailable: permission denied", Confida 2026-10-01). Search-only for
-  # everyone on that one parent; each product's own folder and table stay closed to the others.
-  if [[ "$ETC" != /etc/agentworks ]]; then chmod o+x /etc/agentworks; fi
+  # everyone on that one parent; each product's own folder and table stay closed to the others. Always, not only for
+  # the other products: running init for the first product itself resets the folder to 0750 (excellence's init on
+  # 2026-10-02 took Confida's table away again).
+  chmod o+x /etc/agentworks
   local docker_flag
   docker_flag="$(slot_docker_enabled)"
   cat > "$SLOTCTL_CONFIG.new" <<JSON

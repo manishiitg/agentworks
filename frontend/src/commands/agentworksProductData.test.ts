@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null }))
 
-import { loadAgentworksProductCommands, resetAgentworksProductCommandsCache } from './agentworksProductData'
+import { loadWorkflowProductCommands, loadAgentworksProductCommands, resetAgentworksProductCommandsCache } from './agentworksProductData'
 
 describe('AgentWorks product commands loader', () => {
   afterEach(() => { resetAgentworksProductCommandsCache(); vi.unstubAllGlobals() })
@@ -24,4 +24,20 @@ describe('AgentWorks product commands loader', () => {
     await expect(loadAgentworksProductCommands()).resolves.toEqual([])
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+})
+
+
+it('loads and caches Relay commands separately from AgentWorks', async () => {
+  resetAgentworksProductCommandsCache()
+  const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify({ commands: [{
+    name: url.includes('/relays?') ? 'publish' : 'design-dashboard', prompt: url,
+  }] }), { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    expect((await loadWorkflowProductCommands('relays'))[0].name).toBe('publish')
+    expect((await loadAgentworksProductCommands())[0].name).toBe('design-dashboard')
+    await loadWorkflowProductCommands('relays')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/agent-profiles/relays?version=1', expect.anything())
+  } finally { resetAgentworksProductCommandsCache(); vi.unstubAllGlobals() }
 })
