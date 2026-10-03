@@ -105,9 +105,12 @@ func TestCaptureAcceptsCrewProjectRoot(t *testing.T) {
 
 	// The same physical path without the owning user still denies: another
 	// user's project must never become capturable.
-	anon := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
-	if _, err := e.HandleAgentBrowser(anon, map[string]interface{}{"command": "capture", "args": []string{"status"}, "session": "main"}); err == nil || !strings.Contains(err.Error(), "CAPTURE_ACCESS_DENIED") {
-		t.Fatalf("anonymous crew capture accepted: %v", err)
+	for _, caller := range []string{"", "u2"} {
+		other := context.WithValue(context.Background(), common.ChatSessionIDKey, sid)
+		other = context.WithValue(other, common.UserIDKey, caller)
+		if _, err := e.HandleAgentBrowser(other, map[string]interface{}{"command": "capture", "args": []string{"status"}, "session": "main"}); err == nil || !strings.Contains(err.Error(), "CAPTURE_ACCESS_DENIED") {
+			t.Fatalf("crew capture accepted for non-owner %q: %v", caller, err)
+		}
 	}
 }
 func TestCaptureHonorsDisabledAndCDPModes(t *testing.T) {

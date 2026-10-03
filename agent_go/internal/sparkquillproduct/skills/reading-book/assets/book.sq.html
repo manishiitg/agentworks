@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A seed's journey</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #f6f1e6; color: #223a2b; font-family: Georgia, serif; }
+.book { width: min(100%, 48rem); margin: auto; padding: clamp(1rem, 4vw, 2.5rem); }
+.book-page { background: #fffdf7; border: 1px solid #dbdfcf; border-radius: 1rem; padding: clamp(1rem, 4vw, 2.5rem); margin-bottom: 1rem; }
+.book-page[hidden] { display: none; }
+.book-page h1, .book-page h2 { font-size: clamp(1.7rem, 5vw, 2.6rem); line-height: 1.15; margin-top: 0; }
+.book-page p, .book-page li { font-size: 1.2rem; line-height: 1.65; }
+.book-page svg { display: block; width: 100%; max-width: 22rem; height: auto; margin: 1rem auto; }
+.page-label { font: bold 0.9rem/1.5 system-ui, sans-serif; color: #526044; }
+.book-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; font: 1rem/1.5 system-ui, sans-serif; }
+.book-nav button { border: 0; border-radius: 0.6rem; padding: 0.8rem 1rem; background: #28563b; color: white; font: inherit; cursor: pointer; }
+.book-nav button:disabled { background: #e3e5dc; color: #526044; cursor: default; }
+.book-nav button:focus-visible, .book-page h1:focus-visible, .book-page h2:focus-visible { outline: 3px solid #946319; outline-offset: 4px; }
+.book-nav[hidden] { display: none; }
+@media print {
+  body { background: white; color: black; }
+  .book { width: 100%; padding: 0; }
+  .book-page, .book-page[hidden] { display: block !important; border: 0; border-radius: 0; margin: 0; break-after: page; page-break-after: always; }
+  .book-page:last-of-type { break-after: auto; page-break-after: auto; }
+  .book-nav { display: none !important; }
+}
+</style>
+</head>
+<body>
+<main class="book" aria-label="Reading book">
+<article class="book-page">
+  <p class="page-label">Cover</p>
+  <h1 tabindex="-1">A seed's journey</h1>
+  <svg viewBox="0 0 300 180" role="img" aria-label="A seed beneath a young plant">
+    <path d="M20 145H280" stroke="#8a6744" stroke-width="8"/>
+    <ellipse cx="150" cy="158" rx="15" ry="9" fill="#8a6744"/>
+    <path d="M150 145V65" stroke="#28563b" stroke-width="7"/>
+    <path d="M150 100Q90 100 105 60Q145 58 150 100M150 80Q205 80 195 40Q155 40 150 80" fill="#6a9849"/>
+  </svg>
+  <p>How does a tiny seed become a plant? Let's follow its journey.</p>
+</article>
+<article class="book-page">
+  <p class="page-label">Page 1</p>
+  <h2 tabindex="-1">A small beginning</h2>
+  <svg viewBox="0 0 300 180" role="img" aria-label="A seed taking in water in moist soil">
+    <path d="M20 125H280" stroke="#8a6744" stroke-width="8"/>
+    <ellipse cx="150" cy="143" rx="25" ry="15" fill="#8a6744"/>
+    <path d="M80 45Q60 70 80 80Q100 70 80 45M220 55Q200 80 220 90Q240 80 220 55" fill="#3c8aab"/>
+  </svg>
+  <p>A seed holds the beginning of a plant. Its outer coat protects what is inside.</p>
+  <p>With water, air and the right warmth, the seed can begin to grow. This beginning is called <strong>germination</strong>.</p>
+</article>
+<article class="book-page">
+  <p class="page-label">Page 2</p>
+  <h2 tabindex="-1">Roots reach down</h2>
+  <svg viewBox="0 0 300 180" role="img" aria-label="Roots growing downward from a seed">
+    <path d="M20 75H280" stroke="#8a6744" stroke-width="8"/>
+    <ellipse cx="150" cy="92" rx="23" ry="13" fill="#8a6744"/>
+    <path d="M150 103V165M150 125L120 145M150 135L180 155" fill="none" stroke="#a4764b" stroke-width="5" stroke-linecap="round"/>
+  </svg>
+  <p>A little root pushes out of the seed and grows down into the soil.</p>
+  <p>Roots take in water and minerals. They also hold the plant in place.</p>
+</article>
+<article class="book-page">
+  <p class="page-label">Page 3</p>
+  <h2 tabindex="-1">A shoot reaches up</h2>
+  <svg viewBox="0 0 300 180" role="img" aria-label="A new shoot rising above the soil">
+    <path d="M20 130H280" stroke="#8a6744" stroke-width="8"/>
+    <path d="M150 150V82Q150 55 175 70" fill="none" stroke="#28563b" stroke-width="7" stroke-linecap="round"/>
+    <path d="M170 70Q192 50 198 80Q180 90 170 70" fill="#6a9849"/>
+  </svg>
+  <p>A shoot grows upward. It pushes through the soil and reaches the light.</p>
+  <p>The shoot becomes the plant's stem and leaves. The seed's stored food helps it get started.</p>
+</article>
+<article class="book-page">
+  <p class="page-label">Page 4</p>
+  <h2 tabindex="-1">Leaves catch the light</h2>
+  <svg viewBox="0 0 300 180" role="img" aria-label="Sunlight shining on a plant's leaves">
+    <circle cx="230" cy="38" r="23" fill="#eac35f"/>
+    <path d="M20 150H280" stroke="#8a6744" stroke-width="8"/>
+    <path d="M150 150V65" stroke="#28563b" stroke-width="7"/>
+    <path d="M150 105Q90 105 102 60Q145 62 150 105M150 80Q204 80 195 43Q156 43 150 80" fill="#6a9849"/>
+  </svg>
+  <p>The new leaves use energy from sunlight to help the plant make its own food.</p>
+  <p>The plant also needs water and air. As it grows, it makes more roots, stems and leaves.</p>
+</article>
+<article class="book-page">
+  <p class="page-label">Page 5</p>
+  <h2 tabindex="-1">Look how far it has come!</h2>
+  <p>First a seed takes in water. A root grows down, a shoot grows up, and leaves open to the light.</p>
+  <p>The tiny seed has begun a new life as a plant.</p>
+  <p><strong>Think and talk:</strong> Why do you think the root and the shoot grow in different directions?</p>
+</article>
+<nav class="book-nav" aria-label="Book pages" hidden>
+  <button type="button" id="book-prev">Previous</button>
+  <span id="book-status" role="status" aria-live="polite" aria-atomic="true"></span>
+  <button type="button" id="book-next">Next</button>
+</nav>
+</main>
+<script>
+(function () {
+  function startBook() {
+    var pages = Array.from(document.querySelectorAll('.book-page'));
+    var previous = document.getElementById('book-prev');
+    var next = document.getElementById('book-next');
+    var status = document.getElementById('book-status');
+    var current = 0;
+    var changed = false;
+    if (!pages.length) return;
+    function show(index, focus, persist) {
+      current = Math.max(0, Math.min(pages.length - 1, index));
+      pages.forEach(function (page, i) { page.hidden = i !== current; });
+      previous.disabled = current === 0;
+      next.disabled = current === pages.length - 1;
+      status.textContent = 'Page ' + (current + 1) + ' of ' + pages.length;
+      if (focus) {
+        var heading = pages[current].querySelector('h1, h2');
+        if (heading) heading.focus();
+      }
+      if (persist && window.SQ && typeof SQ.saveGame === 'function') {
+        SQ.saveGame('reading-progress', {page: current});
+      }
+    }
+    function move(step) { changed = true; show(current + step, true, true); }
+    previous.addEventListener('click', function () { move(-1); });
+    next.addEventListener('click', function () { move(1); });
+    document.addEventListener('keydown', function (event) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (event.key === 'ArrowRight') { event.preventDefault(); move(1); }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); move(-1); }
+    });
+    document.querySelector('.book-nav').hidden = false;
+    show(0, false, false);
+    if (window.SQ && typeof SQ.loadGame === 'function') {
+      SQ.loadGame('reading-progress', function (saved) {
+        if (!changed && saved && Number.isInteger(saved.page)) show(saved.page, false, false);
+      });
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startBook);
+  else startBook();
+})();
+</script>
+</body>
+</html>

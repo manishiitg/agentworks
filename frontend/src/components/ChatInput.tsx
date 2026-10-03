@@ -489,7 +489,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // surfaceVariant made it ignore the project's saved provider/model.
   const isProductProfile = Boolean(agentProfileId)
   // SparkQuill's own composer groups controls the opposite way from every
-  // other product: attachment/commands/model on the left, mic+send on the
+  // other product: attachment/commands on the left, mic+send on the
   // right. Scoped to its two profiles so AgentWorks and Video Studio keep
   // the default arrangement.
   const sparkQuillComposerLayout = agentProfileId === 'sparkquill' || agentProfileId === 'sparkquill-child'
@@ -3360,7 +3360,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                           onStart={requestNewConversation}
                         />
                       )}
-                      {isProductSurface && engineGroups.some((g) => g.models.length > 0) && (
+                      {isProductSurface && !sparkQuillComposerLayout && engineGroups.some((g) => g.models.length > 0) && (
                         <ModelReasoningControl
                           engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id, models: g.models }))}
                           currentEngineId={currentEngine}

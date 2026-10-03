@@ -463,3 +463,24 @@ it('sends review records to the helper as hidden file context with a plain chat 
   expect(prompt).toContain('Keep the status draft')
   expect(getDisplaySafeUserMessageContent(prompt)).toBe('Prepare my demonstrated task for reuse: Export customers.')
 })
+
+it('keeps startup, tab controls and teaching available in SparkQuill minimal mode', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { root, host } = await mountBrowser()
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" minimal />) })
+  api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
+  await act(async () => { buttonNamed(host, 'Start browser')!.click() })
+  expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/SparkQuill', profile_id: 'sparkquill' } }))
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    ws.onmessage?.(frameMessage())
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
+  })
+  expect(buttonNamed(host, 'Teach task')).toBeDefined()
+  expect(host.querySelector('[aria-label="Browser page size"]')).not.toBeNull()
+  await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close tab')!.click() })
+  expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([
+    { type: 'switch_tab', tab: 't2' }, { type: 'new_tab', url: 'about:blank' }, { type: 'close_tab', tab: 't1' },
+  ]))
+})

@@ -1327,3 +1327,7 @@ audio.fl-viewer-media { background: var(--surface); }
   .fl-browser-view .live-browser-header > [role="status"] { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
   .fl-browser-view .live-browser-header { padding: 6px 8px; gap: 6px; }
 }
+
+/* Model choices live in parent Settings for both learning roles. */
+.fl-settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 14px; }
+.fl-settings-models .model-reasoning-panel { left: auto; right: 0; }

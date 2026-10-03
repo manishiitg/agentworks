@@ -36,6 +36,8 @@ profile:
     - process-file
     - recall-conversations
     - create-progress-report
+    - animated-learning-video
+    - reading-book
     - publish
     - notify
     - backup
@@ -57,8 +59,13 @@ profile:
       interaction:
         kind: suggestions
         render: chat.suggestions
-    - id: sparkquill.find-image
   commands:
+    - name: create-animated-video
+      description: "Create an animated video"
+      prompt: "Create an animated explainer video for my child using HyperFrames, on the topic we are working on. Use her reading level and language, clear visual examples, captions and a short recap. Make it a playable learning activity I can preview and give to her."
+    - name: create-reading-book
+      description: "Create a reading book"
+      prompt: "Create illustrated reading material for my child in book format, page by page, on the topic we are working on. Match her reading level and language, with a cover, numbered pages, Previous and Next controls, and a short recap. Make the complete book a learning activity I can preview and give to her."
     - name: create-study-material
       description: "Create study material"
       prompt: "Create study material for my child on the topic she is working on \u2014 explain it properly first, then a short practice, and a summary she can reread."
@@ -108,7 +115,6 @@ profile:
       - open_file
       - open_activity
       - suggest_actions
-      - find_image
       - image_gen
       - image_edit
   runtime:
@@ -211,7 +217,6 @@ profiles:
         interaction:
           kind: scene
           render: chat.scene
-      - id: sparkquill.find-activity-image
     commands:
       - name: score-by-answer
         description: "Score by answer"
@@ -241,7 +246,6 @@ profiles:
         - open_file
         - celebrate
         - show_scene
-        - find_image
         - image_gen
         - image_edit
     runtime:

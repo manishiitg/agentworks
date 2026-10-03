@@ -69,6 +69,7 @@ import { withPreviewPositionScript } from './platform/previewPosition'
 import { useChatStore } from '../../stores/useChatStore'
 import { api } from './api'
 import { VoiceSettings } from './voice/VoiceSettings'
+import { LearningModelSettings } from './LearningModelSettings'
 import { readReminderSoundPref, persistReminderSoundPref } from './notifySound'
 import { readVoiceAutoSendPref, persistVoiceAutoSendPref } from './voiceAutoSend'
 import { buildSqAnswerText, buildSqTimerText, sanitizeSqId, sanitizeSqTimerConfigs, SQ_MAX_GAME_STATE_BYTES, sqGameStateKey, withViewerLinkBridge } from './sqOps'
@@ -1736,35 +1737,6 @@ export default function LearningApp() {
     return () => { cancelled = true }
   }, [screen, settingsOpen, pulsePopoverOpen])
 
-  // Which model the chosen coding agent should use. The list comes from the
-  // server (which reads the provider's real catalog) rather than being written
-  // here, so the picker cannot offer a model the agent would reject.
-  type ModelInfo = { provider: string; selected: string; default: string; models: { id: string; label: string }[] }
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null)
-  const [savingModel, setSavingModel] = useState(false)
-
-  const loadModels = useCallback(() => {
-    api.models()
-      .then((d) => setModelInfo(d))
-      .catch(() => setModelInfo(null))
-  }, [])
-
-  // Reloads when the engine changes: the catalog is per coding agent, so the
-  // previous agent's models must not linger in the picker.
-  useEffect(() => { loadModels() }, [loadModels, engine])
-
-  const saveModel = (id: string) => {
-    setSavingModel(true)
-    // Optimistic so the select doesn't snap back while the request is in
-    // flight; the reload below is the source of truth.
-    setModelInfo((cur) => (cur ? { ...cur, selected: id } : cur))
-    api.saveModel(id)
-      .then(() => loadModels())
-      .catch(() => loadModels())
-      .finally(() => setSavingModel(false))
-  }
-
-
   // Voice tier catalog — loaded whenever Settings opens. Cheap (a sysctl read
   // plus two LookPath calls), so it's refetched each time rather than cached:
   // installing a model elsewhere should be reflected on the next open.
@@ -3418,26 +3390,7 @@ export default function LearningApp() {
                     />
                   )}
 
-                  {modelInfo && modelInfo.models.length > 0 && (
-                    <>
-                      <p className="fl-drawer-label" style={{ marginTop: '20px' }}>Which model</p>
-                      <p className="fl-note">
-                        Picks the exact model within the AI you chose above. “Recommended” is the one this app is tuned for — change it only if you specifically want a stronger or cheaper one.
-                      </p>
-                      <select
-                        className="fl-model-select"
-                        value={modelInfo.selected}
-                        disabled={savingModel}
-                        onChange={(e) => saveModel(e.target.value)}
-                      >
-                        <option value="">Recommended{modelInfo.default ? ` (${modelInfo.default})` : ''}</option>
-                        {modelInfo.models.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-
+                  <LearningModelSettings key={engine} engine={engine} childName={childName} />
 
                   <VoiceSettings status={voiceStatus} childName={childName} onRefresh={refreshVoiceStatus} />
 

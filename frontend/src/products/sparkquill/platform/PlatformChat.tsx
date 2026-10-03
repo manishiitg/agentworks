@@ -68,13 +68,11 @@ export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?
  *
  * engine applies to every open tab (it is shared — which paid account the
  * family uses). model only applies to role's own tab(s): the other role's
- * tab keeps engine in sync but has its model CLEARED rather than inheriting
- * a model that was never chosen for it — an empty model_id on its next
- * query makes the backend fall back to that profile's own product.yaml
- * default for the (possibly now different) engine, exactly like a tab that
- * was never touched at all.
+ * tab preserves its own choice while using the same engine. Changing the
+ * shared engine clears the other role's model and effort so its next query
+ * falls back to that profile's defaults for the new engine.
  */
-export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: string, model?: string): void {
+export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: string, model?: string, reasoningEffort?: string): void {
   const store = useChatStore.getState()
   const roleProfileID = role === 'parent' ? PARENT_PROFILE_ID : CHILD_PROFILE_ID
   for (const tab of Object.values(store.chatTabs)) {
@@ -82,7 +80,9 @@ export function applyFamilyEngineToOpenTabs(role: 'parent' | 'child', engine: st
     if (id !== PARENT_PROFILE_ID && id !== CHILD_PROFILE_ID) continue
     store.setTabMetadata(tab.tabId, {
       agentProfileEngine: engine,
-      agentProfileModelID: id === roleProfileID ? (model ?? '') : '',
+      ...(id === roleProfileID
+        ? { agentProfileModelID: model ?? '', ...(reasoningEffort !== undefined || tab.metadata?.agentProfileEngine !== engine ? { agentProfileReasoningEffort: reasoningEffort } : {}) }
+        : tab.metadata?.agentProfileEngine !== engine ? { agentProfileModelID: '', agentProfileReasoningEffort: undefined } : {}),
     })
   }
 }

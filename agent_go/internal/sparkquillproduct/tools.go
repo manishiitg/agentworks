@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commonsimages"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -685,53 +683,6 @@ func showSceneFactory() agentprofiles.ToolFactory {
 				}
 				emitInteraction(runtime, interactionKind(runtime, "scene"), map[string]interface{}{"html": html})
 				return `{"status":"ok"}`, nil
-			},
-		}, nil
-	}
-}
-
-// ---- pictures ----------------------------------------------------------
-
-// findImageFactory saves a Commons picture into a workspace folder.
-// conversationOnly pins the destination to the conversation workspace (the
-// child's activity).
-func findImageFactory(workspaceAPIURL string, conversationOnly bool) agentprofiles.ToolFactory {
-	return func(runtime agentprofiles.ToolRuntimeContext, _ json.RawMessage) (agentprofiles.ToolSpec, error) {
-		ws := newFamilyWorkspace(workspaceAPIURL, runtime, runtime.WorkspacePath)
-		return agentprofiles.ToolSpec{
-			Name: "find_image", Category: toolCategory, Description: commonsimages.Description, Parameters: commonsimages.Params,
-			Execute: func(ctx context.Context, args map[string]interface{}) (string, error) {
-				query := stringArg(args, "query")
-				if query == "" {
-					return "", fmt.Errorf("query is required")
-				}
-				dir := strings.Trim(stringArg(args, "dir"), "/")
-				if conversationOnly || dir == "" {
-					dir = ""
-				}
-				if strings.Contains(dir, "..") {
-					return "", fmt.Errorf("that folder isn't one you can write a picture into")
-				}
-				callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-				defer cancel()
-				img, err := commonsimages.Search(callCtx, query)
-				if err != nil {
-					return "", err
-				}
-				if img == nil {
-					return jsonResult(map[string]interface{}{"status": "no_match", "query": query, "note": "Wikimedia Commons had nothing usable for this; continue without a picture, or retry with a shorter subject-only query."})
-				}
-				data, ext, err := commonsimages.Download(callCtx, img)
-				if err != nil {
-					return "", err
-				}
-				filename := commonsimages.FileName(stringArg(args, "filename"), ext)
-				folder := ws.path(strings.TrimPrefix(dir, ws.root+"/"))
-				if _, err := ws.client.UploadBinary(ctx, folder, filename, data); err != nil {
-					return "", fmt.Errorf("save picture: %w", err)
-				}
-				return jsonResult(map[string]interface{}{"status": "ok", "filename": filename, "width": img.Width, "height": img.Height, "title": img.Title,
-					"attribution": commonsimages.Credit(img), "source": img.PageURL, "embed_hint": fmt.Sprintf("<img src=%q alt=%q>", filename, img.Title)})
 			},
 		}, nil
 	}

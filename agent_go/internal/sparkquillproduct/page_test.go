@@ -1,9 +1,47 @@
 package sparkquillproduct
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 )
+
+func TestReadingBookTemplateSurvivesActivityRendering(t *testing.T) {
+	source, err := fs.ReadFile(SkillFiles, "skills/reading-book/assets/book.sq.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, report, err := RenderActivityPage(string(source), PageMeta{Title: "A seed's journey"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Dropped) != 0 {
+		t.Fatalf("reading book lost content or controls: %v", report.Dropped)
+	}
+	if count := strings.Count(page, `<article class="book-page">`); count != 6 {
+		t.Fatalf("book has %d pages after rendering, want 6", count)
+	}
+	for _, needed := range []string{`id="book-prev"`, `id="book-next"`, `aria-live="polite"`, `@media print`, `SQ.saveGame('reading-progress'`, `SQ.loadGame('reading-progress'`, `window.SQ={`} {
+		if !strings.Contains(page, needed) {
+			t.Fatalf("finished book lost reading functionality %q", needed)
+		}
+	}
+}
+
+func TestVideoLessonKeepsLocalPlaybackAndCaptions(t *testing.T) {
+	page, report, err := RenderActivityPage(`<section data-role="learn"><h1>Water cycle</h1><video controls playsinline preload="metadata" src="lesson.mp4"><track kind="captions" srclang="en" label="English" src="captions.vtt" default></video><p>The sun warms water.</p></section>`, PageMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Dropped) != 0 || len(report.Sections) != 1 {
+		t.Fatalf("video lesson render report: %+v", report)
+	}
+	for _, needed := range []string{`<video controls="" playsinline="" preload="metadata" src="lesson.mp4">`, `src="captions.vtt"`, `The sun warms water.`} {
+		if !strings.Contains(page, needed) {
+			t.Fatalf("video lesson lost %q", needed)
+		}
+	}
+}
 
 // A page the way Quill might write it: its own look, a whole document, and
 // the four conventions the tutor relies on.
