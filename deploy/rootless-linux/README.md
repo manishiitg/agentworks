@@ -97,6 +97,12 @@ Env overrides (all default from `product.env`): `HOST_IP`, `SSH_PORT`,
 
 ## Managed Chrome under the shell sandbox
 
+`build-and-activate.sh` now does this on every deploy (`install-managed-chrome.sh`): it installs the launcher beside the host's
+Chrome (an existing `<app>/tools/chrome/current`, else `tools/chrome/system` with `chrome -> /opt/google/chrome/chrome` and
+`current -> system`) and the standard runtime profile sets `AGENT_BROWSER_EXECUTABLE_PATH=<app>/tools/chrome/current/chrome-agentworks`.
+The launcher also gives Chrome a writable HOME/XDG dir under its private temp dir: with the service's own HOME (read-only in the
+sandbox) Chrome died at startup without writing DevToolsActivePort. The manual notes below remain accurate for a pinned Chrome.
+
 SparkQuill uses the `chrome-agentworks` launcher alongside its pinned Chrome
 for Testing binary. Install it into the same version directory as `chrome`
 and set the service environment to its stable symlink path:

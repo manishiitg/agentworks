@@ -224,6 +224,11 @@ for key, value in json.load(open(profile))["same_everywhere"].items():
     print(f"{key}={value.replace('{app}', app).replace('{data}', data)}")
 PY
 )
+# The managed browser's launcher (chrome-agentworks) goes beside the host's Chrome on every server; without a Chrome the setting is
+# dropped rather than pointing the browser at a missing file.
+if ! "$SCRIPT_DIR/install-managed-chrome.sh" "$REMOTE_APP" >/dev/null; then
+  STANDARD_ENV=("${STANDARD_ENV[@]/AGENT_BROWSER_EXECUTABLE_PATH=*/}")
+fi
 EXTRA_ENV=("${STANDARD_ENV[@]}" "${EXTRA_ENV[@]:-}")
 install -d -m 0700 "$REMOTE_APP/state" "$REMOTE_APP/state/mcp" "$REMOTE_APP/state/browser-profile"
 

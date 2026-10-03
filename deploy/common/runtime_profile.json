@@ -7,7 +7,8 @@
     "AGENTWORKS_CLI_FULL": "on",
     "AGENTWORKS_STATE_ROOT": "{app}/state",
     "AGENTWORKS_MCP_STATE_DIR": "{app}/state/mcp",
-    "AGENT_BROWSER_SHARED_PROFILE": "{data}/browser-profile"
+    "AGENT_BROWSER_SHARED_PROFILE": "{data}/browser-profile",
+    "AGENT_BROWSER_EXECUTABLE_PATH": "{app}/tools/chrome/current/chrome-agentworks"
   },
   "per_server": [
     "MULTI_USER_MODE",

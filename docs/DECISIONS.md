@@ -28,6 +28,19 @@ Design references for the linked runtime decisions:
 - **Where.** `native-subagents` in `cmd/server/prompt_sections.go`; workflow-tools guidance.
   [PLAT-397](bugs/pulse_platform/coding-agent-bridge/plat-397.md).
 
+### 2026-10-03 — One managed-browser launcher on every server (Code project browser on Excellence)
+
+- **Decided.** Every rootless server starts Chrome through `chrome-agentworks` beside the host's Chrome, selected by
+  `AGENT_BROWSER_EXECUTABLE_PATH=<app>/tools/chrome/current/chrome-agentworks` from the standard runtime profile; the deploy installs it
+  (`install-managed-chrome.sh`, system Chrome gets `tools/chrome/system`). The launcher runs the real `chrome` binary, not the
+  `/usr/bin/google-chrome` shell script (it writes under HOME), and exports a writable HOME/XDG dir.
+- **Why.** After PLAT-374 removed the mount-namespace fallback, the Landlock sandbox ran Chrome as the service account with a read-only HOME:
+  Chrome exited "without writing DevToolsActivePort" (crashpad `--database is required`, SIGTRAP). Reproduced and fixed on Excellence
+  with the launcher plus a writable HOME; `agent-browser open https://example.com` / `get title` then worked in the sandbox.
+- **Where.** `deploy/rootless-linux/chrome-agentworks`, `install-managed-chrome.sh`, `build-and-activate.sh`, `deploy/common/runtime_profile.json`;
+  regression test `workspace/security/chrome_devtools_linux_test.go` (skips without Chrome or the Landlock launcher).
+  Confida and Dominion share the Excellence box and deploy through the same script: they need the same deploy (separate `<app>/tools/chrome`).
+
 ### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
 
 - **Decided (owner).** With native tools on, `diff_patch_workspace_file` is not offered; the CLI edits with
