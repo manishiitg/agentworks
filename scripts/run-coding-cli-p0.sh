@@ -250,6 +250,14 @@ for raw_provider in "${provider_list[@]}"; do
       -run '^TestCLISandboxContract$' -count=1 -timeout=15m
   fi
 
+  # Same contract through the live server: a real Builder chat on a real
+  # workflow with another workflow attached, so the server's own grants are
+  # tested. Runs on the host of the server's workspace-docs; Pi is the
+  # bridge-only shape.
+  go -C "$ROOT_DIR/agent_go" run . test cli-sandbox-contract \
+    --server-url "$SERVER_URL" --workspace-docs "$WORKSPACE_DOCS" \
+    --provider "$provider" --timeout 10m
+
   # The release-blocking application contract must exercise the CLI with the
   # real MCP agent bridge active. This launches a plan step, performs a bridge
   # file operation, and proves its completion AUTO-NOTIFICATION contains only
