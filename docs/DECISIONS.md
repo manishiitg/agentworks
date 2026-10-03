@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The Terminal button did not show, and would have opened nothing (two pieces lost in the port)
+
+- **Found (user, after the Excellence deploy):** no Terminal option in Code. Two pieces of the 2026-09-28 code were lost when it was ported
+  onto today's files: `WorkSurface` never passed `showShell` to the toolbar (which hides the button by default), and the pane imported
+  the panel but never rendered it. My tests had checked the label text and the server side, not that the button was wired up.
+- **Done.** Both restored. Source tests pin the toolbar prop and the pane's render line; a render test checks the button appears for a Code
+  the caller owns and nowhere else. Still not clicked through in a real browser.
+
 ### 2026-10-03 — The Models screen's usage check asks about the project's own account, and is shown to everyone the server allows
 
 - **Question (user).** Providers got the usage-access fixes; does Models (Setup → Models in a Code/Crew) check usage with the same security?
