@@ -60,7 +60,10 @@
 
 **Implementation checklist**
 - Selected three-row chrome and native clipboard transfer implemented/verified.
-- Normal RTS deployment and Linux guarded paste qualification follow source push.
+- Normal RTS deployment completed: `f69f9fd-20261003144322`; public browser
+  chunk verified, services/health checks passed. Real Linux guarded browser
+  paste and existing-session IPC tests passed. Cross-origin selection copy
+  remains the recorded limitation; no live website interaction was used.
 
 final result: passed
 

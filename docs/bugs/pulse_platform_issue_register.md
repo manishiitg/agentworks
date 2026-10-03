@@ -13,10 +13,10 @@ person's own Mac.
 
 ## Browser toolbar and manual copy/paste — PLAT-382
 
-[PLAT-382](pulse_platform/browser/plat-382.md), implemented and locally verified;
-RTS deployment pending. Neutral three-row browser controls, native multiline
-paste and selection copy behind exclusive manual control. Cross-origin-frame
-selection copy remains a tracked follow-up.
+[PLAT-382](pulse_platform/browser/plat-382.md), deployed and verified on RTS
+(`f69f9fd-20261003144322`). Neutral three-row browser controls, native multiline
+paste and selection copy behind exclusive manual control; real guarded Linux
+paste passed. Cross-origin-frame selection copy remains a tracked follow-up.
 
 ## Decisions applied only in the UI and Builder chat — PLAT-381
 
