@@ -319,9 +319,9 @@ export function WorkModelsPanel({
               />
             </div>
           )}
-        </section>
-        {reasoningLevels.length > 0 && (
-          <div className="mt-4 rounded-lg border border-border p-4">
+          {/* Reasoning effort belongs to the model: shown inside the Model card, not as a separate box. */}
+          {reasoningLevels.length > 0 && (
+          <div className="border-t border-border px-4 py-3">
             <p className="text-xs font-medium text-foreground">Reasoning effort</p>
             <div role="group" aria-label="Reasoning effort" className="mt-2 flex flex-wrap gap-2">
               {reasoningLevels.map(level => (
@@ -338,6 +338,7 @@ export function WorkModelsPanel({
             </div>
           </div>
         )}
+        </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent, model, or reasoning effort relaunches this project's retained session on the next message while keeping the project chat history.</p>}
         {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
