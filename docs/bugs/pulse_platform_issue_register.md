@@ -1,3 +1,8 @@
+## Supply-chain loader on the Excellence box; scanner missed it — PLAT-400
+
+[PLAT-400](pulse_platform/security-sandbox/plat-400.md), P1, contained; sweep tool on main. Account owners must rotate
+credentials; scheduled sweep not wired yet.
+
 ## Script outputs blocked by slot directory permissions — PLAT-399
 
 [PLAT-399](pulse_platform/security-sandbox/plat-399.md), fixed on main; deployment
