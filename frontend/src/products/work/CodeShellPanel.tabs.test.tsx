@@ -11,6 +11,7 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon() {} open() {} focus() {} write() {} clear() {} dispose() {} paste() {}
     getSelection() { return '' }
     attachCustomKeyEventHandler() {}
+    attachCustomWheelEventHandler() {}
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
   },

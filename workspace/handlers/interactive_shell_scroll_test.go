@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// The browser terminal draws tmux's screen, so it has no scrollback of its own: the wheel only scrolls if tmux reports mouse events
-// and keeps a long history. With the mouse off (tmux's default) a wheel did nothing, and history stopped at 2000 lines. Opt-in like the
-// other shell checks (needs tmux; on Linux also the Landlock launcher).
+// The browser terminal draws tmux's screen, so it has no scrollback of its own. tmux keeps a long history with its mouse OFF (so a
+// drag is the browser's selection and copy works); the page's wheel sends {"type":"scroll"} and that scrolls tmux's history, and
+// {"type":"scroll","cancel":true} (sent before the next keystroke) returns to the prompt. Opt-in like the other shell checks.
 func TestInteractiveShellWheelScrollsTheHistory(t *testing.T) {
 	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
 		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
@@ -63,8 +63,8 @@ func TestInteractiveShellWheelScrollsTheHistory(t *testing.T) {
 		out, _ := exec.Command(realTmux(), append([]string{"-S", socket}, args...)...).CombinedOutput()
 		return strings.TrimSpace(string(out))
 	}
-	if got := tmux("show-options", "-gv", "mouse"); got != "on" {
-		t.Fatalf("tmux mouse = %q: without it the wheel does nothing", got)
+	if got := tmux("show-options", "-gv", "mouse"); got != "off" {
+		t.Fatalf("tmux mouse = %q: with it on, tmux takes every drag and nothing can be copied", got)
 	}
 	if got := tmux("show-options", "-gv", "history-limit"); got != "50000" {
 		t.Fatalf("history-limit = %q, want 50000", got)
@@ -81,21 +81,17 @@ func TestInteractiveShellWheelScrollsTheHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(1500 * time.Millisecond)
-	// What xterm.js sends for a wheel-up when the application asked for mouse reporting (SGR encoding).
-	for i := 0; i < 5; i++ {
-		_ = conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[<64;10;5M"))
-		time.Sleep(150 * time.Millisecond)
+	// What the page sends for the mouse wheel.
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"scroll","lines":15}`)); err != nil {
+		t.Fatal(err)
 	}
 	time.Sleep(800 * time.Millisecond)
 	if tmux("display-message", "-p", "-t", "shell", "#{pane_in_mode}") != "1" || tmux("display-message", "-p", "-t", "shell", "#{scroll_position}") == "" {
-		t.Fatal("a wheel-up must scroll the history back")
+		t.Fatal("a scroll message must scroll the history back")
 	}
-	for i := 0; i < 8; i++ {
-		_ = conn.WriteMessage(websocket.BinaryMessage, []byte("\x1b[<65;10;5M"))
-		time.Sleep(120 * time.Millisecond)
-	}
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"scroll","cancel":true}`))
 	time.Sleep(600 * time.Millisecond)
 	if tmux("display-message", "-p", "-t", "shell", "#{pane_in_mode}") != "0" {
-		t.Fatal("scrolling back down to the bottom must leave scroll mode")
+		t.Fatal("cancel must return to the prompt, so typing reaches the shell")
 	}
 }

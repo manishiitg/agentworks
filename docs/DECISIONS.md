@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server
+
+- **Found (user).** Nothing could be selected or copied in the terminal: tmux's mouse mode (turned on for wheel scrolling) took every drag.
+  Also a pre-fix shell kept being reused: tmux answers a refused client with "access not allowed" and exit 0, which read as running.
+- **Done.** tmux runs with its mouse off, so a drag is the browser's own selection. The page turns the wheel into `{"type":"scroll","lines":N}`
+  (the agent server forwards only resize and scroll, rebuilt from their fields); the workspace runs tmux `copy-mode -e` + `scroll-up/down`, and
+  the first keystroke after scrolling back sends `{"type":"scroll","cancel":true}` so typing reaches the shell. `interactiveShellRunning`
+  treats "access not allowed" as not running. Verified on a Mac and on Excellence/Confida (normal and as a user's slot).
 ### 2026-10-03 — Relays keep Google apps and exclude Slack/WhatsApp
 
 Relays are API products with schedules and selected tools/skills. Keep Drive,

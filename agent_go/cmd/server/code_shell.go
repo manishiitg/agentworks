@@ -333,15 +333,26 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			}
 		case websocket.TextMessage:
 			var control struct {
-				Type string `json:"type"`
-				Cols int    `json:"cols"`
-				Rows int    `json:"rows"`
+				Type   string `json:"type"`
+				Cols   int    `json:"cols"`
+				Rows   int    `json:"rows"`
+				Lines  int    `json:"lines"`
+				Cancel bool   `json:"cancel"`
 			}
-			if json.Unmarshal(data, &control) == nil && control.Type == "resize" && control.Cols > 0 && control.Rows > 0 {
-				resize, _ := json.Marshal(map[string]interface{}{"type": "resize", "cols": min(control.Cols, liveAttachMaxCols), "rows": min(control.Rows, liveAttachMaxRows)})
-				if shell.WriteMessage(websocket.TextMessage, resize) != nil {
-					return
-				}
+			if json.Unmarshal(data, &control) != nil {
+				continue
+			}
+			// Only the two known controls are passed on, rebuilt from their fields (never the browser's raw text).
+			var forward []byte
+			switch {
+			case control.Type == "resize" && control.Cols > 0 && control.Rows > 0:
+				forward, _ = json.Marshal(map[string]interface{}{"type": "resize", "cols": min(control.Cols, liveAttachMaxCols), "rows": min(control.Rows, liveAttachMaxRows)})
+			case control.Type == "scroll":
+				// The mouse wheel: tmux's mouse is off so the browser can select and copy (workspace interactiveShellScroll).
+				forward, _ = json.Marshal(map[string]interface{}{"type": "scroll", "lines": max(-200, min(control.Lines, 200)), "cancel": control.Cancel})
+			}
+			if forward != nil && shell.WriteMessage(websocket.TextMessage, forward) != nil {
+				return
 			}
 		}
 	}

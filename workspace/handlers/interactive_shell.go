@@ -177,7 +177,9 @@ func interactiveShellServerAccess(slot string) string {
 func interactiveShellRunning(socket string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, realTmux(), "-S", socket, "has-session", "-t", interactiveShellSession).Run() == nil
+	// tmux 3.3+ answers a client it refuses with "access not allowed" and exit 0: that is not a shell this service can use.
+	out, err := exec.CommandContext(ctx, realTmux(), "-S", socket, "has-session", "-t", interactiveShellSession).CombinedOutput()
+	return err == nil && !strings.Contains(string(out), "access not allowed")
 }
 
 // interactiveShellHostOS is the platform the workspace service runs on (a variable for tests).
@@ -338,13 +340,13 @@ func StartInteractiveShell(c *gin.Context) {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
 		}
 	}
-	// The options are set before the session exists (start-server first, so they apply to its first pane): mouse reporting so the browser's
-	// wheel scrolls tmux's own history (tmux redraws the screen itself, so the browser has no scrollback of its own: with the mouse off a wheel
-	// did nothing, or cycled the shell's command history), a long history, and no tmux status bar.
+	// The options are set before the session exists (start-server first, so they apply to its first pane): tmux's mouse off, so a drag
+	// is the browser's own selection and copy works (with it on, tmux took every drag); the wheel scrolls tmux's history through the
+	// page's "scroll" message instead (interactiveShellScroll). A long history, and no tmux status bar.
 	// tmux's own key and mouse commands are switched off (the browser terminal is one shell, not a tmux): its right-click menu (split, kill,
 	// respawn) covered the browser's copy/paste menu, and the Ctrl-b prefix could split panes or open windows the page cannot show. The
 	// wheel bindings, which scroll the history, stay.
-	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse on \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
 		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellTmuxQuietBindings, interactiveShellServerAccess(slot), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {
