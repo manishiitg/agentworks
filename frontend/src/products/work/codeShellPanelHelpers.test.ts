@@ -7,6 +7,13 @@ import {
   readShellFontSize,
   shellReconnectDelayMs,
   shellStreamUrl,
+  SHELL_MAX_TABS,
+  closeShellTab,
+  nextShellTab,
+  readShellTabs,
+  writeShellTabs,
+  shellShortcut,
+  shellShortcutLabel,
 } from './codeShellPanelHelpers'
 
 describe('Code terminal helpers', () => {
@@ -59,7 +66,7 @@ describe('Code terminal panel wiring', () => {
     expect(source).toContain('shellTheme(schemeRef.current, RAW_XTERM_THEMES[themeRef.current])')
     expect(source).toContain('termRef.current.options.theme = shellTheme(colourScheme, RAW_XTERM_THEMES[theme])')
     expect(source).toContain('fontFamily: RAW_XTERM_FONT_FAMILY')
-    expect(source).toContain('aria-label={`Colour scheme: ${SHELL_THEME_LABELS[colourScheme]}`}')
+    expect(source).toContain('Colours: {SHELL_THEME_LABELS[colourScheme]}')
   })
 
   it('loads the xterm add-ons and opens links only through the safe check', () => {
@@ -70,11 +77,92 @@ describe('Code terminal panel wiring', () => {
     expect(source).toContain("'noopener,noreferrer'")
   })
 
-  it('has the toolbar the design promised', () => {
-    for (const label of ['Search the terminal', 'Copy the selection', 'Paste', 'Clear the screen', 'Smaller text', 'Larger text']) {
-      expect(source).toContain(`aria-label="${label}"`)
+  it('keeps search in the toolbar and the rest in one menu with shortcuts', () => {
+    expect(source).toContain('aria-label="Search the terminal"')
+    expect(source).toContain('aria-label="Terminal menu"')
+    for (const item of ["'Copy selection', 'copy'", "'Paste', 'paste'", "'Clear screen', 'clear'", "'Larger text', 'larger'", "'Smaller text', 'smaller'", "'New terminal', 'newTab'"]) {
+      expect(source).toContain(`menuItem(${item}`)
     }
+    expect(source).toContain('shellShortcut(event, IS_MAC)')
     expect(source).toContain("expanded ? 'Exit full screen' : 'Full screen'")
     expect(source).toContain('SHELL_RECONNECT_ATTEMPTS')
+  })
+})
+
+describe('Code terminal tabs', () => {
+  const memory = () => {
+    const values = new Map<string, string>()
+    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) } }
+  }
+
+  it('asks the server for the tab, keeping tab 1 on the old url', () => {
+    expect(shellStreamUrl('p', 80, 24, 'https://x.test', null)).not.toContain('tab=')
+    expect(shellStreamUrl('p', 80, 24, 'https://x.test', null, 1)).not.toContain('tab=')
+    expect(shellStreamUrl('p', 80, 24, 'https://x.test', null, 3)).toContain('tab=3')
+  })
+
+  it('allows at most three tabs and reuses the lowest free number', () => {
+    expect(SHELL_MAX_TABS).toBe(3)
+    expect(nextShellTab([1])).toBe(2)
+    expect(nextShellTab([1, 3])).toBe(2)
+    expect(nextShellTab([2, 3])).toBe(1)
+    expect(nextShellTab([1, 2, 3])).toBeNull()
+  })
+
+  it('closes a tab, activating its left neighbour, and never the last one', () => {
+    expect(closeShellTab({ tabs: [1, 2, 3], active: 2 }, 2)).toEqual({ tabs: [1, 3], active: 1 })
+    expect(closeShellTab({ tabs: [1, 2, 3], active: 3 }, 1)).toEqual({ tabs: [2, 3], active: 3 })
+    expect(closeShellTab({ tabs: [2, 3], active: 2 }, 2)).toEqual({ tabs: [3], active: 3 })
+    expect(closeShellTab({ tabs: [1], active: 1 }, 1)).toEqual({ tabs: [1], active: 1 })
+  })
+
+  it('remembers the open tabs per Code and ignores anything malformed', () => {
+    const store = memory()
+    expect(readShellTabs('a', store)).toEqual({ tabs: [1], active: 1 })
+    writeShellTabs('a', { tabs: [1, 3], active: 3 }, store)
+    expect(readShellTabs('a', store)).toEqual({ tabs: [1, 3], active: 3 })
+    expect(readShellTabs('b', store)).toEqual({ tabs: [1], active: 1 })
+    store.setItem('code_terminal_tabs:c', JSON.stringify({ tabs: [0, 2, 2, 9, 'x'], active: 9 }))
+    expect(readShellTabs('c', store)).toEqual({ tabs: [2], active: 2 })
+    store.setItem('code_terminal_tabs:d', '{not json')
+    expect(readShellTabs('d', store)).toEqual({ tabs: [1], active: 1 })
+  })
+})
+
+describe('Code terminal shortcuts', () => {
+  const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean; code: string }> = {}) =>
+    ({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...mods })
+
+  it('never takes the shell\'s own keys', () => {
+    for (const isMac of [true, false]) {
+      expect(shellShortcut(key('c', { ctrlKey: true }), isMac)).toBeNull() // Ctrl+C interrupts
+      expect(shellShortcut(key('d', { ctrlKey: true }), isMac)).toBeNull()
+      expect(shellShortcut(key('r', { ctrlKey: true }), isMac)).toBeNull()
+      expect(shellShortcut(key('a'), isMac)).toBeNull()
+      expect(shellShortcut(key('b', { altKey: true }), isMac)).toBeNull() // readline word jumps
+    }
+    expect(shellShortcut(key('k', { ctrlKey: true }), false)).toBeNull() // readline kill-line on Linux
+  })
+
+  it('maps the Mac shortcuts', () => {
+    expect(shellShortcut(key('c', { metaKey: true }), true)).toBe('copy')
+    expect(shellShortcut(key('v', { metaKey: true }), true)).toBe('paste')
+    expect(shellShortcut(key('f', { metaKey: true }), true)).toBe('search')
+    expect(shellShortcut(key('k', { metaKey: true }), true)).toBe('clear')
+    expect(shellShortcut(key('=', { metaKey: true }), true)).toBe('larger')
+    expect(shellShortcut(key('-', { metaKey: true }), true)).toBe('smaller')
+    expect(shellShortcut(key('Enter', { metaKey: true, shiftKey: true }), true)).toBe('fullscreen')
+    expect(shellShortcut(key('¡', { altKey: true, code: 'Digit1' }), true)).toBe('tab1')
+    expect(shellShortcut(key('ˇ', { altKey: true, shiftKey: true, code: 'KeyT' }), true)).toBe('newTab')
+  })
+
+  it('maps the Windows/Linux shortcuts', () => {
+    expect(shellShortcut(key('C', { ctrlKey: true, shiftKey: true }), false)).toBe('copy')
+    expect(shellShortcut(key('V', { ctrlKey: true, shiftKey: true }), false)).toBe('paste')
+    expect(shellShortcut(key('f', { ctrlKey: true }), false)).toBe('search')
+    expect(shellShortcut(key('K', { ctrlKey: true, shiftKey: true }), false)).toBe('clear')
+    expect(shellShortcut(key('3', { altKey: true, code: 'Digit3' }), false)).toBe('tab3')
+    expect(shellShortcutLabel('copy', false)).toBe('Ctrl+Shift+C')
+    expect(shellShortcutLabel('copy', true)).toBe('⌘C')
   })
 })

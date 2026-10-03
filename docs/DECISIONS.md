@@ -19,6 +19,23 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code terminal: up to 3 tabs, one menu with shortcuts; slot shells fixed (home, piling up, tmux menu)
+
+- **Decided (user).** Up to 3 terminals per person per Code (tabs); the toolbar actions live in one menu in the top bar with keyboard shortcuts.
+- **Done.** The stream/stop routes take `tab` (1..3; anything else is refused, which is the cap); tab 1 keeps the pre-tab shell id so a running
+  terminal carries over. The panel shows a tab strip (`+`, close stops that shell), keeps hidden tabs connected, and remembers the tabs per Code.
+  Search stays in the toolbar; copy, paste, clear, text size, colours, full screen and new terminal are in a `⋯` menu with their shortcuts
+  (⌘ on a Mac; Ctrl+Shift+C/V/K elsewhere so Ctrl+C stays the shell's interrupt; Alt+1..3 switches tabs).
+- **Found (user, Excellence).** (1) A slot terminal kept the service account's HOME: a login shell read `/srv/agents/home/.profile`
+  ("Permission denied") and did not share the agent's home. (2) tmux 3.3+ refuses clients of another user, and the slot's tmux runs in the
+  sandbox's user namespace where the service arrives as the overflow user: the service could not see or stop a slot shell, so every start
+  left another tmux server running (five for one terminal). (3) With mouse on, tmux's right-click menu (split, kill, respawn) covered the
+  browser's menu.
+- **Done.** Every sandboxed terminal gets the project's private home (group-accessible). Slot shells grant `server-access -a -w` to the
+  overflow user (the socket's file mode still limits who can connect: the slot and the service). tmux's prefix and right-click bindings are
+  removed; the wheel still scrolls. The launcher refuses a policy with fields it does not know (an old launcher ignored `hidden_paths`).
+  Verified on Excellence and Confida as a user's slot: HOME in the project, service reaches the shell, bindings off, Stop leaves no tmux server.
+- **Open.** Four orphaned tmux servers of one user's Code terminal from before this fix are still running on Excellence (left for the user to decide).
 ### 2026-10-03 — Manual browser clipboard stays with the controlled browser
 
 Use native local clipboard gestures to copy the active page selection and insert

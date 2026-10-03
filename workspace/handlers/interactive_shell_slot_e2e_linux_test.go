@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,7 +97,7 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	defer conn.Close()
 	// The service's own .env sits two folders above the docs folder (<app>/data/docs -> <app>/.env).
 	platformEnv := filepath.Join(filepath.Dir(filepath.Dir(docs)), ".env")
-	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; alias ls grep > aliases.txt 2>&1; nosuchcommand_zz > cnf.txt 2>&1; mkdir -p \"$HOME/.config/zz\" > homew.txt 2>&1 && echo writable >> homew.txt; [ -f \"$HOME/.bashrc\" ] && echo bashrc > rc.txt; " +
+	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; alias ls grep > aliases.txt 2>&1; echo \"$HOME\" > home.txt; nosuchcommand_zz > cnf.txt 2>&1; mkdir -p \"$HOME/.config/zz\" > homew.txt 2>&1 && echo writable >> homew.txt; [ -f \"$HOME/.bashrc\" ] && echo bashrc > rc.txt; " +
 		"cat " + shellQuote(platformEnv) + " > env.txt 2>&1; ls " + shellQuote(filepath.Join(docs, "_users")) + " > users.txt 2>&1; " +
 		"echo done > done.txt\r"
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(script)); err != nil {
@@ -153,5 +154,37 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	}
 	if users := read("users.txt"); users != "" && !strings.Contains(users, "denied") && !strings.Contains(users, "No such file") {
 		t.Errorf("the shell could list everyone's folders: %.200q", users)
+	}
+	// HOME is the project's private home, never the service account's (a login shell read /srv/agents/home/.profile).
+	if home := read("home.txt"); !strings.Contains(home, "/zz-shell-slot-e2e/.sandbox-cache/home") {
+		t.Errorf("HOME = %q, want the project's private home", home)
+	}
+	// The service account can talk to the slot's tmux (tmux refuses other users unless granted): without that it could not
+	// stop or find the shell, and shells piled up. tmux's own menus and prefix commands are off; the wheel still scrolls.
+	_, socket, _ := interactiveShellPaths(id, slot)
+	keys, err := exec.Command(realTmux(), "-S", socket, "list-keys").CombinedOutput()
+	if err != nil || strings.Contains(string(keys), "access not allowed") {
+		t.Fatalf("the service cannot reach the slot's tmux: %v %s", err, keys)
+	}
+	for _, menu := range []string{"MouseDown3Pane", "-T prefix"} {
+		if strings.Contains(string(keys), menu) {
+			t.Errorf("tmux binding %q is still on", menu)
+		}
+	}
+	if !strings.Contains(string(keys), "WheelUpPane") {
+		t.Error("the wheel binding must stay")
+	}
+	// Stop ends the shell: its tmux server is gone (this server's pid, not any older one on the same path).
+	pidOut, _ := exec.Command(realTmux(), "-S", socket, "display-message", "-p", "#{pid}").CombinedOutput()
+	serverPID := strings.TrimSpace(string(pidOut))
+	if code := post("/stop", map[string]any{"shell_id": id}); code != 200 {
+		t.Fatalf("stop = %d", code)
+	}
+	time.Sleep(700 * time.Millisecond)
+	if serverPID == "" {
+		t.Fatalf("could not read the tmux server pid: %s", pidOut)
+	}
+	if _, err := os.Stat("/proc/" + serverPID); err == nil {
+		t.Errorf("tmux server %s still runs after stop", serverPID)
 	}
 }

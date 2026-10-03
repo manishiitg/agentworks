@@ -2,12 +2,15 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -224,9 +227,9 @@ func TestRevokedCodeShellsAreStoppedAndClosed(t *testing.T) {
 		codeShells.Unlock()
 	})
 
-	ownerShell := codeShellID("owner", "p1", "owner")
-	editorShell := codeShellID("owner", "p1", "editor")
-	otherCode := codeShellID("owner", "p2", "editor")
+	ownerShell := codeShellID("owner", "p1", "owner", 1)
+	editorShell := codeShellID("owner", "p1", "editor", 1)
+	otherCode := codeShellID("owner", "p2", "editor", 1)
 	codeShellTrack(ownerShell, "owner", "p1", "owner")
 	codeShellTrack(editorShell, "owner", "p1", "editor")
 	codeShellTrack(otherCode, "owner", "p2", "editor")
@@ -247,3 +250,34 @@ func TestRevokedCodeShellsAreStoppedAndClosed(t *testing.T) {
 
 // The test binary must never stop a developer's real Code shells.
 func init() { codeShellSweepOnStart = false }
+
+// A person has at most three terminals per Code. Tab 1 is the shell a single terminal always had, so one running
+// before tabs existed carries over; tabs 2 and 3 are separate shells; anything else is refused.
+func TestCodeShellTabs(t *testing.T) {
+	legacy := func(ownerID, projectID, userID string) string {
+		sum := sha256.Sum256([]byte(ownerID + "\x00" + projectID + "\x00" + userID))
+		return "code-" + hex.EncodeToString(sum[:])[:32]
+	}
+	if got := codeShellID("o", "p", "u", 1); got != legacy("o", "p", "u") {
+		t.Fatalf("tab 1 must keep the pre-tab shell id: %s", got)
+	}
+	seen := map[string]bool{}
+	for tab := 1; tab <= codeShellMaxTabs; tab++ {
+		id := codeShellID("o", "p", "u", tab)
+		if seen[id] || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`).MatchString(id) {
+			t.Fatalf("tab %d id %q is reused or not a valid workspace shell id", tab, id)
+		}
+		seen[id] = true
+	}
+	for raw, want := range map[string]int{"": 1, "1": 1, "2": 2, "3": 3} {
+		r := httptest.NewRequest(http.MethodGet, "/x?tab="+raw, nil)
+		if got, ok := codeShellTab(r); !ok || got != want {
+			t.Errorf("tab=%q -> %d,%v want %d", raw, got, ok, want)
+		}
+	}
+	for _, raw := range []string{"0", "4", "-1", "x", "2.5", "99"} {
+		if _, ok := codeShellTab(httptest.NewRequest(http.MethodGet, "/x?tab="+raw, nil)); ok {
+			t.Errorf("tab=%q must be refused", raw)
+		}
+	}
+}

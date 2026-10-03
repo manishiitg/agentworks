@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -143,6 +144,34 @@ func realTmux() string {
 		return path
 	}
 	return "tmux"
+}
+
+// interactiveShellTmuxQuietBindings turns off tmux's own menus and prefix commands (each ends with a separating " \\; ").
+const interactiveShellTmuxQuietBindings = `set-option -g prefix None \; set-option -g prefix2 None \; unbind-key -a -T prefix \; ` +
+	`unbind-key -T root MouseDown3Pane \; unbind-key -T root M-MouseDown3Pane \; unbind-key -T root MouseDown3Status \; ` +
+	`unbind-key -T root MouseDown3StatusLeft \; unbind-key -T root MouseDown3StatusRight \; ` +
+	`unbind-key -T root M-MouseDown3Status \; unbind-key -T root M-MouseDown3StatusLeft \; unbind-key -T root MouseDrag1Border \; `
+
+// interactiveShellServerAccess lets the service account talk to a terminal that runs as a user's slot. tmux 3.3+ refuses every client of
+// another user ("access not allowed") whatever the socket's file mode, so without it the service could not see, resize or stop the shell:
+// each start removed the "dead" socket and started another server, and each stop removed the folder but left the server running, so a
+// person's shells piled up (Excellence 2026-10-03: five servers for one terminal).
+//
+// The tmux server runs in the sandbox's user namespace, which maps only the slot's own id: every other user, the service included,
+// arrives as the overflow user (nobody, 65534), so that is the user to allow. Who can reach the socket at all is still decided by its
+// file mode: the slot and its group (the service), never another person's slot.
+func interactiveShellServerAccess(slot string) string {
+	if slot == "" {
+		return ""
+	}
+	name := "nobody"
+	if overflow, err := os.ReadFile("/proc/sys/kernel/overflowuid"); err == nil {
+		if account, lookupErr := user.LookupId(strings.TrimSpace(string(overflow))); lookupErr == nil && account.Username != "" {
+			name = account.Username
+		}
+	}
+	// -w: write access, which kill-server and resize need (plain -a let the service list but not stop).
+	return fmt.Sprintf(`server-access -a -w %s \; `, shellQuote(name))
 }
 
 func interactiveShellRunning(socket string) bool {
@@ -300,7 +329,10 @@ func StartInteractiveShell(c *gin.Context) {
 	if !unconfined {
 		environment += fmt.Sprintf(" AGENTWORKS_START_DIR=%s", shellQuote(workingDir))
 	}
-	if slot == "" && !unconfined {
+	// Every sandboxed terminal, a user's slot account included, gets the project's private home: the slot used to keep the service
+	// account's real HOME, so a login shell read /srv/agents/home/.profile ("Permission denied") and the terminal and the coding agent
+	// (whose shell already uses this home) saw different installs (Excellence 2026-10-03).
+	if !unconfined {
 		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
 		}
@@ -308,8 +340,11 @@ func StartInteractiveShell(c *gin.Context) {
 	// The options are set before the session exists (start-server first, so they apply to its first pane): mouse reporting so the browser's
 	// wheel scrolls tmux's own history (tmux redraws the screen itself, so the browser has no scrollback of its own: with the mouse off a wheel
 	// did nothing, or cycled the shell's command history), a long history, and no tmux status bar.
-	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse on \; set-option -g status off \; new-session -d -s %s -x %d -y %d %s -l`,
-		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellSession, cols, rows, shell)
+	// tmux's own key and mouse commands are switched off (the browser terminal is one shell, not a tmux): its right-click menu (split, kill,
+	// respawn) covered the browser's copy/paste menu, and the Ctrl-b prefix could split panes or open windows the page cannot show. The
+	// wheel bindings, which scroll the history, stay.
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse on \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
+		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellTmuxQuietBindings, interactiveShellServerAccess(slot), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {
 		// tmux makes its socket owner-only. The service reaches it (has-session, resize, stop) through the slot's group,
@@ -480,6 +515,10 @@ func interactiveShellHome(docsDir string, writePaths []string, workingDir string
 	home := filepath.Join(root, ".sandbox-cache", "home")
 	if err := os.MkdirAll(filepath.Join(home, ".config"), 0o700); err != nil {
 		return ""
+	}
+	// The service creates the folders; a terminal running as a user's slot (another user, the project's group) must be able to use them.
+	for _, dir := range []string{filepath.Dir(home), home, filepath.Join(home, ".config")} {
+		_ = os.Chmod(dir, 0o770|os.ModeSetgid)
 	}
 	return home
 }

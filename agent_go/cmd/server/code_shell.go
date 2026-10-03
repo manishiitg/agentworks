@@ -61,11 +61,33 @@ var codeShellReaperOnce sync.Once
 // real shells.
 var codeShellSweepOnStart = true
 
-// codeShellID names one person's shell of one Code (the workspace allows
-// ^[a-z0-9][a-z0-9-]{0,47}$).
-func codeShellID(ownerID, projectID, userID string) string {
-	sum := sha256.Sum256([]byte(ownerID + "\x00" + projectID + "\x00" + userID))
+// codeShellMaxTabs is how many terminals one person can have open in one Code (user decision 2026-10-03).
+const codeShellMaxTabs = 3
+
+// codeShellID names one person's shell of one Code in terminal tab `tab` (1..codeShellMaxTabs; the workspace
+// allows ^[a-z0-9][a-z0-9-]{0,47}$). Tab 1 keeps the id a single terminal always had, so a shell running
+// before tabs existed is tab 1.
+func codeShellID(ownerID, projectID, userID string, tab int) string {
+	key := ownerID + "\x00" + projectID + "\x00" + userID
+	if tab > 1 {
+		key += "\x00tab" + strconv.Itoa(tab)
+	}
+	sum := sha256.Sum256([]byte(key))
 	return "code-" + hex.EncodeToString(sum[:])[:32]
+}
+
+// codeShellTab reads the terminal tab a request is about: none or "1" is tab 1, else 2..codeShellMaxTabs.
+// Anything else is refused, which is what caps a person at codeShellMaxTabs shells per Code.
+func codeShellTab(r *http.Request) (int, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("tab"))
+	if raw == "" {
+		return 1, true
+	}
+	tab, err := strconv.Atoi(raw)
+	if err != nil || tab < 1 || tab > codeShellMaxTabs {
+		return 0, false
+	}
+	return tab, true
 }
 
 // codeShellFolderGuard is the Folder Guard a chat turn gives the shell tool in
@@ -104,6 +126,10 @@ func (api *StreamingAPI) codeShellTarget(r *http.Request) (userID, shellID, root
 
 func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, root, ownerID, projectID string, status int, message string) {
 	claims := GetUserFromContext(r.Context())
+	tab, validTab := codeShellTab(r)
+	if !validTab {
+		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a Code has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
+	}
 	projectID = strings.TrimSpace(mux.Vars(r)["project_id"])
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
 		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
@@ -120,7 +146,7 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 		return "", "", "", "", "", http.StatusForbidden, "the shell needs editor access to this Code workspace"
 	}
 	root = agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath)
-	return claims.UserID, codeShellID(project.OwnerID, projectID, claims.UserID), root, project.OwnerID, projectID, 0, ""
+	return claims.UserID, codeShellID(project.OwnerID, projectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
 }
 
 // codeShellStart starts (or reuses) the sandboxed shell; the workspace call is
