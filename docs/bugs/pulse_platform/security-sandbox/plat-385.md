@@ -35,9 +35,16 @@ grants too. No mounts or namespaces (the launcher's `hidden_paths` /
 create, and Cursor needs the shared /tmp), so every launch path is covered.
 The PLAT-385 stopgap (hybrid for such chats) is removed.
 
-Limits: no new entry directly in a split folder (for example the workflow
-root) during that launch; entries created after the launch are not writable
-natively until the next launch.
+The CLI's own working folder is never split (provider `71ca588`): its blocked
+entries are the CLI's managed instruction files (CLAUDE.md, AGENTS.md,
+.mcp.json, ...), which stay bridge-guarded; splitting it would have stopped a
+Code CLI creating files in its project (found by ai-work-0b).
+
+Accepted limits (owner-facing): no new file or folder can be created directly
+in a split folder during that launch, for example the real workflow root next
+to planning/ or AGENTS.md (workflow chats run in their own folder and write
+outputs under runs/, code/ and so on, which stay writable); entries created
+after the launch are not writable natively until the next launch.
 
 ## Done / left
 
