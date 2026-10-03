@@ -19,6 +19,7 @@ import { resolvePiModelGroup } from '../../utils/llmDisplay'
 import { getWorkflowLLMOptions, getWorkflowLLMTierDefaults, getWorkflowProviderOptions } from '../../utils/workflowLLMTierDefaults'
 import { effectiveLLMUnderLock } from '../../utils/effectiveLLM'
 import { installedCodingProviders } from '../../utils/providerCatalogFilter'
+import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 
 type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'pulse_llm'
 const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'pulse_llm']
@@ -660,7 +661,7 @@ export default function WorkflowLLMConfigurationPanel({
   const renderAccountTree = (row: ProviderRow) => {
     const serverID = `global:${row.entry.id}`
     const global = accountRecords.find(record => record.id === serverID)
-    const server = global || { id: serverID, provider: row.entry.id, display_name: 'Server account', scope: 'global' as const, auth_method: 'server' }
+    const server = global || { id: serverID, provider: row.entry.id, display_name: ADMIN_MANAGED_ACCOUNT_LABEL, scope: 'global' as const, auth_method: 'server' }
     const userAccounts = privateConnections.filter(record => record.provider === row.entry.id && (!row.groupFilter || row.modelId?.startsWith(`${record.underlying_provider}/`)))
     const selectedProvider = selectedRow?.entry.id === row.entry.id && (!row.groupFilter || selectedRow?.groupFilter === row.groupFilter)
     const activeID = selectedConnectionID || serverID
@@ -674,11 +675,11 @@ export default function WorkflowLLMConfigurationPanel({
       const available = !unavailable && !needsSetup && row.entry.runtime_available !== false && (account.scope === 'user' ? global?.personal_accounts_allowed !== false : Boolean(row.entry.usable))
       const relation = accountRelation(account)
       const note = relation === 'own' ? ('sharing' in account && account.sharing?.mode === 'shared' ? 'Yours, shared' : 'Private')
-        : relation === 'server' ? `Shared${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
+        : relation === 'server' ? `Managed by admin${'identity' in account && account.identity ? ` · ${account.identity}` : ''}`
           : `Shared${'owner_name' in account && account.owner_name ? ` by ${account.owner_name}` : ''}`
       return <div key={account.id} className="flex flex-wrap items-center gap-2 py-2">
         {account.scope === 'global' ? <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" /> : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
-        <span className="min-w-0 break-words text-xs font-medium text-foreground">{relation === 'server' ? 'Shared account' : account.display_name}</span>
+        <span className="min-w-0 break-words text-xs font-medium text-foreground">{relation === 'server' ? ADMIN_MANAGED_ACCOUNT_LABEL : account.display_name}</span>
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{note}</span>
         {unavailable && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{NO_LONGER_AVAILABLE}</span>}
         {inUse && <span className="text-[10px] font-medium text-primary">In use</span>}

@@ -4,6 +4,7 @@ import GuidedProviderTerminal from './GuidedProviderTerminal'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
 import ProviderAccountCostsSection from './AccountCosts'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
+import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import {
   llmConfigService,
@@ -34,7 +35,7 @@ export function accountStatusText(status?: ProviderAccountStatus | 'loading'): s
 /** Whose account a row is, for action labels. */
 export function accountScopeLabel(record: ProviderConnection): string {
   const relation = accountRelation(record)
-  if (relation === 'server') return 'server account (shared)'
+  if (relation === 'server') return 'admin-managed account'
   if (relation === 'own') return 'your account'
   return `${record.owner_name || 'another person'}'s account`
 }
@@ -58,7 +59,7 @@ export const accountUsable = (record: ProviderConnection) =>
 export const accountConfigured = (record: ProviderConnection) => record.configured !== false
 
 export const ACCOUNT_GROUPS: { label: string; relations: ProviderAccountRelation[] }[] = [
-  { label: 'Server account', relations: ['server'] },
+  { label: ADMIN_MANAGED_ACCOUNT_LABEL, relations: ['server'] },
   { label: 'Your accounts', relations: ['own'] },
   { label: 'Shared with you', relations: ['shared_with_you'] },
   { label: 'Shared with this workflow', relations: ['shared_with_workflow'] },
@@ -68,7 +69,7 @@ export const ACCOUNT_GROUPS: { label: string; relations: ProviderAccountRelation
 /** Short label for a selectable account in a picker. */
 export function accountOptionLabel(record: ProviderConnection): string {
   switch (accountRelation(record)) {
-    case 'server': return record.display_name
+    case 'server': return ADMIN_MANAGED_ACCOUNT_LABEL
     case 'own': return `${record.display_name} (${record.sharing?.mode === 'shared' ? 'yours, shared' : 'private'})`
     default: return `${record.display_name}${record.owner_name ? ` (${record.owner_name})` : ''}`
   }
@@ -148,7 +149,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const signOut = async (record: ProviderConnection) => {
     const server = accountRelation(record) === 'server'
     const message = server
-      ? `Every run that uses the ${providerLabel || provider} server account will stop working until someone signs in again.`
+      ? `Every run that uses the ${providerLabel || provider} admin-managed account will stop working until someone signs in again.`
       : `Sign out ${record.display_name}? Runs that use it stop working until it signs in again. The account stays.`
     if (!window.confirm(message)) return
     setBusy(true); setError(null)
@@ -342,7 +343,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Shared account</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{ADMIN_MANAGED_ACCOUNT_LABEL}</span>
               {statusLine(record) || (record.identity && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Signed in as {record.identity}</p>)}
               <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
@@ -353,7 +354,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           {!disabled && record.can_manage && (
             <div className="flex flex-wrap items-center gap-1">
               {needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setConfirmSharedLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
-              <ActionsMenu label="More for the shared account" disabled={busy} items={[
+              <ActionsMenu label="More for the admin-managed account" disabled={busy} items={[
                 ...terminalItem(record),
                 ...checkItem(record),
                 ...(!needsSignIn(record) ? [{ label: 'Sign in with another login', onSelect: () => setConfirmSharedLogin(record) }] : []),
@@ -365,8 +366,8 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         </div>
         {choice !== null && record.availability_editable && (
           <div className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Who can use the shared account
-              <select aria-label="Who can use the shared account" disabled={busy} value={choice} className={inputClass}
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Who can use the admin-managed account
+              <select aria-label="Who can use the admin-managed account" disabled={busy} value={choice} className={inputClass}
                 onChange={event => {
                   const value = event.target.value
                   // Everyone and Only admins save at once; Specific people opens the pickers.
@@ -451,7 +452,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           {personalAllowed && own.length === 0 && !adding && <p className="text-xs text-gray-500 dark:text-gray-400">You have no accounts yet. <strong>Add my account</strong> signs in your own {providerLabel || 'provider'} login: private to you unless you share it.</p>}
           {addForm}
           {server && <div className="mt-5">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Shared account</div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>
             {serverBlock(server)}
           </div>}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
@@ -461,9 +462,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             isOpen={confirmSharedLogin !== null}
             onClose={() => setConfirmSharedLogin(null)}
             onConfirm={() => { const record = confirmSharedLogin; setConfirmSharedLogin(null); if (record) void login(record) }}
-            title={`Sign in the shared ${providerLabel || 'provider'} login?`}
-            message={`This is the shared account, not yours. Everyone it is available to will run on the login you sign in with, and on its plan. To add a login only you use, cancel and choose "Add my account" under Your accounts.`}
-            confirmText="Sign in shared login"
+            title={`Sign in the admin-managed ${providerLabel || 'provider'} account?`}
+            message={`Signing in changes the login and plan used by every run allowed to use this account. To add a login only you use, cancel and choose "Add my account" under Your accounts.`}
+            confirmText="Sign in account"
             type="warning"
           />
         </section>
@@ -484,7 +485,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             <Users className="h-4 w-4 text-violet-600 dark:text-violet-300" />
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Provider accounts</h3>
           </div>
-          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Use the server account or one of your own.</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">Use the admin-managed account or one of your own.</p>
         </div>
         {addButton}
       </div>}

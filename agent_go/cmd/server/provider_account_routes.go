@@ -19,6 +19,8 @@ import (
 // HTTP surface for provider accounts (docs/design/provider_accounts.md).
 // Credentials never leave the server: every response carries metadata only.
 
+const adminManagedProviderAccountName = "Admin-managed account"
+
 // providerAccountView is one account as the caller may see it.
 type providerAccountView struct {
 	ProviderConnection
@@ -173,7 +175,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 			}
 		}
 		view := providerAccountView{
-			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: "Server account", Scope: "global", AuthMethod: "server"},
+			ProviderConnection: ProviderConnection{PersonalAccountsAllowed: &allowed, ID: "global:" + provider, Provider: provider, DisplayName: adminManagedProviderAccountName, Scope: "global", AuthMethod: "server"},
 			Kind:               kind, Relation: "server", Source: source, Availability: &availability,
 			AvailabilityEditable: admin && !availability.Pinned,
 			Usable:               usable,

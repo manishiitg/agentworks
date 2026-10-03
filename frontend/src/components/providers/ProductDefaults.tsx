@@ -49,7 +49,7 @@ export default function ProductDefaults({ providers, isAdmin }: { providers: Pro
   return (
     <div className="mx-auto max-w-3xl">
       <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Product defaults</h2>
-      <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">The provider and model a new workflow, Crew or Code starts with, on the provider's server account. Changing a default does not change existing items.</p>
+      <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">The provider and model a new workflow, Crew or Code starts with, on the provider's admin-managed account. Changing a default does not change existing items.</p>
       {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
       {!defaults && !error && <p className="mt-4 flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</p>}
       {defaults && (

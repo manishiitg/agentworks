@@ -13,6 +13,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Installation provider accounts are called Admin-managed accounts
+
+- Use “Admin-managed account” for the installation's provider account in Providers,
+  workflow/product model setup, account pickers, product defaults and account cost
+  reports. The name distinguishes administrative ownership from personal account
+  sharing without implying that everyone may use it. Existing availability text
+  continues to say who has access.
+- This is a display-name change only. Account IDs (`global:<provider>`), ownership,
+  availability and credential resolution stay unchanged.
+
 ### 2026-10-03 — Setup model choices show installed coding providers only
 
 - Workflow and product Setup → Models, including per-role choices and the global
