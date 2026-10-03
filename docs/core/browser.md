@@ -628,11 +628,31 @@ can continue watching.
 
 ### Viewer controls
 
-Clicking an inactive tab requests exclusive control before switching it. A busy
-agent/controller is reported rather than interrupted. **Fill width** uses the
-panel width with vertical scrolling; **Fit page** keeps the whole viewport visible.
-Browser is a workspace view (the toolbar group is currently Pulse), not a Setup
-page; mode/connection settings remain behind its gear button.
+The browser header contains control, **Teach task**, expand and overflow actions
+with the existing neutral buttons. A separate tab strip contains per-tab close
+buttons and **+** for a blank tab. Back, forward and reload sit next to one
+address field; Enter opens an HTTP(S) website (bare hostnames use HTTPS).
+**Start browser** appears in the idle header and hides once the browser is running.
+Selecting a tab can acquire exclusive control; navigation, creating/closing tabs
+and clipboard actions require that control. A busy controller is reported.
+
+After taking control, select a field and paste with Cmd+V / Ctrl+V. Select text
+and copy with Cmd+C / Ctrl+C; the viewport's right-click menu also offers Copy
+and Paste. Mac editing shortcuts map to the remote platform. Clipboard transfer
+is plain text, limited to 64 KiB per paste/selection, and never reads the server's
+OS clipboard or saves clipboard contents to disk. Multiline Unicode text is
+inserted into the existing browser's focused field through private daemon IPC;
+no browser launches or endpoint/executable selection are exposed by that route.
+Copy reads selection in the active page, open shadow roots and same-origin frames.
+Cross-origin frame selection is currently unsupported; paste uses the browser's
+focused field and remains available. Clipboard permissions/secure context are
+required by the viewer's host browser. Empty selections leave the local clipboard
+unchanged. Watch-only users cannot send clipboard or navigation actions.
+
+**Fill width** uses the panel width with vertical scrolling; **Fit page** keeps
+the whole viewport visible. Browser is a workspace view (the toolbar group is
+currently Pulse), not a Setup page; mode/connection settings remain behind its
+gear button. Implementation and qualification: [PLAT-382](../bugs/pulse_platform/browser/plat-382.md).
 
 ### Runtime mode changes
 

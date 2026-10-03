@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Manual browser clipboard stays with the controlled browser
+
+Use native local clipboard gestures to copy the active page selection and insert
+plain text into the existing scoped browser's focused field. Require current
+write access and exclusive control for every transfer; never use the shared
+server OS clipboard. Browser controls use the selected neutral header/tab/address
+layout. Ticket: [PLAT-382](bugs/pulse_platform/browser/plat-382.md).
+
 ### 2026-10-03 — Scheduled runs never apply decisions; the UI and Builder chat do
 
 Owner decision: decisions are applied only where the person can watch. The

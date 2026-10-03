@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -63,6 +64,16 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			http.Error(w, "auth", 401)
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/text") {
+			if r.Header.Get("X-User-ID") != "alice" || r.URL.Path != "/api/browser/live/"+session+"/text" {
+				t.Error("paste scope or caller changed")
+			}
+			var request map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&request)
+			received <- request
+			json.NewEncoder(w).Encode(map[string]bool{"success": true})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/teaching") {
 			var request map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&request)
@@ -74,7 +85,12 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			var request map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&request)
 			received <- request
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"stdout": "ok", "exit_code": 0}})
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": map[string]interface{}{"stdout": func() string {
+				if strings.Contains(fmt.Sprint(request["command"]), "eval") {
+					return `{"success":true,"data":{"result":"selected fixture text"}}`
+				}
+				return "ok"
+			}(), "exit_code": 0}})
 			return
 		}
 		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -129,6 +145,9 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 1200})
 	conn.WriteJSON(map[string]string{"type": "new_tab", "url": "https://example.com"})
 	conn.WriteJSON(map[string]string{"type": "switch_tab", "tab": "t2"})
+	conn.WriteJSON(map[string]string{"type": "input_text", "text": "watch-only must not paste"})
+	conn.WriteJSON(map[string]string{"type": "clipboard_copy", "requestId": "copy-1"})
+	conn.WriteJSON(map[string]string{"type": "history", "action": "reload"})
 	conn.WriteJSON(map[string]string{"type": "ping"})
 	readType("pong")
 	select {
@@ -139,6 +158,41 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	conn.WriteJSON(map[string]string{"type": "take_control"})
 	if readType("viewer_control")["controlling"] != true {
 		t.Fatal("control not acquired")
+	}
+	conn.WriteJSON(map[string]string{"type": "input_text", "text": "paste fixture\n日本語🙂"})
+	select {
+	case request := <-received:
+		if request["text"] != "paste fixture\n日本語🙂" || len(request) != 1 {
+			t.Fatal(request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("paste did not reach trusted endpoint")
+	}
+	conn.WriteJSON(map[string]string{"type": "clipboard_copy", "requestId": "copy-2"})
+	if reply := readType("clipboard"); reply["text"] != "selected fixture text" || reply["requestId"] != "copy-2" {
+		t.Fatal(reply)
+	}
+	select {
+	case request := <-received:
+		if !strings.Contains(fmt.Sprint(request["command"]), "eval") {
+			t.Fatal(request)
+		}
+		guard, _ := request["folder_guard"].(map[string]interface{})
+		if guard["browser_session"] != session || request["working_directory"] != "Workflow/one" {
+			t.Fatal(request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("copy did not use scoped executor")
+	}
+	conn.WriteJSON(map[string]string{"type": "history", "action": "eval"})
+	conn.WriteJSON(map[string]string{"type": "history", "action": "reload"})
+	select {
+	case request := <-received:
+		if !strings.Contains(fmt.Sprint(request["command"]), "reload") || strings.Contains(fmt.Sprint(request["command"]), "eval") {
+			t.Fatal(request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reload did not execute")
 	}
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 1200})
 	select {
@@ -233,10 +287,12 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 }
 
 func TestLiveBrowserCannotBypassWorkflowProxy(t *testing.T) {
-	response := httptest.NewRecorder()
-	workspaceProxyHandler().ServeHTTP(response, httptest.NewRequest("GET", "/api/wp/api/browser/live/other/stream", nil))
-	if response.Code != http.StatusNotFound {
-		t.Fatal(response.Code)
+	for _, route := range []struct{ method, path string }{{"GET", "stream"}, {"POST", "text"}} {
+		response := httptest.NewRecorder()
+		workspaceProxyHandler().ServeHTTP(response, httptest.NewRequest(route.method, "/api/wp/api/browser/live/other/"+route.path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatal(route.path, response.Code)
+		}
 	}
 }
 
@@ -265,6 +321,7 @@ func TestLiveBrowserRealHeadless(t *testing.T) {
 	run("open", "data:text/html,<html><body><h1>Live browser test</h1><input aria-label='Test input' style='position:absolute;left:20px;top:100px;width:200px;height:40px'></body></html>")
 	router := gin.New()
 	router.GET("/api/browser/live/:session/stream", workspacehandlers.BrowserLiveStream)
+	router.POST("/api/browser/live/:session/text", workspacehandlers.BrowserViewerText)
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	streamURL := strings.Replace(workspace.URL, "http", "ws", 1) + "/api/browser/live/" + name + "/stream"
@@ -307,6 +364,47 @@ func TestLiveBrowserRealHeadless(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// Paste uses the stream, not a host-wide browser clipboard. Selection copying
+	// reads only the current selection, including multiline text and shadow DOM.
+	run("eval", `document.body.insertAdjacentHTML('beforeend', '<textarea aria-label="Notes"></textarea><div id="shadow"></div><iframe srcdoc="<input value=frame-text>"></iframe>'); document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<input value=shadow-text>'; true`, "--json")
+	text := "line one\n日本語🙂 \"quoted\" $()"
+	run("eval", `document.querySelector('textarea').focus(); true`, "--json")
+	body, _ := json.Marshal(map[string]string{"text": text})
+	response, err := http.Post(workspace.URL+"/api/browser/live/"+name+"/text", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("paste status %d", response.StatusCode)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		output := run("eval", `document.querySelector('textarea').select(); document.querySelector('textarea').value`, "--json")
+		actual, err := liveBrowserSelection(output)
+		if err == nil && actual == text {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("multiline paste did not reach browser: %s", output)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	selected, err := liveBrowserSelection(run("eval", liveBrowserSelectionScript, "--json"))
+	if err != nil || selected != text {
+		t.Fatalf("copy failed: %q %v", selected, err)
+	}
+	for _, fixture := range []struct{ script, expected string }{
+		{`(() => { const e=document.querySelector('#shadow').shadowRoot.querySelector('input'); e.focus(); e.select(); return true; })()`, "shadow-text"},
+		{`(() => { const e=document.querySelector('iframe').contentDocument.querySelector('input'); e.focus(); e.select(); return true; })()`, "frame-text"},
+	} {
+		run("eval", fixture.script, "--json")
+		selected, err = liveBrowserSelection(run("eval", liveBrowserSelectionScript, "--json"))
+		if err != nil || selected != fixture.expected {
+			t.Fatalf("selection failed: %q %v", selected, err)
+		}
+	}
+
 }
 
 func TestUserBrowserDiscoveryHonorsOwnershipAndWorkflowAccess(t *testing.T) {

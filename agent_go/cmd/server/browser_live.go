@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -289,7 +290,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 		workspace := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
 		return api.canControlLiveBrowser(ctx, GetUserFromContext(r.Context()), workspace)
 	}
-	_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false})
+	_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
 	for {
 		_, data, err := viewer.ReadMessage()
 		if err != nil {
@@ -299,12 +300,15 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			return
 		}
 		var message struct {
-			Type   string `json:"type"`
-			Tab    string `json:"tab"`
-			Width  int    `json:"width"`
-			Height int    `json:"height"`
-			Goal   string `json:"goal"`
-			URL    string `json:"url"`
+			Type      string `json:"type"`
+			Tab       string `json:"tab"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+			Goal      string `json:"goal"`
+			URL       string `json:"url"`
+			Action    string `json:"action"`
+			RequestID string `json:"requestId"`
+			Text      string `json:"text"`
 		}
 		if json.Unmarshal(data, &message) != nil {
 			continue
@@ -329,7 +333,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					continue
 				}
 			}
-			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": true})
+			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": true, "platform": runtime.GOOS})
 		case "teach_start", "teach_pause", "teach_resume", "teach_finish", "teach_cancel":
 			if releaseControl == nil || !canControl() {
 				sendError("Take control before teaching.")
@@ -346,16 +350,26 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			if action == "finish" || action == "cancel" {
 				releaseControl()
 				releaseControl = nil
-				_ = send(map[string]any{"type": "viewer_control", "controlling": false})
+				_ = send(map[string]any{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
 			}
-		case "navigate":
+		case "navigate", "history":
 			if releaseControl == nil || !canControl() {
 				continue
 			}
-			target, err := url.Parse(message.URL)
-			if err != nil || target.User != nil || (target.Scheme != "http" && target.Scheme != "https") {
-				sendError("Enter an http or https address.")
-				continue
+			command := []string{"open", message.URL}
+			if message.Type == "history" {
+				switch message.Action {
+				case "back", "forward", "reload":
+					command = []string{message.Action}
+				default:
+					continue
+				}
+			} else {
+				target, err := url.Parse(message.URL)
+				if err != nil || target.User != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
+					sendError("Enter an http or https address.")
+					continue
+				}
 			}
 			if teachingActive {
 				if _, e := forwardTeaching(ctx, session, map[string]any{"action": "flush", "workspace_path": physical}); e != nil {
@@ -367,7 +381,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					continue
 				}
 			}
-			_, err = browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "open", message.URL, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
+			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), append([]string{"--session", session}, append(command, "--json")...)...), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
 			if err != nil {
 				if teachingActive {
 					_, _ = forwardTeaching(ctx, session, map[string]any{"action": "cancel_navigation", "workspace_path": physical})
@@ -383,7 +397,7 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				releaseControl()
 				releaseControl = nil
 			}
-			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false})
+			_ = send(map[string]interface{}{"type": "viewer_control", "controlling": false, "platform": runtime.GOOS})
 		case "resize_viewport":
 			if releaseControl == nil || !canControl() {
 				continue
@@ -478,8 +492,33 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 					sendError("Unable to record the selected tab. Finish teaching and ask your helper to adjust the task.")
 				}
 			}
+		case "input_text":
+			if releaseControl == nil || !canControl() || len(message.Text) == 0 || len(message.Text) > 8<<10 {
+				continue
+			}
+			if err := forwardBrowserViewerText(ctx, workspaceURL, session, GetUserIDFromContext(r.Context()), message.Text); err != nil {
+				sendError("Unable to paste into this browser. Select the field and try again.")
+			}
+		case "clipboard_copy":
+			if releaseControl == nil || !canControl() || !liveBrowserClipboardRequest.MatchString(message.RequestID) {
+				continue
+			}
+			output, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "eval", liveBrowserSelectionScript, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 8*time.Second))
+			text := ""
+			if err == nil {
+				text, err = liveBrowserSelection(output)
+			}
+			reply := map[string]any{"type": "clipboard", "requestId": message.RequestID}
+			if err != nil {
+				reply["error"] = "Unable to copy the selected text."
+			} else if text == "" {
+				reply["error"] = "Select some text before copying."
+			} else {
+				reply["text"] = text
+			}
+			_ = send(reply)
 		case "input_mouse", "input_keyboard", "input_touch":
-			if releaseControl == nil {
+			if releaseControl == nil || !canControl() {
 				continue
 			}
 			upstream.SetWriteDeadline(time.Now().Add(5 * time.Second))

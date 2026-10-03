@@ -1,3 +1,71 @@
+# Browser toolbar and clipboard QA — 2026-10-03
+
+**Findings**
+- No actionable P0/P1/P2 mismatches in the browser chrome.
+- Expected product constraints: existing 14px UI typography/density and colors;
+  a globe instead of an unverified security padlock; live website content stays
+  outside this browser-chrome change. Header wraps in a narrow pane.
+
+**Evidence and normalization**
+- Source: `/Users/mipl/.codex/generated_images/01a10065-4060-7451-b129-dc4fdde19869/exec-b802c534-c317-4f24-a466-9b4a8bc515d0.png`.
+  Exact user-selected neutral design, 2103×748px. Chrome crop: top 298px;
+  normalized to 1055px width (about 150px height).
+- Implementation: `/Users/mipl/.codex/generated_images/01a10065-4060-7451-b129-dc4fdde19869/browser-toolbar-implemented.jpg`.
+  Actual production BrowserChrome rendered in a temporary Vite fixture, IAB
+  viewport 1055×771 CSS px, chrome capture 1055×144px, density 1.
+- Full browser-chrome and focused header/tab/address comparison in the same input:
+  `/Users/mipl/.codex/generated_images/01a10065-4060-7451-b129-dc4fdde19869/browser-toolbar-comparison.jpg`.
+  Site content is context in the source, not a requested page redesign.
+- State: manual control held, Course Designer active, Preview second tab.
+- Narrow panel: `/Users/mipl/.codex/generated_images/01a10065-4060-7451-b129-dc4fdde19869/browser-toolbar-narrow.jpg`,
+  420px component width and scrollWidth both 420px. IAB viewport override did
+  not resize this native surface, so the actual component was rendered at 420px
+  inside the default viewport; no claim of a 420px browser viewport. Reset override.
+
+**Required fidelity surfaces**
+- Typography: existing sans family, 16px semibold title, 14px labels and status;
+  single-line tab truncation and address remain readable. Product optical weight
+  retained; source neutral hierarchy is reproduced.
+- Spacing/layout: header, tabs, then navigation; per-tab close and adjacent +;
+  no repeated URL/header metadata; responsive header wraps without clipped actions.
+- Colors/tokens: existing dark background, borders, muted inactive tab, neutral
+  outline buttons; no new amber/primary control button.
+- Assets: standard library vector icons match the reference line icons. No
+  raster asset appears in the requested browser chrome. No placeholder art.
+- Copy/content: Browser, You have control, Give back to helper, Teach task,
+  useful tab titles and one address. Accessible labels on all icon actions.
+
+**Interactions and validation**
+- Browser UI: selected Preview/Course Designer, created a blank tab, closed it,
+  opened/closed Teach task, returned control and saw navigation/close/+ disabled.
+- Native WKWebView: Command-C with the harmless local selection copied the remote
+  test selection; native paste transferred multiline Unicode. Clipboard restored.
+- Regression coverage: watch-only rejection; navigation allowlist; scoped
+  selection copy; native copy event; context menu survives hover; right-click
+  Paste; chunked multiline transfer and remote platform shortcut translation.
+- Real headless Chrome: multiline Unicode paste plus selection copy in a textarea,
+  open shadow root and same-origin frame. Guarded startup/paste also passed locally.
+- Full workspace suite, focused server/UI tests and frontend build passed.
+- Console: checked IAB error logs. Only a retained earlier fixture HMR createRoot
+  warning was present; no new error after the final navigation. Fixture is removed
+  before commit and is not part of the application.
+- Comparison history: no actionable P0/P1/P2 visual iteration. A functional native
+  Copy failure on an empty local input was reproduced and fixed, then native Copy
+  retested successfully.
+
+**Open questions / follow-up**
+- Cross-origin frame selection and closed shadow roots need frame-aware copying;
+  tracked in PLAT-382. Plain text paste is qualified; clipboard images/Cut are
+  outside this change.
+
+**Implementation checklist**
+- Selected three-row chrome and native clipboard transfer implemented/verified.
+- Normal RTS deployment and Linux guarded paste qualification follow source push.
+
+final result: passed
+
+---
+
 # Ordered Gmail action rules QA
 
 - Evidence: `/tmp/agentworks-gmail-action-qa/project.png`, `workflow.png`,

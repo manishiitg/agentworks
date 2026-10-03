@@ -108,4 +108,20 @@ func TestBrowserRealGuardedStartup(t *testing.T) {
 	if !strings.Contains(string(run("eval", "localStorage.getItem('signed_in_fixture')")), `"yes"`) {
 		t.Fatal("Repeated startup lost sign-in")
 	}
+	// Qualify viewer paste against the daemon started by the guarded shell.
+	run("eval", "(() => { const field = document.createElement('textarea'); field.id = 'viewer-paste'; document.body.append(field); field.focus(); })()")
+	text := "first line\n日本語🙂 \"quotes\" $(not-a-command)"
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := insertBrowserViewerText(ctx, session, text); err != nil {
+		t.Fatalf("Viewer paste: %v", err)
+	}
+	var pasted struct {
+		Data struct {
+			Result string `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(run("eval", "document.querySelector('#viewer-paste').value"), &pasted); err != nil || pasted.Data.Result != text {
+		t.Fatalf("Viewer paste did not preserve multiline Unicode text: %v", err)
+	}
 }

@@ -1,3 +1,10 @@
+## Browser toolbar and manual copy/paste — PLAT-382
+
+[PLAT-382](pulse_platform/browser/plat-382.md), implemented and locally verified;
+RTS deployment pending. Neutral three-row browser controls, native multiline
+paste and selection copy behind exclusive manual control. Cross-origin-frame
+selection copy remains a tracked follow-up.
+
 ## Decisions applied only in the UI and Builder chat — PLAT-381
 
 [PLAT-381](pulse_platform/human-decisions/plat-381.md), P2, **fixed** on `main`:

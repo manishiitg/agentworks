@@ -261,7 +261,7 @@ it('allows tall page resizing only after control and maps clicks to the new view
   await act(async () => { image.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:235,clientY:320})) })
   expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({type:'input_mouse',x:450,y:600})
   await act(async () => { ws.onmessage?.({data: JSON.stringify({type:'viewer_control', controlling:false})}) })
-  expect(size.disabled).toBe(true)
+  expect((host.querySelector('select[aria-label="Browser page size"]') as HTMLSelectElement).disabled).toBe(true)
 })
 
 it('puts the session picker in the header instead of a separate row', async () => {
@@ -288,7 +288,7 @@ it('explains the idle state in plain language without a picker or controls', asy
   expect(FakeSocket.instances).toHaveLength(0)
 })
 
-it('shows a starting message, then a slim live bar with page title and URL', async () => {
+it('shows a starting message, then header, tabs and one address bar', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
   expect(host.textContent).toContain('Starting browser…')
@@ -300,13 +300,13 @@ it('shows a starting message, then a slim live bar with page title and URL', asy
   })
   const bar = host.querySelector('.live-browser-bar')!
   expect(bar).not.toBeNull()
-  expect(host.querySelector('header')).toBeNull()
+  expect(host.querySelector('header')).toBe(bar)
   expect(host.textContent).not.toContain('See what your helper does')
   expect(bar.querySelector('[role="status"]')?.textContent).toBe('Live')
-  expect(bar.textContent).toContain('Pricing')
-  expect(bar.textContent).toContain('https://example.com/pricing')
-  // A single tab needs no tab strip.
-  expect(host.querySelector('[aria-label="Browser tabs"]')).toBeNull()
+  expect(bar.textContent).not.toContain('https://example.com/pricing')
+  expect(host.querySelector('[role="tab"]')?.textContent).toBe('Pricing')
+  expect((host.querySelector('[aria-label="Website address"]') as HTMLInputElement).value).toBe('https://example.com/pricing')
+  expect(host.querySelector('[aria-label="Browser tabs"]')).not.toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeDefined()
 })
 
@@ -431,11 +431,10 @@ it('lets the user start a scoped browser before an agent opens one', async () =>
  expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
 })
 
-it('places startup in the top header and supports opening and closing tabs while teaching', async () => {
+it('hides startup for an existing browser and supports per-tab close while teaching', async () => {
   api.get.mockResolvedValue({ data: { sessions: [shared] } })
   const { host } = await mountBrowser()
-  expect(host.querySelector('header')?.textContent).toContain('Start browser')
-  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Start browser')).toHaveLength(1)
+  expect(buttonNamed(host, 'Start browser')).toBeUndefined()
   const ws = FakeSocket.instances.at(-1)!
   await act(async () => {
     ws.onmessage?.(frameMessage())
@@ -443,8 +442,9 @@ it('places startup in the top header and supports opening and closing tabs while
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
     ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'recording', actions: [] } }) })
   })
-  expect(host.querySelector('.live-browser-bar')?.textContent).toContain('Start browser')
-  await act(async () => { buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close tab')!.click(); buttonNamed(host, 'Two')!.click() })
+  expect(host.querySelector('.live-browser-bar')?.textContent).toContain('Teach task')
+  expect(buttonNamed(host, 'Start browser')).toBeUndefined()
+  await act(async () => { buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click(); buttonNamed(host, 'Two')!.click() })
   const sent = ws.send.mock.calls.map(([message]) => JSON.parse(message))
   expect(sent).toContainEqual({ type: 'new_tab', url: 'about:blank' })
   expect(sent).toContainEqual({ type: 'close_tab', tab: 't1' })
@@ -465,7 +465,7 @@ it('sends review records to the helper as hidden file context with a plain chat 
 })
 
 it('keeps startup, tab controls and teaching available in SparkQuill minimal mode', async () => {
-  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  api.get.mockResolvedValue({ data: { sessions: [] } })
   const { root, host } = await mountBrowser()
   await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" minimal />) })
   api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
@@ -479,8 +479,73 @@ it('keeps startup, tab controls and teaching available in SparkQuill minimal mod
   })
   expect(buttonNamed(host, 'Teach task')).toBeDefined()
   expect(host.querySelector('[aria-label="Browser page size"]')).not.toBeNull()
-  await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close tab')!.click() })
+  await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click() })
   expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([
     { type: 'switch_tab', tab: 't2' }, { type: 'new_tab', url: 'about:blank' }, { type: 'close_tab', tab: 't1' },
   ]))
+})
+
+it('transfers native paste and selected copy only while controlling, including Mac shortcuts on Linux', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  const readText = vi.fn().mockResolvedValue('right-click paste\n日本語🙂')
+  vi.stubGlobal('navigator', { clipboard: { writeText, readText } })
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true, platform: 'linux' }) }) })
+  const input = host.querySelector('[aria-label="Browser keyboard input"]')!
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true })) })
+  expect(JSON.parse(ws.send.mock.calls.at(-1)![0])).toMatchObject({ type: 'input_keyboard', key: 'a', modifiers: 2, text: '' })
+  ws.send.mockClear()
+  const text = 'line one\n日本語🙂'.repeat(150)
+  const paste = new Event('paste', { bubbles: true, cancelable: true })
+  Object.defineProperty(paste, 'clipboardData', { value: { getData: () => text } })
+  await act(async () => { input.dispatchEvent(paste) })
+  const chunks = ws.send.mock.calls.map(([value]) => JSON.parse(value))
+  expect(chunks.every(message => message.type === 'input_text')).toBe(true)
+  expect(chunks.map(message => message.text).join('')).toBe(text)
+  expect(chunks.every(message => JSON.stringify(message).length < 16000)).toBe(true)
+  expect(paste.defaultPrevented).toBe(true)
+  ws.send.mockClear()
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true, cancelable: true })) })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'clipboard_copy', requestId: 'copy-1' }))
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'clipboard', requestId: 'copy-1', text: 'selected text' }) }) })
+  expect(writeText).toHaveBeenCalledWith('selected text')
+  // Native macOS Copy menus require a harmless local selection to emit copy.
+  expect((input as HTMLTextAreaElement).value).toBe(' ')
+  expect((input as HTMLTextAreaElement).selectionEnd).toBe(1)
+  await act(async () => { input.dispatchEvent(new Event('copy', { bubbles: true, cancelable: true })) })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'clipboard_copy', requestId: 'copy-2' }))
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'clipboard', requestId: 'copy-2', error: 'Select some text before copying.' }) }) })
+  expect(writeText).toHaveBeenCalledTimes(1)
+  const image = host.querySelector('img')!
+  await act(async () => { image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 30 })) })
+  expect(host.querySelector('[role="menu"]')).not.toBeNull()
+  await act(async () => { image.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 42, clientY: 30 })) })
+  expect(host.querySelector('[role="menu"]')).not.toBeNull()
+  ws.send.mockClear()
+  await act(async () => { buttonNamed(host, 'Paste')!.click() })
+  expect(ws.send).toHaveBeenLastCalledWith(JSON.stringify({ type: 'input_text', text: 'right-click paste\n日本語🙂' }))
+  expect(host.querySelector('[role="menu"]')).toBeNull()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: false }) }) })
+  ws.send.mockClear()
+  await act(async () => { input.dispatchEvent(paste); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })) })
+  expect(ws.send).not.toHaveBeenCalled()
+})
+
+it('keeps tab controls by the tabs and navigation mutations behind manual control', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.(frameMessage()); ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'Course Designer', url: 'https://example.com', active: true }, { tabId: 't2', title: 'Preview', url: 'https://example.com/preview', active: false }] }) }) })
+  expect(buttonNamed(host, 'New tab')?.disabled).toBe(true)
+  expect(buttonNamed(host, 'Go back')?.disabled).toBe(true)
+  expect(buttonNamed(host, 'Open site')).toBeUndefined()
+  expect(buttonNamed(host, 'Close tab')).toBeUndefined()
+  expect(buttonNamed(host, 'Give back to helper')).toBeUndefined()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) }) })
+  expect(buttonNamed(host, 'Teach task')?.closest('header')).not.toBeNull()
+  expect(buttonNamed(host, 'Give back to helper')?.className).not.toMatch(/amber|bg-primary/)
+  await act(async () => { buttonNamed(host, 'Go back')!.click(); buttonNamed(host, 'Go forward')!.click(); buttonNamed(host, 'Reload page')!.click() })
+  expect(ws.send.mock.calls.map(([value]) => JSON.parse(value))).toEqual(expect.arrayContaining([{ type: 'history', action: 'back' }, { type: 'history', action: 'forward' }, { type: 'history', action: 'reload' }]))
 })

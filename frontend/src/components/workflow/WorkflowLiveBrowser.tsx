@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserTeachingPanel, type TeachState } from './BrowserTeachingPanel'
+import { BrowserChrome, browserIconButtonClass, browserActionButtonClass, type BrowserTab } from './BrowserChrome'
+import { useBrowserClipboard } from './useBrowserClipboard'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import { CheckCircle2, Circle, Copy, FolderOpen, Globe, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
+import { BookOpen, CheckCircle2, Circle, Copy, FolderOpen, Hand, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
 import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -25,7 +27,6 @@ function testBrowserLabel(browser: BrowserSession): string {
   return `${name} · ${run} · ${state}`
 }
 
-type BrowserTab = { tabId: string; title: string; url: string; active: boolean }
 
 // Live-view connection lifecycle shown to users. A dropped managed-browser
 // stream reconnects on its own with backoff; only exhausted retries ask the
@@ -54,6 +55,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [startingBrowser, setStartingBrowser] = useState(false)
   const [address, setAddress] = useState('')
+  const [clipboardMenu, setClipboardMenu] = useState<{ x: number; y: number } | null>(null)
   const [teachOpen, setTeachOpen] = useState(false)
   const [teachState, setTeachState] = useState<TeachState>({ status: 'idle' })
   const pendingTeach = useRef('')
@@ -127,6 +129,9 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
   const socket = useRef<WebSocket | null>(null)
   const viewport = useRef({ width: 1280, height: 720 })
   const screen = useRef<HTMLImageElement>(null)
+  const keyboardTarget = useRef<HTMLTextAreaElement>(null)
+  const [browserPlatform, setBrowserPlatform] = useState('linux')
+  const clipboard = useBrowserClipboard(`${workspacePath}:${session}`, controlling, send)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const followingActivity = selection === AUTO_BROWSER
   const currentBrowser = sessions.find(item => item.browser_session === session)
@@ -265,7 +270,10 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
           }
         } else if (message.type === 'tabs' && Array.isArray(message.tabs)) {
           setTabs(message.tabs)
+        } else if (message.type === 'clipboard') {
+          clipboard.receive(message)
         } else if (message.type === 'viewer_control') {
+          if (message.platform) setBrowserPlatform(message.platform)
           setControlling(message.controlling === true)
           setError('')
           if (message.controlling) {
@@ -273,10 +281,10 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
               ws.send(JSON.stringify({ type: 'teach_start', goal: pendingTeach.current }))
               pendingTeach.current = ''
             }
-            screen.current?.focus()
+            keyboardTarget.current?.focus()
             if (pendingTab.current) { ws.send(JSON.stringify({ type: 'switch_tab', tab: pendingTab.current })); pendingTab.current = '' }
           }
-          else screen.current?.blur()
+          else keyboardTarget.current?.blur()
         } else if (message.type === 'teaching') {
           setTeachState(message.state)
           if((message.state.status==='draft' || message.state.status==='needs_repair') && message.state.directory && learnCallback.current) void Promise.resolve(learnCallback.current(`Prepare my demonstrated task for reuse: ${message.state.goal}.
@@ -401,6 +409,8 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
     return () => image.removeEventListener('wheel', wheel)
   }, [controlling, hasFrame])
 
+  useEffect(() => { setClipboardMenu(null); if (controlling && hasFrame) keyboardTarget.current?.focus() }, [session, controlling, hasFrame])
+
   function send(message: Record<string, unknown>) {
     if (message.type === 'take_control') chooseBrowser(session)
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message))
@@ -414,16 +424,20 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   }
   function mouse(event: MouseEvent<HTMLImageElement>, eventType: string) {
     if (!controlling) return
+    if (eventType === 'mousePressed') setClipboardMenu(null)
     event.preventDefault()
-    if (eventType === 'mousePressed') screen.current?.focus()
+    if (eventType === 'mousePressed') keyboardTarget.current?.focus()
     send({ type: 'input_mouse', eventType, ...point(event.clientX, event.clientY), button: eventType === 'mouseMoved' && !event.buttons ? 'none' : ['left', 'middle', 'right'][event.button] || 'left', clickCount: event.detail || 1 })
   }
-  function keyboard(event: KeyboardEvent<HTMLImageElement>, eventType: string) {
+  function keyboard(event: KeyboardEvent<HTMLTextAreaElement>, eventType: string) {
     if (!controlling) return
     // Escape releases control and keeps keyboard users from being trapped.
     if (event.key === 'Escape') { event.preventDefault(); send({ type: 'release_control' }); return }
+    const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey ? event.key.toLowerCase() : ''
+    if (shortcut === 'v') return // Let the focused local textarea receive the native paste event.
+    if (shortcut === 'c') { event.preventDefault(); if (eventType === 'keyDown' && !event.repeat) void clipboard.copy(); return }
     event.preventDefault()
-    const modifiers = (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0)
+    const modifiers = (event.altKey ? 1 : 0) | ((event.ctrlKey || (event.metaKey && browserPlatform !== 'darwin')) ? 2 : 0) | (event.metaKey && browserPlatform === 'darwin' ? 4 : 0) | (event.shiftKey ? 8 : 0)
     send({ type: 'input_keyboard', eventType, key: event.key, code: event.code, text: eventType === 'keyDown' && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey ? event.key : '', windowsVirtualKeyCode: event.keyCode, modifiers })
   }
 
@@ -444,7 +458,10 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
   // One browser per crew / per workflow is the normal case: no picker then.
   const showPicker = !minimal && (sessions.length > 1 || hasTests)
   const singleBrowserLabel = !showPicker ? (currentBrowser?.label || managedBrowsers[0]?.label || '') : ''
-  const slim = !minimal && Boolean(displayFrame) && !replayURL
+  const slim = Boolean(displayFrame) && !replayURL
+  useEffect(() => {
+    if (document.activeElement?.getAttribute('aria-label') !== 'Website address') setAddress(activeTab?.url === 'about:blank' ? '' : activeTab?.url || '')
+  }, [activeTab?.tabId, activeTab?.url])
   const lastActionBrowser = currentBrowser?.last_action ? currentBrowser : managedBrowsers.find(item => item.last_action)
   const lastAction = lastActionBrowser?.last_action ? (
     <span className="live-browser-last-action hidden min-w-0 max-w-72 shrink truncate text-xs text-muted-foreground md:inline" title={lastActionBrowser.last_action_at ? `${lastActionBrowser.last_action} · ${new Date(lastActionBrowser.last_action_at).toLocaleTimeString()}` : lastActionBrowser.last_action}>
@@ -467,10 +484,6 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       <Info className="h-4 w-4" aria-hidden="true" />
     </span>
   ) : null
-  const browserTabs = (tabs.length > 1 && <div className="live-browser-tabs flex shrink-0 gap-1 overflow-x-auto border-b border-border px-2 py-0.5" aria-label="Browser tabs">
-        {tabs.map(tab => <button key={tab.tabId} disabled={!canControl || tab.active} aria-pressed={tab.active} title={controlling ? tab.url : 'Switch tab and take control'} onClick={() => { if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} className={`max-w-52 shrink-0 truncate rounded px-2.5 py-1 text-xs ${tab.active ? 'bg-muted font-medium' : 'text-muted-foreground'} disabled:cursor-default`}>{tab.title || tab.url || tab.tabId}</button>)}
-      </div>)
-
   const statusLabel = controlling ? 'You have control'
     : connected && displayFrame ? 'Live'
       : completed ? 'Completed'
@@ -480,14 +493,27 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
               : linkState === 'failed' ? 'Not connected'
                 : 'Starting…'
   const statusDot = controlling ? 'bg-amber-500' : connected && displayFrame ? 'bg-emerald-500' : linkState === 'failed' && session ? 'bg-red-500' : 'bg-muted-foreground/50'
-  const iconButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40'
-  const tertiaryButtonClass = 'inline-flex h-7 shrink-0 items-center rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+  const iconButtonClass = browserIconButtonClass
+  const tertiaryButtonClass = browserActionButtonClass
 
   const controlToggle = connected && canControl && (
-    <button type="button" aria-pressed={controlling} className={`inline-flex h-7 shrink-0 items-center rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${controlling ? 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`} onClick={() => send({ type: controlling ? 'release_control' : 'take_control' })}>
+    <button type="button" aria-pressed={controlling} title="Press Esc to give control back" className={tertiaryButtonClass} onClick={() => send({ type: controlling ? 'release_control' : 'take_control' })}>
+      <Hand className="h-4 w-4" aria-hidden="true" />
       {controlling ? 'Give back to helper' : 'Take control'}
     </button>
   )
+  const teachToggle = connected && canControl && <button type="button" className={tertiaryButtonClass} aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" />Teach task</button>
+  const startToggle = canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
+  function navigateAddress() {
+    const value = address.trim()
+    send({ type: 'navigate', url: /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}` })
+  }
+  function closeTab(tab: BrowserTab) {
+    if (!tab.active) send({ type: 'switch_tab', tab: tab.tabId })
+    send({ type: 'close_tab', tab: tab.tabId })
+    if (!tab.active && activeTab) send({ type: 'switch_tab', tab: activeTab.tabId })
+  }
+  const pageSizeToggle = minimal && connected && canControl && <select aria-label="Browser page size" disabled={!controlling} className="h-8 rounded-md border border-border bg-background px-2 text-xs" defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}><option value="" disabled>Page size</option>{PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}</select>
   const expandToggle = !minimal && Boolean(displayFrame) && (
     <button type="button" aria-pressed={expanded} aria-label={expanded ? 'Exit expanded view' : 'Expand browser'} title={expanded ? 'Exit expanded view (Esc)' : 'Expand browser'} className={iconButtonClass} onClick={() => setExpanded(value => !value)}>
       {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
@@ -546,45 +572,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
 
   return (
     <section className={`live-browser flex min-h-0 flex-1 flex-col overflow-hidden bg-background ${expanded ? 'fixed inset-0 z-50' : 'relative'}`} aria-label={`Live ${scopeNoun} browser`}>
-      {minimal ? (
-        <div className="live-browser-header flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
-          <h3 className="text-sm font-medium">Browser</h3>
-          <span className="text-xs text-muted-foreground" role="status">{statusLabel}</span>
-          {lastAction}
-          {browserTabs}
-          <div className="live-browser-actions ml-auto flex gap-2">
-            {controlToggle}
-            {connected && canControl && <select aria-label="Browser page size" title={controlling ? 'Resize the actual browser page' : 'Take control to change page size'} disabled={!controlling} defaultValue="" onChange={event => { const [width, height] = event.target.value.split('x').map(Number); send({ type: 'resize_viewport', width, height }); event.target.value = '' }}>
-              <option value="" disabled>Page size</option>
-              {PAGE_SIZES.map(size => <option key={size.value} value={size.value}>{size.label.replace(' page', '')}</option>)}
-            </select>}
-            {canWrite && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={()=>void startBrowser()}>{startingBrowser?'Starting…':'Start browser'}</button>}
-            {toolbar}
-            {showGuide && <WorkspacePanelGuideButton topic="Browser" />}
-          </div>
-        </div>
-      ) : slim ? (
-        <div className="live-browser-bar flex h-10 shrink-0 items-center gap-2 border-b border-border px-2">
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" role="status"><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}</span>
-          {activeTab ? (
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs" title={activeTab.url}>
-              <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="truncate font-medium">{activeTab.title || activeTab.url}</span>
-              {activeTab.title && activeTab.url && <span className="hidden truncate text-muted-foreground sm:inline">{activeTab.url}</span>}
-            </span>
-          ) : <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{singleBrowserLabel}</span>}
-          {lastAction}
-          {canWrite && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={()=>void startBrowser()}>{startingBrowser?'Starting…':'Start browser'}</button>}
-          {recordingIndicator}
-          {controlToggle}
-          {replayURL && <a href={replayURL} download="playwright-replay.mp4" className={tertiaryButtonClass}>Download video</a>}
-          {recordingNote}
-          {expandToggle}
-          {overflowMenu}
-          {toolbar}
-          {showGuide && <WorkspacePanelGuideButton topic="Browser" />}
-        </div>
-      ) : (
+      {slim ? <BrowserChrome status={statusLabel} sessionLabel={singleBrowserLabel} tabs={tabs} canSelect={canControl} controlling={controlling} address={address} onAddress={setAddress} onNavigate={navigateAddress} onHistory={action => send({ type: 'history', action })} onSelect={tab => { if (tab.active) return; if (controlling) send({ type: 'switch_tab', tab: tab.tabId }); else { pendingTab.current = tab.tabId; send({ type: 'take_control' }) } }} onClose={closeTab} onNew={() => send({ type: 'new_tab', url: 'about:blank' })} actions={<>{recordingIndicator}{controlToggle}{teachToggle}{pageSizeToggle}{recordingNote}{expandToggle}{overflowMenu}{toolbar}{showGuide && <WorkspacePanelGuideButton topic="Browser" />}</>} /> : (
         <WorkspaceViewHeader
           icon={Monitor}
           title="Browser"
@@ -592,9 +580,11 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
           subtitle={browserPicker ?? (sessions.length ? undefined : 'See what your helper does in its browser. Take control anytime.')}
           context={<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" role="status"><span className={`h-2 w-2 rounded-full ${statusDot}`} aria-hidden="true" />{statusLabel}{singleBrowserLabel && <span className="text-muted-foreground/80">· {singleBrowserLabel}</span>}{lastAction && <span className="text-muted-foreground/80">·</span>}{lastAction}</span>}
           actions={<>
-            {canWrite && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={()=>void startBrowser()}>{startingBrowser?'Starting…':'Start browser'}</button>}
+            {startToggle}
             {recordingIndicator}
             {controlToggle}
+            {teachToggle}
+            {pageSizeToggle}
             {replayURL && <a href={replayURL} download="playwright-replay.mp4" className={tertiaryButtonClass}>Download video</a>}
             {recordingNote}
             {expandToggle}
@@ -603,9 +593,6 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
           </>}
         />
       )}
-      {connected && canControl && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2">
-        {connected && canControl && <><input aria-label="Website address" placeholder="https://example.com" value={address} onChange={e=>setAddress(e.target.value)} className="min-w-32 flex-1 rounded border bg-background px-2 py-1 text-xs" onKeyDown={e=>{if(e.key==='Enter'&&controlling)send({type:'navigate',url:address})}} /><button type="button" disabled={!controlling||!address.trim()} className={tertiaryButtonClass} onClick={()=>send({type:'navigate',url:address})}>Open site</button><button type="button" disabled={!controlling} className={tertiaryButtonClass} onClick={()=>send({type:'new_tab',url:address.trim()||'about:blank'})}>New tab</button><button type="button" disabled={!controlling||tabs.length<2} className={tertiaryButtonClass} onClick={()=>send({type:'close_tab',tab:activeTab?.tabId})}>Close tab</button><button type="button" className={tertiaryButtonClass} onClick={()=>setTeachOpen(value=>!value)}>Teach task</button></>}
-      </div>}
       {teachOpen && workspacePath && session && <BrowserTeachingPanel workspacePath={workspacePath} session={session} state={teachState} onState={setTeachState} profileId={profileId} onClose={()=>setTeachOpen(false)} onReview={()=>{if(learnCallback.current && teachState.directory) void Promise.resolve(learnCallback.current(`Adjust my demonstrated task so it works reliably: ${teachState.goal}.
 
 📁 Files in context: ${teachState.directory}/manifest.json
@@ -637,12 +624,15 @@ Review this browser demonstration. Inspect its recorded evidence and test errors
       )}
       {currentBrowser?.recording_error && <p className="px-3 py-1.5 text-xs text-destructive" role="alert">{currentBrowser.recording_error}</p>}
       {error && <p className="px-3 py-1.5 text-xs text-destructive" role="alert">{error}</p>}
-      {!minimal && browserTabs}
 
       {replayURL ? <video controls preload="metadata" src={replayURL} aria-label="Playwright test recording" className="min-h-0 flex-1 bg-black object-contain" /> : displayFrame ? <div className="live-browser-viewport relative min-h-0 flex-1 bg-black/90">
-        <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={controlling ? 0 : -1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => event.preventDefault()} onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} />
+        <img ref={screen} src={displayFrame} alt={retainedFrame ? "Last Playwright test frame" : "Live server browser viewport"} draggable={false} tabIndex={-1} className="live-browser-frame absolute inset-0 block h-full w-full select-none object-contain outline-none focus:ring-2 focus:ring-inset focus:ring-ring" onMouseDown={event => mouse(event, 'mousePressed')} onMouseUp={event => mouse(event, 'mouseReleased')} onMouseMove={event => mouse(event, 'mouseMoved')} onContextMenu={event => { event.preventDefault(); if (controlling) { const rect = event.currentTarget.getBoundingClientRect(); setClipboardMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 160)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 80)) }) } }} />
+        <textarea ref={keyboardTarget} aria-label="Browser keyboard input" defaultValue=" " onFocus={event => event.currentTarget.select()} onCut={event => event.preventDefault()} tabIndex={controlling ? 0 : -1} readOnly={!controlling} className="pointer-events-none absolute left-0 top-0 h-px w-px resize-none opacity-0" onKeyDown={event => keyboard(event, 'keyDown')} onKeyUp={event => keyboard(event, 'keyUp')} onPaste={clipboard.paste} onCopy={event => { event.preventDefault(); void clipboard.copy() }} />
+        {controlling && clipboardMenu && <div role="menu" aria-label="Browser clipboard" className="absolute z-20 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md" style={{ left: clipboardMenu.x, top: clipboardMenu.y }}>
+          <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.copy() }}>Copy</button>
+          <button type="button" role="menuitem" className="block w-full rounded px-3 py-1.5 text-left text-xs hover:bg-muted" onClick={() => { setClipboardMenu(null); keyboardTarget.current?.focus(); void clipboard.pasteFromClipboard() }}>Paste</button>
+        </div>}
         {retainedFrame && <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-background/90 px-3 py-1 text-xs shadow">{completed ? 'Completed' : 'Disconnected'} · Last frame</span>}
-        {controlling && <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-amber-500/90 px-3 py-1 text-[11px] font-medium text-white shadow">You’re in control · press Esc to give it back</span>}
       </div> : <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center text-sm text-muted-foreground">{centered}</div>}
       {(readOnly && !minimal) || session === 'shared-browser' ? <p className="live-browser-footer shrink-0 border-t border-border px-3 py-1 text-[11px] text-muted-foreground">{readOnly && !minimal ? 'Playwright test · Watch-only. Video replay is recorded automatically.' : 'Shared browser · everyone uses the same tabs and sign-ins. Coordinate before making changes.'}</p> : null}
     </section>
