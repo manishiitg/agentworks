@@ -1,3 +1,10 @@
+## Gmail sender widening requires owner confirmation — PLAT-391
+
+[PLAT-391](pulse_platform/security-sandbox/plat-391.md), implemented and locally validated; deployment pending. Additional senders require a private receipt
+from the target owner's browser; agents cannot grant it. Public mailbox domains
+are rejected and existing lists require review after deployment.
+
+
 ## Hybrid native-tools mode removed — PLAT-390
 
 [PLAT-390](pulse_platform/coding-agent-bridge/plat-390.md), P1, on `main`, not

@@ -3880,6 +3880,7 @@ export interface GmailInboundRule {
 }
 
 export interface GmailInboundState {
+  sender_consent?: { required: boolean; approved: boolean; config_hash: string; senders: string[]; blocked_reason?: string }
   setup?: {
     oauth_clients: string[]
     can_connect_account: boolean

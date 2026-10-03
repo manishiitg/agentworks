@@ -1670,6 +1670,10 @@ export const agentApi = {
 
   // --- Gmail notifications and incoming conversations ---
 
+  confirmGmailSenderConsent: async (workspacePath: string, configHash: string, action: 'approve' | 'revoke'): Promise<{ approved: boolean }> => {
+    return (await api.post('/api/gmail-inbound/sender-consent', { workspace_path: workspacePath, config_hash: configHash, action })).data
+  },
+
   getGmailInboundRoute: async (workspacePath: string): Promise<import('./api-types').GmailInboundState> => {
     return (await api.get('/api/gmail-inbound/route', { params: { workspace_path: workspacePath } })).data
   },

@@ -144,6 +144,10 @@ func TestGmailRulesAuthorizeSendersPerActionAndIntersectCommonPolicy(t *testing.
 		t.Fatal("external notification acquired owner-only action")
 	}
 	r.SelectedRuleID = "billing"
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("per-rule senders bypassed owner consent")
+	}
+	approveGmailSendersForTest(t, api, r)
 	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
 		t.Fatal(err)
 	}

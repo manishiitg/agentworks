@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // Content conditions combine with AND; alternatives within an *_any list or
@@ -72,6 +74,9 @@ func NormalizeFilters(f *Filters) (*Filters, error) {
 		if !validSenderDomain(domain) {
 			return nil, fmt.Errorf("sender_allowlist contains an invalid domain")
 		}
+		if strings.HasPrefix(sender, "@") && broadMailboxDomain(domain) {
+			return nil, fmt.Errorf("whole public mailbox domains such as @gmail.com are not allowed; list exact email addresses instead")
+		}
 		out.SenderAllowlist[i] = sender
 	}
 	if out.AllowAutomatic && len(out.SenderAllowlist) == 0 {
@@ -81,6 +86,20 @@ func NormalizeFilters(f *Filters) (*Filters, error) {
 		return nil, nil
 	}
 	return &out, nil
+}
+
+func broadMailboxDomain(domain string) bool {
+	suffix, _ := publicsuffix.PublicSuffix(domain)
+	if suffix == domain {
+		return true
+	}
+	// These common shared mailbox domains are never an organization allowlist.
+	// Unknown domains still require explicit, configuration-bound owner consent.
+	switch domain {
+	case "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.co.uk", "live.com", "msn.com", "yahoo.com", "yahoo.co.uk", "ymail.com", "rocketmail.com", "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "pm.me", "gmx.com", "gmx.net", "mail.com", "yandex.com", "yandex.ru", "zoho.com", "fastmail.com", "hey.com", "tutanota.com", "tuta.com":
+		return true
+	}
+	return false
 }
 
 func validSenderDomain(domain string) bool {

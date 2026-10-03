@@ -511,6 +511,10 @@ func TestGmailExplicitSendersAreOwnerConfiguredAndAuthenticated(t *testing.T) {
 		t.Fatalf("policy not persisted: %+v %v", schedule.Gmail, err)
 	}
 	m := gmailinbound.Message{From: "updates@vendor.example", Subject: "Notion", Recipients: []string{r.Address}, Authenticated: true, Automatic: true, ReceivedAt: time.Now().Add(time.Minute).UnixMilli()}
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("agent-selected sender list granted access without owner consent")
+	}
+	approveGmailSendersForTest(t, api, r)
 	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
 		t.Fatalf("explicitly selected notification rejected: %v", err)
 	}

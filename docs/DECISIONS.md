@@ -19,6 +19,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Gmail sender exceptions require separate owner confirmation
+
+Builder may propose sender lists, but cannot authorize non-owner email. Only the
+target owner's signed-in browser can grant a private, configuration-bound receipt;
+agent tools, chat confirmations and writable manifests cannot grant it. Changes
+to sender policy, actions, mailbox, replies or enabled state revoke consent; old
+allowlists require review. Common public mailbox domains and public suffixes are
+rejected. The pane remains read-only for configuration, with a dedicated owner
+security confirmation/revocation. Ticket:
+[PLAT-391](bugs/pulse_platform/security-sandbox/plat-391.md).
+
 ### 2026-10-03 — Code browser: socket folder always set (regression from the fallback removal)
 
 - **Found (user).** "Cannot start browser: Socket directory '/run/user/990/agent-browser' is not writable". A project browser

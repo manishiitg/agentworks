@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GmailInboundState } from '../../../services/api-types'
 import { TooltipProvider } from '../../ui/tooltip'
 
-vi.mock('../../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn() } }))
+vi.mock('../../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn(), confirmGmailSenderConsent: vi.fn() } }))
 vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: vi.fn().mockResolvedValue({}) }))
 import { agentApi } from '../../../services/api'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
@@ -59,6 +59,51 @@ describe('Gmail incoming email settings', () => {
     await ask()
     expect(onAsk).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('wait for me to complete consent'))
     expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+  })
+
+  it('blocks sender activation until an explicit owner acknowledgement and refreshes after consent', async () => {
+    const configHash = 'a'.repeat(64)
+    const pending: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: false, config_hash: configHash, senders: ['person@gmail.com', '@realtrainingsys.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(pending)
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: true })
+    await render()
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    expect(approve.disabled).toBe(true)
+    expect(host.textContent).toContain('connected accounts and files')
+    expect(host.textContent).toContain('Additional senders are blocked')
+    expect(host.textContent).not.toContain('Ready to receive email.')
+    expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
+    await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+    expect(approve.disabled).toBe(false)
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...pending, sender_consent: { ...pending.sender_consent!, approved: true } })
+    await act(async () => approve.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'approve')
+    expect(host.textContent).toContain('Additional sender access approved')
+    expect(host.textContent).toContain('Revoke additional sender access')
+  })
+
+  it('does not offer approval for a legacy public-domain policy', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, sender_consent: { required: true, approved: false, config_hash: 'b'.repeat(64), senders: ['@gmail.com'], blocked_reason: 'Public mailbox domains are not allowed' } })
+    await render()
+    expect(host.textContent).toContain('Ask Builder to use exact addresses')
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(approve.disabled).toBe(true)
+    expect(checkbox.disabled).toBe(true)
+    expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
+  })
+
+  it('revokes approval through the owner endpoint without modifying the trigger configuration', async () => {
+    const configHash = 'c'.repeat(64)
+    const approved: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: true, config_hash: configHash, senders: ['person@example.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(approved)
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: false })
+    await render()
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...approved, sender_consent: { ...approved.sender_consent!, approved: false } })
+    const revoke = [...host.querySelectorAll('button')].find(b => b.textContent === 'Revoke additional sender access')!
+    await act(async () => revoke.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'revoke')
+    expect(host.textContent).toContain('Your approval is required')
   })
 
   it('shows saved routing without controls that can change it', async () => {

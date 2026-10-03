@@ -282,3 +282,22 @@ MX change or standalone watcher process is required. The receiver is public
 but accepts only verified Google push identity; the route executes internally.
 Do not provision cloud resources or deploy just because a user asks to link an
 account. The operator runbook is `docs/gmail-inbound.md` in the AgentWorks repo.
+
+## Additional email senders require owner consent
+
+Sender lists configured by Builder are proposals, not permission grants. After
+saving, read `get_gmail_trigger.sender_consent`. When `required=true` and
+`approved=false`, external senders cannot start the target. Tell the signed-in
+owner to review the conditions/actions in Incoming email, acknowledge that the
+senders can use their tools, accounts and files and receive enabled replies,
+then click Approve additional senders. Neither an agent tool nor an owner-like
+chat message can approve this. Never call the browser confirmation endpoint
+from tools or claim chat approval is sufficient. The pane's configuration stays
+read-only; this dedicated security confirmation/revocation is owner-only.
+
+Private server receipts cover the target, mailbox, sender/content filters, all
+rule actions, replies and enabled state. Edits invalidate consent; restoring old
+settings does not restore a revoked receipt. Old allowlists need confirmation
+after this change. Public suffixes and common public mailbox domains (including
+`@gmail.com`, `@googlemail.com`, `@outlook.com`, `@yahoo.com`) are rejected. Use
+exact addresses instead; organization domains still require owner confirmation.

@@ -100,6 +100,7 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		api.gmailInbound.Receive(w, r)
 	}).Methods("POST")
 	router.HandleFunc("/api/gmail-inbound/route", api.gmailInboundRoute(c)).Methods("GET")
+	router.HandleFunc("/api/gmail-inbound/sender-consent", api.gmailSenderConsent).Methods("POST")
 	if api.gmailInbound == nil {
 		return func() {}
 	}
@@ -365,6 +366,12 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 		scope, _ := gmailRequestScope(r, target.WorkspacePath)
 		response := map[string]interface{}{"configured": api.gmailInbound != nil, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r), "admin_setup": gmailInboundAdminSetup(config)}}
 		if existing != nil {
+			consent, consentErr := api.gmailInbound.Store.SenderConsentStatus(r.Context(), *existing, gmailOwnerEmail(*existing))
+			if consentErr != nil {
+				http.Error(w, "Cannot verify email sender approval", 500)
+				return
+			}
+			response["sender_consent"] = consent
 			if m, e := api.gmailInbound.Store.MailboxStatus(r.Context(), existing.ConnectionID); e == nil {
 				response["watch_ready"] = m.Cursor != ""
 				response["error"] = m.LastError
@@ -411,8 +418,27 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 	if e != nil || address != r.Address {
 		return fmt.Errorf("Gmail receiving identity changed")
 	}
-	// Only an interactive owner may explicitly widen this route's sender list.
-	// An omitted/cleared list keeps the original owner-only authorization.
+	// Sender authentication proves identity, not permission to execute as owner.
+	// Every non-owner needs a private receipt from the owner's browser, bound
+	// to the current target/mailbox/rules/reply configuration. Old allowlists
+	// without receipts remain blocked; an agent-written manifest cannot grant it.
+	ownerSender := false
+	if IsMultiUserMode() {
+		ownerID, found := slackDMUserForEmail(m.From)
+		ownerSender = found && ownerID == r.OwnerID
+	} else {
+		ownerSender = strings.EqualFold(m.From, conn.Email) || user != nil && strings.EqualFold(m.From, user.Email)
+	}
+	if !ownerSender {
+		if api.gmailInbound == nil {
+			return fmt.Errorf("additional email senders require owner confirmation")
+		}
+		consent, err := api.gmailInbound.Store.SenderConsentStatus(ctx, r, gmailOwnerEmail(r))
+		if err != nil || !consent.Required || !consent.Approved {
+			return fmt.Errorf("additional email senders require owner confirmation for this configuration")
+		}
+	}
+	// An omitted/cleared list keeps owner-only authorization.
 	policy, policyErr := r.SenderFilters()
 	if policyErr != nil {
 		return policyErr

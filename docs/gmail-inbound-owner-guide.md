@@ -120,3 +120,26 @@ topic; Google sign-in can still be configured. Setup needs Google Cloud project
 permissions plus server environment access. Being an app administrator alone
 does not grant those permissions. The operator follows [the setup runbook](gmail-inbound.md),
 then Builder connects a mailbox with read consent and verifies readiness.
+
+## Owner confirmation for additional senders
+
+Builder can propose sender lists, but cannot grant them authority. Non-owner
+senders require a separate confirmation in the signed-in owner's Incoming email
+pane, covering the saved target, mailbox, filters, rule actions, enabled state
+and email replies. Review the sender list and saved actions, acknowledge the
+access granted, then approve. Use Revoke additional sender access to withdraw
+it. Configuration remains in Builder; the pane exposes only this dedicated
+security confirmation and revocation. Chat approval is insufficient.
+
+Receipts live in the private Gmail inbox database, not in writable manifests.
+Bridge, PAT, CLI/MCP OAuth and bot credentials cannot use the browser approval
+endpoint. Permissions and the configuration digest are rechecked at confirmation
+and before dispatch/reply, including queued work. An authority-bearing edit
+invalidates the receipt permanently; restoring old settings cannot revive it.
+
+Existing sender lists are not automatically approved. They need owner review
+after deployment. Public suffixes and common public mailbox domains such as
+`@gmail.com`/`@outlook.com` are rejected at configuration and approval; use exact
+addresses instead. The provider denylist is not exhaustive, so every additional
+sender or organization domain still needs explicit owner consent. DMARC checks
+remain mandatory and do not substitute for permission to run the target.

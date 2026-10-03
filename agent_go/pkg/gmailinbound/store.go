@@ -33,6 +33,7 @@ func Open(path string) (*Store, error) {
 	_, e = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,processed INTEGER NOT NULL DEFAULT 0,renew_at INTEGER NOT NULL DEFAULT 0,next_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
+CREATE TABLE IF NOT EXISTS sender_consents(route TEXT PRIMARY KEY,owner TEXT NOT NULL,config_hash TEXT NOT NULL,approved_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
 CREATE INDEX IF NOT EXISTS delivery_thread ON deliveries(route,json_extract(message,'$.thread_id'));
@@ -76,6 +77,11 @@ func (s *Store) SaveRoute(ctx context.Context, r Route, email string) error {
 		return e
 	}
 	defer tx.Rollback()
+	// Any authority-bearing edit invalidates consent atomically. Restoring an
+	// earlier policy later cannot revive a revoked approval.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM sender_consents WHERE route=? AND (owner<>? OR config_hash<>?)`, r.ID, r.OwnerID, SenderPolicyHash(r)); e != nil {
+		return e
+	}
 	b, e := json.Marshal(r)
 	if e != nil {
 		return e
