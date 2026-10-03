@@ -7,7 +7,6 @@ import GuidedProviderTerminal from '../../components/providers/GuidedProviderTer
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type ModelMetadata, type ProviderSetupSession } from '../../services/llm-config-api'
-import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
@@ -49,13 +48,12 @@ export function WorkModelsPanel({
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [usageSession, setUsageSession] = useState<ProviderSetupSession | null>(null)
+  // What the server collected for someone who may see usage but not open a terminal on the account.
+  const [usageText, setUsageText] = useState<string | null>(null)
   const usageSessionRef = useRef<ProviderSetupSession | null>(null)
   const [usageStarting, setUsageStarting] = useState(false)
   const [usageError, setUsageError] = useState<string | null>(null)
   const [usageConflict, setUsageConflict] = useState(false)
-  const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
-  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
-  const canCheckUsage = !isMultiUserMode || isAdmin
 
   useEffect(() => {
     usageSessionRef.current = usageSession
@@ -174,15 +172,12 @@ export function WorkModelsPanel({
     setUsageError(null)
     setUsageConflict(false)
     try {
-      const session = await llmConfigService.startProviderSetup(
-        selectedOption.provider,
-        'usage',
-        100,
-        24,
-        undefined,
-        replaceRunning,
-      )
-      setUsageSession(session)
+      setUsageText(null)
+      // The account this project uses: its own connection, else the server's. The server decides what the caller may
+      // do with it: a terminal for the account's owner and admins, read-only text for anyone else it is available to.
+      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, savedSelection?.connectionId, replaceRunning)
+      if (result.session) setUsageSession(result.session)
+      else setUsageText(result.usage_output || 'No usage output.')
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status
       const responseMessage = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -261,7 +256,7 @@ export function WorkModelsPanel({
           )}
         </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent or model relaunches this project's retained session on the next message while keeping the project chat history.</p>}
-        {canCheckUsage && usageSupported && (
+        {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -278,6 +273,9 @@ export function WorkModelsPanel({
                 Check usage
               </button>
             </div>
+            {usageText && (
+              <pre aria-label="Provider usage output" className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">{usageText}</pre>
+            )}
             {usageSession && (
               <div className="mt-3">
                 <GuidedProviderTerminal

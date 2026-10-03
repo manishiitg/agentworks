@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The Models screen's usage check asks about the project's own account, and is shown to everyone the server allows
+
+- **Question (user).** Providers got the usage-access fixes; does Models (Setup → Models in a Code/Crew) check usage with the same security?
+- **Answer.** The server side is the same: both screens call `POST /api/provider-setup/sessions` with action `usage`
+  (`handleStartProviderSetup`): a user account's owner and admins get a terminal; someone the account is shared with, or anyone the
+  server account is available to, gets read-only text collected by the server (never a terminal); anyone else gets 403. Tested in
+  `provider_accounts_e2e_test.go`.
+- **Gaps found in the Models screen (UI only), fixed.** (1) The button was hidden unless admin (`canCheckUsage`), so ordinary users never
+  saw usage even where the server allows it. (2) It never sent the project's connection id, so it always asked about the **server's own
+  account**, not the account the project uses. It now sends the project's connection (`checkProviderUsage(provider, connectionId)`),
+  is shown to everyone, opens the terminal for those the server gives one and shows read-only text for the rest.
+
 ### 2026-10-03 — Browser ownership and teaching plan; guides consolidated
 
 - **Agreed direction (user).** A browser belongs to a workflow or product project
