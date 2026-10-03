@@ -1,3 +1,9 @@
+## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384
+
+[PLAT-384](pulse_platform/cost-telemetry/plat-384.md), P2, RTS indexes backed up,
+rebuilt and integrity verified. Rows and financial values were preserved.
+The original source of the index damage remains unconfirmed.
+
 ## Absolute host grants reached server sandboxes — PLAT-383
 
 [PLAT-383](pulse_platform/security-sandbox/plat-383.md), P1, **fixed** on `main`:
@@ -39,7 +45,9 @@ hidden files offers an owner-private, read-only finalized prompt snapshot.
 ## RTS Providers shows $242.35 as an unattributed user — PLAT-377
 
 [PLAT-377](pulse_platform/cost-telemetry/plat-377.md), P2, fixed on main for
-new workshop child runs; deployment and verified historical repair remain open.
+new workshop child runs; deployment pending. Authorized RTS historical repair
+verified 753 rows ($250.52), including the entire reported $242.35 bucket.
+Older legacy Code costs ($24.98) lack actor evidence and stay unattributed.
 Detached workshop sessions discarded the launch user and channel, so child
 steps/reviewers had workflow attribution but no user attribution.
 
