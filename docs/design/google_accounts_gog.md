@@ -22,12 +22,18 @@ access token (a `GITHUB_TOKEN` secret) used with git and the API.
   JSON alone does not configure the server. Excellence's app was missing from
   its current HOME and was imported again on 2026-10-03. The card shows the
   redirect URI to register and the APIs to enable.
-- **A Code's owner:** Integrations → Gmail → **Connect Google account**: choose what the agent may
+- **Across products:** Integrations → Gmail → **Connect Google account** uses the
+  same compact account list and connection form for Code, Crew, workflow and relay
+  targets, locally and on deployed servers with a configured Google app. Choose what the agent may
   use (Gmail: not used / read only / read, draft and send; Drive, Calendar, Docs, Sheets, Slides:
   not used / read only / read and edit), sign in with their own Google account, personal or work.
   No file to upload and no Google Cloud project of their own. The connection is private to that
-  Code and its owner (`GmailConnection.ScopeWorkspace`, `UsableFrom`).
-- **The agent:** `google_workspace_cli` (gog), for that Code's owner only. A read-only session gets
+  Code and its owner (`GmailConnection.ScopeWorkspace`, `UsableFrom`) when connected
+  to a Code. Shared Crew/workflow accounts can be connected and managed only by an
+  administrator. Existing legacy clients remain usable: Change access reconnects
+  the same connection and client instead of creating a replacement. Without a
+  configured platform app, the legacy client-upload flow remains available.
+- **The agent:** `google_workspace_cli` (gog) honors the connection's target and owner scope. A read-only session gets
   read tools only.
 
 ## How it works
@@ -63,8 +69,9 @@ app card is Google (`mcpAppFocusKeys`). The MCP-side use of an admin app (a conn
 app at refresh time) stays for connections that already exist; removing the feature entirely needs a
 migration that copies each connection's app into its own client first.
 
-## Not done
+## Rollout verification
 
-Crew and workflow shared Gmail accounts keep their existing admin-only flow (upload a client per
-mailbox); pointing them at the same Google app is a small follow-up. A live Google sign-in has not
-been run (it needs a real client); the redirect and the callback hand-off are covered by tests.
+The shared-account server handler already supports the platform Google app; the
+unified UI exposes it across products while retaining the admin requirement.
+Live sign-in and incoming-mail delivery still need to be verified per deployment;
+unit tests cover permissions, redirects and callback hand-off.

@@ -386,11 +386,13 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                   <p className="text-xs text-muted-foreground">{platformConnect ? 'No Google account connected yet.' : 'No sending accounts yet — add one below.'}</p>
                 ) : platformConnect ? (
                   <GoogleAccountList
+                    workspacePath={workspacePath}
                     connections={gmailConnections}
                     busyId={gmailConnectionsBusy}
                     readOnly={readOnly}
                     canRemove={canRemoveGmailConnection}
                     onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
+                    onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
                     onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
                     onReconnect={conn => connectGmailAccount(conn.id)}
                     onRemove={conn => handleRemoveMailbox(conn)}

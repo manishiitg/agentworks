@@ -13,6 +13,26 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Google account sign-in and compact layout across products
+
+- **Decided.** The shared Email panel selects the platform Google app flow for
+  Code, Crew, workflow and relay targets. It no longer depends on a Code-only
+  product check or rejects owner-prefixed Code paths. Local and deployed
+  instances use the same flow; deployments without a Google app retain the
+  legacy client-upload fallback.
+- **Permissions.** Code accounts remain private to their owner; shared accounts
+  remain admin-managed. The unified form respects existing read-only permission
+  checks and describes the correct account scope. Default-account selection is
+  preserved in the compact account menu.
+- **Existing accounts.** Change access updates and reauthorizes the existing
+  connection ID with its existing OAuth client, preserving trigger references
+  and legacy clients. Send-only access is not silently promoted to read access.
+  Change-access events are scoped to the displayed workspace.
+- **Validation.** Component tests cover all target paths, prefixed Code, shared
+  readers, legacy reconnection, workspace isolation and missing-app fallback.
+  The owner requested an RTS deployment of latest main for Gmail testing;
+  Pub/Sub provisioning remains a separate prerequisite, checked during rollout.
+
 ### 2026-10-03 — Project model choices require a ready account; remove older Codex choices
 
 - Refine the earlier installation-only rule: Workflow/product Setup and Crew/Code

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { AlertTriangle, Server } from 'lucide-react'
 import { ToolSelectionSection } from '../../components/ToolSelectionSection'
@@ -8,8 +8,6 @@ import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
 import { PlaceMcpSection } from './PlaceMcpSection'
-import { GoogleAccountConnect } from './GoogleAccountConnect'
-import { googleAppApi } from '../../api/googleApp'
 import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -202,13 +200,6 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
-  // Whether the server has a Google app: then adding an account is one sign-in form.
-  const [googleAppReady, setGoogleAppReady] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-    void googleAppApi.status().then(status => { if (!cancelled) setGoogleAppReady(status.configured) }).catch(() => {})
-    return () => { cancelled = true }
-  }, [tabNonce])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
   const toggleSkill = async (folderName: string) => {
@@ -289,16 +280,12 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           <>
             {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
             {isAdmin && <McpAppsSection />}
-            {/* A Code connects its owner's own Google account through the server's Google app. With
-                that app the account list and the sign-in form are one place (no client file to
-                upload); without it the list keeps its own upload flow. */}
+            {/* All products use the server's Google app; the shared email panel
+                preserves private Code ownership and shared-account admin permissions. */}
             <WorkflowEmailPanel
               workspacePath={workspacePath}
               scopeNoun="project"
               onAsk={onAsk}
-              platformConnect={googleAppReady && product.profileId === 'code' && !workspacePath.startsWith('_users/')
-                ? <GoogleAccountConnect workspacePath={workspacePath} onChanged={() => setTabNonce(nonce => nonce + 1)} />
-                : undefined}
             />
           </>
         )}

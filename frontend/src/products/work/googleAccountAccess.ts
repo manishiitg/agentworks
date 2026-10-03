@@ -32,7 +32,7 @@ export function googleAccessSummary(conn: GmailConnection): string {
 
 export const CHANGE_GOOGLE_ACCESS_EVENT = 'google-account-change-access'
 
-/** Opens the Connect form prefilled with this account's access, to change it and sign in again. */
-export function changeGoogleAccountAccess(conn: GmailConnection) {
-  window.dispatchEvent(new CustomEvent(CHANGE_GOOGLE_ACCESS_EVENT, { detail: { email: conn.email || conn.display_name, ...googleAccessLevels(conn) } }))
+/** Opens this workspace's form with the existing account and its exact access. */
+export function changeGoogleAccountAccess(conn: GmailConnection, workspacePath?: string | null) {
+  window.dispatchEvent(new CustomEvent(CHANGE_GOOGLE_ACCESS_EVENT, { detail: { id: conn.id, workspacePath, email: conn.email || conn.display_name, ...googleAccessLevels(conn) } }))
 }
