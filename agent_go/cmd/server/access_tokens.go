@@ -249,17 +249,17 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// tokenSessionWorkflowReadRoot scopes a token-owned run/chat session's
-// workflow reads to its own workflow folder. Every external session runs
-// exactly one workflow, so narrowing costs nothing — and without it, a
-// token restricted to selected workflows could reach other
-// account-visible workflow files through assistant turns. App sessions (no
-// token) and unresolved folders keep the full Workflow/ grant.
-func tokenSessionWorkflowReadRoot(claims *UserClaims, workflowPhaseFolder string) string {
-	if claims == nil || claims.AccessToken == nil || strings.TrimSpace(workflowPhaseFolder) == "" {
-		return "Workflow/"
+// tokenSessionWorkflowReadRoot scopes a workflow chat's workflow reads to
+// its own workflow folder, for app and token sessions alike: other workflows
+// are readable only when attached (PLAT-395; they arrive as read-only
+// folders). An unresolved folder grants nothing ("" — the caller skips it),
+// never the whole Workflow/ tree.
+func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) string {
+	folder := strings.Trim(strings.TrimSpace(workflowPhaseFolder), "/")
+	if folder == "" {
+		return ""
 	}
-	return strings.TrimSuffix(workflowPhaseFolder, "/") + "/"
+	return folder + "/"
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {

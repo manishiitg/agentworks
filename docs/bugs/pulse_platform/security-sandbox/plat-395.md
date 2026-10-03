@@ -29,6 +29,15 @@ mentions, Builder attachments), nothing else under `Workflow/`.
 - Generic chat's prompt no longer says `ls Workflow/`; it asks the user to
   attach the workflow.
 
+## Found again in owner testing (2026-10-04)
+
+- A Codex Builder chat still listed all of `Workflow/`: workflow Builder chats
+  took their read root from `tokenSessionWorkflowReadRoot`, which scoped only
+  API-token sessions and gave app sessions the whole tree. It now returns the
+  chat's own workflow for every session, and nothing for an unresolved folder.
+  The other guard setters (workflow runs, external Builder, Work, project
+  delegation) already granted only their own folder.
+
 ## Left
 
 - Owner re-runs the sandbox self-test: step 6 should now be refused.

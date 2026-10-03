@@ -6220,7 +6220,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
 				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", workflowReadRoot}, extraFolders...)
+				readPaths := []string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/"}
+				if workflowReadRoot != "" {
+					readPaths = append(readPaths, workflowReadRoot)
+				}
+				readPaths = append(readPaths, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
 				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
