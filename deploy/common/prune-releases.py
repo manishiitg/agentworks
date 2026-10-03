@@ -11,6 +11,11 @@ import sys
 import time
 from urllib.request import urlopen
 
+# A `.deploying` marker protects a release that is still being built or uploaded. A deploy that exits after the
+# release went live but before its last line (a false failure) leaves the marker behind, and a marker that old
+# must not pin the release forever (Confida kept 15 releases, 14 GB, this way).
+DEPLOYING_MARKER_MAX_AGE_SECONDS = 6 * 3600
+
 RELEASE_NAME = re.compile(r"(?:[a-z][a-z0-9-]*-)?[0-9a-f]{7,40}-[0-9]{14}\Z")
 
 
@@ -53,6 +58,15 @@ def active_releases(releases, proc=Path('/proc')):
     return referenced
 
 
+def deploying_in_progress(release, now=None):
+    marker = release / '.deploying'
+    try:
+        age = (time.time() if now is None else now) - marker.stat().st_mtime
+    except OSError:
+        return False
+    return age < DEPLOYING_MARKER_MAX_AGE_SECONDS
+
+
 def prune(app, apply=False, proc=Path('/proc'), keep=()):
     app = app.resolve(strict=True)
     releases = (app / 'releases').resolve(strict=True)
@@ -75,7 +89,7 @@ def prune(app, apply=False, proc=Path('/proc'), keep=()):
                     any((release / 'bin' / binary).is_file() for binary in ('video-studio-agent', 'confida-agent', 'dominion-agent')) or
                     (release / 'frontend/index.html').is_file()):
                 continue
-            if release.name in protected or (release / '.deploying').exists():
+            if release.name in protected or deploying_in_progress(release):
                 print('keep', release.name)
                 continue
             # Recheck the symlink before removal in case another deployment swapped it.

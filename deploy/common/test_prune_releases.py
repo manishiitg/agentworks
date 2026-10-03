@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import time
+import os
 import unittest
 from unittest.mock import patch
 from io import BytesIO
@@ -88,6 +90,26 @@ class ReleaseCleanupTest(unittest.TestCase):
             self.assertTrue((app / 'data').is_dir())
             self.assertTrue((releases / 'user-data').is_dir())
             self.assertTrue(all((releases / name).is_dir() for name in names[:4]))
+
+    def test_a_stale_deploying_marker_does_not_pin_a_release(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp)
+            releases = app / 'releases'
+            releases.mkdir()
+            names = [f'{i:07x}-20260910120000' for i in range(3)]
+            for name in names:
+                (releases / name).mkdir()
+            (app / 'current').symlink_to(releases / names[0])
+            fresh, stale = releases / names[1] / '.deploying', releases / names[2] / '.deploying'
+            fresh.touch()
+            stale.touch()
+            old = time.time() - module.DEPLOYING_MARKER_MAX_AGE_SECONDS - 60
+            os.utime(stale, (old, old))
+            proc = app / 'proc'
+            proc.mkdir()
+            self.assertEqual(module.prune(app, apply=True, proc=proc), [names[2]])
+            self.assertTrue((releases / names[1]).is_dir(), 'a deploy in progress stays protected')
+            self.assertFalse((releases / names[2]).exists(), 'a marker left by a finished deploy must not keep the release')
 
     def test_legacy_named_releases_and_running_scripts(self):
         with tempfile.TemporaryDirectory() as tmp:

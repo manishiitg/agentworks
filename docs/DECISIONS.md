@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Old releases were never pruned: stale `.deploying` markers pinned them
+
+- **Found.** Confida kept 15 releases (14 GB) and Excellence 5, because the pruner keeps any release with a
+  `.deploying` marker. The rootless deploy removes the marker only on its very last line, so a deploy that exited after the
+  release went live but before that line (the false "exit 7" health probe, fixed 2026-10-01) left it behind.
+  14 of 15 Confida releases and 4 of 5 Excellence releases carried one. All were in fact finished and not in use.
+- **Done.** Removed the stale markers by hand and pruned with `--keep` for the two newest previous releases (rollback
+  copies): Confida 15 -> 3 (10 GB), Excellence 5 -> 3. Also cleared both Go build caches (7 GB + 5 GB, rebuilt by the next
+  deploy) and set `/etc/logrotate.d/agentworks` (100 MB, 3 copies) for the product logs. The pruner now ignores a
+  `.deploying` marker older than 6 hours (test: `test_a_stale_deploying_marker_does_not_pin_a_release`).
+- **Context.** The shared Hetzner disk hit 100% on 2026-10-02 (issue #260); free space is now 71 GB.
+
 ### 2026-10-02 — Muse "MCP stdio connection is closed": a slow tool call killed the bridge for good
 
 - **Found (Mayur, Code on excellence; same pattern in a second session).** A shell command ran 5 minutes; Muse recorded
