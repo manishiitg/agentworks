@@ -19,6 +19,12 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The old workspace `Downloads/` folder is no longer granted
+
+Folder guards stop granting `Downloads/` and prompts stop pointing at it; outputs
+and browser artifacts go to the chat or workflow folder. It was a leftover whose
+local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/security-sandbox/plat-373.md).
+
 ### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account
 
 - **Found.** A Code agent installed nvm into the service account's home (`/srv/agents/home`). Traced: every Code agent shell call blocks the project's `db/db.sqlite`
@@ -33,7 +39,6 @@ Design references for the linked runtime decisions:
 - **Open.** The launcher binary must ship with the release (normal deploy). Secrets in `.env` were readable by Code agent shells until deployed: rotation is the owner's call.
   `TestLandlockEnforcesExternalFolderAccess` fails on Excellence with the released launcher too (pre-existing, not this change): a blocked-write folder that is only a read path
   accepted a write; to investigate. A missing blocked file (e.g. `db.sqlite-wal`) cannot be hidden and could be created.
-
 ### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
 
 - **Decision (user).** One Crew/Code can use different saved messages for different

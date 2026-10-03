@@ -995,12 +995,12 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			// spawned with their own folder scope). Pass nil.
 			workspaceExecutors = wrapExecutorsWithChatModeFolderGuard(workspaceExecutors, workflowReadOnlyFolders, nil, extraFolders...)
 			workspace.SetSessionWorkingDir(sessionID, subPerUserChatsFolder)
-			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "Downloads/", "skills/", "subagents/", "Workflow/"}, extraFolders...)
+			readPaths := append([]string{subPerUserChatsWrite, subPerUserChatHistory, "skills/", "subagents/", "Workflow/"}, extraFolders...)
 			readPaths = append(readPaths, subResolvedGrants.ReadOnlyExtra...)
 			readPaths = append(readPaths, workflowReadOnlyFolders...)
 			workspace.SetSessionFolderGuard(sessionID,
 				readPaths,
-				append([]string{subPerUserChatsWrite, "Downloads/", subPerUserChatHistory}, extraFolders...),
+				append([]string{subPerUserChatsWrite, subPerUserChatHistory}, extraFolders...),
 			)
 			// Tool calls execute under the isolated session ID. Give that session
 			// the same grants before its coding-agent bridge adds managed-file
@@ -1008,7 +1008,7 @@ func (api *StreamingAPI) executeDelegatedTask(ctx context.Context, parentReq Que
 			workspace.SetSessionWorkingDir(subAgentSessionID, subPerUserChatsFolder)
 			workspace.SetSessionFolderGuard(subAgentSessionID,
 				readPaths,
-				append([]string{subPerUserChatsWrite, "Downloads/", subPerUserChatHistory}, extraFolders...),
+				append([]string{subPerUserChatsWrite, subPerUserChatHistory}, extraFolders...),
 			)
 			if hostDownloads := common.GrantSessionCDPHostDownloadsReadOnly(sessionID, browserReq.BrowserMode); hostDownloads != "" {
 				common.GrantSessionCDPHostDownloadsReadOnly(subAgentSessionID, browserReq.BrowserMode)

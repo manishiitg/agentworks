@@ -6163,12 +6163,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					additionalFolders = append(additionalFolders, orgPulseWrite)
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, perUserChatsFolder, workflowReadOnlyFolders, additionalFolders...)
 					workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
-					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Downloads/", "Workflow/"}, additionalFolders...)
+					readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", "Workflow/"}, additionalFolders...)
 					readPaths = append(readPaths, resolvedGrants.ReadOnlyExtra...)
 					readPaths = append(readPaths, workflowReadOnlyFolders...)
 					workspace.SetSessionFolderGuard(sessionID,
 						readPaths,
-						append([]string{perUserChatsWrite, "Downloads/", perUserChatHistory}, additionalFolders...),
+						append([]string{perUserChatsWrite, perUserChatHistory}, additionalFolders...),
 					)
 					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 						log.Printf("[MULTI-AGENT FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
@@ -6192,7 +6192,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workspaceExecutors = wrapExecutorsWithWorkflowPhaseFolderGuard(workspaceExecutors, effectiveWorkflowPhaseFolderForWrites, workflowReadOnlyFolders, fileContextBlockedWriteFolders, extraFolders...)
 				workspace.SetSessionWorkingDir(sessionID, chatWorkingFolder)
 				workflowReadRoot := tokenSessionWorkflowReadRoot(GetUserFromContext(r.Context()), workflowPhaseFolder)
-				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "Downloads/", "skills/", "subagents/", workflowReadRoot}, extraFolders...)
+				readPaths := append([]string{perUserChatsWrite, perUserChatHistory, "skills/", "subagents/", workflowReadRoot}, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
 				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {

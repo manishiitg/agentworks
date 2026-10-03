@@ -1,3 +1,9 @@
+## Every local shell command refused — PLAT-373
+
+[PLAT-373](pulse_platform/security-sandbox/plat-373.md), P0, **fixed** on `main`:
+the folder-guard boundary check refused absolute host grants and the old
+`Downloads/` link, so every local shell command returned HTTP 400.
+
 ## Relays product introduction — PLAT-373
 
 [PLAT-373](pulse_platform/frontend-chat/plat-373.md), implemented and locally

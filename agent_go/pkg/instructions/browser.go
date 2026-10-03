@@ -130,12 +130,12 @@ When a website has a file upload input (e.g. file picker, drag-and-drop zone), u
 
 ### Using agent_browser
 1. In CDP mode, list/select a tab and include it inline on each page action: agent_browser(command="snapshot", args=["tab", "t1", "-i"])
-2. Upload using the ref. In CDP mode include the tab inline: agent_browser(command="upload", args=["tab", "t1", "@ref", "Downloads/report.pdf"])
+2. Upload using the ref. In CDP mode include the tab inline: agent_browser(command="upload", args=["tab", "t1", "@ref", "Chats/report.pdf"])
 
 ### Path Rules
-- Always use **workspace-relative paths** (e.g. "Downloads/report.pdf", "Chats/output.csv")
+- Always use **workspace-relative paths** (e.g. "Chats/report.pdf", "Chats/output.csv")
 - Paths are securely staged from the workspace root for the persistent browser daemon — do NOT construct absolute paths yourself
-- Files in "Downloads/" are user-uploaded files; files in "Chats/" are created during the conversation
+- Files in "Chats/" are created during the conversation
 - If you need to create a file first, save it to "Chats/" using execute_shell_command, then upload it
 `
 }

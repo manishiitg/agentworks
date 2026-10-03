@@ -930,7 +930,7 @@ func agentProfileChatHistoryGrants(sandbox agentprofiles.SandboxPolicy, perUserC
 
 func agentProfileReadOnlyFolders(sandbox agentprofiles.SandboxPolicy, workflowReadOnlyFolders []string) []string {
 	if sandbox.ReadOnly == nil {
-		return append([]string{"skills/", "subagents/", "Downloads/"}, workflowReadOnlyFolders...)
+		return append([]string{"skills/", "subagents/"}, workflowReadOnlyFolders...)
 	}
 	// sandbox.read_only controls the product's ambient/default read roots. An
 	// authorized # workflow reference is request/project context, not an ambient
