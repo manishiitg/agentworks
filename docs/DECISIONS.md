@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Codex resume adoption handles interactive options and historical startup banners
+
+A confined Codex resume copies only its explicitly selected thread into the
+private CLI home, parsing the model/profile/config options before that ID.
+A newer Codex ready header supersedes an older `Resuming session` banner in
+scrollback. The original rollout and existing private copies are retained.
+Shared provider `648234b`, validated with a real two-turn resumed conversation
+on SparkQuill. [PLAT-392](bugs/pulse_platform/coding-agent-bridge/plat-392.md).
+
 ### 2026-10-03 — Deploy Slack notices are silent by default again
 
 - **Decided (owner).** "For now make Slack posts silent": `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1`.
