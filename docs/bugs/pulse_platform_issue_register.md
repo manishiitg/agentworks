@@ -1,3 +1,10 @@
+## Relay user message and validation guidance — PLAT-412
+
+[PLAT-412](pulse_platform/coding-agent-bridge/plat-412.md), fixed on main;
+deployment pending. Explicit prior-output references in authored messages,
+JSON-only final responses and current validation limits are documented in the
+manifest-owned builder prompt and skill.
+
 ## Relay agent tool errors in the invoice run — PLAT-411
 
 [PLAT-411](pulse_platform/security-sandbox/plat-411.md), open. An archived invoice
