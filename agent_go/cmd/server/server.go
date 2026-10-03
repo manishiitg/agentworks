@@ -6792,7 +6792,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			//    assembler logs what it applied. See prompt_sections.go for why
 			//    these stopped being inline ifs.
 			promptCtx := promptContext{
-				Provider:                 req.Provider,
+				// The CLI that actually runs: a workflow's manifest LLM replaces the
+				// requested one (the log named the request's CLI, not Muse/Codex).
+				Provider:                 finalProvider,
 				HasProfile:               resolvedProfile != nil,
 				IsWorkflowPhase:          isWorkflowPhase,
 				CrewReadOnly:             crewReaderCLI,

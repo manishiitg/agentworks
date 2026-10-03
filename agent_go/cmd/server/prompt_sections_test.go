@@ -345,7 +345,7 @@ func TestNativeSubagentsGuidanceOnlyWithNativeTools(t *testing.T) {
 		t.Fatal("a bridge-only chat has no subagents of its own")
 	}
 	text := section.Build(promptContext{})
-	for _, want := range []string{"own subagents", "read_only", "execute_step", "run_in_background"} {
+	for _, want := range []string{"own subagents", "read_only", "execute_step", "run_in_background", "search_tools(query=", "get_api_spec(tool_name="} {
 		if !strings.Contains(text, want) {
 			t.Errorf("guidance misses %q: %s", want, text)
 		}
