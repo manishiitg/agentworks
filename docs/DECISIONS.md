@@ -25,8 +25,8 @@ Design references for the linked runtime decisions:
   parallel one: Code always has one active tab.
 - **Done.** Code's composer shows the existing New chat action (owner only, not on a shared Code). It stops the running session, rotates the project's conversation on the
   server (the project manifest gets a new session id, so the coding agent starts a fresh conversation) and resets the same tab. The previous conversation stays listed.
-- **Open.** The chat input's model picker still renders for `inputVariant="product"` surfaces (Video Studio, Dominion, SparkQuill), which have no right-side model panel;
-  removing it there is waiting on the user.
+- **Model picker removed (user).** The chat input no longer renders a model/reasoning picker on any surface (it was only shown for `inputVariant="product"`: Video Studio,
+  Dominion, SparkQuill). Models change in each product's own settings; a workflow's model lives in its LLM configuration panel, not in the chat box.
 
 ### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals
 

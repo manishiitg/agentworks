@@ -34,7 +34,6 @@ import { chromeCdpInstallCommand, chromeCdpLaunchCommand, chromeCdpVerifyCommand
 import { CHAT_TOOL_COMMAND_EVENT, chatToolCommandFromEvent } from '../utils/chatToolEvents'
 import { buildAgentProfileEngineGroups, loadAgentProfileCapabilityEnabled, loadAgentProfileProviderOptions, loadAgentProfileRuntime, type AgentProfileProviderOption, type AgentProfileRuntime } from '../utils/agentProfileCapabilities'
 import { llmConfigService, type ModelMetadata } from '../services/llm-config-api'
-import ModelReasoningControl from './ui/ModelReasoningControl'
 import NewChatControl from './ui/NewChatControl'
 import { MicButton, type MicButtonHandle, type MicState } from '../voice/MicButton'
 import { readVoiceAutoSendPref } from '../products/sparkquill/voiceAutoSend'
@@ -435,9 +434,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const activeTab = useChatStore(state =>
     activeTabId ? state.chatTabs[activeTabId] : undefined
   )
-  const activeTabEvents = useChatStore(state =>
-    activeTab?.sessionId ? state.tabEvents[activeTab.sessionId] : undefined
-  )
   // Main tmux is a first-class alternate view of this chat. Child-terminal
   // inspection is still developer-only, but opening the main pane must not
   // require a diagnostic flag.
@@ -533,7 +529,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // A product with no shipped commands still needs the slash entry point so
   // users can create and use project-scoped custom commands.
   const productCommandsAvailable = true
-  const chatHasTurns = useMemo(() => (activeTabEvents ?? []).some((e) => e.type === 'user_message'), [activeTabEvents])
   const profileSessionRuntime = useChatStore(state => activeTab?.sessionId
     ? state.activeSessionsCache.find(session => session.session_id === activeTab.sessionId)?.runtime
     : undefined)
@@ -553,33 +548,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     || (currentGroup?.option.model_id ?? '')
     || currentGroup?.models[0]?.id
     || ''
-  const defaultReasoningEffort = typeof currentGroup?.option.options?.reasoning_effort === 'string' ? currentGroup.option.options.reasoning_effort : undefined
-  const metadataMatchesEngine = metadataEngine === currentEngine
-  const currentReasoningEffort = (currentGroup?.option.provider === 'agy-cli' ? currentModel.match(/-(low|medium|high)$/)?.[1] : undefined)
-    || (metadataMatchesEngine ? activeTab?.metadata?.agentProfileReasoningEffort : undefined)
-    || defaultReasoningEffort
-    || currentGroup?.reasoningLevels[0]?.id
-    || ''
-  const selectProductEngine = useCallback((engine: string, modelId: string, reasoningEffort?: string) => {
-    if (!activeTabId || !agentProfileId) return
-    const group = engineGroups.find(candidate => candidate.option.id === engine)
-    if (group?.option.provider === 'agy-cli') {
-      const bakedEffort = modelId.match(/-(low|medium|high)$/)?.[1]
-      if (bakedEffort) {
-        if (modelId === currentModel && reasoningEffort && reasoningEffort !== bakedEffort) {
-          const nextModel = modelId.replace(/-(low|medium|high)$/, `-${reasoningEffort}`)
-          if (group.models.some(candidate => candidate.id === nextModel)) modelId = nextModel
-          else reasoningEffort = bakedEffort
-        } else {
-          reasoningEffort = bakedEffort
-        }
-      }
-    }
-    useChatStore.getState().setTabMetadata(activeTabId, { agentProfileEngine: engine, agentProfileModelID: modelId, ...(reasoningEffort ? { agentProfileReasoningEffort: reasoningEffort } : {}) })
-    window.dispatchEvent(new CustomEvent('agentworks:product-engine-selected', {
-      detail: { profileId: agentProfileId, tabId: activeTabId, engine, provider: group?.option.provider, modelId, reasoningEffort },
-    }))
-  }, [activeTabId, agentProfileId, engineGroups, currentModel])
 
   // "New chat" for product surfaces, offered when the profile declares
   // runtime.capabilities.new_conversation; the product owns what happens.
@@ -3358,18 +3326,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         <NewChatControl
                           engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id }))}
                           onStart={requestNewConversation}
-                        />
-                      )}
-                      {isProductSurface && !sparkQuillComposerLayout && engineGroups.some((g) => g.models.length > 0) && (
-                        <ModelReasoningControl
-                          engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id, models: g.models }))}
-                          currentEngineId={currentEngine}
-                          currentModelId={currentModel}
-                          engineChangeable={agentProfileId === 'work' || !chatHasTurns}
-                          reasoningLevels={currentGroup?.reasoningLevels ?? []}
-                          currentReasoningEffort={currentReasoningEffort}
-                          defaultReasoningEffort={defaultReasoningEffort}
-                          onSelect={selectProductEngine}
                         />
                       )}
                     {/* Browser access lives in the chat header for multi-agent mode. */}
