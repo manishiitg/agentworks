@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome)
+
+- **Found (user).** "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied" starting the Code browser on Excellence:
+  /usr/bin/google-chrome resolves to /opt/google/chrome, which the Landlock sandbox did not grant. It worked before PLAT-374 only because the
+  mount-namespace fallback (removed) could see /opt.
+- **Done.** `/opt/google/chrome` is in landlockSystemReadPaths (read + execute, dropped when absent); TestSystemChromeRunsInsideTheSandbox
+  runs the real Chrome in the sandbox. Applies to every Linux server.
+
 ### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order
 
 - **Decided (owner).** The mic is on for Code (it needs the server's speech engine: Excellence has it); New chat and the live-view toggle sit
