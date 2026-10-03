@@ -51,7 +51,7 @@ const PAGE_SIZES = [
   { value: '1280x800', label: 'Wide page · 1280 × 800' },
 ]
 
-export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, profileId, onLearn }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown> }) {
+export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun = 'workflow', minimal = false, showGuide = true, allowTeaching = true, profileId, onLearn }: { workspacePath: string | null; toolbar?: ReactNode; scopeNoun?: 'workflow' | 'project'; minimal?: boolean; showGuide?: boolean; allowTeaching?: boolean; profileId?: string; onLearn?: (message: string) => void | Promise<unknown> }) {
   const [sessions, setSessions] = useState<BrowserSession[]>([])
   const [startingBrowser, setStartingBrowser] = useState(false)
   const [address, setAddress] = useState('')
@@ -285,7 +285,7 @@ export default function WorkflowLiveBrowser({ workspacePath, toolbar, scopeNoun 
             if (pendingTab.current) { ws.send(JSON.stringify({ type: 'switch_tab', tab: pendingTab.current })); pendingTab.current = '' }
           }
           else keyboardTarget.current?.blur()
-        } else if (message.type === 'teaching') {
+        } else if (message.type === 'teaching' && allowTeaching) {
           setTeachState(message.state)
           if((message.state.status==='draft' || message.state.status==='needs_repair') && message.state.directory && learnCallback.current) void Promise.resolve(learnCallback.current(`Prepare my demonstrated task for reuse: ${message.state.goal}.
 
@@ -320,7 +320,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
     }, 10000)
     return () => { disposed = true; window.clearInterval(heartbeat); ws.close(); if (socket.current === ws) socket.current = null }
-  }, [session, workspacePath, retry, sourceCompleted])
+  }, [session, workspacePath, retry, sourceCompleted, allowTeaching])
 
   // A different browser (or leaving the panel) starts a fresh retry budget.
   useEffect(() => {
@@ -502,7 +502,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
       {controlling ? 'Give back to helper' : 'Take control'}
     </button>
   )
-  const teachToggle = connected && canControl && <button type="button" className={tertiaryButtonClass} aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" />Teach task</button>
+  const teachToggle = allowTeaching && connected && canControl && <button type="button" className={tertiaryButtonClass} aria-expanded={teachOpen} onClick={() => setTeachOpen(value => !value)}><BookOpen className="h-4 w-4" aria-hidden="true" />Teach task</button>
   const startToggle = canWrite && !connected && !displayFrame && !replayURL && <button type="button" disabled={startingBrowser} className={tertiaryButtonClass} onClick={() => void startBrowser()}>{startingBrowser ? 'Starting…' : 'Start browser'}</button>
   function navigateAddress() {
     const value = address.trim()
@@ -564,7 +564,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
                 : session ? spin('Starting browser…')
                   : (
                     <div className="flex flex-col items-center gap-1">
-                      <span>Start a browser to visit a website or show your helper a task.</span>
+                      <span>{allowTeaching ? 'Start a browser to visit a website or show your helper a task.' : 'Start a browser to visit a website.'}</span>
                       {!minimal && scopeNoun === 'workflow' && <span className="text-xs text-muted-foreground/80">Test runs appear here automatically.</span>}
                     </div>
                   )
@@ -593,7 +593,7 @@ Review this browser demonstration. Do not perform browser actions yet. Draft the
           </>}
         />
       )}
-      {teachOpen && workspacePath && session && <BrowserTeachingPanel workspacePath={workspacePath} session={session} state={teachState} onState={setTeachState} profileId={profileId} onClose={()=>setTeachOpen(false)} onReview={()=>{if(learnCallback.current && teachState.directory) void Promise.resolve(learnCallback.current(`Adjust my demonstrated task so it works reliably: ${teachState.goal}.
+      {allowTeaching && teachOpen && workspacePath && session && <BrowserTeachingPanel workspacePath={workspacePath} session={session} state={teachState} onState={setTeachState} profileId={profileId} onClose={()=>setTeachOpen(false)} onReview={()=>{if(learnCallback.current && teachState.directory) void Promise.resolve(learnCallback.current(`Adjust my demonstrated task so it works reliably: ${teachState.goal}.
 
 📁 Files in context: ${teachState.directory}/manifest.json
 Review this browser demonstration. Inspect its recorded evidence and test errors, update the actions, guidance and expected result, preserve capture metadata and keep status draft. Do not execute browser actions or publish yet. Explain readiness and required inputs in plain language.`)).catch(()=>useChatStore.getState().addToast('Unable to ask your helper. Try again.', 'error'))}} onControl={action=>send({type:`teach_${action}`})} onStart={goal=>{if(controlling)send({type:'teach_start',goal});else{pendingTeach.current=goal;send({type:'take_control'})}}} />}

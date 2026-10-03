@@ -4086,7 +4086,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if retainedWorkflowCompatible {
-		r = r.WithContext(contextWithSessionMode(r.Context(), crewSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
+		r = r.WithContext(contextWithSessionMode(r.Context(), agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly)))
 	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
@@ -7852,7 +7852,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationMux.Unlock()
 		}
 		logfWithContext(queryLogCtx, "[STREAMING_LIFECYCLE] T+%dms | Starting StreamWithEvents | session=%s query=%.80s", time.Since(startTime).Milliseconds(), sessionID, chatQuery)
-		chatQuery = withSessionMode(crewSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly), chatQuery)
+		chatQuery = withSessionMode(agentSessionModeForTurn(req, currentUserID, resolvedProfile, currentUserIsReadOnly), chatQuery)
 		textChan, err := llmAgent.StreamWithEvents(agentCtx, chatQuery)
 		if err != nil {
 			logfWithContext(queryLogCtx, "[AGENT DEBUG] llmAgent.StreamWithEvents() error: %v", err)

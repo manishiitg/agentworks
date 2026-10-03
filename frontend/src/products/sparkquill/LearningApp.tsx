@@ -2673,8 +2673,8 @@ export default function LearningApp() {
               )}
 
               {drawerTab === 'browser' && (
-                <div className="fl-browser-view">
-                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} onLearn={message=>{submitToParentChat(message)}} minimal />
+                <div className="fl-browser-view fl-platform-ui">
+                  <WorkflowLiveBrowser workspacePath={FAMILY_WORKSPACE} scopeNoun="project" profileId={PARENT_PROFILE_ID} allowTeaching={false} minimal />
                 </div>
               )}
 
@@ -3250,7 +3250,7 @@ export default function LearningApp() {
                           <p className="fl-note">A new browser window opens on its own once it's done.</p>
                         </div>}
                         <button type="button" className="fl-ghost-btn" onClick={()=>{setWaOpen(false);setDrawerTab('browser')}}>Open browser to sign in or teach a task</button>
-                        <p className="fl-note">Open the browser panel, take control and sign into the school portal there. Return control when finished so Quill can use the same signed-in browser. Sign in before starting a teaching session.</p>
+                        <p className="fl-note">Open the browser panel, take control and sign into the school portal there. Return control when finished so Quill can use the same signed-in browser.</p>
                         {isBrowserCDPEnabled() && browserStatus && !browserStatus.cli_installed && (
                           <p className="fl-note">(Also needed once: ask whoever set this computer up to run <code>npm install -g agent-browser@latest</code>.)</p>
                         )}

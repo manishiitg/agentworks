@@ -464,10 +464,11 @@ it('sends review records to the helper as hidden file context with a plain chat 
   expect(getDisplaySafeUserMessageContent(prompt)).toBe('Prepare my demonstrated task for reuse: Export customers.')
 })
 
-it('keeps startup, tab controls and teaching available in SparkQuill minimal mode', async () => {
+it('keeps startup and tab controls while disabling teaching in SparkQuill', async () => {
+  const onLearn = vi.fn()
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { root, host } = await mountBrowser()
-  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" minimal />) })
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Chats/SparkQuill" profileId="sparkquill" allowTeaching={false} minimal onLearn={onLearn} />) })
   api.post.mockResolvedValueOnce({ data: { browser_session: 'workspace-browser' } })
   await act(async () => { buttonNamed(host, 'Start browser')!.click() })
   expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Chats/SparkQuill', profile_id: 'sparkquill' } }))
@@ -477,7 +478,9 @@ it('keeps startup, tab controls and teaching available in SparkQuill minimal mod
     ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
     ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
   })
-  expect(buttonNamed(host, 'Teach task')).toBeDefined()
+  expect(buttonNamed(host, 'Teach task')).toBeUndefined()
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { status: 'draft', goal: 'Export', directory: 'Chats/SparkQuill/browser-demonstrations/demo' } }) }) })
+  expect(onLearn).not.toHaveBeenCalled()
   expect(host.querySelector('[aria-label="Browser page size"]')).not.toBeNull()
   await act(async () => { buttonNamed(host, 'Two')!.click(); buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close One')!.click() })
   expect(ws.send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([

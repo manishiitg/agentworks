@@ -1182,8 +1182,8 @@ audio.fl-viewer-media { background: var(--surface); }
    The shared composer and transcript paint with the shadcn tokens; SparkQuill
    sets them here, so the product owns the look while the components stay
    shared. Values are HSL triplets, the form tailwind's hsl(var(--x)) expects. */
-.fl-platform-chat {
-  display: flex; flex-direction: column; flex: 1; min-height: 0;
+.fl-platform-chat { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+:is(.fl-platform-chat, .fl-platform-ui) {
   --background: 43 100% 99%;        /* cream page */
   --foreground: 221 65% 18%;        /* ink */
   --card: 0 0% 100%;
@@ -1202,7 +1202,7 @@ audio.fl-viewer-media { background: var(--surface); }
   --accent: 45 100% 92%;
   --accent-foreground: 221 65% 18%;
 }
-.learning-app[data-theme="dark"] .fl-platform-chat {
+.learning-app[data-theme="dark"] :is(.fl-platform-chat, .fl-platform-ui) {
   --background: 222 47% 8%;
   --foreground: 210 40% 96%;
   --card: 222 40% 12%;
@@ -1288,45 +1288,16 @@ audio.fl-viewer-media { background: var(--surface); }
 /* A pinned page's own bar sits inside the map frame's zero-padding scroll area: give it its own. */
 .fl-drawer-scroll:has(> .fl-map-frame) > .fl-viewer-bar { margin: 0; padding: 10px 18px; border-bottom: 1px solid #e3e9f2; background: var(--surface); }
 
-/* Shared browser controls must override SparkQuill's restored UA defaults.
-   Preserve the image ratio: remote input uses its visible bounding rectangle. */
-.fl-browser-view .live-browser { min-width: 0; background: var(--surface); color: var(--heading); line-height: 1.4; }
-.fl-browser-view .live-browser-header { min-height: 48px; padding: 8px 12px; gap: 8px; border-color: var(--line); }
-.fl-browser-view .live-browser-header h3 { margin: 0; font-size: 13px; font-weight: 700; }
-.fl-browser-view .live-browser-header [role="status"] { font-size: 11px; color: #5f708d; }
-.fl-browser-view .live-browser-actions { align-items: center; gap: 6px; }
-.fl-browser-view .live-browser-actions :is(button, select) { appearance: none; display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--heading); font: 600 12px/1.4 var(--font-ui); cursor: pointer; }
-.fl-browser-view .live-browser-actions button { background: var(--navy); color: #fff; border-color: transparent; }
-.fl-browser-view .live-browser-actions button:hover { background: #193664; }
-.fl-browser-view .live-browser-actions select { appearance: auto; }
-.fl-browser-view .live-browser-actions select:disabled { opacity: .55; cursor: not-allowed; }
-.fl-browser-view .live-browser :is(button, select):focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
-.fl-browser-view .live-browser-tabs { padding: 6px 10px; gap: 6px; background: var(--surface-2); border-color: var(--line); }
-.fl-browser-view .live-browser-tabs button { appearance: none; min-width: 0; max-width: 260px; padding: 5px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #5f708d; font: 500 12px/1.4 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.fl-browser-view .live-browser-tabs button[aria-pressed="true"] { background: var(--surface); border-color: var(--line); color: var(--heading); }
-.fl-browser-view .live-browser-tabs button:disabled { opacity: 1; cursor: default; }
-.fl-browser-view .live-browser-tabs button:not(:disabled):hover { background: var(--surface); }
+/* Shared browser chrome uses the platform baseline and SparkQuill's theme
+   tokens. Keep only the product surface and frame fit here; shared utilities
+   own the buttons, address field, tab states and disabled/focus styling. */
+.fl-browser-view .live-browser { min-width: 0; background: var(--surface); color: hsl(var(--foreground)); }
+.fl-browser-view .live-browser-bar,
+.fl-browser-view .live-browser-navigation { background: var(--surface); }
+.fl-browser-view .live-browser-tabs,
 .fl-browser-view .live-browser-viewport { background: var(--surface-2); }
 .fl-browser-view .live-browser-frame { align-items: flex-start; }
 .fl-browser-view .live-browser-frame img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
-.fl-browser-view .live-browser-footer { margin: 0; padding: 7px 12px; font-size: 11px; line-height: 1.4; color: #5f708d; border-color: var(--line); }
-.fl-browser-view .live-browser [role="alert"] { margin: 0; }
-.learning-app[data-theme="dark"] .fl-browser-view :is(.live-browser-footer, .live-browser-header [role="status"], .live-browser-tabs button:not([aria-pressed="true"])) { color: #a9b8ce; }
-
-/* One browser toolbar: tabs share the controls row and scroll horizontally. */
-.fl-browser-view .live-browser-header { flex-wrap: nowrap; overflow: hidden; }
-.fl-browser-view .live-browser-header > h3 { flex-shrink: 0; }
-.fl-browser-view .live-browser-header > [role="status"] { flex-shrink: 0; white-space: nowrap; }
-.fl-browser-view .live-browser-header .live-browser-tabs { flex: 1 1 120px; min-width: 48px; padding: 0; border: 0; background: transparent; }
-.fl-browser-view .live-browser-header .live-browser-tabs button { max-width: 200px; }
-.fl-browser-view .live-browser-actions { flex-shrink: 0; white-space: nowrap; }
-.fl-browser-view .live-browser-actions select { max-width: 110px; }
-.fl-browser-view .live-browser { container-type: inline-size; }
-@container (max-width: 560px) {
-  .fl-browser-view .live-browser-header > h3,
-  .fl-browser-view .live-browser-header > [role="status"] { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
-  .fl-browser-view .live-browser-header { padding: 6px 8px; gap: 6px; }
-}
 
 /* Model choices live in parent Settings for both learning roles. */
 .fl-settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 14px; }
