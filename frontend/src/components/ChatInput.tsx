@@ -3638,6 +3638,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     </TooltipContent>
                   </Tooltip>
                 )}
+                {attachmentEl}
                 {/* Status text - removed observer initialization message */}
               </div>
               {/* Show old buttons */}
@@ -3663,7 +3664,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </button>
                 ) : null}
                       {sparkleEl}
-                      {!nativeTerminalTools && attachmentEl}
                       {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary
                           button stops the running session. */}

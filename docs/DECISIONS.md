@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Composer layout: terminal and attach left; New chat, commands, mic, send right. Workflow page: no Native agent tools toggle
+
+- **Decided (owner).** In every chat input the live-view (terminal) toggle and the attach button sit on the left; New chat, the commands (wand), the mic and send
+  sit on the right. Earlier today the live-view toggle had been moved right by mistake ("browser commands" meant the wand).
+- **Decided (owner).** The workflow Models page no longer offers "Native agent tools": native tools are always on, as in Crew and Code. A value already
+  saved as off in a workflow's capabilities is left untouched (not editable from the UI).
+
 ### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome)
 
 - **Found (user).** "Failed to launch Chrome at /usr/bin/google-chrome: Permission denied" starting the Code browser on Excellence:
