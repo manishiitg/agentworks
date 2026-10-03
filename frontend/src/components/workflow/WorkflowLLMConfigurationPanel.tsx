@@ -4,10 +4,8 @@ import { Input } from '../ui/Input'
 import { stripRetiredLLMFallbacks } from '../../utils/retiredLLMFallbacks'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, Search, UserRound, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Lock, RefreshCw, Search, UserRound, ShieldCheck } from 'lucide-react'
 import LLMRoleSelector from '../LLMRoleSelector'
-import { WorkflowProviderCredentialField } from '../WorkflowProviderCredentialField'
-import { CodingAgentSection } from '../llm/CodingAgentSection'
 import { providerStatus } from '../llm/providerStatus'
 import type { AgentLLMConfig, LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type DynamicModelEntry, type ProviderManifestEntry } from '../../services/llm-config-api'
@@ -215,9 +213,7 @@ export default function WorkflowLLMConfigurationPanel({
   const globalLockApplies = llmConfigLocked && configurationSource !== 'agent_profile'
   const readOnly = !(canWriteOverride ?? workflowCanWrite) || globalLockApplies
   const disabledTitle = globalLockApplies ? 'Set by your administrator for this deployment' : readOnlyReason || READ_ONLY_TITLE
-  const [activeProviderId, setActiveProviderId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [tokenOpen, setTokenOpen] = useState(false)
   const [accountSelectionError, setAccountSelectionError] = useState<string | null>(null)
   const [expandedAccountProviders, setExpandedAccountProviders] = useState<Set<string>>(() => new Set())
   const [accountRecords, setAccountRecords] = useState<import('../../services/llm-config-api').ProviderConnection[]>([])
@@ -520,7 +516,7 @@ export default function WorkflowLLMConfigurationPanel({
   }
 
   // "Use in this workflow": select the provider and persist right away. Used
-  // by the inline row button for sign-in CLIs and by the Pi drill-in.
+  // by the inline row button for connected coding agents.
   const applyRowToWorkflow = async (row: ProviderRow) => {
     const config = configForRow(row)
     if (!config) return
@@ -532,12 +528,6 @@ export default function WorkflowLLMConfigurationPanel({
     } finally {
       setRowUsing(null)
     }
-  }
-
-  const applyActiveRowToWorkflow = async () => {
-    if (!activeRow) return
-    await applyRowToWorkflow(activeRow)
-    setActiveProviderId(null)
   }
 
   const useManagedDefaults = () => {
@@ -604,53 +594,6 @@ export default function WorkflowLLMConfigurationPanel({
     } finally {
       setRefreshing(false)
     }
-  }
-
-  const activeRow = useMemo(() => rows.find(row => row.id === activeProviderId) ?? null, [activeProviderId, rows])
-
-  // ---- Drill-in: connect / configure one provider ------------------------
-
-  if (activeProviderId !== null) {
-    const locked = isProviderLocked(activeProviderId)
-    return (
-      <div className="space-y-4">
-
-
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          onClick={() => setActiveProviderId(null)}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to providers
-        </Button>
-
-        {!activeRow ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">Loading provider info...</div>
-        ) : locked ? (
-          <div className="flex items-start gap-2 rounded-md border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <div className="font-medium text-foreground">Configured by admin</div>
-              <div className="mt-0.5 text-xs">The credentials for this provider are set server-side. Contact your administrator to change them.</div>
-            </div>
-          </div>
-        ) : (
-          <CodingAgentSection
-            key={activeProviderId}
-            provider={activeRow.entry}
-            groupFilter={activeRow.groupFilter}
-            readOnly={readOnly}
-            variant="workflow"
-            initialModelId={activeRow.modelId ?? undefined}
-            inUse={activeRow.id === selectedRowId}
-            onUseInWorkflow={applyActiveRowToWorkflow}
-            scopeNoun={scopeNoun}
-          />
-        )}
-      </div>
-    )
   }
 
   // ---- Main view ----------------------------------------------------------
@@ -757,12 +700,10 @@ export default function WorkflowLLMConfigurationPanel({
               <Button
                 type="button"
                 size="xs"
-                onClick={() => selectedRow.entry.integration_kind === 'coding_agent'
-                  ? setShowLLMModal(true)
-                  : setActiveProviderId(selectedRow.id)}
+                onClick={() => setShowLLMModal(true)}
                 disabled={readOnly}
               >
-                {selectedRow.entry.integration_kind === 'coding_agent' ? 'Manage in Providers' : 'Set up'}
+                Manage in Providers
               </Button>
             </>
           )}
@@ -804,65 +745,6 @@ export default function WorkflowLLMConfigurationPanel({
       )
     }
     return <div className="text-sm text-muted-foreground">No provider selected — pick one below.</div>
-  }
-
-  const renderTokenLine = () => {
-    if (selectedConnectionID && !selectedConnectionID.startsWith('global:')) return null
-    if (selectedBaseProvider !== 'claude-code' && selectedBaseProvider !== 'cursor-cli') return null
-    const isClaude = selectedBaseProvider === 'claude-code'
-    return (
-      <div className="mt-2">
-        <button
-          type="button"
-          onClick={() => setTokenOpen(open => !open)}
-          aria-expanded={tokenOpen}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronRight className={`h-3 w-3 transition-transform ${tokenOpen ? 'rotate-90' : ''}`} />
-          {scopeNoun.charAt(0).toUpperCase() + scopeNoun.slice(1)} {isClaude ? 'token' : 'API key'}
-          <span className="text-muted-foreground/70">· scoped to this {scopeNoun}, falls back to the saved login</span>
-        </button>
-        {tokenOpen && (
-          <div className="mt-2 rounded-md border border-border bg-muted/20 p-3">
-            {isClaude ? (
-              <WorkflowProviderCredentialField
-                provider="claude-code"
-                inputId="workflow-claude-code-token"
-                workflowCredentialPath={workspacePath || undefined}
-                readOnly={readOnly}
-                copy={{
-                  heading: 'Claude Code token',
-                  hint: <>Use a token from <code className="rounded bg-background px-1 py-0.5 font-mono text-foreground">claude setup-token</code>, or leave this empty to use the saved Claude login.</>,
-                  fallbackLabel: 'Using saved login',
-                  inputPlaceholder: 'Paste Claude Code token',
-                  replacePlaceholder: 'Paste a replacement token',
-                  noun: 'token',
-                  savedMessage: 'Workflow Claude Code token saved.',
-                  removedMessage: 'Workflow Claude Code token removed; saved Claude login will be used.',
-                }}
-              />
-            ) : (
-              <WorkflowProviderCredentialField
-                provider="cursor-cli"
-                inputId="workflow-cursor-api-key"
-                workflowCredentialPath={workspacePath || undefined}
-                readOnly={readOnly}
-                copy={{
-                  heading: 'Cursor API key',
-                  hint: <>Paste an API key from <code className="rounded bg-background px-1 py-0.5 font-mono text-foreground">cursor.com</code> settings, or leave this empty to use the saved Cursor login.</>,
-                  fallbackLabel: 'Using saved login',
-                  inputPlaceholder: 'Paste Cursor API key',
-                  replacePlaceholder: 'Paste a replacement API key',
-                  noun: 'API key',
-                  savedMessage: 'Workflow Cursor API key saved.',
-                  removedMessage: 'Workflow Cursor API key removed; saved Cursor login will be used.',
-                }}
-              />
-            )}
-          </div>
-        )}
-      </div>
-    )
   }
 
   const renderRow = (row: ProviderRow) => {
@@ -951,9 +833,9 @@ export default function WorkflowLLMConfigurationPanel({
         )}
         <button
           type="button"
-          onClick={() => setActiveProviderId(row.id)}
+          onClick={() => setShowLLMModal(true)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          title={`Connect or configure ${row.name}`}
+          title={`Manage ${row.name} in Providers`}
         >
           <span className={`shrink-0 text-sm ${selected ? 'font-semibold' : 'font-medium'} text-foreground`}>{row.name}</span>
           {selected && (
@@ -1150,7 +1032,6 @@ export default function WorkflowLLMConfigurationPanel({
       {builderOnly && <p className="text-xs text-muted-foreground">Choose the Builder model here. Ask the Builder to set an execution model for each agent step as needed.</p>}
       <div className="rounded-lg border border-border bg-muted/20 p-3">
         {renderStatusLine()}
-        {renderTokenLine()}
       </div>
       {!changing && selectedRow && selectedRow.entry.integration_kind === 'coding_agent' && (
         <div aria-label={`${selectedRow.name} accounts`} className="overflow-hidden rounded-lg border border-border bg-background">
@@ -1209,7 +1090,7 @@ export default function WorkflowLLMConfigurationPanel({
             )}
             {renderGroup(
               'Models via Pi',
-              'Each provider needs its own API key saved. Set up the key, then open a provider and pick the model to use.',
+              'Choose a model from a connected Pi account. Manage accounts in Providers.',
               visibleRows.filter(row => Boolean(row.groupFilter)),
               renderPiGroups,
             )}

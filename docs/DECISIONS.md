@@ -13,6 +13,27 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Providers owns agent and account setup; products select ready runtimes
+
+- **Decision (user).** Install/configure coding agents and manage logins, tokens,
+  API keys and accounts in Providers. Workflow, Crew, Code and Relay model panels
+  consume those ready accounts and select models and supported reasoning effort.
+- **UI.** Removed project token/API-key fields and the embedded provider setup
+  drill-in from the shared `WorkflowLLMConfigurationPanel`; management links open
+  Providers. Existing saved credentials are preserved for compatibility.
+- **Reasoning.** Crew/Code effort controls remain visible when Model is collapsed.
+  Choices intersect the product profile with selected-model metadata; switching
+  models drops unsupported effort. Profiles offer Claude Max, Codex extra levels,
+  Pi Xhigh and Cursor's supported levels. Cursor Auto/Composer have no separate
+  effort control; Antigravity effort is selected through model variants.
+- **Runtime.** Cursor's saved effort previously stopped at the agent integration.
+  Forward it and apply Cursor's native `[effort=...]` selector in both transports,
+  preserving context/speed parameters. Unknown live IDs retain their exact native
+  selectors rather than being rewritten; unsupported effort is not sent.
+- **Verification.** Shared product panel tests, model/effort selection tests,
+  frontend typecheck, embedded product profile checks and Go Cursor integration/
+  adapter tests. Runtime deployment is separate from pushing the source changes.
+
 ### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
 
 - **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the
@@ -77,6 +98,7 @@ Design references for the linked runtime decisions:
 - Next: macOS Seatbelt (Claude first) so a Mac is confined like a server.
 - Tests: `TestDecideCLIConfinement`, `TestRestrictCodingAgentToolsToMCPOnly`,
   `TestInteractiveShellUnconfinedIsLocalOnly`.
+
 
 ### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder
 

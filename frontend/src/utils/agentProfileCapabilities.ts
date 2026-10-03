@@ -17,7 +17,7 @@ export type AgentProfileProviderOption = {
   options?: Record<string, unknown>
   /** Curates the composer's model list to exactly these ids; empty offers every catalog model for `provider`. */
   models?: string[]
-  /** Offers a reasoning-effort control (low → high) for this engine; empty offers none. */
+  /** Offers supported reasoning-effort choices for this engine; empty offers none. */
   reasoning_efforts?: string[]
 }
 
@@ -46,6 +46,18 @@ export function buildAgentProfileEngineGroups(
     const reasoningLevels = (option.reasoning_efforts ?? []).map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) }))
     return { option, models, reasoningLevels }
   })
+}
+
+/** Restrict a profile's choices to the selected model's capabilities. */
+export function modelReasoningLevels(option: AgentProfileProviderOption | undefined, model: ModelMetadata | undefined) {
+  if (!option || option.provider === 'agy-cli' || model?.supports_reasoning_effort === false) return []
+  const supported = model?.reasoning_effort_levels
+  // Cursor's live IDs can encode effort themselves; only known configurable
+  // selectors get a separate control. Auto and Composer offer none.
+  if (option.provider === 'cursor-cli' && !supported?.length) return []
+  return (option.reasoning_efforts || [])
+    .filter(id => !supported?.length || supported.includes(id))
+    .map(id => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) }))
 }
 
 type AgentProfileResponse = {

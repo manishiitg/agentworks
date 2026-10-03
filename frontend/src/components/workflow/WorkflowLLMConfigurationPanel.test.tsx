@@ -366,3 +366,19 @@ describe('workflow account tree', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })
+
+it.each(['workflow', 'work', 'code', 'relay'])('keeps credentials out of %s model selection', async product => {
+  storeState.providerManifest = [provider({}), provider({ id: 'cursor-cli', display_name: 'Cursor CLI' })]
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  try {
+    for (const selectedProvider of ['claude-code', 'cursor-cli']) {
+      await act(async () => root.render(<WorkflowLLMConfigurationPanel product={product} workspacePath="/project"
+        onChange={vi.fn()} llmConfig={{ schema_version: 2, mode: 'provider_profile', provider: selectedProvider as 'claude-code' | 'cursor-cli' }} />))
+      expect(host.textContent).not.toContain('scoped to this')
+      expect(host.textContent).not.toContain('saved login')
+      expect(host.querySelector('input[type="password"]')).toBeNull()
+      expect(host.textContent).not.toContain('Back to providers')
+    }
+  } finally { await act(async () => root.unmount()); host.remove() }
+})

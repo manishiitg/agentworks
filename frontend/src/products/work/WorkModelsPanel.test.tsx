@@ -149,3 +149,37 @@ it('keeps curated Cursor choices when the live model list cannot be loaded', asy
   const { host } = await render()
   expect(Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)).toEqual(cursorIds)
 })
+
+it('shows Claude effort while the model picker is collapsed and preserves its account', async () => {
+  state.options = [{ id: 'claude-code', provider: 'claude-code', model_id: 'claude-sonnet-5-5', reasoning_efforts: ['low', 'medium', 'high', 'max'] }]
+  state.providerManifest = [{ id: 'claude-code', integration_kind: 'coding_agent', runtime_available: true, usable: true,
+    models: [{ provider: 'claude-code', model_id: 'claude-sonnet-5-5', model_name: 'Sonnet 5.5',
+      supports_reasoning_effort: true, reasoning_effort_levels: ['low', 'medium', 'high', 'max'] }],
+  } as ProviderManifestEntry]
+  const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
+    provider: 'claude-code', model_id: 'claude-sonnet-5-5', connection_id: 'global:claude-code', options: { reasoning_effort: 'high' },
+  } })
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
+  const low = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Reasoning effort"] button')).find(button => button.textContent === 'Low')!
+  expect(low).toBeDefined()
+  await act(async () => low.click())
+  expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: 'low', modelId: 'claude-sonnet-5-5', connectionId: 'global:claude-code' }))
+})
+
+it('restricts Cursor effort to the selected model and drops an incompatible effort on model change', async () => {
+  cursorFixture()
+  state.options[0].reasoning_efforts = ['low', 'medium', 'high', 'xhigh', 'max']
+  state.providerManifest[0].models!.forEach(model => {
+    model.supports_reasoning_effort = model.model_id.startsWith('grok') || model.model_id.startsWith('glm')
+    model.reasoning_effort_levels = model.model_id.startsWith('grok') ? ['low', 'medium', 'high', 'xhigh'] : model.model_id.startsWith('glm') ? ['low', 'high', 'max'] : []
+  })
+  const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
+    provider: 'cursor-cli', model_id: 'grok-4.6', connection_id: 'private-cursor', options: { reasoning_effort: 'xhigh' },
+  } })
+  expect(Array.from(host.querySelectorAll('[aria-label="Reasoning effort"] button')).map(button => button.textContent)).toEqual(['Low', 'Medium', 'High', 'Xhigh'])
+  const choice = (id: string) => Array.from(host.querySelectorAll('button')).find(button => button.querySelector('.font-medium')?.textContent === id)!
+  await act(async () => choice('glm-5.3').click())
+  expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'glm-5.3', reasoningEffort: 'high', connectionId: 'private-cursor' }))
+  await act(async () => choice('auto').click())
+  expect(onRuntimeChange).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: 'auto', reasoningEffort: undefined }))
+})

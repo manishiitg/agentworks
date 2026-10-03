@@ -9,7 +9,7 @@ import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
+import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, modelReasoningLevels, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
@@ -198,11 +198,18 @@ export function WorkModelsPanel({
       output_cost_per_1m: 0,
     } satisfies ModelMetadata)
   }, [currentGroup?.models, modelCatalog, selectedOption?.provider])
-  const currentReasoningEffort = savedSelection?.reasoningEffort
+  const requestedReasoningEffort = savedSelection?.reasoningEffort
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
     || selectedDefaults.reasoningEffort
-  // Antigravity encodes effort in its model id, so its model tiles own that setting.
-  const reasoningLevels = selectedOption?.provider === 'agy-cli' ? [] : currentGroup?.reasoningLevels || []
+  const levelsForModel = (modelId: string, option = selectedOption) => modelReasoningLevels(option,
+    modelCatalog.find(model => model.provider === option?.provider && model.model_id === modelId))
+  const reasoningLevels = levelsForModel(currentModelId)
+  const effortForModel = (modelId: string, requested: string | undefined, option = selectedOption) => {
+    const levels = levelsForModel(modelId, option)
+    return [requested, defaultForOption(option).reasoningEffort, levels[0]?.id]
+      .find(effort => effort && levels.some(level => level.id === effort))
+  }
+  const currentReasoningEffort = effortForModel(currentModelId, requestedReasoningEffort)
   const currentModelLabel = selectableModels.find(model => model.model_id === currentModelId)?.model_name
     || currentModelId
     || 'Provider default'
@@ -244,7 +251,7 @@ export function WorkModelsPanel({
       connectionId: config.connection_id,
       provider: option.provider,
       modelId: defaults.modelId,
-      reasoningEffort: defaults.reasoningEffort,
+      reasoningEffort: effortForModel(defaults.modelId, defaults.reasoningEffort, option),
     })
   }
 
@@ -257,7 +264,7 @@ export function WorkModelsPanel({
       modelId,
       reasoningEffort: selectedOption.provider === 'agy-cli'
         ? modelId.match(/-(low|medium|high)$/)?.[1]
-        : currentReasoningEffort,
+        : effortForModel(modelId, currentReasoningEffort),
     })
   }
 
@@ -310,27 +317,27 @@ export function WorkModelsPanel({
                 onSelect={selectModel}
                 className="mt-3"
               />
-              {reasoningLevels.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs font-medium text-foreground">Reasoning effort</p>
-                  <div role="group" aria-label="Reasoning effort" className="mt-2 flex flex-wrap gap-2">
-                    {reasoningLevels.map(level => (
-                      <button
-                        key={level.id}
-                        type="button"
-                        aria-pressed={currentReasoningEffort === level.id}
-                        onClick={() => selectReasoningEffort(level.id)}
-                        className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${currentReasoningEffort === level.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
-                      >
-                        {level.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </section>
+        {reasoningLevels.length > 0 && (
+          <div className="mt-4 rounded-lg border border-border p-4">
+            <p className="text-xs font-medium text-foreground">Reasoning effort</p>
+            <div role="group" aria-label="Reasoning effort" className="mt-2 flex flex-wrap gap-2">
+              {reasoningLevels.map(level => (
+                <button
+                  key={level.id}
+                  type="button"
+                  aria-pressed={currentReasoningEffort === level.id}
+                  onClick={() => selectReasoningEffort(level.id)}
+                  className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${currentReasoningEffort === level.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
+                >
+                  {level.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent, model, or reasoning effort relaunches this project's retained session on the next message while keeping the project chat history.</p>}
         {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
