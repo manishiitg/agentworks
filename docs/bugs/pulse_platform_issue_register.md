@@ -1,3 +1,7 @@
+## Native agent tools always on for workflows and Relays — PLAT-402
+
+[PLAT-402](pulse_platform/coding-agent-bridge/plat-402.md), P3, fixed on `main`; deployed to Excellence only. No switch any more; a stored "off" is ignored.
+
 ## Code project browser starts, screenshots and live-views under the sandbox — PLAT-401
 
 [PLAT-401](pulse_platform/browser/plat-401.md), fixed on main; installed and proved on Excellence, other servers pending.
