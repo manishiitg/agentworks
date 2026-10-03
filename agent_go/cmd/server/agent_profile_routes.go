@@ -929,7 +929,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
-	if err := constrainProductChatModel(ctx, input, conversation, &query); err != nil {
+	if err := constrainProductChatModel(ctx, &query); err != nil {
 		return QueryRequest{}, err
 	}
 	// A conversation that started on the shared account stays there: the query path defaults a

@@ -1,3 +1,7 @@
+## Codex Spark dropped; allowed-models 422 on a stale saved model — PLAT-416
+
+[PLAT-416](pulse_platform/coding-agent-bridge/plat-416.md), P2, fixed on `main`; deploy pending. A model the account does not allow now runs on the first allowed one instead of failing the chat.
+
 ## Structured Python step output API — PLAT-415
 
 [PLAT-415](pulse_platform/security-sandbox/plat-415.md), fixed on main;

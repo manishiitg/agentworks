@@ -191,7 +191,7 @@ func isSupportedImageModel(provider, modelID string) bool {
 func inferImageProviderFromModel(modelID string) string {
 	modelID = strings.ToLower(strings.TrimSpace(modelID))
 	switch {
-	case modelID == "codex-cli", modelID == "gpt-5.4", modelID == "gpt-5.4-mini", modelID == "gpt-5.3-codex", modelID == "gpt-5.3-codex-spark":
+	case modelID == "codex-cli", modelID == "gpt-5.4", modelID == "gpt-5.4-mini", modelID == "gpt-5.3-codex":
 		return "codex-cli"
 	default:
 		return ""

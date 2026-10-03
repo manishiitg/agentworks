@@ -664,7 +664,7 @@ func buildLLMCapabilities(ctx context.Context, capability string, includeModels 
 				keys,
 				map[string][]string{
 					string(llm.ProviderClaudeCode): claudeCodeCapabilityModels(),
-					string(llm.ProviderCodexCLI):   {"codex-cli", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.3-codex-spark"},
+					string(llm.ProviderCodexCLI):   {"codex-cli", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"},
 					string(llm.ProviderCursorCLI):  {"cursor-cli", "composer-2.5", "gpt-5", "sonnet-4-thinking", "sonnet-4"},
 					string(llm.ProviderPiCLI):      {"google/gemini-3.5-flash", "google/gemini-2.5-flash"},
 				},

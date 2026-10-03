@@ -133,18 +133,13 @@ func resolveAccountModel(ctx context.Context, provider, connectionID, model stri
 	return allowed[0], true, nil
 }
 
-// constrainProductChatModel applies the account's list to a product chat turn
-// (Crew, Code, Goals, ...) before its runtime is bound. A model the person
-// just picked (it differs from the one the conversation is bound to) that the
-// account does not allow is refused; a model carried over from the saved
-// conversation or the product default runs on the first allowed one.
-func constrainProductChatModel(ctx context.Context, input AgentProfileChatRequest, conversation ProductConversationRecord, query *QueryRequest) error {
+// constrainProductChatModel applies the account's list to a product chat turn (Crew, Code, Goals, ...) before its runtime is bound. A model the
+// account does not allow runs on the first allowed one instead: the turn never fails. It used to refuse a model that differed from the conversation's
+// bound one, but after one fallback the conversation is bound to the allowed model while the browser keeps re-sending the saved one, so every later message
+// was refused with a 422 (Code on Excellence, 2026-10-04). The pickers only offer allowed models, so a refusal protected nothing the fallback does not.
+func constrainProductChatModel(ctx context.Context, query *QueryRequest) error {
 	if strings.TrimSpace(query.Provider) == "" {
 		return nil
-	}
-	picked := strings.TrimSpace(input.ModelID) != "" && !strings.EqualFold(strings.TrimSpace(input.ModelID), strings.TrimSpace(conversation.ModelID))
-	if picked {
-		return checkAccountModel(ctx, query.Provider, query.ConnectionID, query.ModelID)
 	}
 	model, changed, err := resolveAccountModel(ctx, query.Provider, query.ConnectionID, query.ModelID)
 	if err != nil {

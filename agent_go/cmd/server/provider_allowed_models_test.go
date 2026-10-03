@@ -10,6 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
 func TestAllowedModelsListLogic(t *testing.T) {
@@ -184,26 +185,27 @@ func TestAllowedModelsProductChatTurn(t *testing.T) {
 		t.Fatalf("setup: %d", code)
 	}
 	ctx := context.Background()
-	conversation := ProductConversationRecord{Provider: "codex-cli", ModelID: "gpt-5.5"}
 
-	// The person picks a disallowed model: refused.
-	query := QueryRequest{Provider: "codex-cli", ModelID: "gpt-5.4"}
-	if err := constrainProductChatModel(ctx, AgentProfileChatRequest{ModelID: "gpt-5.4"}, conversation, &query); err == nil || !strings.Contains(err.Error(), "gpt-5.4 is not allowed") {
-		t.Fatalf("explicit pick not refused: %v", err)
+	// A disallowed model, whether picked or re-sent from a saved setting, runs on the first allowed one: the turn never fails (it used to 422).
+	for _, model := range []string{"gpt-5.4", "gpt-5.5"} {
+		query := QueryRequest{Provider: "codex-cli", ModelID: model, LLMConfig: &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "codex-cli", ModelID: model}}}
+		if err := constrainProductChatModel(ctx, &query); err != nil || query.ModelID != "gpt-5.3-codex" || query.LLMConfig.Primary.ModelID != "gpt-5.3-codex" {
+			t.Fatalf("%s: %v %+v", model, err, query)
+		}
 	}
-	// The picked model is allowed: untouched.
-	query = QueryRequest{Provider: "codex-cli", ModelID: "gpt-5.3-codex"}
-	if err := constrainProductChatModel(ctx, AgentProfileChatRequest{ModelID: "gpt-5.3-codex"}, conversation, &query); err != nil || query.ModelID != "gpt-5.3-codex" {
+	// An allowed model is untouched.
+	query := QueryRequest{Provider: "codex-cli", ModelID: "gpt-5.3-codex"}
+	if err := constrainProductChatModel(ctx, &query); err != nil || query.ModelID != "gpt-5.3-codex" {
 		t.Fatalf("allowed pick: %v %+v", err, query)
 	}
-	// A saved selection (no new pick) falls back instead of failing the chat.
-	query = QueryRequest{Provider: "codex-cli", ModelID: "gpt-5.5"}
-	if err := constrainProductChatModel(ctx, AgentProfileChatRequest{}, conversation, &query); err != nil || query.ModelID != "gpt-5.3-codex" {
-		t.Fatalf("saved selection: %v %+v", err, query)
+	// No model named: the first allowed one.
+	query = QueryRequest{Provider: "codex-cli"}
+	if err := constrainProductChatModel(ctx, &query); err != nil || query.ModelID != "gpt-5.3-codex" {
+		t.Fatalf("no model: %v %+v", err, query)
 	}
-	// Same for a client that re-sends the saved model.
-	query = QueryRequest{Provider: "codex-cli", ModelID: "gpt-5.5"}
-	if err := constrainProductChatModel(ctx, AgentProfileChatRequest{ModelID: "gpt-5.5"}, conversation, &query); err != nil || query.ModelID != "gpt-5.3-codex" {
-		t.Fatalf("re-sent saved selection: %v %+v", err, query)
+	// An account without a list changes nothing.
+	query = QueryRequest{Provider: "claude-code", ModelID: "sonnet"}
+	if err := constrainProductChatModel(ctx, &query); err != nil || query.ModelID != "sonnet" {
+		t.Fatalf("no list: %v %+v", err, query)
 	}
 }

@@ -19,6 +19,11 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Codex `gpt-5.3-codex-spark` is no longer offered — PLAT-416
+
+OpenAI refuses it for Codex signed in with a ChatGPT account, and the platform cannot tell which accounts could use it, so it is not offered anywhere (visible catalog, auto-published fast models, web search,
+image analysis and generation); the fast Codex choice is `gpt-5.4-mini`. A saved selection of Spark still resolves its pricing but is no longer offered.
+
 ### 2026-10-04 — Python steps publish structured values through set_output
 
 Use the shared sandbox's set_output(value) helper for Python JSON handoff.
@@ -132,8 +137,9 @@ Models page no longer offers "Native agent tools" (always on, as in Crew and Cod
 ### 2026-10-03 — Allowed models per provider account — PLAT-407
 
 Every provider account (admin-managed or personal) has an optional `allowed_models` list; empty means every model (owner request). An admin sets it
-for the server account, the owner for a personal account. Enforced on the server: a new explicit pick of a disallowed model is refused, a saved or
-default one runs on the first allowed model so old settings never fail a chat. Ticket: [PLAT-407](bugs/pulse_platform/frontend-chat/plat-407.md).
+for the server account, the owner for a personal account. Enforced on the server: a model the account does not allow, however it arrives (picked, saved, default),
+runs on the first allowed model so a chat never fails on it (refusing a "new pick" 422'd every message once a fallback had bound the chat to another model, PLAT-416).
+Ticket: [PLAT-407](bugs/pulse_platform/frontend-chat/plat-407.md).
 
 ### 2026-10-03 — Sandbox grants the system Chrome (/opt/google/chrome) — PLAT-404
 
