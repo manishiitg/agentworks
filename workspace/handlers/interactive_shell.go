@@ -47,6 +47,9 @@ type InteractiveShellStartRequest struct {
 	ExtraEnv         map[string]string         `json:"extra_env,omitempty"`
 	Cols             int                       `json:"cols,omitempty"`
 	Rows             int                       `json:"rows,omitempty"`
+	// Unconfined asks for the shell with the person's own rights and real home, no sandbox: what the coding agents get on a
+	// person's own machine (the agent server sets it from the same switch). Honoured only where interactiveShellUnconfinedAllowed.
+	Unconfined bool `json:"unconfined,omitempty"`
 }
 
 type InteractiveShellHandle struct {
@@ -119,6 +122,23 @@ func interactiveShellRunning(socket string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, realTmux(), "-S", socket, "has-session", "-t", interactiveShellSession).Run() == nil
+}
+
+// interactiveShellUnconfinedAllowed says whether this workspace service may start a terminal without the sandbox: only a native,
+// single-user machine that opted in (the local start script sets AGENTWORKS_TERMINAL_UNCONFINED, following AGENTWORKS_CLI_FULL_UNCONFINED,
+// which the agent server also refuses on a multi-user server). Never where slots are on, and never on a server that did not set it.
+func interactiveShellUnconfinedAllowed() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_TERMINAL_UNCONFINED")), "on") &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv("NATIVE_WORKSPACE")), "true") &&
+		!slots.Enabled()
+}
+
+// unconfinedShellCommand runs command for a terminal that is not sandboxed, in dir, with the host environment (known secrets stripped).
+func unconfinedShellCommand(ctx context.Context, command, dir string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd.Dir = dir
+	cmd.Env = security.BuildSafeEnvironment()
+	return cmd
 }
 
 func clampShellSize(cols, rows int) (int, int) {
@@ -217,7 +237,8 @@ func StartInteractiveShell(c *gin.Context) {
 	// Attaches run in this same sandbox (interactive_shell_attach.go). The
 	// agent server calls start before every attach, so a restarted service
 	// learns the sandbox of a shell that outlived it.
-	rememberInteractiveShell(req.ShellID, *isolator)
+	unconfined := req.Unconfined && interactiveShellUnconfinedAllowed()
+	rememberInteractiveShell(req.ShellID, *isolator, unconfined)
 	handle := InteractiveShellHandle{ShellID: req.ShellID, Socket: socket, Session: interactiveShellSession, Running: true}
 	if interactiveShellRunning(socket) {
 		c.JSON(http.StatusOK, models.APIResponse[InteractiveShellHandle]{Success: true, Data: handle})
@@ -246,7 +267,7 @@ func StartInteractiveShell(c *gin.Context) {
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
 	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color", shellQuote(filepath.Join(dir, "tmp")))
-	if slot == "" {
+	if slot == "" && !unconfined {
 		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
 		}
@@ -261,18 +282,25 @@ func StartInteractiveShell(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd, cleanup, err := isolator.ExecuteIsolated(ctx, command, nil)
-	if err != nil {
-		shellError(c, http.StatusInternalServerError, "Failed to set up the sandbox: "+err.Error())
-		return
-	}
-	if cleanup != nil {
-		defer cleanup()
-	}
-	if slot == "" {
-		// Not run as a slot: the environment is the command's own, so the extra values go on it directly.
-		for k, v := range extraEnv {
-			cmd.Env = append(cmd.Env, k+"="+v)
+	var cmd *exec.Cmd
+	if unconfined {
+		cmd = unconfinedShellCommand(ctx, command, workingDir)
+	} else {
+		var cleanup func()
+		var err error
+		cmd, cleanup, err = isolator.ExecuteIsolated(ctx, command, nil)
+		if err != nil {
+			shellError(c, http.StatusInternalServerError, "Failed to set up the sandbox: "+err.Error())
+			return
+		}
+		if cleanup != nil {
+			defer cleanup()
+		}
+		if slot == "" {
+			// Not run as a slot: the environment is the command's own, so the extra values go on it directly.
+			for k, v := range extraEnv {
+				cmd.Env = append(cmd.Env, k+"="+v)
+			}
 		}
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {

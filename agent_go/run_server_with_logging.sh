@@ -11,6 +11,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Defined up here: the runtime config is also written by the early exits (e.g. --only-frontend), before the rest of the setup runs.
 ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\"]}"
 
+# Code's terminal follows the same switch as the coding agents on a person's own machine: unconfined, real home and rights
+# (AGENTWORKS_CLI_FULL_UNCONFINED, on by default here; the agent server refuses it on a multi-user server). Exported up here so the
+# workspace service this script starts sees it.
+export AGENTWORKS_TERMINAL_UNCONFINED="${AGENTWORKS_TERMINAL_UNCONFINED:-${AGENTWORKS_CLI_FULL_UNCONFINED:-on}}"
+
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
 # of origin/main; agents work in their own worktrees and push to main. A clean checkout on main

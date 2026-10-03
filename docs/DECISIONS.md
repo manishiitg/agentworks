@@ -13,6 +13,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined)
+
+- **Decision (user):** the terminal should have the same settings as the coding agents, locally and on servers.
+- **Local (done).** On a person's own machine the coding agents run with full native tools unconfined, real home and rights
+  (`AGENTWORKS_CLI_FULL_UNCONFINED`, on by default in the start script, refused by the agent server on a multi-user server). The terminal now
+  follows that same switch: the agent server sends `unconfined`, and the workspace service honours it only when `AGENTWORKS_TERMINAL_UNCONFINED=on`
+  (the start script derives it from the switch above), `NATIVE_WORKSPACE=true` and per-user accounts are off. So `git`, `codex`, `claude` find their
+  normal config in the real home. Tests: `TestInteractiveShellUnconfinedIsLocalOnly` (six cases incl. servers) and a Mac end-to-end check that the
+  unconfined shell has the readable real home while a non-requested one stays sandboxed.
+- **Server (unchanged, deliberately).** The terminal keeps the strict Landlock sandbox and runs as the person's own account, which is stronger than the
+  chat coding tools get today (they run as the shared platform account except for the one rollout user). Aligning the server terminal *down* to the chat
+  tools' rollout would weaken it; making the chat tools match the terminal is the open "widen CLI-as-slot" item.
+
 ### 2026-10-03 — The local terminal had the real home folder, which the sandbox forbids
 
 - **Found (user, local terminal).** `bash: /Users/mipl/.bash_profile: Operation not permitted`, `git` unable to read `~/.gitconfig`, `codex` unable

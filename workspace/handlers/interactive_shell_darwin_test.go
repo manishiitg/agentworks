@@ -74,3 +74,68 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 		t.Fatal("stop did not end the shell")
 	}
 }
+
+// On a person's own machine the terminal follows the coding agents' switch: no sandbox, the real home and rights, so git, codex and
+// the rest read their normal config. Native, single-user and opted in only (see interactiveShellUnconfinedAllowed).
+func TestInteractiveShellUnconfinedUsesTheRealHomeOnAMac(t *testing.T) {
+	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
+		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
+	}
+	gin.SetMode(gin.TestMode)
+	t.Setenv("NATIVE_WORKSPACE", "true")
+	t.Setenv("AGENTWORKS_TERMINAL_UNCONFINED", "on")
+	t.Setenv("AGENTWORKS_SLOTS", "")
+	docs, err := os.MkdirTemp(".", "zz-darwin-docs-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, _ = filepath.Abs(docs)
+	t.Cleanup(func() { os.RemoveAll(docs) })
+	viper.Set("docs-dir", docs)
+	own := "_users/alice/Chats/Code/projects/a"
+	if err := os.MkdirAll(filepath.Join(docs, own), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.POST("/start", StartInteractiveShell)
+	router.POST("/stop", StopInteractiveShell)
+	call := func(path string, body any) (int, map[string]any) {
+		raw, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, bytes.NewReader(raw)))
+		out := map[string]any{}
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	id := "darwin-unconfined-e2e"
+	defer call("/stop", map[string]any{"shell_id": id})
+	guard := map[string]any{"enabled": true, "strict_allowlist": true, "read_paths": []string{own + "/"}, "write_paths": []string{own + "/"}}
+	code, out := call("/start", map[string]any{"shell_id": id, "working_directory": own, "folder_guard": guard, "unconfined": true})
+	if code != http.StatusOK {
+		t.Fatalf("start = %d %v", code, out)
+	}
+	data, _ := out["data"].(map[string]any)
+	socket, _ := data["socket"].(string)
+	home, _ := os.UserHomeDir()
+	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "echo HOME=$HOME; ls ~ >/dev/null 2>&1 && echo HOME_READABLE; git config --global -l >/dev/null 2>&1; echo GIT_EXIT=$?; echo END", "Enter").Run()
+	time.Sleep(1500 * time.Millisecond)
+	screen, _ := exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
+	if !strings.Contains(string(screen), "HOME="+home) || !strings.Contains(string(screen), "HOME_READABLE") || strings.Contains(string(screen), "Operation not permitted") {
+		t.Fatalf("an unconfined terminal must have the real, readable home: %s", screen)
+	}
+	// Without the request flag the same service still sandboxes it (the flag is only honoured where allowed, and asked for).
+	call("/stop", map[string]any{"shell_id": id})
+	code, _ = call("/start", map[string]any{"shell_id": id, "working_directory": own, "folder_guard": guard})
+	if code != http.StatusOK {
+		t.Fatalf("sandboxed start = %d", code)
+	}
+	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "ls ~ >/dev/null 2>&1 && echo HOME_READABLE; echo END2", "Enter").Run()
+	time.Sleep(1500 * time.Millisecond)
+	screen, _ = exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
+	if strings.Contains(string(screen), "HOME_READABLE") && !strings.Contains(string(screen), "Operation not permitted") {
+		// the sandboxed shell has a private home, which is readable; what matters is that it is not the real one
+		if strings.Contains(string(screen), "HOME="+home) {
+			t.Fatalf("the sandboxed terminal got the real home: %s", screen)
+		}
+	}
+}

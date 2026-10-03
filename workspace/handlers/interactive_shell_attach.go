@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"sync"
 
@@ -24,19 +25,28 @@ import (
 
 var interactiveShellSandboxes = struct {
 	sync.Mutex
-	byID map[string]security.Isolator
-}{byID: map[string]security.Isolator{}}
+	byID       map[string]security.Isolator
+	unconfined map[string]bool
+}{byID: map[string]security.Isolator{}, unconfined: map[string]bool{}}
 
-func rememberInteractiveShell(id string, iso security.Isolator) {
+func rememberInteractiveShell(id string, iso security.Isolator, unconfined bool) {
 	interactiveShellSandboxes.Lock()
 	defer interactiveShellSandboxes.Unlock()
 	interactiveShellSandboxes.byID[id] = iso
+	interactiveShellSandboxes.unconfined[id] = unconfined
+}
+
+func interactiveShellIsUnconfined(id string) bool {
+	interactiveShellSandboxes.Lock()
+	defer interactiveShellSandboxes.Unlock()
+	return interactiveShellSandboxes.unconfined[id]
 }
 
 func forgetInteractiveShell(id string) {
 	interactiveShellSandboxes.Lock()
 	defer interactiveShellSandboxes.Unlock()
 	delete(interactiveShellSandboxes.byID, id)
+	delete(interactiveShellSandboxes.unconfined, id)
 }
 
 func interactiveShellSandbox(id string) (security.Isolator, bool) {
@@ -80,13 +90,20 @@ func AttachInteractiveShell(c *gin.Context) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	command := fmt.Sprintf("TERM=xterm-256color exec %s -S %s attach -t %s", shellQuote(realTmux()), shellQuote(socket), interactiveShellSession)
-	cmd, cleanup, err := iso.ExecuteIsolated(ctx, command, nil)
-	if err != nil {
-		shellError(c, http.StatusInternalServerError, "Failed to set up the sandbox: "+err.Error())
-		return
-	}
-	if cleanup != nil {
-		defer cleanup()
+	var cmd *exec.Cmd
+	if interactiveShellIsUnconfined(id) && interactiveShellUnconfinedAllowed() {
+		cmd = unconfinedShellCommand(ctx, command, "")
+	} else {
+		var cleanup func()
+		var err error
+		cmd, cleanup, err = iso.ExecuteIsolated(ctx, command, nil)
+		if err != nil {
+			shellError(c, http.StatusInternalServerError, "Failed to set up the sandbox: "+err.Error())
+			return
+		}
+		if cleanup != nil {
+			defer cleanup()
+		}
 	}
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
