@@ -4,7 +4,6 @@ import ConversationsOverview from './ConversationsOverview'
 import { useCanReviewCode } from '../../hooks/useCanReviewCode'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
@@ -49,6 +48,7 @@ const PROVIDER_SIDEBAR_ICONS: Record<string, string> = {
   'codex-cli': '/provider-icons/codex.png',
   'cursor-cli': '/provider-icons/cursor.svg',
   'pi-cli': '/provider-icons/pi.svg',
+  'agy-cli': '/provider-icons/antigravity.svg',
 }
 
 type ProviderStatus = 'ready' | 'auth' | 'missing' | 'deprecated'
@@ -305,14 +305,14 @@ export default function CodingProvidersPanel({ isOpen, onClose, embedded = false
                   >
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   </button>}
-                  <button
+                  {!embedded && <button
                     type="button"
                     onClick={closePanel}
-                    aria-label={embedded ? 'Back from providers' : 'Close providers'}
+                    aria-label="Close providers"
                     className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
                   >
-                    {embedded ? <ArrowLeft className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                  </button>
+                    <X className="h-4 w-4" />
+                  </button>}
                 </div>
               </div>
               {loading && providers.length === 0 ? (

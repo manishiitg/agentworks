@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Providers page uses the main header's Back and Antigravity's icon
+
+- Embedded Providers uses the application header's Back control; remove the
+  duplicate arrow beside Available providers. Standalone modal Providers keeps
+  its Close control. Leaving the embedded page still retains any guided terminal.
+- Add Antigravity's official favicon to both frontend and server static provider
+  assets and map `agy-cli` to it instead of the generic terminal icon.
+
 ### 2026-10-03 — Installation provider accounts are called Admin-managed accounts
 
 - Use “Admin-managed account” for the installation's provider account in Providers,
