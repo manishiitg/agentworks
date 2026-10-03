@@ -13,6 +13,30 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Browser ownership and teaching plan; guides consolidated
+
+- **Agreed direction (user).** A browser belongs to a workflow or product project
+  (Crew/Code etc.), not to a person. Local supports managed browser/CDP; server
+  uses managed Chrome. Normal setup should not ask users to disable browsing.
+  Deliberate product restrictions, including SparkQuill child, remain enforced.
+- **Current source.** `browser_conversation_isolation.go` already resolves per
+  workflow/project. Persistent profiles require deployment configuration. Mode
+  defaults/settings still differ across products; workflow `none` remains active.
+- **Proposed, not implemented.** Let a user start/reuse the scoped browser and
+  sign in before an agent runs. Teach records the existing browser's structured
+  DOM actions plus lifecycle/visual evidence, then drafts a scope-owned procedure
+  for reviewed parameters, replay and outcome validation. Login stays outside
+  teaching; interruption and unsupported capture remain explicit.
+- **Open.** Implement start/sign-in, canonical project settings and legacy-mode
+  migration; qualify the private recorder attachment and sensitive-input handling;
+  build teaching/replay. This commit changes documentation only, not defaults,
+  permissions, browser startup or deployment configuration.
+- **Guide.** [One browser reference](core/browser.md) now includes automation,
+  live viewing/control, diagnostic capture, authoring and the staged teaching plan.
+  Superseded guides were removed and indexes updated. Historical rollout notes
+  do not establish today's server status. External Grok reconstruction evidence
+  is labeled unofficial, with its unverified learning internals stated.
+
 ### 2026-10-03 — Local runs offer Code in the product switcher
 
 - **Found (user, local).** The start script's runtime config never set `enabledProductSurfaces`, so the frontend used its own default
@@ -22,6 +46,7 @@ Design references for the linked runtime decisions:
 - **The 401 on Crew in the same session** came from a frontend started before the local checkout was updated: it still called the workspace
   service directly (`/api/documents...` on port 18744), which now needs the server's token. Current code goes through the agent's `/api/wp`.
   Restarting the local frontend/desktop app after an update clears it.
+
 
 ### 2026-10-03 — Providers page uses the main header's Back and Antigravity's icon
 

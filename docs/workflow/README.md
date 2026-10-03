@@ -15,7 +15,7 @@ These docs cover workflow design, execution, and workflow-scoped runtime behavio
 - `self_improvement_and_reporting.md` — **start here.** Product overview of the unified Pulse review/fix/goal-improvement system, notifications, and Org dashboard
 - `pulse_consolidation.md` — canonical current Pulse architecture and concise dated decision map; older proposal/review documents are retained as historical evidence
 - `auto_improvement_framework.md` — metric-backed workflow improvement: metrics as evidence, harden/replan decisions, schedules, and audit logs
-- `browser_automation.md` — durable selector and browser-discovery guidance for workflow browser steps
+- [Browser workflow authoring](../core/browser.md#workflow-authoring) — durable selectors, browser discovery, live control and the proposed teaching flow
 - `cost_and_log_measurement.md` — token usage, cost files, phase/run aggregation, and log storage
 - `deterministic_routing.md` — route-by-file routing: deterministic switch, route file producers, and `run_workflow` `route_selections`
 - `human_feedback_system.md` — human-in-the-loop requests, UI responses, and Slack notification fallback
