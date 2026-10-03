@@ -194,24 +194,13 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ### 2026-10-03 — Providers owns agent and account setup; products select ready runtimes
 
-- **Decision (user).** Install/configure coding agents and manage logins, tokens,
-  API keys and accounts in Providers. Workflow, Crew, Code and Relay model panels
-  consume those ready accounts and select models and supported reasoning effort.
-- **UI.** Removed project token/API-key fields and the embedded provider setup
-  drill-in from the shared `WorkflowLLMConfigurationPanel`; management links open
-  Providers. Existing saved credentials are preserved for compatibility.
-- **Reasoning.** Crew/Code effort controls remain visible when Model is collapsed.
-  Choices intersect the product profile with selected-model metadata; switching
-  models drops unsupported effort. Profiles offer Claude Max, Codex extra levels,
-  Pi Xhigh and Cursor's supported levels. Cursor Auto/Composer have no separate
-  effort control; Antigravity effort is selected through model variants.
-- **Runtime.** Cursor's saved effort previously stopped at the agent integration.
-  Forward it and apply Cursor's native `[effort=...]` selector in both transports,
-  preserving context/speed parameters. Unknown live IDs retain their exact native
-  selectors rather than being rewritten; unsupported effort is not sent.
-- **Verification.** Shared product panel tests, model/effort selection tests,
-  frontend typecheck, embedded product profile checks and Go Cursor integration/
-  adapter tests. Runtime deployment is separate from pushing the source changes.
+Configure agents, credentials and accounts in Providers. Workflow, Crew, Code
+and Relay choose an authorized ready account, model and supported reasoning
+effort. Keep effort visible when Model is collapsed; intersect profile and model
+capabilities and preserve account identity on changes. Existing credentials remain
+compatible. Implementation, verification and rollout are tracked in
+[PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
+
 ### 2026-10-03 — Sandbox home was owner-only: a user's slot could not use it (nvm failed)
 
 - **Found (user).** Installing nvm in the Code terminal failed. Reproduced as the user's own account on Excellence: the private home (`<project>/.sandbox-cache/home`) is created by the
@@ -410,26 +399,6 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 - **Test.** `interactive_shell_darwin_test.go` now runs natively and fails with exactly these errors without the fix.
 - **Terminal icon** changed to the plain `>_` (`Terminal`) in the toolbar and the panel header.
 
-### 2026-10-03 — Qualify Cursor's RTS account through the installed CLI
-
-- Tested RTS / Video Studio on its AWS EC2 host (the deployment named RTS in
-  `deploy.sh`), using the service's existing Cursor API key through SSM. SSH
-  timed out. No deployment, service restart, CLI update or saved-account change
-  was performed. Every test used the service UID, a disposable HOME/workspace,
-  read-only Ask mode and a no-tools echo prompt; temporary folders were removed.
-- Installed Cursor CLI is `2026.10.01-e373342`, matching the version served by
-  Cursor's official installer at verification time on October 3.
-- `--list-models` succeeds. It exposes Grok 4.6 variants and GLM 5.2 High/Max,
-  but neither GLM 5.3 nor Flash. Both `glm-5.3` and `glm-5.3-flash` exit 1 with
-  `Cannot use this model`. Documentation/catalog presence is not proof of
-  availability for this deployment's key.
-- Both `grok-4.6` and `cursor-grok-4.6-high` return `CURSOR_TEST_OK`, exit 0, and
-  report successful result/usage events. Their native runtime labels are
-  respectively `Grok 4.6 High Fast` and `Grok 4.6 High`; the short canonical ID
-  therefore selects Fast for this account. These probes qualify CLI inference,
-  not the app's retained sessions, native tool execution or full coding loop.
-- Source for release comparison: [Cursor installer](https://cursor.com/install).
-
 ### 2026-10-03 — Browser startup, scope settings and structured teaching implemented
 
 - **Decision (user).** Implement the browser ownership, manual sign-in and teaching
@@ -504,22 +473,13 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ### 2026-10-03 — Cursor offers GLM and Grok choices plus the CLI's live list
 
-- Add Cursor's officially documented `glm-5.3`, `glm-5.3-flash`, and `grok-4.6`
-  to the curated catalog alongside Auto, Composer 2.5 and Grok 4.7, with model
-  metadata/pricing from the official pages. Parameterized selectors retain the
-  selected model and its pricing family.
-- Crew/Code Models merges the Cursor CLI's live model list into the curated
-  manifest catalog, deduplicating IDs and preserving known metadata. Extra CLI
-  model IDs remain exact when saved, and list failures retain curated choices.
-- Availability and release date: Cursor documents both GLM models and Grok 4.6;
-  no primary source established an exact GLM launch date. Local CLI list access
-  was signed out, so live account access has not been certified. Codex's OpenAI
-  model list does not document GLM; adding it would require an explicitly
-  configured compatible Responses gateway/provider and credentials.
-- Sources: [GLM 5.3](https://cursor.com/docs/models/glm-5-3),
-  [GLM 5.3 Flash](https://cursor.com/docs/models/glm-5-3-flash),
-  [Grok 4.6](https://cursor.com/docs/models/grok-4-6),
-  [Codex models](https://learn.chatgpt.com/docs/models?surface=cli).
+Offer documented Cursor models and preserve exact live CLI selectors alongside
+curated metadata. Catalog presence does not establish availability for an account;
+Codex GLM requires a separately configured compatible provider/gateway. Completed
+catalog work is in [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md);
+account inventory and native pricing follow-ups are
+[PLAT-387](bugs/pulse_platform/frontend-chat/plat-387.md) and
+[PLAT-388](bugs/pulse_platform/cost-telemetry/plat-388.md).
 
 ### 2026-10-03 — My local product-list change wrote an invalid runtime config (empty value)
 
@@ -541,15 +501,10 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ### 2026-10-03 — Project reasoning controls and creation account names
 
-- Crew/Code Identity → Models renders the product profile's reasoning-effort
-  choices alongside models, including Muse's medium/high/xhigh/max options.
-  The selected effort is saved with the project and retained on model changes.
-  Muse defaults to max in both profiles; an admin-managed account does not lock
-  model or reasoning settings. Antigravity continues to encode effort in model IDs.
-- New project “Runs on” uses the same Admin-managed account label as Providers,
-  and offers installed CLIs with ready accounts only. With none ready, it directs
-  the person to Providers without suggesting a signed-out provider.
-- Code: `WorkModelsPanel`, `RunsOnPicker`, shared readiness/account-label helpers.
+Project model and supported effort choices remain editable for admin-managed
+accounts. New-project selection uses the same account labels/readiness policy as
+Models; Antigravity effort follows its model variant. See
+[PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
 ### 2026-10-03 — The terminal starts on a Mac (tmux by full path)
 
@@ -581,18 +536,10 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ### 2026-10-03 — Project model choices require a ready account; remove older Codex choices
 
-- Refine the earlier installation-only rule: Workflow/product Setup and Crew/Code
-  Identity → Models offer installed coding providers with a configured, usable
-  admin-managed or personal account in the current project/product scope.
-  A signed-out admin-managed account does not hide a working personal account.
-  Providers needing setup remain available in Providers management.
-- Saved unavailable selections remain visible for diagnosis as disabled values;
-  opening settings never substitutes another provider/account. Account choices
-  omit unconfigured accounts except a saved selection that needs attention.
-- Remove GPT-5.5 and GPT-5.4 from the Codex CLI selectable catalog and automatic
-  published role models. Retain metadata/runtime handling for saved sessions.
-- Code: `readyCodingProviders`, `WorkflowLLMConfigurationPanel`, `WorkModelsPanel`,
-  `LLMRoleSelector`, `published_llm_store`, and the provider's `codexcli_models`.
+Product model selectors require an installed CLI and an authorized usable account.
+Preserve unavailable saved selections for diagnosis without selecting a replacement.
+Remove GPT-5.5/GPT-5.4 from new Codex choices while retaining saved-session metadata.
+See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
 ### 2026-10-03 — Deploy notices in Slack are opt-in
 
@@ -665,26 +612,15 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ### 2026-10-03 — Installation provider accounts are called Admin-managed accounts
 
-- Use “Admin-managed account” for the installation's provider account in Providers,
-  workflow/product model setup, account pickers, product defaults and account cost
-  reports. The name distinguishes administrative ownership from personal account
-  sharing without implying that everyone may use it. Existing availability text
-  continues to say who has access.
-- This is a display-name change only. Account IDs (`global:<provider>`), ownership,
-  availability and credential resolution stay unchanged.
+Label installation credentials **Admin-managed account** consistently across
+Providers and product selection. Keep the Providers header Back control and use
+provider brand icons. See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
 ### 2026-10-03 — Setup model choices show installed coding providers only
 
-- Workflow and product Setup → Models, including per-role choices and the global
-  model configuration modal, offer only enabled, non-deprecated coding CLIs whose
-  provider manifest reports `runtime_available: true`. An installed CLI remains
-  visible when it needs sign-in; authentication is not an installation check.
-- Published models and product profile catalogs cannot reintroduce absent CLIs.
-  A saved role on an absent provider stays visible as a disabled current value,
-  so opening setup does not silently change existing configuration. The Providers
-  management screen retains its installation/setup catalog.
-- Code: `providerCatalogFilter`, `WorkflowLLMConfigurationPanel`,
-  `LLMConfigurationModal`, `LLMRoleSelector`, and `WorkModelsPanel`.
+Keep uninstalled coding providers in Providers management, outside product model
+selection. The later ready-account decision also requires a usable account.
+See [PLAT-386](bugs/pulse_platform/frontend-chat/plat-386.md).
 
 ### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28)
 
@@ -2200,25 +2136,9 @@ local link broke every shell command. Ticket: [PLAT-373](bugs/pulse_platform/sec
 
 ## Open issues
 
-### 2026-10-03 — Cursor curated models can exceed the account's live availability
-- RTS's current CLI/key rejects the newly curated GLM 5.3 and Flash choices.
-  `WorkModelsPanel` currently unions live choices into the curated list; a
-  successful list therefore does not remove unsupported curated entries.
-  Account-aware model filtering remains a follow-up; do not describe those GLM
-  choices as qualified on RTS until its live account list and inference pass.
-- Bare `grok-4.6` resolves to Fast for this key while the current metadata assumes
-  standard pricing unless the selector explicitly contains `fast=true`.
-  Live suffix IDs such as `cursor-grok-4.6-high` also need family-aware metadata.
-  Model/pricing resolution needs follow-up before certifying cost attribution.
 
-### 2026-10-03 — Cursor's separate reasoning-effort option is not forwarded
-- The Cursor adapter currently launches the selected model ID without mapping
-  `CallOptions.ReasoningEffort` into Cursor's native model parameters. A separate
-  effort selection therefore does not override the CLI's model default.
-- Explicit parameterized model IDs such as `grok-4.6[effort=xhigh,fast=false]`
-  are passed through unchanged, including choices discovered from the live CLI
-  list. Wiring the separate effort option requires a follow-up adapter change;
-  this catalog update does not advertise effort controls for the new models.
+
+
 
 ### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
 - After the answered 14:26:04 IST submission, the 14:26:25 retry reused its

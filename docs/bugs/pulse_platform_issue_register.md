@@ -1,8 +1,28 @@
+## Provider setup and product model selection — PLAT-386
+
+[PLAT-386](pulse_platform/frontend-chat/plat-386.md), fixed on main; included in
+the recorded RTS source release; app-level live qualification pending. Providers
+owns agent/account setup; products select ready accounts, models and supported
+effort. Includes the provider UI cleanup and Cursor effort forwarding.
+
+## Cursor account model availability — PLAT-387
+
+[PLAT-387](pulse_platform/frontend-chat/plat-387.md), open, reproduced on RTS.
+A curated/live catalog union still offers GLM 5.3/Flash to a key whose CLI rejects
+them; discovery and filtering need selected-account identity.
+
+## Cursor native model pricing — PLAT-388
+
+[PLAT-388](pulse_platform/cost-telemetry/plat-388.md), open, reproduced on RTS.
+Bare Grok selects Fast for this account while metadata assumes standard pricing;
+live suffix IDs also need native-mode pricing resolution.
+
 ## Full CLI native writes ignored blocked paths on Linux — PLAT-385
 
 [PLAT-385](pulse_platform/security-sandbox/plat-385.md), P1, **stopgap** on `main`:
 Linux chats with blocked paths inside writable folders stay hybrid until the
 Landlock launcher hides them; the launcher enforcement is open.
+
 
 ## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384
 
@@ -16,6 +36,7 @@ The original source of the index damage remains unconfirmed.
 workflow `folder_access` had no assigned-roots check and absolute grants reached
 server CLI and shell sandboxes; now root-checked on update and kept only on a
 person's own Mac.
+
 
 ## Browser toolbar and manual copy/paste — PLAT-382
 
