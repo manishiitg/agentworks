@@ -25,9 +25,9 @@ live suffix IDs also need native-mode pricing resolution.
 
 ## Full CLI native writes ignored blocked paths on Linux — PLAT-385
 
-[PLAT-385](pulse_platform/security-sandbox/plat-385.md), P1, **stopgap** on `main`:
-Linux chats with blocked paths inside writable folders stay hybrid until the
-Landlock launcher hides them; the launcher enforcement is open.
+[PLAT-385](pulse_platform/security-sandbox/plat-385.md), P1, **fixed** on `main`:
+Landlock grants are split around blocked paths, so native tools cannot read or
+write planning/ or the raw database; tested under the real launcher.
 
 
 ## RTS latency workflow cost ledger has damaged unique indexes — PLAT-384

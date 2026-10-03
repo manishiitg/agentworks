@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | stopgap on `main` (this commit); launcher enforcement open |
+| State | fixed on `main` (multi-llm-provider-go `2c535cf`, builder stopgap removed); not deployed |
 | Date | 2026-10-03 |
 | Owner | security-sandbox |
 | Related | `8b6e85d61` (Full CLI everywhere on Linux), PLAT-374 (launcher `hidden_paths` / `read_only_overlays`), found by ai-work-0b's review |
@@ -24,12 +24,25 @@ hybrid (native reads; shell and writes through the bridge, which enforces the
 blocked paths). Chats without such a path (Code) keep Full CLI.
 `blockedInsideWriteGrant`, `TestBlockedInsideWriteGrant`.
 
-## Left (the real fix)
+## Fix
 
-multi-llm-provider-go `clisandbox/landlock.go` sends `hidden_paths` (blocked
-paths strictly inside a grant), `read_only_overlays` (blocked-write paths
-strictly inside a write grant) and `private_tmp` to the launcher, refusing what
-it cannot express. Needs: the launcher started in its user+mount namespaces for
-tmux and structured launches and slot launches; an answer for Cursor's shared
-`/tmp` sockets; pre-creating missing blocked files (the launcher skips ENOENT);
-a Linux e2e (Excellence, with the owner's permission). Then remove the stopgap.
+multi-llm-provider-go `2c535cf` (`clisandbox/landlock_blocked.go`): when a
+grant contains a blocked path, the grant is split. The containing folder is no
+longer granted as a whole; each entry is granted on its own down the path to
+the blocked one, which is left out. A read-blocked path is cut out of read
+grants too. No mounts or namespaces (the launcher's `hidden_paths` /
+`read_only_overlays` need user namespaces the agent server is not allowed to
+create, and Cursor needs the shared /tmp), so every launch path is covered.
+The PLAT-385 stopgap (hybrid for such chats) is removed.
+
+Limits: no new entry directly in a split folder (for example the workflow
+root) during that launch; entries created after the launch are not writable
+natively until the next launch.
+
+## Done / left
+
+- Done: `TestSplitAroundBlocked`; `TestBlockedPathsUnderTheRealLauncher` run
+  on Excellence against the installed launcher (planning/ readable not
+  writable, db.sqlite neither, a new db.sqlite-wal refused, the rest of the
+  workflow writable); the whole clisandbox package passes there.
+- Left: deploy; a live chat check on RTS after deploy.

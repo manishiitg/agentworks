@@ -80,14 +80,9 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
 	}
-	// Landlock cannot carve blocked paths (planning/, the raw database,
-	// AGENTS.md) out of a granted folder, and native writes never pass the
-	// folder guard. Until the launcher hides them (PLAT-385), a chat with a
-	// blocked path inside one of its writable folders keeps hybrid: native
-	// reads, but shell and writes through the bridge, which enforces them.
-	if blocked := blockedInsideWriteGrant(policy); blocked != "" {
-		log.Printf("[CLI_LANDLOCK] session %s: Full CLI held back: blocked path %s is inside a writable folder (shell and writes stay on the bridge)", sessionID, blocked)
-	} else if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
+	// Blocked paths (planning/, the raw database, AGENTS.md) are enforced inside
+	// the lock: multi-llm-provider-go splits the grants around them (PLAT-385).
+	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
 	} else if upgraded {
 		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
@@ -156,21 +151,6 @@ func applyCLISeatbelt(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
 	}
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined by Seatbelt (reads %d, writes %d, blocked %d+%d)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), len(policy.BlockedPaths), len(policy.BlockedWritePaths))
-}
-
-// blockedInsideWriteGrant returns the first blocked path (read or write) that
-// lies inside one of the policy's writable folders, or "" when none does.
-func blockedInsideWriteGrant(policy llmtypes.CLISecurityPolicy) string {
-	for _, blocked := range append(append([]string{}, policy.BlockedPaths...), policy.BlockedWritePaths...) {
-		b := filepath.Clean(blocked)
-		for _, grant := range policy.WorkspaceWritePaths {
-			g := filepath.Clean(grant)
-			if b == g || strings.HasPrefix(b, g+string(filepath.Separator)) {
-				return blocked
-			}
-		}
-	}
-	return ""
 }
 
 // cliPolicyPath turns a folder-guard entry into the absolute path a sandbox

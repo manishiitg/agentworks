@@ -3,8 +3,6 @@ package server
 import (
 	"testing"
 
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
@@ -119,21 +117,5 @@ func TestCLISandboxPolicyDropsHostGrantsOnServers(t *testing.T) {
 				t.Errorf("%s multi-user=%q: host grant %s reached the policy", tc.os, tc.multiUser, p)
 			}
 		}
-	}
-}
-
-// A blocked path inside a writable folder keeps a Linux chat off Full CLI.
-func TestBlockedInsideWriteGrant(t *testing.T) {
-	policy := llmtypes.CLISecurityPolicy{
-		WorkspaceWritePaths: []string{"/docs/Workflow/w", "/run/x"},
-		BlockedWritePaths:   []string{"/docs/Workflow/w/planning"},
-	}
-	if got := blockedInsideWriteGrant(policy); got != "/docs/Workflow/w/planning" {
-		t.Fatalf("got %q, want the planning folder", got)
-	}
-	policy.BlockedWritePaths = []string{"/docs/Workflow/other/planning"}
-	policy.BlockedPaths = []string{"/docs/AGENTS.md"}
-	if got := blockedInsideWriteGrant(policy); got != "" {
-		t.Fatalf("blocked paths outside every writable folder: got %q", got)
 	}
 }
