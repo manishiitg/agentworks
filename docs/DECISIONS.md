@@ -19,7 +19,7 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
-### 2026-10-04 — Source Control never shows or commits the platform's `.sandbox-cache` folder — PLAT-408
+### 2026-10-04 — Source Control never shows or commits the platform's `.sandbox-cache` folder — PLAT-410
 
 - **Decided.** Git calls made by the Files pane ignore `.sandbox-cache/` through a platform ignore list, whatever a project's own `.gitignore` says. It is the platform's
   private space (tool homes, CLI state, owned by the person's sandbox user), never part of a person's project, and "Commit all" must not be able to put it in their repository.

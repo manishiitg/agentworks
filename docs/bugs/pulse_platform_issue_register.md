@@ -1,6 +1,6 @@
-## Source Control listed and would have committed the private `.sandbox-cache` folder — PLAT-408
+## Source Control listed and would have committed the private `.sandbox-cache` folder — PLAT-410
 
-[PLAT-408](pulse_platform/frontend-chat/plat-408.md), P2, fixed on `main`; deploy pending. Panel git ignores the platform folder.
+[PLAT-410](pulse_platform/frontend-chat/plat-410.md), P2, fixed on `main`; deploy pending. Panel git ignores the platform folder.
 ## Relays use the shared Ctrl+K switcher — PLAT-409
 
 [PLAT-409](pulse_platform/frontend-chat/plat-409.md), fixed on main; deployment
