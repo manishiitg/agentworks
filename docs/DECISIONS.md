@@ -13,6 +13,31 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Browser teaching presents reusable skills and supports tabs
+
+- **Decision (user).** Keep browser internals out of the ordinary product flow.
+  Move Start browser into the top header, compact local settings and place
+  Chrome connection details under Advanced. Server uses the workspace browser.
+- **Teach UI.** The helper reviews the private manifest. The panel refreshes it
+  automatically and shows goal, inputs, expected result, readiness, Try task and
+  Save skill. Raw actions, locator warnings, step removal, guidance editing and
+  artifact paths are no longer shown. A failed try stays unsaved and offers a
+  request for helper adjustment; successful-test receipt checks remain required.
+- **Tabs.** Allow manual creation, selection and closing while teaching. Bind
+  each recorded page to a fresh target during replay; resolve site-created
+  popups by their mapped opener and refuse ambiguity. Existing unrelated Chrome
+  tabs are not automatically recorded. Closed targets leave capture listeners;
+  new attachments preserve Pause. Keep at least one tab open in the viewer.
+- **Verification.** Real Chrome covers opening a tab, switching back, a popup,
+  closing it, repeated replay with fresh IDs and privacy for tabs selected while
+  paused. Control and trusted-launch flags remain required for tab commands.
+- **Deployment.** RTS deployment was requested for user testing. Release and
+  server runtime verification follow the existing guarded deployment script.
+  RTS upgrades an older agent-browser in its service account tool prefix to
+  0.38.2, the minimum version providing the qualified teaching primitives.
+- **Guide.** See [Browser](core/browser.md) for storage conventions and remaining
+  unsupported interactions; the reusable file belongs to its workflow/project.
+
 ### 2026-10-03 — Deploy notices in Slack are back on by default (reverses the opt-in earlier the same day)
 
 - **Decision (user).** `deploy.sh` posts "deploying" and "finished" (or the "finished with a problem" warning) to the Slack channel again. Silence one run with

@@ -384,17 +384,86 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 			if err != nil {
 				sendError("Unable to resize the browser page.")
 			}
-		case "switch_tab":
+		case "switch_tab", "new_tab", "close_tab":
+			if releaseControl == nil || !canControl() {
+				continue
+			}
+			command := []string{"tab", message.Tab}
+			client := browser.NewClient(workspaceURL)
+			run := func(args ...string) (string, error) {
+				return client.ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), append([]string{"--session", session}, append(args, "--json")...)...), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
+			}
+			recovery := ""
+			if message.Type == "new_tab" {
+				address := message.URL
+				if address == "" {
+					address = "about:blank"
+				}
+				parsed, e := url.Parse(address)
+				if address != "about:blank" && (e != nil || parsed.User != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https")) {
+					sendError("Enter an http or https address.")
+					continue
+				}
+				command = []string{"tab", "new", address}
+			} else {
+				if !liveBrowserTabRef.MatchString(message.Tab) {
+					continue
+				}
+				if message.Type == "close_tab" {
+					out, e := run("tab")
+					var result struct {
+						Data struct {
+							Tabs []struct {
+								Ref    string `json:"tabId"`
+								Active bool   `json:"active"`
+							} `json:"tabs"`
+						} `json:"data"`
+					}
+					if e != nil || json.Unmarshal([]byte(out), &result) != nil || len(result.Data.Tabs) < 2 {
+						sendError("Keep at least one browser tab open.")
+						continue
+					}
+					active := ""
+					for _, tab := range result.Data.Tabs {
+						if tab.Active {
+							active = tab.Ref
+						} else if recovery == "" {
+							recovery = tab.Ref
+						}
+					}
+					if active != message.Tab {
+						sendError("Select the tab before closing it.")
+						continue
+					}
+					command = []string{"tab", "close", message.Tab}
+				}
+			}
 			if teachingActive {
-				sendError("Finish teaching before selecting an unrelated tab.")
+				if _, e := forwardTeaching(ctx, session, map[string]any{"action": "flush", "workspace_path": physical}); e != nil {
+					sendError("Unable to finish recording the current tab.")
+					continue
+				}
+				if message.Type == "close_tab" {
+					if _, e := forwardTeaching(ctx, session, map[string]any{"action": "prepare_close", "workspace_path": physical}); e != nil {
+						sendError("Unable to record the tab change.")
+						continue
+					}
+				}
+			}
+			if _, e := run(command...); e != nil {
+				sendError("Unable to change browser tabs.")
 				continue
 			}
-			if releaseControl == nil || !liveBrowserTabRef.MatchString(message.Tab) {
-				continue
+			if recovery != "" {
+				if _, e := run("tab", recovery); e != nil {
+					sendError("Select another browser tab to continue.")
+					continue
+				}
 			}
-			_, err := browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "tab", message.Tab, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 10*time.Second))
-			if err != nil {
-				sendError("Unable to switch browser tab.")
+			if teachingActive {
+				if _, e := forwardTeaching(ctx, session, map[string]any{"action": "select_tab", "workspace_path": physical}); e != nil {
+					sendError("Unable to record the selected tab. Finish teaching and ask your helper to adjust the task.")
+				}
 			}
 		case "input_mouse", "input_keyboard", "input_touch":
 			if releaseControl == nil {

@@ -71,7 +71,7 @@ it('tests the reviewed draft using the parameter example and prevents publishing
     value.dispatchEvent(new Event('input', { bubbles: true }))
   })
   const button = [...host.querySelectorAll('button')].find(
-    (b) => b.textContent === 'Test procedure',
+    (b) => b.textContent === 'Try task',
   )!
   await act(async () => {
     button.click()
@@ -87,7 +87,7 @@ it('tests the reviewed draft using the parameter example and prevents publishing
     api.post.mock.calls.find(([, body]) => body.action === 'test')?.[1].inputs,
   ).toEqual({ customer: 'Bob' })
   const publish = [...host.querySelectorAll('button')].find(
-    (b) => b.textContent === 'Save for reuse',
+    (b) => b.textContent === 'Save skill',
   )!
   expect(publish.disabled).toBe(false)
   const check = host.querySelector(
@@ -98,7 +98,7 @@ it('tests the reviewed draft using the parameter example and prevents publishing
     check.dispatchEvent(new Event('input', { bubbles: true }))
   })
   expect(publish.disabled).toBe(true)
-  expect(host.textContent).toContain('Test the edited procedure again')
+  expect(host.textContent).toContain('Try the task again')
 })
 it('keeps the recorder controls compact and hides the draft editor while demonstrating', async () => {
   const host = await mount({ ...draft, status: 'recording' })
@@ -111,4 +111,16 @@ it('keeps the recorder controls compact and hides the draft editor while demonst
     [...host.querySelectorAll('button')].find((b) => b.textContent === 'Close')!
       .disabled,
   ).toBe(true)
+})
+
+it('keeps capture internals private while exposing inputs and reusable skill readiness', async () => {
+  const host = await mount({ ...draft, status: 'needs_repair', directory: 'private/demo', errors: ['Missing durable locator'], actions: [...draft.actions!, { id: 2, kind: 'click', target: { selector: '#internal-selector' }, warning: 'Click target has no durable locator' }] })
+  expect(host.textContent).not.toContain('durable locator')
+  expect(host.textContent).not.toContain('#internal-selector')
+  expect(host.textContent).not.toContain('private/demo')
+  expect(host.textContent).not.toContain('Remove step')
+  expect(host.querySelector('[aria-label="Reviewed guidance"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Test value for customer"]')).not.toBeNull()
+  expect(host.textContent).toContain('Your helper needs to adjust')
+  expect([...host.querySelectorAll('button')].find(button => button.textContent === 'Save skill')!.disabled).toBe(true)
 })

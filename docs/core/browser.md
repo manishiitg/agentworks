@@ -72,9 +72,16 @@ sessions, so saved procedures still require an active sign-in.
 ## Teach a browser task
 
 **Start browser → sign in → Teach task → describe the result → demonstrate →
-Finish → review draft → Test procedure → Save for reuse** is implemented for
+Finish → helper prepares the task → Try task → Save skill** is implemented for
 ordinary browser forms and controls. Diagnostic video/HAR recording stays a
 separate feature; it does not automatically become a learned task.
+
+Local settings show a compact browser choice: Automatic, Workspace browser or
+My Chrome. Connection ports, diagnostics and setup commands sit under a closed
+Advanced disclosure. Server settings describe the workspace browser without
+redundant mode choices. Start browser is in the top header, followed by an
+address bar and New tab / Close tab when connected. Tab mutations require
+exclusive manual control; closing the sole remaining tab is refused.
 
 ### Capture inside the existing Chrome
 
@@ -123,9 +130,11 @@ Evidence lives in `<workspace>/browser-demonstrations/<id>/`:
 Finish drafts the procedure and, where the panel has a helper chat, sends that
 helper a review request. The helper can propose guidance, parameters and an
 outcome in the demonstration manifest; it is told to treat site content as
-untrusted and to keep the procedure untested. **Reload reviewed draft** brings
-those proposals into the editor. The user can edit guidance, name variable
-inputs, remove unwanted steps and choose the expected page text/URL.
+untrusted and to keep the procedure untested. The panel automatically refreshes
+the helper’s review. Users see the task goal, reusable inputs, expected result
+and readiness, then **Try task** and **Save skill**. Raw actions, selector
+warnings, repair controls, file paths and guidance editing stay out of the
+normal panel; the helper works with these records behind the scenes.
 
 Test first saves the reviewed draft, acquires the browser control gate, supplies
 the chosen example inputs, and runs the same signed-in browser. It resolves a
@@ -133,14 +142,14 @@ fresh unique visible target for each step. Stable selectors are candidates;
 ambiguous/missing targets stop the run. Generated CSS paths are transient fresh
 resolutions, not durable recorded recipes. Observed navigation is checked rather
 than repeating a link's navigation. A page text/URL outcome check must pass.
-The UI explicitly states that Test repeats real website actions and may change
-website data. Edits require a new test before Save for reuse.
+The UI states that trying the task performs it on the website using the chosen
+inputs. Changes to the expected result require another successful try before saving.
 
 The workspace service retains a fingerprint receipt for the exact successfully
 tested actions, guidance and check. Editing a manifest to say `tested` does not
 permit publication. A service restart requires retesting before publication.
 
-Save for reuse creates a scope-owned learning reference:
+**Save skill** creates a scope-owned reusable file:
 
 - Workflows: `learnings/_global/references/browser-<id>.md`, linked from the
   workflow's existing `learnings/_global/SKILL.md`.
@@ -159,12 +168,18 @@ values. Site changes or expired sign-in may require another review/test.
 The local real-Chrome check covers semantic buttons without stored selectors,
 parameter replay, sign-in retention across browser restart, actual JPEG evidence,
 repeated recorder sessions, password suppression and paused edits across
-navigation. Control/auth checks and UI review/test behavior have separate tests.
+navigation. Multi-tab qualification covers manual new tabs, switching back,
+site-created popups, closing a popup, repeated replay with fresh targets and
+privacy for a new tab selected while paused. Control/auth checks and UI review/test behavior have separate tests.
 
 This release does not promise universal browser recording. Canvas, drag actions,
-file upload and unlocatable clicks generate review warnings. Multi-tab procedures
-are stopped before replay; popup pages are captured as evidence, but must be
-reviewed as separate procedures. Cross-process/cross-origin frames, shadow DOM,
+file upload and unlocatable clicks need helper review. Multi-tab procedures
+support explicitly opened/selected tabs, opener-owned popups and tab closure.
+Each test maps recorded tab identities to fresh Chrome targets before resolving
+DOM targets. Missing tabs, undeclared identities, ambiguous popups and unsupported
+navigation stop replay. Only explicitly selected tabs and their new popups are
+attached; existing unrelated Chrome tabs are excluded. Capture supports up to
+twelve simultaneously attached tabs. Cross-process/cross-origin frames, shadow DOM,
 native dialogs and protected pages need further qualification. Query/fragment
 routing may need a reviewed navigation URL because capture removes those values.
 Downloads can be initiated by a demonstrated click, but the current page text/URL

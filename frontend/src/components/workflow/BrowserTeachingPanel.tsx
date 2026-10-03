@@ -29,6 +29,7 @@ export function BrowserTeachingPanel({
   onStart,
   onControl,
   onClose,
+  onReview,
   profileId,
 }: {
   workspacePath: string
@@ -38,6 +39,7 @@ export function BrowserTeachingPanel({
   onStart: (goal: string) => void
   onControl: (action: string) => void
   onClose: () => void
+  onReview?: () => void
   profileId?: string
 }) {
   const [goal, setGoal] = useState('')
@@ -78,7 +80,7 @@ export function BrowserTeachingPanel({
     }
   }, [workspacePath, session, state.id, state.status]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!active || !state.id) return
+    if (!state.id || busy || dirty || state.status === 'saved') return
     let live = true
     const timer = window.setInterval(() => {
       api
@@ -96,7 +98,7 @@ export function BrowserTeachingPanel({
       live = false
       window.clearInterval(timer)
     }
-  }, [active, state.id, endpoint, workspacePath, profileId, onState]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, state.id, state.status, busy, dirty, endpoint, workspacePath, profileId, onState]) // eslint-disable-line react-hooks/exhaustive-deps
   async function request(action: string, id = state.id) {
     setBusy(true)
     setError('')
@@ -117,18 +119,8 @@ export function BrowserTeachingPanel({
         { params, timeout: 105000 },
       )
       onState(data)
-    } catch (cause) {
-      const detail =
-        cause instanceof Error
-          ? (cause as { response?: { data?: unknown } }).response?.data
-          : undefined
-      setError(
-        typeof detail === 'string'
-          ? detail
-          : cause instanceof Error
-            ? cause.message
-            : 'Teaching request failed',
-      )
+    } catch {
+      setError(action === 'test' ? 'The task did not finish as expected. Ask your helper to adjust it, then try again.' : 'We couldn’t update this task. Try again.')
     } finally {
       setBusy(false)
     }
@@ -140,7 +132,7 @@ export function BrowserTeachingPanel({
       className={
         active
           ? 'absolute bottom-2 right-2 z-20 max-w-sm rounded-lg border bg-background p-3 shadow-xl'
-          : 'absolute inset-x-2 top-12 z-20 max-h-[calc(100%-4rem)] overflow-auto rounded-lg border bg-background p-4 shadow-xl'
+          : 'absolute left-2 right-2 top-12 z-20 ml-auto max-h-[calc(100%-4rem)] max-w-md overflow-auto rounded-lg border bg-background p-4 shadow-xl'
       }
     >
       <div className="mb-3 flex items-center justify-between">
@@ -156,12 +148,10 @@ export function BrowserTeachingPanel({
       </div>
       {!active && (
         <p className="mb-3 text-xs text-muted-foreground">
-          Sign in before recording. Demonstrate the task, review its inputs and
-          expected result, then test it. Saved procedures belong to this
-          workspace.
+          Show your helper a task, try it, then save it as a reusable skill for this workspace. Sign in before teaching.
         </p>
       )}
-      {!active && (
+      {!active && !state.id && (
         <>
           <label className="block text-sm">
             Result to demonstrate
@@ -225,7 +215,7 @@ export function BrowserTeachingPanel({
             <option value="">Select a demonstration</option>
             {items.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.goal} · {item.status}
+                {item.goal}
               </option>
             ))}
           </select>
@@ -238,118 +228,23 @@ export function BrowserTeachingPanel({
       )}
       {state.id && !active && (
         <>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void request('status')}
-            className="mt-2 text-xs underline"
-          >
-            Reload reviewed draft
-          </button>
-          <p className="mt-3 text-sm font-medium">
-            {state.goal} · {state.status}
+          <h4 className="mt-3 text-sm font-medium">{state.goal}</h4>
+          <p role="status" className="mt-2 text-sm text-muted-foreground">
+            {state.status === 'saved' ? 'Saved as a skill. Your helper can use it again in this workspace.' : state.status === 'tested' ? 'Ready to save as a skill.' : state.status === 'cancelled' ? 'Teaching cancelled.' : state.status === 'interrupted' ? 'Teaching stopped before it finished. Show the task again.' : state.status === 'needs_repair' || state.errors?.length ? 'Your helper needs to adjust this task before it can be reused.' : 'Your helper is preparing the task. Review the inputs and expected result before trying it.'}
           </p>
-          <ol className="mt-2 space-y-2 text-xs">
-            {actions.map((action, index) => (
-              <li key={`${action.id}-${index}`} className="rounded border p-2">
-                <span>
-                  {index + 1}. {action.kind}{' '}
-                  {action.target?.name ||
-                    action.target?.selector ||
-                    action.url ||
-                    ''}
-                </span>
-                {action.warning && (
-                  <p className="my-1 text-destructive">{action.warning}</p>
-                )}
-                {!active && (
-                  <button
-                    type="button"
-                    aria-label={`Remove step ${index + 1}`}
-                    onClick={() =>
-                      setActions((current) =>
-                        current.filter((_, i) => i !== index),
-                      )
-                    }
-                    className="ml-2 underline"
-                  >
-                    Remove step
-                  </button>
-                )}
-                {!active &&
-                  (action.kind === 'fill' || action.kind === 'select') && (
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <label>
-                        Input name{' '}
-                        <input
-                          aria-label={`Input name for step ${index + 1}`}
-                          value={action.parameter || ''}
-                          onChange={(e) =>
-                            setActions((current) =>
-                              current.map((a, i) =>
-                                i === index
-                                  ? { ...a, parameter: e.target.value }
-                                  : a,
-                              ),
-                            )
-                          }
-                          className="rounded border bg-background p-1"
-                          placeholder="Optional variable"
-                        />
-                      </label>
-                      {action.parameter && (
-                        <label>
-                          Test value{' '}
-                          <input
-                            aria-label={`Test value for ${action.parameter}`}
-                            value={
-                              inputs[action.parameter] ?? action.value ?? ''
-                            }
-                            onChange={(e) =>
-                              setInputs((current) => ({
-                                ...current,
-                                [action.parameter!]: e.target.value,
-                              }))
-                            }
-                            className="rounded border bg-background p-1"
-                          />
-                        </label>
-                      )}
-                    </div>
-                  )}
-              </li>
-            ))}
-          </ol>
+          {Array.from(new Set(actions.flatMap(action => action.parameter ? [action.parameter] : []))).map(parameter => {
+            const action = actions.find(item => item.parameter === parameter)!
+            return <label key={parameter} className="mt-3 block text-sm">
+              {parameter.replace(/[_-]/g, ' ')}
+              <input aria-label={`Test value for ${parameter}`} value={inputs[parameter] ?? action.value ?? ''} onChange={event => setInputs(current => ({ ...current, [parameter]: event.target.value }))} className="mt-1 block w-full rounded border bg-background p-2" />
+            </label>
+          })}
           {!active &&
             state.status !== 'cancelled' &&
             state.status !== 'interrupted' && (
               <>
                 <label className="mt-3 block text-sm">
-                  Reviewed guidance
-                  <textarea
-                    aria-label="Reviewed guidance"
-                    value={guidance}
-                    onChange={(e) => setGuidance(e.target.value)}
-                    maxLength={20000}
-                    className="mt-2 block min-h-24 w-full rounded border bg-background p-2 text-xs"
-                  />
-                </label>
-                <label className="mt-3 block text-sm">
-                  Expected result{' '}
-                  <select
-                    aria-label="Outcome check type"
-                    value={check.kind}
-                    onChange={(e) =>
-                      setCheck((current) => ({
-                        ...current,
-                        kind: e.target.value,
-                      }))
-                    }
-                    className="mx-2 rounded border bg-background p-1"
-                  >
-                    <option value="text">Page contains text</option>
-                    <option value="url">URL contains</option>
-                  </select>
+                  How will you know it worked?
                   <input
                     aria-label="Expected outcome"
                     value={check.value}
@@ -363,19 +258,9 @@ export function BrowserTeachingPanel({
                   />
                 </label>
                 <p className="my-2 text-xs text-muted-foreground">
-                  Test repeats these actions in the signed-in browser and may
-                  change website data. Use the example inputs you want it to
-                  run.
+                  Trying the task performs it on the website using these inputs.
                 </p>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void request('save')}
-                    className="rounded border px-3 py-1 text-sm"
-                  >
-                    Save draft
-                  </button>
                   <button
                     type="button"
                     disabled={busy || !check.value.trim()}
@@ -389,16 +274,16 @@ export function BrowserTeachingPanel({
                     }}
                     className="rounded border px-3 py-1 text-sm"
                   >
-                    {busy ? 'Working…' : 'Test procedure'}
+                    {busy ? 'Working…' : 'Try task'}
                   </button>
-                  {state.status === 'tested' && (
+                  {state.status !== 'saved' && (
                     <button
                       type="button"
-                      disabled={busy || dirty}
+                      disabled={busy || dirty || state.status !== 'tested'}
                       onClick={() => void request('publish')}
                       className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
                     >
-                      Save for reuse
+                      Save skill
                     </button>
                   )}
                 </div>
@@ -408,15 +293,11 @@ export function BrowserTeachingPanel({
       )}
       {dirty && state.status === 'tested' && (
         <p className="mt-2 text-xs">
-          Test the edited procedure again before saving for reuse.
+          Try the task again after changing its expected result.
         </p>
       )}
-      {state.skill && <p className="mt-2 text-xs">Saved: {state.skill}</p>}
-      {state.errors?.map((message, i) => (
-        <p key={i} role="alert" className="mt-2 text-xs text-destructive">
-          {message}
-        </p>
-      ))}
+      {!active && state.id && onReview && (state.status === 'needs_repair' || !!state.errors?.length || !!error) && <button type="button" className="mt-3 rounded border px-3 py-1 text-sm" disabled={busy} onClick={onReview}>Ask helper to adjust</button>}
+      {!active && state.id && <button type="button" disabled={busy} className="mt-3 block text-xs underline" onClick={() => onState({ status: 'idle' })}>Teach another task</button>}
       {error && (
         <p role="alert" className="mt-2 text-sm text-destructive">
           {error}

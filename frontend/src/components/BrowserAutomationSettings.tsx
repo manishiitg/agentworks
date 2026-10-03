@@ -6,10 +6,7 @@ import {
   Download,
   ExternalLink,
   Loader2,
-  Monitor,
-  MonitorOff,
   RefreshCw,
-  Sparkles,
 } from 'lucide-react'
 
 import {
@@ -112,90 +109,25 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
 
   return (
     <section className="space-y-3" aria-labelledby="browser-automation-heading">
-      <div>
-        <div>
-          <h3 id="browser-automation-heading" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-            Browser Automation
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            {cdpEnabled
-              ? `This saves the ${scopeNoun} policy. Chrome availability is checked live each time the ${scopeNoun} runs.`
-              : 'CDP is disabled on this server. Automatic and Headless use managed background Chromium.'}
+      {cdpEnabled ? (
+        <>
+          <label className="flex items-center justify-between gap-3 text-sm" htmlFor="browser-automation-heading">
+            Browser
+            <select id="browser-automation-heading" aria-label="Browser choice" disabled={readOnly} value={browserMode === 'none' ? 'auto' : browserMode} onChange={event => onBrowserModeChange(event.target.value as BrowserAutomationMode)} className="rounded border bg-background px-2 py-1.5">
+              <option value="auto">Automatic (recommended)</option>
+              <option value="headless">Workspace browser</option>
+              <option value="cdp">My Chrome</option>
+            </select>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {browserMode === 'cdp' ? 'Uses your connected Chrome. Connect it below before starting.' : browserMode === 'headless' ? `Uses a dedicated browser for this ${scopeNoun}. Sign in from its live view.` : 'Uses your connected Chrome when available, otherwise starts a workspace browser.'}
           </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className={`flex min-h-24 cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-          browserMode === 'auto'
-            ? 'border-cyan-500 bg-cyan-500/10'
-            : 'border-gray-200 hover:bg-gray-500/5 dark:border-gray-700'
-        }`}>
-          <input type="radio" name="presetBrowserMode" checked={browserMode === 'auto'} disabled={readOnly} onChange={() => onBrowserModeChange('auto')} className="mt-0.5 h-4 w-4 accent-cyan-500" />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-500" />
-              Automatic
-              <span className="text-[10px] font-medium uppercase tracking-wide text-cyan-600 dark:text-cyan-400">Default · Recommended</span>
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              {cdpEnabled
-                ? 'Uses visible Chrome when CDP is reachable; otherwise uses managed headless Chromium.'
-                : 'Uses managed headless Chromium on this server; CDP probing is disabled.'}
-            </p>
-          </div>
-        </label>
-
-        {cdpEnabled && <label className={`flex min-h-24 items-start gap-3 rounded-lg border p-3 transition-colors ${
-          !cdpEnabled ? 'cursor-not-allowed opacity-60 ' : 'cursor-pointer '
-        }${
-          browserMode === 'cdp'
-            ? 'border-emerald-500 bg-emerald-500/10'
-            : 'border-gray-200 hover:bg-gray-500/5 dark:border-gray-700'
-        }`}>
-          <input type="radio" name="presetBrowserMode" checked={browserMode === 'cdp'} disabled={readOnly || !cdpEnabled} onChange={() => onBrowserModeChange('cdp')} className="mt-0.5 h-4 w-4 accent-emerald-500" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">
-              <Monitor className="h-3.5 w-3.5 text-emerald-500" />
-              Require visible Chrome
-              {!cdpEnabled && <span className="rounded bg-gray-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">Disabled on server</span>}
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              {cdpEnabled
-                ? 'Requires CDP and stops with a clear error if that Chrome is unavailable.'
-                : `Unavailable in this deployment. A ${scopeNoun} cannot force or configure CDP here.`}
-            </p>
-          </div>
-        </label>}
-
-        <label className={`flex min-h-24 cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-          browserMode === 'headless'
-            ? 'border-blue-500 bg-blue-500/10'
-            : 'border-gray-200 hover:bg-gray-500/5 dark:border-gray-700'
-        }`}>
-          <input type="radio" name="presetBrowserMode" checked={browserMode === 'headless'} disabled={readOnly} onChange={() => onBrowserModeChange('headless')} className="mt-0.5 h-4 w-4 accent-blue-500" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">
-              <MonitorOff className="h-3.5 w-3.5 text-blue-500" />
-              Managed browser
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              Uses this workspace’s browser. Open its live view to sign in or take control.
-            </p>
-          </div>
-        </label>
-
-
-      </div>
-
-      {!cdpEnabled && browserMode === 'cdp' && (
-        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
-          This {scopeNoun} has a legacy CDP setting, but CDP is disabled on this server. Select Automatic or Managed browser before saving.
-        </p>
-      )}
+        </>
+      ) : <p id="browser-automation-heading" className="text-sm text-muted-foreground">This {scopeNoun} has its own browser. Start it to visit a website, sign in, or teach your helper.</p>}
 
       {usesCdp && (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/60">
+        <details className="overflow-hidden rounded-lg border border-border">
+          <summary className="cursor-pointer px-3 py-2 text-sm">Advanced connection settings</summary>
           <div className="space-y-3 p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -242,11 +174,6 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
               </p>
             )}
 
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
-              {scopeNoun === 'workflow'
-                ? 'Visible Chrome can take keyboard focus. For schedules, prefer Automatic or Managed browser, or launch a dedicated Chrome profile on this port.'
-                : 'Visible Chrome can take keyboard focus. Prefer Automatic or Managed browser, or launch a dedicated Chrome profile on this port.'}
-            </p>
           </div>
 
           <details className="group min-w-0 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/70">
@@ -301,7 +228,7 @@ const BrowserAutomationSettings: React.FC<BrowserAutomationSettingsProps> = ({
               </div>
             </div>
           </details>
-        </div>
+        </details>
       )}
     </section>
   )

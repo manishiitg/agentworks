@@ -2,6 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
+import { getDisplaySafeUserMessageContent } from '../../utils/chatMessageContent'
 import WorkflowLiveBrowser, { BROWSER_RECONNECT_ATTEMPTS, browserReconnectDelayMs, mapToViewport } from './WorkflowLiveBrowser'
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: api, getApiBaseUrl: () => 'http://localhost', getAuthToken: () => 'viewer-token' }))
@@ -280,7 +281,7 @@ const buttonNamed = (host: HTMLElement, name: string) => [...host.querySelectorA
 it('explains the idle state in plain language without a picker or controls', async () => {
   api.get.mockResolvedValue({ data: { sessions: [] } })
   const { host, picker } = await mountBrowser()
-  expect(host.textContent).toContain('Your helper isn’t using a browser right now — it opens one when needed.')
+  expect(host.textContent).toContain('Start a browser to visit a website or show your helper a task.')
   expect(picker()).toBeNull()
   expect(buttonNamed(host, 'Take control')).toBeUndefined()
   expect(buttonNamed(host, 'Reconnect')).toBeUndefined()
@@ -428,4 +429,37 @@ it('lets the user start a scoped browser before an agent opens one', async () =>
  await act(async () => { start.click() })
  expect(api.post).toHaveBeenCalledWith('/api/browser/workspace', { action: 'start' }, expect.objectContaining({ params: { workspace_path: 'Workflow/test', profile_id: undefined } }))
  expect(String(FakeSocket.instances.at(-1)?.url)).toContain('/workspace-browser/stream')
+})
+
+it('places startup in the top header and supports opening and closing tabs while teaching', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { host } = await mountBrowser()
+  expect(host.querySelector('header')?.textContent).toContain('Start browser')
+  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Start browser')).toHaveLength(1)
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => {
+    ws.onmessage?.(frameMessage())
+    ws.onmessage?.({ data: JSON.stringify({ type: 'viewer_control', controlling: true }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'tabs', tabs: [{ tabId: 't1', title: 'One', active: true }, { tabId: 't2', title: 'Two', active: false }] }) })
+    ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'recording', actions: [] } }) })
+  })
+  expect(host.querySelector('.live-browser-bar')?.textContent).toContain('Start browser')
+  await act(async () => { buttonNamed(host, 'New tab')!.click(); buttonNamed(host, 'Close tab')!.click(); buttonNamed(host, 'Two')!.click() })
+  const sent = ws.send.mock.calls.map(([message]) => JSON.parse(message))
+  expect(sent).toContainEqual({ type: 'new_tab', url: 'about:blank' })
+  expect(sent).toContainEqual({ type: 'close_tab', tab: 't1' })
+  expect(sent).toContainEqual({ type: 'switch_tab', tab: 't2' })
+})
+
+it('sends review records to the helper as hidden file context with a plain chat request', async () => {
+  api.get.mockResolvedValue({ data: { sessions: [shared] } })
+  const { root } = await mountBrowser()
+  const onLearn = vi.fn()
+  await act(async () => { root.render(<WorkflowLiveBrowser workspacePath="Workflow/test" onLearn={onLearn} />) })
+  const ws = FakeSocket.instances.at(-1)!
+  await act(async () => { ws.onmessage?.({ data: JSON.stringify({ type: 'teaching', state: { id: 'demo', status: 'draft', goal: 'Export customers', directory: 'Workflow/test/browser-demonstrations/demo' } }) }) })
+  const prompt = onLearn.mock.calls[0][0]
+  expect(prompt).toContain('browser-demonstrations/demo/manifest.json')
+  expect(prompt).toContain('Keep the status draft')
+  expect(getDisplaySafeUserMessageContent(prompt)).toBe('Prepare my demonstrated task for reuse: Export customers.')
 })

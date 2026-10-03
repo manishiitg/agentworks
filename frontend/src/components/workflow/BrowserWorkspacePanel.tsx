@@ -77,7 +77,7 @@ export function BrowserWorkspacePanel({
         <div
           role="dialog"
           aria-label="Browser settings"
-          className="absolute inset-x-2 top-12 z-10 max-h-[calc(100%-4rem)] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl"
+          className="absolute left-2 right-2 top-12 z-10 ml-auto max-w-lg max-h-[calc(100%-4rem)] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl"
         >
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-medium">Browser settings</h3>

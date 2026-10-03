@@ -142,7 +142,22 @@ esac
 # tool prefix, the same "always latest" policy as agent-browser. The one-time
 # root copy from install-system-tools.sh stays as a fallback.
 "${SSH[@]}" "bash -s -- '$REMOTE_TOOLS_DIR'" < "$REPO_ROOT/deploy/common/install-gog.sh"
-"${SSH[@]}" "export PATH='$REMOTE_TOOLS_DIR/bin:'\$PATH; command -v agent-browser >/dev/null || npm install -g --prefix '$REMOTE_TOOLS_DIR' agent-browser@latest; command -v agent-browser >/dev/null"
+export PATH="$REMOTE_TOOLS_DIR/bin:$PATH"
+# Teaching needs CDP URL discovery and stable target IDs (agent-browser 0.38.2).
+# Upgrade only this service account's tool prefix; leave system tools intact.
+if ! python3 - <<'BROWSER_VERSION'
+import re, subprocess, sys
+try:
+    output = subprocess.check_output(["agent-browser", "--version"], text=True)
+    match = re.search(r"agent-browser (\d+)\.(\d+)\.(\d+)", output)
+    sys.exit(0 if match and tuple(map(int, match.groups())) >= (0, 38, 2) else 1)
+except (OSError, subprocess.CalledProcessError):
+    sys.exit(1)
+BROWSER_VERSION
+then
+  npm install -g --allow-scripts=agent-browser --prefix "$REMOTE_TOOLS_DIR" agent-browser@0.38.2
+fi
+agent-browser --version
 bash "$REPO_ROOT/deploy/common/install-coding-clis.sh" "$REMOTE_TOOLS_DIR" "$HOME"
 "${SSH[@]}" "mkdir -p '$REMOTE_RELEASE'; touch '$REMOTE_RELEASE/.deploying'"
 "${SSH[@]}" "node '$REMOTE_RELEASE/check-release-assets.mjs' '$REMOTE_RELEASE/frontend'"

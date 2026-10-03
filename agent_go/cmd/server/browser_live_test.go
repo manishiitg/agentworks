@@ -63,6 +63,13 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			http.Error(w, "auth", 401)
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/teaching") {
+			var request map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&request)
+			received <- request
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "recording", "id": "test"})
+			return
+		}
 		if r.URL.Path == "/api/execute" {
 			var request map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&request)
@@ -120,6 +127,8 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 	readType("viewer_control")
 	conn.WriteJSON(map[string]interface{}{"type": "input_mouse", "eventType": "mousePressed", "x": 10, "y": 10})
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 1200})
+	conn.WriteJSON(map[string]string{"type": "new_tab", "url": "https://example.com"})
+	conn.WriteJSON(map[string]string{"type": "switch_tab", "tab": "t2"})
 	conn.WriteJSON(map[string]string{"type": "ping"})
 	readType("pong")
 	select {
@@ -140,6 +149,34 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("resize not executed")
+	}
+	conn.WriteJSON(map[string]string{"type": "teach_start", "goal": "Use tabs"})
+	readType("teaching")
+	select {
+	case request := <-received:
+		if request["action"] != "start" {
+			t.Fatal(request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Teaching did not start")
+	}
+	for _, change := range []map[string]string{{"type": "new_tab", "url": "https://example.com"}, {"type": "switch_tab", "tab": "t2"}} {
+		conn.WriteJSON(change)
+		for _, expected := range []string{"flush", "command", "select_tab"} {
+			select {
+			case request := <-received:
+				if expected == "command" {
+					command, _ := request["command"].(string)
+					if !strings.Contains(command, "tab") {
+						t.Fatal(request)
+					}
+				} else if request["action"] != expected {
+					t.Fatal(request)
+				}
+			case <-time.After(time.Second):
+				t.Fatalf("Missing tab operation %s", expected)
+			}
+		}
 	}
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 99999})
 	var rejected map[string]interface{}

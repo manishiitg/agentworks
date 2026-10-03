@@ -305,6 +305,39 @@ func BrowserTeaching(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "idle"})
 			return
 		}
+	case "flush", "select_tab", "prepare_close":
+		if state == nil || state.recorder == nil {
+			c.JSON(409, gin.H{"error": "No active demonstration"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		_, socket, e := browserLiveEndpoint(session)
+		if e != nil {
+			c.JSON(409, gin.H{"error": "Browser unavailable"})
+			return
+		}
+		run := func(args ...string) ([]byte, error) {
+			return runTeachCommand(ctx, socket, session, append(args, req.LaunchArgs...)...)
+		}
+		if req.Action == "flush" {
+			err = state.recorder.Control(ctx, "flush")
+			time.Sleep(50 * time.Millisecond)
+		} else {
+			var target string
+			target, err = activeTeachingTarget(run)
+			if err == nil {
+				if req.Action == "prepare_close" {
+					state.recorder.PrepareClose(target)
+				} else {
+					err = state.recorder.Select(ctx, target)
+				}
+			}
+		}
+		if err != nil {
+			c.JSON(502, gin.H{"error": err.Error()})
+			return
+		}
 	case "pause", "resume":
 		if state == nil || state.recorder == nil {
 			c.JSON(409, gin.H{"error": "No active demonstration"})
@@ -349,7 +382,7 @@ func BrowserTeaching(c *gin.Context) {
 		}
 		for _, a := range req.Actions {
 			switch a.Kind {
-			case "navigate", "click", "fill", "select", "check", "uncheck", "press":
+			case "navigate", "click", "fill", "select", "check", "uncheck", "press", "tab_open", "tab_switch", "tab_close":
 			default:
 				c.JSON(400, gin.H{"error": "Unsupported action"})
 				return
@@ -551,17 +584,34 @@ func replayTeach(ctx context.Context, socket, session string, state *teachState,
 			return fmt.Errorf("Step %d: %s", a.ID, a.Warning)
 		}
 	}
+	var tabReplay *teachingReplayTabs
+	multiTab := false
 	pages := map[string]bool{}
-	for _, a := range state.Actions {
-		if a.Page != "" {
-			pages[a.Page] = true
+	for _, action := range state.Actions {
+		pages[action.Page] = true
+		if action.Kind == "tab_open" || action.Kind == "tab_switch" || action.Kind == "tab_close" {
+			multiTab = true
 		}
 	}
-	if len(pages) > 1 {
-		return fmt.Errorf("This demonstration uses multiple tabs; review it as separate procedures before testing")
+	if multiTab || len(pages) > 1 {
+		var err error
+		tabReplay, err = newTeachingReplayTabs(ctx, run, state.Actions)
+		if err != nil {
+			return err
+		}
+		defer tabReplay.conn.Close()
 	}
 	defer run("frame", "main")
 	for _, a := range state.Actions {
+		if tabReplay != nil {
+			handled, err := tabReplay.apply(a)
+			if err != nil {
+				return fmt.Errorf("Step %d: %w", a.ID, err)
+			}
+			if handled {
+				continue
+			}
+		}
 		if _, err := run("frame", "main"); err != nil {
 			return err
 		}

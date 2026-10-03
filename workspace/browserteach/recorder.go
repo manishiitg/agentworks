@@ -45,10 +45,16 @@ type Action struct {
 	Parameter  string    `json:"parameter,omitempty"`
 	Frames     []string  `json:"frames,omitempty"`
 	Warning    string    `json:"warning,omitempty"`
+	Opener     string    `json:"opener,omitempty"`
 	Observed   bool      `json:"observed,omitempty"`
 }
 type Recorder struct {
 	mu            sync.Mutex
+	attachMu      sync.Mutex
+	known         map[string]bool
+	declared      map[string]bool
+	metadata      map[string]PageInfo
+	manualClose   map[string]bool
 	conn          *Connection
 	pages         map[string]string
 	frames        map[string]string
@@ -80,6 +86,18 @@ func Start(ctx context.Context, endpoint, targetID, dir string) (*Recorder, erro
 		return nil, err
 	}
 	r := &Recorder{conn: c, pages: map[string]string{}, frames: map[string]string{}, contexts: map[string]map[int64]string{}, scripts: map[string]string{}, directory: dir, initial: targetID, complete: make(chan struct{})}
+	r.known = map[string]bool{}
+	r.declared = map[string]bool{targetID: true}
+	r.metadata = map[string]PageInfo{}
+	r.manualClose = map[string]bool{}
+	pages, err := c.Pages(ctx)
+	if err != nil {
+		c.Close()
+		return nil, err
+	}
+	for _, page := range pages {
+		r.known[page.ID] = true
+	}
 	go r.events()
 	if err = r.attach(ctx, targetID); err == nil {
 		err = c.Call(ctx, "", "Target.setDiscoverTargets", map[string]any{"discover": true}, nil)
@@ -91,6 +109,39 @@ func Start(ctx context.Context, endpoint, targetID, dir string) (*Recorder, erro
 	return r, nil
 }
 func (r *Recorder) attach(ctx context.Context, target string) error {
+	r.attachMu.Lock()
+	defer r.attachMu.Unlock()
+	r.mu.Lock()
+	if r.stopped {
+		r.mu.Unlock()
+		return fmt.Errorf("Teaching has stopped")
+	}
+	for _, existing := range r.pages {
+		if existing == target {
+			r.mu.Unlock()
+			return nil
+		}
+	}
+	if len(r.pages) >= 12 {
+		r.mu.Unlock()
+		return fmt.Errorf("Teaching supports up to twelve open tabs")
+	}
+	r.mu.Unlock()
+	var info struct {
+		Info PageInfo `json:"targetInfo"`
+	}
+	if err := r.conn.Call(ctx, "", "Target.getTargetInfo", map[string]any{"targetId": target}, &info); err != nil {
+		return err
+	}
+	if info.Info.Type != "page" {
+		return fmt.Errorf("Not a browser page")
+	}
+	r.mu.Lock()
+	if _, ok := r.metadata[target]; !ok {
+		info.Info.URL = SanitizeURL(info.Info.URL)
+		r.metadata[target] = info.Info
+	}
+	r.mu.Unlock()
 	var attached struct {
 		Session string `json:"sessionId"`
 	}
@@ -140,11 +191,20 @@ func (r *Recorder) attach(ctx context.Context, target string) error {
 		ids = append(ids, id)
 	}
 	r.mu.Unlock()
-	for _, id := range ids {
-		_ = r.conn.Call(ctx, s, "Runtime.evaluate", map[string]any{"expression": script + ";window.__awTeachControl?.('reset')", "contextId": id}, nil)
+	r.mu.Lock()
+	command := "reset"
+	if r.Paused {
+		command = "pause"
 	}
-	_ = r.conn.Call(ctx, s, "Runtime.evaluate", map[string]any{"expression": script + ";window.__awTeachControl?.('reset')"}, nil)
-	r.add(Action{Kind: "navigate", Page: target, Frame: tree.Tree.Frame.ID, URL: SanitizeURL(tree.Tree.Frame.URL)})
+	r.mu.Unlock()
+	expression := script + ";window.__awTeachControl?.(" + fmt.Sprintf("%q", command) + ")"
+	for _, id := range ids {
+		_ = r.conn.Call(ctx, s, "Runtime.evaluate", map[string]any{"expression": expression, "contextId": id}, nil)
+	}
+	_ = r.conn.Call(ctx, s, "Runtime.evaluate", map[string]any{"expression": expression}, nil)
+	if target == r.initial {
+		r.add(Action{Kind: "navigate", Page: target, Frame: tree.Tree.Frame.ID, URL: SanitizeURL(tree.Tree.Frame.URL)})
+	}
 	return nil
 }
 func (r *Recorder) add(a Action) int {
@@ -153,10 +213,16 @@ func (r *Recorder) add(a Action) int {
 	if r.Paused || r.stopped {
 		return 0
 	}
-	if len(r.Actions) >= 1000 {
+	if len(r.Actions) >= 1000 || (a.Page != "" && !r.declared[a.Page] && len(r.Actions) >= 999) {
 		r.Errors = append(r.Errors, "Action limit reached; demonstration is incomplete")
 		r.Paused = true
 		return 0
+	}
+	if a.Page != "" && !r.declared[a.Page] {
+		meta := r.metadata[a.Page]
+		r.declared[a.Page] = true
+		_, openerTracked := r.declared[meta.Opener]
+		r.Actions = append(r.Actions, Action{ID: len(r.Actions) + 1, Kind: "tab_open", Page: a.Page, URL: SanitizeURL(meta.URL), Opener: meta.Opener, Observed: openerTracked && meta.Observed, At: time.Now().UTC()})
 	}
 	a.ID = len(r.Actions) + 1
 	a.At = time.Now().UTC()
@@ -199,7 +265,7 @@ func (r *Recorder) events() {
 			r.frames[p.Frame.ID] = SanitizeURL(p.Frame.URL)
 			page := r.pages[m.Session]
 			r.mu.Unlock()
-			if p.Frame.ParentID == "" {
+			if p.Frame.ParentID == "" && page != "" {
 				r.mu.Lock()
 				observed := len(r.Actions) > 0
 				r.mu.Unlock()
@@ -253,26 +319,56 @@ func (r *Recorder) events() {
 			}
 		case "Target.targetCreated":
 			var p struct {
-				Info struct{ TargetID, Type, OpenerID string } `json:"targetInfo"`
+				Info PageInfo `json:"targetInfo"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
 			r.mu.Lock()
 			allowed := false
 			for _, id := range r.pages {
-				if id == p.Info.OpenerID {
+				if id == p.Info.Opener {
 					allowed = true
 				}
 			}
 			r.mu.Unlock()
+			r.mu.Lock()
+			allowed = allowed && !r.known[p.Info.ID]
+			if allowed {
+				p.Info.URL = SanitizeURL(p.Info.URL)
+				p.Info.Observed = !r.Paused
+				r.metadata[p.Info.ID] = p.Info
+			}
+			r.mu.Unlock()
 			if allowed && p.Info.Type == "page" {
+				r.add(Action{Kind: "tab_switch", Page: p.Info.ID})
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
-					if err := r.attach(ctx, p.Info.TargetID); err != nil {
+					if err := r.attach(ctx, p.Info.ID); err != nil {
 						r.fail("Popup capture unavailable")
 					}
 				}()
 			}
+		case "Target.targetDestroyed":
+			var p struct {
+				ID string `json:"targetId"`
+			}
+			_ = json.Unmarshal(m.Params, &p)
+			r.mu.Lock()
+			tracked := r.declared[p.ID]
+			manual := r.manualClose[p.ID]
+			for session, target := range r.pages {
+				if target == p.ID {
+					delete(r.pages, session)
+					delete(r.contexts, session)
+					delete(r.scripts, session)
+				}
+			}
+			delete(r.manualClose, p.ID)
+			r.mu.Unlock()
+			if tracked {
+				r.add(Action{Kind: "tab_close", Page: p.ID, Observed: !manual})
+			}
+
 		}
 	}
 	r.mu.Lock()
@@ -375,6 +471,8 @@ func (r *Recorder) Snapshot() ([]Action, []string, bool) {
 	return append([]Action{}, r.Actions...), append([]string{}, r.Errors...), r.Paused
 }
 func (r *Recorder) Stop(ctx context.Context) {
+	r.attachMu.Lock()
+	defer r.attachMu.Unlock()
 	_ = r.Control(ctx, "flush")
 	time.Sleep(50 * time.Millisecond)
 	_ = r.Control(ctx, "stop")
@@ -395,8 +493,21 @@ func (r *Recorder) Stop(ctx context.Context) {
 func Skill(goal string, actions []Action) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Browser procedure\n\nGoal: %s\n\nStatus: draft. Sign in before running. Resolve fresh targets and stop on ambiguity.\n\n", goal)
+	labels := map[string]int{}
 	for _, a := range actions {
+		if a.Page != "" && labels[a.Page] == 0 {
+			labels[a.Page] = len(labels) + 1
+		}
 		fmt.Fprintf(&b, "%d. %s %s %s", a.ID, a.Kind, a.Target.Role, a.Target.Name)
+		if a.Page != "" {
+			fmt.Fprintf(&b, " in tab %d", labels[a.Page])
+		}
+		if a.Kind == "tab_open" && a.Observed {
+			fmt.Fprintf(&b, " (wait for the popup opened by tab %d; do not open a duplicate)", labels[a.Opener])
+		}
+		if a.Kind == "tab_close" && a.Observed {
+			b.WriteString(" (wait for the website to close this tab)")
+		}
 		if a.URL != "" {
 			fmt.Fprintf(&b, " on %s", a.URL)
 		}
