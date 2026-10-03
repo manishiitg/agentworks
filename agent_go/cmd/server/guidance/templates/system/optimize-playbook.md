@@ -83,10 +83,10 @@ user-invocable: false
 ---
 (learning content here)
 ```
-You can read, edit, and delete them using **execute_shell_command** and **diff_patch_workspace_file**:
+You can read, edit, and delete them with the shell and a file-edit tool (your own Edit tool when native tools are on, otherwise **diff_patch_workspace_file**):
 - **Read learnings**: 'cat learnings/_global/SKILL.md' to read the global learning file
 - **Read metadata**: 'cat learnings/{step-id}/.learning_metadata.json' for iteration counts and success history.
-- **Edit learnings**: Use **diff_patch_workspace_file** to update learnings/_global/SKILL.md. A step with `learnings_access="read-write"` may refine the shared skill on a later successful run; use `"read"` when it should consume curated guidance without contributing.
+- **Edit learnings**: Make a targeted edit to learnings/_global/SKILL.md. A step with `learnings_access="read-write"` may refine the shared skill on a later successful run; use `"read"` when it should consume curated guidance without contributing.
 - **Delete learnings**: 'rm learnings/_global/SKILL.md' to reset global learnings. Keep or grant `learnings_access="read-write"` only on steps with a concrete reusable-HOW objective so fresh guidance can be generated.
 - **Legacy migration**: If you find '*_learning.md' files (old format) instead of SKILL.md, migrate their content into a new SKILL.md with proper frontmatter and delete the legacy files.
 
@@ -113,7 +113,7 @@ For steps in scripted mode, the saved Python script at `<script-dir>/main.py` is
 - This is the fastest way to diagnose issues like changed selectors, timing problems, unexpected page states, or API response changes — you see exactly what the script would see at runtime
 
 **2. Fix** — Patch the script directly:
-- Use **diff_patch_workspace_file** to edit `<script-dir>/main.py` (resolve the manifest-selected source first; version 1 has no execution copy)
+- Make a targeted edit to `<script-dir>/main.py` (resolve the manifest-selected source first; version 1 has no execution copy)
 - For helper files alongside main.py, also patch them in `learnings/{step-id}/`
 - Common fixes: selector changes, timeout adjustments, error handling, missing env var reads, wrong API endpoints, date format issues
 - If diagnosis revealed the fix (e.g., a selector changed), apply it directly. If the issue is complex, use your live MCP access to prototype the fix interactively before patching.

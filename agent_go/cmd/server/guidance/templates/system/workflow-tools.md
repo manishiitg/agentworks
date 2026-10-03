@@ -38,7 +38,8 @@ nothing to answer with, and the call fails as "not registered for session".
 The function-style names in this catalog are logical workflow tool names;
 they do not mean every tool is exposed natively by `api-bridge`. In a coding
 CLI, the native bridge exposes only `execute_shell_command`,
-`diff_patch_workspace_file`, `agent_browser`, and `get_api_spec`. Never try
+`diff_patch_workspace_file` (not when your own tools are on: edit with them),
+`agent_browser`, and `get_api_spec`. Never try
 `api-bridge.list_executions`, `api-bridge.query_step`, or another catalog name
 as a native bridge call. For every non-native tool, call
 `get_api_spec(tool_name="<name>")` first, then use

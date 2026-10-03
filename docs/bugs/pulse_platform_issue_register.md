@@ -1,3 +1,9 @@
+## Full mode: no bridge edit tool — PLAT-396
+
+[PLAT-396](pulse_platform/coding-agent-bridge/plat-396.md), fixed on `main`, not
+deployed: with native tools on, the CLI edits natively and
+`diff_patch_workspace_file` is not offered; kept for mcp_only, Pi and step agents.
+
 ## Chats read other workflows only when attached — PLAT-395
 
 [PLAT-395](pulse_platform/security-sandbox/plat-395.md), fixed on `main`, not

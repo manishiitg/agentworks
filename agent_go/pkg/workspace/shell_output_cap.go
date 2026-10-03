@@ -139,7 +139,7 @@ func annotateKnownShellFailures(result ShellCommandResult) ShellCommandResult {
 		"... [quoting hint: this is almost always prose escaped twice, not a typo. Text carried through a tool call is already escaped; escaping it again yields a backslash before the quote, and that backslash does NOT escape the quote — it ends the string. " +
 		"Do NOT rewrite the same text into the same literal; it will fail identically. " +
 		"Move the text out of the code (write it to its own file and read it back), or use a triple-quoted block with a delimiter the text does not contain, and write the file with a QUOTED heredoc delimiter (<< 'EOF', not << EOF) so the shell does not re-escape the body. " +
-		"For a targeted change prefer diff_patch_workspace_file over rewriting the whole file.] ...\n"
+		"For a targeted change prefer a targeted edit (your own Edit tool, or diff_patch_workspace_file without native tools) over rewriting the whole file.] ...\n"
 	return result
 }
 

@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
+
+- **Decided (owner).** With native tools on, `diff_patch_workspace_file` is not offered; the CLI edits with
+  its own tools inside the sandbox. `mcp_only` chats, Pi and workflow step agents keep it; the bridge shell
+  stays everywhere.
+- **Why.** Two edit tools for the same file only split the model's choice; the sandbox already refuses
+  protected files.
+- **Where.** `admitsBridgeTool` in mcpagent `agent/coding_agents_bridge.go`.
+  [PLAT-396](bugs/pulse_platform/coding-agent-bridge/plat-396.md).
+
 ### 2026-10-03 — Chats read other workflows only when attached — PLAT-395
 
 - **Decided (owner).** A chat (Builder, generic chat, delegated workers) reads its own workflow and the
