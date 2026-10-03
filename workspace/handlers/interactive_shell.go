@@ -48,11 +48,21 @@ func interactiveShellPromptCommand(sandboxed bool) string {
 	cmd := `PS1='\[\e[1m\]${PWD##*/}\[\e[0m\] \$ '`
 	if sandboxed {
 		cmd += `; cd() { if [ "$#" -eq 0 ] || [ "$1" = "$HOME" ]; then builtin cd -- "$AGENTWORKS_START_DIR"; else builtin cd "$@"; fi; }`
+		// The private home has no ~/.bashrc, so nothing turned colours on: ls, grep and diff printed everything in the one text colour
+		// (all green in the Homebrew scheme). Once per shell: GNU tools get --color=auto, BSD ls (a Mac) gets CLICOLOR.
+		cmd += `; if [ -z "$AGENTWORKS_COLOURS" ]; then AGENTWORKS_COLOURS=1; if ls --color=auto -d . >/dev/null 2>&1; then alias ls='ls --color=auto' grep='grep --color=auto' egrep='egrep --color=auto' fgrep='fgrep --color=auto' diff='diff --color=auto'; else export CLICOLOR=1; fi; fi`
+		// Ubuntu's "command not found" helper reads a database the sandbox cannot open and printed a Python crash report for any typo (or for
+		// `nvm` before it is installed). Plain bash wording instead. Then the person's own ~/.bashrc (in the private home, where `nvm` and
+		// similar installers put themselves) is read once, last, so their settings win.
+		cmd += `; if [ -z "$AGENTWORKS_RC" ]; then AGENTWORKS_RC=1; command_not_found_handle() { echo "bash: $1: command not found" >&2; return 127; }; [ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"; fi`
 	}
 	return cmd
 }
 
 const interactiveShellSession = "shell"
+
+// interactiveShellHistoryLines is how far back the terminal can be scrolled (tmux's history for the pane).
+const interactiveShellHistoryLines = 50000
 
 var interactiveShellID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`)
 
@@ -294,8 +304,11 @@ func StartInteractiveShell(c *gin.Context) {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
 		}
 	}
-	tmuxStart := fmt.Sprintf("%s -f /dev/null -S %s new-session -d -s %s -x %d -y %d %s -l",
-		shellQuote(realTmux()), shellQuote(socket), interactiveShellSession, cols, rows, shell)
+	// The options are set before the session exists (start-server first, so they apply to its first pane): mouse reporting so the browser's
+	// wheel scrolls tmux's own history (tmux redraws the screen itself, so the browser has no scrollback of its own: with the mouse off a wheel
+	// did nothing, or cycled the shell's command history), a long history, and no tmux status bar.
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse on \; set-option -g status off \; new-session -d -s %s -x %d -y %d %s -l`,
+		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {
 		// tmux makes its socket owner-only. The service reaches it (has-session, resize, stop) through the slot's group,

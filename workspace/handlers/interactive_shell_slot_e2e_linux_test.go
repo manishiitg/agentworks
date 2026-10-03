@@ -96,7 +96,7 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	defer conn.Close()
 	// The service's own .env sits two folders above the docs folder (<app>/data/docs -> <app>/.env).
 	platformEnv := filepath.Join(filepath.Dir(filepath.Dir(docs)), ".env")
-	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; " +
+	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; alias ls grep > aliases.txt 2>&1; nosuchcommand_zz > cnf.txt 2>&1; " +
 		"cat " + shellQuote(platformEnv) + " > env.txt 2>&1; ls " + shellQuote(filepath.Join(docs, "_users")) + " > users.txt 2>&1; " +
 		"echo done > done.txt\r"
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(script)); err != nil {
@@ -122,6 +122,14 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	// The short prompt (just the folder name), not bash's user@host:/full/path.
 	if ps1 := read("ps1.txt"); !strings.Contains(ps1, "${PWD##*/}") || strings.Contains(ps1, `\u@\h`) || strings.Contains(ps1, `\w\$`) {
 		t.Errorf("the prompt must be the short one: %q", ps1)
+	}
+	// Output is coloured: the private home has no ~/.bashrc, so the shell sets the colour aliases itself.
+	if aliases := read("aliases.txt"); !strings.Contains(aliases, "ls --color=auto") || !strings.Contains(aliases, "grep --color=auto") {
+		t.Errorf("ls and grep must be coloured: %q", aliases)
+	}
+	// A mistyped command says "command not found" in plain words; Ubuntu's helper crashed here (it cannot open its database in the sandbox).
+	if cnf := read("cnf.txt"); !strings.Contains(cnf, "nosuchcommand_zz: command not found") || strings.Contains(cnf, "crashed") || strings.Contains(cnf, "Traceback") {
+		t.Errorf("a missing command must give the plain message: %q", cnf)
 	}
 	// An empty cd returns to the project folder the terminal started in, not the private home.
 	if want, err := filepath.EvalSymlinks(abs); err == nil {

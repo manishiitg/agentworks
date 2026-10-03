@@ -74,6 +74,13 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 	if !strings.Contains(string(screen), "a $ echo HOME=") || strings.Contains(string(screen), "@") {
 		t.Fatalf("the prompt must be just the folder name: %s", screen)
 	}
+	// Command output is coloured (the private home has no ~/.bashrc to do it): GNU tools get --color aliases, BSD ls reads CLICOLOR.
+	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "echo CLR=$CLICOLOR:$(alias ls 2>&1)", "Enter").Run()
+	time.Sleep(700 * time.Millisecond)
+	screen, _ = exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
+	if !strings.Contains(string(screen), "CLR=1:") && !strings.Contains(string(screen), "--color=auto") {
+		t.Fatalf("the sandboxed terminal must colour ls: %s", screen)
+	}
 	// An empty cd returns to the folder the terminal started in, not the private home it would otherwise land in.
 	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "cd ..; cd ~; echo CD1=$PWD; cd /; cd; echo CD2=$PWD", "Enter").Run()
 	time.Sleep(1500 * time.Millisecond)

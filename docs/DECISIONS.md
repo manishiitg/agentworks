@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found"
+
+- **Found (user).** The wheel did nothing; the tmux status bar showed at the bottom; `ls`/`grep` were one colour; `nvm install 24` (nvm not installed) printed Ubuntu's Python
+  "command-not-found has crashed" report, because its database cannot be opened inside the sandbox.
+- **Done.** tmux starts with `mouse on`, `history-limit 50000`, `status off` (the browser has no scrollback of its own, tmux draws the screen). A sandboxed shell sets colour
+  aliases (GNU) or `CLICOLOR` (BSD), defines a plain `command_not_found_handle`, and sources the person's own `~/.bashrc` once (the private home, where `nvm` puts itself).
+  Tested: Mac (sandboxed, unconfined, wheel), Linux non-slot, and as a user's own account on Excellence and Confida.
+- **Open.** Whether the nvm installer itself works inside the sandbox is not yet tested as a slot user.
 ### 2026-10-03 — Coding CLI confinement has no switches: the platform decides, and servers fail closed
 
 - **User decision.** Test with Full native tools everywhere, never run a server
