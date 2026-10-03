@@ -37,7 +37,8 @@ func TestEveryProviderOptionDeclaresAnOwnReasoningEffort(t *testing.T) {
 	}
 }
 
-// Both profiles default to Codex with GPT-6 Luna. Claude Code remains a
+// The parent defaults to GPT-6.1 Sol and the child to GPT-6 Luna on Codex.
+// Claude Code remains a
 // selectable engine with Sonnet 5.5 as its default and Opus 5.5 as an option.
 func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 	profiles := BuiltinAgentProfiles()
@@ -60,7 +61,7 @@ func TestSparkQuillDefaultModelsAndReasoningEfforts(t *testing.T) {
 		profileID, optionID, wantModel, wantEffort string
 	}{
 		{"sparkquill", "claude-code", "claude-sonnet-5-5", "high"},
-		{"sparkquill", "codex-cli", "gpt-6-luna", "medium"},
+		{"sparkquill", "codex-cli", "gpt-6.1-sol", "medium"},
 		{"sparkquill", "agy-cli", "gemini-3.8-flash-high", "high"},
 		{"sparkquill-child", "claude-code", "claude-sonnet-5-5", "medium"},
 		{"sparkquill-child", "codex-cli", "gpt-6-luna", "high"},

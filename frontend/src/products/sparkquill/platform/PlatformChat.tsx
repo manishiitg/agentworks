@@ -38,8 +38,8 @@ const CHILD_PROFILE_VERSION = 1
  * FamilyFile's comment) and this role's own model. A role that has never
  * picked a model falls back to ITS OWN profile's product.yaml default for
  * the current engine (provider_options[].model_id) rather than the other
- * role's pick or a shared legacy value. Both currently default to GPT-6 Luna
- * on Codex, but either role can choose a different model without silently
+ * role's pick or a shared legacy value. The parent defaults to GPT-6.1 Sol
+ * and the child to GPT-6 Luna on Codex; either can choose a model without
  * overwriting the other's choice.
  */
 export async function familyRuntime(role: 'parent' | 'child'): Promise<{ engine?: string; model?: string }> {
