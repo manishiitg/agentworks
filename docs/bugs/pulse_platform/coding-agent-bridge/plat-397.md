@@ -24,6 +24,14 @@ reviewer keeps using it.
 - Prompt section `native-subagents` (Full CLI chats only) says so; the
   `run_in_background` description in workflow-tools names the same scope.
 
+## Found in owner testing (2026-10-04)
+
+- Codex got the section but ran a read-only plan review on its own
+  `spawn_agent` ("where it is available" left room; in a CLI the tool is
+  reached through search_tools). The rule is now firm: a review that must not
+  change anything goes to `run_in_background` with `access_mode="read_only"`,
+  never the CLI's own subagents, with how to find the tool.
+
 ## Left
 
 - Nothing; removal was considered and rejected for the two uses above.

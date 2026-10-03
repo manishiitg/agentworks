@@ -216,7 +216,8 @@ var promptSections = []promptSection{
 }
 
 const nativeSubagentsGuidance = `## Subagents and background work
-Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly. Use ` + "`run_in_background`" + `, where it is available, only for (1) an independent reviewer that must stay read-only (` + "`access_mode=\"read_only\"`" + `; your own subagents can write whatever you can) and (2) a long supervision loop that should keep going after this turn, such as running steps, reading results, fixing and rerunning.`
+Use your own subagents for parallel lookups, analysis and edits within this turn. ` + "`execute_step`" + ` and ` + "`run_full_workflow`" + ` already run in the background; call them directly.
+A review, audit or check that must not change anything is NOT a job for your own subagents: they can write whatever you can. Start it with ` + "`run_in_background`" + ` and ` + "`access_mode=\"read_only\"`" + ` (find it with search_tools / get_api_spec if it is not a direct tool), which the platform holds read-only. Use ` + "`run_in_background`" + ` also for a long supervision loop that should keep going after this turn (run steps, read results, fix, rerun).`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.
