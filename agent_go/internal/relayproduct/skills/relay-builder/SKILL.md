@@ -5,11 +5,26 @@ Use the existing workflow plan tools to create and edit a Relay. Read the curren
 ## Graph
 
 - `message_sequence` with `authored_prompt: true` is the agent node. Store the user's system prompt in `system_prompt` and ordered message templates in `items` as `user_message`. Select the execution model in the step's `execution_llm` configuration.
-- `regular` with `script_only: true` is the Python node. Save its `main.py` through the existing script path. For JSON handoff to another node, set `context_output: result.json` and write valid JSON to `os.path.join(os.environ["STEP_OUTPUT_DIR"], "result.json")`. Stdout is a log; `context_output` declares a file and never collects stdout. Let failed output writes raise an error; do not swallow permission errors or invent alternate output locations. A script failure stops the run.
+- `regular` with `script_only: true` is the Python node. Save its `main.py` through the existing script path. For JSON handoff, set `context_output: result.json` and call the built-in `agentworks_output.set_output(value)` helper shown below. It persists structured data in the assigned output folder; the user need not manage files or install a package. Existing direct result.json writes under STEP_OUTPUT_DIR still work. Stdout is a log; context_output alone never collects it. Let serialization and write errors raise; a script failure stops the run.
 - `branch` is deterministic. Use `value_path` and `value_cases`; put model judgment in an earlier agent that returns JSON.
 - Give every nonterminal agent or script an explicit `next_step_id`. Every route must reach the designated output agent. Do not add loops, joins, orphan steps, human-input nodes, or nested route switches.
 
 ## Inputs, outputs, and integrations
+
+Python structured output:
+
+```python
+from agentworks_output import set_output
+
+# Perform the step's work, then publish JSON-compatible data.
+set_output({"text": extracted_text})
+```
+
+A later authored message uses `{{steps.extract_pdf_text.output.text}}`. The
+helper rejects values that cannot be represented as JSON (including NaN and
+Infinity), writes atomically, and propagates persistence errors. Multiple
+successful calls replace the value; the last call is the step's output. It is
+available through the shared sandboxed command runner in all products.
 
 - User messages and system prompts may reference `{{input}}` for the whole caller JSON object, `{{input.field}}` for a required field, and `{{steps.id.output.field}}` for an earlier output. `INPUT` is already the root object, so do not use `{{input.INPUT}}`. Missing paths fail the run. Each authored agent must produce valid JSON in `result.json`; the designated output agent's JSON is the API result.
 - Include required data explicitly in each user message. `context_dependencies` does not inject previous outputs into authored prompts. "Use the previous step output" alone supplies no data. Use a concrete template such as `Extract invoice fields. Source: {{input.filename}}. PDF text: {{steps.extract_pdf_text.output.text}}. Return only the JSON object.` Earlier scripts and agents must have saved result.json for these references. Inspect the rendered message and saved outputs during the sample run.

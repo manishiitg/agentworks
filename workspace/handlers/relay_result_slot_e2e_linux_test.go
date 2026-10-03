@@ -50,6 +50,9 @@ func TestRelayScriptWritesJSONAsItsSlotE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	outside := filepath.Join(docs, "ungranted.txt")
+	if err := os.WriteFile(filepath.Join(output, "step_helper.py"), []byte("VALUE = True\n"), 0660); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(outside, []byte("UNGRANTED"), 0660); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +60,19 @@ func TestRelayScriptWritesJSONAsItsSlotE2E(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST("/execute", ExecuteShellCommand)
-	command := "set -eu; id -un; printf '%s' '{\"ok\":true}' > result.json; python3 -m pip list --format=json >/dev/null; if cat " + shellQuote(outside) + " >/dev/null 2>&1; then echo UNGRANTED_VISIBLE; exit 1; fi; echo RESULT_WRITTEN_PIP_OK"
+	helperCode := `import agentworks_output, step_helper
+agentworks_output.set_output({"ok": step_helper.VALUE})
+try:
+    with open(agentworks_output.__file__, "w") as file:
+        file.write("tampered")
+except PermissionError:
+    pass
+else:
+    raise AssertionError("platform helper was writable")
+`
+	command := "set -eu; id -un; python3 -B -c " + shellQuote(helperCode) + "; python3 -m pip list --format=json >/dev/null; if cat " + shellQuote(outside) + " >/dev/null 2>&1; then echo UNGRANTED_VISIBLE; exit 1; fi; echo RESULT_WRITTEN_PIP_OK"
 	body, _ := json.Marshal(map[string]any{"command": command, "working_directory": outputRel, "timeout": 30, "use_shell": true,
+		"extra_env":    map[string]string{"STEP_OUTPUT_DIR": output, "PYTHONPATH": output},
 		"folder_guard": map[string]any{"enabled": true, "read_paths": []string{outputRel}, "write_paths": []string{outputRel}}})
 	req := httptest.NewRequest(http.MethodPost, "/execute", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

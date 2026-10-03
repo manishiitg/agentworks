@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Python steps publish structured values through set_output
+
+Use the shared sandbox's set_output(value) helper for Python JSON handoff.
+The platform persists result.json for inspection and recovery; users pass data
+through existing step-output references without managing files. Stdout stays
+a log, and existing direct output writes remain compatible.
+Ticket: [PLAT-415](bugs/pulse_platform/security-sandbox/plat-415.md).
+
 ### 2026-10-04 — A stuck managed browser is closed and the command retried once; very tall full-page screenshots are refused
 
 - **Decided.** In headless mode, when `open` or a read-only command (snapshot, get, is, screenshot, console, errors) fails with a timeout or a

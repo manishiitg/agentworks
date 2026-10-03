@@ -1,3 +1,10 @@
+## Structured Python step output API — PLAT-415
+
+[PLAT-415](pulse_platform/security-sandbox/plat-415.md), fixed on main;
+deployment pending. Shared set_output(value) helper persists structured JSON
+for downstream references without user-managed files; slot runtime imports
+and artifact permissions are verified.
+
 ## Stop browser finds nothing, stuck tab recovery, tall screenshots — PLAT-414
 
 [PLAT-414](pulse_platform/browser/plat-414.md), fixed on main, not deployed. The browser list and cleanup now see Chrome; a stuck

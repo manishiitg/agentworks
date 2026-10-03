@@ -120,6 +120,24 @@ Core env vars injected into scripted runs include:
 
 This is the same bridge used by CLI-style providers that require HTTP tool routing.
 
+## Structured Python output
+
+Sandboxed Python commands can publish structured data without managing output
+files. The shared runner supplies this helper without a package installation:
+
+```python
+from agentworks_output import set_output
+
+set_output({"text": extracted_text})
+```
+
+The helper serializes JSON with non-finite numbers rejected, then atomically
+persists result.json under the assigned STEP_OUTPUT_DIR. Persistence errors
+raise. Multiple successful calls replace the value. Configure the existing
+context_output as result.json when another step consumes it. Relay authored
+messages use references such as {{steps.extract_pdf_text.output.text}}.
+Stdout remains a log; existing direct output-file writes remain supported.
+
 ## Mode Resolution and Precedence
 
 The execution loop resolves the model in two layers:
