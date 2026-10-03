@@ -84,3 +84,35 @@ func TestSandboxHomeIsGroupAccessibleForSlotAccounts(t *testing.T) {
 		}
 	}
 }
+
+// A command as the owner's slot in Code runs nvm's default Node (a non-interactive `sh -c` never reads ~/.bashrc), so the agent and
+// the terminal use the same node.
+func TestUserHomeUsesNvmDefaultNode(t *testing.T) {
+	home := t.TempDir()
+	for _, version := range []string{"v22.22.1", "v24.9.0", "v24.21.0"} {
+		bin := filepath.Join(home, ".config", "nvm", "versions", "node", version, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(bin, "node"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alias := filepath.Join(home, ".config", "nvm", "alias")
+	_ = os.MkdirAll(alias, 0o755)
+	_ = os.WriteFile(filepath.Join(alias, "default"), []byte("24\n"), 0o644)
+	env := SlotHomeEnv([]string{"HOME=/srv/agents/home", "PATH=/usr/bin:/bin"}, "/x", []string{"/x"}, home)
+	if got := homeEnvValue(env, "HOME"); got != home {
+		t.Fatalf("HOME = %q, want %q", got, home)
+	}
+	if got := homeEnvValue(env, "PATH"); !strings.HasPrefix(got, filepath.Join(home, ".config", "nvm", "versions", "node", "v24.21.0", "bin")+":") {
+		t.Fatalf("PATH = %q: the newest v24 must lead", got)
+	}
+	_ = os.WriteFile(filepath.Join(alias, "default"), []byte("node\n"), 0o644)
+	if got := nvmDefaultNodeBin(home); !strings.Contains(got, "v24.21.0") {
+		t.Fatalf("alias node must pick the newest: %q", got)
+	}
+	if got := homeEnvValue(SlotHomeEnv([]string{"PATH=/usr/bin"}, "/x", []string{"/x"}, t.TempDir()), "PATH"); got != "/usr/bin" {
+		t.Fatalf("no nvm: PATH must be unchanged, got %q", got)
+	}
+}

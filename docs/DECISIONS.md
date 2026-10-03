@@ -19,6 +19,20 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code: one home per person (terminal and agent); smooth scroll in the browser
+
+- **Decided (owner).** Code uses one home per person, not per project: install nvm or log in to gh once and every Code project has it.
+  Workflows and Crew keep per-project homes (unattended, shareable, bot-triggered).
+- **Found (user).** The Code agent's shell had HOME=/srv/agents/home (native mode keeps the real host HOME in privateSandboxHome), so it
+  did not see the terminal's nvm and ran Node 22 while the terminal ran Node 24.
+- **Done.** A Code command run as the owner's slot (terminal, and the agent's execute_shell_command in a Code project) gets the slot's own
+  home (`/srv/<app>/slots/home/<slot>`) as HOME plus a Landlock write grant (`Isolator.UserHome`); nvm's default Node from that home leads
+  PATH, so a non-interactive `sh -c` runs the same node. Other slot commands get the project's private home whatever the native setting
+  (`SlotHomeEnv`). Users without a slot keep the per-project home. Verified on Excellence and Confida.
+- **Scroll.** tmux no longer uses the alternate screen (`terminal-overrides smcup@:rmcup@`), so lines that scroll off reach the browser
+  terminal's own scrollback: the wheel scrolls locally and smoothly. The server-driven scroll message is removed. After a reconnect the
+  browser only has the visible screen; older output stays in tmux.
+
 ### 2026-10-03 — Code terminal: copy works again; the wheel scrolls through the server
 
 - **Found (user).** Nothing could be selected or copied in the terminal: tmux's mouse mode (turned on for wheel scrolling) took every drag.

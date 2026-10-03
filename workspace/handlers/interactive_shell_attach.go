@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
@@ -153,51 +151,14 @@ func AttachInteractiveShell(c *gin.Context) {
 			}
 		case websocket.TextMessage:
 			var control struct {
-				Type   string `json:"type"`
-				Cols   int    `json:"cols"`
-				Rows   int    `json:"rows"`
-				Lines  int    `json:"lines"`
-				Cancel bool   `json:"cancel"`
+				Type string `json:"type"`
+				Cols int    `json:"cols"`
+				Rows int    `json:"rows"`
 			}
-			if json.Unmarshal(data, &control) != nil {
-				continue
-			}
-			switch control.Type {
-			case "resize":
+			if json.Unmarshal(data, &control) == nil && control.Type == "resize" {
 				cols, rows := clampShellSize(control.Cols, control.Rows)
 				_ = pty.Setsize(terminal, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
-			case "scroll":
-				interactiveShellScroll(socket, control.Lines, control.Cancel)
 			}
 		}
 	}
-}
-
-// interactiveShellScroll moves through the shell's history: lines > 0 scrolls back, < 0 forward, cancel leaves the history view.
-// The browser sends it for the mouse wheel. tmux runs with its mouse off, so a drag is the browser's own selection and copy works;
-// before, tmux's mouse mode took every drag and nothing could be selected (Excellence 2026-10-03). copy-mode -e leaves the history
-// view by itself at the bottom.
-func interactiveShellScroll(socket string, lines int, cancel bool) {
-	ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
-	defer stop()
-	target := interactiveShellSession
-	if cancel {
-		inMode, _ := exec.CommandContext(ctx, realTmux(), "-S", socket, "display-message", "-p", "-t", target, "#{pane_in_mode}").Output()
-		if strings.TrimSpace(string(inMode)) == "1" {
-			_ = exec.CommandContext(ctx, realTmux(), "-S", socket, "send-keys", "-t", target, "-X", "cancel").Run()
-		}
-		return
-	}
-	if lines == 0 {
-		return
-	}
-	direction := "scroll-up"
-	if lines < 0 {
-		direction, lines = "scroll-down", -lines
-	}
-	if lines > 200 {
-		lines = 200
-	}
-	_ = exec.CommandContext(ctx, realTmux(), "-S", socket, "copy-mode", "-e", "-t", target, ";",
-		"send-keys", "-t", target, "-X", "-N", strconv.Itoa(lines), direction).Run()
 }

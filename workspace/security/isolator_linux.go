@@ -57,6 +57,9 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	if err != nil {
 		return LandlockPolicy{}, err
 	}
+	if iso.Slot != "" && iso.UserHome != "" {
+		writes = append(writes, canonicalPath(iso.UserHome))
+	}
 	// Blocked paths are deny rules. A SQLite WAL/SHM sidecar is intentionally
 	// absent until SQLite first writes in WAL mode; a missing deny target cannot
 	// grant access and must not prevent the entire sandbox from starting. We
@@ -206,6 +209,8 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	// with a bare permission error -- see sandbox_tool_env.go.
 	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()), policy.WorkDir, policy.WritePaths)
 	if iso.Slot != "" {
+		// As the user's own account: always the project's private home, the same as their Code terminal (see SlotHomeEnv).
+		cmd.Env = SlotHomeEnv(cmd.Env, policy.WorkDir, policy.WritePaths, iso.UserHome)
 		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
 		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)
 		// Run as the user's slot account: the namespaces and the policy are created after the switch.

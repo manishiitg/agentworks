@@ -232,8 +232,15 @@ func ExecuteShellCommand(c *gin.Context) {
 		}
 
 		// Use isolated execution with filesystem restrictions
+		// A Code command run as its owner's slot gets the slot's own home: one home per person for Code, shared by the terminal
+		// and the agent (installs and logins made once). Workflows and Crew keep their per-project home.
+		userHome := ""
+		if userSlot != "" && slots.IsCodeProjectDir(docsDir, workingDir) {
+			userHome = slots.HomeOf(userSlot)
+		}
 		isolator := &security.Isolator{
 			Slot:              userSlot,
+			UserHome:          userHome,
 			ExtraEnv:          slotExtraEnv,
 			ReadPaths:         req.FolderGuard.ReadPaths,
 			WritePaths:        req.FolderGuard.WritePaths,

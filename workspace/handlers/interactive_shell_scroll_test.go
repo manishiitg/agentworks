@@ -17,9 +17,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// The browser terminal draws tmux's screen, so it has no scrollback of its own. tmux keeps a long history with its mouse OFF (so a
-// drag is the browser's selection and copy works); the page's wheel sends {"type":"scroll"} and that scrolls tmux's history, and
-// {"type":"scroll","cancel":true} (sent before the next keystroke) returns to the prompt. Opt-in like the other shell checks.
+// The browser terminal keeps the history itself: tmux runs with its mouse OFF (a drag is the browser's selection, so copy works) and
+// without the alternate screen (smcup@:rmcup@), so lines that scroll off the top are sent to the browser, whose scrollback the wheel
+// scrolls locally and smoothly. Opt-in like the other shell checks (needs tmux; on Linux also the Landlock launcher).
 func TestInteractiveShellWheelScrollsTheHistory(t *testing.T) {
 	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
 		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
@@ -69,29 +69,25 @@ func TestInteractiveShellWheelScrollsTheHistory(t *testing.T) {
 	if got := tmux("show-options", "-gv", "history-limit"); got != "50000" {
 		t.Fatalf("history-limit = %q, want 50000", got)
 	}
-	if got := tmux("show-options", "-gv", "status"); got != "off" {
-		t.Fatalf("status = %q: the tmux status bar should be hidden", got)
+	if got := tmux("show-options", "-gv", "terminal-overrides"); !strings.Contains(got, "smcup@:rmcup@") {
+		t.Fatalf("terminal-overrides = %q: without smcup@:rmcup@ tmux uses the alternate screen and the browser keeps no history", got)
 	}
 	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/attach?shell_id="+id+"&cols=100&rows=24", nil)
 	if err != nil {
 		t.Fatalf("attach: %v", err)
 	}
 	defer conn.Close()
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("seq 1 300\r")); err != nil {
-		t.Fatal(err)
+	// The attach must not switch the browser to the alternate screen (ESC [ ? 1049 h), or its scrollback stays empty.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var stream strings.Builder
+	for {
+		_, data, readErr := conn.ReadMessage()
+		if readErr != nil {
+			break
+		}
+		stream.Write(data)
 	}
-	time.Sleep(1500 * time.Millisecond)
-	// What the page sends for the mouse wheel.
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"scroll","lines":15}`)); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(800 * time.Millisecond)
-	if tmux("display-message", "-p", "-t", "shell", "#{pane_in_mode}") != "1" || tmux("display-message", "-p", "-t", "shell", "#{scroll_position}") == "" {
-		t.Fatal("a scroll message must scroll the history back")
-	}
-	_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"scroll","cancel":true}`))
-	time.Sleep(600 * time.Millisecond)
-	if tmux("display-message", "-p", "-t", "shell", "#{pane_in_mode}") != "0" {
-		t.Fatal("cancel must return to the prompt, so typing reaches the shell")
+	if strings.Contains(stream.String(), "\x1b[?1049h") {
+		t.Fatal("tmux switched the browser terminal to the alternate screen")
 	}
 }

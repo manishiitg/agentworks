@@ -16,6 +16,10 @@ import (
 )
 
 type Isolator struct {
+	// UserHome, set with Slot for Code (the owner's terminal and agent shell), is the slot account's own home: HOME for the
+	// command and a write grant, so installs and logins are made once per person, not per project (owner decision 2026-10-03).
+	// Empty: the project's private home (workflows, Crew, users without a slot).
+	UserHome string
 	// Slot, when set (Linux only), runs the command as that slot account through sudo and
 	// slotctl instead of as the service account (see the slots package).
 	Slot string

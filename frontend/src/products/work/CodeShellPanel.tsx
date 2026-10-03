@@ -218,30 +218,9 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
     attemptRef.current = 0
     connect()
 
-    // The wheel scrolls tmux's history on the server (tmux's mouse is off so a drag is the browser's selection and copy works).
-    // Wheel deltas add up so a trackpad scrolls smoothly; the first keystroke after scrolling back returns to the prompt.
-    let wheelPixels = 0
-    let scrolledBack = false
-    term.attachCustomWheelEventHandler(event => {
-      const socket = socketRef.current
-      if (!socket || socket.readyState !== WebSocket.OPEN) return false
-      wheelPixels += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
-      const lines = Math.trunc(wheelPixels / 16)
-      if (lines !== 0) {
-        wheelPixels -= lines * 16
-        if (lines < 0) scrolledBack = true
-        socket.send(JSON.stringify({ type: 'scroll', lines: -lines }))
-      }
-      return false
-    })
     const input = term.onData(data => {
       const socket = socketRef.current
-      if (!socket || socket.readyState !== WebSocket.OPEN) return
-      if (scrolledBack) {
-        scrolledBack = false
-        socket.send(JSON.stringify({ type: 'scroll', cancel: true }))
-      }
-      socket.send(encoder.encode(data))
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data))
     })
     const resize = term.onResize(({ cols, rows }) => {
       const socket = socketRef.current

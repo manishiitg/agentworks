@@ -83,9 +83,9 @@ func TestShellWithABlockedFileRunsAsTheUsersSlotE2E(t *testing.T) {
 	if raw, _ := os.ReadFile(filepath.Join(abs, "db", "db.sqlite")); string(raw) != "SECRET-DB" {
 		t.Errorf("the real blocked file changed: %q", raw)
 	}
-	// The command's HOME is a private home inside the project, never the service account's.
-	if !strings.Contains(out, "HOME="+abs) && !strings.Contains(out, "HOME="+filepath.Join(docs, project)) {
-		t.Errorf("HOME must be inside the project: %q", out)
+	// A Code command as the owner's slot has the slot's own home (the same as their terminal), never the service account's.
+	if want := slots.HomeOf(slot); want == "" || !strings.Contains(out, "HOME="+want+"\n") {
+		t.Errorf("HOME must be the slot's own home %q: %q", want, out)
 	}
 	if !strings.Contains(out, "WROTE_PROJECT") {
 		t.Errorf("the project must stay writable: %q", out)

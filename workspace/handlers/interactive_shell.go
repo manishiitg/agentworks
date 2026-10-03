@@ -293,6 +293,7 @@ func StartInteractiveShell(c *gin.Context) {
 		BrowserSession:    req.FolderGuard.BrowserSession,
 		AllowPTY:          true,
 		Slot:              slot,
+		UserHome:          slots.HomeOf(slot),
 		Interactive:       true,
 		ExtraEnv:          extraEnv,
 	}
@@ -335,18 +336,22 @@ func StartInteractiveShell(c *gin.Context) {
 	// Every sandboxed terminal, a user's slot account included, gets the project's private home: the slot used to keep the service
 	// account's real HOME, so a login shell read /srv/agents/home/.profile ("Permission denied") and the terminal and the coding agent
 	// (whose shell already uses this home) saw different installs (Excellence 2026-10-03).
-	if !unconfined {
+	if !unconfined && isolator.UserHome != "" {
+		// As the owner's slot: the slot's own home, the same one the Code agent's shell uses (one home per person for Code).
+		environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(isolator.UserHome), shellQuote(filepath.Join(isolator.UserHome, ".config")))
+	} else if !unconfined {
 		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))
 		}
 	}
 	// The options are set before the session exists (start-server first, so they apply to its first pane): tmux's mouse off, so a drag
-	// is the browser's own selection and copy works (with it on, tmux took every drag); the wheel scrolls tmux's history through the
-	// page's "scroll" message instead (interactiveShellScroll). A long history, and no tmux status bar.
+	// is the browser's own selection and copy works (with it on, tmux took every drag); no alternate screen (smcup@:rmcup@), so lines
+	// that scroll off the top reach the browser terminal's own scrollback and the wheel scrolls there, smoothly and without a server
+	// round trip (the earlier server-driven scroll moved in steps). A long history, and no tmux status bar.
 	// tmux's own key and mouse commands are switched off (the browser terminal is one shell, not a tmux): its right-click menu (split, kill,
 	// respawn) covered the browser's copy/paste menu, and the Ctrl-b prefix could split panes or open windows the page cannot show. The
 	// wheel bindings, which scroll the history, stay.
-	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -ga terminal-overrides ',xterm*:smcup@:rmcup@' \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
 		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellTmuxQuietBindings, interactiveShellServerAccess(slot), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {

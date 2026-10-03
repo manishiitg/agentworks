@@ -155,9 +155,9 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	if users := read("users.txt"); users != "" && !strings.Contains(users, "denied") && !strings.Contains(users, "No such file") {
 		t.Errorf("the shell could list everyone's folders: %.200q", users)
 	}
-	// HOME is the project's private home, never the service account's (a login shell read /srv/agents/home/.profile).
-	if home := read("home.txt"); !strings.Contains(home, "/zz-shell-slot-e2e/.sandbox-cache/home") {
-		t.Errorf("HOME = %q, want the project's private home", home)
+	// HOME is the slot's own home (one per person for Code), never the service account's (a login shell read /srv/agents/home/.profile).
+	if home, want := read("home.txt"), slots.HomeOf(slot); want == "" || home != want {
+		t.Errorf("HOME = %q, want the slot's own home %q", home, want)
 	}
 	// The service account can talk to the slot's tmux (tmux refuses other users unless granted): without that it could not
 	// stop or find the shell, and shells piled up. tmux's own menus and prefix commands are off; the wheel still scrolls.
