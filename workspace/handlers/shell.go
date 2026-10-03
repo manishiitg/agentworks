@@ -39,6 +39,29 @@ func resolveGuardWritePath(wp, docsDir string) (string, error) {
 	return physicalPath, nil
 }
 
+// isExistingHostGrant reports whether a write path outside the workspace
+// boundary is an already-existing absolute directory that is safe to leave to
+// the isolator: it is not created or resolved through anything, so the
+// boundary check's concern (directories created anywhere as the service
+// account) does not apply. A missing path, a relative path, any ".." segment
+// and anything lexically inside the workspace (symlink redirects) still fail.
+func isExistingHostGrant(wp, docsDir string) bool {
+	if !filepath.IsAbs(wp) {
+		return false
+	}
+	for _, segment := range strings.Split(filepath.ToSlash(wp), "/") {
+		if segment == ".." {
+			return false
+		}
+	}
+	clean := filepath.Clean(wp)
+	if rel, err := filepath.Rel(docsDir, clean); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	info, err := os.Stat(clean)
+	return err == nil && info.IsDir()
+}
+
 // ExecuteShellCommand handles POST /api/execute
 func ExecuteShellCommand(c *gin.Context) {
 	var req models.ExecuteShellRequest
@@ -178,6 +201,12 @@ func ExecuteShellCommand(c *gin.Context) {
 		// directories anywhere (absolute paths, .. escapes, symlink redirects).
 		for _, wp := range req.FolderGuard.WritePaths {
 			physicalPath, wpErr := resolveGuardWritePath(wp, docsDir)
+			if wpErr != nil && isExistingHostGrant(wp, docsDir) {
+				// A folder the person granted outside the workspace (Downloads,
+				// a project folder): it already exists and is mounted as it is.
+				// It is never created here.
+				continue
+			}
 			if wpErr != nil {
 				c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 					Success: false,

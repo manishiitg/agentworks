@@ -38,6 +38,21 @@ Design references for the linked runtime decisions:
   Backend admission/authentication regressions and UI action/state tests cover
   the behavior. Source changes only; this task does not deploy to RTS.
 
+### 2026-10-03 — Granted folders outside the workspace pass the folder-guard write-path check (amends 2026-09-30)
+- The 2026-09-30 boundary check rejected every absolute write path outside the
+  workspace with HTTP 400. Local sessions legitimately carry such grants
+  (Downloads, a project folder), so every shell command from those sessions
+  failed with "Invalid folder guard write path" — including bare `pwd` — and
+  scheduled Pulses and Code chats could do nothing.
+- The hole that check closed was directories created anywhere as the service
+  account. An absolute path outside the workspace is now accepted only when it
+  already exists as a directory, and it is never created or resolved through
+  anything. A missing outside path, a relative path, any `..` segment, a file,
+  and anything lexically inside the workspace (symlink redirects) still fail
+  with 400 and create nothing; the 400-and-nothing-created handler test is
+  unchanged.
+- Tests: `TestIsExistingHostGrant` in `shell_guard_writepath_test.go`.
+
 ### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined)
 
 - **Decision (user):** the terminal should have the same settings as the coding agents, locally and on servers.
