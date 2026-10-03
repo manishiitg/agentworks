@@ -13,6 +13,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deploy notices in Slack are back on by default (reverses the opt-in earlier the same day)
+
+- **Decision (user).** `deploy.sh` posts "deploying" and "finished" (or the "finished with a problem" warning) to the Slack channel again. Silence one run with
+  `DEPLOY_SLACK_NOTIFY=0` (or `false`, `no`, `off`). The webhook is read from `DEPLOY_SLACK_WEBHOOK_URL` or `~/.config/agentworks/deploy-slack-webhook`
+  as before; with none set nothing is sent. The false "problem" notices that made the opt-in attractive came from the early health probe, fixed on
+  2026-10-01 (deploys now wait for the agent), so a healthy release no longer reports a problem.
+- **Checked** against a local fake receiver (the real channel was not posted to): default success 2 messages, default failing run 2 messages (start + warning),
+  `=0` and `=off` none, `=1` 2; the deploy's exit code is kept in every case. Both the start and finish notice respect the switch.
+
 ### 2026-10-03 — A better-looking terminal in Code: xterm.js plus its official add-ons, themed like the coding-tool terminals
 
 - **Decision (user):** a better designed terminal, using open source out of the box. We already use xterm.js (the engine behind VS Code, Hyper,
