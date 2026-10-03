@@ -25,6 +25,10 @@ type LandlockPolicy struct {
 	// subpath; the launcher bind-mounts each one read-only in its own mount
 	// namespace instead. Requires PrivateTmp (the namespaces).
 	ReadOnlyOverlays []string `json:"read_only_overlays,omitempty"`
+	// HiddenPaths are blocked paths inside a granted (readable or writable) path. Landlock cannot take access back
+	// from a subpath either, so the launcher mounts an empty, unreadable, read-only placeholder over each one in its
+	// own mount namespace: the command can neither read nor change the real file or folder.
+	HiddenPaths []string `json:"hidden_paths,omitempty"`
 }
 
 // SandboxCapability is safe to expose from the health endpoint. Detail must

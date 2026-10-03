@@ -25,18 +25,23 @@ var sandboxCapability SandboxCapability
 func (iso *Isolator) executeIsolatedLinuxPlatform(ctx context.Context, command string, args []string) (*exec.Cmd, func(), error) {
 	if abi, err := landlockABI(); err == nil && abi >= 1 {
 		policy, policyErr := iso.landlockPolicy()
-		if policyErr == nil && len(policy.ReadOnlyOverlays) > 0 && !landlockNamespacesAvailable() {
-			policyErr = fmt.Errorf("blocked-write paths inside writable paths need the launcher's namespaces")
+		if policyErr == nil && (len(policy.ReadOnlyOverlays) > 0 || len(policy.HiddenPaths) > 0) && !landlockNamespacesAvailable() {
+			policyErr = fmt.Errorf("blocked paths inside granted paths need the launcher's namespaces")
 		}
-		if policyErr == nil {
-			return iso.landlockCommand(ctx, policy, command, args)
-		} else if mountNamespaceAvailable() {
-			return iso.executeIsolatedMountNamespace(ctx, command, args)
-		} else {
-			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: Landlock cannot represent this Folder Guard policy and mount namespaces are unavailable: %w", policyErr)
+		if policyErr != nil {
+			// Never fall back to the mount-namespace backend here. It ignores the user's slot (the command ran as the
+			// service account) and leaves the rest of the host as the service account sees it: an agent's shell with
+			// a blocked db.sqlite in its project read the platform's .env and wrote the service account's home
+			// (Excellence 2026-10-03). A policy Landlock cannot carry is refused.
+			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: this Folder Guard policy cannot be enforced: %w", policyErr)
 		}
+		return iso.landlockCommand(ctx, policy, command, args)
 	}
 
+	// The mount-namespace backend cannot run a command as the user's slot account: never use it for one.
+	if iso.Slot != "" {
+		return nil, nil, errors.New("SANDBOX_UNAVAILABLE: running as the user's account needs Landlock")
+	}
 	if mountNamespaceAvailable() {
 		return iso.executeIsolatedMountNamespace(ctx, command, args)
 	}
@@ -68,11 +73,22 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// Landlock rules are additive. A narrower rule cannot revoke a write grant
 	// inherited from a writable parent. Reject those policies instead of
 	// silently weakening BlockedPaths/BlockedWritePaths precedence.
+	// A blocked path inside a granted one is hidden by the launcher (HiddenPaths); one that contains or equals a
+	// granted path cannot be expressed and is refused.
+	var hidden []string
 	for _, denied := range blocked {
+		inside := false
 		for _, allowed := range append(append([]string{}, reads...), writes...) {
-			if pathsOverlapByContainment(denied, allowed) {
+			if !pathsOverlapByContainment(denied, allowed) {
+				continue
+			}
+			if denied == allowed || !pathWithin(denied, allowed) {
 				return LandlockPolicy{}, fmt.Errorf("blocked path overlaps allowed path")
 			}
+			inside = true
+		}
+		if inside {
+			hidden = append(hidden, denied)
 		}
 	}
 	// A blocked-write path inside a writable one cannot be a Landlock rule
@@ -96,7 +112,7 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays, HiddenPaths: hidden}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {

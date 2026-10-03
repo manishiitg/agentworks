@@ -153,6 +153,9 @@ func enterPrivateTmp(policy LandlockPolicy) error {
 	if err := applyReadOnlyOverlays(policy.ReadOnlyOverlays); err != nil {
 		return err
 	}
+	if err := applyHiddenPaths(policy.HiddenPaths); err != nil {
+		return err
+	}
 	// The mount capability is for the steps above only.
 	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
 		return fmt.Errorf("clear ambient capabilities: %w", err)
@@ -213,6 +216,51 @@ func applyReadOnlyOverlays(paths []string) error {
 		keep := uintptr(st.Flags) & (unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC | unix.MS_NOATIME | unix.MS_NODIRATIME | unix.MS_RELATIME)
 		if err := unix.Mount("", path, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY|keep, ""); err != nil {
 			return fmt.Errorf("protect %s read-only: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// applyHiddenPaths mounts an empty placeholder (mode 000, read-only) over each blocked path, so the command can neither
+// read nor change the real file or folder although Landlock grants the folder around it. The placeholders are made in
+// the private /tmp and unlinked once mounted, so nothing the command can reach refers to them. A path that vanished
+// since the policy was built is skipped, like a read-only overlay.
+func applyHiddenPaths(paths []string) error {
+	for i, path := range paths {
+		var st unix.Stat_t
+		if err := unix.Lstat(path, &st); err != nil {
+			if errors.Is(err, unix.ENOENT) {
+				continue
+			}
+			return fmt.Errorf("hide %s: %w", path, err)
+		}
+		source := filepath.Join("/tmp", fmt.Sprintf(".agentworks-hidden-%d", i))
+		if st.Mode&unix.S_IFMT == unix.S_IFDIR {
+			if err := os.Mkdir(source, 0o000); err != nil {
+				return fmt.Errorf("hide %s: %w", path, err)
+			}
+		} else {
+			f, err := os.OpenFile(source, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o000)
+			if err != nil {
+				return fmt.Errorf("hide %s: %w", path, err)
+			}
+			_ = f.Close()
+		}
+		if err := unix.Mount(source, path, "", unix.MS_BIND, ""); err != nil {
+			return fmt.Errorf("hide %s: %w", path, err)
+		}
+		var fs unix.Statfs_t
+		if err := unix.Statfs(path, &fs); err != nil {
+			return fmt.Errorf("hide %s: %w", path, err)
+		}
+		keep := uintptr(fs.Flags) & (unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC | unix.MS_NOATIME | unix.MS_NODIRATIME | unix.MS_RELATIME)
+		if err := unix.Mount("", path, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY|keep, ""); err != nil {
+			return fmt.Errorf("hide %s read-only: %w", path, err)
+		}
+		if st.Mode&unix.S_IFMT == unix.S_IFDIR {
+			_ = os.Remove(source)
+		} else {
+			_ = unix.Unlink(source)
 		}
 	}
 	return nil

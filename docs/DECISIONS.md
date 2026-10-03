@@ -19,6 +19,21 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — SECURITY: a blocked file sent agent shells to a weaker sandbox, as the service account
+
+- **Found.** A Code agent installed nvm into the service account's home (`/srv/agents/home`). Traced: every Code agent shell call blocks the project's `db/db.sqlite`
+  (inside the writable project). Landlock cannot carve a subpath out of a grant, so `landlockPolicy()` failed and `ExecuteIsolated` silently fell back to the
+  mount-namespace backend. That backend ignores `Isolator.Slot` (ran as the service account, "root" in its namespace) and left the host as the service account sees it:
+  replayed as a slot user on Excellence it read the platform `.env` (server secrets) and could write the service home and the release folder. Other users' trees stayed hidden.
+  Affects every server with slots or Landlock (Excellence, Confida, RTS) since blocked paths were added to Code; the terminal was not affected (no blocked paths).
+- **Done.** Blocked paths inside a granted path become `HiddenPaths`: the launcher mounts an empty, mode-000, read-only placeholder over each (like the read-only overlays for
+  blocked-write paths). A policy Landlock cannot carry is refused, never downgraded; a slot command never uses the mount-namespace backend. Verified on Excellence as the user's
+  slot with the new launcher: runs as the slot, `db.sqlite` unreadable and read-only, `.env` unreadable, service home not writable, project writable, `HOME` is
+  `<project>/.sandbox-cache/home` (the same home as the Code terminal, so agent and terminal now share installs and logins, as the user asked).
+- **Open.** The launcher binary must ship with the release (normal deploy). Secrets in `.env` were readable by Code agent shells until deployed: rotation is the owner's call.
+  `TestLandlockEnforcesExternalFolderAccess` fails on Excellence with the released launcher too (pre-existing, not this change): a blocked-write folder that is only a read path
+  accepted a write; to investigate. A missing blocked file (e.g. `db.sqlite-wal`) cannot be hidden and could be created.
+
 ### 2026-10-03 — Gmail rules choose saved chat instructions or workflow routes
 
 - **Decision (user).** One Crew/Code can use different saved messages for different
