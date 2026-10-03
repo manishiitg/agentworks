@@ -19,6 +19,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Relay commands follow its product; prompt inspection stays private
+
+- Relay's `product.yaml` owns its command catalog as well as its builder prompt,
+  skill and tools. The shared composer selects commands by product and excludes
+  Pulse for Relay; the existing profile endpoint exposes metadata without adding
+  a generic Relay execution mode.
+- Generated instructions remain outside editable workspaces. The existing
+  hidden-file policy exposes a virtual, read-only `AGENTS.md` view of the selected
+  chat's last finalized prompt. Owner-private snapshots persist across restart,
+  recheck workspace access, and are removed on clear/delete.
+- Implementation, checks and deployment status: [PLAT-378](bugs/pulse_platform/frontend-chat/plat-378.md).
+
 ### 2026-10-03 — Workshop child costs retain the authorized launch identity
 
 The server records the launch user and channel in WorkshopConfig. Detached

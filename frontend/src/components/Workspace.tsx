@@ -4,6 +4,7 @@ import { Upload, FolderPlus, ChevronsDownUp, CheckSquare, X, Trash2, Loader2, Ey
 import { agentApi, workspaceApi } from '../services/api'
 import type { PlannerFile } from '../services/api-types'
 import PlannerFileList from './workspace/PlannerFileList'
+import { SessionInstructions } from './workspace/SessionInstructions'
 import { openWorkspaceFile } from '../utils/openWorkspaceFile'
 import CreateFolderDialog from './workspace/CreateFolderDialog'
 import MoveFileDialog from './workspace/MoveFileDialog'
@@ -16,6 +17,7 @@ import { useCapabilitiesStore } from '../stores/useCapabilitiesStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { useChatStore } from '../stores/useChatStore'
+import { activeWorkflowTabIdForPreset } from '../utils/workflowTabOwnership'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { usePresetApplication } from '../stores/useGlobalPresetStore'
@@ -337,6 +339,17 @@ export default function Workspace({
     if (showWorkflowsOverview || showSchedulesOverview) return null
     return workflowFolderPath
   }, [selectedModeCategory, showWorkflowsOverview, showSchedulesOverview, workflowFolderPath])
+
+  const instructionSessionId = useChatStore(state => {
+    const tabId = selectedModeCategory === 'workflow'
+      ? activeWorkflowTabIdForPreset(state.activeTabId, activeWorkflowPreset?.id ?? null, state.chatTabs)
+      : state.activeTabId
+    const tab = tabId ? state.chatTabs[tabId] : undefined
+    if (scopedWorkspacePath && tab?.metadata?.agentProfileWorkspace &&
+        publicWorkspacePathForUser(scopedWorkspacePath, authUser?.id).replace(/\/+$/, '') !==
+        publicWorkspacePathForUser(tab.metadata.agentProfileWorkspace, authUser?.id).replace(/\/+$/, '')) return undefined
+    return tab?.sessionId
+  })
 
   // Determine which folder to pass to the API based on mode
   const activeFolder = useMemo(() => {
@@ -1827,6 +1840,9 @@ export default function Workspace({
                   </p>
                 </div>
               ) : null}
+              {showHiddenFiles && canShowManagedFiles && instructionSessionId && (!searchQuery.trim() || 'agents.md system prompt'.includes(searchQuery.trim().toLowerCase())) && (
+                <SessionInstructions sessionId={instructionSessionId} />
+              )}
               <PlannerFileList
                 protectedRootPath={protectedRootPath}
                 files={filteredFiles}

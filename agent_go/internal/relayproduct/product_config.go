@@ -163,3 +163,12 @@ func BuilderSkill() (*llmtypes.Skill, error) {
 	return skills[0], nil
 }
 func BuilderDefinitionKey() (string, error) { return ChatDefinitionKey("builder") }
+
+// BuiltinAgentProfiles exposes product.yaml's command catalog through the
+// existing agent-profile API. Relay execution still uses the workflow runtime.
+func BuiltinAgentProfiles() ([]agentprofiles.Profile, error) {
+	if err := loadProduct(); err != nil {
+		return nil, err
+	}
+	return manifest.BuiltinProfiles(files, nil)
+}

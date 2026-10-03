@@ -22,7 +22,7 @@ import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
 import { PulseReviewFocusDialog } from './commands/PulseReviewFocusDialog'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { findCommand, findProductCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
+import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
 import { commandsApi } from '../api/commands'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
@@ -1070,6 +1070,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return isWorkflowMode && presetId ? state.getWorkflowById(presetId)?.workspace_path : undefined
   }) || activeWorkflowWorkspacePath || workflowPhaseWorkspacePath || workspaceActiveFolder
   const canWriteCommandWorkflow = useCanWriteWorkflow(commandWorkflowPath?.replace(/\/+$/, ''))
+  const useProductCommandCatalog = isProductProfile || (isRelaySurface && isWorkflowMode)
   const customCommandWorkspacePath = agentProfileWorkspace || (isWorkflowMode ? commandWorkflowPath : undefined) || undefined
   
   // Get queued messages from tab config
@@ -2058,7 +2059,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return cmd.validate(ctx)
   }, [buildCommandContext])
 
-  const canSelectPulseReview = !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+  const canSelectPulseReview = !isRelaySurface && !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
   useEffect(() => {
     if (pulseReviewPicker && (!canSelectPulseReview || pulseReviewPicker.tabId !== activeTabId || pulseReviewPicker.workspacePath !== commandWorkflowPath)) {
       setPulseReviewPicker(null)
@@ -2094,10 +2095,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const commandArgs = (firstSpace >= 0 ? withoutSlash.slice(firstSpace + 1) : '').trim()
     if (!commandName) return false
 
-    const cmd = isProductProfile
-      ? findProductCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+    const cmd = useProductCommandCatalog
+      ? findProductOrUserCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
       : findCommand(commandName, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-    if (!cmd && !isProductProfile) {
+    if (!cmd && !useProductCommandCatalog) {
       const modeScopedCommand = findCommandAnyMode(commandName)
       if (modeScopedCommand && commandModeCategory) {
         if (commandModeCategory === 'workflow' && modeScopedCommand.modes?.includes('workflow')) {
@@ -2135,7 +2136,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     clearInputState()
     cmd.execute(ctx)
     return true
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, isProductProfile])
+  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, clearInputState, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, useProductCommandCatalog])
 
   const getSubmitBlockReason = useCallback((): string | null => {
     if (!queryToSubmit?.trim()) return null
@@ -2400,7 +2401,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     closeComposerPickers()
 
     // Look up and execute the command from the registry
-    const cmd = isProductProfile
+    const cmd = useProductCommandCatalog
       ? findProductOrUserCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
       : findCommand(command, commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
     if (!cmd && findCommandAnyMode(command)) {
@@ -2441,7 +2442,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
     else setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, isProductProfile])
+  }, [terminalCommandPalette, tabSessionId, inputText, activeTabId, addToast, clearInputState, writeComposerText, applyWorkflowCommandRequirements, buildCommandContext, getCommandValidationError, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, canWriteCommandWorkflow, closeComposerPickers, useProductCommandCatalog])
 
   // Command management callbacks
   const handleEditCommand = useCallback((cmd: CommandDefinition) => {
@@ -3729,7 +3730,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         modeCategory={commandModeCategory}
         workshopMode={commandModeCategory === 'workflow' ? getEffectiveWorkflowModes().workshopMode : undefined}
         canWriteWorkflow={canWriteCommandWorkflow}
-        agentProfileId={activeTab?.metadata?.agentProfileId}
+        agentProfileId={isRelaySurface && isWorkflowMode ? 'relays' : activeTab?.metadata?.agentProfileId}
         workspacePath={customCommandWorkspacePath}
         {...(isWorkflowMode && !canWriteCommandWorkflow ? {} : {
           onCreateCommand: handleCreateCommand,

@@ -2658,6 +2658,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/live", api.handleLiveFeed).Methods("GET")
 	apiRouter.HandleFunc("/sessions/{session_id}/reconnect", api.handleReconnectSession).Methods("POST")
 	apiRouter.HandleFunc("/sessions/{session_id}/status", api.handleGetSessionStatus).Methods("GET")
+	apiRouter.HandleFunc("/sessions/{session_id}/instructions", api.handleGetSessionInstructions).Methods("GET")
 	// The product raw view receives only its owning chat's main terminal. All
 	// child-pane enumeration and controls remain behind runtime diagnostics.
 	apiRouter.HandleFunc("/sessions/{session_id}/main-terminal", api.handleGetMainTerminal).Methods("GET", "OPTIONS")
@@ -7313,6 +7314,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if err := llmAgent.FinalizeDefinition(streamCtx); err != nil {
 			sendError(fmt.Sprintf("Failed to finalize agent definition: %v", err), true)
 			return
+		}
+
+		// Preserve the finalized prompt for its owner's read-only workspace
+		// inspector, including API providers and chats restored after a restart.
+		if api.eventStore != nil && api.eventStore.IsDurableChatSession(sessionID) {
+			if err := saveSessionInstructions(GetUserIDFromContext(r.Context()), sessionID, req.SelectedFolder, mcpagent.ReadAgentSystemPrompt(streamCtx, llmAgent.GetUnderlyingAgent())); err != nil {
+				log.Printf("[INSTRUCTIONS] Failed to save prompt snapshot for session %s: %v", sessionID, err)
+			}
 		}
 
 		if api.internalPreparedAgent != nil && api.internalPreparedAgent(streamCtx, llmAgent.GetUnderlyingAgent()) {

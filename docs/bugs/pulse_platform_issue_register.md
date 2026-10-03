@@ -1,3 +1,9 @@
+## Relay commands and system prompt inspection — PLAT-378
+
+[PLAT-378](pulse_platform/frontend-chat/plat-378.md), implemented and locally
+verified; deployment pending. Relay commands come from its product manifest;
+hidden files offers an owner-private, read-only finalized prompt snapshot.
+
 ## RTS Providers shows $242.35 as an unattributed user — PLAT-377
 
 [PLAT-377](pulse_platform/cost-telemetry/plat-377.md), P2, fixed on main for

@@ -42,6 +42,7 @@ chat:
       - get_relay_releases
       - publish_relay
       - get_step_prompts
+      - manage_custom_commands
       - get_llm_config
       - list_schedules
       - create_schedule
@@ -82,6 +83,43 @@ profile:
   version: 1
   scope: global
   built_in: true
+  commands:
+    - name: design-graph
+      description: Create or refine the agents, scripts and branches in this Relay
+      icon: git-branch
+      prompt: |
+        Design or refine this Relay's graph using the relay-builder skill and registered plan tools. Read the current workflow.json and planning/plan.json first. Preserve user-authored prompts and per-step model choices. Define INPUT and the designated JSON output agent; validate the graph and describe saved changes. Ask for missing requirements before inventing behavior.
+        {{context}}
+    - name: test
+      description: Test the draft with sample inputs and inspect its JSON output
+      icon: check-circle
+      prompt: |
+        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and variable groups. Use the supplied sample input, or ask for required values; do not invent production inputs. Validate the graph, run_full_workflow with the configured group_name and serialized variables.INPUT, wait for completion, then inspect the run and final result.json. Report the actual output or failed step and error. Do not publish.
+        {{context}}
+    - name: publish
+      description: Publish the draft as a versioned Relay API
+      icon: globe
+      prompt: |
+        Publish this Relay's current draft as an API version. Follow the relay-builder skill: inspect existing releases with get_relay_releases, validate the draft, then use publish_relay. Report the exact returned version and content hash. Explain how callers select this version while later Builder edits remain in the draft. Do not publish a dashboard or report.
+        {{context}}
+    - name: versions
+      description: Inspect the active and previous published Relay versions
+      icon: layers
+      prompt: |
+        Use get_relay_releases to inspect this Relay's active and previous published API versions. Report the actual versions and hashes returned, and distinguish published versions from the editable draft. Do not publish or edit anything.
+        {{context}}
+    - name: setup-api
+      description: Configure JSON inputs and an API trigger for this Relay
+      icon: terminal
+      prompt: |
+        Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and a default variable group if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
+        {{context}}
+    - name: schedule
+      description: Configure a schedule and its input payload for this Relay
+      icon: bell-ring
+      prompt: |
+        Configure a Relay schedule using the relay-builder skill and registered schedule tools. Inspect existing schedules first, gather the user's timing, timezone and required INPUT payload, then create or update the requested schedule. Explain that schedules execute the current draft and later draft edits affect the next occurrence. Do not enable Pulse or conversational bot routes.
+        {{context}}
 
 branding:
   icon: ""

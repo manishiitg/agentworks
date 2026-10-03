@@ -14,9 +14,7 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
 import ChatArea, { type ChatAreaRef } from '../ChatArea'
-import { setProductCommands } from '../../commands/registry'
-import { loadAgentworksProductCommands } from '../../commands/agentworksProductData'
-import { toAgentworksCommandDefinitions } from '../../commands/agentworksProductCommands'
+import { useWorkflowProductCommands } from '../../commands/useWorkflowProductCommands'
 import { WorkflowChatTabs } from './WorkflowChatTabs'
 import { resolveWorkspaceLayout } from './workspaceLayoutResolver'
 import { useRunningWorkflowsStore, useShowRunningDrawer } from '../../stores/useRunningWorkflowsStore'
@@ -87,16 +85,8 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   // The agent's open_workspace_view calls open the toolbar's views here.
   useWorkflowViewPresentations(workflowTabId)
 
-  // Builder slash commands ship in agentworksproduct/product.yaml. Same mount
-  // contract as the product surfaces: register on mount, clear on unmount so
-  // a stale menu never offers flows the current surface has no backing for.
-  useEffect(() => {
-    let cancelled = false
-    loadAgentworksProductCommands()
-      .then((commands) => { if (!cancelled) setProductCommands(toAgentworksCommandDefinitions(commands)) })
-      .catch(() => { if (!cancelled) setProductCommands([]) })
-    return () => { cancelled = true; setProductCommands([]) }
-  }, [])
+  const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
+  useWorkflowProductCommands(isRelaySurface)
 
   return (
     <ChatArea

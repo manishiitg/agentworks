@@ -25,6 +25,7 @@ import (
 // so no CLI process, model request or business tool executes.
 func TestCodePreparedSystemPrompt(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	// Pin the platform: a person's own Mac, where coding CLIs run Full CLI unconfined.
 	origOS := cliHostOS
 	cliHostOS = "darwin"
@@ -101,6 +102,18 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 		t.Fatal("prepared query did not stop")
 	}
 	prompt, view := result.prompt, result.definition
+	snapshotPath, err := sessionInstructionPath("alice", "code:site")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotData, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var instructionSnapshot sessionInstructionSnapshot
+	if err := json.Unmarshal(snapshotData, &instructionSnapshot); err != nil || instructionSnapshot.Content != prompt {
+		t.Fatalf("inspector does not contain the finalized system prompt: %v", err)
+	}
 	loadedReviewer, registeredProjectTool := false, false
 	for _, skill := range view.SkillDefinitions {
 		if skill.Name == "code-reviewer" && strings.Contains(skill.Content, "check requested behavior") {

@@ -17,6 +17,13 @@ Use the existing workflow plan tools to create and edit a Relay. Read the curren
 - Validate the graph with the existing plan tool. For a caller sample, use `run_full_workflow` with a configured `group_name` and `variables.INPUT` as a serialized JSON object, wait for completion, then inspect the saved run and final `result.json` before reporting a pass. Use `execute_step` only when the user wants to test one node in isolation. The Graph pane follows saved plan changes live.
 - Use `get_relay_releases` for active and previous published versions. Use `publish_relay` only after validating the draft. Report the exact version and hash returned. Publishing freezes an API version; subsequent chat edits remain in the draft.
 
+## Custom chat commands
+
+Use `manage_custom_commands` when the user asks to create, edit or delete a
+saved chat command. Keep it in this Relay's workspace, set workflow mode for
+its command metadata, and use the user's instructions. Product commands are
+provided by product.yaml; do not replace them with goal or dashboard commands.
+
 ## Published run boundaries
 
 - Anyone with visibility may execute a published Relay and poll their own API runs. Publishing, editing, and schedule configuration require owner or write access. Execution uses the owner's configured credentials and quota; never attach the caller's personal credentials.

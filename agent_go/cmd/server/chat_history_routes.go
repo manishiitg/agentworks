@@ -1240,7 +1240,7 @@ func deleteChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 		// Never remove another user's log just because the caller deleted a
 		// same-named transcript of their own.
 		if durableOwner == "" || durableOwnedByCaller {
-			if err := api.eventStore.DeleteDurableChatSession(sessionID); err != nil {
+			if err := api.deleteDurableChatSessions([]string{sessionID}); err != nil {
 				http.Error(w, "conversation was deleted but its durable event log could not be removed", http.StatusInternalServerError)
 				return
 			}

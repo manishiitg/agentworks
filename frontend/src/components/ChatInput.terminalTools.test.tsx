@@ -24,6 +24,7 @@ import { TerminalFocusLayout } from './TerminalFocusLayout'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useLLMStore } from '../stores/useLLMStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useModeStore } from '../stores/useModeStore'
 import { agentApi } from '../services/api'
 import { setProductCommands, setUserCommands } from '../commands/registry'
@@ -56,6 +57,7 @@ describe('terminal toolbar shared tools', () => {
     </TerminalFocusLayout>
   </QueryClientProvider>)
   beforeEach(async () => {
+    useProductSurfaceStore.setState({ productSurface: 'agentworks' })
     useModeStore.setState({ selectedModeCategory: 'workflow' })
     useLLMStore.setState({ providerManifestLoaded: true, llmConfigLocked: false })
     useChatStore.setState({ activeTabId: 'A', chatTabs: { A: terminalTab('A'), B: terminalTab('B') }, activeSessionsCache: [], tabEvents: {} })
@@ -71,7 +73,7 @@ describe('terminal toolbar shared tools', () => {
   })
   afterEach(async () => {
     await act(async () => root?.unmount())
-    client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear()
+    useProductSurfaceStore.setState({ productSurface: 'agentworks' }); client?.clear(); host?.remove(); setUserCommands([]); setProductCommands([]); vi.restoreAllMocks(); send.mockClear()
   })
   const toolbar = () => host.querySelector('[data-testid="native-terminal-toolbar"]')!
   const button = (label: string) => toolbar().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
@@ -84,6 +86,34 @@ describe('terminal toolbar shared tools', () => {
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
   }
 
+
+  it('uses the Relay catalog for both command picker and typed commands, excluding Pulse', async () => {
+    await act(async () => {
+      useProductSurfaceStore.setState({ productSurface: 'relays' })
+      setProductCommands([{ command: 'publish', description: 'Publish Relay API version', modes: ['workflow'], requiredWorkshopMode: 'workshop', icon: null, source: 'product', execute: ctx => ctx.onSubmit('Publish Relay version') }])
+      renderComposer()
+    })
+    await act(async () => button('Browse commands').click())
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    expect(options.map(node => node.textContent)).toEqual([expect.stringContaining('/publish')])
+    expect(document.body.textContent).not.toContain('/pulse')
+    await act(async () => options[0].click())
+    expect(send).toHaveBeenCalledWith('Publish Relay version', expect.objectContaining({ sourceTabId: 'A' }))
+    send.mockClear()
+    await act(async () => useChatStore.getState().setTabViewMode('A', 'formatted'))
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '/pulse')
+      textarea().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    // Pulse may be sent as ordinary user text, but cannot execute its API action.
+    expect(document.body.textContent).not.toContain('Run one complete Pulse')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), '/publish')
+      textarea().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(send).toHaveBeenCalledWith('Publish Relay version', expect.objectContaining({ sourceTabId: 'A' }))
+  })
 
   it('executes from a standalone picker without opening or consuming the chat draft', async () => {
     await act(async () => setUserCommands([{ command: 'terminal-review', description: 'Review in this session', icon: 'terminal', source: 'user', modes: ['workflow'], execute: ctx => { expect(ctx.beforeSlash).toBe(''); ctx.onSubmit('review via app command') } }]))
