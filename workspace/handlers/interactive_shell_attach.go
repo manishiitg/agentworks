@@ -79,7 +79,7 @@ func AttachInteractiveShell(c *gin.Context) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	command := fmt.Sprintf("TERM=xterm-256color exec tmux -S %s attach -t %s", shellQuote(socket), interactiveShellSession)
+	command := fmt.Sprintf("TERM=xterm-256color exec %s -S %s attach -t %s", shellQuote(realTmux()), shellQuote(socket), interactiveShellSession)
 	cmd, cleanup, err := iso.ExecuteIsolated(ctx, command, nil)
 	if err != nil {
 		shellError(c, http.StatusInternalServerError, "Failed to set up the sandbox: "+err.Error())

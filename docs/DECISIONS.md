@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The terminal starts on a Mac (tmux by full path)
+
+- **Found (user asked whether the terminal shows locally).** On macOS the shell did not start: the sandbox's trimmed PATH lacks Homebrew's
+  folder, so `tmux` was "not found". The workspace service now runs tmux by its full path (`/usr/bin/tmux`, else the one on the service's
+  PATH), for the start and the attach. Checked on a Mac: the shell starts, writes only inside its project, and cannot read or write
+  another project; typing through the attach works. The Linux tests (Excellence, slot and non-slot) still pass. Inside a Mac shell
+  `tmux` itself is not on PATH (same trimmed PATH as the agent's shell tool).
+
 ### 2026-10-03 — Google account sign-in and compact layout across products
 
 - **Decided.** The shared Email panel selects the platform Google app flow for

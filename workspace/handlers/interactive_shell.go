@@ -93,11 +93,14 @@ func interactiveShellSlot(c *gin.Context) (slot string, status int, message stri
 	return "", 0, ""
 }
 
-// realTmux is the tmux binary itself: the service's PATH starts with the slot front-end shim, which must not see
-// these -S calls.
+// realTmux is the tmux binary itself, by full path: the service's PATH starts with the slot front-end shim, which must not see
+// these -S calls, and the sandboxed command's own PATH is trimmed (Homebrew's tmux is not on it on a Mac).
 func realTmux() string {
 	if _, err := os.Stat("/usr/bin/tmux"); err == nil {
 		return "/usr/bin/tmux"
+	}
+	if path, err := exec.LookPath("tmux"); err == nil {
+		return path
 	}
 	return "tmux"
 }
@@ -233,8 +236,8 @@ func StartInteractiveShell(c *gin.Context) {
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
 	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color", shellQuote(filepath.Join(dir, "tmp")))
-	tmuxStart := fmt.Sprintf("tmux -f /dev/null -S %s new-session -d -s %s -x %d -y %d %s -l",
-		shellQuote(socket), interactiveShellSession, cols, rows, shell)
+	tmuxStart := fmt.Sprintf("%s -f /dev/null -S %s new-session -d -s %s -x %d -y %d %s -l",
+		shellQuote(realTmux()), shellQuote(socket), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {
 		// tmux makes its socket owner-only. The service reaches it (has-session, resize, stop) through the slot's group,
