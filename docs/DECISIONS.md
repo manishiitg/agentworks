@@ -13,6 +13,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder
+
+- **Found (user).** An empty `cd` went to "some root folder" with no way to tell where it was or how to get back: in a sandboxed terminal `$HOME` is the shell's private
+  home inside the project (`.sandbox-cache/home`), which bash showed as `~`.
+- **Done.** The terminal's `PROMPT_COMMAND` defines `cd` so that no argument (or `~`) goes to the folder the terminal started in (`AGENTWORKS_START_DIR`); `cd -`,
+  `cd <path>` and `cd ..` are unchanged. The prompt names the folder (`${PWD##*/}`), so the private home reads `home`, not `~`. An unconfined terminal (the person's own
+  machine, real home) keeps the normal `cd`. Tested on a Mac (sandboxed and unconfined) and as a user's own account on Excellence and Confida.
+
 ### 2026-10-03 — Code's terminal: Homebrew colours and a short prompt
 
 - **Decision (user).** The terminal was plain white on black (it only set a background; xterm's default text is white), and on a server the prompt was

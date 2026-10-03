@@ -74,6 +74,14 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 	if !strings.Contains(string(screen), "a $ echo HOME=") || strings.Contains(string(screen), "@") {
 		t.Fatalf("the prompt must be just the folder name: %s", screen)
 	}
+	// An empty cd returns to the folder the terminal started in, not the private home it would otherwise land in.
+	exec.Command(realTmux(), "-S", socket, "send-keys", "-t", "shell", "cd ..; cd ~; echo CD1=$PWD; cd /; cd; echo CD2=$PWD", "Enter").Run()
+	time.Sleep(1500 * time.Millisecond)
+	screen, _ = exec.Command(realTmux(), "-S", socket, "capture-pane", "-p", "-t", "shell").Output()
+	start := filepath.Join(docs, own)
+	if !strings.Contains(string(screen), "CD1="+start+"\n") || !strings.Contains(string(screen), "CD2="+start+"\n") {
+		t.Fatalf("an empty cd must return to the starting folder %s: %s", start, screen)
+	}
 	if code, _ := call("/stop", map[string]any{"shell_id": id}); code != http.StatusOK || interactiveShellRunning(socket) {
 		t.Fatal("stop did not end the shell")
 	}

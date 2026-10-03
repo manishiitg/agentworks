@@ -37,10 +37,20 @@ import (
 
 const interactiveShellRoot = "/tmp/.agentworks-shells"
 
-// interactiveShellPromptCommand gives the terminal a short prompt: just the current folder's name in bold, not bash's default
-// user@host:/full/path (on a server that is a path with a user id and a project id in it, far wider than the screen). bash runs
-// PROMPT_COMMAND before every prompt, so this holds whatever /etc/bash.bashrc or a profile sets PS1 to.
-const interactiveShellPromptCommand = `PS1='\[\e[1m\]\W\[\e[0m\] \$ '`
+// interactiveShellPromptCommand is what bash runs before every prompt (PROMPT_COMMAND), so it holds whatever /etc/bash.bashrc or a
+// profile sets. It gives the terminal a short prompt: just the current folder's name in bold, not bash's default
+// user@host:/full/path (on a server a path with a user id and a project id in it, far wider than the screen). In a sandboxed terminal
+// it also makes an empty `cd` (and `cd ~`) return to the folder the terminal started in: there the real "home" is a private folder
+// inside the project (.sandbox-cache/home), which an empty cd used to land in with no hint where it was or how to get back.
+// AGENTWORKS_START_DIR holds the starting folder. A terminal with the person's real home (unconfined, their own machine) keeps cd as is.
+func interactiveShellPromptCommand(sandboxed bool) string {
+	cmd := `PS1='\[\e[1m\]${PWD##*/}\[\e[0m\] \$ '`
+	if sandboxed {
+		cmd += `; cd() { if [ "$#" -eq 0 ] || [ "$1" = "$HOME" ]; then builtin cd -- "$AGENTWORKS_START_DIR"; else builtin cd "$@"; fi; }`
+	}
+	return cmd
+}
+
 const interactiveShellSession = "shell"
 
 var interactiveShellID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`)
@@ -271,7 +281,10 @@ func StartInteractiveShell(c *gin.Context) {
 	// server keeps the sandbox (and its private /tmp) alive for the shell.
 	// TMPDIR points at the shell's own folder: the per-command scratch is
 	// removed as soon as this start command returns.
-	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand))
+	environment := fmt.Sprintf("TMPDIR=%s TERM=xterm-256color PROMPT_COMMAND=%s", shellQuote(filepath.Join(dir, "tmp")), shellQuote(interactiveShellPromptCommand(!unconfined)))
+	if !unconfined {
+		environment += fmt.Sprintf(" AGENTWORKS_START_DIR=%s", shellQuote(workingDir))
+	}
 	if slot == "" && !unconfined {
 		if home := interactiveShellHome(docsDir, req.FolderGuard.WritePaths, workingDir); home != "" {
 			environment += fmt.Sprintf(" HOME=%s XDG_CONFIG_HOME=%s", shellQuote(home), shellQuote(filepath.Join(home, ".config")))

@@ -96,7 +96,7 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 	defer conn.Close()
 	// The service's own .env sits two folders above the docs folder (<app>/data/docs -> <app>/.env).
 	platformEnv := filepath.Join(filepath.Dir(filepath.Dir(docs)), ".env")
-	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; " +
+	script := "id -un > who.txt; tty > tty.txt 2>&1; echo \"$PS1\" > ps1.txt; cd /; cd; pwd > cdhome.txt; " +
 		"cat " + shellQuote(platformEnv) + " > env.txt 2>&1; ls " + shellQuote(filepath.Join(docs, "_users")) + " > users.txt 2>&1; " +
 		"echo done > done.txt\r"
 	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(script)); err != nil {
@@ -120,8 +120,14 @@ func TestInteractiveShellRunsAsTheUsersSlotE2E(t *testing.T) {
 		t.Errorf("the shell runs as %q, want the user's slot %q", got, slot)
 	}
 	// The short prompt (just the folder name), not bash's user@host:/full/path.
-	if ps1 := read("ps1.txt"); !strings.Contains(ps1, `\W`) || strings.Contains(ps1, `\u@\h`) || strings.Contains(ps1, `\w\$`) {
+	if ps1 := read("ps1.txt"); !strings.Contains(ps1, "${PWD##*/}") || strings.Contains(ps1, `\u@\h`) || strings.Contains(ps1, `\w\$`) {
 		t.Errorf("the prompt must be the short one: %q", ps1)
+	}
+	// An empty cd returns to the project folder the terminal started in, not the private home.
+	if want, err := filepath.EvalSymlinks(abs); err == nil {
+		if got := read("cdhome.txt"); got != want {
+			t.Errorf("an empty cd went to %q, want the starting folder %q", got, want)
+		}
 	}
 	if tty := read("tty.txt"); !strings.HasPrefix(tty, "/dev/pts/") {
 		t.Errorf("the shell has no terminal: tty said %q", tty)
