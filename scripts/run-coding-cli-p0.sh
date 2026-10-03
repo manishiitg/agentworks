@@ -231,6 +231,25 @@ for raw_provider in "${provider_list[@]}"; do
       -run "$test_regex" -count=1 -timeout=35m -args -coding-cli-p0-live
   fi
 
+  # Sandbox contract (PLAT-394): the same file-access checks against every CLI
+  # in Full CLI mode through the real launch options, under the lock the host
+  # applies (Seatbelt on a Mac, Landlock on Linux via AGENTWORKS_LANDLOCK_RUNNER).
+  # Verdicts come from the disk, not from the model's report. Pi is bridge-only
+  # and has no native tools to confine.
+  contract_provider=""
+  case "$provider" in
+    claude-code) contract_provider="Claude" ;;
+    codex-cli)   contract_provider="Codex" ;;
+    cursor-cli)  contract_provider="Cursor" ;;
+    muse-cli)    contract_provider="Muse" ;;
+    agy-cli)     contract_provider="Agy" ;;
+  esac
+  if [[ -n "$contract_provider" ]]; then
+    RUN_CLI_SANDBOX_CONTRACT=1 CLI_SANDBOX_CONTRACT_PROVIDERS="$contract_provider" \
+      run_required_go_tests go -C "$MCPAGENT_DIR" test -json ./agent \
+      -run '^TestCLISandboxContract$' -count=1 -timeout=15m
+  fi
+
   # The release-blocking application contract must exercise the CLI with the
   # real MCP agent bridge active. This launches a plan step, performs a bridge
   # file operation, and proves its completion AUTO-NOTIFICATION contains only

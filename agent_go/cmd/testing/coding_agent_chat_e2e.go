@@ -309,6 +309,9 @@ type codingAgentChatE2EClient struct {
 	workshopMode   string
 	enabledServers string
 	timeout        time.Duration
+	// workflowContextPaths attach other workflows to the chat (read-only), like
+	// a #workflow mention.
+	workflowContextPaths []string
 }
 
 // ensureUserAuth obtains the JWT required by /api routes. MCP_API_TOKEN is a
@@ -427,6 +430,9 @@ func (c *codingAgentChatE2EClient) startQueryWithResponse(ctx context.Context, s
 	}
 	if c.presetQueryID != "" {
 		payload["preset_query_id"] = c.presetQueryID
+	}
+	if len(c.workflowContextPaths) > 0 {
+		payload["workflow_context_paths"] = c.workflowContextPaths
 	}
 	if c.phaseID != "" {
 		payload["phase_id"] = c.phaseID

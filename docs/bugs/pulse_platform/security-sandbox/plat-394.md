@@ -66,6 +66,25 @@ the sandbox. Nothing runs unconfined any more: a Mac without `sandbox-exec`
 - Codex showed "Trust this folder?": the folder was pre-trusted in the sandbox's
   private `.codex`, not the person's `~/.codex` (provider `b7839e8`).
 
+## Sandbox contract (the owner's self-test, automated)
+
+Two layers, both in P0 (`scripts/run-coding-cli-p0.sh`, once per CLI):
+
+- mcpagent `TestCLISandboxContract` (`RUN_CLI_SANDBOX_CONTRACT=1`): every CLI
+  through the real Full CLI launch options in the Builder layout; verdicts from
+  the disk and marker tokens, not the model's report.
+- `agent_go test cli-sandbox-contract --provider X` (this repo): a real Builder
+  chat on a real workflow with another workflow attached, through a running
+  server, so the server's own grants are tested (PLAT-395's blanket read and the
+  open app folder only showed up here). Run it on the host of the server's
+  workspace-docs; Pi is the bridge-only shape. The shell actions run from one
+  harness-written script because Codex declined to attempt items one by one.
+
+It found, in one run each: Claude refusing edits through `project/`, Cursor's
+trust screen and approval stops (`--trust`, `--add-dir`, `--force`; `--force`
+keeps hooks), Agy's stale `statusLine`, and Codex loading the person's own MCP
+servers. All six CLIs pass both layers on macOS (provider `fc8c84e`, mcpagent `83276c0`).
+
 ## Left
 
 - Agy not run live: not logged in on this Mac.
