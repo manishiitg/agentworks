@@ -1,6 +1,6 @@
 # PLAT-393 — Browser teaching restart, compact chrome and tab restoration
 
-- State: locally and on RTS qualified; main push and deployment pending.
+- State: fixed on main, deployed to RTS and verified.
 - Priority: P1 for teaching/browser loss, P2 for browser chrome and tab memory.
 - Reported: 2026-10-03, RTS Code and local screenshots.
 
@@ -37,14 +37,18 @@ browser; manual Start also did not reset an exhausted same-session retry budget.
 
 ## Verification
 
-Passed: 31 focused frontend lifecycle/control/recovery tests; full workspace Go
+Passed: 34 focused frontend teaching/lifecycle/control/recovery tests; full workspace Go
 suite; focused agent-server auth/lease/restore bridge tests; native real-browser
 teaching/replay and guarded restart/tab/sign-in/paste fixture; real RTS guarded
 teaching/replay with unchanged daemon PID, multiline paste, duplicate tab URLs,
 closed-tab removal, active-page restoration and retained sign-in. Browser-rendered
 QA at 1017 px and 420 px confirms exactly two 36 px rows without outer overflow.
 Full frontend production build, catalog, release-asset and bundle-budget checks
-pass. Deployment via `deploy.sh rts` and release health checks remain pending.
+pass. Deployed with `DEPLOY_SLACK_NOTIFY=0 ./deploy.sh rts` to release
+`7e2ea79-20261003164344` from commit
+`7e2ea793742ed21c57fe71df9a403eea030c3210`. Verified the active source manifest,
+all three services active, healthy agent/workspace endpoints, public HTTP 200,
+same-origin runtime configuration and compact browser CSS in the served release.
 
 ## Boundaries
 

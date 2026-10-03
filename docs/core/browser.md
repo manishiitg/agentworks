@@ -2,8 +2,10 @@
 
 This is the single browser guide for our products. It consolidates the former
 core browser, workflow browser-authoring and live-workflow-browser guides.
-Runtime behavior below is based on the implementation and local verification on
-2026-10-03. This does not establish which version is deployed on a server.
+Runtime behavior below is based on implementation and local verification on
+2026-10-03. Compact chrome, tab restoration and teaching attachment fixes are
+deployed and verified on RTS in `7e2ea79-20261003164344`; other servers require
+their own release verification. See [PLAT-393](../bugs/pulse_platform/browser/plat-393.md).
 The teaching recorder was qualified against `agent-browser 0.38.2`; older runtimes
 must support `get cdp-url`, target IDs in `tab --json`, and native streaming.
 
@@ -22,7 +24,7 @@ session fallback. Browsers start on demand, not when a workflow is created.
 | Crew and Code | Browser capability and current product grants remain enforced. `.browser-settings.json` in the physical project is canonical; chat/tab caches cannot override it. |
 | Work browser panel | Reads and writes those project settings through the authenticated browser API. |
 | Video Studio | Required browser and shared workflow viewer; server uses managed Chrome. |
-| SparkQuill | Parent can start, sign in and teach through its browser drawer. Local CDP installation instructions appear only when enabled. Child browser remains explicitly disabled. |
+| SparkQuill | Parent can start and sign in through its browser drawer; teaching is hidden on this surface. Local CDP installation instructions appear only when enabled. Child browser remains explicitly disabled. |
 | Dominion | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
 
 Local supports Automatic, Managed browser and local Chrome/CDP. When
