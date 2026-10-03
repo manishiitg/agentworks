@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -139,11 +140,14 @@ func interactiveShellRunning(socket string) bool {
 	return exec.CommandContext(ctx, realTmux(), "-S", socket, "has-session", "-t", interactiveShellSession).Run() == nil
 }
 
-// interactiveShellUnconfinedAllowed says whether this workspace service may start a terminal without the sandbox: only a native,
-// single-user machine that opted in (the local start script sets AGENTWORKS_TERMINAL_UNCONFINED, following AGENTWORKS_CLI_FULL_UNCONFINED,
-// which the agent server also refuses on a multi-user server). Never where slots are on, and never on a server that did not set it.
+// interactiveShellHostOS is the platform the workspace service runs on (a variable for tests).
+var interactiveShellHostOS = runtime.GOOS
+
+// interactiveShellUnconfinedAllowed says whether this workspace service may start a terminal without the sandbox: only a person's own
+// Mac in native mode, the same rule the coding agents follow (macOS has no Landlock; Seatbelt confinement is PLAT-364 follow-up work).
+// Never on Linux, so never on a server; never where slots (per-user accounts) are on. There is no switch to forget.
 func interactiveShellUnconfinedAllowed() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_TERMINAL_UNCONFINED")), "on") &&
+	return interactiveShellHostOS == "darwin" &&
 		strings.EqualFold(strings.TrimSpace(os.Getenv("NATIVE_WORKSPACE")), "true") &&
 		!slots.Enabled()
 }

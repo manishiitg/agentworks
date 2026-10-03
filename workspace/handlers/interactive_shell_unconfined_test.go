@@ -2,23 +2,24 @@ package handlers
 
 import "testing"
 
-// A terminal without the sandbox is only for a person's own native, single-user machine that opted in. It must never be possible on a
-// server: not without the switch, not outside native mode, not where per-user accounts are on.
+// A terminal without the sandbox is only for a person's own Mac in native mode. It must never be possible on a server: not on Linux,
+// not outside native mode, not where per-user accounts are on.
 func TestInteractiveShellUnconfinedIsLocalOnly(t *testing.T) {
+	orig := interactiveShellHostOS
+	t.Cleanup(func() { interactiveShellHostOS = orig })
 	cases := []struct {
-		name                          string
-		terminalSwitch, native, slots string
-		want                          bool
+		name, hostOS, native, slots string
+		want                        bool
 	}{
-		{"local machine that opted in", "on", "true", "", true},
-		{"a server that never set the switch", "", "true", "", false},
-		{"switch off", "off", "true", "", false},
-		{"switch on but not native mode", "on", "false", "", false},
-		{"switch on, native, per-user accounts on", "on", "true", "on", false},
-		{"switch on, native, per-user accounts opt-in", "on", "true", "optin", false},
+		{"a person's own Mac", "darwin", "true", "", true},
+		{"a Linux server, even in native mode", "linux", "true", "", false},
+		{"a Mac not in native mode", "darwin", "false", "", false},
+		{"a Mac with per-user accounts on", "darwin", "true", "on", false},
+		{"a Mac with per-user accounts opt-in", "darwin", "true", "optin", false},
+		{"a Linux server with per-user accounts", "linux", "true", "on", false},
 	}
 	for _, c := range cases {
-		t.Setenv("AGENTWORKS_TERMINAL_UNCONFINED", c.terminalSwitch)
+		interactiveShellHostOS = c.hostOS
 		t.Setenv("NATIVE_WORKSPACE", c.native)
 		t.Setenv("AGENTWORKS_SLOTS", c.slots)
 		if got := interactiveShellUnconfinedAllowed(); got != c.want {

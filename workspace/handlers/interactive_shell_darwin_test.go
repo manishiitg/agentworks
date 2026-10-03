@@ -88,14 +88,13 @@ func TestInteractiveShellStartsInTheStrictSandboxOnAMac(t *testing.T) {
 }
 
 // On a person's own machine the terminal follows the coding agents' switch: no sandbox, the real home and rights, so git, codex and
-// the rest read their normal config. Native, single-user and opted in only (see interactiveShellUnconfinedAllowed).
+// the rest read their normal config. A Mac in native mode only (see interactiveShellUnconfinedAllowed).
 func TestInteractiveShellUnconfinedUsesTheRealHomeOnAMac(t *testing.T) {
 	if os.Getenv("AGENTWORKS_INTERACTIVE_SHELL_E2E") != "1" {
 		t.Skip("set AGENTWORKS_INTERACTIVE_SHELL_E2E=1 to run")
 	}
 	gin.SetMode(gin.TestMode)
 	t.Setenv("NATIVE_WORKSPACE", "true")
-	t.Setenv("AGENTWORKS_TERMINAL_UNCONFINED", "on")
 	t.Setenv("AGENTWORKS_SLOTS", "")
 	docs, err := os.MkdirTemp(".", "zz-darwin-docs-")
 	if err != nil {

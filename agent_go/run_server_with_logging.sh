@@ -11,11 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Defined up here: the runtime config is also written by the early exits (e.g. --only-frontend), before the rest of the setup runs.
 ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-[\"agentworks\", \"relays\", \"work\", \"code\"]}"
 
-# Code's terminal follows the same switch as the coding agents on a person's own machine: unconfined, real home and rights
-# (AGENTWORKS_CLI_FULL_UNCONFINED, on by default here; the agent server refuses it on a multi-user server). Exported up here so the
-# workspace service this script starts sees it.
-export AGENTWORKS_TERMINAL_UNCONFINED="${AGENTWORKS_TERMINAL_UNCONFINED:-${AGENTWORKS_CLI_FULL_UNCONFINED:-on}}"
-
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
 # of origin/main; agents work in their own worktrees and push to main. A clean checkout on main
@@ -1187,9 +1182,8 @@ export MULTI_USER_MODE="false"
 # Enable local mode (enables CDP browser connection and other local-only features)
 export LOCAL_MODE="true"
 
-# Full CLI on a person's own machine (PLAT-364): Claude and Codex get their own shell and file
-# edits, unconfined. The server refuses it in multi-user mode. Set to "off" to keep hybrid.
-export AGENTWORKS_CLI_FULL_UNCONFINED="${AGENTWORKS_CLI_FULL_UNCONFINED:-on}"
+# Coding CLIs and Code's terminal need no switch (PLAT-364): on a Mac they run Full CLI unconfined,
+# on Linux always inside the Landlock lock (bridge tools only if the lock cannot be applied).
 
 # Log all agent prompts (system prompt + user message) to logs/agent_prompts/
 export LOG_AGENT_PROMPTS="true"

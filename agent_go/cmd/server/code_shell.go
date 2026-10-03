@@ -128,8 +128,8 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 var codeShellStart = func(ctx context.Context, shellID, workDir string, guard *workspace.FolderGuardConfig, cols, rows int) (string, error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"shell_id": shellID, "working_directory": workDir, "folder_guard": guard, "cols": cols, "rows": rows,
-		// The same switch the coding agents follow on a person's own machine (refused on a multi-user server).
-		"unconfined": cliFullUnconfinedAllowed(),
+		// The same rule the coding agents follow: unconfined only on a person's own Mac.
+		"unconfined": cliUnconfinedAllowed(),
 	})
 	var out struct {
 		Data struct {

@@ -13,6 +13,32 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Coding CLI confinement has no switches: the platform decides, and servers fail closed
+
+- **User decision.** Test with Full native tools everywhere, never run a server
+  without the lock, and drop the environment switches so local runs and servers
+  cannot drift on a forgotten setting.
+- `AGENTWORKS_CLI_LANDLOCK`, `AGENTWORKS_CLI_FULL`, `AGENTWORKS_CLI_FULL_UNCONFINED`
+  and `AGENTWORKS_TERMINAL_UNCONFINED` are removed, with their `users:` rollout
+  lists. A chat with Native agent tools now runs:
+  - on a person's own Mac (macOS, not `MULTI_USER_MODE`): Full CLI unconfined, and
+    Code's terminal unconfined (the workspace service also requires native mode
+    and no slots);
+  - on Linux, every server included and whether or not `MULTI_USER_MODE` is set:
+    Full CLI inside the Landlock lock;
+  - when the lock cannot be applied (no working launcher, no working folder, the
+    policy cannot attach), or on a multi-user Mac: `mcp_only`, bridge tools only,
+    logged as `[CLI_LANDLOCK] SECURITY`. It never falls back to unconfined.
+- Before this, a host whose launcher failed its preflight ran CLIs unconfined
+  with one log line, and a server that forgot the switch ran them unconfined.
+  RTS confined every CLI session in its current log (Cursor and Claude, Full
+  inside the lock), so nothing changes there.
+- No emergency off switch on servers: a CLI that cannot run inside the lock
+  stays usable bridge-only instead of being exempted.
+- Next: macOS Seatbelt (Claude first) so a Mac is confined like a server.
+- Tests: `TestDecideCLIConfinement`, `TestRestrictCodingAgentToolsToMCPOnly`,
+  `TestInteractiveShellUnconfinedIsLocalOnly`.
+
 ### 2026-10-03 — In a sandboxed terminal an empty `cd` returns to the project folder
 
 - **Found (user).** An empty `cd` went to "some root folder" with no way to tell where it was or how to get back: in a sandboxed terminal `$HOME` is the shell's private

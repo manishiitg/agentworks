@@ -749,6 +749,24 @@ func (w *LLMAgentWrapper) UpgradeCodingAgentToolsToFullUnconfined() (bool, error
 	return true, nil
 }
 
+// RestrictCodingAgentToolsToMCPOnly takes a chat's native CLI tools away
+// (hybrid, full or full_unconfined become mcp_only) before the Agent is
+// finalized: the server's fail-closed path when the CLI cannot be confined.
+// It reports whether the mode changed.
+func (w *LLMAgentWrapper) RestrictCodingAgentToolsToMCPOnly() (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return false, errors.New("agent definition is already finalized")
+	}
+	mode := strings.ToLower(strings.TrimSpace(w.runtime.Coding.AgentToolsMode))
+	if mode == "" || mode == "mcp_only" {
+		return false, nil
+	}
+	w.runtime.Coding.AgentToolsMode = "mcp_only"
+	return true, nil
+}
+
 // SetCLISecurityPolicy replaces the coding CLI's launch policy before the
 // immutable Agent is finalized (the chat's folder guard is known only after
 // the wrapper is built).

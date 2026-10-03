@@ -1,9 +1,10 @@
 package server
 
 import (
+	"fmt"
 	"log"
-	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
@@ -12,24 +13,17 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// cliLandlockEnv turns on confining coding CLIs with the Landlock launcher
-// (PLAT-364): "on" for everyone, or "users:<id or email>,…" for a rollout to
-// named users first. Off by default until each CLI is certified. It needs a
-// Linux host whose launcher preflight passes, else CLIs run as before.
-const cliLandlockEnv = "AGENTWORKS_CLI_LANDLOCK"
+// cliHostOS is the platform the agent server runs on (a variable for tests).
+var cliHostOS = runtime.GOOS
 
-// cliFullEnv turns on Full CLI (the CLI's own shell and file edits) for
-// confined chats: "on", or "users:<id or email>,…". It only ever applies on
-// top of the Landlock lock and to chats with Native agent tools on.
-const cliFullEnv = "AGENTWORKS_CLI_FULL"
-
-// cliFullUnconfinedEnv turns on Full CLI without the lock ("on"), for a person's own machine
-// (macOS has no launcher yet; Seatbelt is deferred, see PLAT-364). Claude then gets its own
-// shell and file edits with the person's own rights, so it is refused on any multi-user server.
-const cliFullUnconfinedEnv = "AGENTWORKS_CLI_FULL_UNCONFINED"
-
-func cliFullUnconfinedAllowed() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(cliFullUnconfinedEnv)), "on") && !IsMultiUserMode()
+// cliUnconfinedAllowed says whether coding CLIs may run Full CLI (their own
+// shell and file edits) without a lock: only on a person's own Mac, which has
+// no Landlock (Seatbelt confinement is PLAT-364 follow-up work). Every other
+// host, and any multi-user server, confines its CLIs (PLAT-364). There is no
+// switch: the platform decides, so local runs and servers never drift on a
+// forgotten setting.
+func cliUnconfinedAllowed() bool {
+	return cliHostOS == "darwin" && !IsMultiUserMode()
 }
 
 // applyFullUnconfined upgrades a Native-agent-tools chat to Full CLI without confinement.
@@ -37,58 +31,41 @@ func applyFullUnconfined(llmAgent *agent.LLMAgentWrapper, sessionID string) {
 	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFullUnconfined(); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not turn on unconfined Full CLI: %v", sessionID, err)
 	} else if upgraded {
-		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on WITHOUT confinement (%s=on, single-user machine)", sessionID, cliFullUnconfinedEnv)
+		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on WITHOUT confinement (a person's own Mac)", sessionID)
 	}
 }
 
-func cliLandlockRequested(userID, userEmail string) bool {
-	return cliRolloutRequested(cliLandlockEnv, userID, userEmail)
+// failClosedToBridgeOnly takes a chat's native tools away when its CLI cannot
+// be confined. The chat keeps working through the bridge tools, where the
+// folder guard checks every action; it never runs unconfined.
+func failClosedToBridgeOnly(llmAgent *agent.LLMAgentWrapper, sessionID, why string) {
+	if changed, err := llmAgent.RestrictCodingAgentToolsToMCPOnly(); err != nil {
+		log.Printf("[CLI_LANDLOCK] SECURITY session %s: %s, and native tools could not be turned off: %v", sessionID, why, err)
+	} else if changed {
+		log.Printf("[CLI_LANDLOCK] SECURITY session %s: %s; native tools are OFF for this chat (bridge tools only)", sessionID, why)
+	}
 }
 
-func cliFullRequested(userID, userEmail string) bool {
-	return cliRolloutRequested(cliFullEnv, userID, userEmail)
-}
-
-func cliRolloutRequested(env, userID, userEmail string) bool {
-	value := strings.TrimSpace(os.Getenv(env))
-	if strings.EqualFold(value, "on") {
-		return true
-	}
-	list, ok := strings.CutPrefix(value, "users:")
-	if !ok {
-		return false
-	}
-	for _, entry := range strings.Split(list, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry != "" && (entry == userID || strings.EqualFold(entry, userEmail)) {
-			return true
-		}
-	}
-	return false
-}
-
-// applyCLILandlock confines the chat's coding CLI to the folders its folder
-// guard grants, with a private CLI home in its working directory. The guard
-// is only known after the agent wrapper is built, so the policy is replaced
-// here, before the Agent is finalized. A read-only guard path stays read-only
-// for the CLI; blocked paths inside a granted folder are not carved out
-// (Landlock only adds access) — the bridge tools still enforce them.
-func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
+// applyCLILandlock decides how a chat's coding CLI runs. On a person's own Mac
+// it gets Full CLI unconfined. Everywhere else it is confined to the folders
+// its folder guard grants, with a private CLI home in its working directory,
+// and gets Full CLI inside that lock; if the lock cannot be applied the chat
+// falls back to bridge tools only. The guard is only known after the agent
+// wrapper is built, so the policy is replaced here, before the Agent is
+// finalized. A read-only guard path stays read-only for the CLI; blocked paths
+// inside a granted folder are not carved out (Landlock only adds access), and
+// the bridge tools still enforce them.
+func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
 	if llmAgent == nil {
 		return
 	}
-	if !cliLandlockRequested(userID, userEmail) || strings.TrimSpace(workingDir) == "" {
-		if cliFullUnconfinedAllowed() {
-			applyFullUnconfined(llmAgent, sessionID)
-		}
+	decision, runner, why := decideCLIConfinement(workingDir)
+	switch decision {
+	case cliRunUnconfined:
+		applyFullUnconfined(llmAgent, sessionID)
 		return
-	}
-	runner, ok := security.CLILandlockRunner()
-	if !ok {
-		log.Printf("[CLI_LANDLOCK] %s=on but this host cannot confine CLIs (no Landlock launcher); session %s runs unconfined", cliLandlockEnv, sessionID)
-		if cliFullUnconfinedAllowed() {
-			applyFullUnconfined(llmAgent, sessionID)
-		}
+	case cliRunBridgeOnly:
+		failClosedToBridgeOnly(llmAgent, sessionID, why)
 		return
 	}
 	policy := cliLandlockPolicyForSession(sessionID, provider, workingDir, base)
@@ -96,18 +73,44 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, userID, userEmail, sessio
 	policy.LandlockRunner = runner
 	policy.PrivateHome = filepath.Join(workingDir, security.SandboxPersistentDirName, "cli-home", cliHomeName(provider))
 	if err := llmAgent.SetCLISecurityPolicy(&policy); err != nil {
-		log.Printf("[CLI_LANDLOCK] session %s: could not attach the Landlock policy: %v", sessionID, err)
+		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
 	}
-	if cliFullRequested(userID, userEmail) {
-		if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
-			log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
-		} else if upgraded {
-			log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
-		}
+	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
+		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
+	} else if upgraded {
+		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
 	}
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
 }
+
+type cliRunDecision string
+
+const (
+	cliRunUnconfined cliRunDecision = "unconfined"  // Full CLI, no lock: a person's own Mac
+	cliRunConfined   cliRunDecision = "confined"    // Full CLI inside the Landlock lock
+	cliRunBridgeOnly cliRunDecision = "bridge_only" // no native tools: the lock could not be applied
+)
+
+// decideCLIConfinement is applyCLILandlock's choice, kept separate so it can
+// be tested without an agent. It never answers "unconfined" outside a
+// person's own Mac.
+func decideCLIConfinement(workingDir string) (cliRunDecision, string, string) {
+	if cliUnconfinedAllowed() {
+		return cliRunUnconfined, "", ""
+	}
+	if strings.TrimSpace(workingDir) == "" {
+		return cliRunBridgeOnly, "", "the CLI has no working folder to confine it to"
+	}
+	runner, ok := cliLandlockRunner()
+	if !ok {
+		return cliRunBridgeOnly, "", "this host cannot confine coding CLIs (no working Landlock launcher)"
+	}
+	return cliRunConfined, runner, ""
+}
+
+// cliLandlockRunner finds the host's Landlock launcher (a variable for tests).
+var cliLandlockRunner = security.CLILandlockRunner
 
 // The final folder guard supplies project access. A read-only turn's writable
 // runtime must never promote the linked real project through an initial grant

@@ -14,12 +14,13 @@ A coding CLI runs in one of four tool modes, set by the agent profile's
 | `mcp_only` | off | Native web search only. Everything else goes through the MCP bridge. |
 | `hybrid` | **Native agent tools** | The bridge, plus the CLI's allowed native reads, searches and support tools. The allowlist varies by provider. |
 | `full` | **Full CLI** | MCP plus native reads, edits, shell and delegation under an enforced Linux Landlock policy. |
-| `full_unconfined` | Local Full CLI | MCP plus the full native toolset on an explicitly opted-in single-user host. |
+| `full_unconfined` | Local Full CLI | MCP plus the full native toolset on a person's own Mac (single-user). |
 
 Native writes remain denied in `mcp_only` and `hybrid`. Full CLI permits native
-writes, commands and delegation. Local Full CLI uses
-`AGENTWORKS_CLI_FULL_UNCONFINED=on`, requires single-user mode and upgrades only
-chats with Native agent tools already enabled. AGY's local integration and
+writes, commands and delegation. There is no switch: on a person's own Mac
+(not multi-user) a chat with Native agent tools gets Local Full CLI; on Linux
+it always gets Full CLI inside the Landlock lock, and if the lock cannot be
+applied the chat runs `mcp_only` (never unconfined). AGY's local integration and
 certification scope are in [AGY Full CLI](agy_full_native_tools.md).
 
 Why hybrid exists: models did worse with their own tools off. A Muse log audit

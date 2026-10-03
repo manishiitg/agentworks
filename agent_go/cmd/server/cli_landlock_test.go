@@ -2,53 +2,44 @@ package server
 
 import "testing"
 
-func TestCLILandlockRequestedRollout(t *testing.T) {
+// The platform decides how coding CLIs run; there is no switch to forget.
+// Only a person's own Mac runs them unconfined. Everywhere else they are
+// locked, and if the lock cannot be applied the chat loses native tools
+// rather than running unconfined.
+func TestDecideCLIConfinement(t *testing.T) {
+	origOS, origRunner := cliHostOS, cliLandlockRunner
+	t.Cleanup(func() { cliHostOS, cliLandlockRunner = origOS, origRunner })
+	withLock := func() (string, bool) { return "/usr/lib/agentworks/landlock-run", true }
+	noLock := func() (string, bool) { return "", false }
+
 	cases := []struct {
-		value, user, email string
-		want               bool
+		name       string
+		os         string
+		multiUser  string
+		workingDir string
+		runner     func() (string, bool)
+		want       cliRunDecision
 	}{
-		{"", "u1", "a@x.com", false},
-		{"off", "u1", "a@x.com", false},
-		{"on", "u1", "a@x.com", true},
-		{"users:a@x.com", "u1", "A@X.com", true},
-		{"users:u1, b@x.com", "u1", "", true},
-		{"users:b@x.com", "u1", "a@x.com", false},
-		{"users:", "u1", "a@x.com", false},
+		{"own Mac", "darwin", "", "/w", noLock, cliRunUnconfined},
+		{"own Mac, no working folder", "darwin", "", "", noLock, cliRunUnconfined},
+		{"multi-user Mac never runs unconfined", "darwin", "true", "/w", noLock, cliRunBridgeOnly},
+		{"Linux server with the lock", "linux", "true", "/w", withLock, cliRunConfined},
+		{"Linux without MULTI_USER_MODE still locks", "linux", "", "/w", withLock, cliRunConfined},
+		{"Linux whose lock is broken fails closed", "linux", "true", "/w", noLock, cliRunBridgeOnly},
+		{"Linux with no working folder fails closed", "linux", "true", "", withLock, cliRunBridgeOnly},
 	}
 	for _, tc := range cases {
-		t.Setenv(cliLandlockEnv, tc.value)
-		if got := cliLandlockRequested(tc.user, tc.email); got != tc.want {
-			t.Fatalf("%q user=%q email=%q: got %v, want %v", tc.value, tc.user, tc.email, got, tc.want)
+		cliHostOS, cliLandlockRunner = tc.os, tc.runner
+		t.Setenv("MULTI_USER_MODE", tc.multiUser)
+		got, runner, why := decideCLIConfinement(tc.workingDir)
+		if got != tc.want {
+			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
 		}
-	}
-}
-
-func TestCLIFullRolloutIsSeparate(t *testing.T) {
-	t.Setenv(cliLandlockEnv, "users:a@x.com")
-	t.Setenv(cliFullEnv, "")
-	if !cliLandlockRequested("u1", "a@x.com") || cliFullRequested("u1", "a@x.com") {
-		t.Fatal("Full CLI must be opted in separately from the lock")
-	}
-	t.Setenv(cliFullEnv, "users:a@x.com")
-	if !cliFullRequested("u1", "a@x.com") || cliFullRequested("u2", "b@x.com") {
-		t.Fatal("Full CLI rollout list not honoured")
-	}
-}
-
-// Unconfined Full CLI is for a person's own machine only: it needs its own switch and is refused
-// on a multi-user server, where the lock is the boundary.
-func TestCLIFullUnconfinedIsSingleUserOnly(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "false")
-	t.Setenv(cliFullUnconfinedEnv, "")
-	if cliFullUnconfinedAllowed() {
-		t.Fatal("allowed without the switch")
-	}
-	t.Setenv(cliFullUnconfinedEnv, "on")
-	if !cliFullUnconfinedAllowed() {
-		t.Fatal("refused on a single-user machine with the switch on")
-	}
-	t.Setenv("MULTI_USER_MODE", "true")
-	if cliFullUnconfinedAllowed() {
-		t.Fatal("allowed on a multi-user server")
+		if got == cliRunConfined && runner == "" {
+			t.Errorf("%s: confined without a launcher", tc.name)
+		}
+		if got == cliRunBridgeOnly && why == "" {
+			t.Errorf("%s: fell back without saying why", tc.name)
+		}
 	}
 }

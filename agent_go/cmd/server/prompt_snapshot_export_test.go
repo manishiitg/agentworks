@@ -25,8 +25,11 @@ import (
 // so no CLI process, model request or business tool executes.
 func TestCodePreparedSystemPrompt(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
-	t.Setenv("AGENTWORKS_CLI_FULL_UNCONFINED", "")
-	t.Setenv("AGENTWORKS_CLI_LANDLOCK", "off")
+	// Pin the platform: a person's own Mac, where coding CLIs run Full CLI unconfined.
+	origOS := cliHostOS
+	cliHostOS = "darwin"
+	t.Cleanup(func() { cliHostOS = origOS })
+	t.Setenv("MULTI_USER_MODE", "false")
 	if err := codeproduct.RegisterProductSkills(); err != nil {
 		t.Fatal(err)
 	}
