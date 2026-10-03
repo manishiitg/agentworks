@@ -77,6 +77,9 @@ type ReportHumanInput struct {
 	ClaimedAt         string                        `json:"claimed_at,omitempty"`
 	ClaimExpiresAt    string                        `json:"claim_expires_at,omitempty"`
 	ApplyContract     ReportHumanInputApplyContract `json:"apply_contract,omitempty"`
+	// ApplyMessage is computed for list responses only (never stored): the
+	// Builder chat message that applies an answered decision.
+	ApplyMessage string `json:"apply_message,omitempty"`
 }
 
 type ReportHumanInputCreateRequest struct {
@@ -1217,6 +1220,7 @@ func (api *StreamingAPI) handleListReportHumanInputs(w http.ResponseWriter, r *h
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	withDecisionApplyMessages(inputs)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "inputs": inputs})
 }
@@ -1261,6 +1265,7 @@ func (api *StreamingAPI) handleListReportHumanInputsAggregate(w http.ResponseWri
 	sort.SliceStable(inputs, func(i, j int) bool {
 		return inputs[i].UpdatedAt > inputs[j].UpdatedAt
 	})
+	withDecisionApplyMessages(inputs)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "inputs": inputs})
 }

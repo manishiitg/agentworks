@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Scheduled runs never apply decisions; the UI and Builder chat do
+
+Owner decision: decisions are applied only where the person can watch. The
+pre-run decision drain (PLAT-093) is removed; an answered decision is applied in
+the Builder chat, by the answering turn or Needs you's "Apply in chat". Ticket:
+[PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
+
 ### 2026-10-03 — Open: Relay builder shell inspects an inaccessible host Google store
 
 - Excellence's Relay builder returns exit 125 / `SANDBOX_UNAVAILABLE` before

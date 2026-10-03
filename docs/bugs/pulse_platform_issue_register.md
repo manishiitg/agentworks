@@ -1,3 +1,9 @@
+## Decisions applied only in the UI and Builder chat — PLAT-381
+
+[PLAT-381](pulse_platform/human-decisions/plat-381.md), P2, **fixed** on `main`:
+scheduled runs no longer apply answered decisions (the PLAT-093 pre-run drain is
+removed); Needs you keeps unapplied ones with "Apply in chat".
+
 ## Relay builder shell cannot inspect the host Google store — PLAT-380
 
 [PLAT-380](pulse_platform/security-sandbox/plat-380.md), confirmed on Excellence,

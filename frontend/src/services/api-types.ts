@@ -497,6 +497,8 @@ export interface ReportHumanInput {
 	claimed_at?: string
 	claim_expires_at?: string
 	apply_contract?: ReportHumanInputApplyContract
+  /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
+  apply_message?: string
 }
 
 export interface ReportHumanInputsResponse {

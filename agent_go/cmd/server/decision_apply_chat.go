@@ -5,12 +5,10 @@ import (
 	"strings"
 )
 
-// When the user answers a decision in Needs you, the UI sends the message
-// returned here to the workflow's Builder chat, so the answer is applied right
-// away where the user can watch, instead of waiting for the next run's
-// pre-run drain. Typed decisions reuse the scheduler's own apply instructions,
-// so both paths behave the same; the drain remains the fallback when the chat
-// message is not sent.
+// The message that applies an answered decision in the workflow's Builder
+// chat, where the user can watch. The answering chat turn applies it at once;
+// a decision left answered but not applied keeps this message, and Needs you
+// offers it as "Apply in chat". Scheduled runs never apply decisions.
 func decisionApplyChatMessage(input ReportHumanInput) string {
 	if !strings.EqualFold(strings.TrimSpace(input.Status), "answered") {
 		return ""
@@ -46,5 +44,13 @@ Read it with get_human_input_request(workspace_path=%q, input_id=%q). Its contex
 - Rejected: call mark_human_input_consumed with an outcome_summary that the user declined and nothing changed.
 - Deferred, or anything you cannot apply safely right now: change nothing, leave it answered, and tell me in one or two sentences why.
 Do not run the workflow, back up, publish or notify. Keep your reply short and plain.`, input.WorkspacePath, id)
+	}
+}
+
+// withDecisionApplyMessages fills ApplyMessage on every answered decision, so
+// Needs you can offer "Apply in chat" until it is applied.
+func withDecisionApplyMessages(inputs []ReportHumanInput) {
+	for i := range inputs {
+		inputs[i].ApplyMessage = decisionApplyChatMessage(inputs[i])
 	}
 }
