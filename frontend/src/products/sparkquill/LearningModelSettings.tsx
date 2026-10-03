@@ -110,7 +110,7 @@ export function LearningModelSettings({ engine, childName, onEngineChange }: { e
   const providerIds = useMemo(() => groups.map(group => group.option.provider || group.option.id), [groups])
   const parent = selections.parent
   return (
-    <section aria-label="Learning models" className="fl-settings-models">
+    <section aria-label="Learning models" className="fl-settings-models fl-platform-ui">
       <p className="fl-drawer-label">AI provider and account</p>
       <p className="fl-note">Your chat and {childName || 'your child'}’s tutor use this account. Choose a separate model for each below.</p>
       {!loading && parent && <WorkflowLLMConfigurationPanel

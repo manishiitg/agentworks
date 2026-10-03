@@ -3291,7 +3291,7 @@ export default function LearningApp() {
             />
           )}
 
-          <CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" />
+          <div className="fl-platform-ui"><CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" /></div>
           {settingsOpen && (
             <div className="fl-settings-backdrop" role="dialog" aria-modal="true" onClick={() => setSettingsOpen(false)}>
               <div className="fl-settings" onClick={(e) => e.stopPropagation()}>
@@ -3706,7 +3706,7 @@ export default function LearningApp() {
       <section className={`learning-stage is-${screen}`}>
         {screen === 'engine' && (
           <section className="learning-panel setup-panel">
-            <CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" />
+            <div className="fl-platform-ui"><CodingProvidersPanel isOpen={showProviders} onClose={closeProviders} product="sparkquill" /></div>
             <span className="eyebrow">01 · Choose your learning helper</span>
             <h1>Pick the AI that will help your child learn.</h1>
             <p className="fl-lead">Connect an AI account to power lessons, hints, and practice.</p>

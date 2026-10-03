@@ -3,32 +3,32 @@
    preflight off. Put the defaults it relies on back for its own markup, at
    the lowest specificity that still beats preflight's element selectors
    (0,0,1) — every rule below and every Tailwind utility still wins — and
-   not inside the shared chat (.fl-platform-chat), which was written for
+   not inside shared platform components, which were written for
    preflight. Values are the UA stylesheet's. */
-:where(.learning-app) h1:not(:where(.fl-platform-chat *)) { font-size: 2em; font-weight: bold; margin: .67em 0; }
-:where(.learning-app) h2:not(:where(.fl-platform-chat *)) { font-size: 1.5em; font-weight: bold; margin: .83em 0; }
-:where(.learning-app) h3:not(:where(.fl-platform-chat *)) { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
-:where(.learning-app) h4:not(:where(.fl-platform-chat *)) { font-size: 1em; font-weight: bold; margin: 1.33em 0; }
-:where(.learning-app) h5:not(:where(.fl-platform-chat *)) { font-size: .83em; font-weight: bold; margin: 1.67em 0; }
-:where(.learning-app) h6:not(:where(.fl-platform-chat *)) { font-size: .67em; font-weight: bold; margin: 2.33em 0; }
-:where(.learning-app) :is(p, figure, pre, dl):not(:where(.fl-platform-chat *)) { margin: 1em 0; }
-:where(.learning-app) blockquote:not(:where(.fl-platform-chat *)) { margin: 1em 40px; }
-:where(.learning-app) :is(ul, ol):not(:where(.fl-platform-chat *)) { margin: 1em 0; padding-left: 40px; }
-:where(.learning-app) ul:not(:where(.fl-platform-chat *)) { list-style: disc; }
-:where(.learning-app) ol:not(:where(.fl-platform-chat *)) { list-style: decimal; }
-:where(.learning-app) dd:not(:where(.fl-platform-chat *)) { margin-left: 40px; }
-:where(.learning-app) hr:not(:where(.fl-platform-chat *)) { border-style: inset; border-width: 1px; color: gray; margin: .5em auto; height: auto; }
-:where(.learning-app) pre:not(:where(.fl-platform-chat *)) { white-space: pre; }
-:where(.learning-app) a:not(:where(.fl-platform-chat *)) { color: -webkit-link; text-decoration: underline; cursor: pointer; }
-:where(.learning-app) img:not(:where(.fl-platform-chat *)) { display: inline; max-width: none; }
-:where(.learning-app) :is(svg, video, canvas, audio, iframe, embed, object):not(:where(.fl-platform-chat *)) { display: inline; vertical-align: baseline; }
-:where(.learning-app) table:not(:where(.fl-platform-chat *)) { border-collapse: separate; border-spacing: 2px; }
-:where(.learning-app) th:not(:where(.fl-platform-chat *)) { font-weight: bold; text-align: center; }
-:where(.learning-app) :is(button, input, select, textarea, fieldset, legend):not(:where(.fl-platform-chat *)) { all: revert; box-sizing: border-box; }
+:where(.learning-app) h1:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: 2em; font-weight: bold; margin: .67em 0; }
+:where(.learning-app) h2:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: 1.5em; font-weight: bold; margin: .83em 0; }
+:where(.learning-app) h3:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
+:where(.learning-app) h4:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: 1em; font-weight: bold; margin: 1.33em 0; }
+:where(.learning-app) h5:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: .83em; font-weight: bold; margin: 1.67em 0; }
+:where(.learning-app) h6:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-size: .67em; font-weight: bold; margin: 2.33em 0; }
+:where(.learning-app) :is(p, figure, pre, dl):not(:where(.fl-platform-chat *, .fl-platform-ui *)) { margin: 1em 0; }
+:where(.learning-app) blockquote:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { margin: 1em 40px; }
+:where(.learning-app) :is(ul, ol):not(:where(.fl-platform-chat *, .fl-platform-ui *)) { margin: 1em 0; padding-left: 40px; }
+:where(.learning-app) ul:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { list-style: disc; }
+:where(.learning-app) ol:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { list-style: decimal; }
+:where(.learning-app) dd:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { margin-left: 40px; }
+:where(.learning-app) hr:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { border-style: inset; border-width: 1px; color: gray; margin: .5em auto; height: auto; }
+:where(.learning-app) pre:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { white-space: pre; }
+:where(.learning-app) a:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { color: -webkit-link; text-decoration: underline; cursor: pointer; }
+:where(.learning-app) img:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { display: inline; max-width: none; }
+:where(.learning-app) :is(svg, video, canvas, audio, iframe, embed, object):not(:where(.fl-platform-chat *, .fl-platform-ui *)) { display: inline; vertical-align: baseline; }
+:where(.learning-app) table:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { border-collapse: separate; border-spacing: 2px; }
+:where(.learning-app) th:not(:where(.fl-platform-chat *, .fl-platform-ui *)) { font-weight: bold; text-align: center; }
+:where(.learning-app) :is(button, input, select, textarea, fieldset, legend):not(:where(.fl-platform-chat *, .fl-platform-ui *)) { all: revert; box-sizing: border-box; }
 /* preflight also sets line-height: 1.5 on <html>; this app was laid out on the
    browser's "normal". The shared chat keeps 1.5. */
 :where(.learning-app) { line-height: normal; }
-:where(.learning-app) .fl-platform-chat { line-height: 1.5; }
+:where(.learning-app) :is(.fl-platform-chat, .fl-platform-ui) { line-height: 1.5; }
 
 .learning-app {
   --navy: #0b1d42;
