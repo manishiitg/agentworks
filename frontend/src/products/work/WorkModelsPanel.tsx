@@ -14,6 +14,7 @@ import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type Ag
 import { useProjectProduct } from './projectProduct'
 import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
+import { installedCodingProviders } from '../../utils/providerCatalogFilter'
 
 const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 
@@ -92,16 +93,19 @@ export function WorkModelsPanel({
     }
   }, [loadProviderManifest, product.profileId, product.profileVersion])
 
+  const installedProviders = useMemo(() => installedCodingProviders(providerManifest), [providerManifest])
   const modelCatalog = useMemo(
-    () => providerManifest.flatMap(provider => provider.models || []),
-    [providerManifest],
+    () => installedProviders.flatMap(provider => provider.models || []),
+    [installedProviders],
   )
   const engineGroups = useMemo(
     // Work intentionally offers the full platform catalog for each CLI. The
     // profile's model list may be present in an older running server until it
     // restarts, so do not let that stale curation hide the new project picker.
-    () => buildAgentProfileEngineGroups(options.map(option => ({ ...option, models: undefined })), modelCatalog),
-    [modelCatalog, options],
+    () => buildAgentProfileEngineGroups(options
+      .filter(option => installedProviders.some(provider => provider.id === option.provider))
+      .map(option => ({ ...option, models: undefined })), modelCatalog),
+    [installedProviders, modelCatalog, options],
   )
   const workProviderIds = useMemo(
     () => options.map(option => option.provider || option.id),

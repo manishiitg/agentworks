@@ -13,6 +13,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Setup model choices show installed coding providers only
+
+- Workflow and product Setup → Models, including per-role choices and the global
+  model configuration modal, offer only enabled, non-deprecated coding CLIs whose
+  provider manifest reports `runtime_available: true`. An installed CLI remains
+  visible when it needs sign-in; authentication is not an installation check.
+- Published models and product profile catalogs cannot reintroduce absent CLIs.
+  A saved role on an absent provider stays visible as a disabled current value,
+  so opening setup does not silently change existing configuration. The Providers
+  management screen retains its installation/setup catalog.
+- Code: `providerCatalogFilter`, `WorkflowLLMConfigurationPanel`,
+  `LLMConfigurationModal`, `LLMRoleSelector`, and `WorkModelsPanel`.
+
 ### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28)
 
 - **Decision (user, 2026-10-03).** Code gets a Terminal tab again: a real shell on the server in the Code's folder. The

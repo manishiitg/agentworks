@@ -18,6 +18,7 @@ import { llmOptionsKey } from '../../utils/llmConfigDisplay'
 import { resolvePiModelGroup } from '../../utils/llmDisplay'
 import { getWorkflowLLMOptions, getWorkflowLLMTierDefaults, getWorkflowProviderOptions } from '../../utils/workflowLLMTierDefaults'
 import { effectiveLLMUnderLock } from '../../utils/effectiveLLM'
+import { installedCodingProviders } from '../../utils/providerCatalogFilter'
 
 type RoleKey = 'tier_1' | 'tier_2' | 'tier_3' | 'builder_llm' | 'pulse_llm'
 const ROLE_KEYS: RoleKey[] = ['tier_1', 'tier_2', 'tier_3', 'builder_llm', 'pulse_llm']
@@ -207,8 +208,8 @@ export default function WorkflowLLMConfigurationPanel({
   // keys, publish, Pi keys) and role edits write immediately -- disable all of
   // it for read-only users rather than only the Save button upstream.
   // A locked deployment (LLM_CONFIG_LOCKED) shows the same list, fully
-  // disabled: the published provider reads "In use", every other row is
-  // visible for reference but cannot be tested, selected or configured.
+  // disabled: the published provider reads "In use", other installed CLIs
+  // remain visible for reference but cannot be tested, selected or configured.
   const workflowCanWrite = useCanWriteWorkflow(workspacePath)
   const globalLockApplies = llmConfigLocked && configurationSource !== 'agent_profile'
   const readOnly = !(canWriteOverride ?? workflowCanWrite) || globalLockApplies
@@ -274,8 +275,7 @@ export default function WorkflowLLMConfigurationPanel({
     return status.label === 'Ready' || status.label === 'Managed' || (privateProviderIds.includes(row.entry.id) && row.entry.runtime_available !== false)
   }, [isProviderLocked, privateProviderIds])
 
-  const manifestEntries = useMemo(() => providerManifest.filter(entry => {
-    if (entry.integration_kind !== 'coding_agent') return false
+  const manifestEntries = useMemo(() => installedCodingProviders(providerManifest).filter(entry => {
     if (allowedProviderIds && !allowedProviderIds.includes(entry.id)) return false
     return isProviderSupported(entry.id as LLMProvider)
   }), [allowedProviderIds, isProviderSupported, providerManifest])
@@ -299,10 +299,11 @@ export default function WorkflowLLMConfigurationPanel({
     return (inGroup.find(model => model.is_default) ?? inGroup[0]).model_id
   }, [piCliModels])
 
-  const providerOptions = useMemo(() => getWorkflowProviderOptions(providerManifest), [providerManifest])
+  const installedProviderIds = useMemo(() => manifestEntries.map(entry => entry.id), [manifestEntries])
+  const providerOptions = useMemo(() => getWorkflowProviderOptions(manifestEntries), [manifestEntries])
   const workflowOptions = useMemo(
-    () => getWorkflowLLMOptions(availableLLMs, providerManifest),
-    [availableLLMs, providerManifest],
+    () => getWorkflowLLMOptions(availableLLMs.filter(option => installedProviderIds.includes(option.provider)), manifestEntries),
+    [availableLLMs, installedProviderIds, manifestEntries],
   )
 
   const rows = useMemo<ProviderRow[]>(() => {
@@ -1112,7 +1113,7 @@ export default function WorkflowLLMConfigurationPanel({
         <div className="min-w-0 flex-1 space-y-1.5">
           {value ? (
             <>
-            <LLMRoleSelector availableLLMs={workflowOptions} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
+            <LLMRoleSelector availableLLMs={workflowOptions} allowedProviderIds={installedProviderIds} value={value} onLLMSelect={llm => updateRole(row.key, toAgentLLMConfig(llm))} disabled={readOnly} />
             {value?.provider && ["claude-code","codex-cli","cursor-cli","pi-cli","muse-cli"].includes(value.provider) && <ProviderAccounts key={value.provider} provider={value.provider} selectedId={value.connection_id} disabled={readOnly} selectionOnly workspacePath={workspacePath} product={product} onSelect={connection_id=>updateRole(row.key,{...value,connection_id})} />}
             </>
           ) : (

@@ -4,10 +4,11 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SavedLLM } from '../../services/api-types'
 import type { ProviderManifestEntry } from '../../services/llm-config-api'
+import type { LLMOption } from '../../types/llm'
 
 const { storeState } = vi.hoisted(() => ({
   storeState: {
-    availableLLMs: [],
+    availableLLMs: [] as LLMOption[],
     providerManifest: [] as ProviderManifestEntry[],
     providerManifestLoaded: true,
     loadProviderManifest: vi.fn(),
@@ -66,15 +67,73 @@ const provider = (overrides: Partial<ProviderManifestEntry>): ProviderManifestEn
 })
 
 afterEach(() => {
+  storeState.availableLLMs = []
   storeState.providerManifest = []
   storeState.llmConfigLocked = false
   storeState.savedLLMs = []
   storeState.setShowLLMModal.mockReset()
+  storeState.getProviderDynamicModels.mockClear()
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
   document.body.innerHTML = ''
 })
 
 describe('WorkflowLLMConfigurationPanel coding-agent rows', () => {
+  it.each(['agentworks', 'work', 'code'])('shows only installed providers in %s setup, including an installed CLI needing sign-in', async product => {
+    storeState.providerManifest = [
+      provider({}),
+      provider({ id: 'codex-cli', display_name: 'OpenAI Codex CLI', runtime_available: false }),
+      provider({ id: 'cursor-cli', display_name: 'Cursor CLI', auth_configured: false, usable: false }),
+      provider({ id: 'pi-cli', display_name: 'Pi CLI', runtime_available: false }),
+    ]
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(
+        <WorkflowLLMConfigurationPanel workspacePath="/project" product={product} splitPiProviders={false} onChange={vi.fn()} />,
+      ))
+      expect(host.textContent).toContain('Claude Code')
+      expect(host.textContent).toContain('Cursor CLI')
+      expect(host.textContent).not.toContain('OpenAI Codex CLI')
+      expect(host.textContent).not.toContain('Pi CLI')
+      expect(storeState.getProviderDynamicModels).not.toHaveBeenCalledWith('pi-cli', false)
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
+  it('does not reintroduce absent providers through published role models and preserves the saved value as disabled', async () => {
+    storeState.providerManifest = [
+      provider({ models: [{ model_id: 'claude-sonnet', model_name: 'Sonnet', provider: 'claude-code', context_window: 200000, input_cost_per_1m: 0, output_cost_per_1m: 0 }] }),
+      provider({ id: 'codex-cli', runtime_available: false }),
+    ]
+    storeState.availableLLMs = [{ provider: 'codex-cli', model: 'gpt-6', label: 'Published Codex' }]
+    const onChange = vi.fn()
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(
+        <WorkflowLLMConfigurationPanel workspacePath="/project" onChange={onChange}
+          llmConfig={{ schema_version: 2, mode: 'explicit', builder_llm: { provider: 'codex-cli', model_id: 'gpt-6' } }} />,
+      ))
+      const agents = Array.from(host.querySelectorAll<HTMLSelectElement>('select[aria-label="Coding agent or provider"]'))
+      expect(agents.length).toBeGreaterThan(0)
+      for (const agent of agents) {
+        expect(Array.from(agent.options).filter(option => !option.disabled).map(option => option.value)).toEqual(['claude-code'])
+      }
+      const saved = agents.find(agent => agent.value === 'codex-cli')
+      expect(saved).toBeDefined()
+      expect(saved?.selectedOptions[0].disabled).toBe(true)
+      expect(saved?.selectedOptions[0].textContent).toContain('not installed')
+      expect(onChange).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+    }
+  })
+
   it('shows authenticated CLIs as connected and keeps testing out of workflow selection', async () => {
     storeState.providerManifest = [
       provider({}),

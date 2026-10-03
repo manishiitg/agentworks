@@ -9,3 +9,11 @@ import type { ProviderManifestEntry } from '../services/llm-config-api'
 export function nonDeprecatedProviders(providers: ProviderManifestEntry[]): ProviderManifestEntry[] {
   return providers.filter(provider => !provider.deprecated)
 }
+
+// Installation is independent of authentication: an installed CLI that needs
+// sign-in still belongs in setup, while an absent CLI does not.
+export function installedCodingProviders(providers: ProviderManifestEntry[]): ProviderManifestEntry[] {
+  return providers.filter(provider => !provider.deprecated
+    && provider.integration_kind === 'coding_agent'
+    && provider.runtime_available === true)
+}
