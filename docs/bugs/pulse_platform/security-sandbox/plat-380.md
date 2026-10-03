@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | confirmed on Excellence; open |
+| State | implemented and verified; deployment pending |
 | Date | 2026-10-03 |
 | Owner | security-sandbox |
 
@@ -20,22 +20,50 @@ SANDBOX_UNAVAILABLE: inspect Landlock path: stat /srv/agents/home/.config/agentw
 ```
 
 Each returned exit code 125 in 23–33 ms, before the requested command ran. The
-PDF/base64 INPUT is unrelated to this admission failure. The active release is
+PDF/base64 INPUT is unrelated to this admission failure. The release inspected was
 `agents-6ca99b48-20261003145227` (builder `6ca99b48b`, mcpagent `e9af395a6`,
 provider `e38d33f25`). No service, permissions, credentials or workspace files
 were changed during inspection.
 
-## Source / remaining
+## Cause
 
-`workspace/security/isolator.go` appends `gogconfig.TerminalHome` to read/write
-paths whenever the execution is not strict. `workspace/gogconfig/config.go`
-resolves that path from the service's HOME/config and enables the grant unless
-explicitly disabled. This same automatic shared-store grant remains on main
-at `46b8cd40e`; the two PLAT-378 UI fixes do not repair it.
+`workspace/security/isolator.go` automatically appended `gogconfig.TerminalHome`
+to read/write paths whenever the profile was not strict. Its value came from the
+service's HOME/config. Relay uses the shared workflow Builder runner, so it took
+that legacy branch even when running as a user's Linux slot. Slot identity alone
+was missing from the Google-store policy. Crew/Code's stricter profiles already
+excluded that automatic host grant. Plan creation does not need Gmail.
 
-Correct the Google CLI grant/environment policy for per-user sandbox execution
-without making the service account's shared credential directory readable by
-user slots. Retain per-connection Google access through the existing authorized
-Google tool. Verify a Relay builder can run `pwd`, create its plan and use only
-Google connections it is allowed to use. The Downloads boundary fix (PLAT-373)
-is a different failure and does not explain this error.
+## Implemented
+
+- Add one shared `hostGogRestricted` predicate: strict profile OR user slot.
+  Use it for both automatic Google-store grants and environment construction in
+  every runner backend. There is no Relay-specific sandbox or alternate executor.
+- A slot command never creates/adds the host Google store and never inherits its
+  `GOG_HOME`, `GOG_KEYRING_BACKEND` or `GOG_KEYRING_PASSWORD`. Explicit per-call
+  variables and session credentials still arrive in the slot request.
+- Local trusted CLI access keeps its existing behavior. Per-connection Google
+  tools and their authorization code are unchanged. No credential-directory
+  permissions are loosened and no production service or workflow is altered.
+
+## Verification
+
+- Local policy/environment regression covers non-strict Relay slots, strict
+  profiles and trusted local shells. Existing macOS sandbox test still reads and
+  refreshes a synthetic Google-store file for trusted shells.
+- Linux serialized-request test verifies no host GOG/keyring variables reach a
+  slot while the existing per-call session token, secrets and inputs remain.
+- Opt-in Linux integration ran on Excellence through the shipped Landlock
+  launcher and slotctl, in a throwaway folder under an existing slot's run area.
+  The old predicate reproduced the exact reported exit 125 / `inspect Landlock
+  path: stat .../gog: permission denied`, using a private service-owned fixture.
+  The corrected predicate ran `pwd` as the slot, saved valid JSON in
+  `planning/plan.json`, preserved INPUT/session environment and denied a
+  readable-but-ungranted host credential fixture. All three Linux tests passed.
+- Tests used no real email credentials, mailbox calls or live Relay files.
+
+## Remaining
+
+Deploy the updated workspace service in the normal Excellence release. Then
+retry the invoice Relay's builder message externally. The deployed service was
+not restarted or changed by this fix's integration test.

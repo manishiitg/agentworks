@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/gogconfig"
 )
 
 // Explicitly opt in when validating a connected local account. This performs
@@ -95,5 +97,49 @@ func TestGogTerminalStoreOutsideWorkspace(t *testing.T) {
 	defer cleanup()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("strict profile received home: %s: %v", out, err)
+	}
+}
+
+// A Relay Builder is not a strict profile but runs as a user's slot on Linux.
+// Building a graph must neither prepare nor inherit the host Google store.
+func TestSlottedShellExcludesHostGogStore(t *testing.T) {
+	base := t.TempDir()
+	// A file as the parent makes preparing this path fail on every platform,
+	// including tests running as root. No real credentials are used.
+	parent := filepath.Join(base, "unavailable-host-config")
+	if err := os.WriteFile(parent, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	host := filepath.Join(parent, "gog")
+	t.Setenv("GOG_HOME", host)
+	t.Setenv("GOG_KEYRING_BACKEND", "file")
+	t.Setenv("GOG_KEYRING_PASSWORD", "fixture-only")
+	t.Setenv("AGENTWORKS_GOG_TERMINAL_ACCESS", "")
+	for _, tc := range []struct {
+		name       string
+		iso        Isolator
+		restricted bool
+	}{
+		{"relay-slot", Isolator{Slot: "slot05"}, true},
+		{"strict-profile", Isolator{StrictAllowlist: true}, true},
+		{"local-trusted", Isolator{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := gogconfig.Environment(BuildSafeEnvironment(), tc.iso.hostGogRestricted())
+			for _, key := range []string{"GOG_HOME", "GOG_KEYRING_BACKEND", "GOG_KEYRING_PASSWORD"} {
+				found := false
+				for _, entry := range env {
+					if strings.HasPrefix(entry, key+"=") {
+						found = true
+					}
+				}
+				if found == tc.restricted {
+					t.Errorf("%s presence=%v; restricted=%v", key, found, tc.restricted)
+				}
+			}
+			if home := gogconfig.TerminalHome(tc.iso.hostGogRestricted()); (home == "") != tc.restricted {
+				t.Fatalf("wrong store grant %q", home)
+			}
+		})
 	}
 }

@@ -32,9 +32,10 @@ removed); Needs you keeps unapplied ones with "Apply in chat".
 
 ## Relay builder shell cannot inspect the host Google store — PLAT-380
 
-[PLAT-380](pulse_platform/security-sandbox/plat-380.md), confirmed on Excellence,
-open. Sandbox setup automatically grants the service account's Google CLI store;
-its inspection fails with permission denied before even `pwd` can execute.
+[PLAT-380](pulse_platform/security-sandbox/plat-380.md), implemented and verified;
+deployment pending. User slot shells exclude the automatic host Google store and
+keyring environment. Old policy reproduced exit 125; corrected runner created a
+JSON plan as the slot through Excellence's launcher without host-store access.
 
 ## Workflow notifications and Gmail setup guidance — PLAT-379
 

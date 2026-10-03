@@ -19,6 +19,16 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — User slot shells exclude the service account's Google CLI store
+
+- The shared runner treats a user slot like a restricted profile for host Google
+  CLI credentials: neither automatic store grants nor host GOG/keyring environment
+  cross that account boundary. This fixes Relay Builder admission without adding
+  a product-specific sandbox or widening service-home permissions.
+- Trusted local shells retain direct CLI access. Authorized per-connection Google
+  operations keep using the existing platform tool. Implementation and verification:
+  [PLAT-380](bugs/pulse_platform/security-sandbox/plat-380.md).
+
 ### 2026-10-03 — Folders outside the workspace reach a sandbox only on a person's own Mac
 
 A workflow's `folder_access` needs the same admin-assigned roots as a Work
@@ -56,15 +66,6 @@ Owner decision: decisions are applied only where the person can watch. The
 pre-run decision drain (PLAT-093) is removed; an answered decision is applied in
 the Builder chat, by the answering turn or Needs you's "Apply in chat". Ticket:
 [PLAT-381](bugs/pulse_platform/human-decisions/plat-381.md).
-
-### 2026-10-03 — Open: Relay builder shell inspects an inaccessible host Google store
-
-- Excellence's Relay builder returns exit 125 / `SANDBOX_UNAVAILABLE` before
-  executing `pwd`: the automatic Google CLI store grant points into the service
-  account's private home. This remains in main's shared isolator policy and is
-  separate from the command-menu/prompt-view fixes and Downloads boundary issue.
-- No server settings or permissions changed. Evidence and required follow-up:
-  [PLAT-380](bugs/pulse_platform/security-sandbox/plat-380.md).
 
 ### 2026-10-03 — Notifications are workflow-only; Gmail setup explains the operator steps
 

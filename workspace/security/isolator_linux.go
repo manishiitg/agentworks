@@ -204,7 +204,7 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 	// else the run folder (PLAT-283). Without this, pip/npm/venv default to
 	// $HOME, which lies outside every step's grant, and every install died
 	// with a bare permission error -- see sandbox_tool_env.go.
-	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist), policy.WorkDir, policy.WritePaths)
+	cmd.Env = sandboxToolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()), policy.WorkDir, policy.WritePaths)
 	if iso.Slot != "" {
 		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
 		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)

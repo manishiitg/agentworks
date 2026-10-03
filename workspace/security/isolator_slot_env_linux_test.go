@@ -18,6 +18,9 @@ import (
 // afterwards and never reached the slot's shell (Confida 2026-10-01: the tools gateway answered 401).
 func TestSlottedCommandRequestCarriesTheExtraEnvironment(t *testing.T) {
 	t.Setenv(slots.EnvSlotctl, "/opt/slotctl")
+	t.Setenv("GOG_HOME", "/ungranted-host-gog")
+	t.Setenv("GOG_KEYRING_PASSWORD", "fixture-host-keyring")
+	t.Setenv("AGENTWORKS_GOG_TERMINAL_ACCESS", "")
 	dir := t.TempDir()
 	iso := &Isolator{
 		Slot:      "slot05",
@@ -54,6 +57,11 @@ func TestSlottedCommandRequestCarriesTheExtraEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := strings.Join(req.Env, "\n")
+	for _, entry := range req.Env {
+		if strings.HasPrefix(entry, "GOG_HOME=") || strings.HasPrefix(entry, "GOG_KEYRING_PASSWORD=") {
+			t.Errorf("slot request inherited host Google config: %s", strings.SplitN(entry, "=", 2)[0])
+		}
+	}
 	for _, want := range []string{"MCP_API_TOKEN=tok-123", "SECRET_KEY=s3", "VAR_USER=u1"} {
 		if !strings.Contains(env, want) {
 			t.Errorf("the slot's request lacks %s", strings.SplitN(want, "=", 2)[0])

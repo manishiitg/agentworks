@@ -159,6 +159,14 @@ func (iso *Isolator) sandboxAllowedPath(path string) (string, bool) {
 	return canonicalAllowedPath, true
 }
 
+// hostGogRestricted keeps the service account's Google CLI store out of user
+// slots. Its private files cannot be opened after the identity switch, and the
+// shared store/keyring must not cross that boundary even if permissions allow it.
+// Local trusted shells retain their existing direct CLI access.
+func (iso *Isolator) hostGogRestricted() bool {
+	return iso.StrictAllowlist || iso.Slot != ""
+}
+
 // ExecuteIsolated runs a command with filesystem restrictions.
 // Linux selects a verified kernel backend (Landlock first, then a proven mount
 // namespace); macOS uses sandbox-exec.
@@ -177,7 +185,7 @@ func (iso *Isolator) ExecuteIsolated(ctx context.Context, command string, args [
 	}
 	local.WritePaths = append(append([]string{}, iso.WritePaths...), canonicalPath(tmp))
 	browserSocket := local.scopeBrowser()
-	if home := gogconfig.TerminalHome(iso.StrictAllowlist); home != "" {
+	if home := gogconfig.TerminalHome(iso.hostGogRestricted()); home != "" {
 		if err := os.MkdirAll(home, 0700); err != nil {
 			releaseScratch()
 			return nil, nil, fmt.Errorf("prepare GOG_HOME: %w", err)
@@ -283,7 +291,7 @@ func (iso *Isolator) executeIsolatedMountNamespace(ctx context.Context, command 
 
 	// CRITICAL: Set safe environment (no secrets), with package-manager state
 	// routed to the workflow's persistent sandbox folder (PLAT-284).
-	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist))
+	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()))
 
 	return cmd, cleanup, nil
 }
@@ -322,7 +330,7 @@ func (iso *Isolator) executeIsolatedMacOS(ctx context.Context, command string, a
 	// leaves $HOME writable, so installs never failed here the way they did
 	// under Landlock -- but route them identically so a workflow behaves the
 	// same on a Mac as on a Linux deployment (PLAT-284).
-	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.StrictAllowlist))
+	cmd.Env = iso.toolEnv(gogconfig.Environment(BuildSafeEnvironment(), iso.hostGogRestricted()))
 
 	return cmd, cleanup, nil
 }
