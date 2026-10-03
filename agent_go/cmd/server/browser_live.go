@@ -357,8 +357,21 @@ func (api *StreamingAPI) handleLiveBrowserStream(w http.ResponseWriter, r *http.
 				sendError("Enter an http or https address.")
 				continue
 			}
+			if teachingActive {
+				if _, e := forwardTeaching(ctx, session, map[string]any{"action": "flush", "workspace_path": physical}); e != nil {
+					sendError("Unable to finish recording the current page.")
+					continue
+				}
+				if _, e := forwardTeaching(ctx, session, map[string]any{"action": "prepare_navigation", "workspace_path": physical}); e != nil {
+					sendError("Unable to record opening this address.")
+					continue
+				}
+			}
 			_, err = browser.NewClient(workspaceURL).ExecuteCommand(ctx, append(browserViewerLaunchArgs(session), "--session", session, "open", message.URL, "--json"), workspaceBrowserExecuteOptions(GetUserIDFromContext(r.Context()), physical, session, 30*time.Second))
 			if err != nil {
+				if teachingActive {
+					_, _ = forwardTeaching(ctx, session, map[string]any{"action": "cancel_navigation", "workspace_path": physical})
+				}
 				sendError("Unable to open this address.")
 			}
 		case "release_control":

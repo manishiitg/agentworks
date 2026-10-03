@@ -305,7 +305,7 @@ func BrowserTeaching(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "idle"})
 			return
 		}
-	case "flush", "select_tab", "prepare_close":
+	case "flush", "select_tab", "prepare_close", "prepare_navigation", "cancel_navigation":
 		if state == nil || state.recorder == nil {
 			c.JSON(409, gin.H{"error": "No active demonstration"})
 			return
@@ -329,6 +329,8 @@ func BrowserTeaching(c *gin.Context) {
 			if err == nil {
 				if req.Action == "prepare_close" {
 					state.recorder.PrepareClose(target)
+				} else if req.Action == "prepare_navigation" || req.Action == "cancel_navigation" {
+					state.recorder.PrepareNavigation(target, req.Action == "prepare_navigation")
 				} else {
 					err = state.recorder.Select(ctx, target)
 				}

@@ -34,3 +34,11 @@ func (r *Recorder) PrepareClose(target string) {
 	r.manualClose[target] = true
 	r.mu.Unlock()
 }
+
+// Viewer address-bar navigation must replay as an explicit open, rather than
+// wait for a link-triggered navigation that never occurs.
+func (r *Recorder) PrepareNavigation(target string, pending bool) {
+	r.mu.Lock()
+	r.manualNavigation[target] = pending
+	r.mu.Unlock()
+}

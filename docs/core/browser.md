@@ -81,7 +81,8 @@ My Chrome. Connection ports, diagnostics and setup commands sit under a closed
 Advanced disclosure. Server settings describe the workspace browser without
 redundant mode choices. Start browser is in the top header, followed by an
 address bar and New tab / Close tab when connected. Tab mutations require
-exclusive manual control; closing the sole remaining tab is refused.
+exclusive manual control; manually entering an address during teaching records
+an explicit navigation so replay opens it instead of waiting for a link click; closing the sole remaining tab is refused.
 
 ### Capture inside the existing Chrome
 

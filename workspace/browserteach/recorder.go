@@ -49,25 +49,26 @@ type Action struct {
 	Observed   bool      `json:"observed,omitempty"`
 }
 type Recorder struct {
-	mu            sync.Mutex
-	attachMu      sync.Mutex
-	known         map[string]bool
-	declared      map[string]bool
-	metadata      map[string]PageInfo
-	manualClose   map[string]bool
-	conn          *Connection
-	pages         map[string]string
-	frames        map[string]string
-	contexts      map[string]map[int64]string
-	scripts       map[string]string
-	Actions       []Action
-	Errors        []string
-	Paused        bool
-	directory     string
-	stopped       bool
-	initial       string
-	complete      chan struct{}
-	evidenceBytes int64
+	mu               sync.Mutex
+	attachMu         sync.Mutex
+	known            map[string]bool
+	declared         map[string]bool
+	metadata         map[string]PageInfo
+	manualClose      map[string]bool
+	manualNavigation map[string]bool
+	conn             *Connection
+	pages            map[string]string
+	frames           map[string]string
+	contexts         map[string]map[int64]string
+	scripts          map[string]string
+	Actions          []Action
+	Errors           []string
+	Paused           bool
+	directory        string
+	stopped          bool
+	initial          string
+	complete         chan struct{}
+	evidenceBytes    int64
 }
 
 func SanitizeURL(raw string) string {
@@ -90,6 +91,7 @@ func Start(ctx context.Context, endpoint, targetID, dir string) (*Recorder, erro
 	r.declared = map[string]bool{targetID: true}
 	r.metadata = map[string]PageInfo{}
 	r.manualClose = map[string]bool{}
+	r.manualNavigation = map[string]bool{}
 	pages, err := c.Pages(ctx)
 	if err != nil {
 		c.Close()
@@ -267,7 +269,8 @@ func (r *Recorder) events() {
 			r.mu.Unlock()
 			if p.Frame.ParentID == "" && page != "" {
 				r.mu.Lock()
-				observed := len(r.Actions) > 0
+				observed := len(r.Actions) > 0 && !r.manualNavigation[page]
+				delete(r.manualNavigation, page)
 				r.mu.Unlock()
 				r.add(Action{Kind: "navigate", Page: page, Frame: p.Frame.ID, URL: SanitizeURL(p.Frame.URL), Observed: observed})
 			}

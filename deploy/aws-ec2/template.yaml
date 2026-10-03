@@ -169,6 +169,7 @@ Resources:
           command -v agent-browser
           mkdir -p /opt/video-studio/releases /data/video-studio/{docs,workspace-db,agent-db,logs}
           install -d -o video-studio -g video-studio -m 0755 /var/lib/video-studio/Downloads /var/lib/video-studio/video-studio/{releases,logs} /data/video-studio/docs/Downloads
+          install -d -o video-studio -g video-studio -m 0700 /var/lib/video-studio/.config/agentworks /var/lib/video-studio/.config/agentworks/gog
           chmod 0755 /opt/video-studio /data/video-studio
 
   ElasticIpAssociation:

@@ -178,6 +178,22 @@ func TestLiveBrowserStreamWatchControlAndDisconnect(t *testing.T) {
 			}
 		}
 	}
+	conn.WriteJSON(map[string]string{"type": "navigate", "url": "https://example.com/second"})
+	for _, expected := range []string{"flush", "prepare_navigation", "command"} {
+		select {
+		case request := <-received:
+			if expected == "command" {
+				command, _ := request["command"].(string)
+				if !strings.Contains(command, "open") || !strings.Contains(command, "https://example.com/second") {
+					t.Fatal(request)
+				}
+			} else if request["action"] != expected {
+				t.Fatal(request)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("Missing navigation operation %s", expected)
+		}
+	}
 	conn.WriteJSON(map[string]interface{}{"type": "resize_viewport", "width": 900, "height": 99999})
 	var rejected map[string]interface{}
 	for {

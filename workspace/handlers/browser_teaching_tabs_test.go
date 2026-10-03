@@ -108,9 +108,10 @@ func TestTeachingRealMultiTabReplay(t *testing.T) {
 	run("keyboard", "type", "Alice")
 	run("click", "#submit")
 	call(map[string]any{"action": "flush"})
-	run("tab", "new", fixture.URL+"/second")
-	run("wait", "#customer")
+	run("tab", "new", "about:blank")
 	call(map[string]any{"action": "select_tab"})
+	call(map[string]any{"action": "prepare_navigation"})
+	run("open", fixture.URL+"/second")
 	run("wait", "#customer")
 	run("click", "#customer")
 	run("keyboard", "type", "Second")
@@ -143,8 +144,12 @@ func TestTeachingRealMultiTabReplay(t *testing.T) {
 	run("click", "#submit")
 	state := call(map[string]any{"action": "finish"})
 	opens, switches, closes := 0, 0, 0
+	manualNavigation := false
 	values := map[string]string{}
 	for i, a := range state.Actions {
+		if a.Kind == "navigate" && a.URL == fixture.URL+"/second" && !a.Observed {
+			manualNavigation = true
+		}
 		switch a.Kind {
 		case "tab_open":
 			opens++
@@ -158,6 +163,9 @@ func TestTeachingRealMultiTabReplay(t *testing.T) {
 			state.Actions[i].Parameter = key
 			values[key] = "Bob"
 		}
+	}
+	if !manualNavigation {
+		t.Fatal("Address-bar navigation was not recorded as an explicit open")
 	}
 	if opens != 2 || switches < 3 || closes != 1 {
 		t.Fatalf("Incomplete tab capture: %+v", state.Actions)

@@ -13,6 +13,26 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Explicit address navigation in teaching and RTS startup prerequisite
+
+- **Done.** Flush the current page before viewer navigation and mark that
+  navigation as an explicit open. Recorded link navigation still waits for the
+  website. Opening a blank tab and then entering a URL now reproduces correctly.
+  Trusted viewer control and scoped service calls remain required for these marks.
+- **Verified.** Real Chrome recording and repeated replay across the manual
+  address change, tabs, popup and close; browser control proxy checks.
+- **RTS finding.** The service's `.config` is root-owned and its private
+  `agentworks/gog` directory was absent. Sandbox setup tried to create this
+  prerequisite before every trusted command and failed, including browser
+  startup. Create only the missing private child directories as video-studio,
+  mode 0700; retain the parent and unrelated configuration ownership. The
+  root bootstrap/template now prepare them for future hosts. No credentials
+  were copied or sandbox permissions disabled.
+- **Runtime.** Linux qualification must repeat the same profile/launch options
+  for every command; omitting them causes a blank-browser relaunch in 0.38.2.
+  The app already preserves these flags; the isolated runtime test now does too.
+
+
 ### 2026-10-03 — Terminal: wheel scrolls the history, coloured output, plain "command not found"
 
 - **Found (user).** The wheel did nothing; the tmux status bar showed at the bottom; `ls`/`grep` were one colour; `nvm install 24` (nvm not installed) printed Ubuntu's Python
@@ -83,6 +103,8 @@ Design references for the linked runtime decisions:
   popups by their mapped opener and refuse ambiguity. Existing unrelated Chrome
   tabs are not automatically recorded. Closed targets leave capture listeners;
   new attachments preserve Pause. Keep at least one tab open in the viewer.
+  Address-bar navigation is marked by the trusted viewer as an explicit open
+  and flushed before changing pages, so reuse does not wait for a missing click.
 - **Verification.** Real Chrome covers opening a tab, switching back, a popup,
   closing it, repeated replay with fresh IDs and privacy for tabs selected while
   paused. Control and trusted-launch flags remain required for tab commands.

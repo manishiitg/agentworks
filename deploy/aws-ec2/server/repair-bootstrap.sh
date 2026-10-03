@@ -18,6 +18,7 @@ systemctl enable --now docker
 # install them system-wide (an old root copy silently wins when the managed one is missing).
 npm install -g agent-browser@latest
 id -u video-studio >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/video-studio --shell /usr/sbin/nologin video-studio
+install -d -o video-studio -g video-studio -m 0700 /var/lib/video-studio/.config/agentworks /var/lib/video-studio/.config/agentworks/gog
 bash "$script_dir/../../common/install-rootless-docker.sh" video-studio
 runuser -u video-studio -- env HOME=/var/lib/video-studio npx --yes hyperframes@0.8.6 browser ensure
 test -x "$(runuser -u video-studio -- env HOME=/var/lib/video-studio npx --yes hyperframes@0.8.6 browser path | tail -n 1)"

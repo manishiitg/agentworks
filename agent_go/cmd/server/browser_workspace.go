@@ -343,7 +343,7 @@ func (api *StreamingAPI) handleBrowserTeaching(w http.ResponseWriter, r *http.Re
 	payload["workspace_path"] = physical
 	// Direct local Chrome teaching can hold control without a viewer socket.
 	// Remote viewer teaching is handled on its already-controlled WebSocket.
-	if action == "start" || action == "pause" || action == "resume" || action == "finish" || action == "cancel" || action == "interrupt" || action == "flush" || action == "select_tab" || action == "prepare_close" {
+	if action == "start" || action == "pause" || action == "resume" || action == "finish" || action == "cancel" || action == "interrupt" || action == "flush" || action == "select_tab" || action == "prepare_close" || action == "prepare_navigation" || action == "cancel_navigation" {
 		http.Error(w, "Take control and start teaching in the browser viewer", 409)
 		return
 	}
