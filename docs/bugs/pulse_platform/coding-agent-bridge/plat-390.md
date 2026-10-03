@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | on `main` (provider `427b14e`, mcpagent `51acb82`, builder this commit); not deployed; owner's final testing pending |
+| State | on `main` (provider `427b14e`→`7c1966d`, mcpagent `51acb82`→`d73145b`, builder `f0a735dca`); partly deployed (Excellence); owner's final testing pending |
 | Date | 2026-10-03 |
 | Owner | coding-agent-bridge |
 | Related | PLAT-364 (confinement), PLAT-385 (blocked paths in the sandbox) |
@@ -23,8 +23,8 @@ gone; a stored `hybrid` reads as `full`.
 |---|---|
 | Claude | Bash/Read/Write/Edit/Grep/Glob/skills/todos/subagents/web; no permission prompts |
 | Codex | shell + subagents in its `workspace-write` sandbox |
-| Cursor | new: its own Shell/Read/Edit/Write/Delete; shell approved by the hook (never `--force`); subagents, cloud/background agents, computer use denied |
-| Muse | new: no tool allowlist, so no hook and no `--disable-shell/--disable-write` |
+| Cursor | new: its own Shell/Read/Edit/Write, pre-approved in `.cursor/cli.json` (`Shell(*)`, `Read(**)`, `Write(**)`) plus a shell-allow hook script (never `--force`); its Delete tool (always asks), subagents, cloud/background agents and computer use denied; deletes go through the shell |
+| Muse | new: no tool allowlist and `--yolo` (no Muse approvals or sandbox; its Bubblewrap probe cannot run inside the lock and kept the TUI from settling, Excellence 2026-10-03); interactive launches now also pass `--reasoning-effort` |
 | Agy | full gate as before; hybrid read gate removed |
 | Pi | bridge-only in every mode (no confined full mode yet) |
 
@@ -42,6 +42,14 @@ native tools were told their native tools were disabled).
 
 - Done: unit and contract tests; provider/mcpagent/builder suites match their
   main baselines (pre-existing failures only).
-- Left: live P0 per CLI on the isolated test server (Codex, Cursor, Muse full
-  modes are new); the owner's final testing; Seatbelt for the other CLIs and
-  removing `full_unconfined` (step 3).
+- Live (macOS, isolated test server): P0 gate passes for Codex and Claude;
+  Muse and Cursor gates pass except one flaky Muse formatting test (passes
+  alone) and one Cursor test that also fails on the provider before this
+  change. Full-mode live tests pass: `TestCodexCLIRealNativeToolsP0`,
+  `TestCodexCLIRealNativeToolsSubagentP0`, `TestCursorCLIRealFullNativeP0`,
+  `TestMuseCLIRealFullNative` (tmux and structured).
+- Regressions found and fixed: Muse full mode never settled on Linux (fixed
+  with `--yolo`, `fcc28ff`); Cursor full mode stopped on its own permission
+  prompts (fixed `7c1966d`).
+- Left: Linux proof of the Muse and Cursor fixes on a server; the owner's final
+  testing; Seatbelt for the other CLIs and removing `full_unconfined` (step 3).
