@@ -13,6 +13,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — My local product-list change wrote an invalid runtime config (empty value)
+
+- **Found (user, local: Code still missing from the switcher).** The generated `frontend/public/runtime-config.js` had
+  `enabledProductSurfaces: ,`: the variable was defined in the middle of `run_server_with_logging.sh`, after the early path (`--only-frontend`)
+  had already written the file. An empty value is a syntax error, so the whole config was ignored. It is now defined at the top of the
+  script, and I tested the real writer function (output parsed by node, with and without the override).
+
 ### 2026-10-03 — The terminal did not start on a Mac with the strict sandbox (two causes)
 
 - **Found (user, local):** the Terminal tab showed "disconnected"; the server log said "error connecting to /tmp/.agentworks-shells/.../tmux.sock
