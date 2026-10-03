@@ -647,8 +647,8 @@ type WorkflowCapabilities struct {
 	// sandbox limited to the chat's folders (mcp_only when it cannot be
 	// confined), with protected files refused. Interactive chats of owners and editors only: step
 	// agents, schedules, webhooks, bots and read-only users keep
-	// AgentWorks-only tools. On by default: nil means on and only an explicit
-	// false turns it off. Read it through NativeAgentToolsEnabled.
+	// AgentWorks-only tools. Always on (2026-10-03): the field is kept so older
+	// manifests still load, and a stored false is ignored. Read it through NativeAgentToolsEnabled.
 	NativeAgentTools *bool `json:"native_agent_tools,omitempty"`
 }
 
@@ -658,10 +658,10 @@ func (c WorkflowCapabilities) NativeAgentToolsEnabled() bool {
 	return nativeAgentToolsEnabled(c.NativeAgentTools)
 }
 
-// nativeAgentToolsEnabled applies the on-by-default rule shared by workflows
-// and crew projects.
-func nativeAgentToolsEnabled(setting *bool) bool {
-	return setting == nil || *setting
+// nativeAgentToolsEnabled: native agent tools are on for every workflow, Relay, Crew and Code (owner, 2026-10-03). A value an older workflow
+// saved as false is ignored, as it already is for a Crew or a Code: there is no switch left to turn it back on.
+func nativeAgentToolsEnabled(_ *bool) bool {
+	return true
 }
 
 // WorkflowNotificationConfig contains only safe references. Credential values

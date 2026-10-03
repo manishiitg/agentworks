@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Native agent tools are always on for every product (a stored "off" is ignored)
+
+- **Decided (owner).** Workflow, Relay, Crew and Code all use native agent tools by default; there is no switch.
+- **Done.** `nativeAgentToolsEnabled` (workflows and Relays) always returns true, as Crew and Code already did; a manifest that saved
+  `native_agent_tools: false` still loads but is ignored. The workflow Models page toggle was removed earlier today. Tests updated: an old "off" decides the
+  same tools mode as an untouched workflow.
+
 ### 2026-10-03 — Full CLI: own subagents; run_in_background only for read-only reviewers and long loops — PLAT-397
 
 - **Decided (owner).** With native tools on, in-turn parallel work uses the CLI's own subagents; steps are

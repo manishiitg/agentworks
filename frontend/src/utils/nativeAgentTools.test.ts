@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
 import { nativeAgentToolsEnabled } from './nativeAgentTools'
 
-it('treats native agent tools as on unless explicitly turned off', () => {
+it('keeps native agent tools on whatever an older manifest saved', () => {
   expect(nativeAgentToolsEnabled(undefined)).toBe(true)
   expect(nativeAgentToolsEnabled(true)).toBe(true)
-  expect(nativeAgentToolsEnabled(false)).toBe(false)
+  expect(nativeAgentToolsEnabled(false)).toBe(true)
 })
