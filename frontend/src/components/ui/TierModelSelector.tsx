@@ -54,6 +54,7 @@ export function TierModelSelector({
             key={model.model_id}
             type="button"
             disabled={disabled}
+            aria-pressed={isSelected}
             onClick={() => onSelect(model.model_id)}
             className={cn(
               'relative flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-colors',

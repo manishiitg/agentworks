@@ -28,6 +28,9 @@ func BuiltinAgentProfiles() []agentprofiles.Profile {
 	if err != nil {
 		panic(fmt.Errorf("render SparkQuill prompts: %w", err))
 	}
+	for i := range profiles {
+		profiles[i] = agentprofiles.WithPlatformCodingProviders(profiles[i])
+	}
 	return profiles
 }
 

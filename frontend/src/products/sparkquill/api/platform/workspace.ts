@@ -15,12 +15,12 @@ export type Requester = <T>(method: string, path: string, body?: unknown) => Pro
 // chat and {child}'s tutor... pick whichever account you already pay for").
 // The MODEL within that engine is not: product.yaml declares a model_id per
 // profile so a family can choose different models for parent and child on the
-// same account. Both currently default to GPT-6 Luna on Codex. A
+// same account. The parent defaults to GPT-6.1 Sol and the child to GPT-6 Luna. A
 // single shared `model` field (now legacy, read-only going forward) let
 // whichever side picked last silently overwrite the other's — parent_model/
 // child_model are the fix. familyRuntime() falls back to each profile's own
 // product.yaml default when its role-specific field has never been set.
-export type FamilyFile = { engine?: string; model?: string; parent_model?: string; child_model?: string; child?: { name?: string; grade?: string; board?: string } | null; parent_label?: string; pin_hash?: string; watch_sites?: string[] }
+export type FamilyFile = { engine?: string; model?: string; parent_model?: string; child_model?: string; connection_id?: string; parent_reasoning_effort?: string; child_reasoning_effort?: string; child?: { name?: string; grade?: string; board?: string } | null; parent_label?: string; pin_hash?: string; watch_sites?: string[] }
 
 export async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
@@ -176,12 +176,17 @@ export class FamilyWorkspace {
   // it is per-role (see FamilyFile's comment) — role picks which of
   // parent_model/child_model this call's model belongs to. The legacy shared
   // `model` field is never written here — see familyRuntime()'s fallback.
-  async saveEngine(role: 'parent' | 'child', engine: string, model?: string): Promise<void> {
+  async saveEngine(role: 'parent' | 'child', engine: string, model?: string, connectionId?: string, reasoningEffort?: string): Promise<void> {
     const current = await this.readFamily()
     const modelKey = role === 'parent' ? 'parent_model' : 'child_model'
     // A model belongs to its engine: switching engine without naming a model
     // drops this role's old one rather than carrying a foreign model id along.
     const next: Record<string, unknown> = { ...current, engine: engine.trim() }
+    if (current.engine !== engine.trim()) {
+      for (const key of ['model', 'parent_model', 'child_model', 'connection_id', 'parent_reasoning_effort', 'child_reasoning_effort']) delete next[key]
+    }
+    if (connectionId !== undefined) next.connection_id = connectionId.trim()
+    if (reasoningEffort !== undefined) next[`${role}_reasoning_effort`] = reasoningEffort
     if (model && model.trim()) next[modelKey] = model.trim()
     else delete next[modelKey]
     await this.writeJSON('family.json', next)

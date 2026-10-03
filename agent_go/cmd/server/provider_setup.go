@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,32 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"authenticate": {command: "agy"},
 		"inspect":      {command: "agy", args: []string{"--sandbox"}},
 	},
+}
+
+// Install the registry's command only on a single-user desktop. A hosted
+// server owns its CLI programs through deployment, independently of accounts.
+var providerInstallHostOS = runtime.GOOS
+
+func providerInstallAvailable(provider string) bool {
+	return providerInstallHostOS == "darwin" && !IsMultiUserMode() && providerInstallCommand(provider) != ""
+}
+
+func providerSetupCommandFor(provider, action string) (providerSetupCommand, error) {
+	if action == "install" {
+		if !providerInstallAvailable(provider) {
+			return providerSetupCommand{}, errors.New("provider installation is available only on a single-user Mac; server providers are managed by deployment")
+		}
+		return providerSetupCommand{command: "/bin/bash", args: []string{"-o", "pipefail", "-lc", providerInstallCommand(provider)}}, nil
+	}
+	actions, ok := providerSetupCommands[provider]
+	if !ok {
+		return providerSetupCommand{}, fmt.Errorf("guided setup is not available for provider %q", provider)
+	}
+	spec, ok := actions[action]
+	if !ok {
+		return providerSetupCommand{}, fmt.Errorf("guided %s is not available for provider %q", action, provider)
+	}
+	return spec, nil
 }
 
 var providerSetupANSI = regexp.MustCompile(`\x1b\[[0-9;:?>]*[ -/]*[@-~]|\x1b.`)
@@ -336,15 +363,10 @@ func (m *providerSetupManager) start(ownerID, provider, action string, cols, row
 	if cleanup == nil {
 		cleanup = func() {}
 	}
-	actions, ok := providerSetupCommands[provider]
-	if !ok {
+	spec, err := providerSetupCommandFor(provider, action)
+	if err != nil {
 		cleanup()
-		return nil, fmt.Errorf("guided setup is not available for provider %q", provider)
-	}
-	spec, ok := actions[action]
-	if !ok {
-		cleanup()
-		return nil, fmt.Errorf("guided %s is not available for provider %q", action, provider)
+		return nil, err
 	}
 	if _, err := exec.LookPath(spec.command); err != nil {
 		cleanup()
@@ -688,6 +710,10 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Action = strings.TrimSpace(request.Action)
 	request.WorkspacePath = strings.TrimSpace(request.WorkspacePath)
+	if request.Action == "install" && (!providerInstallAvailable(request.Provider) || request.ConnectionID != "" || request.WorkspacePath != "") {
+		http.Error(w, `{"error":"Install providers from a single-user Mac. Server installations are managed by deployment."}`, http.StatusForbidden)
+		return
+	}
 	var environment []string
 	var cleanup func()
 	caller := GetUserIDFromContext(r.Context())

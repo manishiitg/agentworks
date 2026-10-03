@@ -121,6 +121,7 @@ export interface ProviderManifestEntry {
   runtime_command?: string
   runtime_available?: boolean
   install_command?: string
+  install_available?: boolean
   installed_version?: string
   min_supported_version?: string
   update_status?: 'supported' | 'unsupported' | 'unknown'
@@ -210,7 +211,7 @@ export interface GetModelMetadataResponse {
   models: ModelMetadata[]
 }
 
-export type ProviderSetupAction = 'authenticate' | 'inspect' | 'usage'
+export type ProviderSetupAction = 'authenticate' | 'inspect' | 'usage' | 'install'
 
 export interface ProviderSetupSession {
   id: string

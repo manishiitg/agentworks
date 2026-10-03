@@ -20,8 +20,12 @@ describe('parent page answers', () => {
       expect(setMetadata).toHaveBeenCalledWith('parent', { agentProfileEngine: 'codex', agentProfileModelID: 'sol', agentProfileReasoningEffort: 'high' })
       expect(setMetadata).toHaveBeenCalledWith('child', { agentProfileEngine: 'codex' })
       setMetadata.mockClear()
+      applyFamilyEngineToOpenTabs('parent', 'codex', 'sol', 'high', 'family-account')
+      expect(setMetadata).toHaveBeenCalledWith('parent', { agentProfileEngine: 'codex', agentProfileModelID: 'sol', agentProfileReasoningEffort: 'high', agentProfileConnectionID: 'family-account' })
+      expect(setMetadata).toHaveBeenCalledWith('child', { agentProfileEngine: 'codex', agentProfileConnectionID: 'family-account' })
+      setMetadata.mockClear()
       applyFamilyEngineToOpenTabs('parent', 'claude', 'sonnet')
-      expect(setMetadata).toHaveBeenCalledWith('child', { agentProfileEngine: 'claude', agentProfileModelID: '', agentProfileReasoningEffort: undefined })
+      expect(setMetadata).toHaveBeenCalledWith('child', { agentProfileEngine: 'claude', agentProfileConnectionID: '', agentProfileModelID: '', agentProfileReasoningEffort: undefined })
     } finally { state.mockRestore() }
   })
   it('submits a page choice to the open parent conversation', async () => {

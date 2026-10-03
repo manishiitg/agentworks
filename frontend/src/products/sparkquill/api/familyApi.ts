@@ -11,6 +11,9 @@ export type SetupState = {
   model?: string
   parent_model?: string
   child_model?: string
+  connection_id?: string
+  parent_reasoning_effort?: string
+  child_reasoning_effort?: string
   child?: { name?: string; grade?: string; board?: string } | null
   pin_set?: boolean
   setup_complete?: boolean
@@ -69,7 +72,7 @@ export interface FamilyApi {
   engines(): Promise<ApiEngine[]>
   validateEngine(provider: string): Promise<{ valid: boolean; message?: string }>
   /** role picks whether model is saved as this family's parent_model or child_model; engine itself is shared. */
-  selectEngine(role: 'parent' | 'child', engine: string, model?: string): Promise<void>
+  selectEngine(role: 'parent' | 'child', engine: string, model?: string, connectionId?: string, reasoningEffort?: string): Promise<void>
   saveChild(child: { name: string; grade: string; board: string }): Promise<void>
   setPin(pin: string): Promise<{ error?: string }>
   verifyPin(pin: string): Promise<{ ok?: boolean }>

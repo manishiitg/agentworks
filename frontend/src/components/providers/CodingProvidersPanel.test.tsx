@@ -381,3 +381,17 @@ describe('CodingProvidersPanel', () => {
     }
   })
 })
+
+it('installs a missing desktop provider through the shared setup API', async () => {
+  vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({ runtime_available: false, auth_configured: false, usable: false, install_available: true })], provider_order: ['codex-cli'], integration_kinds: {} })
+  vi.mocked(llmConfigService.startProviderSetup).mockResolvedValue({ id: 'install-1', provider: 'codex-cli', action: 'install', status: 'running', created_at: '', updated_at: '' })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<CodingProvidersPanel isOpen product="sparkquill" onClose={vi.fn()} />))
+    await act(async () => [...host.querySelectorAll('button'), ...document.querySelectorAll('button')].find(button => button.textContent === 'Install Codex')!.click())
+    expect(llmConfigService.startProviderSetup).toHaveBeenCalledWith('codex-cli', 'install', 100, 24, undefined, false)
+    expect(document.querySelector('[data-testid="guided-terminal"]')?.textContent).toContain('install-1')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})

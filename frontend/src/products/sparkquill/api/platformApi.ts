@@ -20,6 +20,8 @@ import type {
 import { messagesFromEvents, type PlatformEvent } from './platform/events'
 import { quickCommandsFromProfile } from './platform/commands'
 import { fetchCompleteSessionEvents, fetchRecentSessionEvents, SessionEventsHTTPError } from '../../../../shared/session'
+import { readyCodingProviders } from '../../../utils/providerCatalogFilter'
+import type { ProviderConnection, ProviderManifestEntry as PlatformProvider } from '../../../services/llm-config-api'
 import { FAMILY_ROOT, FamilyWorkspace, documentsURL } from './platform/workspace'
 
 export const PARENT_PROFILE = 'sparkquill'
@@ -171,6 +173,9 @@ export function createPlatformApi(options: PlatformApiOptions): FamilyApi {
       model: state.model,
       parent_model: state.parent_model,
       child_model: state.child_model,
+      connection_id: state.connection_id,
+      parent_reasoning_effort: state.parent_reasoning_effort,
+      child_reasoning_effort: state.child_reasoning_effort,
       child: state.child ?? null,
       parent_label: state.parent_label,
       pin_set: pinSet,
@@ -208,11 +213,14 @@ export function createPlatformApi(options: PlatformApiOptions): FamilyApi {
   // logged in?) comes from the platform's own provider manifest, the same one
   // AgentWorks' own model picker reads.
   async function engines(): Promise<ApiEngine[]> {
-    const [options, manifest] = await Promise.all([
+    const [options, manifest, connections] = await Promise.all([
       declaredProviderOptions(),
       request<{ providers?: ProviderManifestEntry[] }>('GET', '/api/llm-config/providers').catch(() => ({ providers: [] })),
+      request<{ connections?: ProviderConnection[] }>('GET', '/api/provider-connections?product=sparkquill&workspace_path=Chats%2FSparkQuill').catch(() => ({ connections: [] })),
     ])
-    const byID = new Map((manifest.providers ?? []).map((p) => [p.id, p]))
+    const entries = (manifest.providers ?? []).map(p => ({ ...p, integration_kind: 'coding_agent' } as PlatformProvider))
+    const ready = new Set(readyCodingProviders(entries, connections.connections || []).map(p => p.id))
+    const byID = new Map(entries.map(p => [p.id, p]))
     return options.map((o) => {
       const entry = byID.get(o.provider)
       return {
@@ -221,7 +229,7 @@ export function createPlatformApi(options: PlatformApiOptions): FamilyApi {
         runtime_command: entry?.runtime_command ?? '',
         runtime_available: entry?.runtime_available ?? false,
         auth_configured: entry?.auth_configured ?? false,
-        usable: entry?.usable ?? false,
+        usable: ready.has(o.provider),
         setup_hint: entry?.setup_hint,
         deprecated: entry?.deprecated,
       } as ApiEngine
@@ -236,8 +244,8 @@ export function createPlatformApi(options: PlatformApiOptions): FamilyApi {
     return { valid: res.valid, message: res.message ?? res.error }
   }
 
-  async function selectEngine(role: 'parent' | 'child', engineID: string, model?: string): Promise<void> {
-    await ws.saveEngine(role, engineID, model)
+  async function selectEngine(role: 'parent' | 'child', engineID: string, model?: string, connectionId?: string, reasoningEffort?: string): Promise<void> {
+    await ws.saveEngine(role, engineID, model, connectionId, reasoningEffort)
   }
 
   const api: FamilyApi = {

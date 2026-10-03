@@ -15,10 +15,10 @@ import (
 	"github.com/gorilla/mux"
 	llm "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/utils"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
@@ -34,6 +34,7 @@ type providerManifestEntry struct {
 	RuntimeCommand        string                            `json:"runtime_command,omitempty"`
 	RuntimeAvailable      *bool                             `json:"runtime_available,omitempty"`
 	InstallCommand        string                            `json:"install_command,omitempty"`
+	InstallAvailable      bool                              `json:"install_available"`
 	InstalledVersion      string                            `json:"installed_version,omitempty"`
 	MinSupportedVersion   string                            `json:"min_supported_version,omitempty"`
 	UpdateStatus          string                            `json:"update_status,omitempty"`
@@ -263,27 +264,7 @@ func providerWorkflowTierDefaults(provider string) *llm.CodingAgentDefaultTierMo
 }
 
 func allProviderModelMetadata() []*llmtypes.ModelMetadata {
-	base := utils.GetAllModelMetadata()
-	out := make([]*llmtypes.ModelMetadata, 0, len(base)+8)
-	seen := make(map[string]struct{}, len(base)+8)
-	appendModel := func(model *llmtypes.ModelMetadata) {
-		if model == nil || strings.TrimSpace(model.Provider) == "" || strings.TrimSpace(model.ModelID) == "" {
-			return
-		}
-		key := strings.ToLower(strings.TrimSpace(model.Provider)) + "\x00" + strings.TrimSpace(model.ModelID)
-		if _, ok := seen[key]; ok {
-			return
-		}
-		seen[key] = struct{}{}
-		out = append(out, model)
-	}
-	for _, model := range base {
-		appendModel(model)
-	}
-	for _, model := range claudecode.GetAllClaudeCodeModels() {
-		appendModel(model)
-	}
-	return out
+	return agentprofiles.PlatformModelMetadata()
 }
 
 func providerModelMetadata(provider string) []*llmtypes.ModelMetadata {
@@ -410,6 +391,7 @@ func (api *StreamingAPI) handleGetProviderManifest(w http.ResponseWriter, r *htt
 			RuntimeCommand:        runtimeCommand,
 			RuntimeAvailable:      runtimeOK,
 			InstallCommand:        providerInstallCommand(provider),
+			InstallAvailable:      providerInstallAvailable(provider),
 			InstalledVersion:      cliVersions[provider].installed,
 			MinSupportedVersion:   cliVersions[provider].floor,
 			UpdateStatus:          cliVersions[provider].status,
