@@ -13,6 +13,26 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Qualify Cursor's RTS account through the installed CLI
+
+- Tested RTS / Video Studio on its AWS EC2 host (the deployment named RTS in
+  `deploy.sh`), using the service's existing Cursor API key through SSM. SSH
+  timed out. No deployment, service restart, CLI update or saved-account change
+  was performed. Every test used the service UID, a disposable HOME/workspace,
+  read-only Ask mode and a no-tools echo prompt; temporary folders were removed.
+- Installed Cursor CLI is `2026.10.01-e373342`, matching the version served by
+  Cursor's official installer at verification time on October 3.
+- `--list-models` succeeds. It exposes Grok 4.6 variants and GLM 5.2 High/Max,
+  but neither GLM 5.3 nor Flash. Both `glm-5.3` and `glm-5.3-flash` exit 1 with
+  `Cannot use this model`. Documentation/catalog presence is not proof of
+  availability for this deployment's key.
+- Both `grok-4.6` and `cursor-grok-4.6-high` return `CURSOR_TEST_OK`, exit 0, and
+  report successful result/usage events. Their native runtime labels are
+  respectively `Grok 4.6 High Fast` and `Grok 4.6 High`; the short canonical ID
+  therefore selects Fast for this account. These probes qualify CLI inference,
+  not the app's retained sessions, native tool execution or full coding loop.
+- Source for release comparison: [Cursor installer](https://cursor.com/install).
+
 ### 2026-10-03 — Browser startup, scope settings and structured teaching implemented
 
 - **Decision (user).** Implement the browser ownership, manual sign-in and teaching
@@ -1782,6 +1802,17 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+### 2026-10-03 — Cursor curated models can exceed the account's live availability
+- RTS's current CLI/key rejects the newly curated GLM 5.3 and Flash choices.
+  `WorkModelsPanel` currently unions live choices into the curated list; a
+  successful list therefore does not remove unsupported curated entries.
+  Account-aware model filtering remains a follow-up; do not describe those GLM
+  choices as qualified on RTS until its live account list and inference pass.
+- Bare `grok-4.6` resolves to Fast for this key while the current metadata assumes
+  standard pricing unless the selector explicitly contains `fast=true`.
+  Live suffix IDs such as `cursor-grok-4.6-high` also need family-aware metadata.
+  Model/pricing resolution needs follow-up before certifying cost attribution.
 
 ### 2026-10-03 — Cursor's separate reasoning-effort option is not forwarded
 - The Cursor adapter currently launches the selected model ID without mapping
