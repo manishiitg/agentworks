@@ -3263,7 +3263,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* Server and LLM Selection — hidden in workflow phase chat (servers come from preset) */}
                 {(
                   <div data-tour="chat-input-tools" data-testid="tour-chat-input-tools" className="flex items-center gap-2">
-                      {sparkleEl}
                       {isProductSurface && newConversationEnabled && (
                         <NewChatControl
                           engines={engineGroups.map((g) => ({ id: g.option.id, label: g.option.label || g.option.id }))}
@@ -3594,31 +3593,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </div>
                 )}
 
-                {/* Status text - removed observer initialization message */}
-              </div>
-              {/* Show old buttons */}
-              {(
-                <div className="flex items-center gap-1">
-                    <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
-                      {/* New chat and the live view sit with the send controls, on the right (owner 2026-10-03). */}
-                      {showNewChatAction && onNewChat ? (
-                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
-                  <button
-                    type="button"
-                    onClick={onNewChat}
-                    disabled={isTurnInFlight}
-                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
-                    aria-label="Start a new chat"
-                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
-                    data-testid="chat-new-chat"
-                  >
-                    <Plus className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
-                      New chat
-                    </span>
-                  </button>
-                ) : null}
-                      {activeTabId && shouldShowLiveTerminalControl(
+                {activeTabId && shouldShowLiveTerminalControl(
                   liveTerminalOffered,
                   isProductSurface,
                   isInteractiveWorkflowBuilderChat,
@@ -3663,6 +3638,31 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     </TooltipContent>
                   </Tooltip>
                 )}
+                {/* Status text - removed observer initialization message */}
+              </div>
+              {/* Show old buttons */}
+              {(
+                <div className="flex items-center gap-1">
+                    <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
+                      {/* New chat and the commands (wand) sit with the send controls, on the right (owner 2026-10-03). */}
+                      {showNewChatAction && onNewChat ? (
+                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
+                  <button
+                    type="button"
+                    onClick={onNewChat}
+                    disabled={isTurnInFlight}
+                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Start a new chat"
+                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
+                    data-testid="chat-new-chat"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
+                      New chat
+                    </span>
+                  </button>
+                ) : null}
+                      {sparkleEl}
                       {!nativeTerminalTools && attachmentEl}
                       {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary
