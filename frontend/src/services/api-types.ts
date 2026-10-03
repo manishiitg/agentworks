@@ -3856,8 +3856,12 @@ export interface WorkFolderAddRequest {
 
 /** Server-owned email routing; separate from agent Gmail write permissions. */
 export interface GmailInboundFilters {
+  sender_allowlist?: string[]
   subject_contains?: string[]
   body_contains?: string[]
+  subject_contains_any?: string[]
+  body_contains_any?: string[]
+  allow_automatic?: boolean
   has_attachments?: boolean
   new_threads_only?: boolean
 }

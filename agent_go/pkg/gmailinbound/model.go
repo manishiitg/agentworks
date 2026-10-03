@@ -60,6 +60,7 @@ type Message struct {
 	RFCMessageID  string       `json:"rfc_message_id"`
 	Authenticated bool         `json:"authenticated"`
 	Automatic     bool         `json:"automatic"`
+	Blocked       bool         `json:"blocked,omitempty"` // Spam, trash, bounces and automatic replies.
 	Attachments   []Attachment `json:"attachments,omitempty"`
 }
 type Delivery struct {
@@ -123,11 +124,14 @@ func (r RawMessage) Parse(account string) (Message, error) {
 			m.Recipients = append(m.Recipients, strings.ToLower(a.Address))
 		}
 	}
-	m.Automatic = r.Payload.header("Auto-Submitted") != "" && !strings.EqualFold(r.Payload.header("Auto-Submitted"), "no")
+	autoSubmission := strings.ToLower(strings.TrimSpace(strings.SplitN(r.Payload.header("Auto-Submitted"), ";", 2)[0]))
+	m.Automatic = autoSubmission != "" && autoSubmission != "no"
 	m.Automatic = m.Automatic || r.Payload.header("List-ID") != "" || r.Payload.header("Return-Path") == "<>"
+	m.Blocked = autoSubmission == "auto-replied" || strings.TrimSpace(r.Payload.header("Return-Path")) == "<>"
 	for _, label := range r.LabelIDs {
 		if label == "SPAM" || label == "TRASH" {
 			m.Automatic = true
+			m.Blocked = true
 		}
 		if label == "SENT" && strings.EqualFold(from.Address, account) {
 			m.Authenticated = true

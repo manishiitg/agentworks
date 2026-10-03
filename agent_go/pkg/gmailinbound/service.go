@@ -166,7 +166,7 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 		if e != nil {
 			continue
 		}
-		if message.Automatic || !message.Authenticated {
+		if message.Blocked || !message.Authenticated {
 			continue
 		}
 		for _, r := range routes {
@@ -184,6 +184,9 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 				}
 			}
 			if !matched {
+				continue
+			}
+			if !r.Filters.AcceptsMessageKind(message) {
 				continue
 			}
 			if e = s.Authorize(ctx, r, message); e != nil {

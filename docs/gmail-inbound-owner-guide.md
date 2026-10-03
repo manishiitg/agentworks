@@ -18,14 +18,14 @@ To pause, ask the Builder to disable it. Disabling keeps the address; mail sent 
 
 ## What gets processed
 
-- **Only your email.** Version one accepts mail only from the project owner's own address. Nothing from anyone else triggers anything, and an address never shares your private chats, files, logins, tools, or budget.
+- **Your email by default.** Ask Builder to allow specific addresses or domains when you want other senders to start work. For example, accept `@realtrainingsys.com` OR a specific Notion sender. This authorizes those authenticated senders to run the saved target using your configured account and tools; only an interactive owner can change the rule.
 - **Only authenticated mail.** The sender's domain must pass DMARC, or the message must be your own mailbox's sent mail.
 - **Only mail received after activation.** Older mail never triggers work. The service tracks new messages and can catch up after an outage; unrelated new inbox mail does not push your request out of a 20-message window.
-- **No automated mail.** Auto-replies, mailing lists, spam, and trash are ignored.
+- **Notifications require opt-in.** Ask Builder to accept automated notifications from your selected senders. Automatic replies, bounces, spam, and trash are always ignored.
 
 ## Replies (optional)
 
-If replies are on, the project's final response goes back to you — only ever to the authenticated sender, never to CC, and never to any Reply-To on the incoming mail. The receiving address stays in Reply-To. Replies continue the Crew/Code chat; workflows run their saved route again unless you enabled new-threads-only.
+If replies are on, the project's final response goes back only to the authenticated sender, never to CC, and never to any Reply-To on the incoming mail. The receiving address stays in Reply-To. Replies continue the Crew/Code chat; workflows run their saved route again unless you enabled new-threads-only.
 
 ## Limits
 
@@ -45,19 +45,35 @@ Examples you can say in the project's Builder chat:
 
 - “Connect Gmail to this Crew. Only process emails whose subject contains invoice and that have attachments.”
 - “Use the Support route for emails with refund in the subject and order in the body.”
+- “Accept senders from @realtrainingsys.com OR the Notion sender in my inbox. Include their automated notifications.”
+- “Accept a subject containing Real Training OR Notion.”
 - “Only start work for new email threads; ignore replies.”
 - “Remove the attachment condition but keep the subject filter.”
 - “Clear the email filters.”
 
-Keyword matching ignores case and uses literal substrings. Every keyword and
-condition you specify must match. Attachment presence can require files or
+Keyword matching ignores case and uses literal substrings. Ask for any of several
+phrases to use OR, or require every phrase to use AND. The sender list uses OR:
+an exact email address or an exact `@domain` can match. Domains do not include
+subdomains automatically. Separate condition groups still combine with AND;
+for example, an allowed sender AND either subject phrase AND an attachment.
+Builder discovers a notification's actual sender from your mailbox rather than
+guessing it from the service name. Attachment presence can require files or
 require no files. New-threads-only rejects replies and threads this target
-already accepted. There are no filters unless you ask for them.
+already accepted. No sender list means only your own address can start work.
 
-Filters only narrow what gets processed; the owner-only sender rule stays in
-place. Filtered mail remains in Recent email activity with a reason. Changing
-or clearing filters does not replay skipped mail. Updated filters apply to
-messages still queued, while an already running task and its final response
-continue. The pane displays the filters read-only; change them through Builder.
+Changing or clearing filters does not replay skipped mail. Content-filtered
+mail remains in Recent email activity with a reason. Updated filters apply to
+messages still queued. A running task continues, but its final email response
+still checks the current sender authorization. The pane displays the filters
+read-only; change them through Builder.
+
+## Fetch emails into chat
+
+**Fetch emails** sends a request to the project's chat or workflow Builder to
+read recent matching messages from the connected Gmail mailbox. The agent uses
+the saved sender and content rules and summarizes the matches. This can work
+before the deployment's incoming-mail Pub/Sub setup is enabled, provided the
+account has Gmail read access. It does not replay deliveries or run the workflow.
+Recent email activity is the saved trigger delivery history, not a mailbox read.
 
 Operator setup and internals: `docs/gmail-inbound.md`.

@@ -13,6 +13,31 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Builder chooses Gmail senders; email fetch and access disclosure
+
+- **User decision.** Owners can accept Real Training OR notification senders and
+  alternative subject/body phrases through Builder. This extends the previous
+  owner-only sender decision; omitted/cleared sender lists retain that default.
+- **Rules.** Exact email and exact `@domain` entries match with OR, never display
+  names, wildcards, subdomain suffixes or unauthenticated From headers. Existing
+  keyword arrays remain AND; new `*_contains_any` arrays use OR. Groups combine
+  with AND. Only interactive owners configure; allowed senders run the saved
+  owner scope and workflow binding without receiving configuration authority.
+- **Notifications.** Explicit sender lists may opt into automated notifications.
+  Auto-replies, bounces, spam and trash remain blocked. Admission, queued work
+  and final response recheck authorization; removing a sender can prevent a final
+  email response even when the task has already started.
+- **UI.** Incoming email stays read-only across Crew, Workflow and Code. Replace
+  delivery-status refresh with Fetch emails, which sends a read-and-summarize
+  request to the target's chat/Builder using its saved mailbox and rules. It can
+  read Gmail without Pub/Sub and does not execute or replay the saved trigger.
+  Google Change access opens/closes from its header and keeps unsaved choices
+  while collapsed. The collapsed header shows the unsaved change count.
+- **Implementation.** `pkg/gmailinbound` and server trigger authorization/tools;
+  `GmailInboundPanel`, `GoogleAccountConnect`; shared Builder skill and owner guide.
+  Backend admission/authentication regressions and UI action/state tests cover
+  the behavior. Source changes only; this task does not deploy to RTS.
+
 ### 2026-10-03 — Code's terminal follows the coding agents' sandbox switch (local: your own machine; server: confined)
 
 - **Decision (user):** the terminal should have the same settings as the coding agents, locally and on servers.

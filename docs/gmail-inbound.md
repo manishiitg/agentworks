@@ -22,13 +22,19 @@ access is required; fixed replies use the existing notification sending
 permission, separately from agent write access. The ordinary account needs
 its Gmail send scope if replies are enabled.
 
-Version one accepts only the target owner's email, identified by the existing
-user directory. Gmail's DMARC authentication must pass for that sender's
-domain, or Gmail must identify the message as the connected account's own
-sent mail. An email address does not give outsiders the owner's private Code,
-credentials, tools, or budget. Automated replies, mailing lists, spam and
-trash are ignored. Shared-project readers cannot configure a route. Code
-continues to use only that Code's private Google connection.
+Without an explicit sender list, only the target owner's email from the user
+directory is accepted. The interactive owner can instead authorize exact
+addresses or exact `@domain` entries through `filters.sender_allowlist`. Entries
+combine with OR and replace the owner-only policy; add the owner's address too
+if it should remain accepted. A domain does not match subdomains or lookalike
+suffixes. Incoming requests run as the route owner with its existing scoped
+connection, target and workflow binding; a sender cannot change configuration.
+Gmail's DMARC authentication must still pass for the From domain, or Gmail must
+identify the message as the connected account's own sent mail. Automated
+notifications require `allow_automatic=true` plus an explicit sender list.
+Automatic replies, bounces, spam and trash remain blocked. Shared-project
+readers cannot configure a route. Code continues to use only that Code's private
+Google connection.
 
 ## Shared service, deployment-specific configuration
 
@@ -198,23 +204,53 @@ clients use `/api/human-feedback/gmail/auth/callback`.
 
 After consent, Builder inspects the connected mailbox and configures the
 exact saved workflow binding or project chat. Configuration accepts optional
-`filters`: `subject_contains` and `body_contains` arrays (case-insensitive
-literal substrings; every keyword must match), `has_attachments` (true needs
-attachments; false needs none; omitted permits either), and `new_threads_only`.
-All specified conditions use AND. Keywords are trimmed, deduplicated, and
-limited to 10 per field and 256 bytes each. No regex or sender overrides.
-Omitted filters are preserved; a supplied filter object replaces the entire
-set; `{}` clears them. No filters are added by default.
+`filters`:
+
+- `sender_allowlist`: exact addresses or `@domain` entries, matched with OR;
+  omission or an empty list uses the owner-only sender policy.
+- `subject_contains` and `body_contains`: literal substrings, every keyword
+  must match (existing AND behavior).
+- `subject_contains_any` and `body_contains_any`: literal substrings, at least
+  one keyword in each configured list must match (OR alternatives).
+- `has_attachments`: true needs attachments; false needs none; omitted permits
+  either. `new_threads_only` excludes replies and previously accepted threads.
+- `allow_automatic`: opt-in for automated notifications from explicit allowed
+  senders. It requires a nonempty sender list. Auto-replied mail (including
+  parameterized Auto-Submitted values), null return-path bounces, spam and trash
+  are blocked regardless of opt-in; List-ID/auto-generated notifications may pass.
+
+Separate groups combine with AND. Keywords are case-insensitive, trimmed and
+deduplicated, with at most 10 entries per field and 256 bytes per entry. Sender
+entries are lowercase, validated plain addresses/domains; wildcards and display
+names are rejected. For example, accepting Real Training senders OR an inspected
+notification address, plus either subject phrase:
+
+```json
+{"sender_allowlist":["@realtrainingsys.com","updates@vendor.example"],"subject_contains_any":["Real Training","Notion"],"allow_automatic":true}
+```
+
+The notification address here is a placeholder; Builder inspects the actual
+sender in the owner's mailbox rather than inventing a service's email domain.
+Only widen senders when the owner requests it. Omitted filters are preserved;
+a supplied filter object replaces the entire set; `{}` clears them and restores
+owner-only sending. No content filters are added by default.
 
 New-threads-only rejects `In-Reply-To`/`References` replies and a Gmail thread
 already accepted for this target. Admission is serialized in the durable
-queue. A filtered message does not reserve a thread, consume execution queue
-capacity, or execute/upload attachments. It remains visible as `filtered`
+queue. A content-filtered message does not reserve a thread, consume execution
+queue capacity, or execute/upload attachments. It remains visible as `filtered`
 with a reason, retains its message-ID dedup key, and follows 30-day body
-retention. Filter changes are checked again before queued work executes;
-already running executions and their final responses continue. Clearing
-filters never replays previously skipped mail. Filters run after existing
-sender/authentication checks and cannot widen them. The panes remain read-only.
+retention. Sender/authentication/message-kind checks precede admission and are
+rechecked before execution and final response. Queued work rechecks content
+filters; already running executions continue. Clearing filters never replays
+previously skipped mail. The panes remain read-only.
+
+The pane's **Fetch emails** action asks the target's chat or workflow Builder to
+read and summarize recent mailbox matches using the saved rules. It does not
+reload delivery history, execute a trigger, replay mail or send a response.
+Read-only Gmail access works without enabling Pub/Sub; incoming automation still
+requires the deployment configuration. The agent explains any saved condition
+it cannot verify from mailbox data.
 
 ## Sync direction
 

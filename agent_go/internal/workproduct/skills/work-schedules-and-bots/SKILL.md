@@ -169,20 +169,35 @@ with tools; never instruct the user to find an Enable button or route editor.
    route for repeated procedures rather than putting the procedure in email.
    Missing route or group configuration is rejected; never invent IDs.
 5. Translate requested email conditions into `filters` on configure.
-   `subject_contains` and `body_contains` are keyword arrays: case-insensitive
-   substring matching, all keywords and all conditions use AND, no regex.
-   `has_attachments=true` requires attachments; false requires none; omission
-   allows either. `new_threads_only=true` excludes replies and threads already
-   accepted by this target. Defaults are no filters; never add them unasked.
-   A provided filter object REPLACES the whole set. Read the saved filters
-   before changing one condition, preserve the others, and use `filters={}`
-   only when the owner asks to clear them. Keywords must be nonblank, at most
-   10 per field and 256 bytes each. These conditions never change who may send.
-   Example: an owner asking for invoices with attachments maps to
+   `subject_contains` and `body_contains` require every literal substring (AND).
+   `subject_contains_any` and `body_contains_any` require at least one phrase
+   (OR). All matching ignores case; separate condition groups combine with AND.
+   `sender_allowlist` accepts exact addresses or exact `@domain` entries with OR;
+   domains do not include subdomains. No list means owner-only. Only add other
+   senders when the interactive owner explicitly requests them, explaining that
+   these authenticated senders can start the saved target using the owner's
+   configured tools. The list replaces owner-only sending; include the owner's
+   address if they should remain allowed. Inspect actual notification senders
+   through Gmail read tools instead of guessing a Notion/vendor domain.
+   For requested automated notifications set `allow_automatic=true` with the
+   explicit sender list; automatic replies, bounces, spam and trash stay blocked.
+   Otherwise leave automatic mail disabled. DMARC/own-Sent authentication remains
+   mandatory and an email-origin session cannot configure its trigger.
+   `has_attachments=true` requires files; false requires none; omission allows
+   either. `new_threads_only=true` excludes replies and threads already accepted.
+   Defaults are owner-only with no content filters; never add filters unasked.
+   A provided filter object REPLACES the whole set. Read saved filters before
+   changing one condition, preserve the others, and use `filters={}` only when
+   asked to clear them (which also restores owner-only sending). Lists accept
+   at most 10 nonblank entries per field and 256 bytes each; no regex/wildcards.
+   Invoices with attachments map to
    `filters={"subject_contains":["invoice"],"has_attachments":true}`.
-   Plain requests such as "Connect Gmail and run Support for invoice emails"
-   need no IDs or JSON from the user: discover the actual account, route and
-   groups with tools, then configure them.
+   Real Training OR an inspected notification sender with either subject maps
+   to `filters={"sender_allowlist":["@realtrainingsys.com","ACTUAL_SENDER"],
+   "subject_contains_any":["Real Training","Notion"],"allow_automatic":true}`;
+   substitute the real address, never save the placeholder.
+   Plain requests need no IDs or JSON from the user: discover the actual account,
+   route and groups with tools, then configure them.
 6. Read `get_gmail_trigger` again. Return the actual receiving address and
    current readiness and saved filters. A saved trigger is not evidence that
    real delivery works.
@@ -193,15 +208,25 @@ with tools; never instruct the user to find an Enable button or route editor.
    are preserved; reconfiguring retains the same address. Inspect activity
    for failures/uncertain executions before advising a resend. Filtered mail stays
    visible with a reason and is never replayed when filters change or are cleared.
-   Updated filters apply to work still queued, not an execution already running
-   or its final email response. History-based incremental sync and durable
+   Updated content filters apply to work still queued, not an execution already
+   running. Final responses still recheck the current sender authorization. History-based incremental sync and durable
    message-ID deduplication remain; this is not a newest-20-mailbox scan.
 
-Only the owner's signed-in directory email is accepted in V1. Crew/Code email
+Without a sender list, only the owner's signed-in directory email is accepted.
+Explicit sender lists authorize those senders instead. Crew/Code email
 replies continue the same project chat. A workflow trigger starts an isolated
 saved-route run per message, including email replies; it does not ask Builder
 to choose a route or create a new plan. Optional final responses stay in the
 Gmail thread; they use notification sending rather than agent-write permission.
+
+**Fetch emails** in the incoming email pane sends a read-and-summarize request
+into the target chat or workflow Builder. Inspect the saved trigger and use its
+connection and receiving address with the Google read tools; apply the saved
+sender/content rules and explain any condition you cannot verify. If no trigger
+exists, use the only readable account or ask which mailbox. Pub/Sub configuration
+is not needed for mailbox reading. Show sender, subject, received time and a
+brief summary; delivery records are not freshly fetched email. Do not replay
+mail, change settings, start workflows or send responses for this action.
 
 Operator setup is once per deployment/OAuth project, not per user: enable
 Gmail and Pub/Sub APIs; create a topic in the Google Cloud project owning the

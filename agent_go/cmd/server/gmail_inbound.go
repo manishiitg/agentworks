@@ -365,7 +365,7 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 	if !matched {
 		return fmt.Errorf("email receiving address changed")
 	}
-	if !m.Authenticated || m.Automatic {
+	if !m.Authenticated || !r.Filters.AcceptsMessageKind(m) {
 		return fmt.Errorf("sender could not be authenticated")
 	}
 	user := directoryUserFor(r.OwnerID, "", "")
@@ -384,9 +384,13 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 	if e != nil || address != r.Address {
 		return fmt.Errorf("Gmail receiving identity changed")
 	}
-	// v1 accepts the project owner only. An alias never grants another user
-	// the owner's private Code, tools, credentials, or budget.
-	if IsMultiUserMode() {
+	// Only an interactive owner may explicitly widen this route's sender list.
+	// An omitted/cleared list keeps the original owner-only authorization.
+	if r.Filters != nil && len(r.Filters.SenderAllowlist) > 0 {
+		if !r.Filters.SenderAllowed(m.From) {
+			return fmt.Errorf("sender is not allowed by this trigger")
+		}
+	} else if IsMultiUserMode() {
 		sender, ok := slackDMUserForEmail(m.From)
 		if !ok || sender != r.OwnerID {
 			return fmt.Errorf("only the project owner can email this address")

@@ -1,3 +1,31 @@
+# Gmail sender rules and Google access disclosure QA
+
+- Evidence: `/tmp/agentworks-gmail-rules-qa/collapsed.png`,
+  `final-collapsed.png`, `light-collapsed.png`, `narrow-expanded.png`.
+- Production components rendered with sample mailbox/account API responses;
+  no live OAuth, permission changes, email reads or trigger executions performed.
+- Default viewport 1280×720; narrow pane check at 420×800, device scale 1.
+  Narrow document and viewport both measure 420px; no horizontal overflow.
+- Change access opens from the existing account action. The header closes and
+  reopens the form, preserving pending Docs access and showing its unsaved count.
+  Native button semantics expose `aria-expanded` and `aria-controls`.
+- Sender domains/addresses and alternative phrases display as OR, with separate
+  groups described as AND. The configuration stays read-only.
+- Fetch emails uses the shared chat action: first click arms confirmation,
+  deliberate confirmation sends the mailbox request to the target chat callback.
+  UI regression tests also cover the workflow Builder delivery helper.
+- Dark and light collapsed states and narrow expanded state inspected. Existing
+  service marks, typography, spacing and tokens retained. No actionable layout
+  findings for this scoped change.
+- Relevant frontend tests, TypeScript check, targeted backend regressions and
+  production frontend build passed. Live Google delivery remains untested here.
+
+final result: passed
+
+---
+
+## Previous QA reports (preserved)
+
 # Google account permissions design QA
 
 Source visual truth: `/var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/codex-clipboard-1941a458-68d4-4976-84b3-82c058be1730.png`.

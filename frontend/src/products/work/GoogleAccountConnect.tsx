@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, Loader2, Minus, Plus, ShieldCheck } from 'lucide-react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ArrowRight, Check, ChevronDown, Loader2, Minus, Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { googleAppApi } from '../../api/googleApp'
@@ -28,6 +28,8 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
+  const [expanded, setExpanded] = useState(true)
+  const contentId = useId()
   const [changing, setChanging] = useState<{ id: string; email: string; gmail: Level; levels: Record<string, Level> } | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const focusListener = useRef<(() => void) | null>(null)
@@ -40,6 +42,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
       setChanging({ id: detail.id, email: detail.email, gmail: detail.gmail, levels: { ...detail.levels } })
       setError(null)
       setOpened(false)
+      setExpanded(true)
       sectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
     }
     window.addEventListener(CHANGE_GOOGLE_ACCESS_EVENT, open)
@@ -93,18 +96,23 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
   const selectedCount = GOOGLE_ACCESS_SERVICES.filter(service => (service.key === 'gmail' ? gmail : levels[service.key] ?? 'off') !== 'off').length
   const cancel = () => {
     setChanging(null); setGmail('read'); setLevels({ drive: 'read', calendar: 'read' }); setError(null); setOpened(false)
+    setExpanded(false)
   }
 
   return (
     <section ref={sectionRef} data-testid="google-account-connect" className={`mb-4 min-w-0 rounded-lg border p-4 ${changing ? 'border-primary' : 'border-border'}`}>
       <div className="flex items-start gap-3">
-        <ConnectionIcon icon="google" name="Google" size="sm" />
-        <div className="min-w-0 flex-1">
-          <h3 className="break-words text-sm font-medium">{changing ? `Change access for ${changing.email}` : 'Connect a Google account'}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Choose which services your agent can use.</p>
-        </div>
+        <button type="button" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)} className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ConnectionIcon icon="google" name="Google" size="sm" />
+          <span className="min-w-0 flex-1">
+            <span className="block break-words text-sm font-medium">{changing ? `Change access for ${changing.email}` : 'Connect a Google account'}</span>
+            <span className="mt-1 block text-xs text-muted-foreground">{!expanded && changedCount ? `${changedCount} unsaved ${changedCount === 1 ? 'change' : 'changes'}` : 'Choose which services your agent can use.'}</span>
+          </span>
+          <ChevronDown className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </button>
         {changing && <button type="button" disabled={busy} className="rounded px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50" onClick={cancel}>Cancel</button>}
       </div>
+      <div id={contentId} hidden={!expanded}>
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
         {privateAccount ? 'Sign in with your own Google account, personal or work. It stays in this Code and works only for you.' : 'An administrator connects Google accounts shared by Crews and workflows on this installation.'} The agent uses it through the server and never sees your password or token.
       </p>
@@ -158,6 +166,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount 
         <Button size="sm" disabled={busy || readOnly} onClick={() => { void connect() }}>
           {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}{changing ? 'Sign in again with Google' : 'Connect Google account'}<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
         </Button>
+      </div>
       </div>
     </section>
   )

@@ -25,6 +25,26 @@ const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountCo
 }
 
 describe('GoogleAccountConnect', () => {
+  it('opens access changes and lets the person collapse and reopen without losing edits', async () => {
+    status.mockResolvedValue({ configured: true, redirect_uri: '' })
+    const host = await render()
+    const toggle = host.querySelector<HTMLButtonElement>('button[aria-controls]')!
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => changeGoogleAccountAccess({ id: 'existing', email: 'me@example.com', allow_read_access: true } as GmailConnection, 'Chats/Code/projects/p1'))
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    await act(async () => (host.querySelector('[aria-label="Add Docs access"]') as HTMLButtonElement).click())
+    await act(async () => toggle.click())
+    const content = host.querySelector<HTMLElement>(`[id="${toggle.getAttribute('aria-controls')}"]`)!
+    expect(content.hidden).toBe(true)
+    expect(toggle.textContent).toContain('1 unsaved change')
+    await act(async () => toggle.click())
+    expect(content.hidden).toBe(false)
+    expect((host.querySelector('[aria-label="Docs access"]') as HTMLSelectElement).value).toBe('read')
+    expect(connect).not.toHaveBeenCalled()
+    expect(reconnect).not.toHaveBeenCalled()
+  })
+
   it('keeps saved access visible while adding and removing services, and discards edits on Cancel', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render()

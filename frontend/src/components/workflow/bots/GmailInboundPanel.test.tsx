@@ -56,16 +56,50 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('Ready to receive email.')
     expect(host.textContent).toContain('Ask Builder')
     expect(host.querySelector('select, input, form')).toBeNull()
-    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Refresh email activity'])
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Fetch emails'])
   })
 
-  it('refreshes saved configuration after Builder changes it', async () => {
+  it('fetches Gmail through this target chat without merely refreshing stored activity', async () => {
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    const fetch = [...host.querySelectorAll('button')].find(b => b.textContent === 'Fetch emails')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => fetch.click())
+    clock.mockReturnValue(1700)
+    await act(async () => fetch.click())
+    expect(onAsk).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Read recent Gmail messages with google_workspace_cli'))
+    expect(onAsk.mock.calls[0][0]).toContain('Mailbox reading does not require Pub/Sub')
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(1)
+    expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
+  })
+
+  it('sends Fetch emails to the workflow Builder when there is no product chat override', async () => {
+    await render()
+    const fetch = [...host.querySelectorAll('button')].find(b => b.textContent === 'Fetch emails')!
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
+    await act(async () => fetch.click())
+    clock.mockReturnValue(1700)
+    await act(async () => fetch.click())
+    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ workspacePath: 'Workflow/test', message: expect.stringContaining('Fetch recent matching Gmail emails') })
+  })
+
+  it('refreshes saved configuration when its refresh token changes', async () => {
     await render()
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, enabled: false } })
-    const refresh = [...host.querySelectorAll('button')].find(b => b.textContent === 'Refresh email activity')!
-    await act(async () => refresh.click())
+    await act(async () => root.render(<TooltipProvider><GmailInboundPanel workspacePath="Workflow/test" connections={connections} refreshToken={1} /></TooltipProvider>))
     expect(host.textContent).toContain('Incoming email is disabled.')
     expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(2)
+  })
+
+  it('explains alternative sender and phrase rules without offering setup editors', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { sender_allowlist: ['@realtrainingsys.com', 'updates@vendor.example'], subject_contains_any: ['Real Training', 'Notion'], allow_automatic: true } } })
+    await render()
+    expect(host.textContent).toContain('Sender is @realtrainingsys.com OR updates@vendor.example')
+    expect(host.textContent).toContain('Subject contains any: “Real Training” OR “Notion”')
+    expect(host.textContent).toContain('Listed senders only')
+    expect(host.textContent).toContain('Automated notifications from listed senders: Allowed')
+    expect(host.textContent).not.toContain('Owner email only')
+    expect(host.querySelector('select, input, form')).toBeNull()
   })
 
   it('shows combined filters read-only, including an explicit no-attachments condition', async () => {
@@ -75,10 +109,10 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('Body contains “approved”')
     expect(host.textContent).toContain('No attachments')
     expect(host.textContent).toContain('New threads only')
-    expect(host.textContent).toContain('all must match')
+    expect(host.textContent).toContain('all condition groups must match')
     expect(host.textContent).toContain('Body does not match the required keywords')
     expect(host.querySelector('select, input, form')).toBeNull()
-    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Refresh email activity'])
+    expect([...host.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Ask AI', 'Copy email address', 'Fetch emails'])
   })
 
   it('ignores a late response from the previously selected workspace', async () => {

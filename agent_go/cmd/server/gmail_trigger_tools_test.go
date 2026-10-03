@@ -467,3 +467,49 @@ func TestGmailBuilderConnectPreservesPrivateCodeScopeAndPlatformCallback(t *test
 		t.Fatalf("Builder reconnect uses a different callback: %s %v", callback, err)
 	}
 }
+
+func TestGmailExplicitSendersAreOwnerConfiguredAndAuthenticated(t *testing.T) {
+	api, ctx, _ := gmailTriggerFixture(t)
+	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"@realtrainingsys.com", "updates@vendor.example"}, "allow_automatic": true, "subject_contains_any": []string{"Real Training", "Notion"}}}
+	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ := api.gmailInbound.Store.Routes(ctx)
+	r := routes[0]
+	_, schedule, err := api.gmailWorkflowTrigger(ctx, r)
+	if err != nil || len(schedule.Gmail.Filters.SenderAllowlist) != 2 || len(schedule.Gmail.Filters.SubjectContainsAny) != 2 {
+		t.Fatalf("policy not persisted: %+v %v", schedule.Gmail, err)
+	}
+	m := gmailinbound.Message{From: "updates@vendor.example", Subject: "Notion", Recipients: []string{r.Address}, Authenticated: true, Automatic: true, ReceivedAt: time.Now().Add(time.Minute).UnixMilli()}
+	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
+		t.Fatalf("explicitly selected notification rejected: %v", err)
+	}
+	m.From = "outside@evil.example"
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("unlisted sender accepted")
+	}
+	m.From = "updates@vendor.example"
+	m.Authenticated = false
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("spoofed selected sender accepted")
+	}
+	m.Authenticated = true
+	m.Blocked = true
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("automatic reply or spam accepted")
+	}
+	m.Blocked = false
+	m.Automatic = false
+	r.Filters = nil
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("clearing filters widened owner-only access")
+	}
+	m.From = "owner@example.com"
+	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
+		t.Fatalf("owner default rejected: %v", err)
+	}
+	reader := sharedSecretsRequest("GET", "/", "reader", nil).Context()
+	if _, err := api.gmailTriggerToolRequest(reader, "human", "Workflow/mail", args); err == nil {
+		t.Fatal("reader widened sender list")
+	}
+}
