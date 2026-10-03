@@ -532,6 +532,14 @@ func (iso *Isolator) generateStrictSandboxProfile() string {
 	}
 	sb.WriteString(")\n\n")
 
+	if iso.AllowPTY {
+		// An interactive shell (Code's terminal) makes its own pseudo-terminals: tmux's server opens /dev/ptmx and a
+		// /dev/ttysNNN, and exits at once without them ("error connecting to ... tmux.sock (Operation not permitted)").
+		sb.WriteString("; Pseudo-terminals for an interactive shell (only when one is asked for)\n")
+		sb.WriteString("(allow pseudo-tty)\n")
+		sb.WriteString("(allow file-read* file-write* file-ioctl (literal \"/dev/ptmx\") (regex #\"^/dev/ttys[0-9]+$\"))\n\n")
+	}
+
 	sb.WriteString("; Scratch space for ordinary temp files (compiler/interpreter caches, etc.)\n")
 	sb.WriteString("(allow file-read* file-write*\n")
 	sb.WriteString("  (subpath \"/private/tmp\")\n")

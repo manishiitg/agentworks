@@ -65,6 +65,16 @@ type interactiveShellRef struct {
 // interactiveShellPaths returns the shell's folder and tmux socket. Where slots are on, the shell runs as the
 // caller's slot account and its tmux files live in that slot's own run folder (group-shared with the service, so the
 // service can reach the socket and clean up); elsewhere they are in the shared shells folder.
+// interactiveShellRootPath is the shared shells folder by its real path. On a Mac /tmp is a link to /private/tmp: the strict
+// sandbox grants the real folder and will not follow the link, so a socket named through /tmp is refused ("Operation not permitted").
+func interactiveShellRootPath() string {
+	parent := filepath.Dir(interactiveShellRoot)
+	if real, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = real
+	}
+	return filepath.Join(parent, filepath.Base(interactiveShellRoot))
+}
+
 func interactiveShellPaths(id, slot string) (dir, socket string, err error) {
 	if slot != "" {
 		run, runErr := slots.RunDirFor(slot)
@@ -73,7 +83,7 @@ func interactiveShellPaths(id, slot string) (dir, socket string, err error) {
 		}
 		dir = filepath.Join(run, "shells", id)
 	} else {
-		dir = filepath.Join(interactiveShellRoot, id)
+		dir = filepath.Join(interactiveShellRootPath(), id)
 	}
 	return dir, filepath.Join(dir, "tmux.sock"), nil
 }
@@ -132,7 +142,7 @@ func prepareInteractiveShellDir(dir, slot string) error {
 		return err
 	}
 	if slot == "" {
-		return os.Chmod(interactiveShellRoot, 0o700)
+		return os.Chmod(interactiveShellRootPath(), 0o700)
 	}
 	for _, d := range []string{filepath.Dir(dir), dir, filepath.Join(dir, "tmp")} {
 		if err := os.Chmod(d, 0o770|os.ModeSetgid); err != nil {
@@ -333,7 +343,7 @@ type interactiveShellSweepRequest struct {
 // slot's own.
 func interactiveShellFolders() []string {
 	var folders []string
-	roots := []string{interactiveShellRoot}
+	roots := []string{interactiveShellRootPath()}
 	if cfg, err := slots.LoadExecConfig(slots.ConfigPath()); err == nil && cfg.SlotRunRoot != "" {
 		if slotDirs, err := filepath.Glob(filepath.Join(cfg.SlotRunRoot, "*", "shells")); err == nil {
 			roots = append(roots, slotDirs...)

@@ -13,6 +13,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — The terminal did not start on a Mac with the strict sandbox (two causes)
+
+- **Found (user, local):** the Terminal tab showed "disconnected"; the server log said "error connecting to /tmp/.agentworks-shells/.../tmux.sock
+  (Operation not permitted)". My Mac check had used the lenient sandbox; Code uses the strict one. Two causes, both Mac-only:
+  (1) the strict profile did not allow terminal devices, so tmux could not create its pty and its server exited ("fork failed: Operation not
+  permitted" when run by hand); (2) `/tmp` is a link to `/private/tmp`, the strict profile grants the real folder and will not follow the link,
+  so a socket named through `/tmp` was refused. Now the profile allows pseudo-ttys only when a terminal is requested (`AllowPTY`), and the
+  shells folder is named by its real path (`interactiveShellRootPath`). Linux is unaffected (its tests pass on Excellence).
+- **Test:** `interactive_shell_darwin_test.go` (strict guard, real socket path, stop). The earlier Linux attach/escape checks also pass on
+  a Mac with the strict guard when the test's other project is outside `/var/folders` (which the strict profile grants as scratch).
+
 ### 2026-10-03 — Project reasoning controls and creation account names
 
 - Crew/Code Identity → Models renders the product profile's reasoning-effort
