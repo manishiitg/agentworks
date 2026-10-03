@@ -1,3 +1,8 @@
+## Stop browser finds nothing, stuck tab recovery, tall screenshots — PLAT-414
+
+[PLAT-414](pulse_platform/browser/plat-414.md), fixed on main, not deployed. The browser list and cleanup now see Chrome; a stuck
+managed browser is closed and the command retried once; full-page screenshots above 16000 px are refused with a clear error.
+
 ## Coding-agent background tasks show one readable line, not raw payload — PLAT-413
 
 [PLAT-413](pulse_platform/frontend-chat/plat-413.md), P3, fixed on `main`; deploy pending. Full text behind "Show details".

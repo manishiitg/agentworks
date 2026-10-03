@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -59,19 +60,25 @@ func KillBrowserProcesses(c *gin.Context) {
 	}
 
 	if req.All {
-		// Kill all chromium processes
-		out, err := exec.Command("pkill", "-9", "-f", "chromium").CombinedOutput()
-		if err != nil {
-			// pkill returns 1 if no processes matched — that's fine
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-				c.JSON(http.StatusOK, gin.H{
-					"success": true,
-					"killed":  0,
-					"message": "No chromium processes found",
-				})
-				return
+		// Kill every browser process the list shows (Chromium, Chrome, headless shell), not a name pattern: the managed Chrome on
+		// the servers is /opt/google/chrome/chrome, which `pkill -f chromium` never matched ("stop" did nothing).
+		current, listErr := getBrowserProcesses()
+		if listErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": listErr.Error()})
+			return
+		}
+		if len(current) == 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"killed":  0,
+				"message": "No browser processes found",
+			})
+			return
+		}
+		for _, process := range current {
+			if process.PID > 1 {
+				_ = exec.Command("kill", "-9", strconv.Itoa(process.PID)).Run()
 			}
-			log.Printf("[BROWSER] WARNING: pkill output: %s, error: %v", string(out), err)
 		}
 
 		// Wait briefly for processes to die, then count remaining
@@ -133,7 +140,7 @@ func filterBrowserPIDs(requested []int, current []BrowserProcess) []int {
 func getBrowserProcesses() ([]BrowserProcess, error) {
 	// Use ps to get chromium processes with details
 	out, err := exec.Command("sh", "-c",
-		`ps aux | grep '[c]hromium' | grep -v 'grep'`,
+		`ps aux | grep -E '[c]hromium|[g]oogle/chrome/chrome|[g]oogle-chrome|[c]hrome-headless-shell' | grep -v 'grep'`,
 	).Output()
 	if err != nil {
 		// grep returns 1 if no matches — that means no processes
@@ -145,6 +152,10 @@ func getBrowserProcesses() ([]BrowserProcess, error) {
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	var processes []BrowserProcess
+	self := ""
+	if current, userErr := user.Current(); userErr == nil {
+		self = current.Username
+	}
 
 	for _, line := range lines {
 		if line == "" {
@@ -153,6 +164,12 @@ func getBrowserProcesses() ([]BrowserProcess, error) {
 
 		fields := strings.Fields(line)
 		if len(fields) < 11 {
+			continue
+		}
+
+		// Only this account's browsers: `ps aux` lists every account on a shared host, and listing another account's
+		// command lines (or offering them for cleanup) is neither useful nor safe.
+		if owner := strings.TrimSuffix(fields[0], "+"); self != "" && fields[0] != self && !(owner != fields[0] && strings.HasPrefix(self, owner)) {
 			continue
 		}
 

@@ -86,8 +86,8 @@ class Site(http.server.BaseHTTPRequestHandler):
 class Matrix:
     def __init__(self, args):
         self.args = args
-        pid = subprocess.check_output(["systemctl", "--user", "show", args.product + "-workspace", "-p", "MainPID", "--value"],
-                                      text=True, timeout=10).strip()
+        pid = args.workspace_pid or subprocess.check_output(["systemctl", "--user", "show", args.product + "-workspace", "-p", "MainPID", "--value"],
+                                                            text=True, timeout=10).strip()
         self.env = dict(item.split("=", 1) for item in Path(f"/proc/{pid}/environ").read_text().split("\0") if "=" in item)
         token = self.env.get("WORKSPACE_API_TOKEN", "")
         self.headers = {"Content-Type": "application/json", "Authorization": "Bearer " + token, "X-Workspace-Token": token}
@@ -263,6 +263,12 @@ class Matrix:
             sock.close()
         return frames, kinds, console
 
+    def http(self, method, path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(f"http://127.0.0.1:{self.args.port}{path}", data=data, headers=self.headers, method=method)
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+
     def recording_api(self, session, action):
         body = {"workspace_path": self.rel, "action": action, "working_directory": self.rel,
                 "folder_guard": {"enabled": True, "read_paths": [self.rel], "write_paths": [self.rel], "browser_session": session}}
@@ -326,6 +332,9 @@ class Matrix:
         check("screenshot element (selector argument)", element)
 
         def live():
+            # A static page produces one frame; change it while connected, as a user or agent does, to get the next.
+            for delay, color in ((1.5, "tomato"), (3.0, "gold"), (4.5, "skyblue")):
+                threading.Timer(delay, lambda color=color: ab("eval", f"document.body.style.background='{color}'; 1", allow_fail=True)).start()
             frames, kinds, _ = self.stream_frames(name_a)
             if frames < 2:
                 raise RuntimeError(f"only {frames} JPEG frames, message types {sorted(k for k in kinds if k)}")
@@ -560,6 +569,47 @@ class Matrix:
                 raise RuntimeError(f"processes left after close: {left}")
         check("close leaves no processes", close_clean)
 
+        # Stop: the app has no stop button in the browser panel; the stop affordances are the runtime-health "browsers" list and its
+        # cleanup (GET /api/browser/processes, POST /api/browser/cleanup {pids}), plus `close`.
+        def stop_listed():
+            ab("open", base + "/page.html", label="e", retries=3)
+            chrome_pid = self.pid("e")
+            listing = self.http("GET", "/api/browser/processes")
+            if chrome_pid not in [process.get("pid") for process in listing.get("processes", [])]:
+                raise RuntimeError(f"Chrome pid {chrome_pid} is not in the browser process list ({listing.get('count')} listed)")
+            return f"Chrome {chrome_pid} listed among {listing.get('count')} browser processes"
+        check("stop: process list shows the session's Chrome (GET /api/browser/processes)", stop_listed)
+
+        def stop_cleanup():
+            chrome_pid = self.pid("e")
+            result = self.http("POST", "/api/browser/cleanup", {"pids": [chrome_pid]})
+            if result.get("killed") != 1:
+                raise RuntimeError(f"cleanup did not kill the browser: {result}")
+            time.sleep(1.5)
+            if chrome_pid in self.processes("e"):
+                raise RuntimeError("Chrome still running after cleanup")
+            ab("open", base + "/page.html", label="e", retries=3)
+            return f"cleanup killed Chrome {chrome_pid}; next command relaunched it (pid {self.pid('e')})"
+        check("stop: POST /api/browser/cleanup {pids} kills it and the session relaunches", stop_cleanup)
+
+        def stop_close():
+            ab("close", label="e")
+            time.sleep(1.5)
+            if self.processes("e"):
+                raise RuntimeError(f"processes left after close: {self.processes('e')}")
+            owner = re.search(r"project-([a-f0-9]{16})--browser$", self.session("e")[0]).group(1)
+            leftovers = []
+            for folder in (Path("/tmp/.agent-browser/o/p" + owner), self.docs / "tmp/.agent-browser/o" / ("p" + owner)):
+                try:
+                    if folder.exists():
+                        leftovers.append(str(folder))
+                except OSError:
+                    pass  # another account's folder, not ours to see
+            if leftovers:
+                raise RuntimeError("socket folder left behind after close: " + ", ".join(leftovers))
+            return "closed; no socket folder left behind"
+        check("stop: close ends every process of the session", stop_close)
+
         def cycles():
             shm = lambda: len([p for p in Path("/dev/shm").iterdir() if p.stat().st_uid == os.getuid()])  # noqa: E731
             tmpdirs = lambda: len(list((self.docs / "tmp").glob("aw-browser-*/*")) + list(Path("/tmp").glob("aw-browser-*/*")))  # noqa: E731
@@ -630,6 +680,8 @@ def main():
     parser.add_argument("--docs-dir", help="workspace docs root (default /srv/<product>/data/docs)")
     parser.add_argument("--user-id", help="X-User-ID to send, as the app does on multi-user servers")
     parser.add_argument("--cycles", type=int, default=20)
+    parser.add_argument("--workspace-pid", help="read the service environment (token, profile root) from this process instead of the product's workspace unit, "
+                                                "to test a candidate workspace build running beside the live one")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]*", args.product):
         parser.error("invalid product")

@@ -134,3 +134,17 @@ func HeadlessArgsForSession(session string) []string {
 	}
 	return []string{"--user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "--args", "--no-sandbox,--disable-gpu,--disable-blink-features=AutomationControlled" + mediaArgs}
 }
+
+// RemoveEmptySessionSocketDirs removes a managed browser's socket folder (<tmp>/.agent-browser/o/<owner>, and the sandbox's shared-tmp
+// twin) once its session is closed. A folder that still holds files (a live daemon's socket) is left alone: os.Remove only removes
+// an empty directory.
+func RemoveEmptySessionSocketDirs(session string) {
+	if !IsUserSession(session) {
+		return
+	}
+	for _, dir := range []string{SocketDirForSession(session), SandboxSocketDir(session)} {
+		if dir != "" && dir != SocketRoot {
+			_ = os.Remove(dir)
+		}
+	}
+}

@@ -1,6 +1,11 @@
 package handlers
 
-import "strings"
+import (
+	"strings"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
+)
 
 // isStandaloneBrowserCommand reports whether command is exactly one agent-browser invocation and nothing
 // else: the first word is `agent-browser`, and no unquoted shell operator (; & | < > ( ) newline), command
@@ -62,4 +67,30 @@ func isStandaloneBrowserCommand(command string) bool {
 		}
 	}
 	return quote == 0
+}
+
+// commandClosesBrowser reports whether command is a standalone `agent-browser ... close` (a `close` word as its own argument).
+// A false positive is harmless: the socket folder is only removed when it is empty.
+func commandClosesBrowser(command string) bool {
+	command = stripShellPrefix(command)
+	if !isStandaloneBrowserCommand(command) {
+		return false
+	}
+	for _, word := range strings.Fields(command) {
+		if strings.Trim(word, "'\"") == "close" {
+			return true
+		}
+	}
+	return false
+}
+
+// removeSocketFolderAfterClose removes the closed session's now-empty socket folder, retrying briefly because the daemon removes its own
+// socket just after `close` returns. Left alone, one empty folder per throwaway project session accumulated under .agent-browser/o.
+func removeSocketFolderAfterClose(session string) {
+	go func() {
+		for i := 0; i < 6; i++ {
+			time.Sleep(500 * time.Millisecond)
+			browserconfig.RemoveEmptySessionSocketDirs(session)
+		}
+	}()
 }

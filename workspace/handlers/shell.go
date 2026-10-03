@@ -490,6 +490,9 @@ func ExecuteShellCommand(c *gin.Context) {
 		}
 	}
 	finishShellProcess(processRecord.PID, status, &exitCode)
+	if exitCode == 0 && req.FolderGuard != nil && req.FolderGuard.BrowserSession != "" && commandClosesBrowser(req.Command) {
+		removeSocketFolderAfterClose(req.FolderGuard.BrowserSession)
+	}
 
 	// Browser daemons are intentionally persistent and may have inherited a
 	// different workflow step's sandbox. Finalize their staged artifacts in this

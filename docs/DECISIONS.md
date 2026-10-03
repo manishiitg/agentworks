@@ -19,6 +19,19 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — A stuck managed browser is closed and the command retried once; very tall full-page screenshots are refused
+
+- **Decided.** In headless mode, when `open` or a read-only command (snapshot, get, is, screenshot, console, errors) fails with a timeout or a
+  crashed-tab error, the agent_browser tool closes that session once and retries the command once; a second failure returns
+  `BROWSER_STUCK` saying so. A side-effecting command (click, fill, ...) that times out is not retried and gets the same code with advice.
+  A `screenshot --full` of a page taller than 16000 px returns `SCREENSHOT_TOO_TALL` instead of crashing Chrome. A "Failed to save" error
+  no longer counts as a dead session. The runtime-health browser list and cleanup see Chrome (not only "chromium") and only this
+  account's processes; closing a managed session removes its empty socket folder.
+- **Why.** After a tab crash `open` hung until the user closed and reopened; a 600000 px capture killed Chrome; the "stop browsers"
+  control found no process to stop because it matched the name "chromium".
+- **Where.** `agent_go/pkg/browser/executor.go` (`isStuckBrowserError`, `fullPageScreenshotRefusal`), `workspace/handlers/browser_processes.go`,
+  `shell.go`, `workspace/browserconfig` (`RemoveEmptySessionSocketDirs`). [PLAT-414](bugs/pulse_platform/browser/plat-414.md).
+
 ### 2026-10-04 — Source Control never shows or commits the platform's `.sandbox-cache` folder — PLAT-410
 
 - **Decided.** Git ignores `.sandbox-cache/` in the Files pane (a platform ignore list) and in every sandboxed command (a default ignore file in each sandbox home), whatever a project's own `.gitignore` says. It is the platform's
@@ -66,20 +79,16 @@ Ticket: [PLAT-398](bugs/pulse_platform/frontend-chat/plat-398.md).
 - **Where.** `native-subagents` in `cmd/server/prompt_sections.go`; workflow-tools guidance.
   [PLAT-397](bugs/pulse_platform/coding-agent-bridge/plat-397.md).
 
-### 2026-10-03 — One managed-browser launcher on every server (Code project browser on Excellence)
+### 2026-10-03 — One managed-browser launcher on every server
 
 - **Decided.** Every rootless server starts Chrome through `chrome-agentworks` beside the host's Chrome, selected by
   `AGENT_BROWSER_EXECUTABLE_PATH=<app>/tools/chrome/current/chrome-agentworks` from the standard runtime profile; the deploy installs it
-  (`install-managed-chrome.sh`, system Chrome gets `tools/chrome/system`). The launcher runs the real `chrome` binary, not the
-  `/usr/bin/google-chrome` shell script (it writes under HOME), by its resolved path (through the `chrome` symlink Chrome could not find
-  libvulkan and died on the first screenshot), and exports a writable HOME/XDG dir.
-- **Why.** After PLAT-374 removed the mount-namespace fallback, the Landlock sandbox ran Chrome as the service account with a read-only HOME:
-  Chrome exited "without writing DevToolsActivePort" (crashpad `--database is required`, SIGTRAP). Reproduced and fixed on Excellence
-  with the launcher plus a writable HOME; `agent-browser open https://example.com` / `get title` then worked in the sandbox, and screenshots and the live view
-  after the resolved-path fix ([PLAT-401](bugs/pulse_platform/browser/plat-401.md)); `verify-browser-matrix.py` re-checks all of it after a deploy.
-- **Where.** `deploy/rootless-linux/chrome-agentworks`, `install-managed-chrome.sh`, `build-and-activate.sh`, `deploy/common/runtime_profile.json`;
-  regression test `workspace/security/chrome_devtools_linux_test.go` (skips without Chrome or the Landlock launcher).
-  Confida and Dominion share the Excellence box and deploy through the same script: they need the same deploy (separate `<app>/tools/chrome`).
+  (`install-managed-chrome.sh`, system Chrome gets `tools/chrome/system`). The launcher runs the real Chrome binary by its resolved path
+  (not the `/usr/bin/google-chrome` shell script, and not through a symlink) and exports a writable HOME/XDG dir.
+- **Why.** The Landlock sandbox runs Chrome as the service account with a read-only HOME, so Chrome died at start; through the `chrome`
+  symlink it could not find `libvulkan` and died on the first screenshot or live-view frame.
+- **Where.** `deploy/rootless-linux/chrome-agentworks`, `install-managed-chrome.sh`, `build-and-activate.sh`,
+  `deploy/common/runtime_profile.json`. [PLAT-401](bugs/pulse_platform/browser/plat-401.md).
 
 ### 2026-10-03 — Full mode has no bridge edit tool — PLAT-396
 

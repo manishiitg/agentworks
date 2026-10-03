@@ -29,7 +29,7 @@ Chrome's own stderr through the isolator on Excellence:
   `AGENT_BROWSER_EXECUTABLE_PATH` for every product.
 - Regression tests: `workspace/security/chrome_devtools_linux_test.go` (DevTools reached, PNG screenshot; both fail with the
   earlier launchers).
-- `deploy/rootless-linux/verify-browser-matrix.py`: full matrix through the real `/api/execute` path with multi-user headers (52
+- `deploy/rootless-linux/verify-browser-matrix.py`: full matrix through the real `/api/execute` path with multi-user headers (55
   rows: start/open https+http, interaction, tabs, screenshots viewport/full/annotated/element, PDF, live-view JPEG frames,
   upload/download, console, page errors, network requests, HAR, trace, profiler, capture API, persistence, heavy page, two
   concurrent sessions, kill -9 recovery, crash recovery, idle timeouts, close, 20 open/close cycles).
@@ -38,6 +38,6 @@ Chrome's own stderr through the isolator on Excellence:
 ## Left
 
 - Deploy to Confida (same script) and, if it uses the rootless deploy, Dominion; re-run the matrix there.
-- Findings from the matrix, not fixed: an `open` right after `close` can fail once ("Failed to connect": the app already retries three
-  times); a full-page screenshot of a 600000px page crashes Chrome (the browser recovers on the next command); a crashed tab
-  stays stuck until `close`; the live stream's console messages arrive but no console panel uses them.
+- Matrix findings: an `open` right after `close` can fail once ("Failed to connect": the app already retries three times); the live
+  stream's console messages arrive but no console panel uses them. The crashed-tab and tall-screenshot findings moved to
+  [PLAT-414](plat-414.md).
