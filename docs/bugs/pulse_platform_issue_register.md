@@ -1,3 +1,10 @@
+## Relay agent tool errors in the invoice run — PLAT-411
+
+[PLAT-411](pulse_platform/security-sandbox/plat-411.md), open. An archived invoice
+run returned prose after JSON following missing database sandbox-path and
+browser slot errors. The latest run succeeded with both outputs saved; the
+failed tool paths still need isolated verification.
+
 ## Source Control listed and would have committed the private `.sandbox-cache` folder — PLAT-410
 
 [PLAT-410](pulse_platform/frontend-chat/plat-410.md), P2, fixed on `main`; deploy pending. Panel git ignores the platform folder.
