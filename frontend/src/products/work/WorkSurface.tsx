@@ -1243,6 +1243,9 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
                           composerPlaceholder="Describe what you want to build… (@ files, # references)"
                           showProductSteerAction
                           showProductTerminalControl
+                          // Code only, and only its owner: New chat replaces this project's conversation in the same
+                          // tab (the server rotates the project's session), never a second, parallel chat.
+                          showNewChatAction={product.profileId === 'code' && !selected.shared}
                         />
                       </div>
                   ) : (

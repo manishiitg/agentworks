@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code gets New chat; it replaces the conversation, one tab only
+
+- **Decided (user).** The chat input has no model picker (models change in the right-side panel). Code gets a New chat button; it must replace the current chat, never open a
+  parallel one: Code always has one active tab.
+- **Done.** Code's composer shows the existing New chat action (owner only, not on a shared Code). It stops the running session, rotates the project's conversation on the
+  server (the project manifest gets a new session id, so the coding agent starts a fresh conversation) and resets the same tab. The previous conversation stays listed.
+- **Open.** The chat input's model picker still renders for `inputVariant="product"` surfaces (Video Studio, Dominion, SparkQuill), which have no right-side model panel;
+  removing it there is waiting on the user.
+
 ### 2026-10-03 — Provider Usage terminal: slash commands limited like the coding agents' terminals
 
 - **Found (user).** A manager of a shared provider account gets a live terminal for Usage, and could type `/logout` (or change settings) for everyone on the account.
