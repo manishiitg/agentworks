@@ -13,6 +13,25 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Cursor offers GLM and Grok choices plus the CLI's live list
+
+- Add Cursor's officially documented `glm-5.3`, `glm-5.3-flash`, and `grok-4.6`
+  to the curated catalog alongside Auto, Composer 2.5 and Grok 4.7, with model
+  metadata/pricing from the official pages. Parameterized selectors retain the
+  selected model and its pricing family.
+- Crew/Code Models merges the Cursor CLI's live model list into the curated
+  manifest catalog, deduplicating IDs and preserving known metadata. Extra CLI
+  model IDs remain exact when saved, and list failures retain curated choices.
+- Availability and release date: Cursor documents both GLM models and Grok 4.6;
+  no primary source established an exact GLM launch date. Local CLI list access
+  was signed out, so live account access has not been certified. Codex's OpenAI
+  model list does not document GLM; adding it would require an explicitly
+  configured compatible Responses gateway/provider and credentials.
+- Sources: [GLM 5.3](https://cursor.com/docs/models/glm-5-3),
+  [GLM 5.3 Flash](https://cursor.com/docs/models/glm-5-3-flash),
+  [Grok 4.6](https://cursor.com/docs/models/grok-4-6),
+  [Codex models](https://learn.chatgpt.com/docs/models?surface=cli).
+
 ### 2026-10-03 — My local product-list change wrote an invalid runtime config (empty value)
 
 - **Found (user, local: Code still missing from the switcher).** The generated `frontend/public/runtime-config.js` had
@@ -1691,6 +1710,15 @@ Design references for the linked runtime decisions:
   worktree; the server clones main of all three repos.
 
 ## Open issues
+
+### 2026-10-03 — Cursor's separate reasoning-effort option is not forwarded
+- The Cursor adapter currently launches the selected model ID without mapping
+  `CallOptions.ReasoningEffort` into Cursor's native model parameters. A separate
+  effort selection therefore does not override the CLI's model default.
+- Explicit parameterized model IDs such as `grok-4.6[effort=xhigh,fast=false]`
+  are passed through unchanged, including choices discovered from the live CLI
+  list. Wiring the separate effort option requires a follow-up adapter change;
+  this catalog update does not advertise effort controls for the new models.
 
 ### 2026-10-01 — Ashutosh's lost terminal and retained submission retry need separate evidence
 - After the answered 14:26:04 IST submission, the 14:26:25 retry reused its

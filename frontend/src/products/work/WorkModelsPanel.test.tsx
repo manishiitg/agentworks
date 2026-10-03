@@ -21,7 +21,7 @@ vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ defa
 vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../services/llm-config-api', () => ({
-  llmConfigService: { getProviderConnections: vi.fn(async () => []) },
+  llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })) },
 }))
 vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
   ...await importOriginal<typeof import('../../utils/agentProfileCapabilities')>(),
@@ -29,10 +29,14 @@ vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
 }))
 
 import { WorkModelsPanel } from './WorkModelsPanel'
+import { llmConfigService } from '../../services/llm-config-api'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
-afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
+afterEach(() => {
+  act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''
+  vi.mocked(llmConfigService.getProviderModels).mockReset()
+})
 
 function museFixture() {
   state.options = [{
@@ -109,4 +113,39 @@ describe('project reasoning settings', () => {
     const { host } = await render()
     expect(host.querySelector('[aria-label="Reasoning effort"]')).toBeNull()
   })
+})
+
+const cursorIds = ['auto', 'composer-2.5', 'grok-4.7', 'grok-4.6', 'glm-5.3', 'glm-5.3-flash']
+function cursorFixture() {
+  state.options = [{ id: 'cursor-cli', provider: 'cursor-cli', model_id: 'auto', options: { reasoning_effort: 'high' } }]
+  state.providerManifest = [{
+    id: 'cursor-cli', integration_kind: 'coding_agent', runtime_available: true, usable: true,
+    models: cursorIds.map(model_id => ({ model_id, model_name: model_id, provider: 'cursor-cli', context_window: 0, input_cost_per_1m: 0, output_cost_per_1m: 0 })),
+  } as ProviderManifestEntry]
+}
+
+it.each(['work', 'code'])('shows curated and live Cursor choices in %s, without duplicate IDs or changing the selection', async profileId => {
+  cursorFixture(); state.product.profileId = profileId
+  const extra = 'grok-4.6[effort=xhigh,fast=false]'
+  vi.mocked(llmConfigService.getProviderModels).mockResolvedValue({
+    provider: 'cursor-cli', model_selection_mode: 'dynamic', source: 'cli_dynamic', cached_at: '', cache_ttl_seconds: 300,
+    models: [{ model_id: 'glm-5.3', model_name: 'Duplicate GLM' }, { model_id: extra, model_name: 'Grok extra high' }],
+  })
+  const { host, onRuntimeChange } = await render({ schema_version: 2, mode: 'explicit', builder_llm: {
+    provider: 'cursor-cli', model_id: 'auto', connection_id: 'global:cursor-cli', options: { reasoning_effort: 'high' },
+  } })
+  expect(llmConfigService.getProviderModels).toHaveBeenCalledWith('cursor-cli')
+  const titles = Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)
+  expect(titles).toEqual([...cursorIds, 'Grok extra high'])
+  expect(onRuntimeChange).not.toHaveBeenCalled()
+  const choice = Array.from(host.querySelectorAll('button')).find(button => button.querySelector('.font-medium')?.textContent === 'Grok extra high')!
+  await act(async () => choice.click())
+  expect(onRuntimeChange).toHaveBeenCalledWith(expect.objectContaining({ modelId: extra, provider: 'cursor-cli', connectionId: 'global:cursor-cli' }))
+})
+
+it('keeps curated Cursor choices when the live model list cannot be loaded', async () => {
+  cursorFixture()
+  vi.mocked(llmConfigService.getProviderModels).mockRejectedValue(new Error('Not signed in'))
+  const { host } = await render()
+  expect(Array.from(host.querySelectorAll('button .font-medium')).map(title => title.textContent)).toEqual(cursorIds)
 })

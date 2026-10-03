@@ -6,7 +6,7 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
-import { llmConfigService, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
+import { llmConfigService, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { buildAgentProfileEngineGroups, loadAgentProfileProviderOptions, type AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
@@ -45,6 +45,7 @@ export function WorkModelsPanel({
   const providerManifestLoaded = useLLMStore(state => state.providerManifestLoaded)
   const loadProviderManifest = useLLMStore(state => state.loadProviderManifest)
   const [options, setOptions] = useState<AgentProfileProviderOption[]>([])
+  const [cursorModels, setCursorModels] = useState<DynamicModelEntry[]>([])
   const [accounts, setAccounts] = useState<ProviderConnection[] | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
@@ -108,10 +109,35 @@ export function WorkModelsPanel({
   }, [loadProviderManifest, product.profileId, product.profileVersion, workspacePath])
 
   const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
-  const modelCatalog = useMemo(
-    () => readyProviders.flatMap(provider => provider.models || []),
-    [readyProviders],
-  )
+  const cursorReady = readyProviders.some(provider => provider.id === 'cursor-cli')
+  useEffect(() => {
+    let cancelled = false
+    setCursorModels([])
+    if (cursorReady) {
+      void llmConfigService.getProviderModels('cursor-cli').then(result => {
+        if (!cancelled) setCursorModels(result.models || [])
+      }).catch(() => undefined)
+    }
+    return () => { cancelled = true }
+  }, [cursorReady, accounts, workspacePath, product.profileId])
+
+  const modelCatalog = useMemo(() => {
+    const models = readyProviders.flatMap(provider => provider.models || [])
+    if (!cursorReady) return models
+    const known = new Set(models.filter(model => model.provider === 'cursor-cli').map(model => model.model_id))
+    // The installed CLI can offer additional models beyond the curated catalog.
+    // Keep curated metadata/pricing for known IDs, and retain the exact CLI ID
+    // for new choices rather than converting them into the Auto router.
+    for (const model of cursorModels) {
+      if (!model.model_id || known.has(model.model_id)) continue
+      known.add(model.model_id)
+      models.push({
+        provider: 'cursor-cli', model_id: model.model_id, model_name: model.model_name,
+        context_window: model.context_window || 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
+      })
+    }
+    return models
+  }, [readyProviders, cursorReady, cursorModels])
   const engineGroups = useMemo(
     // Work intentionally offers the full platform catalog for each CLI. The
     // profile's model list may be present in an older running server until it
