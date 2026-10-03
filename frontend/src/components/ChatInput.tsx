@@ -3243,23 +3243,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
             <div className="flex justify-between items-center">
               <div className={nativeTerminalTools ? 'hidden' : 'flex items-center gap-1.5'}>
-                {showNewChatAction && onNewChat ? (
-                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
-                  <button
-                    type="button"
-                    onClick={onNewChat}
-                    disabled={isTurnInFlight}
-                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
-                    aria-label="Start a new chat"
-                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
-                    data-testid="chat-new-chat"
-                  >
-                    <Plus className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
-                      New chat
-                    </span>
-                  </button>
-                ) : null}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3275,51 +3258,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       <TooltipContent side="top">
                         <p>Runtime status · {chatInputStatusLine}</p>
                       </TooltipContent>
-                  </Tooltip>
-                )}
-                {activeTabId && shouldShowLiveTerminalControl(
-                  liveTerminalOffered,
-                  isProductSurface,
-                  isInteractiveWorkflowBuilderChat,
-                  showProductTerminalControl,
-                ) && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant={terminalViewSelected ? 'secondary' : 'outline'}
-                        size="icon"
-                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
-                        className="h-7 w-7 p-0"
-                        aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                      >
-                        <Terminal className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
-                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
-                      </p>
-                      {terminalUsage.map((line, index) => (
-                        <p
-                          key={`${line.label}-${index}`}
-                          data-testid="chat-input-terminal-usage"
-                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
-                        >
-                          {line.text}
-                        </p>
-                      ))}
-                      {terminalSessionUsage.map((line, index) => (
-                        <p
-                          key={`session-${index}`}
-                          data-testid="chat-input-terminal-session-usage"
-                          className="font-mono text-[11px] opacity-70"
-                        >
-                          {line}
-                        </p>
-                      ))}
-                    </TooltipContent>
                   </Tooltip>
                 )}
                 {/* Server and LLM Selection — hidden in workflow phase chat (servers come from preset) */}
@@ -3662,6 +3600,69 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               {(
                 <div className="flex items-center gap-1">
                     <div data-tour="chat-send-controls" data-testid="tour-chat-send-controls" className="flex items-center gap-1">
+                      {/* New chat and the live view sit with the send controls, on the right (owner 2026-10-03). */}
+                      {showNewChatAction && onNewChat ? (
+                  // Quiet by default: an icon in the composer's neutral colours; "New chat" slides out on hover or focus.
+                  <button
+                    type="button"
+                    onClick={onNewChat}
+                    disabled={isTurnInFlight}
+                    className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                    aria-label="Start a new chat"
+                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
+                    data-testid="chat-new-chat"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-150 group-hover/newchat:ml-1 group-hover/newchat:max-w-[5rem] group-hover/newchat:opacity-100 group-focus-visible/newchat:ml-1 group-focus-visible/newchat:max-w-[5rem] group-focus-visible/newchat:opacity-100">
+                      New chat
+                    </span>
+                  </button>
+                ) : null}
+                      {activeTabId && shouldShowLiveTerminalControl(
+                  liveTerminalOffered,
+                  isProductSurface,
+                  isInteractiveWorkflowBuilderChat,
+                  showProductTerminalControl,
+                ) && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant={terminalViewSelected ? 'secondary' : 'outline'}
+                        size="icon"
+                        onClick={() => chooseViewMode(activeTabId, terminalViewSelected ? 'formatted' : 'terminal')}
+                        className="h-7 w-7 p-0"
+                        aria-label={terminalViewSelected ? 'Return to conversation' : 'Open live view'}
+                      >
+                        <Terminal className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {terminalViewSelected ? 'Return to conversation' : 'Open live view'}
+                        {mainAgentRuntimeLabel ? ` · ${mainAgentRuntimeLabel}` : ''}
+                      </p>
+                      {terminalUsage.map((line, index) => (
+                        <p
+                          key={`${line.label}-${index}`}
+                          data-testid="chat-input-terminal-usage"
+                          className={`font-mono text-[11px] ${line.high ? 'font-semibold text-amber-400' : 'opacity-80'}`}
+                        >
+                          {line.text}
+                        </p>
+                      ))}
+                      {terminalSessionUsage.map((line, index) => (
+                        <p
+                          key={`session-${index}`}
+                          data-testid="chat-input-terminal-session-usage"
+                          className="font-mono text-[11px] opacity-70"
+                        >
+                          {line}
+                        </p>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                       {!nativeTerminalTools && attachmentEl}
                       {!nativeTerminalTools && micEl}
                       {/* Enter still sends/steers a follow-up while the primary

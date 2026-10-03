@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Code: mic on, New chat and live view on the right of the composer, toolbar order
+
+- **Decided (owner).** The mic is on for Code (it needs the server's speech engine: Excellence has it); New chat and the live-view toggle sit
+  on the right with the send controls; Code's workspace toolbar reads Dashboard | Files, Terminal, Browser | Automation, Costs | Setup.
+- **Done.** product.yaml (code) declares `voice: preferred`; ChatInput renders New chat and the live-view control inside the send controls;
+  WorkWorkspaceToolbar orders a Code's groups as above (a Crew's order is unchanged).
+- **Note.** "Unable to load project browser sessions" and "Could not stop the session" seen right after a deploy were the 502 window while the
+  agent restarted (deploys no longer wait for turns); both work on a retry.
 ### 2026-10-03 — Mac: Seatbelt for every coding CLI, home open; no unconfined mode — PLAT-394
 
 - **Decided (owner).** On a person's own Mac every CLI runs Full CLI under Seatbelt. Their home stays open

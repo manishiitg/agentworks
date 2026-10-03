@@ -145,6 +145,9 @@ profile:
       key_type: project
     capabilities:
       workflow_execution: disabled
+      # The mic in Code's composer (owner 2026-10-03: on for Code on Excellence). It shows only where the server also has the speech
+      # engine (capabilities.voice.available, a cgo build); the speech model is a one-time download the composer offers on first use.
+      voice: preferred
   built_in: true
   # Admins can open every user's Code read-only, and every view is audited
   # (docs/design/code_product.md, "Admin inspection").
