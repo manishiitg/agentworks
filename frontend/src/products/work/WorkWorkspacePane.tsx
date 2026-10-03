@@ -326,7 +326,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // render an owner-only panel (identity editors, transcripts, usage)
   // for someone else's Crew.
   if (view === 'shell' && !showShell) {
-    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">The shell needs editor access to this workspace.</div>
+    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">The terminal is only available to the owner of this Code.</div>
   }
   if (readOnly && view !== 'memory' && view !== 'files' && view !== 'shell') {
     return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">This workspace view is only available to the {noun} owner.</div>
@@ -341,6 +341,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           crewRoot={workspacePath}
           request={sharedFileRequest}
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions testId="work-files-panel" /></Suspense>)}
+        {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><CodeShellPanel projectId={projectId} /></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
           workspacePath={workspacePath}
           projectId={projectId}

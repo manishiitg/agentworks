@@ -31,6 +31,8 @@ describe('WorkWorkspaceToolbar', () => {
     // The toolbar only shows it when told to: forgetting this prop hid the Terminal button (2026-10-03).
     const surface = readFileSync('src/products/work/WorkSurface.tsx', 'utf8')
     expect(surface).toMatch(/<WorkWorkspaceToolbar[^>]*showShell=\{showShell\}/)
+    // ...and the pane has to render the panel when it is chosen (the render line was lost in the same port).
+    expect(source).toContain('<CodeShellPanel projectId={projectId} />')
     expect(source).toContain('<AutomationHubPanel')
     expect(source).not.toContain('botContent=')
     expect(source).toContain("productTriggerScope={enabledPanels?.has('triggers')")
