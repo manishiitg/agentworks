@@ -58,6 +58,14 @@ function priorityTone(priority: string): string {
   return 'border-amber-500/35 bg-amber-500/10 text-amber-200'
 }
 
+// Who or where a decision was answered, when it was not in this app (Slack, WhatsApp).
+function answeredViaLabel(input: ReportHumanInput): string {
+  const via = (input.answered_via || '').toLowerCase()
+  if (via.includes('slack')) return ' in Slack'
+  if (via.includes('whatsapp')) return ' in WhatsApp'
+  return ''
+}
+
 function selectedOptionTitle(input: ReportHumanInput): string {
   if (!input.selected_option_id) return ''
   return input.options.find(option => option.id === input.selected_option_id)?.title || input.selected_option_id
@@ -494,7 +502,7 @@ export function ReportHumanInputPanel({
               <h4 className="mt-2 text-sm font-semibold leading-snug text-foreground">{input.question}</h4>
               {(answer || input.note) && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">You answered: </span>{answer || input.note}
+                  <span className="font-medium text-foreground">Answered{answeredViaLabel(input)}: </span>{answer || input.note}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2">

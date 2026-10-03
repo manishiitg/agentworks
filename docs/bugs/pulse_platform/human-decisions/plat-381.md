@@ -29,9 +29,18 @@ easy to miss (social-media had two since 2026-09-25/28).
   "Answered, not applied yet", with **Apply in chat**, which sends that message
   to the workflow's Builder chat.
 
+- Background Pulse fix runs no longer apply answered decisions either: the
+  `list_approved_fixer_decisions` tool and its pulse-fixer step are removed
+  (found by ai-work-0b's review). A targeted-fixer decision is applied in the
+  Builder chat with the same bounded fixer instructions.
+- The unapplied card says "Answered" (and "in Slack"/"in WhatsApp" when the
+  answer came from there), not "You answered".
+
 ## Done / left
 
 - Done: `decision_apply_list_test.go`; panel test for Apply in chat; workflow
   component tests pass.
 - Done: the header activity badges and the org dashboard count unanswered
   plus answered-not-applied decisions (`needsYouDecisions`, owner decision).
+- Left: an answer given in Slack or WhatsApp waits in Needs you until someone
+  presses Apply in chat (the owner's rule); the badges show it.

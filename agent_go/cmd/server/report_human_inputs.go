@@ -405,60 +405,6 @@ func normalizeReportHumanInputApplyContract(contract ReportHumanInputApplyContra
 	return contract, nil
 }
 
-// ReportHumanInputFixerCandidate is an explicitly approved repair that must
-// outrank normal generic Fixer queue selection. The linked issue is resolved
-// from the durable awaiting_user event because a reviewer has to create the
-// decision before it can know the finding's public PUL id.
-type ReportHumanInputFixerCandidate struct {
-	InputID       string                        `json:"input_id"`
-	IssueID       string                        `json:"issue_id,omitempty"`
-	WorkspacePath string                        `json:"workspace_path"`
-	ApplyContract ReportHumanInputApplyContract `json:"apply_contract"`
-}
-
-func reportHumanInputFixerCandidates(inputs []ReportHumanInput, findings []step_based_workflow.PulseFindingLifecycle) []ReportHumanInputFixerCandidate {
-	linkedIssues := make(map[string]string)
-	for _, finding := range findings {
-		issueID := step_based_workflow.NewPulseIssue(finding).ID
-		for _, event := range finding.Events {
-			if event.EventType != "awaiting_user" {
-				continue
-			}
-			inputID, _ := event.Metadata["human_input_id"].(string)
-			if inputID != "" && linkedIssues[inputID] == "" {
-				linkedIssues[inputID] = issueID
-			}
-		}
-	}
-	candidates := make([]ReportHumanInputFixerCandidate, 0)
-	for _, input := range inputs {
-		contract := input.ApplyContract
-		if !strings.EqualFold(strings.TrimSpace(contract.Mode), "targeted_fixer") || !strings.EqualFold(strings.TrimSpace(input.SelectedOptionID), "approve") {
-			continue
-		}
-		issueID := linkedIssues[input.ID]
-		if issueID == "" {
-			issueID = strings.ToUpper(strings.TrimSpace(contract.IssueID))
-		}
-		candidates = append(candidates, ReportHumanInputFixerCandidate{
-			InputID: input.ID, IssueID: issueID, WorkspacePath: input.WorkspacePath, ApplyContract: contract,
-		})
-	}
-	return candidates
-}
-
-func listApprovedTargetedFixerCandidates(ctx context.Context, workspacePath string) ([]ReportHumanInputFixerCandidate, error) {
-	inputs, err := listReportHumanInputs(ctx, workspacePath, "answered", "")
-	if err != nil || len(inputs) == 0 {
-		return []ReportHumanInputFixerCandidate{}, err
-	}
-	findings, err := step_based_workflow.LoadPulseFindingLifecycles(ctx, inputs[0].WorkspacePath, "", -1)
-	if err != nil {
-		return nil, err
-	}
-	return reportHumanInputFixerCandidates(inputs, findings), nil
-}
-
 func ensureReportHumanInputColumn(ctx context.Context, db *sql.DB, column, definition string) error {
 	rows, err := db.QueryContext(ctx, "PRAGMA table_info(report_human_inputs)")
 	if err != nil {
@@ -968,20 +914,6 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			}),
 		},
 	}
-	listApprovedFixerTool := llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "list_approved_fixer_decisions",
-			Description: "Read the durable queue of answered decisions that explicitly authorize a targeted Pulse Fixer repair. Use this once at the start of a Fix phase before ordinary issue selection. Each returned candidate is mandatory intake: use its exact input_id and issue_id, read both canonical records, and never let normal repair_eligible filtering skip it.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workflow-relative path, for example Workflow/social-media."},
-				},
-				"required": []string{"workspace_path"},
-			}),
-		},
-	}
 	consumeTool := llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -1035,22 +967,6 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 				return "", err
 			}
 			return marshalReportHumanInputToolResult("duplicate_dismissed", input)
-		},
-		"list_approved_fixer_decisions": func(ctx context.Context, args map[string]interface{}) (string, error) {
-			workspacePath, _ := args["workspace_path"].(string)
-			if strings.TrimSpace(workspacePath) == "" {
-				return "", fmt.Errorf("workspace_path is required")
-			}
-			candidates, err := listApprovedTargetedFixerCandidates(ctx, workspacePath)
-			if err != nil {
-				return "", err
-			}
-			payload := map[string]interface{}{
-				"candidates": candidates,
-				"note":       "Each candidate is an explicit approved targeted-Fixer handoff. It overrides normal generic Fixer queue eligibility; leave it unconsumed if the bounded repair cannot be proved.",
-			}
-			encoded, err := json.Marshal(payload)
-			return string(encoded), err
 		},
 		"get_human_input_request": func(ctx context.Context, args map[string]interface{}) (string, error) {
 			workspacePath, _ := args["workspace_path"].(string)
@@ -1149,13 +1065,12 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 	}
 	categories := map[string]string{
 		"dismiss_duplicate_human_input_request": "human_tools",
-		"list_approved_fixer_decisions":         "human_tools",
 		"get_human_input_request":               "human_tools",
 		"create_human_input_request":            "human_tools",
 		"answer_human_input_request":            "human_tools",
 		"mark_human_input_consumed":             "human_tools",
 	}
-	return []llmtypes.Tool{getTool, listApprovedFixerTool, createTool, answerTool, consumeTool, dismissDuplicateTool}, executors, categories
+	return []llmtypes.Tool{getTool, createTool, answerTool, consumeTool, dismissDuplicateTool}, executors, categories
 }
 
 func reportHumanInputCreateRequestFromToolArgs(args map[string]interface{}) (ReportHumanInputCreateRequest, error) {

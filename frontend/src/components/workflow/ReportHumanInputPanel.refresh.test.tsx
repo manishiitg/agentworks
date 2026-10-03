@@ -108,7 +108,7 @@ describe('answered decisions that are not applied yet', () => {
       await act(async () => root.render(<ReportHumanInputPanel workspacePath={workspace} />))
       expect(container.textContent).toContain('Needs your decision')
       expect(container.textContent).toContain('Answered, not applied yet')
-      expect(container.textContent).toContain('You answered: Approve')
+      expect(container.textContent).toContain('Answered: Approve')
       const apply = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Apply in chat'))
       expect(apply).toBeTruthy()
       await act(async () => { apply!.click() })
