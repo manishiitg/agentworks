@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
@@ -151,14 +152,48 @@ func AttachInteractiveShell(c *gin.Context) {
 			}
 		case websocket.TextMessage:
 			var control struct {
-				Type string `json:"type"`
-				Cols int    `json:"cols"`
-				Rows int    `json:"rows"`
+				Type   string `json:"type"`
+				Cols   int    `json:"cols"`
+				Rows   int    `json:"rows"`
+				Lines  int    `json:"lines"`
+				Cancel bool   `json:"cancel"`
 			}
-			if json.Unmarshal(data, &control) == nil && control.Type == "resize" {
+			if json.Unmarshal(data, &control) != nil {
+				continue
+			}
+			switch control.Type {
+			case "resize":
 				cols, rows := clampShellSize(control.Cols, control.Rows)
 				_ = pty.Setsize(terminal, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+			case "scroll":
+				interactiveShellScroll(socket, control.Lines, control.Cancel)
 			}
 		}
 	}
+}
+
+// interactiveShellScroll moves through the shell's history for the browser's mouse wheel: lines > 0 back, < 0 forward, cancel leaves
+// the history view (sent before the next keystroke, so typing reaches the shell). One tmux command per message: copy-mode is entered
+// only when the pane is not in it already, then the pane scrolls; copy-mode -e leaves the history view by itself at the bottom.
+func interactiveShellScroll(socket string, lines int, cancel bool) {
+	ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+	defer stop()
+	target := interactiveShellSession
+	if cancel {
+		_ = exec.CommandContext(ctx, realTmux(), "-S", socket, "if-shell", "-F", "-t", target, "#{pane_in_mode}", "send-keys -X -t "+target+" cancel").Run()
+		return
+	}
+	if lines == 0 {
+		return
+	}
+	direction := "scroll-up"
+	if lines < 0 {
+		direction, lines = "scroll-down", -lines
+	}
+	if lines > 200 {
+		lines = 200
+	}
+	_ = exec.CommandContext(ctx, realTmux(), "-S", socket,
+		"if-shell", "-F", "-t", target, "#{pane_in_mode}", "", "copy-mode -e -t "+target, ";",
+		"send-keys", "-t", target, "-X", "-N", strconv.Itoa(lines), direction).Run()
 }

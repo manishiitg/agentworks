@@ -345,13 +345,13 @@ func StartInteractiveShell(c *gin.Context) {
 		}
 	}
 	// The options are set before the session exists (start-server first, so they apply to its first pane): tmux's mouse off, so a drag
-	// is the browser's own selection and copy works (with it on, tmux took every drag); no alternate screen (smcup@:rmcup@), so lines
-	// that scroll off the top reach the browser terminal's own scrollback and the wheel scrolls there, smoothly and without a server
-	// round trip (the earlier server-driven scroll moved in steps). A long history, and no tmux status bar.
+	// is the browser's own selection and copy works (with it on, tmux took every drag). The wheel scrolls tmux's history through the
+	// page's "scroll" message (interactiveShellScroll): tmux repaints its screen rather than scrolling it, so the browser's own
+	// scrollback cannot hold the history (tried 2026-10-03: the wheel did nothing). A long history, and no tmux status bar.
 	// tmux's own key and mouse commands are switched off (the browser terminal is one shell, not a tmux): its right-click menu (split, kill,
 	// respawn) covered the browser's copy/paste menu, and the Ctrl-b prefix could split panes or open windows the page cannot show. The
 	// wheel bindings, which scroll the history, stay.
-	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -ga terminal-overrides ',xterm*:smcup@:rmcup@' \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
+	tmuxStart := fmt.Sprintf(`%s -f /dev/null -S %s start-server \; set-option -g history-limit %d \; set-option -g mouse off \; set-option -g status off \; %s%s new-session -d -s %s -x %d -y %d %s -l`,
 		shellQuote(realTmux()), shellQuote(socket), interactiveShellHistoryLines, interactiveShellTmuxQuietBindings, interactiveShellServerAccess(slot), interactiveShellSession, cols, rows, shell)
 	command := environment + " exec " + tmuxStart
 	if slot != "" {

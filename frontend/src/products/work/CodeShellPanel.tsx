@@ -218,9 +218,40 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
     attemptRef.current = 0
     connect()
 
+    // The wheel scrolls tmux's history on the server (tmux repaints its screen, so the browser keeps no history of its own; its
+    // mouse is off so a drag is the browser's selection). Wheel movement adds up and is sent at most once per frame, so a trackpad
+    // makes a few messages, not dozens; the first keystroke after scrolling back returns to the prompt.
+    let wheelPixels = 0
+    let pendingLines = 0
+    let frame = 0
+    let scrolledBack = false
+    const flushScroll = () => {
+      frame = 0
+      const socket = socketRef.current
+      if (pendingLines !== 0 && socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'scroll', lines: pendingLines }))
+      }
+      pendingLines = 0
+    }
+    term.attachCustomWheelEventHandler(event => {
+      wheelPixels += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
+      const lines = Math.trunc(wheelPixels / 16)
+      if (lines !== 0) {
+        wheelPixels -= lines * 16
+        if (lines < 0) scrolledBack = true
+        pendingLines -= lines
+        if (!frame) frame = requestAnimationFrame(flushScroll)
+      }
+      return false
+    })
     const input = term.onData(data => {
       const socket = socketRef.current
-      if (socket && socket.readyState === WebSocket.OPEN) socket.send(encoder.encode(data))
+      if (!socket || socket.readyState !== WebSocket.OPEN) return
+      if (scrolledBack) {
+        scrolledBack = false
+        socket.send(JSON.stringify({ type: 'scroll', cancel: true }))
+      }
+      socket.send(encoder.encode(data))
     })
     const resize = term.onResize(({ cols, rows }) => {
       const socket = socketRef.current

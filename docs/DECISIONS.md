@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Terminal scroll back on the server, batched (browser-side scroll did not work)
+
+- **Found (user).** With tmux's alternate screen off (smcup@:rmcup@) the wheel did nothing: tmux repaints its screen instead of scrolling
+  it, so the browser's scrollback never held the history.
+- **Done.** The override is removed; the wheel sends `{"type":"scroll","lines":N}` again, at most once per animation frame (deltas add
+  up), and the workspace runs one tmux command per message (`if-shell #{pane_in_mode} '' 'copy-mode -e'; send-keys -X -N N scroll-up`).
+  The first keystroke after scrolling back cancels the history view. tmux's mouse stays off, so copy still works.
+
 ### 2026-10-03 — A model or reasoning-effort change applies between turns, never mid-turn
 
 - **Decided (owner).** "Reasoning or model change should apply only when the agent has completed turns."
