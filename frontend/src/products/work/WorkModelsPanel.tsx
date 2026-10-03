@@ -172,6 +172,11 @@ export function WorkModelsPanel({
       output_cost_per_1m: 0,
     } satisfies ModelMetadata)
   }, [currentGroup?.models, modelCatalog, selectedOption?.provider])
+  const currentReasoningEffort = savedSelection?.reasoningEffort
+    || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined)
+    || selectedDefaults.reasoningEffort
+  // Antigravity encodes effort in its model id, so its model tiles own that setting.
+  const reasoningLevels = selectedOption?.provider === 'agy-cli' ? [] : currentGroup?.reasoningLevels || []
   const currentModelLabel = selectableModels.find(model => model.model_id === currentModelId)?.model_name
     || currentModelId
     || 'Provider default'
@@ -219,7 +224,6 @@ export function WorkModelsPanel({
 
   const selectModel = (modelId: string) => {
     if (!selectedOption) return
-    const metadataMatchesProvider = tab?.metadata?.agentProfileEngine === selectedOption.id
     void onRuntimeChange({
       engine: selectedOption.id,
       connectionId: savedSelection?.connectionId,
@@ -227,7 +231,18 @@ export function WorkModelsPanel({
       modelId,
       reasoningEffort: selectedOption.provider === 'agy-cli'
         ? modelId.match(/-(low|medium|high)$/)?.[1]
-        : (metadataMatchesProvider ? tab?.metadata?.agentProfileReasoningEffort : undefined) || selectedDefaults.reasoningEffort,
+        : currentReasoningEffort,
+    })
+  }
+
+  const selectReasoningEffort = (reasoningEffort: string) => {
+    if (!selectedOption || !reasoningLevels.some(level => level.id === reasoningEffort)) return
+    void onRuntimeChange({
+      engine: selectedOption.id,
+      connectionId: savedSelection?.connectionId,
+      provider: selectedOption.provider,
+      modelId: currentModelId,
+      reasoningEffort,
     })
   }
 
@@ -245,6 +260,7 @@ export function WorkModelsPanel({
           splitPiProviders={false}
           showModelsPerRole={false}
           configurationSource="agent_profile"
+          product={product.profileId}
         />
         <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
           <button
@@ -255,7 +271,7 @@ export function WorkModelsPanel({
           >
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-foreground">Model</h3>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{currentModelLabel}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{currentModelLabel}{reasoningLevels.length > 0 && currentReasoningEffort ? ` · ${currentReasoningEffort} reasoning` : ''}</p>
             </div>
             <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${modelPickerOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -268,10 +284,28 @@ export function WorkModelsPanel({
                 onSelect={selectModel}
                 className="mt-3"
               />
+              {reasoningLevels.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-medium text-foreground">Reasoning effort</p>
+                  <div role="group" aria-label="Reasoning effort" className="mt-2 flex flex-wrap gap-2">
+                    {reasoningLevels.map(level => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        aria-pressed={currentReasoningEffort === level.id}
+                        onClick={() => selectReasoningEffort(level.id)}
+                        className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${currentReasoningEffort === level.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
+                      >
+                        {level.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
-        {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent or model relaunches this project's retained session on the next message while keeping the project chat history.</p>}
+        {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Changing the coding agent, model, or reasoning effort relaunches this project's retained session on the next message while keeping the project chat history.</p>}
         {usageSupported && (
           <section className="mt-5 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-3">

@@ -13,6 +13,18 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Project reasoning controls and creation account names
+
+- Crew/Code Identity → Models renders the product profile's reasoning-effort
+  choices alongside models, including Muse's medium/high/xhigh/max options.
+  The selected effort is saved with the project and retained on model changes.
+  Muse defaults to max in both profiles; an admin-managed account does not lock
+  model or reasoning settings. Antigravity continues to encode effort in model IDs.
+- New project “Runs on” uses the same Admin-managed account label as Providers,
+  and offers installed CLIs with ready accounts only. With none ready, it directs
+  the person to Providers without suggesting a signed-out provider.
+- Code: `WorkModelsPanel`, `RunsOnPicker`, shared readiness/account-label helpers.
+
 ### 2026-10-03 — The terminal starts on a Mac (tmux by full path)
 
 - **Found (user asked whether the terminal shows locally).** On macOS the shell did not start: the sandbox's trimmed PATH lacks Homebrew's
