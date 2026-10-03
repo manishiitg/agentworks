@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"io"
 	"log"
 	"net/http"
@@ -392,6 +393,10 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		// A deleted Crew or Code takes its MCP connections, and their logins,
 		// with it.
 		forgetPlaceConnections(agentProfileRuntimeWorkspace(userID, binding.WorkspacePath))
+	}
+	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
+		// A deleted Code takes its shells with it.
+		stopCodeShellsFor(sanitizeUserIDForPath(userID), projectID, nil)
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }

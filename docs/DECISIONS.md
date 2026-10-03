@@ -13,6 +13,34 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — A terminal in Code, run as the person's own Linux account (reverses 2026-09-28)
+
+- **Decision (user, 2026-10-03).** Code gets a Terminal tab again: a real shell on the server in the Code's folder. The
+  2026-09-28 removal ("the user decided it wasn't needed") is reversed on the user's request; what changed is that every
+  person now has their own Linux account (slot), so a raw shell no longer runs as the shared service account.
+- **Design.** The old panel (commits 7affa8a90 / dc8cdb8c4) was ported, not reverted (the code had moved on). The agent
+  server authorizes the owner (Code is owner-only, so the terminal is too), builds the Code's Folder Guard and stamps the
+  user on every call; the workspace service starts a tmux server in the same Landlock sandbox as the shell tool (private
+  /tmp, private /dev/pts) and attaches from inside it. **Where slots are on, all of it runs as the caller's slot**:
+  `slots.WrapCommandFile` leaves the request in a file in the slot's run folder so the terminal stays the command's stdin
+  (the stdin form of `WrapCommand` cannot), the tmux files live in `<slot run folder>/shells/<id>` (group-shared with the
+  service; tmux makes its socket owner-only, so it is `chmod 0660` after start), and **a person without a slot gets no
+  terminal** (403) instead of a shell as the service account. Hosts without slots keep the old sandboxed behaviour.
+- **Scratch folders** the platform creates for a sandboxed command (`.tmp`, `.cache`, ...) are now group-writable: a slot
+  could not create a temp file in its own TMPDIR (the private-terminal launcher failed on this).
+- **Not on RTS yet.** A raw shell can reach the instance role through IMDS; that exposure is still open there.
+- **Tests.** Real-sandbox shell tests on a Linux host (`interactive_shell_e2e_linux_test.go`, including private PTY) and
+  `interactive_shell_slot_e2e_linux_test.go`, run on Confida: the shell is the user's slot, has a pty, cannot read the
+  service `.env` or list other people's folders. Sweep of orphaned shells: `interactive_shell_sweep_test.go`.
+
+### 2026-10-03 — Re-running the slot setup for Excellence took Confida's slot table away again
+
+- **Found.** `provision-slots.sh init` for the default product resets `/etc/agentworks` to 0750 root:agents. Confida's
+  service reads its table through that folder (`o+x` on it, added after the 2026-10-01 incident), so after Excellence's
+  init (done during the 2026-10-02 slot-program refresh) Confida's shells would have failed with "slot table
+  unavailable". Found while testing the terminal on Confida; `chmod 0751 /etc/agentworks` fixed it by hand.
+- **Done.** The script now sets `o+x` on `/etc/agentworks` unconditionally after creating the folder.
+
 ### 2026-10-03 — Incoming email has an Ask AI action; Excellence Google app restored
 
 - **UI.** Incoming email's read-only card offers the shared Ask AI button in

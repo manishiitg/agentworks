@@ -61,6 +61,12 @@ type Isolator struct {
 	// browser's socket folder and profile (see scopeBrowser); when empty it
 	// keeps the shared browser grants.
 	BrowserSession string
+	// AllowPTY gives the command its own terminal devices (a private /dev/pts, see LandlockPolicy.PrivatePTS), which
+	// an interactive shell needs. Never set for ordinary commands.
+	AllowPTY bool
+	// Interactive keeps the caller's terminal as the command's standard input when it runs as a slot: the request
+	// then travels in a file in the slot's run folder instead of on stdin (slots.WrapCommandFile).
+	Interactive bool
 }
 
 const defaultBaseDir = "/app/workspace-docs"

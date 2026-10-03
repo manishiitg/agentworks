@@ -62,7 +62,7 @@ func sandboxToolEnv(env []string, workDir string, writePaths []string) []string 
 		userBase := filepath.Join(scratch, ".local")
 		tmpDir := filepath.Join(scratch, ".tmp")
 		for _, dir := range []string{pipCacheDir, npmCacheDir, userBase, tmpDir} {
-			_ = os.MkdirAll(dir, 0755)
+			ensureScratchDir(dir)
 		}
 		return append(env,
 			"PIP_CACHE_DIR="+pipCacheDir,
@@ -88,7 +88,7 @@ func sandboxToolEnv(env []string, workDir string, writePaths []string) []string 
 		tmpDir = filepath.Join(scratch, ".tmp")
 	}
 	for _, dir := range []string{binDir, pipCacheDir, pythonBase, xdgCacheDir, npmCacheDir, npmPrefix, goPath, goCache, cargoHome, pipxHome, tmpDir} {
-		_ = os.MkdirAll(dir, 0755)
+		ensureScratchDir(dir)
 	}
 
 	toolBins := strings.Join([]string{
@@ -199,4 +199,15 @@ func privateSandboxHome(env []string, home string) []string {
 		out = append(out, "AGENT_BROWSER_SOCKET_DIR="+browserSocketDir)
 	}
 	return out
+}
+
+// ensureScratchDir creates a scratch or cache folder the sandboxed command writes to. The platform creates it, so for a
+// command that runs as a slot account (a different user in the same group) it must be group-writable, or the slot
+// cannot create a temp file in its own TMPDIR (the private terminal launcher failed this way on Confida).
+func ensureScratchDir(dir string) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	// Best effort: a folder the slot created itself is not ours to change, and it is already writable by it.
+	_ = os.Chmod(dir, 0o770|os.ModeSetgid)
 }

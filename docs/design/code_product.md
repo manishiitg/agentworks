@@ -323,10 +323,15 @@ Code ships a basic setup first; integrations come later. In Code's
   Code agent manages the Code's connections with `manage_my_mcp_servers`, and
   deployment sign-in apps (Google, GitHub, ...) make Connect a one-click
   sign-in. A Code's connections never appear in Crews or workflows.
-- **Terminal:** the coding CLI's own terminal only (as in Crew). There is no
-  standalone shell panel (user, 2026-09-28; it was built and then removed):
-  commands run through the agent's sandboxed shell tool, under the Code's
-  Folder Guard.
+- **Terminal:** the coding CLI's own terminal, and a **Terminal** tab in the Code
+  (user, 2026-10-03; a standalone shell panel was built, removed 2026-09-28, and
+  rebuilt on the user's request once everyone had their own Linux account). It is a
+  real shell in the Code's folder, owner only, run as the person's own slot account
+  inside the same Landlock sandbox as the agent's shell tool (private /tmp and
+  /dev/pts). A person without a slot gets none. One per person per Code; it keeps
+  running while the tab is closed and stops after 30 idle minutes, on Stop, or when
+  the Code is deleted. Not enabled on RTS until its instance-role exposure is closed.
+  See docs/DECISIONS.md, 2026-10-03.
 
 ## To think about
 

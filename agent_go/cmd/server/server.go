@@ -2405,6 +2405,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
+	// A Code workspace's plain shell: sandboxed, one per person with editor access.
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
+	codeShellReaperOnce.Do(func() { go codeShellReaper() })
+	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stop", api.handleCodeShellStop).Methods("POST", "OPTIONS")
 	// Platform OAuth client secrets written inline before they moved to
 	// sealed client files.
 	if err := api.migratePlatformClientSecrets(); err != nil {

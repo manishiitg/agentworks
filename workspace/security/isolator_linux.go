@@ -96,7 +96,7 @@ func (iso *Isolator) landlockPolicy() (LandlockPolicy, error) {
 	// The launcher enters WorkDir before restricting itself. Landlock can then
 	// keep the directory usable as cwd without granting reads to its children;
 	// this matches the existing mount/sandbox-exec contract.
-	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", ReadOnlyOverlays: overlays}, nil
+	return LandlockPolicy{ReadPaths: reads, WritePaths: writes, WorkDir: canonicalPath(iso.WorkDir), BrowserScoped: iso.BrowserSession != "", PrivatePTS: iso.AllowPTY, ReadOnlyOverlays: overlays}, nil
 }
 
 func (iso *Isolator) canonicalPolicyPaths(paths []string) ([]string, error) {
@@ -193,7 +193,18 @@ func (iso *Isolator) landlockCommand(ctx context.Context, policy LandlockPolicy,
 		// The request written by WrapCommand carries the environment as it is now: add the per-call values first.
 		cmd.Env = MergeExtraEnv(cmd.Env, iso.ExtraEnv)
 		// Run as the user's slot account: the namespaces and the policy are created after the switch.
-		wrapped, wrapErr := slots.WrapCommand(ctx, cmd, iso.Slot)
+		var wrapped *exec.Cmd
+		var wrapErr error
+		if iso.Interactive {
+			var removeRequest func()
+			wrapped, removeRequest, wrapErr = slots.WrapCommandFile(ctx, cmd, iso.Slot)
+			if wrapErr == nil {
+				inner := cleanup
+				cleanup = func() { removeRequest(); inner() }
+			}
+		} else {
+			wrapped, wrapErr = slots.WrapCommand(ctx, cmd, iso.Slot)
+		}
 		if wrapErr != nil {
 			cleanup()
 			return nil, nil, fmt.Errorf("SANDBOX_UNAVAILABLE: run as the user's slot: %w", wrapErr)
