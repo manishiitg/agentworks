@@ -1,6 +1,6 @@
 [← Pulse platform issue index](../../pulse_platform_issue_register.md)
 
-# PLAT-384 — On Linux, Full CLI's native writes ignored blocked paths (planning/, the raw database)
+# PLAT-385 — On Linux, Full CLI's native writes ignored blocked paths (planning/, the raw database)
 
 | Coordination | Value |
 |---|---|

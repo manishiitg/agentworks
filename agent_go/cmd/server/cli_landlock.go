@@ -82,7 +82,7 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	}
 	// Landlock cannot carve blocked paths (planning/, the raw database,
 	// AGENTS.md) out of a granted folder, and native writes never pass the
-	// folder guard. Until the launcher hides them (PLAT-384), a chat with a
+	// folder guard. Until the launcher hides them (PLAT-385), a chat with a
 	// blocked path inside one of its writable folders keeps hybrid: native
 	// reads, but shell and writes through the bridge, which enforces them.
 	if blocked := blockedInsideWriteGrant(policy); blocked != "" {

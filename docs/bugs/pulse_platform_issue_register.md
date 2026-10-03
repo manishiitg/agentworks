@@ -1,6 +1,6 @@
-## Full CLI native writes ignored blocked paths on Linux — PLAT-384
+## Full CLI native writes ignored blocked paths on Linux — PLAT-385
 
-[PLAT-384](pulse_platform/security-sandbox/plat-384.md), P1, **stopgap** on `main`:
+[PLAT-385](pulse_platform/security-sandbox/plat-385.md), P1, **stopgap** on `main`:
 Linux chats with blocked paths inside writable folders stay hybrid until the
 Landlock launcher hides them; the launcher enforcement is open.
 
