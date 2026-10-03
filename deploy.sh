@@ -280,8 +280,8 @@ echo "==> [$PRODUCT] Done."
 # A short message when a deploy starts and when it finishes, so people know. The incoming-webhook
 # URL is a secret (anyone with it can post to the channel): it is read from DEPLOY_SLACK_WEBHOOK_URL
 # or the first line of ~/.config/agentworks/deploy-slack-webhook (mode 600), never from the repo.
-# ON by default (turned off on request 2026-10-03, back on the same day): silence one run with
-#   DEPLOY_SLACK_NOTIFY=0 ./deploy.sh confida
+# OFF by default (owner, 2026-10-03: "for now make Slack posts silent"); post for one run with
+#   DEPLOY_SLACK_NOTIFY=1 ./deploy.sh confida
 # With no webhook set nothing is sent either, and a failed post never fails or delays a deploy.
 deploy_notify() {
   local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
@@ -302,7 +302,7 @@ deploy_label() {
 }
 
 deploy_start_notice() {
-  case "${DEPLOY_SLACK_NOTIFY:-1}" in 0|false|no|off) return 0 ;; esac
+  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) return 0 ;; esac
   [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
   local head_line
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
@@ -314,7 +314,7 @@ deploy_start_notice() {
 
 deploy_finish_notice() {
   local rc="$1" took=""
-  case "${DEPLOY_SLACK_NOTIFY:-1}" in 0|false|no|off) trap - EXIT; return "$rc" ;; esac
+  case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) trap - EXIT; return "$rc" ;; esac
   [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
   trap - EXIT
   if [[ "$rc" == "0" ]]; then

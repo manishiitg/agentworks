@@ -19,6 +19,10 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — Deploy Slack notices are silent by default again
+
+- **Decided (owner).** "For now make Slack posts silent": `deploy.sh` posts start/finish notices only with `DEPLOY_SLACK_NOTIFY=1`.
+
 ### 2026-10-03 — Code agent prompt: tunnels allowed when the user asks
 
 - **Decided (owner).** "Our platform should be secure; people can already do anything from the terminal": the Code agent may set up a tunnel
