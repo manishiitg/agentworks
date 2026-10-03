@@ -4065,6 +4065,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CHAT_HISTORY] Product definition changed for session %s; relaunching the coding CLI and resuming its native session where supported", sessionID)
 	}
 	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !requestLLMConfigOverridesManifest(req) {
+		// A changed runtime (coding agent, model, reasoning effort, definition) applies between turns, never in the middle of one:
+		// relaunching here used to cancel the running turn ("muse tmux session ... died before run completion" after changing the
+		// reasoning effort mid-turn, Excellence 2026-10-03). While a turn is running, the message waits in the durable turn queue;
+		// when it runs, this check sees no running turn and relaunches with the new runtime.
+		if api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
+			return
+		}
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)
 	}
 	// Automated schedule and webhook turns must preserve turn boundaries. They

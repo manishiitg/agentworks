@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-03 — A model or reasoning-effort change applies between turns, never mid-turn
+
+- **Decided (owner).** "Reasoning or model change should apply only when the agent has completed turns."
+- **Found.** Changing Muse's reasoning effort while a turn ran, then sending a message, relaunched the retained CLI at once
+  (interruptWorkflowPolicySession): the running turn was cancelled ("muse tmux session … died before run completion").
+- **Done.** When the runtime changed and a turn is running, the message waits in the durable turn queue; when it runs, nothing is in
+  flight and the CLI relaunches with the new model/effort (server.go, before interruptWorkflowPolicySession).
+
 ### 2026-10-03 — Compact browser chrome and recovery preserve the working browser
 
 Browser tabs and actions share one compact row, with navigation beneath it.
