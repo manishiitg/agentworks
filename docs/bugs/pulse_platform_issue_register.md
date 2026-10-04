@@ -1,3 +1,8 @@
+## The Vault systemd unit quoted paths and never started — PLAT-467
+
+[PLAT-467](pulse_platform/scheduler-runs/plat-467.md), fixed on main; Excellence redeploy pending. `EnvironmentFile=` and `WorkingDirectory=` were written with quotes, which
+systemd takes literally, so the first Vault install failed and ended the Excellence deploy (new release was up, Vault was not).
+
 ## Lighter chat restore and opening at the latest message — PLAT-466
 
 [PLAT-466](pulse_platform/frontend-chat/plat-466.md), see ticket for state:

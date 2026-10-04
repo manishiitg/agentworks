@@ -98,8 +98,8 @@ After=network-online.target
 Before={product}-agent.service
 
 [Service]
-EnvironmentFile="{state}/service.env"
-WorkingDirectory="{app}/current"
+EnvironmentFile={state}/service.env
+WorkingDirectory={app}/current
 ExecStart="{app}/current/bin/agentworks-vault"
 UMask=0077
 NoNewPrivileges=true
@@ -111,7 +111,7 @@ TimeoutStopSec=60
 WantedBy=default.target
 '''
     write_private(unit_dir / f'{product}-vault.service', unit, 0o644)
-    write_private(unit_dir / f'{product}-agent.service.d' / 'zz-vault.conf', f'[Unit]\nWants={product}-vault.service\nAfter={product}-vault.service\n\n[Service]\nEnvironmentFile="{state}/agent.env"\n', 0o644)
+    write_private(unit_dir / f'{product}-agent.service.d' / 'zz-vault.conf', f'[Unit]\nWants={product}-vault.service\nAfter={product}-vault.service\n\n[Service]\nEnvironmentFile={state}/agent.env\n', 0o644)
     return state
 
 

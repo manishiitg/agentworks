@@ -62,6 +62,25 @@ class VaultInstallTest(unittest.TestCase):
             self.assertIn('UMask=0077', (units / 'agents-vault.service').read_text())
             self.assertIn('EnvironmentFile=', (units / 'agents-agent.service.d/zz-vault.conf').read_text())
 
+    def test_unit_paths_are_unquoted_where_systemd_takes_quotes_literally(self):
+        # systemd reads quotes in EnvironmentFile= and WorkingDirectory= as part of the path ("path is not absolute"), so the unit never started
+        # (first Vault install on Excellence, 2026-10-04). ExecStart= may be quoted.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app, docs, units = root / 'app', root / 'docs', root / 'units'
+            app.mkdir()
+            module.render(app, docs, 'agents', 24000, 24003, units)
+            for file in (units / 'agents-vault.service', units / 'agents-agent.service.d/zz-vault.conf'):
+                for line in file.read_text().splitlines():
+                    key, _, value = line.partition('=')
+                    if key in ('EnvironmentFile', 'WorkingDirectory'):
+                        self.assertTrue(value.startswith('/'), f'{file.name}: {line}')
+                        self.assertNotIn('"', value, f'{file.name}: {line}')
+            analyzer = subprocess.run(['which', 'systemd-analyze'], capture_output=True, text=True).stdout.strip()
+            if analyzer:
+                check = subprocess.run([analyzer, '--user', 'verify', str(units / 'agents-vault.service')], capture_output=True, text=True)
+                self.assertNotIn('not absolute', check.stdout + check.stderr)
+
     def test_sqlite_is_default_and_other_storage_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
