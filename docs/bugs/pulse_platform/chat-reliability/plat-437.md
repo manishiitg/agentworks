@@ -13,9 +13,11 @@ Log signature: `[CHAT_HISTORY] Provider changed for session ...: the retained CL
 
 ## Fix
 
-`workflowManifestDecidesProvider`: when the chat is a Builder chat whose manifest names an LLM and the request's LLM config does not come from a product
-profile, the request's provider is not compared; a change of the manifest's own provider stays with the workflow retained-delivery policy.
-Product chats (Crew, Code) and workflows without their own LLM keep the PLAT-425 behaviour. Test `TestWorkflowManifestDecidesProviderOfABuilderChat`.
+`effectiveProviderOf` returns the provider the request will actually run on, in the order handleQuery applies: a Builder chat's manifest LLM (unless the
+request's LLM config comes from a product profile), then the locked server's answer (`resolveLockedLLM`: a locked server honours the request only for a
+product profile or a published model), then the request's own choice. The PLAT-425 check compares the retained CLI with that, so it only fires when the
+provider that runs really changed. This covers every product on a locked server (RTS) and Builder chats everywhere, not only Builder.
+Test `TestEffectiveProviderIsWhatActuallyRuns` (manifest, product profile, plain chat, no workflow LLM, locked server).
 
 ## Left
 

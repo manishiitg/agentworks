@@ -4068,9 +4068,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// (or fail against) the old provider's terminal. Before this a provider change was invisible here, so after switching Muse to Codex mid-chat the next sends went to the old Muse
 	// record and answered 409 delivery_uncertain until a watchdog cleared it (Code on Excellence, 2026-10-04). Like any runtime change it waits for a running turn
 	// and then relaunches on the selected provider (the native conversation resumes across providers).
-	providerChanged := !req.IsAutoNotification && !api.workflowManifestDecidesProvider(r.Context(), req) && api.retainedCLIProviderDiffers(sessionID, requestedProviderOf(req))
+	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, api.effectiveProviderOf(r.Context(), req))
 	if providerChanged {
-		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, requestedProviderOf(req))
+		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, api.effectiveProviderOf(r.Context(), req))
 		retainedProfileCompatible = false
 	}
 	if !retainedProfileCompatible && !req.DisableLiveInputDelivery && !req.IsAutoNotification && (providerChanged || !requestLLMConfigOverridesManifest(req)) {
