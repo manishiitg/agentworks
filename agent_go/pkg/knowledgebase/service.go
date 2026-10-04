@@ -483,6 +483,9 @@ func (s *Service) requestPath(p Principal, tool string, args map[string]any) (st
 	return filepath.Join(s.private, "requests", key+".json"), digest(b), nil
 }
 func (s *Service) cachedRequest(p Principal, tool string, args map[string]any, path, hash string) (any, bool, error) {
+	if err := s.checkIntegrationRequest(filepath.Join(s.private, "integration-requests", filepath.Base(path)), hash); err != nil {
+		return nil, false, err
+	}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, false, nil

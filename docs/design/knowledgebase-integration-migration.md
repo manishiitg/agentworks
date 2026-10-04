@@ -1,123 +1,159 @@
 # Shared Knowledge Base: workflow/Crew integration and migration
 
-Status: MVP coexistence and merge rollout decision, plus a proposed explicit
-migration contract. The automatic importer, new manifest bindings, and cutover
-adapter described below are not implemented in this PR. Deployment must not
-claim that existing workflows or Crews have migrated.
+Status: implemented in Knowledge Base MVP PR #268. Adoption is explicit per
+project. Merge and deployment do not import files, add grants, or rewrite
+existing projects.
 
-## What ships at merge
+## Project bindings
 
-The shared Knowledge Base is available through five MCP tools. Work/Code
-profiles and the workflow runtime register these tools. Calls use the trusted
-execution identity and enforce current product access, folder grants, and
-connection caps. The access builder manages grants; content connections inspect
-access but cannot change it. Git publication remains explicit.
+Workflow and Crew runtime `workflow.json` manifests accept:
 
-Existing storage continues to operate:
+```json
+{
+  "shared_knowledgebase": [
+    {"alias": "payments", "folder_id": "folder_<immutable-id>", "access": "read"}
+  ]
+}
+```
 
-| Store | Existing contract | MVP behavior |
-| --- | --- | --- |
-| Workflow `knowledgebase/context/` and `knowledgebase/notes/` | Local context, contributions, topic files, and `_index.json` | Remains local; existing writers keep their current contract |
-| Workflow `knowledgebase_sources` | Workflow IDs/aliases resolved by `pkg/workflowkb`; manifest audience checks and `WORKFLOW_KB_<ALIAS>` | Keeps existing resolution and access rules |
-| Crew workspace attachments | Authorized Crew project bindings and read-only workspace paths | Keeps existing resolution; does not become a KB-folder grant |
-| Workflow `learnings/` | Local procedural learning | Remains local; excluded from initial migration |
-| Shared Knowledge Base product | Folder ACLs, versioned Markdown entries, MCP-only writes | Explicitly selected by agents/users; never mounted as a host path |
+A binding restricts existing authority; it never grants access. Aliases are
+unique across shared bindings, legacy `knowledgebase_sources`, and Crew workspace
+attachments. Up to 20 bindings are supported. Access is `read` or `write`.
+Bindings do not mount a host directory or export a `WORKFLOW_KB_<ALIAS>` path.
 
-Product availability alone is not automatic adoption. An interactive call runs
-as its authenticated user. A scheduled workflow/Crew run uses its server-owned
-execution identity; it must not inherit the deployer's or administrator's access.
-The current tools authorize that identity, not a manifest's complete audience.
-Before introducing automatic shared-KB bindings for runs whose outputs are
-visible to other users, enforce the audience contract below. Do not describe
-current per-principal MCP access as equivalent to legacy attachment sharing.
+The access builder's existing `manage_knowledgebase_access` tool has three
+additional actions:
 
-## Integration contract for explicit adoption
+- `inspect_project(workspace_path)` returns current bindings, output audience,
+  and `manifest_version`.
+- `bind_project(workspace_path, alias, folder_id, access,
+  expected_manifest_version, request_id)` checks project ownership, folder
+  authority, and audience access before saving. To deliberately replace a
+  legacy knowledge source alias, set `replace_legacy_alias=true`. It cannot
+  replace a Crew workspace attachment.
+- `unbind_project(workspace_path, alias, expected_manifest_version, request_id)`
+  removes a binding. Roll back migration before removing its last binding.
 
-Persist a binding to the immutable KB folder ID, an alias, and intended read or
-write use in the workflow/Crew configuration. A display path can accompany the
-ID; it is not authority. This is a proposed configuration extension, not a
-currently accepted `knowledgebase_sources` JSON form.
+Configuration mutations are serialized, use manifest CAS, and record a private
+intent before writing. A retry after an uncertain response returns the original
+result when the resulting manifest matches. A later unrelated manifest change
+causes a conflict. Ordinary workflow and Crew manifest rewrites preserve these
+server-managed fields. Retained native sessions include knowledge configuration
+in their policy key and relaunch when their scope changes.
 
-- A binding selects one backing store. Legacy aliases keep the existing path
-  resolver. Shared bindings resolve to an MCP folder scope, not a filesystem
-  directory or `WORKFLOW_KB_*` mount. Reject ambiguous duplicate aliases.
-- Agent context states which store each alias uses. Shared reads, searches,
-  contributions, and updates call the five MCP tools. Existing legacy
-  contributions remain local until their writer is explicitly cut over.
-- Check the workflow/Crew owner and every user who can view its output against
-  the bound folder's live Reader grants before admitting a shared read. An
-  unresolved identity, public audience, or insufficient grant fails closed.
-  A caller's own permission does not authorize sharing the result with others.
-- A dedicated service identity for unattended execution gets an explicit grant
-  and token cap for the bound folder. Its grant does not replace the audience
-  check. Recheck bindings, user grants, account status, and caps during calls.
-- Shared writes require Editor for the execution identity, explicit owner
-  consent to change that folder, and the same audience constraints. Legacy
-  `AllowedKBWriters` never automatically becomes Editor: Editor includes create,
-  delete, and backup authority in addition to patching content.
-- Revoking grants or changing workflow/Crew audience invalidates access without
-  needing to edit stored bindings. No administrator fallback, directory mount,
-  silent legacy fallback after shared cutover, or automatic dual-write.
+## Runtime authorization
 
-## Explicit migration procedure
+Workflow/Crew tools derive their project from trusted session configuration,
+never a caller-supplied execution identity. Calls require:
 
-Use a per-workflow/Crew migration with preview and deliberate cutover as the
-default. Merge/deployment does not run it automatically. A future deployment
-job can invoke the same migration contract for an approved inventory.
+1. Current product access, active execution identity, folder ACLs, and token caps.
+2. A configured shared binding covering the requested folder or entry.
+3. Actual Reader grants for every output audience member. Workflow audiences
+   include owners, editors, and readers. Private Crews use their owner; when
+   installation-wide project sharing is enabled, every enabled Work product
+   user is included. Unclaimed or unresolved projects fail closed.
+4. Editor authority and a write binding for writes. A read-only Crew/session
+   or workflow step narrows the binding to read; a `none` step denies it.
 
-1. Inventory sources, canonical workspace IDs, attachment aliases, owners,
-   readers, consumers, scheduled identities, and current writers. Snapshot
-   manifests and source content. Refuse unresolved or ambiguous identities.
-2. Preview a mapping into `workflows/<stable-id>/context` and `/notes`, or
-   `crews/<stable-project-id>/knowledge`. These are organization-relative KB
-   paths. Confirm every segment meets KB naming rules and resolve collisions
-   explicitly; never silently rename or flatten files.
-3. Import Markdown only, using MCP `update_knowledgebase` actions and stable
-   request IDs. Preserve hierarchy and normalized text. Preview unsupported
-   JSON indexes, binary files, symlinks, invalid filenames, and oversize files.
-   `_index.json` is not a KB entry: retain it in the legacy snapshot and map its
-   topic/title information to entry metadata where explicitly approved.
-4. Establish reviewed grants through the access builder. Source owners become
-   folder Owners, source readers and approved consumer audiences become Readers.
-   Migrating existing shared access must not silently broaden a source's
-   audience. Explicitly grant the migration/execution identity the required
-   access; legacy write permission defaults to Reader pending a new Editor grant.
-5. Record an external migration receipt containing the source hashes, stable
-   identity/alias mapping, destination entry IDs/versions, newly added grants,
-   original configuration version, and migration state. Retry resumes that
-   receipt; never overwrite destination edits or repeat grants blindly.
-6. Pause legacy writers for final verification. Compare imported content hashes
-   after the normal line-ending normalization, and verify both allowed and
-   denied reads with the intended execution identity. Keep original files in
-   place. Do not claim a fallback is read-only unless runtime writes are disabled.
-7. Cut over the owning workflow/Crew first, then consumers after both endpoints
-   pass verification. Atomically update the configuration under its version
-   check and existing contract-ladder mechanism. Shared bindings do not satisfy
-   old shell-path readers: migrate those readers/writers in the same cutover.
-8. Verify an interactive run and an unattended run, immediate visibility after
-   save, revoked access, and no writes to the legacy source. Git backup, if
-   requested, is a separate selected-version commit/push operation.
+Administrator status does not substitute for an audience member's explicit
+folder grant. Audience, bindings, account status, and permissions are checked
+again during calls. Service identities need their own grants and caps; they do
+not replace output-reader checks. Connections outside a managed project still
+use their normal authenticated identity, folder grants, and token caps.
 
-Rollback restores the previous configuration only under a version check and
-pauses shared writers first. Keep imported content by default. Delete imported
-entries or revoke migration-created grants only after verifying no later edits,
-new consumers, or independent grants rely on them. Recursive folder deletion is
-not supported by MVP; never promise rollback by deleting an entire folder.
+Use `binding_alias` on the existing five MCP tools to select a bound folder.
+Folder-scoped operations default to the sole binding; multiple bindings require
+an alias or an explicit scope. Entry IDs and backup receipts are also checked
+against the binding. A Crew save is immediately readable by an authorized
+workflow or user before Git commit/push.
 
-## Merge and rollout gates
+## Legacy coexistence and cutover
 
-Before merge: deleted-path/security regressions pass; legacy attachment and
-workflow/Crew tests pass; prompts identify both stores; deployment variables and
-backup recovery are documented. No existing manifest is rewritten by the PR.
+| Store | Behavior |
+| --- | --- |
+| Local workflow/Crew `knowledgebase/` | Continues until deliberate migration cutover |
+| Legacy workflow `knowledgebase_sources` | Continues for unmigrated sources; migrated sources become unavailable until the consumer owner replaces the alias with a shared binding |
+| Crew workspace attachments | Retain their separate read-only workspace contract |
+| `learnings/` | Remains local and is excluded from import |
+| Shared Knowledge Base | MCP reads/writes, live grants, explicit selected-version Git backup |
 
-After deployment: check the product with explicitly granted test identities,
-including a narrowed read token and revoked write token. Keep existing workflows
-and Crews on legacy storage until the binding adapter/importer and audience
-checks above ship. Pick an owner-approved pilot with few consumers, verify the
-preview, then migrate consumers incrementally. Production IDs and workspaces
-must come from the installation inventory, not assumptions in a review comment.
+After cutover, `knowledgebase_mode` is `shared`. Workflow/Crew prompts direct
+agents to the shared MCP tools. Session file/shell guards deny the local
+knowledge archive, legacy source mounts are unavailable, and external file and
+knowledge readers hide the archive. Local reorganize/consolidate agents refuse
+maintenance and direct callers to MCP. There is no dual-write or legacy fallback.
+The original files stay in place for rollback; shared content is never mounted.
 
-Acceptance for the migration follow-up includes a workflow and a Crew reading
-the same shared folder, a migrated notes consumer, scheduled execution with a
-scoped identity, audience-change denial, revoke-before-push denial, interrupted
-import retry, conflict on concurrent edits, and rollback preserving later edits.
+## Explicit migration through MCP
+
+Migration uses new actions on `update_knowledgebase`; the public surface remains
+five tool names. Every action requires the exact `workspace_path` and a stable
+`request_id`. Use distinct IDs for each action and identical arguments for retries.
+
+1. Establish grants through the access builder first. Every source owner must
+   have an actual Owner grant on the destination, and every source output reader
+   must have Reader. The importer never grants permissions. Legacy writers do
+   not automatically receive Editor.
+2. `migration_preview`: supply `folder_id`, unique `alias`, and final `access`.
+   The destination must be empty, the caller must own the source project and
+   have Editor access to import, and all audience grants must pass. The preview
+   returns `migration_id`, source inventory/hash, skipped files, required
+   owners/readers, and legacy workflow consumer aliases that need rebinding.
+3. Review the preview. `migration_import`: supply `migration_id`; explicitly
+   set `allow_skipped_files=true` only after reviewing omissions. Markdown is
+   imported through the normal MCP mutation boundary, preserving hierarchy and
+   normalized text. Entries use type `note` and filename-derived titles.
+   Existing destination edits are never overwritten.
+4. Pause all writers, enabled schedules/triggers, and project executions.
+   Adapt authored scripts that use local knowledge paths to MCP. Cutover refuses
+   tracked active executions, enabled schedules/triggers, and detected legacy
+   path references in Python/shell/JavaScript/TypeScript under code/planning.
+   The static script check is a guard, not a complete script converter; owners
+   must verify their actual execution paths before approval.
+5. `migration_cutover`: supply `migration_id`. It verifies the original manifest
+   version, source inventory, imported entry versions/content, folder grants,
+   and audience. It checkpoints intent and atomically saves the binding and
+   shared mode. The opt-in `shared-kb-v1` entry lives in
+   `knowledgebase_contract_history`; it does not force a global workflow
+   contract upgrade on projects that remain on legacy storage.
+6. Explicitly rebind approved consumer aliases with their own owner and audience
+   checks. Old aliases fail closed after their source cuts over; they never
+   fall back to a stale local snapshot. Import does not grant consumer access.
+7. Verify an interactive and scheduled pilot, read-only scope, revocation, and
+   immediate visibility. Git backup is a separate selected-version commit/push.
+
+The importer reads only an owned project's canonical local `knowledgebase/`.
+It refuses symlink traversal, inventories skipped symbolic links, unsupported
+names/formats, JSON indexes, binary/invalid UTF-8 content, and files over 10 MiB.
+Limits are 10,000 inventory paths and 100 MiB of scanned content; split larger
+sources before migration. `_index.json` remains in the archive and is not
+converted to metadata. No arbitrary host source path is accepted.
+
+Scoped external tokens additionally need source-project authority: workflows
+require `files:read`, a matching workflow cap, and `workflows:read` or
+`runs:execute`; cutover/rollback also require builder access. Crews require
+`crews:read` and a matching Crew cap, plus `crews:write` for cutover/rollback.
+Knowledge Base scopes and caps still apply. Project binding mutations remain
+exclusive to the app's access builder.
+
+Private receipts record source hashes, destination entry IDs/versions,
+configuration versions, and migration state. Interrupted imports resume using
+stable internal request IDs. The content deduplication window is seven days;
+an uncheckpointed mutation older than that fails safely on a name conflict
+rather than overwriting it. Integration request IDs share the normal public
+mutation namespace, so reuse with different arguments is rejected.
+
+## Rollback and rollout
+
+`migration_rollback(workspace_path, migration_id, request_id)` restores the
+previous knowledge configuration under a manifest version check. Stop active
+project executions first. Later manifest changes require owner inspection;
+rollback does not overwrite them. Imported entries, later content edits, grants,
+and original files are retained. Removing imported content or grants is a
+separate deliberate operation.
+
+Deployment enables the product and leaves existing projects unchanged. Start
+with an owner-approved pilot and coordinate its consumers before cutover. This
+PR includes fixture-based workflow/Crew, ACL/audience, live-read, retry,
+interrupted-import, conflict, symlink, legacy-source, and rollback tests. It does
+not execute paid model runs or migrate a production workspace during development.

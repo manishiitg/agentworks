@@ -124,3 +124,11 @@ The dedicated access builder offers the shared Codex and Pi provider adapters in
 MCP-only structured mode. Other engines can be added after their adapter preserves
 the same restricted tool surface. Provider accounts and models use the platform's
 existing configuration.
+
+
+Workflow/Crew adoption is now available through owner-managed shared folder
+bindings and explicit `update_knowledgebase` migration actions. Follow the
+[integration and migration runbook](design/knowledgebase-integration-migration.md).
+Deployment itself performs no migration or grant changes. Pause project writers,
+schedules and triggers before cutover; import and rollback preserve source files,
+and rollback also preserves imported entries and later content edits.

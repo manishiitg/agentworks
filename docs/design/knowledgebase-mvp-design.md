@@ -748,3 +748,10 @@ These references identify the existing mechanisms inspected for this plan; the c
 | `frontend/src/products/productSurfaceConfig.ts` | Product IDs, labels, deployment availability, and user entitlements. |
 
 The MVP remains a shared, permissioned knowledge base with a read-only application, access-management chat, MCP content tools, and explicit Git backups, delivered through the existing product platform.
+
+## Workflow/Crew adoption and migration
+
+The implemented binding, audience enforcement, explicit MCP importer, cutover,
+and rollback contract is documented in
+[knowledgebase-integration-migration.md](knowledgebase-integration-migration.md).
+Deployment does not automatically migrate existing local knowledge.

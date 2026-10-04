@@ -12,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 type workflowFolderAccessManifest struct {
@@ -259,6 +260,19 @@ func workflowFolderAccessBuilderPrompt(workspacePath string) string {
 }
 
 func init() {
+	common.SessionKnowledgebaseBlockedPaths = func(workspace string) []string {
+		kind, root := common.ClassifySessionWorkspace("", workspace)
+		if kind == common.SessionWorkspaceUnknown {
+			return nil
+		}
+		if kind == common.SessionWorkspaceCrewProject {
+			ref := workspaceref.MustParse(workspace)
+			if ref.HasOwner() {
+				root = workspaceref.MustParse(root).PhysicalKeepOwner(ref.Owner())
+			}
+		}
+		return workflowkb.LegacyKnowledgeBlocks(GetPromptDocsRoot(), root)
+	}
 	common.SessionWorkflowCapabilityResolver = func(workspace string, kbRead bool) ([]string, []string, []string, map[string]string) {
 		return appendWorkflowFolderAccess(workspace, nil, nil, kbRead)
 	}
@@ -288,6 +302,9 @@ func writableExternalKBNotesPaths(workspace string) []string {
 }
 
 func workflowKnowledgebaseSourcesPrompt(workspace string) string {
+	if shared, prompt := workflowkb.SharedConfig(GetPromptDocsRoot(), workspace); shared {
+		return prompt
+	}
 	sources, err := workflowkb.Resolve(GetPromptDocsRoot(), workspace, nil)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -311,4 +328,26 @@ func workflowKnowledgebaseSourcesPrompt(workspace string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func sharedStepKBGuidance(workspace, access, contribution, notes string) string {
+	if shared, prompt := workflowkb.SharedConfig(GetPromptDocsRoot(), workspace); shared {
+		return prompt + "\nStep access: " + access + ". Contribution instruction: " + contribution
+	}
+	return BuildStepKBGuidanceWithTarget(access, contribution, notes)
+}
+
+func applySharedKBPrompt(workspace string, vars map[string]string) map[string]string {
+	if shared, _ := workflowkb.SharedConfig(GetPromptDocsRoot(), workspace); shared {
+		access := vars["KbAccess"]
+		vars["KnowledgebasePath"] = ""
+		if access != "none" {
+			vars["KBGuidanceBlock"] = sharedStepKBGuidance(workspace, access, vars["KnowledgebaseContribution"], "")
+			vars["KbAccess"] = "shared"
+			vars["KbAccessLabel"] = access + " via MCP"
+		} else {
+			vars["KBGuidanceBlock"] = ""
+		}
+	}
+	return vars
 }

@@ -1581,17 +1581,17 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			"DBPath":                    toAbsPath(getDBPath(hcpo.GetWorkspacePath())), // Absolute db folder path (always enabled)
 			"DBAccess":                  dbAccess,
 			"DBDirectAccess":            fmt.Sprintf("%v", isScriptedMode),
-			"UseKnowledgebase":          fmt.Sprintf("%v", useKnowledgebase),                                                                  // Whether knowledgebase is enabled (deprecated, retained for backward compat)
-			"KbAccess":                  kbAccess,                                                                                             // KB access mode: "read" | "write" | "read-write" | "none"
-			"KbAccessLabel":             kbAccessLabel(kbAccess),                                                                              // Human-readable label for prompt display
-			"KnowledgebaseContribution": kbContributionForPrompt(agentConfigs),                                                                // Author's contribution instruction (direct mode surfaces it to the step)
-			"KBGuidanceBlock":           BuildStepKBGuidanceWithTarget(kbAccess, kbContributionForPrompt(agentConfigs), kbNotesPathForPrompt), // Direct-mode-only KB contribution guidance
-			"IsCodeExecutionMode":       fmt.Sprintf("%v", isCodeExecutionMode),                                                               // Code execution mode flag (step-specific or preset)
-			"StepNumber":                stepPath,                                                                                             // Step identifier (e.g., "step-8" or "step-3-sub-fetch")
-			"StepExecutionPath":         toAbsPath(stepExecutionPath),                                                                         // Absolute step execution folder path
-			"FolderGuardReadPaths":      strings.Join(toAbsPathSlice(folderGuardReadPaths), ", "),                                             // Absolute folder guard read paths
-			"FolderGuardWritePaths":     strings.Join(toAbsPathSlice(folderGuardWritePaths), ", "),                                            // Absolute folder guard write paths
-			"WorkflowRoot":              toAbsPath(workflowRoot),                                                                              // Absolute workflow root path (e.g., "/app/workspace-docs/Workflow/HRMS")
+			"UseKnowledgebase":          fmt.Sprintf("%v", useKnowledgebase),                                                                                  // Whether knowledgebase is enabled (deprecated, retained for backward compat)
+			"KbAccess":                  kbAccess,                                                                                                             // KB access mode: "read" | "write" | "read-write" | "none"
+			"KbAccessLabel":             kbAccessLabel(kbAccess),                                                                                              // Human-readable label for prompt display
+			"KnowledgebaseContribution": kbContributionForPrompt(agentConfigs),                                                                                // Author's contribution instruction (direct mode surfaces it to the step)
+			"KBGuidanceBlock":           sharedStepKBGuidance(hcpo.GetWorkspacePath(), kbAccess, kbContributionForPrompt(agentConfigs), kbNotesPathForPrompt), // Direct-mode-only KB contribution guidance
+			"IsCodeExecutionMode":       fmt.Sprintf("%v", isCodeExecutionMode),                                                                               // Code execution mode flag (step-specific or preset)
+			"StepNumber":                stepPath,                                                                                                             // Step identifier (e.g., "step-8" or "step-3-sub-fetch")
+			"StepExecutionPath":         toAbsPath(stepExecutionPath),                                                                                         // Absolute step execution folder path
+			"FolderGuardReadPaths":      strings.Join(toAbsPathSlice(folderGuardReadPaths), ", "),                                                             // Absolute folder guard read paths
+			"FolderGuardWritePaths":     strings.Join(toAbsPathSlice(folderGuardWritePaths), ", "),                                                            // Absolute folder guard write paths
+			"WorkflowRoot":              toAbsPath(workflowRoot),                                                                                              // Absolute workflow root path (e.g., "/app/workspace-docs/Workflow/HRMS")
 			"IsScriptedMode":            fmt.Sprintf("%v", isScriptedMode),
 			"ScriptedWorkingDir":        toAbsPath(hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath)),
 			"DirectCodeSource":          fmt.Sprintf("%v", hcpo.usesCodeTree()),
@@ -1605,6 +1605,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			"ScriptedVarMapping":        buildScriptedVarMappingForPrompt(isCodeExecutionMode || isScriptedMode, hcpo.variablesManifest),
 			"GroupName":                 hcpo.currentGroupName,
 		}
+		applySharedKBPrompt(hcpo.GetWorkspacePath(), templateVars)
 		if scriptedDelegation, ok := scriptedDelegationFromContext(ctx); ok {
 			templateVars["ScriptedDelegationInstructions"] = scriptedDelegation.Instructions
 			if payload, marshalErr := json.Marshal(scriptedDelegation.Parameters); marshalErr == nil && len(scriptedDelegation.Parameters) > 0 {

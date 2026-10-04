@@ -160,3 +160,35 @@ func TestSourcesRejectInvalidReferencesAndSymlinkEscape(t *testing.T) {
 		t.Fatal("consumer traversal accepted")
 	}
 }
+
+func TestSharedSourceCannotFallBackToLegacyMount(t *testing.T) {
+	root := t.TempDir()
+	consumer := fixture(t, root, "consumer", "consumer", "owner", []workflowtypes.KnowledgebaseSource{ref("source", "payments")})
+	source := fixture(t, root, "source", "source", "owner", nil)
+	path := filepath.Join(root, source, "workflow.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	json.Unmarshal(data, &m)
+	m["knowledgebase_mode"] = "shared"
+	m["shared_knowledgebase"] = []map[string]string{{"alias": "local", "folder_id": "folder_shared", "access": "read"}}
+	data, _ = json.Marshal(m)
+	os.WriteFile(path, data, 0600)
+	resolved, err := Resolve(root, consumer, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 1 || resolved[0].Available || resolved[0].Path != "" {
+		t.Fatal("legacy path leaked", resolved)
+	}
+	blocks := LegacyKnowledgeBlocks(root, consumer)
+	if len(blocks) != 1 || blocks[0] != filepath.Join(source, "knowledgebase") {
+		t.Fatal("legacy source not blocked", blocks)
+	}
+	os.WriteFile(path, []byte("bad JSON"), 0600)
+	if shared, _ := SharedConfig(root, source); !shared {
+		t.Fatal("corrupt cutover manifest reopened archive")
+	}
+}

@@ -13,3 +13,5 @@ Git is explicit backup, only on request. Read-only connections expose only read 
 Activity history stays in the app.
 Keep request IDs and receipts for safe retries. Folder grants and connection caps
 are checked for every operation, including push. Do not request repository keys.
+
+Workflow/Crew shared bindings accept binding_alias. Multiple bindings need an alias or explicit scope; all calls check the execution identity and every output reader. A binding grants no access. For a deliberate owner-approved migration, use update_knowledgebase actions migration_preview, migration_import, migration_cutover, and migration_rollback with workspace_path and distinct request_id values. Review the preview and skipped_files, confirm skipped files explicitly, pause writers/schedules/triggers, and verify before cutover. Import preserves hierarchy and leaves source files in place. Rollback restores configuration while keeping imported entries. Git backup is a separate explicit operation.

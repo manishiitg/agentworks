@@ -229,6 +229,13 @@ func (s *Service) ValidateCaps(ctx context.Context, p Principal, id string, caps
 	return nil
 }
 func (s *Service) effective(p Principal, folder string) int {
+	role := s.effectiveRaw(p, folder)
+	if bound := s.boundRole(p, folder); bound < role {
+		role = bound
+	}
+	return role
+}
+func (s *Service) effectiveRaw(p Principal, folder string) int {
 	role := 0
 	if p.IsAdmin {
 		role = roleOwner

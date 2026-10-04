@@ -715,8 +715,12 @@ func (m productProjectManifest) displayTitle() string {
 }
 
 type productProjectManifest struct {
-	SchemaVersion int    `json:"schema_version"`
-	Product       string `json:"product,omitempty"`
+	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
+	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`
+	KnowledgebaseMode            string          `json:"knowledgebase_mode,omitempty"`
+	KnowledgebaseMigration       json.RawMessage `json:"knowledgebase_migration,omitempty"`
+	SchemaVersion                int             `json:"schema_version"`
+	Product                      string          `json:"product,omitempty"`
 	// OwnerID is the project's owner (PLAT-442): carried so manifest rewrites keep it.
 	OwnerID string `json:"owner_id,omitempty"`
 	// LegacyPaths are the places a Crew lived before the Crew move (PLAT-442 step 4), the migration's record of
@@ -909,6 +913,10 @@ func resolveProductProjectBindingInRoot(
 				manifest.Capabilities = runtimeManifest.Capabilities
 				manifest.Schedules = runtimeManifest.Schedules
 				manifest.Triggers = runtimeManifest.Triggers
+				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
+				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
+				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 				manifest.WorkflowContextPaths = runtimeManifest.WorkflowContextPaths
 			}
 		}

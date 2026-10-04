@@ -16,10 +16,11 @@ import (
 )
 
 type Manifest struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	CreatedBy string `json:"created_by"`
-	Access    *struct {
+	KnowledgebaseMode string `json:"knowledgebase_mode"`
+	ID                string `json:"id"`
+	Label             string `json:"label"`
+	CreatedBy         string `json:"created_by"`
+	Access            *struct {
 		Owners           []string `json:"owners"`
 		Readers          []string `json:"readers"`
 		AllowedKBWriters []string `json:"allowed_kb_writers"`
@@ -204,6 +205,11 @@ func Resolve(root, workspace string, sources []workflowtypes.KnowledgebaseSource
 			}
 		} else if !AudienceCanRead(consumer, source) {
 			item.Reason = "Source knowledge is not readable by every member of this workflow"
+			result = append(result, item)
+			continue
+		}
+		if source.KnowledgebaseMode == "shared" {
+			item.Reason = "Source migrated to shared Knowledge Base; its owner must replace this alias with an authorized MCP binding"
 			result = append(result, item)
 			continue
 		}

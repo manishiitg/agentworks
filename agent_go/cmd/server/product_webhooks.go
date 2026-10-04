@@ -543,6 +543,10 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 					return nil
 				}
 				manifest.Triggers = runtimeManifest.Triggers
+				manifest.SharedKnowledgebase = runtimeManifest.SharedKnowledgebase
+				manifest.KnowledgebaseMode = runtimeManifest.KnowledgebaseMode
+				manifest.KnowledgebaseMigration = runtimeManifest.KnowledgebaseMigration
+				manifest.KnowledgebaseContractHistory = runtimeManifest.KnowledgebaseContractHistory
 			} else {
 				runtimePath = candidate
 			}

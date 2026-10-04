@@ -19,6 +19,8 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
@@ -32,7 +34,8 @@ type resolvedAgentProfile struct {
 	// resolved from product.json for this query. Empty for products without
 	// one. It feeds the session fingerprint so a retained native session
 	// relaunches when the identity it was launched with changes.
-	IdentityKey string
+	IdentityKey  string
+	KnowledgeKey string
 	// ChatConnections are this chat's own MCP connections: a Code's personal
 	// servers switched on for it, or a Crew's attached ones. They join the
 	// turn's servers later in the query path; here they only feed the session
@@ -96,7 +99,8 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		IdentityKey     string                `json:"identity_key,omitempty"`
 		ChatConnections []string              `json:"chat_connections,omitempty"`
 		ChatSecrets     []string              `json:"chat_secrets,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets})
+		KnowledgeKey    string                `json:"knowledge_key,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -490,6 +494,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	req.AgentProfileID = profile.ID
 	req.AgentProfileVersion = profile.Version
+	if _, sharedPrompt := workflowkb.SharedConfig(stepworkflow.GetPromptDocsRoot(), workspacePath); sharedPrompt != "" {
+		rendered += "\n\n" + sharedPrompt
+	}
 	req.AgentProfileContext = promptContext
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, profile.Skills...)
 	if profile.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled {
@@ -645,7 +652,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := validateVaultSecretSelection(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 		return nil, err
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey,
+	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeRuntimeConfigKey(workspacePath),
 		ChatConnections: chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder),
 		ChatSecrets:     api.chatSecretNames(ctx, userID, req)}, nil
 }

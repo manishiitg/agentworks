@@ -1,6 +1,8 @@
 package step_based_workflow
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -346,4 +348,28 @@ func TestExecutionOnlyPromptNamesNoPlatformStoresWhenThereAreNone(t *testing.T) 
 	if note := buildMessageSequenceAccessNote(MessageSequenceWriteAccess{DB: true, Knowledgebase: true, Learnings: true}, DBAccessNone); strings.Contains(note, "db/") || strings.Contains(note, "knowledgebase") || strings.Contains(note, "learnings") || strings.Contains(note, "workflow_db") {
 		t.Errorf("the access note of a step with no stores names a store: %s", note)
 	}
+}
+
+func TestSharedKnowledgebasePromptUsesMCPInsteadOfLocalRecipes(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	workspace := "Workflow/shared"
+	if err := os.MkdirAll(filepath.Join(root, workspace), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, workspace, "workflow.json"), []byte(`{"id":"shared","knowledgebase_mode":"shared","shared_knowledgebase":[{"alias":"payments","folder_id":"folder_shared","access":"read"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	vars := map[string]string{"KbAccess": "read", "KnowledgebasePath": "archive", "KnowledgebaseContribution": ""}
+	applySharedKBPrompt(workspace, vars)
+	if vars["KbAccess"] != "shared" || vars["KnowledgebasePath"] != "" || !strings.Contains(vars["KBGuidanceBlock"], "read_knowledgebase") {
+		t.Fatal(vars)
+	}
+	vars["DBAccess"] = "read"
+	vars["WorkflowRoot"] = workspace
+	prompt := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(vars)
+	if !strings.Contains(prompt, "read_knowledgebase") || strings.Contains(prompt, "jq '.topics") || strings.Contains(prompt, "ALWAYS `cat knowledgebase/") {
+		t.Fatal("shared prompt retained local recipes", prompt)
+	}
+
 }

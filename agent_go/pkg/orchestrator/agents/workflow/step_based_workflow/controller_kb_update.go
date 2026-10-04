@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,9 @@ import (
 // runKBReorganizePhase is invoked by the reorganize_knowledgebase builder tool via
 // kbUpdateQueue. Returns the agent's final summary line.
 func (hcpo *StepBasedWorkflowOrchestrator) runKBReorganizePhase(ctx context.Context, instruction string) (string, error) {
+	if shared, _ := workflowkb.SharedConfig(GetPromptDocsRoot(), hcpo.GetWorkspacePath()); shared {
+		return "", fmt.Errorf("shared Knowledge Base maintenance must use its MCP tools")
+	}
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
 		return "", fmt.Errorf("instruction is required")
@@ -148,6 +152,9 @@ func lastNonEmptyLine(s string) string {
 // output folders from the selected run, renders them into the consolidate agent's user
 // message, and runs the agent. Returns the agent's final summary line.
 func (hcpo *StepBasedWorkflowOrchestrator) runKBConsolidatePhase(ctx context.Context, objective string) (string, error) {
+	if shared, _ := workflowkb.SharedConfig(GetPromptDocsRoot(), hcpo.GetWorkspacePath()); shared {
+		return "", fmt.Errorf("shared Knowledge Base maintenance must use its MCP tools")
+	}
 	objective = strings.TrimSpace(objective)
 	if objective == "" {
 		return "", fmt.Errorf("objective is required")

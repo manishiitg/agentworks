@@ -326,7 +326,7 @@ func (api *StreamingAPI) externalKnowledgebaseCall(w http.ResponseWriter, r *htt
 		knowledgebaseHTTPError(w, err)
 		return
 	}
-	result, err := service.CallTool(r.Context(), knowledgebasePrincipal(r, claims), tool, args)
+	result, err := knowledgebaseDispatch(r.Context(), service, knowledgebasePrincipal(r, claims), claims.UserID, tool, args)
 	if err != nil {
 		knowledgebaseHTTPError(w, err)
 		return

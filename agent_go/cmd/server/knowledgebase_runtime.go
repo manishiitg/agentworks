@@ -48,7 +48,7 @@ func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, t
 	r := (&http.Request{}).WithContext(context.WithValue(ctx, UserContextKey, claims))
 	p := knowledgebasePrincipal(r, claims)
 	p.AccessOnly = accessOnly
-	result, err := service.CallTool(ctx, p, tool, args)
+	result, err := knowledgebaseDispatch(ctx, service, p, userID, tool, args)
 	if err != nil {
 		return "", err
 	}

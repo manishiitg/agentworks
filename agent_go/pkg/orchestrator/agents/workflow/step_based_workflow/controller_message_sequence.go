@@ -1076,6 +1076,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeMessageSequenceUserMessage(ctx
 	} else {
 		templateVars = hcpo.buildMessageSequenceTemplateVars(step, item, stepIndex, stepPath, message, readPaths, writePaths, writeAccess)
 	}
+	common.SetSessionShellEnv(runtime.SessionID, map[string]string{"SHARED_KB_STEP_ACCESS": messageSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)})
 	if step.AuthoredPrompt {
 		systemPrompt, promptErr := hcpo.renderAuthoredPrompt(ctx, step.SystemPrompt)
 		if promptErr != nil {
@@ -1642,7 +1643,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step
 		isContributionTurn = "true"
 		contextOutput = ""
 	}
-	return map[string]string{
+	vars := map[string]string{
 		"StepTitle":                 step.GetTitle(),
 		"StepDescription":           ResolveVariables(step.GetDescription(), hcpo.variableValues),
 		"BaseDescription":           ResolveVariables(step.GetDescription(), hcpo.variableValues),
@@ -1672,6 +1673,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildMessageSequenceTemplateVars(step
 		"CurrentDate":               time.Now().Format("2006-01-02"),
 		"CurrentTime":               time.Now().Format("15:04:05"),
 	}
+	return applySharedKBPrompt(hcpo.GetWorkspacePath(), vars)
 }
 
 func buildMessageSequenceAccessNote(writeAccess MessageSequenceWriteAccess, dbAccess string) string {

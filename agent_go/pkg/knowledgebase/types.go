@@ -25,6 +25,7 @@ type Principal struct {
 	AccessOnly       bool                        `json:"access_only"`
 	Caps             *[]Cap                      `json:"caps,omitempty"`
 	Recheck          func(context.Context) error `json:"-"`
+	BindingPolicy    *BindingPolicy              `json:"-"`
 	requestTool      string
 	requestArguments map[string]any
 }

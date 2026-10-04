@@ -19,9 +19,9 @@ type mcpTool struct {
 var mcpSurface = []mcpTool{
 	{"browse_knowledgebase", "Browse accessible folders or entries. Choose action=folders or entries; supports folder scope and pagination.", []mcpAction{{"folders", "list_knowledgebase_folders"}, {"entries", "list_knowledgebase"}}},
 	{"read_knowledgebase", "Read an entry (whole, lines, or heading section) with action=read, or literal-search accessible content with action=search. Reads return a current version.", []mcpAction{{"read", "read_knowledgebase"}, {"search", "search_knowledgebase"}}},
-	{"update_knowledgebase", "Save live knowledge: action=create, update (diff, replacement content and/or metadata), delete, or create_folder. Updates/deletes require expected_version. All actions require request_id; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}}},
+	{"update_knowledgebase", "Save live knowledge: create, update, delete, or create_folder. Migration actions preview/import/cutover/rollback explicitly migrate an owned workflow or Crew after preview. Use expected_version and stable request IDs; saves are immediately shared.", []mcpAction{{"create", "create_knowledgebase"}, {"update", "update_knowledgebase"}, {"delete", "delete_knowledgebase"}, {"create_folder", "create_knowledgebase_folder"}, {"migration_preview", "kb_migration_preview"}, {"migration_import", "kb_migration_import"}, {"migration_cutover", "kb_migration_cutover"}, {"migration_rollback", "kb_migration_rollback"}}},
 	{"backup_knowledgebase", "Inspect Git backup with action=status, prepare selected current versions/deletions with action=commit, then explicitly publish the owned receipt with action=push. Commit/push require distinct stable request IDs.", []mcpAction{{"status", "get_knowledgebase_backup_status"}, {"commit", "commit_knowledgebase"}, {"push", "push_knowledgebase"}}},
-	{"manage_knowledgebase_access", "Inspect folder access with action=inspect. Only the access builder can list eligible folders/identities, grant/revoke access, or create/disable service accounts. Grant/revoke require expected_acl_version.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}}},
+	{"manage_knowledgebase_access", "Inspect folder access. Only the access builder can manage grants, service accounts, or bind/unbind an owned workflow/Crew to a shared folder. Binding uses the current manifest version and never grants access implicitly.", []mcpAction{{"inspect", "get_knowledgebase_access"}, {"list", "manage_knowledgebase_access"}, {"grant", "manage_knowledgebase_access"}, {"revoke", "manage_knowledgebase_access"}, {"create_service_account", "manage_knowledgebase_access"}, {"disable_service_account", "manage_knowledgebase_access"}, {"inspect_project", "kb_inspect_project"}, {"bind_project", "kb_bind_project"}, {"unbind_project", "kb_unbind_project"}}},
 }
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
@@ -48,6 +48,9 @@ func mcpDefinitions(canWrite, accessBuilder bool) []ToolDefinition {
 	for _, op := range operationDefinitions() {
 		operations[op.Name] = op
 	}
+	for _, op := range integrationDefinitions() {
+		operations[op.Name] = op
+	}
 	defs := []ToolDefinition{}
 	for _, tool := range mcpSurface {
 		props := map[string]any{}
@@ -60,6 +63,10 @@ func mcpDefinitions(canWrite, accessBuilder bool) []ToolDefinition {
 			}
 			variant := asMap(operations[action.operation].InputSchema)
 			fields := variant["properties"].(map[string]any)
+			fields["binding_alias"] = map[string]any{"type": "string", "description": "Select a configured workflow/Crew shared-folder alias; required when a default scope is ambiguous."}
+			if action.operation == "create_knowledgebase" || action.operation == "create_knowledgebase_folder" {
+				variant["oneOf"] = append(variant["oneOf"].([]any), map[string]any{"required": []any{"binding_alias"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []any{"folder_id"}}, map[string]any{"required": []any{"folder_path"}}}}})
+			}
 			fields["action"] = map[string]any{"type": "string", "const": action.name}
 			required, _ := variant["required"].([]any)
 			if !containsRequired(required, "action") {
@@ -115,7 +122,7 @@ func ToolActionMutates(tool, action string) bool {
 	case "backup_knowledgebase":
 		return action == "commit" || action == "push"
 	case "manage_knowledgebase_access":
-		return action != "inspect" && action != "list"
+		return action != "inspect" && action != "list" && action != "inspect_project"
 	}
 	return false
 }
@@ -128,7 +135,7 @@ var mcpValidators struct {
 
 // CallTool is the public MCP boundary. Internal viewer/domain operations remain
 // behind Call; their old names are not registered in MCP discovery or dispatch.
-func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
+func ValidateToolArguments(tool string, args map[string]any) error {
 	mcpValidators.Do(func() {
 		mcpValidators.byName = map[string]*jsonschema.Schema{}
 		compiler := jsonschema.NewCompiler()
@@ -147,14 +154,21 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 		}
 	})
 	if mcpValidators.err != nil {
-		return nil, kbErr("STORAGE_UNAVAILABLE", "Knowledge Base tool schemas are unavailable.")
+		return kbErr("STORAGE_UNAVAILABLE", "Knowledge Base tool schemas are unavailable.")
 	}
 	validator, ok := mcpValidators.byName[tool]
 	if !ok {
-		return nil, badArg("Unknown Knowledge Base MCP tool.")
+		return badArg("Unknown Knowledge Base MCP tool.")
 	}
 	if err := validator.Validate(asMap(args)); err != nil {
-		return nil, badArg("Arguments must match the selected Knowledge Base action.")
+		return badArg("Arguments must match the selected Knowledge Base action.")
+	}
+	return nil
+}
+
+func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
+	if err := ValidateToolArguments(tool, args); err != nil {
+		return nil, err
 	}
 	action := stringArg(args, "action")
 	if p.AccessOnly && tool != "manage_knowledgebase_access" || !p.AccessOnly && tool == "manage_knowledgebase_access" && action != "inspect" {
@@ -169,6 +183,7 @@ func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args m
 				continue
 			}
 			translated := merge(args, nil)
+			delete(translated, "binding_alias")
 			if operation.operation != "manage_knowledgebase_access" {
 				delete(translated, "action")
 			}
