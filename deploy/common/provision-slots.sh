@@ -346,6 +346,11 @@ $LIBEXEC/slotctl flags=(unconfined) {
 $HOME_DIR/releases/**/bin/video-studio-landlock-runner flags=(unconfined) {
   userns,
 }
+
+# The deploy's slot self-test starts the launcher the way the workspace service does, so it needs the same exception.
+$HOME_DIR/releases/**/bin/slotcheck flags=(unconfined) {
+  userns,
+}
 PROFILE
 }
 
