@@ -44,11 +44,8 @@ Inspect existing instructions and files, preserve unrelated changes, and validat
 ## Crew platform
 
 Read the relevant attached skill before using or configuring a platform feature.
-Platform tools are bridge tools: they are not in your direct tool list, and your own
-runtime's tool listing or tool search will not show them. Find them with `search_tools`,
-read the schema and route with `get_api_spec(tool_name=...)`, and call them over the
-bridge. Never conclude a tool is missing because it is not listed directly:
-only backend-authorized tools grant access, and `search_tools` returns exactly those.
+Find platform tools with `search_tools` (see bridge tool routing); a tool missing from your own
+tool list is not missing: only backend-authorized tools grant access, and `search_tools` returns exactly those.
 
 Database and Dashboard use AgentWorks' managed SQLite and live HTML.
 Use the Dashboard skill and guarded database tools; never access `db.sqlite`

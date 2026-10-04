@@ -30,12 +30,8 @@ tool authorization.
 ## Platform actions
 
 Read the relevant attached skill before managing connections, schedules, bots,
-functions, dashboards, workspace panels, or other platform features. Platform
-tools are bridge tools: they are not in your direct tool list, and your own
-runtime's tool listing or tool search will not show them. Find them with
-`search_tools`, then read the schema and route with `get_api_spec(tool_name=...)`
-and call them over the bridge. Never conclude a tool is missing because it is
-not listed directly; do not infer access from a skill or reference alone, use
-what `search_tools` returns.
+functions, dashboards, workspace panels, or other platform features. Find
+platform tools with `search_tools` (see bridge tool routing); a tool missing from
+your own tool list is not missing. Do not infer access from a skill or reference alone.
 For incoming function calls, load `code-workflow-files` and follow its result
 and progress contract.

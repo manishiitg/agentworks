@@ -6,11 +6,6 @@ Pulse/child agents, and bot conversations do not manipulate the foreground
 workspace. Observing one of those conversations does not promote it; an
 explicit supported interactive continuation is required.
 
-In a coding-CLI chat these tools are bridge tools, not entries in the direct
-tool list: find them with `search_tools(query="ui")`, read the schema with
-`get_api_spec(tool_name="perform_ui_action")`, and call them over the bridge.
-A missing direct entry does not mean they are unavailable.
-
 The right-hand pane shows one Workflow view at a time.
 `perform_ui_action(view, action="open")` requests a view and
 `perform_ui_action(view, action="refresh")` invokes that view's reload. Only an

@@ -8,7 +8,7 @@ import (
 // Same rule as Code's prompt: platform tools are bridge tools found with search_tools, not the CLI's own tool listing.
 func TestCrewPromptNamesTheBridgeToolDiscovery(t *testing.T) {
 	prompt := renderProductPrompt()
-	for _, want := range []string{"search_tools", "get_api_spec", "bridge tools", "not in your direct tool list"} {
+	for _, want := range []string{"search_tools", "bridge tool routing", "is not missing"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the Crew system prompt does not contain %q", want)
 		}

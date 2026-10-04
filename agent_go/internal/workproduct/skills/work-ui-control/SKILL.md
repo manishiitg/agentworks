@@ -10,15 +10,9 @@ interactive {{product}} project chat that actually exposes them. They control th
 visible right-side project pane; they do not edit project data, run automation,
 or prove that the user read the result.
 
-## Reaching the tools (they are bridge tools)
-
-In a coding-CLI chat these three are platform tools reached through the API
-bridge, like most platform tools: they are **not** in your direct tool list, so
-a missing direct entry does not mean they are unavailable. Find them with
-`search_tools(query="ui")` (or by exact name), read the schema and route with
-`get_api_spec(tool_name="perform_ui_action")`, and call them over the bridge as
-the bridge guidance describes. Say they are unavailable only after
-`search_tools` returns none, and then tell the user which panel to open by hand.
+In a coding-CLI chat these are bridge tools, not direct tools: find them with
+`search_tools(query="ui")`, as bridge tool routing says. Say they are unavailable
+only after `search_tools` returns none.
 
 ## Receipt contract
 

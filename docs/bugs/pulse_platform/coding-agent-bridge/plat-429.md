@@ -28,12 +28,27 @@ The ambiguous line was in the product section "Platform actions": "Discover tool
 
 ## Fix
 
-The skill gets a section "Reaching the tools (they are bridge tools)": a missing direct entry does not mean unavailable; find them with `search_tools(query="ui")`, read the schema with `get_api_spec(tool_name="perform_ui_action")`, call them over the bridge; say "unavailable" only after `search_tools` returns none.
-The Workflow guidance (`workspace-views.md`, also used by Relays) gets the same paragraph.
-The Code and Crew system prompts replace the ambiguous sentence with an explicit one (platform tools are bridge tools, not in the direct tool list; find them with `search_tools`, schema and route with `get_api_spec`; never conclude a tool is missing because it is not listed directly). Tests: `TestCodePromptNamesTheBridgeToolDiscovery`, `TestCrewPromptNamesTheBridgeToolDiscovery`. Test: `internal/workproduct/product_config_test.go` requires the wording in the skill.
+The 2026-10-01 prompt reduction (DECISIONS "Keep prompt contracts upfront and load procedures through skills"; Code -21%, Crew Builder -40%, workflow chats about -40%) gave discovery ONE owner: mcpagent's runtime block "bridge tool routing"
+(`coding_agent_bridge_routing_prompt.go`: direct runtime tools, "find other tools with search_tools", schema and route via `get_api_spec`), with a short pointer in each product prompt. The failing text was a pointer that contradicted the owner.
+So the fix keeps one owner and only corrects the pointers, in as few words as possible:
+- Code and Crew system prompts: "Find platform tools with `search_tools` (see bridge tool routing); a tool missing from your own tool list is not missing." (Code prompt 2076 -> 1826 bytes, Crew 4178 -> 3965, smaller than before the incident.)
+- The shared `work-ui-control` skill (Crew and Code): two lines saying these are bridge tools found with `search_tools(query="ui")`.
+- Tests: `TestCodePromptNamesTheBridgeToolDiscovery`, `TestCrewPromptNamesTheBridgeToolDiscovery` and the skill expectations in `product_config_test.go`.
+A first version repeated the full explanation in four places (both prompts, the skill, the Workflow guidance); it was cut back to the pointers above because it went against "one owner for transport instructions".
+
+## What a Code chat with Codex gets as its prompt
+
+Codex receives the platform's prompt through the project's `AGENTS.md` (about 10 KB, first user message and `world_state`) next to Codex's own developer messages. `AGENTS.md` holds the runtime block. The ambiguous pointer was in the product section "Platform actions"
+("Discover tools through the current runtime's tool search"; Crew: "Use the current runtime's tool discovery"). For Codex that reads as its own tool search (`ALL_TOOLS`), which is what it used.
+
+## Review of the other prompts (2026-10-04)
+
+Only the Code and Crew prompts used the ambiguous pointer. Video Studio and Dominion prompts refer to `get_api_spec` with exact tool names (the catalog of names is still provided there, as the reduction decision requires); the Workflow guidance templates and Relays rely on the runtime block;
+the only other "tool search" wording is about step tool selection in `optimize-playbook.md`, unrelated.
 
 ## Left
 
 - Deploy; then ask Codex, Claude and Muse in a Code chat to open the Costs panel and check each finds and calls `perform_ui_action` through the bridge.
+- Optional, in mcpagent (the owner, another repo): add one sentence to the runtime block, "a tool missing from your own tool list or your runtime's tool search is not missing: use search_tools"; it would reach every CLI chat of every product (about 100 bytes), so it is a decision for the owner.
 - Relays has no contract of its own for these tools: it reuses the Workflow views, and its right panel (workflow panel on, files panel off) may not match them; not checked in the UI.
 - Other platform tools have the same shape (a CLI that only checks its direct tool list will think they are missing); the general bridge guidance already says to use `search_tools`.

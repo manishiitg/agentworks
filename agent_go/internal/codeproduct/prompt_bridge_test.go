@@ -9,7 +9,7 @@ import (
 // is its own tool listing, not the platform's search_tools (Excellence, 2026-10-04). The prompt must name search_tools and say platform tools are bridge tools.
 func TestCodePromptNamesTheBridgeToolDiscovery(t *testing.T) {
 	prompt := renderProductPrompt()
-	for _, want := range []string{"search_tools", "get_api_spec", "bridge tools", "not in your direct tool list"} {
+	for _, want := range []string{"search_tools", "bridge tool routing", "is not missing"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the Code system prompt does not contain %q", want)
 		}
