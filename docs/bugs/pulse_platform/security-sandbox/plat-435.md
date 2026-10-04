@@ -54,3 +54,6 @@ PLAT-434 fixed the Code/Crew UI-control instance.
 - Also failing on main, unrelated: TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration.
 - Migrated (commit 4, cmd/server/services): `routeWorkspaceUserID`, `SameSlackScopePath` (owner-agnostic only when one
   side is logical, as before), `physicalBotScopeOwner`; test `services/workspaceref_sites_test.go`.
+- Migrated (commit 5): `sparkquillproduct.runtimeRoot`, `videoproduct.profileWorkspaceRoot` (an escaping `..` path now
+  maps to a non-existent folder, not to the user's whole tree; old code joined it, so `../bob/x` reached `_users/bob/x`),
+  `pkg/browser.captureWorkspace`, `livefeed.IsPlanPath`, `presentations.workspaceDatabasePath`. Tests in each package.

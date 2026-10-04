@@ -14,6 +14,7 @@ import (
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // The family's tools as product tool factories. Every tool talks to the
@@ -49,16 +50,13 @@ func newFamilyWorkspace(workspaceAPIURL string, runtime agentprofiles.ToolRuntim
 // per-user path the folder guard and the file API are keyed on
 // ("_users/<id>/Chats/SparkQuill"); an already-expanded path is kept.
 func runtimeRoot(userID, workspacePath string) string {
-	clean := strings.Trim(strings.TrimSpace(strings.ReplaceAll(workspacePath, "\\", "/")), "/")
-	if strings.HasPrefix(clean, "_users/") {
-		return clean
+	ref, ok := workspaceref.Parse(workspacePath)
+	if !ok {
+		// A path escaping the workspace maps to a folder that does not exist,
+		// never to the user's whole tree.
+		return workspaceref.PhysicalPath(userID, "_invalid_workspace_path")
 	}
-	user := strings.TrimSpace(userID)
-	if user == "" {
-		user = "default"
-	}
-	user = path.Base(user)
-	return path.Join("_users", user, clean)
+	return ref.PhysicalKeepOwner(strings.TrimSpace(userID))
 }
 
 func (w familyWorkspace) path(parts ...string) string {

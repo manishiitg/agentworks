@@ -31,6 +31,7 @@ import (
 
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagentevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -106,9 +107,8 @@ func IdentityFromKey(key string) string {
 // presentation uses the same rule.
 func workspaceDatabasePath(workspacePath string) string {
 	clean := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(strings.TrimSpace(workspacePath))), "/")
-	parts := strings.Split(clean, "/")
-	if len(parts) >= 3 && parts[0] == "_users" && strings.TrimSpace(parts[1]) != "" {
-		clean = strings.Join(parts[2:], "/")
+	if ref, ok := workspaceref.Parse(clean); ok && ref.HasOwner() && ref.Logical() != "" {
+		clean = ref.Logical()
 	}
 	return filepath.ToSlash(filepath.Join(clean, "db/db.sqlite"))
 }

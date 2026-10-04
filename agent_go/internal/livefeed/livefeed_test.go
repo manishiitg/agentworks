@@ -83,3 +83,23 @@ func TestPublishPlanPathKeepsLegacyProjectPathsPrivate(t *testing.T) {
 		t.Fatalf("notices = %v, want %v", got, want)
 	}
 }
+
+// PLAT-435: the owner prefix never changes whether a path is a plan path.
+func TestIsPlanPathBothSpellings(t *testing.T) {
+	for _, logical := range []string{
+		"Chats/Work/projects/c/workflow.json",
+		"Chats/Code/projects/p/planning/plan.json",
+		"Workflow/w/planning/step_config.json",
+	} {
+		for _, spelling := range []string{logical, "_users/alice/" + logical, "_users/bob/" + logical} {
+			if !IsPlanPath(spelling) {
+				t.Errorf("%q must be a plan path", spelling)
+			}
+		}
+	}
+	for _, p := range []string{"_users/alice", "_users", "_users/alice/Chats/Work/projects/c/notes.md", "Chats/Work/projects/c"} {
+		if IsPlanPath(p) {
+			t.Errorf("%q is not a plan path", p)
+		}
+	}
+}

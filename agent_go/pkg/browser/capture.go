@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // capture is a Builder command, never an upstream CLI command. Resolve its
@@ -85,7 +85,7 @@ func captureWorkspace(userID string, cfg *common.SessionShellConfig) string {
 		// Classification recognizes projects under any owner for Crew routing.
 		// Capture needs ownership: only the caller's physical prefix is stripped
 		// by canonicalization, so a remaining user prefix belongs to someone else.
-		if strings.HasPrefix(canonical, "_users/") {
+		if workspaceref.MustParse(canonical).HasOwner() {
 			continue
 		}
 		if _, root := common.ClassifySessionWorkspace(userID, canonical); root != "" {
