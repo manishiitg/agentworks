@@ -76,3 +76,20 @@ The deployment's app name, favicon and optional brand colour also apply when
 switching into Vault, rather than being replaced by Vault's default branding.
 The navigation still respects deployment and user product allowlists, and its
 fixed/auto-hide preference remains shared across products.
+
+## Checks before activation
+
+- The full gateway suite passes for tool fingerprint approval, regex/full-string
+  enforcement, live group grants/revocation, OAuth isolation, Basic transport,
+  secret metadata/grants and SQLite persistence/audit.
+- Agent runtime checks cover the shared MCP executor/bridge, private credentials,
+  Vault builder authority, encrypted secret promotion/rotation/reload, explicit
+  project selection, project-secret precedence, cross-user denial, revocation,
+  failure of the permission service and exclusion of values from durable turns.
+- Broader testing found that the workflow manifest filter hid Vault's declared
+  `call_mcp_tool` during registration. Vault's product profile now admits that
+  bridge explicitly; normal products, read-only turns and disabled profile tools
+  receive no additional admission. Execution-time authority remains unchanged.
+- Confida has no `GLOBAL_SECRET_*` settings or managed global secret file.
+  Eight shared project secret files and eight legacy per-user project secret
+  files exist. Their contents are not printed or promoted into Platform.
