@@ -3372,12 +3372,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       : (targetTab?.sessionId || currentSessionId)
     if (sessionIdToClear) {
       try {
-        const activeSessions = await getActiveSessions(true)
+        // Always send the stop. The server's tracker can still list a stuck chat as
+        // running (and refuse the new one with 409 workflow_busy) after the active-
+        // session list has dropped it, so "the list does not know it" is not a reason
+        // to skip. An unknown session just answers 404, which is caught below.
+        await agentApi.stopSession(sessionIdToClear, true)
         if (!stillOwnsTarget()) return
-        const backendKnowsSession = activeSessions.some(session => session.session_id === sessionIdToClear)
-        if (backendKnowsSession) {
-          await agentApi.stopSession(sessionIdToClear, true)
-        }
       } catch (error) {
         logger.error('ChatArea', 'Failed to stop previous session:', error)
         // Continue with frontend reset even if backend stop fails.
@@ -3446,7 +3446,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     processedCompletionEventsRef.current.clear()
 
 
-  }, [addToast, clearWorkflowState, resetChatState, onNewChat, activeTab, selectedModeCategory, selectedWorkflowPreset, setCurrentWorkflowPhase, setLastEventIndex, getActiveSessions])
+  }, [addToast, clearWorkflowState, resetChatState, onNewChat, activeTab, selectedModeCategory, selectedWorkflowPreset, setCurrentWorkflowPhase, setLastEventIndex])
 
   // Refresh workflow presets function
   const refreshWorkflowPresets = useCallback(async () => {

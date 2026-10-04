@@ -405,9 +405,13 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 			delete(api.activeWorkflowExecutions, qid)
 		}
 		api.activeWorkflowExecutionsMux.Unlock()
-		api.cancelTrackedExecutionsForSession(sessionID)
 		log.Printf("[SESSION DEBUG] Canceled %d workflow execution(s) for session %s", len(queryIDs), sessionID)
 	}
+	// Whether or not the session still had a query-ID mapping (a Builder chat whose
+	// turn was lost does not), the tracker must stop listing it as running: a run
+	// left "running" blocks every new Builder chat on the workflow (409
+	// workflow_busy) and the workflow tab keeps re-adopting it as the live chat.
+	api.cancelTrackedExecutionsForSession(sessionID)
 
 	// Clear workflow objective
 	api.workflowObjectiveMux.Lock()

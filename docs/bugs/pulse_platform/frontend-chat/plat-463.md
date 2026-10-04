@@ -28,6 +28,21 @@ Studio already show the composer's "New chat" button; the workflow chat did not.
   the old session first; the tooltip says "Stop this chat and start a new one".
   This applies to every product that shows the button (Code, Video Studio, Dominion).
 
+- Found with the owner on a stuck Muse Builder chat (jobsearch): New chat gave 409
+  `workflow_busy` and the tab went back to the old chat after every click. Cause:
+  `handleStopSession` marked the tracked run canceled only when the session still had
+  a query-ID mapping; a Builder chat whose turn was lost has none, so the tracker kept
+  listing it as running (the 409, and the workflow tab re-adopting it as the live
+  chat). `session_lifecycle.go` now cancels the tracked run on every stop
+  (`TestStopSessionWithoutQueryIDsClearsTrackedBuilderChat`, fails without the fix).
+- `ChatArea.tsx`: New chat always sends the stop; it used to skip it when the
+  active-session list did not contain the chat.
+- An already-stuck run on a server started before this fix stays stuck until that
+  server restarts (the stop of an old build never clears it).
+
+- `multiuser_identity_test.go`: removed two unused fields (`pathRule`, `sameAsPath`)
+  of the identity-row type that failed the commit hook's `unused` lint on main.
+
 ## Left
 
 - Not enabled in SparkQuill chats (parent/child) on purpose. MCP gateway keeps its
