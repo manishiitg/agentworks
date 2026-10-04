@@ -29,3 +29,13 @@ Design work should be planned and reviewed with the owner before implementation.
 - RTS `<app>/logs` was world-readable (`drwxr-xr-x`, agent.log 0664): set to 0750 live 2026-10-04; Hetzner products already 0750. **The RTS deploy of 2026-10-04 (c35e552) reset it to drwxr-xr-x**, so it was set to 0750 again by hand; the deploy must enforce 0750 (open item H2).
 - Partial, uncommitted, untested edits from the second attempt are in the worktree `/Users/mipl/ai-work/mabg-slotharden` (root-owned program check in slotctl,
   installed-copy lookup, no DOCKER_HOST for slot commands). Not merged: alone they break slot commands until the root install step exists.
+
+## Host difference that constrains the F1/H1 design (found 2026-10-04)
+
+RTS (Ubuntu, kernel 7.0 aws) has `kernel.apparmor_restrict_unprivileged_userns = 1`: an unprivileged process cannot make a mount namespace. The workspace's startup probe logs
+`[SANDBOX] private /tmp unavailable, commands see the host /tmp: exit status 125: SANDBOX_UNAVAILABLE: make mounts private: permission denied` on every service start there
+(10/03 x3, 10/04 15:05 and 16:49; one per workspace restart), i.e. RTS has run without the private-/tmp namespace all along (commands still get no /tmp grant beyond a small browser temp
+dir, so Landlock keeps other users' temp files closed). The Hetzner box has the sysctl at 0 (kernel 6.8) and never logs the warning: private /tmp works there.
+Consequence: an H1 fix that relies on a mount namespace (placeholder mount over the slot run root, /run/user) works on Hetzner but NOT on RTS unless the launcher gets an AppArmor
+profile exception (a root step) or the design avoids namespaces (e.g. a socket location/ownership no confined slot command can reach). The design must cover both hosts.
+
