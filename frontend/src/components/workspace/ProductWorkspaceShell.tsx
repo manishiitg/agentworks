@@ -3,14 +3,16 @@ import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { resolveWorkSurfaceLayout } from '../../products/work/workSurfaceLayoutResolver'
 import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 
-/** Complete split workspace used by Crew, Code and Vault. Product surfaces
+/** Complete split workspace used by Crew, Code, Vault and Knowledge Base. Product surfaces
  * supply content; pane geometry, tabs row and reopen controls have one owner. */
 export function ProductWorkspaceShell({
-  chatOpen, panelOpen, splitRatio, mobilePreview = false, splitRef,
+  chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePane, splitRef,
   onOpenChat, onOpenWorkspace, tabs, toolbar, chat, workspace, divider,
   chatProps, workspaceProps, testId,
 }: {
   chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean
+  /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
+  mobilePane?: 'chat' | 'workspace'
   splitRef?: Ref<HTMLDivElement>
   onOpenChat: () => void; onOpenWorkspace: () => void
   tabs: ReactNode; toolbar: ReactNode; chat: ReactNode; workspace: ReactNode; divider: ReactNode
@@ -18,6 +20,10 @@ export function ProductWorkspaceShell({
   testId?: string
 }) {
   const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview })
+  const chatClassName = mobilePane === 'workspace' && panelOpen
+    ? `hidden md:flex ${layout.chatClassName.replace(/^flex /, '')}` : layout.chatClassName
+  const workspaceClassName = mobilePane === 'chat' && chatOpen
+    ? `hidden md:block ${layout.panelClassName}` : layout.panelClassName
   return <div className="relative h-full min-h-0 min-w-0" data-testid={testId}>
     {!panelOpen && <button type="button" onClick={onOpenWorkspace} title="Show workspace" aria-label="Show workspace"
       className="absolute right-0 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-1.5 rounded-l-lg border border-r-0 border-border bg-background/95 py-3 pl-1.5 pr-1 text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground md:flex">
@@ -31,9 +37,9 @@ export function ProductWorkspaceShell({
       <WorkspaceTopToolbar className={layout.toolbarClassName}>
         {tabs}{panelOpen ? toolbar : null}
       </WorkspaceTopToolbar>
-      {layout.showChat && <main {...chatProps} className={layout.chatClassName}>{chat}</main>}
+      {layout.showChat && <main {...chatProps} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
-      {layout.showPanel && <aside {...workspaceProps} className={layout.panelClassName}>{workspace}</aside>}
+      {layout.showPanel && <aside {...workspaceProps} className={workspaceClassName}>{workspace}</aside>}
     </div>
   </div>
 }

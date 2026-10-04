@@ -13,7 +13,9 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -205,6 +207,25 @@ func externalTools() ([]externalTool, error) {
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
 		externalRelayDefinitions(add)
+		for _, def := range knowledgebase.ToolDefinitions() {
+			if def.Name != "manage_knowledgebase_access" {
+				// The compiler accepts JSON values, rather than Go-specific slices.
+				encoded, err := json.Marshal(def.InputSchema)
+				if err != nil {
+					externalCatalogErr = err
+					return
+				}
+				var schema map[string]any
+				if err = json.Unmarshal(encoded, &schema); err != nil {
+					externalCatalogErr = err
+					return
+				}
+				if schema["required"] == nil {
+					delete(schema, "required")
+				}
+				defined = append(defined, externalTool{Name: def.Name, Description: def.Description, InputSchema: schema, mutates: def.Mutates})
+			}
+		}
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native
@@ -227,6 +248,12 @@ func externalTools() ([]externalTool, error) {
 		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
 		admitted = append(admitted, relayTools...)
+		kbTools, err := knowledgebaseproduct.ExternalTools()
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
+		admitted = append(admitted, kbTools...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
 			if seen[name] {
@@ -361,6 +388,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCrewTool(tool.Name) {
 		api.externalCrewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if isExternalKnowledgebaseTool(tool.Name) {
+		api.externalKnowledgebaseCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if isExternalCodeReviewTool(tool.Name) {

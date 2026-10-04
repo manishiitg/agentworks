@@ -27,6 +27,7 @@ profile:
     - id: mcp
       options: {scope: personal}
     - skills
+    - knowledgebase
     - attached-folders
     - id: workflow-references
       # A Code calls accessible Crews/workflows and can exchange private

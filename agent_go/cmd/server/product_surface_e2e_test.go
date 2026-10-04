@@ -56,12 +56,12 @@ func TestAgentWorksProductSurfaceE2E(t *testing.T) {
 		for name := range draft.tools {
 			names = append(names, name)
 		}
-		// Human tools are installed by the shared custom-tool registration path
+		// Human and Knowledge Base tools use the shared custom-tool registration path
 		// before phase-specific tools. Include that real implementation pool in
 		// this end-to-end surface check, filtered by product.yaml admission.
 		customTools, customExecutors, customCategories := createCustomTools(true, "test-user", "surface-e2e")
 		for _, tool := range customTools {
-			if tool.Function == nil || customCategories[tool.Function.Name] != "human_tools" || !agentworksproduct.ChatAllowsTool(mode, tool.Function.Name) {
+			if tool.Function == nil || (customCategories[tool.Function.Name] != "human_tools" && customCategories[tool.Function.Name] != "knowledgebase") || !agentworksproduct.ChatAllowsTool(mode, tool.Function.Name) {
 				continue
 			}
 			if _, ok := customExecutors[tool.Function.Name]; !ok {

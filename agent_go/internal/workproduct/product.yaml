@@ -34,6 +34,7 @@ profile:
     - secrets
     - mcp
     - skills
+    - knowledgebase
     - attached-folders
     - workflow-references
     - terminal

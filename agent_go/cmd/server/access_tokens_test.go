@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
 
 func tokenTestSetup(t *testing.T) *StreamingAPI {
@@ -20,6 +21,202 @@ func tokenTestSetup(t *testing.T) *StreamingAPI {
 	t.Setenv("MULTI_USER_MODE", "false")
 	t.Setenv("AUTH_SECRET", "token-test-signing-secret")
 	return &StreamingAPI{}
+}
+
+func TestKnowledgebaseTokenToolAdmission(t *testing.T) {
+	tokenTestSetup(t)
+	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","admin":true},{"id":"priya","username":"priya","role":"viewer","products":["knowledgebase"]}]}`)
+	read := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read"}}}
+	write := &UserClaims{UserID: "priya", AccessToken: &accesstokens.Token{Scopes: []string{"knowledgebase:read", "knowledgebase:write"}}}
+	workflow := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "files:read"}, AllWorkflows: true}}
+	for _, definition := range knowledgebase.ToolDefinitions() {
+		tool := externalTool{Name: definition.Name, mutates: definition.Mutates}
+		if externalTokenAllows(workflow, tool) {
+			t.Errorf("ordinary workflow token admitted %s", definition.Name)
+		}
+		if definition.Name == "manage_knowledgebase_access" {
+			if externalTokenAllows(read, tool) || externalTokenAllows(write, tool) {
+				t.Error("content token admitted access management")
+			}
+			continue
+		}
+		if got := externalTokenAllows(read, tool); got == definition.Mutates {
+			t.Errorf("reader admission for %s = %v", definition.Name, got)
+		}
+		if !externalTokenAllows(write, tool) {
+			t.Errorf("KB writer with workflow viewer account role denied %s", definition.Name)
+		}
+	}
+	t.Setenv("AGENT_PRODUCTS", "work")
+	if externalTokenAllows(write, externalTool{Name: "read_knowledgebase"}) || externalTokenAllows(write, externalTool{Name: "update_knowledgebase", mutates: true}) {
+		t.Fatal("disabled product admitted KB tools")
+	}
+}
+
+func TestKnowledgebaseTokenHTTPScopesServiceIdentityAndRevocation(t *testing.T) {
+	api := tokenTestSetup(t)
+	t.Setenv("MULTI_USER_MODE", "true")
+	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
+	t.Setenv("AGENTWORKS_KNOWLEDGEBASE_ROOT", filepath.Join(t.TempDir(), "knowledgebase"))
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","admin":true},{"id":"priya","username":"priya","role":"viewer","products":["knowledgebase"]}]}`)
+	service, err := knowledgebaseService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := knowledgebaseSyncIdentities(context.Background(), service); err != nil {
+		t.Fatal(err)
+	}
+	owner := knowledgebase.Principal{IdentityID: "owner", IsAdmin: true}
+	call := func(name string, args map[string]any) any {
+		t.Helper()
+		if name == "manage_knowledgebase_access" && (args["action"] == "grant" || args["action"] == "revoke") {
+			access, err := service.Call(context.Background(), owner, "get_knowledgebase_access", map[string]any{"folder_path": args["folder_path"]})
+			if err != nil {
+				t.Fatal("inspect current ACL", err)
+			}
+			encoded, err := json.Marshal(access)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var current struct {
+				Version string `json:"acl_version"`
+			}
+			if err := json.Unmarshal(encoded, &current); err != nil || current.Version == "" {
+				t.Fatalf("missing ACL version: %s %v", encoded, err)
+			}
+			args["expected_acl_version"] = current.Version
+		}
+		result, err := service.Call(context.Background(), owner, name, args)
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		return result
+	}
+	call("create_knowledgebase_folder", map[string]any{"folder_path": "", "name": "Engineering", "request_id": "folder"})
+	call("manage_knowledgebase_access", map[string]any{"action": "grant", "folder_path": "Engineering", "identity_id": "priya", "role": "Editor", "request_id": "grant-priya"})
+	created := call("create_knowledgebase", map[string]any{"folder_path": "Engineering", "filename": "checkout.md", "title": "Checkout", "type": "note", "content": "# Checkout\nShared knowledge.\n", "request_id": "entry"})
+	var entry struct {
+		EntryID string `json:"entry_id"`
+	}
+	encoded, _ := json.Marshal(created)
+	if err := json.Unmarshal(encoded, &entry); err != nil || entry.EntryID == "" {
+		t.Fatalf("missing entry ID: %s %v", encoded, err)
+	}
+	createdService := call("manage_knowledgebase_access", map[string]any{"action": "create_service_account", "name": "Deployment", "request_id": "create-service"})
+	var identity struct {
+		IdentityID string `json:"identity_id"`
+	}
+	encoded, _ = json.Marshal(createdService)
+	if err := json.Unmarshal(encoded, &identity); err != nil || identity.IdentityID == "" {
+		t.Fatalf("missing service ID: %s %v", encoded, err)
+	}
+	call("manage_knowledgebase_access", map[string]any{"action": "grant", "folder_path": "Engineering", "identity_id": identity.IdentityID, "role": "Editor", "request_id": "grant-service"})
+	ownerJWT, err := GenerateJWT("owner", "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	priyaJWT, err := GenerateJWT("priya", "priya", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := mux.NewRouter()
+	router.HandleFunc("/api/auth/access-tokens", api.handleAccessTokens).Methods("GET", "POST")
+	router.HandleFunc("/api/auth/access-tokens/{id}", api.handleAccessTokens).Methods("DELETE")
+	router.HandleFunc("/api/external/v1/tools", api.handleExternalTools)
+	router.HandleFunc("/api/external/v1/call", api.handleExternalCall)
+	handler := AuthMiddleware(router)
+	request := func(method, path, body, credential string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+credential)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	type issuedToken struct {
+		Token    string             `json:"token"`
+		Metadata accesstokens.Token `json:"access_token"`
+	}
+	issue := func(body, credential string) issuedToken {
+		t.Helper()
+		w := request("POST", "/api/auth/access-tokens", body, credential)
+		var issued issuedToken
+		if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &issued) != nil || issued.Token == "" {
+			t.Fatalf("token issue: %d %s", w.Code, w.Body)
+		}
+		return issued
+	}
+	unrestricted := issue(`{"name":"Local reader","scopes":["knowledgebase:read"],"knowledgebase_folders":null,"expires_in_days":7}`, priyaJWT)
+	denied := issue(`{"name":"No content","scopes":["knowledgebase:read"],"knowledgebase_folders":[],"expires_in_days":7}`, priyaJWT)
+	if unrestricted.Metadata.KnowledgebaseFolders != nil || denied.Metadata.KnowledgebaseFolders == nil || len(*denied.Metadata.KnowledgebaseFolders) != 0 {
+		t.Fatalf("null and empty caps confused: %+v %+v", unrestricted.Metadata, denied.Metadata)
+	}
+	readRequest := `{"name":"read_knowledgebase","arguments":{"entry_id":"` + entry.EntryID + `"}}`
+	if w := request("POST", "/api/external/v1/call", readRequest, unrestricted.Token); w.Code != 200 {
+		t.Fatalf("live inherited reader denied: %d %s", w.Code, w.Body)
+	}
+	if w := request("POST", "/api/external/v1/call", readRequest, denied.Token); w.Code != 404 {
+		t.Fatalf("empty caps exposed content: %d %s", w.Code, w.Body)
+	}
+	serviceBody := `{"name":"Workflow","scopes":["knowledgebase:read","knowledgebase:write"],"knowledgebase_identity_id":"` + identity.IdentityID + `","knowledgebase_folders":[{"folder_path":"Engineering","role":"editor"}],"expires_in_days":7}`
+	if w := request("POST", "/api/auth/access-tokens", serviceBody, priyaJWT); w.Code != 403 {
+		t.Fatalf("non-admin minted service token: %d %s", w.Code, w.Body)
+	}
+	if w := request("POST", "/api/auth/access-tokens", `{"scopes":["knowledgebase:read"],"knowledgebase_identity_id":"priya","expires_in_days":7}`, ownerJWT); w.Code != 403 {
+		t.Fatalf("admin token impersonated a human identity: %d %s", w.Code, w.Body)
+	}
+	bound := issue(serviceBody, ownerJWT)
+	if bound.Metadata.KnowledgebaseIdentityID != identity.IdentityID {
+		t.Fatal("service binding not persisted")
+	}
+	if w := request("POST", "/api/external/v1/call", readRequest, bound.Token); w.Code != 200 {
+		t.Fatalf("service reader denied: %d %s", w.Code, w.Body)
+	}
+	call("manage_knowledgebase_access", map[string]any{"action": "disable_service_account", "identity_id": identity.IdentityID, "request_id": "disable-service"})
+	if w := request("GET", "/api/external/v1/tools", "", bound.Token); w.Code != 401 {
+		t.Fatalf("disabled service identity retained connection: %d %s", w.Code, w.Body)
+	}
+	if w := request("DELETE", "/api/auth/access-tokens/"+unrestricted.Metadata.ID, "", priyaJWT); w.Code != 204 {
+		t.Fatalf("explicit revoke: %d %s", w.Code, w.Body)
+	}
+	if w := request("GET", "/api/external/v1/tools", "", unrestricted.Token); w.Code != 401 {
+		t.Fatalf("revoked KB token retained connection: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestKnowledgebasePrincipalRecheckRejectsRevokedToken(t *testing.T) {
+	tokenTestSetup(t)
+	t.Setenv("AGENT_PRODUCTS", "knowledgebase")
+	withMemoryUserDirectory(t, `{"users":[]}`)
+	store, err := openAccessTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Now()
+	identityID := GetDefaultUserID()
+	token, _, err := store.Issue(context.Background(), accesstokens.Token{Name: "MCP writer", UserID: identityID, Scopes: []string{"knowledgebase:read", "knowledgebase:write"}, ExpiresAt: now.Add(time.Hour)}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: identityID, AccessToken: &token}
+	r := httptest.NewRequest("POST", "/api/external/v1/call", nil)
+	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
+	principal := knowledgebasePrincipal(r, claims)
+	if principal.Recheck == nil {
+		t.Fatal("publication principal does not revalidate connection authority")
+	}
+	if err := principal.Recheck(context.Background()); err != nil {
+		t.Fatal("live connection rejected:", err)
+	}
+	if err := store.Revoke(context.Background(), token.ID, identityID, now); err != nil {
+		t.Fatal(err)
+	}
+	err = principal.Recheck(context.Background())
+	domain, ok := err.(*knowledgebase.Error)
+	if !ok || domain.Code != "FORBIDDEN" {
+		t.Fatalf("revoked principal permitted publication: %v", err)
+	}
 }
 func TestAccessTokenHTTPManagementAndRestrictions(t *testing.T) {
 	api := tokenTestSetup(t)

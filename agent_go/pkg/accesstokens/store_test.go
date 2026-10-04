@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
 
 func TestLifecyclePersistenceAndRevocation(t *testing.T) {
@@ -161,8 +163,138 @@ func TestOpenMigratesPreCrewDatabase(t *testing.T) {
 		}
 		got, err := store.Authenticate(context.Background(), Prefix+strings.Repeat("a", 64), now)
 		store.Close()
-		if err != nil || got.ID != "id1" || got.AllCrews || len(got.CrewIDs) != 0 || !got.AllWorkflows {
+		if err != nil || got.ID != "id1" || got.AllCrews || len(got.CrewIDs) != 0 || !got.AllWorkflows || got.KnowledgebaseFolders != nil || got.KnowledgebaseIdentityID != "" {
 			t.Fatalf("migrated token = %+v, %v", got, err)
+		}
+	}
+}
+
+func TestKnowledgebaseScopeValidation(t *testing.T) {
+	now := time.Now()
+	base := Token{Name: "Local agent", UserID: "u", Scopes: []string{"knowledgebase:read"}, ExpiresAt: now.Add(time.Hour)}
+	cases := []struct {
+		name string
+		edit func(*Token)
+		ok   bool
+	}{
+		{"read current grants", func(t *Token) {}, true},
+		{"read and write", func(t *Token) { t.Scopes = []string{"knowledgebase:read", "knowledgebase:write"} }, true},
+		{"write requires read", func(t *Token) { t.Scopes = []string{"knowledgebase:write"} }, false},
+		{"no workflow bound required", func(t *Token) { t.AllWorkflows = true }, false},
+		{"empty caps are deny all", func(t *Token) { c := []knowledgebase.Cap{}; t.KnowledgebaseFolders = &c }, true},
+		{"safe scoped reader", func(t *Token) {
+			c := []knowledgebase.Cap{{FolderPath: "Engineering/Payments", Role: "reader"}}
+			t.KnowledgebaseFolders = &c
+		}, true},
+		{"unsafe folder", func(t *Token) {
+			c := []knowledgebase.Cap{{FolderPath: "Engineering/../Payments", Role: "reader"}}
+			t.KnowledgebaseFolders = &c
+		}, false},
+		{"reserved folder", func(t *Token) {
+			c := []knowledgebase.Cap{{FolderPath: "Engineering/CON", Role: "reader"}}
+			t.KnowledgebaseFolders = &c
+		}, false},
+		{"owner cap forbidden", func(t *Token) { c := []knowledgebase.Cap{{FolderPath: "", Role: "owner"}}; t.KnowledgebaseFolders = &c }, false},
+		{"duplicates case folded", func(t *Token) {
+			c := []knowledgebase.Cap{{FolderPath: "Engineering", Role: "reader"}, {FolderPath: "engineering", Role: "editor"}}
+			t.KnowledgebaseFolders = &c
+		}, false},
+		{"service binding", func(t *Token) { t.KnowledgebaseIdentityID = "service-deployment" }, true},
+		{"service cannot impersonate workflow user", func(t *Token) {
+			t.KnowledgebaseIdentityID = "service-deployment"
+			t.Scopes = []string{"knowledgebase:read", "workflows:read"}
+			t.AllWorkflows = true
+		}, false},
+		{"caps without KB scope", func(t *Token) {
+			c := []knowledgebase.Cap{}
+			t.KnowledgebaseFolders = &c
+			t.Scopes = []string{"crews:read"}
+			t.AllCrews = true
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			token := base
+			tc.edit(&token)
+			if err := Validate(token, now); (err == nil) != tc.ok {
+				t.Fatalf("err=%v, want valid=%v", err, tc.ok)
+			}
+		})
+	}
+}
+
+func TestKnowledgebaseConnectionsPreserveScopesAndRevokeIndependently(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "tokens.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	base := Token{Name: "MCP", UserID: "u", Scopes: []string{"knowledgebase:read", "knowledgebase:write"}, ExpiresAt: now.Add(time.Hour)}
+	full, fullRaw, err := store.Issue(ctx, base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := []knowledgebase.Cap{}
+	base.KnowledgebaseFolders = &empty
+	limited, limitedRaw, err := store.Issue(ctx, base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps := []knowledgebase.Cap{{FolderPath: "Engineering/Payments", Role: "reader"}}
+	base.KnowledgebaseFolders = &caps
+	base.KnowledgebaseIdentityID = "service-deployment"
+	service, serviceRaw, err := store.Issue(ctx, base, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{fullRaw, limitedRaw, serviceRaw} {
+		if _, err := store.Authenticate(ctx, raw, now); err != nil {
+			t.Fatal("issuing another connection revoked previous one:", err)
+		}
+	}
+	got, err := store.Active(ctx, full.ID, now)
+	if err != nil || got.KnowledgebaseFolders != nil {
+		t.Fatalf("unrestricted caps changed: %+v %v", got, err)
+	}
+	got, err = store.Active(ctx, limited.ID, now)
+	if err != nil || got.KnowledgebaseFolders == nil || len(*got.KnowledgebaseFolders) != 0 {
+		t.Fatalf("empty caps changed: %+v %v", got, err)
+	}
+	got, err = store.Active(ctx, service.ID, now)
+	if err != nil || got.KnowledgebaseIdentityID != "service-deployment" || got.KnowledgebaseFolders == nil || len(*got.KnowledgebaseFolders) != 1 || (*got.KnowledgebaseFolders)[0] != caps[0] {
+		t.Fatalf("service binding or caps lost: %+v %v", got, err)
+	}
+	if err := store.Revoke(ctx, limited.ID, "u", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, limitedRaw, now); !errors.Is(err, ErrInvalid) {
+		t.Fatal("revoked scoped token accepted:", err)
+	}
+	for _, raw := range []string{fullRaw, serviceRaw} {
+		if _, err := store.Authenticate(ctx, raw, now); err != nil {
+			t.Fatal("revocation affected another identity connection:", err)
+		}
+	}
+	if _, err := store.Authenticate(ctx, serviceRaw, now.Add(time.Hour)); !errors.Is(err, ErrInvalid) {
+		t.Fatal("expired service token accepted:", err)
+	}
+	legacy := Token{Name: "CLI", UserID: "u", Scopes: []string{"workflows:read"}, AllWorkflows: true, ExpiresAt: now.Add(time.Hour)}
+	_, oldRaw, err := store.Issue(ctx, legacy, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = store.Issue(ctx, legacy, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, oldRaw, now); !errors.Is(err, ErrInvalid) {
+		t.Fatal("legacy replacement semantics changed:", err)
+	}
+	for _, raw := range []string{fullRaw, serviceRaw} {
+		if _, err := store.Authenticate(ctx, raw, now); err != nil {
+			t.Fatal("legacy replacement revoked KB connection:", err)
 		}
 	}
 }

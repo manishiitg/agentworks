@@ -19,8 +19,8 @@ import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useCh
 import { useModeStore } from "./stores/useModeStore";
 import { useProductSurfaceStore } from "./stores/useProductSurfaceStore";
 import { useAuthStore } from "./stores/useAuthStore";
-import { deploymentDefaultProductSurface, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
-import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface } from './products/productSurfacePreload';
+import { deploymentDefaultProductSurface, enabledProductSurfaces, isEnabledProductSurface, intersectAllowedProductSurfaces } from "./products/productSurfaceConfig";
+import { loadVideoStudioSurface, loadDominionSurface, loadSparkQuillSurface, loadWorkSurface, loadGatewaySurface, loadKnowledgebaseSurface } from './products/productSurfacePreload';
 import { useLLMStore } from "./stores/useLLMStore";
 import { normalizeEventViewMode, waitForChatStoreHydration, type ChatTab } from "./stores/useChatStore";
 import { useLLMDefaults } from "./hooks/useLLMDefaults";
@@ -52,6 +52,7 @@ const DominionSurface = lazy(() => loadDominionSurface().then(module => ({ defau
 const SparkQuillSurface = lazy(() => loadSparkQuillSurface().then(module => ({ default: module.SparkQuillSurface })))
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
 const GatewaySurface = lazy(() => loadGatewaySurface().then(module => ({ default: module.GatewaySurface })))
+const KnowledgebaseSurface = lazy(() => loadKnowledgebaseSurface().then(module => ({ default: module.KnowledgebaseSurface })))
 
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
@@ -124,7 +125,7 @@ function App() {
   useEffect(() => {
     const userAllowedSurfaces = intersectAllowedProductSurfaces([productSurface], allowedProducts)
     if (userAllowedSurfaces.length === 0 || !isEnabledProductSurface(productSurface)) {
-      const fallback = intersectAllowedProductSurfaces([deploymentDefaultProductSurface()], allowedProducts)
+      const fallback = intersectAllowedProductSurfaces(enabledProductSurfaces(), allowedProducts)
       setProductSurface(fallback[0] ?? deploymentDefaultProductSurface())
     }
   }, [productSurface, setProductSurface, allowedProducts])
@@ -936,6 +937,8 @@ function App() {
           <Suspense fallback={<ProductSurfaceFallback label="Dominion" />}><DominionSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (
           <Suspense fallback={<ProductSurfaceFallback label="SparkQuill" />}><SparkQuillSurface /></Suspense>
+        ) : productSurface === 'knowledgebase' ? (
+          <Suspense fallback={<ProductSurfaceFallback label="Knowledge Base" />}><KnowledgebaseSurface /></Suspense>
         ) : productSurface === 'work' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'code' ? (

@@ -1,0 +1,85 @@
+# Knowledge Base MVP operations
+
+Knowledge Base is a built-in product (`knowledgebase`). The app reads content and
+shows access, activity and connection settings. Its chat manages folder access.
+Content saves and explicit Git backups happen through MCP, including in Crews,
+Code and workflows. An authorized reader sees a successful save immediately.
+
+## Installation
+
+Enable the product through the existing `AGENT_PRODUCTS` and frontend
+`AGENTWORKS_ENABLED_PRODUCT_SURFACES` configuration. Grant the product to accounts
+through the existing account directory. Product access does not grant folder
+access. Administrators establish root or narrower folder grants in the access chat.
+
+Server configuration:
+
+| Variable | Meaning |
+| --- | --- |
+| `AGENTWORKS_KNOWLEDGEBASE_ORG` | Trusted installation organization ID; defaults to `installation`. |
+| `AGENTWORKS_KNOWLEDGEBASE_ROOT` | Optional absolute persistent data directory outside every workspace file root. |
+| `AGENTWORKS_KNOWLEDGEBASE_BACKUP_REMOTE` | Optional private Git remote; unset means live content works with Git backup unconfigured. |
+| `AGENTWORKS_KNOWLEDGEBASE_BACKUP_BRANCH` | Publication branch; defaults to `main`. |
+
+Without an explicit data root, data lives below the platform's persistent
+`AGENTWORKS_STATE_ROOT`, partitioned by the organization ID. Run one host, with
+processes sharing the same local volume. SQLite WAL and advisory locks require
+local filesystem semantics.
+
+Provision a dedicated private backup repository and server Git credentials through
+the deployment's secret management. Restrict direct repository access to backup
+administrators: Git cannot enforce the application's folder ACLs. Avoid credentials
+embedded in remote URLs. The product never returns credentials to connected agents.
+
+## Connections
+
+Create and revoke separate connections in Connect. `knowledgebase:read` admits the
+reader tools; `knowledgebase:write` additionally admits save and backup tools.
+Write connections carry both scopes.
+Optional folder caps further restrict the identity's current grants. Omitting caps
+uses its current grants; an empty cap list grants nothing. Only administrators can
+mint a Knowledge Base token for a managed service account. Disabling a service
+account invalidates its connections.
+
+The MCP endpoint is `/api/external/v1/mcp`. Authenticate with a Bearer token, use
+`get_api_spec` to discover tools and schemas, then `call_tool` with the operation
+name and its arguments. The existing local bridge uses the same catalog.
+
+Typical write flow: list folders, read an entry's version, call
+`update_knowledgebase` with `expected_version`, a patch or replacement, and a stable
+`request_id`. Keep the same ID and arguments when retrying uncertain delivery.
+To back up, call `commit_knowledgebase` with selected current versions/deletion
+tokens, then `push_knowledgebase` with the returned opaque receipt. Never stage the
+live directory or push a private receipt ref yourself.
+
+## Recovery
+
+Git contains plain Markdown from explicitly pushed snapshots. It is insufficient
+to recover pending edits, permissions or metadata. Back up the entire Knowledge
+Base data root, including live files, registries, private identity/activity/request/
+journal/receipt records, staging Git objects and a consistent SQLite snapshot.
+Use the SQLite backup API or stop all writers before copying the grant database;
+copying only its main file while WAL is active is not a consistent backup.
+
+Restore into the same trusted organization boundary. Preserve registry entry IDs,
+sequences, tombstones, receipt ownership and ACL generation. Startup recovery
+finishes journaled saves before serving content. An uncertain push is reconciled
+on the next explicit publication call. Do not force-push, automatically rebase,
+or import remote changes into live content. Unexpected branch changes require
+administrator reconciliation. If only Markdown survives, restore into an
+administrator-only area and reassign access before exposing it.
+
+To accept an existing plain-Markdown branch or an observed external branch change,
+an administrator uses `POST /api/knowledgebase/maintenance/reconcile-backup` with
+their normal signed-in session. Review the repository's branch first. This
+maintenance endpoint observes and accepts the base; it never imports live content,
+commits or pushes, and MCP connection tokens cannot call it. A pending unknown
+receipt must be reconciled by retrying its explicit push before this operation.
+The repository's configured organization, remote and branch are pinned; changing
+them requires provisioning a separate data root rather than silently redirecting
+existing receipts.
+
+The dedicated access builder offers the shared Codex and Pi provider adapters in
+MCP-only structured mode. Other engines can be added after their adapter preserves
+the same restricted tool surface. Provider accounts and models use the platform's
+existing configuration.

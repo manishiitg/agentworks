@@ -53,6 +53,8 @@ export function openGlobalTab(tabId: string): boolean {
   } else if (tab.metadata?.agentProfileId === 'work') {
     surfaces.setSelectedWorkProjectId(workProjectIdForTab(tab))
     surfaces.setProductSurface('work')
+  } else if (tab.metadata?.agentProfileId === 'knowledgebase') {
+    surfaces.setProductSurface('knowledgebase')
   } else {
     surfaces.setProductSurface(workflowSurfaceForPreset(tab.metadata?.presetQueryId))
   }
@@ -100,6 +102,11 @@ async function openGlobalActivitySessionInner(
   }
   const chatStore = useChatStore.getState()
   const tab = Object.values(chatStore.chatTabs).find(candidate => candidate.sessionId === session.session_id)
+  if (tab?.metadata?.agentProfileId === 'knowledgebase' || /(?:^|\/)Chats\/Knowledgebase(?:\/|$)/i.test(normalizedPath(session.workspace_path))) {
+    useProductSurfaceStore.getState().setProductSurface('knowledgebase')
+    if (tab) activateTab(tab.tabId)
+    return
+  }
   if (tab?.metadata?.agentProfileId === 'code' || isCodeProductSession(session)) {
     const surfaces = useProductSurfaceStore.getState()
     surfaces.setSelectedCodeProjectId(workProjectIdForSession(session, tab))

@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
@@ -199,6 +200,11 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		for _, name := range relayNames {
 			native[name] = true
 		}
+		for _, tool := range knowledgebase.ToolDefinitions() {
+			if tool.Name != "manage_knowledgebase_access" {
+				native[tool.Name] = true
+			}
+		}
 		for _, name := range []string{"list_executions", "list_schedules", "get_schedule_runs", "trigger_schedule", "stop_step", "stop_all_executions"} {
 			native[name] = true
 		}
@@ -288,7 +294,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) {
+		if tool.mutates && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -299,6 +305,12 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		byName[tool.Name] = tool
 	}
 	for _, name := range run {
+		if isExternalKnowledgebaseTool(name) {
+			if byName[name].executes {
+				t.Fatalf("Knowledge Base tool %s must use its domain handler", name)
+			}
+			continue
+		}
 		if denied[name] {
 			if _, ok := byName[name]; ok {
 				t.Fatalf("denylisted run tool %s is exposed", name)
@@ -338,6 +350,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		}
 	}
 	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "notify_user", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
+	wantRun = append([]string{"list_knowledgebase_folders", "create_knowledgebase_folder", "list_knowledgebase", "read_knowledgebase", "search_knowledgebase", "create_knowledgebase", "update_knowledgebase", "delete_knowledgebase", "get_knowledgebase_access", "get_knowledgebase_activity", "get_knowledgebase_backup_status", "commit_knowledgebase", "push_knowledgebase"}, wantRun...)
 	if len(run) != len(wantRun) {
 		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
 	}

@@ -130,7 +130,7 @@ export function WorkModelsPanel({
       }).catch(() => undefined)
     }
     return () => { cancelled = true }
-  }, [cursorReady, accounts, workspacePath, product.profileId])
+  }, [cursorReady, accounts, workspacePath, effectiveProfileId])
 
   const modelCatalog = useMemo(() => {
     const models = readyProviders.flatMap(provider => provider.models || [])
@@ -165,6 +165,7 @@ export function WorkModelsPanel({
 
   const hasStarted = events?.some(event => event.type === 'user_message') ?? false
   const savedSelection = workLLMSelectionFromConfig(projectLLMConfig)
+  const selectedConnectionId = savedSelection?.connectionId ?? tab?.metadata?.agentProfileConnectionID
   const savedOption = options.find(option => option.provider === savedSelection?.provider)
   const runtimeOption = options.find(option => option.provider === activeRuntime?.provider)
   const metadataOption = options.find(option => option.id === tab?.metadata?.agentProfileEngine)
@@ -177,8 +178,8 @@ export function WorkModelsPanel({
     schema_version: 2,
     mode: 'provider_profile',
     provider: selectedOption.provider as LLMProvider,
-    connection_id: savedSelection?.connectionId,
-  } : undefined, [selectedOption, savedSelection?.connectionId])
+    connection_id: selectedConnectionId,
+  } : undefined, [selectedOption, selectedConnectionId])
   // The models an account allows (absent = every model): the account the project names, else the server's.
   const allowedModelsFor = useCallback((provider: string | undefined, connectionId: string | undefined) => (
     provider ? accounts?.find(account => account.id === (connectionId || `global:${provider}`))?.allowed_models : undefined
@@ -196,8 +197,8 @@ export function WorkModelsPanel({
   }, [providerManifest, allowedModelsFor])
 
   const currentGroup = engineGroups.find(group => group.option.id === selectedOption?.id)
-  const selectedAllowedModels = allowedModelsFor(selectedOption?.provider, savedSelection?.connectionId)
-  const selectedDefaults = defaultForOption(selectedOption, savedSelection?.connectionId)
+  const selectedAllowedModels = allowedModelsFor(selectedOption?.provider, selectedConnectionId)
+  const selectedDefaults = defaultForOption(selectedOption, selectedConnectionId)
   const metadataMatchesSelectedProvider = tab?.metadata?.agentProfileEngine === selectedOption?.id
   // Only an allowed model is shown selected; a saved one the account no longer allows reads as its first allowed model
   // (the server runs it that way too).
@@ -247,7 +248,7 @@ export function WorkModelsPanel({
       setUsageText(null)
       // The account this project uses: its own connection, else the server's. The server decides what the caller may
       // do with it: a terminal for the account's owner and admins, read-only text for anyone else it is available to.
-      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, savedSelection?.connectionId, replaceRunning)
+      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, selectedConnectionId, replaceRunning)
       if (result.session) setUsageSession(result.session)
       else setUsageText(result.usage_output || 'No usage output.')
     } catch (error) {
@@ -277,7 +278,7 @@ export function WorkModelsPanel({
     if (!selectedOption) return
     void onRuntimeChange({
       engine: selectedOption.id,
-      connectionId: savedSelection?.connectionId,
+      connectionId: selectedConnectionId,
       provider: selectedOption.provider,
       modelId,
       reasoningEffort: selectedOption.provider === 'agy-cli'
@@ -290,7 +291,7 @@ export function WorkModelsPanel({
     if (!selectedOption || !reasoningLevels.some(level => level.id === reasoningEffort)) return
     void onRuntimeChange({
       engine: selectedOption.id,
-      connectionId: savedSelection?.connectionId,
+      connectionId: selectedConnectionId,
       provider: selectedOption.provider,
       modelId: currentModelId,
       reasoningEffort,

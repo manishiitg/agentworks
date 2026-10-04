@@ -49,6 +49,8 @@ type AgentProfileChatRequest struct {
 	WorkflowContextPaths []string `json:"workflow_context_paths,omitempty"`
 	// WorkflowContextRefs are the # tag labels for WorkflowContextPaths.
 	WorkflowContextRefs []workflowContextRef `json:"workflow_context_refs,omitempty"`
+	// KnowledgebaseFolderPath is a validated selection hint, never authority.
+	KnowledgebaseFolderPath *string `json:"knowledgebase_folder_path,omitempty"`
 }
 
 type AgentProfileConversationRequest struct {
@@ -127,6 +129,9 @@ func hasSelectedServers(servers []string) bool {
 }
 
 func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
+		return QueryRequest{}, fmt.Errorf("this profile does not accept Knowledge Base context")
+	}
 	if strings.TrimSpace(conversation.SessionID) == "" || strings.TrimSpace(conversation.WorkspacePath) == "" {
 		return QueryRequest{}, fmt.Errorf("product conversation has no runtime binding")
 	}
@@ -523,6 +528,27 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
+	}
+	if input.KnowledgebaseFolderPath != nil {
+		folder := *input.KnowledgebaseFolderPath
+		if len(folder) > 1024 {
+			writeAgentProfileError(w, 400, "invalid Knowledge Base folder")
+			return
+		}
+		service, err := knowledgebaseService()
+		if err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+		if err = knowledgebaseSyncIdentities(r.Context(), service); err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+		if _, err = service.Call(r.Context(), knowledgebasePrincipal(r, GetUserFromContext(r.Context())), "list_knowledgebase_folders", map[string]any{"folder_path": folder, "depth": 1}); err != nil {
+			knowledgebaseHTTPError(w, err)
+			return
+		}
+		query.Query = "Selected Knowledge Base folder (context only): " + strconv.Quote(folder) + "\n\n" + query.Query
 	}
 
 	encoded, err := json.Marshal(query)

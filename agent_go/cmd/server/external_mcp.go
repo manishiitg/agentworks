@@ -104,8 +104,20 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	for _, tool := range allowed {
 		// The catalog omits run tools from tokens lacking runs:execute, so
 		// execute_step's presence proves this connection runs.
-		if tool.Name == "execute_step" {
+		if tool.Name == "execute_step" || tool.Name == "update_knowledgebase" {
 			instructions = externalMCPInstructions
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if isExternalKnowledgebaseTool(tool.Name) {
+			instructions += " Knowledge Base: discover nested folders with list_knowledgebase_folders, then list_knowledgebase and read_knowledgebase. The catalog reflects this connection's current read/write scopes. Updates use expected_version and a stable request_id; saved changes are immediately visible to permitted readers. Git backup is explicit: commit selected versions, then push the owned receipt. Access management belongs to the Knowledge Base access chat."
+			break
+		}
+	}
+	for _, tool := range allowed {
+		if tool.Name == "update_knowledgebase" {
+			instructions += " This connection also authorizes Knowledge Base saves and explicit Git backups. These operations affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
 			break
 		}
 	}

@@ -12,10 +12,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	_ "modernc.org/sqlite"
 )
@@ -23,7 +25,7 @@ import (
 const Prefix = "aw_pat_"
 
 var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
-var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review"}
+var Scopes = []string{"workflows:read", "files:read", "runs:execute", "files:write", "plan:write", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "knowledgebase:read", "knowledgebase:write"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -41,15 +43,26 @@ type Token struct {
 	AllWorkflows bool     `json:"all_workflows"`
 	// CrewIDs / AllCrews bound crews:read, crews:run and crews:write the same way
 	// WorkflowIDs / AllWorkflows bound the workflow permissions.
-	CrewIDs    []string   `json:"crew_ids"`
-	AllCrews   bool       `json:"all_crews"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	RevokedAt  *time.Time `json:"revoked_at"`
+	CrewIDs  []string `json:"crew_ids"`
+	AllCrews bool     `json:"all_crews"`
+	// KnowledgebaseFolders is nil for the execution identity's current live
+	// grants, and a non-nil (possibly empty) slice for connection narrowing.
+	KnowledgebaseFolders    *[]knowledgebase.Cap `json:"knowledgebase_folders,omitempty"`
+	KnowledgebaseIdentityID string               `json:"knowledgebase_identity_id,omitempty"`
+	CreatedAt               time.Time            `json:"created_at"`
+	ExpiresAt               time.Time            `json:"expires_at"`
+	LastUsedAt              *time.Time           `json:"last_used_at"`
+	RevokedAt               *time.Time           `json:"revoked_at"`
 }
 
 func (t Token) Allows(scope string) bool { return slices.Contains(t.Scopes, scope) }
+
+// KnowledgebaseAccess identifies independent, revocable knowledge-base
+// connections. These tokens may coexist; issuing one must not disconnect a
+// user's other local agents or a service account owned by that user.
+func (t Token) KnowledgebaseAccess() bool {
+	return t.Allows("knowledgebase:read") || t.Allows("knowledgebase:write")
+}
 func (t Token) AllowsWorkflow(id string) bool {
 	return t.AllWorkflows || slices.Contains(t.WorkflowIDs, id)
 }
@@ -124,6 +137,44 @@ func Validate(t Token, now time.Time) error {
 		}
 		seen[s] = true
 	}
+	if t.Allows("knowledgebase:write") && !t.Allows("knowledgebase:read") {
+		return errors.New("knowledgebase:write requires knowledgebase:read")
+	}
+	if t.KnowledgebaseFolders != nil && !t.Allows("knowledgebase:read") {
+		return errors.New("knowledge base folder caps need a knowledgebase permission")
+	}
+	if t.KnowledgebaseIdentityID != "" && !t.Allows("knowledgebase:read") {
+		return errors.New("knowledge base identity needs a knowledgebase permission")
+	}
+	if t.KnowledgebaseIdentityID != "" {
+		if len(t.KnowledgebaseIdentityID) > 200 || strings.TrimSpace(t.KnowledgebaseIdentityID) != t.KnowledgebaseIdentityID || strings.ContainsAny(t.KnowledgebaseIdentityID, "\r\n\t") {
+			return errors.New("invalid knowledge base service identity")
+		}
+		for _, scope := range t.Scopes {
+			if !strings.HasPrefix(scope, "knowledgebase:") {
+				return errors.New("service account tokens may contain only knowledge base permissions")
+			}
+		}
+	}
+	if t.KnowledgebaseFolders != nil {
+		if len(*t.KnowledgebaseFolders) > 200 {
+			return errors.New("at most 200 knowledge base folder caps are allowed")
+		}
+		seenCaps := map[string]bool{}
+		for _, cap := range *t.KnowledgebaseFolders {
+			if !validKnowledgebaseFolderPath(cap.FolderPath) {
+				return errors.New("knowledge base folder caps require safe relative folder paths")
+			}
+			if cap.Role != "reader" && cap.Role != "editor" {
+				return errors.New("knowledge base folder cap role must be reader or editor")
+			}
+			key := strings.ToLower(cap.FolderPath)
+			if seenCaps[key] {
+				return errors.New("duplicate knowledge base folder cap")
+			}
+			seenCaps[key] = true
+		}
+	}
 	hasWorkflowScope, hasCrewScope := false, false
 	for _, s := range t.Scopes {
 		switch {
@@ -131,6 +182,8 @@ func Validate(t Token, now time.Time) error {
 			hasCrewScope = true
 		case s == "code:review":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
+		case strings.HasPrefix(s, "knowledgebase:"):
+			// Bounded by current domain grants and optional folder caps.
 		default:
 			hasWorkflowScope = true
 		}
@@ -156,6 +209,27 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("Relay authoring requires workflows:read, files:read and runs:execute")
 	}
 	return nil
+}
+
+var knowledgebaseFolderPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$`)
+
+func validKnowledgebaseFolderPath(p string) bool {
+	if p == "" { // The organization root is represented by the empty path.
+		return true
+	}
+	if len(p) > 1024 || strings.HasPrefix(p, "/") || strings.HasSuffix(p, "/") || strings.Contains(p, "\\") {
+		return false
+	}
+	for _, part := range strings.Split(p, "/") {
+		if !knowledgebaseFolderPart.MatchString(part) || strings.HasSuffix(part, " ") || part == "." || part == ".." || strings.EqualFold(part, ".git") {
+			return false
+		}
+		upper := strings.ToUpper(part)
+		if upper == "CON" || upper == "PRN" || upper == "AUX" || upper == "NUL" || len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) && upper[3] >= '1' && upper[3] <= '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type Store struct{ db *sql.DB }
@@ -206,7 +280,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	// Crew bounds arrived after the table; add them to existing databases.
-	for _, column := range []string{`crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`} {
+	for _, column := range []string{`crew_ids TEXT NOT NULL DEFAULT '[]'`, `all_crews INTEGER NOT NULL DEFAULT 0`, `knowledgebase_folders TEXT DEFAULT NULL`, `knowledgebase_identity_id TEXT NOT NULL DEFAULT ''`} {
 		if _, alterErr := db.Exec(`ALTER TABLE access_tokens ADD COLUMN ` + column); alterErr != nil && !strings.Contains(alterErr.Error(), "duplicate column") {
 			db.Close()
 			return nil, alterErr
@@ -228,21 +302,41 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	t.ID = hex.EncodeToString(entropy[:8])
 	t.CreatedAt = now.UTC()
 	t.Name = strings.TrimSpace(t.Name)
-	// One token per user: issuing replaces any live token. History stays
-	// listed; only unrevoked, unexpired rows lose access. The cap below
-	// remains as a backstop for concurrent double issuance.
-	if _, err := s.db.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND revoked_at IS NULL AND expires_at>?`, now.Unix(), t.UserID, now.Unix()); err != nil {
-		return Token{}, "", err
-	}
 	scopes, _ := json.Marshal(t.Scopes)
 	ids, _ := json.Marshal(t.WorkflowIDs)
 	if t.CrewIDs == nil {
 		t.CrewIDs = []string{}
 	}
 	crewIDs, _ := json.Marshal(t.CrewIDs)
+	var kbFolders any
+	if t.KnowledgebaseFolders != nil {
+		// Preserve the public distinction between unrestricted null and the
+		// empty scope list that grants no content access.
+		if *t.KnowledgebaseFolders == nil {
+			caps := []knowledgebase.Cap{}
+			t.KnowledgebaseFolders = &caps
+		}
+		encoded, err := json.Marshal(*t.KnowledgebaseFolders)
+		if err != nil {
+			return Token{}, "", err
+		}
+		kbFolders = string(encoded)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Token{}, "", err
+	}
+	defer tx.Rollback()
+	// Preserve replacement semantics for existing workflow/Crew callers,
+	// while knowledge-base connections remain independently revocable.
+	if !t.KnowledgebaseAccess() {
+		if _, err := tx.ExecContext(ctx, `UPDATE access_tokens SET revoked_at=COALESCE(revoked_at,?) WHERE user_id=? AND revoked_at IS NULL AND expires_at>? AND NOT EXISTS (SELECT 1 FROM json_each(access_tokens.scopes) WHERE value IN ('knowledgebase:read','knowledgebase:write'))`, now.Unix(), t.UserID, now.Unix()); err != nil {
+			return Token{}, "", err
+		}
+	}
 	// Cap issuance in the same statement, including concurrent requests.
-	result, err := s.db.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,created_at,expires_at)
- SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, now.Unix(), t.ExpiresAt.Unix(), t.UserID, now.Unix())
+	result, err := tx.ExecContext(ctx, `INSERT INTO access_tokens (id,hash,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,created_at,expires_at)
+	 SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM access_tokens WHERE user_id=? AND revoked_at IS NULL AND expires_at>?)<100`, t.ID, hash(raw), t.UserID, t.Username, t.Email, t.Provider, t.Name, string(scopes), string(ids), t.AllWorkflows, string(crewIDs), t.AllCrews, kbFolders, t.KnowledgebaseIdentityID, now.Unix(), t.ExpiresAt.Unix(), t.UserID, now.Unix())
 	if err != nil {
 		return Token{}, "", err
 	}
@@ -250,17 +344,21 @@ func (s *Store) Issue(ctx context.Context, t Token, now time.Time) (Token, strin
 	if n != 1 {
 		return Token{}, "", errors.New("maximum 100 active tokens; revoke an existing token first")
 	}
+	if err := tx.Commit(); err != nil {
+		return Token{}, "", err
+	}
 	return t, raw, nil
 }
 
-const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,created_at,expires_at,last_used_at,revoked_at`
+const columns = `id,user_id,username,email,provider,name,scopes,workflow_ids,all_workflows,crew_ids,all_crews,knowledgebase_folders,knowledgebase_identity_id,created_at,expires_at,last_used_at,revoked_at`
 
 func scan(row interface{ Scan(...any) error }) (Token, error) {
 	var t Token
 	var scopes, ids, crewIDs string
+	var kbFolders sql.NullString
 	var created, expires int64
 	var used, revoked sql.NullInt64
-	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &created, &expires, &used, &revoked)
+	err := row.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Provider, &t.Name, &scopes, &ids, &t.AllWorkflows, &crewIDs, &t.AllCrews, &kbFolders, &t.KnowledgebaseIdentityID, &created, &expires, &used, &revoked)
 	if err != nil {
 		return t, err
 	}
@@ -272,6 +370,16 @@ func scan(row interface{ Scan(...any) error }) (Token, error) {
 	}
 	if err = json.Unmarshal([]byte(crewIDs), &t.CrewIDs); err != nil {
 		return t, err
+	}
+	if kbFolders.Valid {
+		var caps []knowledgebase.Cap
+		if err = json.Unmarshal([]byte(kbFolders.String), &caps); err != nil {
+			return t, err
+		}
+		if caps == nil {
+			caps = []knowledgebase.Cap{}
+		}
+		t.KnowledgebaseFolders = &caps
 	}
 	t.CreatedAt = time.Unix(created, 0).UTC()
 	t.ExpiresAt = time.Unix(expires, 0).UTC()

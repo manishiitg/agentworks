@@ -35,6 +35,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/dominionproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
@@ -113,6 +114,7 @@ var mcpBridgeCustomToolCategories = map[string]bool{
 	"workflow":             true,
 	"workflow_creator":     true,
 	"knowledgebase_tools":  true,
+	"knowledgebase":        true,
 	"llm_config_tools":     true,
 	"secret_tools":         true,
 	"notification_tools":   true,
@@ -2142,6 +2144,14 @@ func runServer(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to register CapLayer database tools: %v", err)
 		}
 	}
+	if productEnabled(knowledgebaseproduct.ProfileID) {
+		if err := profileRegistry.RegisterProfile(knowledgebaseproduct.BuiltinAgentProfile()); err != nil {
+			log.Fatalf("Failed to register Knowledge Base profile: %v", err)
+		}
+		if err := knowledgebaseproduct.RegisterAgentProfileRuntime(profileRegistry, knowledgebaseAccessExecutor); err != nil {
+			log.Fatalf("Failed to register Knowledge Base runtime: %v", err)
+		}
+	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
 			log.Fatalf("Failed to register Work skills: %v", err)
@@ -2432,6 +2442,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/query", api.handleQuery).Methods("POST", "OPTIONS")
 	AgentProfileRoutes(apiRouter, api.agentProfiles)
 	apiRouter.HandleFunc("/agent-profiles/{id}/query", api.handleAgentProfileChatQuery).Methods("POST", "OPTIONS")
+	for _, endpoint := range []string{"bootstrap", "folders", "entries", "read", "search", "access", "activity", "backup"} {
+		apiRouter.HandleFunc("/knowledgebase/"+endpoint, api.handleKnowledgebaseViewer).Methods("GET", "OPTIONS")
+	}
+	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation", api.handleResolveAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/new", api.handleRotateAgentProfileConversation).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/conversation/switch", api.handleSwitchAgentProfileConversation).Methods("POST", "OPTIONS")
@@ -5763,9 +5777,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			platformBridgeTools = append(platformBridgeTools, "request_clarification")
 		}
 		if resolvedProfile != nil {
-			// Profile-declared native tools still pass normal registration and
-			// admission checks. This does not enable a general shell bridge.
-			platformBridgeTools = append(platformBridgeTools, resolvedProfile.Definition.Runtime.BridgeTools...)
+			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
+				if toolGate.Admit(name) {
+					platformBridgeTools = append(platformBridgeTools, name)
+				}
+			}
 		}
 		if toolGate.Admit("read_image") {
 			platformBridgeTools = append(platformBridgeTools, "read_image")
@@ -5896,6 +5912,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Apply the external Builder boundary last, including after a Code
 		// profile has considered any personal server overrides.
 		selectedServers = externalBuilderMCPServers(req, selectedServers)
+		// A fixed access builder never mounts personal, attached or ambient MCP
+		// servers, even if an old conversation saved a broader selection.
+		if resolvedProfile != nil && resolvedProfile.Definition.ID == knowledgebaseproduct.ProfileID {
+			selectedServers = []string{mcpclient.NoServers}
+			agentConfig.RuntimeOverrides = nil
+		}
 		if len(selectedServers) == 1 && selectedServers[0] == mcpclient.NoServers {
 			serverList = mcpclient.NoServers
 		} else {
