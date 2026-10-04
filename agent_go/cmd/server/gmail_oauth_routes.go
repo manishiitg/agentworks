@@ -106,6 +106,10 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 // opens in their browser, not in a fetch.
 func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Query().Get("state"), gmailSetupStatePrefix) {
+			api.gmailSetupCallback(w, r)
+			return
+		}
 		query := r.URL.Query()
 		if authErr := strings.TrimSpace(query.Get("error")); authErr != "" {
 			// A user who clicks Cancel is not an error condition worth a stack

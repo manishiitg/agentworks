@@ -314,6 +314,9 @@ func shouldSkipAuth(path string) bool {
 	if path == gmailInboundEventPath {
 		return true
 	} // Google OIDC is verified by the receiver.
+	if path == gmailSetupStartPath {
+		return true // Expiring review capability; provisioning requires Google consent + PKCE.
+	}
 	// Public endpoints that don't require auth
 	publicPaths := []string{
 		"/api/auth/login",

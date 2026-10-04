@@ -19,6 +19,23 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Builder prepares Gmail infrastructure; human Cloud consent authorizes provisioning
+
+An interactive app administrator can prepare a frozen incoming-Gmail resource
+plan through Builder. The human reviews it and completes plan-bound Google
+Cloud consent in the browser; no agent tool applies the plan or receives Cloud
+credentials. The server verifies the owning OAuth project, provisions only the
+reviewed resources and narrow grants, and activates durable private configuration
+without environment edits or a restart. Manual settings remain compatible;
+conflicts fail closed. Mailbox connections, rules and extra-sender approval remain
+separate. Why: the manual Pub/Sub checklist made receiving too difficult; gog
+watchers still require its infrastructure. Ticket:
+[PLAT-483](bugs/pulse_platform/integrations/plat-483.md).
+
+### 2026-10-04 — Slot commands keep access to their slot's rootless Docker (accepted exception to the sandbox)
+
+Users run things through Docker in Code, so where a host enables Docker for slots (`provision-slots.sh docker`, a rootless daemon per slot at `/run/user/<uid>/docker.sock`) slot commands keep using it; the slot's run-root hiding (PLAT-480 F1) does not cover `/run/user/<uid>`. Consequence, accepted: a command that can use its slot's Docker can start a container that is not under the command's Landlock rules, so on such a host the boundary for what a slot command can reach is the slot account's own Unix permissions plus rootless Docker's user namespace, not Landlock. That boundary is why each user has a slot; other users' files and the app's private state stay closed to it. Do not remove Docker from slots to close this; if it must tighten, narrow what the slot account can reach. Ticket: PLAT-480.
+
 ### 2026-10-04 — A slot command cannot see its slot's tmux socket; a host that cannot hide it refuses the command
 
 Landlock does not govern connect() on pathname Unix sockets below ABI 9 (RTS kernel 7.0 is ABI 8, Hetzner 6.8 is ABI 4), and a slot's tmux server runs as the same account as the commands it confines, so a confined command could reach an unconfined server (verified live on RTS, PLAT-480 F1). A slot command's policy now hides the slot run root behind an empty folder in the command's own namespaces. A host that cannot give the command those namespaces refuses it (`SANDBOX_UNAVAILABLE`) instead of running it with the socket in view. RTS needs a path-scoped AppArmor `userns` exception for slotctl and the launcher (`provision-slots.sh userns`). Code: `workspace/security/isolator_linux.go`. Ticket: PLAT-480.

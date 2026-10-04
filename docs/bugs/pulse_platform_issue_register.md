@@ -1,3 +1,15 @@
+## A refused builder send shows the raw 409 text — PLAT-485
+
+[PLAT-485](pulse_platform/frontend-chat/plat-485.md), P3, open. The one-builder-chat-per-workflow guard works, but a send from a different session id (second tab, API client) shows "Request failed with status code 409" with no stop/wait choice.
+
+## Builder-guided administrator setup for incoming Gmail — PLAT-483
+
+[PLAT-483](pulse_platform/integrations/plat-483.md), P2, fixed on main, not deployed. Builder prepares a reviewed resource plan and human Google Cloud consent; the server provisions Pub/Sub and activates private receiving configuration without gcloud, environment edits or a restart. Requires app admin plus Google project permissions. No live Cloud/account changes or deployment performed.
+
+## Existing Code MCP skill discovery contract test fails — PLAT-484
+
+[PLAT-484](pulse_platform/integrations/plat-484.md), P2, open. The Code MCP discovery/timing skill assertion fails on unchanged origin/main as well as the Gmail setup worktree; reconcile the canonical private MCP contract and test separately.
+
 ## Slot sandbox hardening (tmux/Docker reachable, release trees readable, grant filter) — PLAT-480
 
 [PLAT-480](pulse_platform/security-sandbox/plat-480.md), open, P1. Follow-up of the PLAT-478 security review; design to be agreed with the owner before implementation.

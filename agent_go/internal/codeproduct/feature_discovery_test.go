@@ -21,7 +21,7 @@ func TestCodeSkillOptionsStayPrivateAndRefreshWithoutMutatingBuiltins(t *testing
 	for i, skill := range current {
 		switch skill.Name {
 		case "code-schedules-and-bots":
-			for _, want := range []string{"Direct-message bots", "private project account", "install_skill", "https://github.com/openclaw/gogcli", "owner's chats", "compose grant"} {
+			for _, want := range []string{"Direct-message bots", "private project account", "install_skill", "https://github.com/openclaw/gogcli", "owner's chats", "compose grant", "setup_gmail_inbound", "## Incoming Gmail triggers:", "Google consent"} {
 				if !strings.Contains(skill.Content, want) {
 					t.Fatalf("private Google/DM procedure missing %q", want)
 				}
@@ -77,4 +77,25 @@ func TestCodeAlwaysLoadedFeaturePoliciesAreCompact(t *testing.T) {
 		}
 	}
 	t.Logf("same Code feature fixture: previous=%d bytes, policies=%d bytes", previous.Len(), len(current))
+}
+
+func TestCodeGmailIncludesAdministratorSetupAndIncomingRulesWithoutChannelTools(t *testing.T) {
+	if err := RegisterProductSkills(); err != nil {
+		t.Fatal(err)
+	}
+	profile := BuiltinAgentProfile()
+	enabled := false
+	for _, tool := range profile.ToolPolicy.Enabled {
+		if tool == "setup_gmail_inbound" {
+			enabled = true
+		}
+	}
+	if !enabled {
+		t.Fatal("Code cannot discover the administrator setup tool")
+	}
+	original := skills.LoadAttachable("", []string{"code-schedules-and-bots"})
+	current := agentprofiles.FeatureSkillsForSession(profile, original)
+	if len(current) != 1 || !strings.Contains(current[0].Content, "setup_gmail_inbound") || !strings.Contains(current[0].Content, "## Incoming Gmail triggers:") || strings.Contains(current[0].Content, "create_slack_bot_route") {
+		t.Fatal("Code incoming-email guidance is missing or exposes channel tools")
+	}
 }

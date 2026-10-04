@@ -3884,6 +3884,12 @@ export interface GmailInboundState {
   setup?: {
     oauth_clients: string[]
     can_connect_account: boolean
+    provisioning?: {
+      available: boolean
+      can_prepare: boolean
+      oauth_clients: { name: string; client_id?: string; project_id?: string }[]
+      job?: { id: string; stage: string; error?: string; review_url?: string; expires_at: string; plan: { client_name: string; project_id: string; delivery_project_id: string; push_endpoint: string; topic: string; subscription: string; push_service_account: string } }
+    }
     admin_setup?: { push_endpoint: string; required_access: string; explanation: string; environment_variables: string[]; steps: string[]; empty_client_list: string; local_setup: string; documentation_url: string }
   }
   configured: boolean

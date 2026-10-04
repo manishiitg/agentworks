@@ -265,6 +265,7 @@ chat:
       - update_step
       - update_gmail_connection_grants
       - manage_gmail_trigger
+      - setup_gmail_inbound
       - update_schedule
       - update_slack_bot_route_permission
       - update_step_config

@@ -206,8 +206,10 @@ enable_slot_docker() {
 }
 
 cmd_docker() {
-  if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" == 1 && -z "${FORCE_DOCKER:-}" ]]; then
-    echo "Unprivileged user namespaces are restricted by AppArmor on this host: rootless Docker needs an exception first (FORCE_DOCKER=1 tries anyway)." >&2
+  # Ubuntu 24.04 restricts unprivileged user namespaces and ships a profile that lets /usr/bin/rootlesskit make them:
+  # with that profile in place rootless Docker works for any account (the RTS app account's own Docker already does).
+  if [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" == 1 && -z "${FORCE_DOCKER:-}" && ! -e /etc/apparmor.d/rootlesskit ]]; then
+    echo "Unprivileged user namespaces are restricted by AppArmor on this host and there is no rootlesskit profile: rootless Docker needs an exception first (FORCE_DOCKER=1 tries anyway)." >&2
     exit 1
   fi
   command -v dockerd-rootless-setuptool.sh >/dev/null || { echo "docker-ce-rootless-extras (and uidmap) are not installed." >&2; exit 1; }

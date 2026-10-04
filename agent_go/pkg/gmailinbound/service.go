@@ -25,6 +25,7 @@ var ErrHistoryExpired = errors.New("Gmail history cursor expired")
 var ErrMessageGone = errors.New("Gmail message no longer exists")
 
 type Service struct {
+	Enabled   func(context.Context) bool
 	Store     *Store
 	Client    func(context.Context, Mailbox) (Client, error)
 	Authorize func(context.Context, Route, Message) error
@@ -87,6 +88,9 @@ func (s *Service) Start(ctx context.Context) {
 }
 func (s *Service) Wait() { s.wg.Wait() }
 func (s *Service) syncNext(ctx context.Context) {
+	if s.Enabled != nil && !s.Enabled(ctx) {
+		return
+	}
 	boxes, e := s.Store.Mailboxes(ctx)
 	if e != nil {
 		return
@@ -198,6 +202,9 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 	return s.Store.Synced(ctx, m, cursor)
 }
 func (s *Service) deliverNext(ctx context.Context) {
+	if s.Enabled != nil && !s.Enabled(ctx) {
+		return
+	}
 	d, ok, e := s.Store.Claim(ctx)
 	if e != nil || !ok {
 		return

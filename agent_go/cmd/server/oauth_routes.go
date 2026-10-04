@@ -167,6 +167,10 @@ type OAuthLogoutRequest struct {
 
 // handleOAuthCallback handles GET /api/oauth/callback - receives OAuth authorization code
 func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Query().Get("state"), gmailSetupStatePrefix) {
+		api.gmailSetupCallback(w, r)
+		return
+	}
 	api.logger.Info(fmt.Sprintf("🔔 OAuth callback received: state=%s, code_present=%v, error=%s",
 		r.URL.Query().Get("state"), r.URL.Query().Get("code") != "", r.URL.Query().Get("error")))
 

@@ -61,6 +61,41 @@ describe('Gmail incoming email settings', () => {
     expect(sendWorkspacePaneMessageToChat).not.toHaveBeenCalled()
   })
 
+  it('shows the administrator review and progress without exposing configuration editors', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: false, route: null, deliveries: [], setup: {
+      oauth_clients: [], can_connect_account: true,
+      provisioning: { available: true, can_prepare: true, oauth_clients: [{ name: 'rts-app', project_id: 'rts-project' }], job: {
+        id: 'review', stage: 'Waiting for administrator review and Google consent', expires_at: '2026-10-04T18:00:00Z', review_url: 'https://video.realtrainingsys.com/api/gmail-inbound/setup/start?plan_id=review',
+        plan: { client_name: 'rts-app', project_id: 'rts-project', delivery_project_id: 'rts-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: 'projects/rts-project/topics/mail', subscription: 'projects/rts-project/subscriptions/mail', push_service_account: 'push@rts-project.iam.gserviceaccount.com' },
+      } },
+    } })
+    const onAsk = vi.fn()
+    await render('Chats/Code/projects/code-1', onAsk)
+    const section = host.querySelector('[aria-label="Incoming email server setup"]')!
+    expect(section.textContent).toContain('Waiting for administrator review')
+    expect(section.textContent).toContain('rts-project')
+    expect(section.querySelector('a')?.href).toContain('/api/gmail-inbound/setup/start?plan_id=review')
+    expect(section.querySelector('input, select, button')).toBeNull()
+    await ask()
+    expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('setup_gmail_inbound(action="prepare")'))
+    expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('never follow it through agent tools'))
+  })
+
+  it('reports setup failures independently from mailbox delivery readiness', async () => {
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, setup: {
+      oauth_clients: ['rts-app'], can_connect_account: true,
+      provisioning: { available: true, can_prepare: true, oauth_clients: [], job: {
+        id: 'review', stage: 'Setup failed', error: 'Google Cloud permissions are missing. Retry setup after fixing access.', expires_at: '2026-10-04T18:00:00Z',
+        plan: { client_name: 'rts-app', project_id: 'rts-project', delivery_project_id: 'rts-project', push_endpoint: 'https://video.realtrainingsys.com/api/hooks/gmail/events', topic: '', subscription: '', push_service_account: '' },
+      } },
+    } })
+    await render()
+    expect(host.textContent).toContain('Google Cloud permissions are missing')
+    expect(host.textContent).toContain('Ready to receive email.')
+    expect(host.textContent).toContain('Infrastructure readiness is separate')
+    expect(host.querySelector('[aria-label="Incoming email server setup"] a')).toBeNull()
+  })
+
   it('blocks sender activation until an explicit owner acknowledgement and refreshes after consent', async () => {
     const configHash = 'a'.repeat(64)
     const pending: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: false, config_hash: configHash, senders: ['person@gmail.com', '@realtrainingsys.com'] } }
