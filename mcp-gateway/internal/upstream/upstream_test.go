@@ -83,3 +83,31 @@ func TestManagedBearerIsSentOnlyToConfiguredUpstream(t *testing.T) {
 		t.Fatalf("managed bearer missing: %q", seen)
 	}
 }
+
+func TestManagedBasicAndOAuthSchemes(t *testing.T) {
+	seen := ""
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	for _, tc := range []struct {
+		opts DialOptions
+		want string
+	}{
+		{DialOptions{AllowPrivate: true, BearerToken: "dXNlcjpwYXNz", AuthScheme: "Basic"}, "Basic dXNlcjpwYXNz"},
+		{DialOptions{AllowPrivate: true, AuthScheme: "Basic", AccessToken: func(context.Context) (string, error) { return "refreshed", nil }}, "Bearer refreshed"},
+	} {
+		resp, err := safeHTTPClient(tc.opts).Get(target.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if seen != tc.want {
+			t.Fatalf("scheme changed: %q", seen)
+		}
+	}
+	if _, err := safeHTTPClient(DialOptions{AllowPrivate: true, BearerToken: "fixture", AuthScheme: "Other"}).Get(target.URL); err == nil {
+		t.Fatal("unsupported scheme sent")
+	}
+}

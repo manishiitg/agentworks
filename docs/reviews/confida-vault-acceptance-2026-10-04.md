@@ -9,8 +9,9 @@
   and Langfuse (Basic authorization). Catalog entries are not installations.
 - Linear has a saved encrypted credential; its upstream validity is not yet
   tested. Notion's referenced credential is missing and needs sign-in.
-- Langfuse needs secure Basic authorization support before migration to Vault;
-  its existing Basic value must not be placed in a Bearer credential field.
+- Langfuse requires Basic authorization. Custom Vault connectors now support
+  an explicit `AuthScheme=Basic`; the existing encoded credential is stored
+  encrypted, remains absent from inventory, and rotation preserves its scheme.
 - Existing project references: Linear 8, Notion 3, Langfuse 2. One workflow also
   references Resend without a corresponding installed shared connection.
 
@@ -42,3 +43,25 @@ route `/api/vault/mcp`.
    work; preserve exact labels/connection identities and existing project choices.
 
 Deployment and live server acceptance have not yet been completed by this record.
+
+## Migration preparation
+
+Configuration, OAuth files and user metadata are backed up privately under
+`/srv/confida/state/manual-backups/vault-migration-20261004T110820Z`.
+The rollback record points at the previous release above. This backup does not
+copy project content; the MCP migration does not modify it.
+
+The operator-only command `server import-vault-oauth --connection-id ID
+--mcp-config FILE [--apply]` reads the deployment's existing OAuth entry and
+reseals its credential/configuration for the matching live Vault connector.
+Run as the service account with its `AUTH_SECRET`, HOME and Vault service
+settings. The default is read-only. Missing tokens report sign-in required;
+existing destinations are not overwritten, including after token refresh.
+Old credentials are retained for rollback. Provider endpoints and connection
+identity must match the live Vault record. Credential contents are never printed.
+
+For each migrated connection, approve the discovered fingerprints and grant
+the existing tool set through Platform, preserving the previous global sharing.
+Keep the original labels so unambiguous existing project selections resolve;
+verify the runtime mapping before removing any legacy entry. New tools require
+explicit approval/grants. Notion still needs the administrator's browser sign-in.

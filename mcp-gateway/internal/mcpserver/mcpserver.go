@@ -222,6 +222,7 @@ func (g *Gateway) HasSharedOAuth() bool {
 func (g *Gateway) connectorOptions(c store.Connector) (upstream.DialOptions, error) {
 	opts := g.upstreamOptions
 	opts.BearerToken = g.store.ConnectorBearer(c.ID)
+	opts.AuthScheme = c.AuthScheme
 	if c.OAuthServer != "" {
 		g.mu.RLock()
 		resolve := g.sharedOAuth
@@ -419,6 +420,7 @@ func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Conne
 	}
 	opts := g.upstreamOptions
 	opts.BearerToken = bearer
+	opts.AuthScheme = current.AuthScheme
 	newUp, err := upstream.DialWithOptions(ctx, current.UpstreamURL, opts)
 	if err != nil {
 		return err

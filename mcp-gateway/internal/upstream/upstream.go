@@ -28,6 +28,7 @@ type DialOptions struct {
 	// AllowPrivate is for an explicitly configured private-network deployment.
 	AllowPrivate bool
 	BearerToken  string
+	AuthScheme   string
 	AccessToken  func(context.Context) (string, error)
 }
 
@@ -101,12 +102,21 @@ func (b *limitedBody) Read(p []byte) (int, error) {
 type boundedTransport struct {
 	base        http.RoundTripper
 	bearerToken string
+	authScheme  string
 	accessToken func(context.Context) (string, error)
 }
 
 func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	scheme := t.authScheme
+	if scheme == "" {
+		scheme = "Bearer"
+	}
+	if scheme != "Bearer" && scheme != "Basic" {
+		return nil, errors.New("unsupported authorization scheme")
+	}
 	token := t.bearerToken
 	if t.accessToken != nil {
+		scheme = "Bearer" // OAuth credentials always use Bearer.
 		var err error
 		token, err = t.accessToken(req.Context())
 		if err != nil || token == "" {
@@ -115,7 +125,7 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	if token != "" {
 		req = req.Clone(req.Context())
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", scheme+" "+token)
 	}
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
@@ -153,7 +163,7 @@ func safeHTTPClient(opts DialOptions) *http.Client {
 		},
 	}
 	return &http.Client{
-		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, accessToken: opts.AccessToken},
+		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, authScheme: opts.AuthScheme, accessToken: opts.AccessToken},
 		Timeout:       30 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
