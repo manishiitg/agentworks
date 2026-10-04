@@ -20,7 +20,7 @@ import {
 } from '../utils/liveInputSubmission'
 import { eventBelongsToSession, sessionOwnsGlobalChatIndicators } from '../utils/sessionEventWorkingSet'
 import { useShallow } from 'zustand/react/shallow'
-import { agentApi, resetSessionId, getSessionId } from '../services/api'
+import { agentApi, resetSessionId, getSessionId, COMPACT_CHAT_OLDER_PAGE_MESSAGES } from '../services/api'
 import type { PollingEvent, ExtendedLLMConfiguration, SSEEventMessage, SSEStatusMessage, ExecutionOptions } from '../services/api-types'
 import type { AgentMode } from '../stores/types'
 import { ChatInput } from './ChatInput'
@@ -921,9 +921,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         nextOffset = conversation.history_pagination?.next_offset
       } else {
         const response = await agentApi.getSessionEvents(sessionId, undefined, {
-          limit: 100,
+          limit: historyPagination.compact ? COMPACT_CHAT_OLDER_PAGE_MESSAGES : 100,
           beforeSequence: historyPagination.nextOffset,
           durableChat: true,
+          compactView: historyPagination.compact,
         })
         olderEvents = response.events || []
         hasMore = response.has_more
@@ -939,7 +940,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       chatStore.setTabHistoryPagination(
         sessionId,
         nextOffset
-          ? { hasMore, nextOffset }
+          ? { hasMore, nextOffset, ...(historyPagination.compact ? { compact: true } : {}) }
           : null,
       )
       chatStore.setTabHasMoreOlderEvents(sessionId, hasMore)
@@ -958,7 +959,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         error: error instanceof Error ? error.message : 'Could not load earlier messages',
       }))
     }
-  }, [activeSessionId, activeTabIsExecution, activeTabProfileWorkspace, activeWorkflowPreset, historyPagination?.hasMore, historyPagination?.nextOffset, olderHistory.loading])
+  }, [activeSessionId, activeTabIsExecution, activeTabProfileWorkspace, activeWorkflowPreset, historyPagination?.hasMore, historyPagination?.nextOffset, historyPagination?.compact, olderHistory.loading])
 
   const hasConversationContent = useMemo(() => {
     return displayEvents.some(event =>

@@ -93,6 +93,25 @@ func (es *EventStore) ReadDurableChatPage(sessionID string, opts DurableEventPag
 	return journal.ReadPage(sessionID, opts)
 }
 
+// ReadDurableChatCompactPage reads the compact view of an interactive chat:
+// the latest turn complete and older turns as messages only (see
+// event_journal_compact.go). Journals without compact support fall back to the
+// ordinary page.
+func (es *EventStore) ReadDurableChatCompactPage(sessionID string, opts CompactPageOptions) (DurableEventPage, error) {
+	if es == nil || strings.TrimSpace(sessionID) == "" {
+		return DurableEventPage{Events: []Event{}}, nil
+	}
+	es.adoptJournaledSession(sessionID)
+	es.mu.RLock()
+	journal, ok := es.durableJournal.(DurableEventJournalCompactReader)
+	class := es.persistenceClasses[sessionID]
+	es.mu.RUnlock()
+	if !ok || journal == nil || class != SessionPersistenceInteractiveChat {
+		return es.ReadDurableChatPage(sessionID, DurableEventPageOptions{Limit: 300, BeforeSequence: opts.BeforeSequence})
+	}
+	return journal.ReadCompactPage(sessionID, opts)
+}
+
 func (es *EventStore) DeleteDurableChatSession(sessionID string) error {
 	if es == nil || strings.TrimSpace(sessionID) == "" {
 		return nil

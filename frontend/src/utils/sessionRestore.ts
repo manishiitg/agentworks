@@ -223,6 +223,16 @@ export function appendRestoredLiveTail(sessionId: string, incoming: ReadonlyArra
   appendTimelineAndApplyConfirmations(sessionId, [], confirmations)
 }
 
+/**
+ * An interactive chat tab: not a read-only, scheduled/bot-observed or
+ * execution tab. Only these restore through the compact view.
+ */
+export function isInteractiveChatSession(sessionId: string): boolean {
+  const tab = Object.values(useChatStore.getState().chatTabs ?? {}).find(candidate => candidate.sessionId === sessionId)
+  const metadata = tab?.metadata
+  return Boolean(tab) && !metadata?.isViewOnly && !metadata?.isExecutionRun && !metadata?.isBotRun
+}
+
 /** Load the canonical, bounded chat page from SQLite. */
 export async function hydrateTabEvents(
   sessionId: string,
@@ -236,10 +246,16 @@ export async function hydrateTabEvents(
     // supplies tool calls that structured provider history represents only as
     // function markers; raw terminal frames are never requested.
     includeUiEvents?: boolean
+    // Compact restore: the latest turn complete, older turns as messages only.
+    // Defaults to on for an interactive chat tab and off for everything else
+    // (read-only / scheduled / bot / execution tabs, terminal views, which
+    // keep the full durable page). Pass false to force the full page.
+    compact?: boolean
   } = {},
 ): Promise<RuntimeSessionState> {
   const identity = captureChatIdentity()
   const chatStore = useChatStore.getState()
+  const compact = options.compact ?? isInteractiveChatSession(sessionId)
   const eventsAtStart = chatStore.getTabEvents(sessionId)
   const startingIDs = new Set(eventsAtStart.map(event => event.id).filter(Boolean))
   const requestKey = `${identity}:${sessionId}`
@@ -247,7 +263,9 @@ export async function hydrateTabEvents(
   hydrateRequestVersions.set(requestKey, requestVersion)
   let response: Awaited<ReturnType<typeof agentApi.getRecentChatEvents>>
   try {
-    response = await agentApi.getRecentChatEvents(sessionId, options.workspacePath)
+    response = await (compact
+      ? agentApi.getRecentChatEvents(sessionId, options.workspacePath, true)
+      : agentApi.getRecentChatEvents(sessionId, options.workspacePath))
   } catch (error) {
     if (!isNotFoundError(error)) throw error
     // A chat that never received a message has no journal rows. That is an
@@ -284,7 +302,7 @@ export async function hydrateTabEvents(
   if (cursor !== undefined) chatStore.setTabLastEventIndex(sessionId, cursor)
   chatStore.setTabHasMoreOlderEvents(sessionId, response.has_more)
   chatStore.setTabHistoryPagination(sessionId, response.has_more && response.oldest_sequence
-    ? { hasMore: true, nextOffset: response.oldest_sequence }
+    ? { hasMore: true, nextOffset: response.oldest_sequence, ...(compact ? { compact: true } : {}) }
     : null)
 
   return {

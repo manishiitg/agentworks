@@ -451,3 +451,75 @@ func TestBuildActiveSessionInfoSummaryStillAdoptsTrackedExecutionIdentityWhenPre
 		t.Fatalf("preset_name = %q, want the tracked execution's value to win", summary.PresetName)
 	}
 }
+
+func TestGetSessionEventsCompactViewIsOptInAndDefaultUnchanged(t *testing.T) {
+	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := events.NewEventStore(2)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	const sessionID = "compact-chat-session"
+	if err := store.SetSessionPersistenceClass(sessionID, events.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	for turn := 1; turn <= 3; turn++ {
+		store.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("u%d", turn), Type: "user_message", Timestamp: time.Now()})
+		for i := 0; i < 3; i++ {
+			store.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("t%d-%d", turn, i), Type: "tool_call_end", Timestamp: time.Now()})
+		}
+		store.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("a%d", turn), Type: "unified_completion", Timestamp: time.Now()})
+	}
+	api := &StreamingAPI{
+		eventStore:         store,
+		runtimeCoordinator: NewRuntimeCoordinator(),
+		activeSessions: map[string]*ActiveSessionInfo{
+			sessionID: {SessionID: sessionID, Status: "completed", CreatedAt: time.Now()},
+		},
+	}
+	request := func(query string) GetEventsResponse {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/sessions/"+sessionID+"/events?durable_chat=1&"+query, nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": sessionID})
+		w := httptest.NewRecorder()
+		api.handleGetSessionEvents(w, req)
+		if w.Code != 200 {
+			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+		}
+		var response GetEventsResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	ids := func(response GetEventsResponse) []string {
+		out := []string{}
+		for _, event := range response.Events {
+			out = append(out, event.ID)
+		}
+		return out
+	}
+
+	full := request("limit=100")
+	if len(full.Events) != 15 {
+		t.Fatalf("default path must keep every row: %v", ids(full))
+	}
+	again := request("limit=100&view=other")
+	fullEvents, _ := json.Marshal(full.Events)
+	againEvents, _ := json.Marshal(again.Events)
+	if string(fullEvents) != string(againEvents) || full.HasMore != again.HasMore || full.OldestSequence != again.OldestSequence {
+		t.Fatal("an unknown view value must leave the default response unchanged")
+	}
+
+	compact := request("limit=40&view=messages")
+	want := []string{"u1", "a1", "u2", "a2", "u3", "t3-0", "t3-1", "t3-2", "a3"}
+	if fmt.Sprint(ids(compact)) != fmt.Sprint(want) || compact.HasMore || compact.OldestSequence != 1 || compact.LatestSequence != 15 {
+		t.Fatalf("compact = %v hasMore=%v oldest=%d latest=%d", ids(compact), compact.HasMore, compact.OldestSequence, compact.LatestSequence)
+	}
+	older := request("limit=2&view=messages&before_sequence=11")
+	// the page is cut at the turn start, and u1/a1 remain behind it.
+	if fmt.Sprint(ids(older)) != fmt.Sprint([]string{"u2", "a2"}) || !older.HasMore {
+		t.Fatalf("older = %v hasMore=%v", ids(older), older.HasMore)
+	}
+}

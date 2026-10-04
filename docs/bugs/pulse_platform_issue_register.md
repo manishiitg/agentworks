@@ -1,3 +1,10 @@
+## Lighter chat restore and opening at the latest message — PLAT-466
+
+[PLAT-466](pulse_platform/frontend-chat/plat-466.md), see ticket for state:
+interactive chat restore returns the latest turn whole and older turns as
+messages only (`view=messages`), paged over that view; a transcript that is
+still mounting never saves a reading position, so a chat opens at the bottom.
+
 ## Product icon on the first chat tab — PLAT-465
 
 [PLAT-465](pulse_platform/frontend-chat/plat-465.md), fixed on `main`, not deployed:

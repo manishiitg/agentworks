@@ -19,6 +19,17 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Chat restore returns older turns as messages only
+
+Chat restore returns older turns as messages only; tool calls are a debugging
+aid kept for the latest turn, not a supported feature, and may be removed from
+the UI. The latest turn (a running one too) arrives complete, older turns as
+user and assistant messages plus questions, approvals and errors, paged over
+that view (`view=messages`); nothing is deleted. A chat opens at its latest
+message unless the reader deliberately scrolled up; a position seen while the
+transcript was still mounting is never saved.
+Ticket: [PLAT-466](bugs/pulse_platform/frontend-chat/plat-466.md).
+
 ### 2026-10-04 — Quick switching exposes navigation by click, and chat tabs identify their product
 
 Keep running work first, but append browse lists, products and allowed menus
