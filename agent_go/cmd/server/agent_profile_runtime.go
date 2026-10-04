@@ -344,9 +344,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewRoot := ""
 	folderForClean := selectedFolder
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// A Code resolves in the caller's own tree, or under an owner who
-		// shared it with them; turn access (owner/co-owner/editor) was
-		// checked by conversationTargetAccess. Like a Crew, a Code always runs
+		// A Code is private to its owner and resolves only in the caller's own
+		// tree (sharing is a removed legacy: code_shares.go answers 410);
+		// turn access was checked by conversationTargetAccess. Like a Crew, a Code always runs
 		// with native agent tools: there is no switch (owner decision
 		// 2026-09-29; the CLIs' own reads are not sandboxed yet, PLAT-364
 		// part 2).
@@ -360,8 +360,8 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		crewOwned = project.OwnedByCaller
 		crewRoot = project.Binding.WorkspacePath
-		// Everyone who may chat with a Code (owner, co-owner, editor) gets
-		// native tools; viewers never reach this turn.
+		// Only the owner reaches a Code turn (it is owner-only, see above) and
+		// gets native tools.
 		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
 		}
