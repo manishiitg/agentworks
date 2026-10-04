@@ -4,7 +4,7 @@
 // service account, at the end of every deploy of a slot-enabled server and on its own (`./deploy.sh slotcheck
 // <server>`), and exits 1 when any check fails. See workspace/slotcheck.
 //
-//	slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN]
+//	slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN] [--level basic|full]
 //
 // The slotctl allow-list, launcher and slot table are the ones the service uses: AGENTWORKS_SLOTCTL_CONFIG,
 // AGENTWORKS_SLOTCTL and AGENTWORKS_SLOTS_FILE (defaults as in the slots package).
@@ -26,10 +26,11 @@ func main() {
 	docs := flag.String("docs", "", "the workspace docs root the service uses")
 	app := flag.String("app", "", "the product folder holding releases/")
 	runner := flag.String("runner", "", "the Landlock launcher (default: video-studio-landlock-runner beside this program)")
+	level := flag.String("level", slotcheck.LevelBasic, "basic (every deploy) or full (adds the live tmux, helper and workflow-chat checks)")
 	testSlot := flag.String("test-slot", "", "the dedicated test slot (default: the highest-numbered unassigned slot)")
 	flag.Parse()
 	if *docs == "" {
-		fmt.Fprintln(os.Stderr, "usage: slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN]")
+		fmt.Fprintln(os.Stderr, "usage: slotcheck --docs <docs root> --app <product folder> [--runner <launcher>] [--test-slot slotNN] [--level basic|full]")
 		os.Exit(2)
 	}
 	if *runner == "" {
@@ -66,6 +67,8 @@ func main() {
 		TestSlot:      *testSlot,
 		Run:           slotcheck.RunThroughShellTool,
 		RunCommand:    slotcheck.RunCommandThroughShellTool,
+		Level:         *level,
+		TmuxControl:   slotcheck.TmuxControlAsSlot,
 		Lookup:        slotcheck.LookupAccount,
 	})
 	fmt.Print(slotcheck.Format(rows))

@@ -135,6 +135,14 @@ echo "==> 2. self-test, fixed layout"
 expect 0 "self-test passes on the fixed layout" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP"
 as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" || true
 
+echo "==> 2b. self-test, FULL level (PLAT-480): live tmux on the test slot, helpers, workflow-chat refusals"
+expect 0 "full-level self-test passes" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full
+as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full | grep -E '^(PASS|FAIL|SKIP) +(tmux-socket-unreachable|slot-python-helpers|wf-)' || true
+# A leak must fail it: make the app's environment file world-readable AND outside nothing: the workflow chat must still be refused by Landlock.
+chmod 0644 "$APP/.env"
+expect 0 "full-level self-test still refuses the app .env by the sandbox, not by file mode" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP" --level full
+chmod 0600 "$APP/.env"
+
 echo "==> 3. self-test, releases/ 0700 (RTS layer 2)"
 chmod 0700 "$APP/releases"
 expect 1 "self-test fails when releases/ is 0700" -- as_vs "$REL/bin/slotcheck" --docs "$DOCS" --app "$APP"

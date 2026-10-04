@@ -81,7 +81,11 @@ type Options struct {
 	Run      func(context.Context, Probe) (stdout, stderr string, err error)
 	// RunCommand runs one shell command for a probe the way Run does. When nil the confinement (deny) checks are skipped.
 	RunCommand func(context.Context, Probe, string) (stdout, stderr string, err error)
-	Lookup     func(name string) (Account, bool)
+	// Level is LevelBasic (default, what every deploy runs) or LevelFull (adds full.go's checks).
+	Level string
+	// TmuxControl runs tmux as a slot account (the live tmux check of the full level).
+	TmuxControl TmuxFunc
+	Lookup      func(name string) (Account, bool)
 }
 
 // Kinds of folder a slotted command is proven in.
@@ -175,6 +179,9 @@ func Check(ctx context.Context, opts Options) []Row {
 			rows = append(rows, runProbe(ctx, opts, cfg, probe))
 		}
 		rows = append(rows, denyChecks(ctx, opts, docs, cfg.SlotRunRoot, probes)...)
+	}
+	if opts.Level == LevelFull {
+		rows = append(rows, fullChecks(ctx, opts, cfg, docs, workflow, testSlot)...)
 	}
 	if releases := filepath.Join(opts.AppDir, "releases"); opts.AppDir != "" {
 		if info, err := os.Stat(releases); err == nil && info.Mode().Perm()&0o004 != 0 {

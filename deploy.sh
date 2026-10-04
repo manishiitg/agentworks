@@ -19,7 +19,7 @@ Servers:
   all-hetzner           excellence, confida and sparkquill in sequence from ONE build (never dominion)
   dominion              trader.tectonicmarkets.com (isolated Hetzner deployment)
   report [server]       how each server differs from the standard runtime profile (read-only)
-  slotcheck <server>    the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
+  slotcheck <server> [basic|full]   the slot self-test of a deployed server (read-only; PLAT-478): a real slotted `pwd` per slot in the
                         docs root, a workflow, a Crew and a Code project, the slotctl/slot table/launcher checks, and the
                         secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
   build [--force]       build a release of the current main of the three repositories on the build host; deploys nothing
@@ -37,6 +37,10 @@ server only copies and activates it after verifying its manifest (architecture, 
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of main's head
                         (it must already be on main); for a release that leaves out work still landing
+  DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
+                        slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
+                        command may reach, the Python helpers, and the refusals a workflow chat must get (PLAT-480). Runs on the
+                        unassigned TEST slot only. Example: DEPLOY_SECURITY_CHECKS=basic ./deploy.sh confida
   DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST (116.202.210.102), BUILD_PORT (2299), BUILD_USER (root), BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds)
 
@@ -53,6 +57,13 @@ reject_extra_arguments() {
     exit 2
   fi
 }
+
+# The slot self-test level of a deploy (PLAT-480): full by default, DEPLOY_SECURITY_CHECKS=basic to skip the extended checks.
+SECURITY_CHECKS_LEVEL="${DEPLOY_SECURITY_CHECKS:-full}"
+case "$SECURITY_CHECKS_LEVEL" in
+  basic|full) ;;
+  *) echo "DEPLOY_SECURITY_CHECKS must be basic or full (got '$SECURITY_CHECKS_LEVEL')" >&2; exit 2 ;;
+esac
 
 # Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
 # shellcheck disable=SC1091
@@ -109,7 +120,7 @@ deploy_rts() {
   fi
   # Keep builds below ~3/4 of a 4 GB host (RTS_BUILD_MEMORY_MAX overrides, e.g. 6G on a larger instance) and two CPU
   # cores while tests keep running; swap absorbs the rest, so a build is slower, not killed.
-  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 }
 
 # Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
@@ -301,7 +312,7 @@ fi
 # DEPLOY_DRAIN_SECONDS is how long the switch-over waits for running agent turns to finish (build-and-activate.sh's
 # drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
 # DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
-"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+"${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=DRAIN_TIMEOUT_SECONDS='${DEPLOY_DRAIN_SECONDS:-0}' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=6G -p CPUQuota=300% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
 
 echo "==> [$PRODUCT] Verifying"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
@@ -437,12 +448,14 @@ fi
 # ./deploy.sh slotcheck <server>: run the deployed release's slot self-test (deploy/common/slotcheck.sh) as the service
 # account. Read-only; changes nothing on the server.
 if [[ "$SERVER" == slotcheck ]]; then
-  [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida|sparkquill>" >&2; exit 2; }
+  [[ $# -ge 1 && $# -le 2 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida|sparkquill> [basic|full]" >&2; exit 2; }
+  check_level="${2:-full}"
+  case "$check_level" in basic|full) ;; *) echo "slotcheck level must be basic or full (got '$check_level')" >&2; exit 2 ;; esac
   case "$1" in
     rts|video-studio)
       HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:-RTS}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:-video-studio-prod}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
       exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
-        "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio"
+        "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
       ;;
     excellence|confida|sparkquill)
       product="$1"; [[ "$product" == excellence ]] && product=agents
@@ -451,7 +464,7 @@ if [[ "$SERVER" == slotcheck ]]; then
         source "$REPO_ROOT/deploy/rootless-linux/products/$product/product.env"
         identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
         exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
-          "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product"
+          "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
       )
       ;;
     *) echo "slotcheck: unknown server $1 (rts, excellence, confida, sparkquill)" >&2; exit 2 ;;

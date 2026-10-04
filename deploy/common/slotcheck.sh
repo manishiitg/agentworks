@@ -18,17 +18,19 @@
 # It changes nothing on the server.
 set -uo pipefail
 
-APP="" DOCS="" PRODUCT="" RELEASE=""
+APP="" DOCS="" PRODUCT="" RELEASE="" LEVEL="${SECURITY_CHECKS_LEVEL:-basic}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP="$2"; shift 2 ;;
     --docs) DOCS="$2"; shift 2 ;;
     --product) PRODUCT="$2"; shift 2 ;;
     --release) RELEASE="$2"; shift 2 ;;
-    *) echo "usage: slotcheck.sh --app <app> --docs <docs root> --product <product> [--release <release dir>]" >&2; exit 2 ;;
+    --level) LEVEL="$2"; shift 2 ;;
+    *) echo "usage: slotcheck.sh --app <app> --docs <docs root> --product <product> [--release <release dir>] [--level basic|full]" >&2; exit 2 ;;
   esac
 done
 [[ -n "$APP" && -n "$DOCS" && -n "$PRODUCT" ]] || { echo "usage: slotcheck.sh --app <app> --docs <docs root> --product <product> [--release <release dir>]" >&2; exit 2; }
+[[ "$LEVEL" == basic || "$LEVEL" == full ]] || { echo "slotcheck: --level must be basic or full (got $LEVEL)" >&2; exit 2; }
 [[ -n "$RELEASE" ]] || RELEASE="$(readlink -f "$APP/current")"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
@@ -83,7 +85,7 @@ case "$slots_mode" in
       echo "FAIL slotcheck-binary: $RELEASE/bin/slotcheck is missing -- fix: deploy a release built with deploy/common/slots.sh slots_build"
       rc=1
     else
-      env -i PATH=/usr/bin:/bin HOME="${HOME:-/}" ${ENV_LINES[@]+"${ENV_LINES[@]}"} "$RELEASE/bin/slotcheck" --docs "$DOCS" --app "$APP" || rc=$?
+      env -i PATH=/usr/bin:/bin HOME="${HOME:-/}" ${ENV_LINES[@]+"${ENV_LINES[@]}"} "$RELEASE/bin/slotcheck" --docs "$DOCS" --app "$APP" --level "$LEVEL" || rc=$?
     fi
     ;;
   *)

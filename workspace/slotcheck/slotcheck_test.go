@@ -360,3 +360,92 @@ func TestDenyChecksNeverCountALauncherThatDidNotStartAsARefusal(t *testing.T) {
 		}
 	}
 }
+
+func fullRows(rows []Row) map[string]Row {
+	out := map[string]Row{}
+	for _, r := range rows {
+		if strings.HasPrefix(r.Check, "wf-") || r.Check == "tmux-socket-unreachable" || r.Check == "slot-python-helpers" {
+			out[r.Check] = r
+		}
+	}
+	return out
+}
+
+func fullLayout(t *testing.T, leak string) *layout {
+	l := newLayout(t)
+	l.opts.Level = LevelFull
+	if err := os.WriteFile(filepath.Join(l.docs, "Workflow", "wf1", "workflow.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustMkdir(t, filepath.Join(l.docs, "Workflow", "wf2"))
+	if err := os.WriteFile(filepath.Join(l.docs, "Workflow", "wf2", "workflow.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l.opts.RunCommand = func(_ context.Context, _ Probe, command string) (string, string, error) {
+		if leak != "" && strings.Contains(command, leak) {
+			return "started\nrc=0\n", "", nil
+		}
+		if strings.Contains(command, "agentworks_output.py") {
+			return "started\nrc=0\n", "", nil
+		}
+		return "started\nrc=1\n", "", nil
+	}
+	l.opts.TmuxControl = func(_ context.Context, _ string, _ string, args ...string) (string, error) {
+		if len(args) > 0 && args[0] == "list-sessions" {
+			return "slotcheck-1: 1 windows\n", nil
+		}
+		return "", nil
+	}
+	return l
+}
+
+func TestFullLevelPassesWhenEverythingIsRefusedAndHelpersWork(t *testing.T) {
+	l := fullLayout(t, "")
+	var session string
+	l.opts.TmuxControl = func(_ context.Context, _ string, _ string, args ...string) (string, error) {
+		for i, a := range args {
+			if a == "-s" && i+1 < len(args) {
+				session = args[i+1]
+			}
+		}
+		if len(args) > 0 && args[0] == "list-sessions" {
+			return session + ": 1 windows\n", nil
+		}
+		return "", nil
+	}
+	got := fullRows(Check(context.Background(), l.opts))
+	for _, name := range []string{"tmux-socket-unreachable", "slot-python-helpers", "wf-write-outside", "wf-read-other-workflow", "wf-list-users", "wf-list-state", "wf-read-env", "wf-app-tmux-socket"} {
+		if got[name].Status != Pass {
+			t.Errorf("%s = %+v, want PASS", name, got[name])
+		}
+	}
+}
+
+func TestFullLevelFailsWhenALeakIsReal(t *testing.T) {
+	for check, marker := range map[string]string{"wf-read-env": ".env", "wf-app-tmux-socket": "/tmp/tmux-", "wf-list-users": "_users"} {
+		l := fullLayout(t, marker)
+		got := fullRows(Check(context.Background(), l.opts))
+		if got[check].Status != Fail {
+			t.Errorf("%s with a leak in %q = %+v, want FAIL", check, marker, got[check])
+		}
+	}
+}
+
+func TestFullLevelDoesNotCountADeadTmuxServerAsProof(t *testing.T) {
+	l := fullLayout(t, "")
+	l.opts.TmuxControl = func(_ context.Context, _ string, _ string, _ ...string) (string, error) {
+		return "no server running", nil
+	}
+	got := fullRows(Check(context.Background(), l.opts))
+	if got["tmux-socket-unreachable"].Status != Fail || !strings.Contains(got["tmux-socket-unreachable"].Detail, "nothing was proven") {
+		t.Fatalf("a test server that is not alive proves nothing: %+v", got["tmux-socket-unreachable"])
+	}
+}
+
+func TestBasicLevelRunsNoFullChecks(t *testing.T) {
+	l := fullLayout(t, "")
+	l.opts.Level = ""
+	if got := fullRows(Check(context.Background(), l.opts)); len(got) != 0 {
+		t.Fatalf("basic level must not run the extended checks: %v", got)
+	}
+}

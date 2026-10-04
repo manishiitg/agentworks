@@ -5,11 +5,14 @@ package slotcheck
 import (
 	"bytes"
 	"context"
+	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
+	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 )
 
 // RunThroughShellTool runs `pwd` for a probe exactly as the workspace shell handler runs a folder-guarded command for
@@ -72,4 +75,24 @@ func LookupAccount(name string) (Account, bool) {
 		}
 	}
 	return account, true
+}
+
+// TmuxControlAsSlot runs `tmux -S <socket> <args...>` as the slot through sudo + slotctl, like the platform's tmux
+// front-end. The slot's login shell is nologin, so tmux gets SHELL=/bin/sh to run a session's command.
+func TmuxControlAsSlot(ctx context.Context, slot, socket string, args ...string) (string, error) {
+	cfg, err := slots.LoadExecConfig(slots.ConfigPath())
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, slots.TmuxPath, append([]string{"-S", socket}, args...)...)
+	cmd.Dir = filepath.Dir(socket)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "SHELL=/bin/sh", "HOME=" + cfg.SlotStateDir(slot)}
+	wrapped, err := slots.WrapCommand(ctx, cmd, slot)
+	if err != nil {
+		return "", err
+	}
+	out, err := wrapped.CombinedOutput()
+	return string(out), err
 }
