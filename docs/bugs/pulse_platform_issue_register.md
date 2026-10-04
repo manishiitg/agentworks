@@ -2,6 +2,12 @@
 
 [PLAT-471](pulse_platform/security-sandbox/plat-471.md), fixed on main, not deployed; GitHub issue #269. The first Vault install granted nothing, so every run selecting a shared secret was refused. The Platform group is now granted every existing and newly registered shared secret and MCP server (gateway start check plus host-side registration of environment-defined and managed secret names); admin removals persist in `platformRevoked`; servers without Vault behave as before Vault.
 
+## Workflow chat panel stays disconnected after a backend restart — PLAT-472
+
+[PLAT-472](pulse_platform/frontend-chat/plat-472.md), fixed on `main`, needs a restart:
+the UI-control scope of a live Builder chat is restored from the session after a
+restart, so the agent no longer sees browser_disconnected until its next turn.
+
 ## Unified Google account UI for company and named OAuth apps — PLAT-470
 
 [PLAT-470](pulse_platform/integrations/plat-470.md), fixed on main, not deployed:

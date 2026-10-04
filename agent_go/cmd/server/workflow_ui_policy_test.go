@@ -107,3 +107,34 @@ func TestWorkspacePresentationDoesNotGrantConnectionWriteAccess(t *testing.T) {
 		}
 	}
 }
+
+// After a restart the page cannot connect its panel to a live Builder chat until the chat's next
+// turn unless the workflow is restored from the session (the agent saw browser_disconnected).
+func TestRestoredWorkflowUIScopeForOnlyRestoresAnInteractiveBuilderChat(t *testing.T) {
+	builder := func(mod func(*ActiveSessionInfo)) *ActiveSessionInfo {
+		a := &ActiveSessionInfo{SessionID: "s1", AgentMode: "workflow_phase", WorkspacePath: "Workflow/website-aeo/"}
+		if mod != nil {
+			mod(a)
+		}
+		return a
+	}
+	cases := []struct {
+		name    string
+		session string
+		active  *ActiveSessionInfo
+		want    string
+	}{
+		{"interactive builder chat", "s1", builder(nil), "Workflow/website-aeo"},
+		{"unknown session", "s1", nil, ""},
+		{"not a workflow phase", "s1", builder(func(a *ActiveSessionInfo) { a.AgentMode = "chat" }), ""},
+		{"not under Workflow/", "s1", builder(func(a *ActiveSessionInfo) { a.WorkspacePath = "Crew/abc" }), ""},
+		{"bot chat", "s1", builder(func(a *ActiveSessionInfo) { a.BotPlatform = "slack" }), ""},
+		{"child session", "s1", builder(func(a *ActiveSessionInfo) { a.ParentSessionID = "p" }), ""},
+		{"scheduled run", "schedule-cron--job_1", builder(func(a *ActiveSessionInfo) { a.TriggeredBy = "cron" }), ""},
+	}
+	for _, tc := range cases {
+		if got := restoredWorkflowUIScopeFor(tc.session, tc.active); got != tc.want {
+			t.Errorf("%s: scope = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

@@ -37,6 +37,11 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 		if restored := restoredWorkUIScope(user, session, active); restored != "" {
 			b.setScope(session, restored)
 			workspace = restored
+		} else if restored := restoredWorkflowUIScopeFor(session, active); restored != "" {
+			if access, _ := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), restored); access != WorkflowAccessNone {
+				b.setScope(session, restored)
+				workspace = restored
+			}
 		}
 	}
 	isWorkflow := strings.HasPrefix(workspace, "Workflow/")
