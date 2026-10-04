@@ -3600,10 +3600,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   <button
                     type="button"
                     onClick={onNewChat}
-                    disabled={isTurnInFlight}
                     className="group/newchat inline-flex h-7 items-center rounded-md border border-border bg-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
                     aria-label="Start a new chat"
-                    title={isTurnInFlight ? 'Wait for the current response or stop it first' : 'Start a new chat'}
+                    title={isTurnInFlight ? 'Stop this chat and start a new one' : 'Start a new chat'}
                     data-testid="chat-new-chat"
                   >
                     <Plus className="h-3.5 w-3.5 shrink-0" />

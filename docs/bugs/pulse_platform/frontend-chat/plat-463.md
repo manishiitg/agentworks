@@ -23,6 +23,11 @@ Studio already show the composer's "New chat" button; the workflow chat did not.
   tab a new session; the old conversation stays in Previous chats because each
   Builder session keeps its own transcript file.
 
+- `ChatInput.tsx`: the button is no longer disabled while a turn is in flight (it
+  was greyed out on a stuck chat, the case it is needed for). New chat already stops
+  the old session first; the tooltip says "Stop this chat and start a new one".
+  This applies to every product that shows the button (Code, Video Studio, Dominion).
+
 ## Left
 
 - Not enabled in SparkQuill chats (parent/child) on purpose. MCP gateway keeps its
