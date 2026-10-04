@@ -1,3 +1,7 @@
+## Build a release once, deploy everywhere — PLAT-426
+
+[PLAT-426](pulse_platform/scheduler-runs/plat-426.md), P3, open (planned). Deploys take about 5 min on the Hetzner box and 7 min on RTS because every server builds the same source.
+
 ## Provider switch: next sends rejected with 409 delivery_uncertain — PLAT-425
 
 [PLAT-425](pulse_platform/chat-reliability/plat-425.md), P1, fixed on `main`; deploy pending. A gone retained terminal now starts a fresh turn instead of 409.
