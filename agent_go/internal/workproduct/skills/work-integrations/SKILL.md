@@ -29,8 +29,8 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
   First use `manage_global_secret(action="list_groups")` to discover actual group IDs.
   Use `list_secrets(source_workflow_path="EXACT_PATH")` when copying from another
   accessible project, then pass the same `source_workflow_path` to the share action.
-  Ask which groups should receive access when the user's intent is unclear;
-  do not default to Platform. Sharing keeps the source and existing attachments
+  Explain that new shared secrets inherit Platform access by default, which administrators can revoke.
+  Ask which additional groups should receive access when the user's intent is unclear. Sharing keeps the source and existing attachments
   intact, never overwrites a Vault name, and never returns plaintext. The two
   copies rotate independently. The legacy `action="promote"` removes the source
   copy; prefer share for requests to share a credential.

@@ -24,7 +24,9 @@ warning remains available under **Removing access**.
 In the shared project Secrets list, Vault administrators with project write access
 can click the **Share to Vault** icon beside a stored secret. Choose a Vault name
 and one or more existing groups, then share. No group is preselected, including
-Platform. Ordinary project users cannot publish shared values or grant access.
+Platform. Newly registered shared secrets also inherit Platform access under the
+installation default; administrators can revoke that grant in Vault. Ordinary
+project users cannot publish shared values or grant access.
 This works through the same component in Crew, Code, Goals, workflows, Relays,
 Video Studio and SparkQuill wherever the project secrets list is used.
 
@@ -68,6 +70,12 @@ attached references and live tool schemas, rather than legacy provider-generated
 skills left in the project. The native workflow and Crew prompts use one shared
 instruction for that boundary. There is no reusable per-user secret bucket.
 
+AGY confined native sessions must grant read/execute access to the programs and
+file arguments in their private MCP catalog, just like the other adapters. Without
+that adapter grant, a configured bridge cannot start and the model sees native
+tools without platform discovery. This does not grant access to credential files
+mentioned in catalog environment values or to the programs' enclosing folders.
+
 ## Built-in platform group
 
 Vault installation creates **Platform**, a built-in group for sharing MCP tools
@@ -77,8 +85,10 @@ Vault binary and calls its bootstrap mode with the configured project and state
 folders. Stop an existing Vault service before running the installer so the
 single-writer database lease is available.
 
-Platform starts with no grants. Administrators assign specific MCP tools, servers,
-and secrets in Access; projects still select which shared resources they use.
+Platform automatically receives existing and newly registered shared secrets and
+platform MCP servers. Administrators can restrict access in Vault; explicit
+revocations survive startup and synchronization. Projects still select which
+shared resources they use. See `vault-current-state.md` for the current defaults.
 All active platform users are automatic members. The host validates account
 status before a service-authenticated runtime request binds a new platform
 identity. Disabled accounts cannot use this path. Browser-supplied identity

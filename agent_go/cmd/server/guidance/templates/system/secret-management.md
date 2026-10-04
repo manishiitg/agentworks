@@ -44,8 +44,10 @@ inspect its schema, and call `action="list_groups"` to list recipient groups.
 For an existing project secret, use `action="share", name="SOURCE_NAME",
 group_ids=["GROUP_ID"]` with optional `vault_name="VAULT_NAME"`. This copies the
 value inside the backend, keeps the project copy and attachments unchanged,
-rejects existing Vault names, and grants only the chosen groups. Ask about groups
-when the user's intent is unspecified; never default to Platform. Copies rotate
+rejects existing Vault names, and grants the chosen groups. New shared secrets
+also inherit the built-in Platform grant unless an administrator revokes it.
+Explain this platform-wide default before sharing; ask about additional groups
+when the user's intent is unspecified. Copies rotate
 independently. The shared UI offers **Share to Vault** with the same checks.
 
 To share from another accessible project, first call
