@@ -248,40 +248,6 @@ func TestUpdateStepConfigDoesNotExposeRetiredLearningLock(t *testing.T) {
 	}
 }
 
-func TestBackgroundTaskGetsWorkshopMutationToolDefinitions(t *testing.T) {
-	workspacePath := t.TempDir()
-	base := &orchestrator.BaseOrchestrator{}
-	base.SetWorkspacePath(workspacePath)
-	iwm := &InteractiveWorkshopManager{
-		controller:   &StepBasedWorkflowOrchestrator{BaseOrchestrator: base},
-		stepRegistry: NewWorkshopStepRegistry(),
-	}
-	definitions, err := iwm.prepareBackgroundWorkshopToolDefinitions(nil)
-	if err != nil {
-		t.Fatalf("prepare full background workshop toolset: %v", err)
-	}
-
-	got := make(map[string]bool, len(definitions))
-	for _, definition := range definitions {
-		got[definition.Name] = true
-	}
-	// A background child needs the same workflow-mutation surface as the
-	// workshop parent. Pulse persistence and durable human-input tools come
-	// from the inherited WorkspaceTools bundle; these are the native workshop
-	// definitions that used to disappear completely.
-	for _, name := range []string{
-		"get_workflow_command_guidance",
-		"update_step",
-		"update_step_config",
-		"update_schedule",
-		"run_in_background",
-	} {
-		if !got[name] {
-			t.Errorf("background workshop definitions missing %q", name)
-		}
-	}
-}
-
 func TestRunningStatusToolsShareRapidPollGuard(t *testing.T) {
 	agent := newWorkshopDefinitionDraft()
 	workspacePath := t.TempDir()

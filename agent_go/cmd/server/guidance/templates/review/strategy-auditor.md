@@ -38,7 +38,7 @@ and the claim is refused, report the collision and stop without writing items.
    (`get_pulse_state(view="goal_work")`), follow up items past their `check_at`,
    find the gap, and do 1–3 bounded items now. Record each with
    `record_pulse_goal_work`.
-3. Perform the review in this current background agent. This manual path is not
+3. Perform the review yourself in this turn. This manual path is not
    runtime-restricted, so hold the permission levels yourself: write prepared
    work only under `pulse/work/<YYYY-MM-DD>/`; run existing steps only when Run
    is auto and the plan has no due Plan Drift; never post, send, contact anyone,

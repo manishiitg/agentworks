@@ -2,7 +2,6 @@ package step_based_workflow
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 
@@ -58,37 +57,5 @@ func TestMissingBackgroundSkillsDeduplicatesChildAndParentIdentity(t *testing.T)
 	}
 	if names := backgroundSkillNames([]*llmtypes.Skill{inheritedReference, inheritedCustom, inheritedCustom}); strings.Join(names, ",") != "builder-reference,custom-analysis" {
 		t.Fatalf("background skill names = %v", names)
-	}
-}
-
-func TestRunInBackgroundPassesBuilderSkillSnapshotToBothAgentKinds(t *testing.T) {
-	source, err := os.ReadFile("interactive_workshop_manager.go")
-	if err != nil {
-		t.Fatalf("read interactive workshop manager: %v", err)
-	}
-	text := string(source)
-	for _, want := range []string{
-		"inheritedSkills := mcpAgent.AttachedSkills()",
-		"runBackgroundOrchestratorAgent(execCtx, name, instruction, inheritedSkills)",
-		"runBackgroundTaskAgentSequence(execCtx, name, instruction, messageSequence, inheritedSkills)",
-		"applyInheritedBackgroundSkills(ctx, baseAgent, inheritedSkills)",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("run_in_background skill inheritance is missing %q", want)
-		}
-	}
-
-	factorySource, err := os.ReadFile("controller_agent_factory.go")
-	if err != nil {
-		t.Fatalf("read controller agent factory: %v", err)
-	}
-	factoryText := string(factorySource)
-	for _, want := range []string{
-		"backgroundAgentSkillsFromContext(ctx)",
-		"applyInheritedBackgroundSkills(ctx, baseAgent, inherited)",
-	} {
-		if !strings.Contains(factoryText, want) {
-			t.Errorf("background todo orchestrator skill inheritance is missing %q", want)
-		}
 	}
 }

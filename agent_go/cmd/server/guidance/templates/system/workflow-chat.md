@@ -1,6 +1,6 @@
 # Workflow chat operations
 
-{{if eq .WorkshopMode "workshop"}}Before plan edits, read `references/plan-editing-tools.md` in this bundle for consolidated tools and typed payloads. Use the design-plan checklist with `run_in_background(access_mode="read_only")` for a separate design reviewer.{{end}}
+{{if eq .WorkshopMode "workshop"}}Before plan edits, read `references/plan-editing-tools.md` in this bundle for consolidated tools and typed payloads. Use the design-plan checklist for a read-only design review, yourself or through one of your own subagents.{{end}}
 
 Read before running, monitoring, diagnosing, reviewing, or changing a workflow.
 Current mode, granted tools and explicit user authorization remain authoritative.

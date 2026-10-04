@@ -15,12 +15,10 @@ A workflow always resolves these roles:
   Also Pulse upkeep: the Plan Drift, Technical and Architecture review agents
   and knowledgebase maintenance run on the Medium tier.
 - **Low execution**: deterministic validation and mature routine work.
-- **Pulse** (`pulse_llm`): Goal Work only -- the strategic_review agent a
-  Pulse turn launches with `run_in_background`, which does work toward the
-  user's goals. It starts its own process, which is where a different model
-  can actually take effect. Use the strongest model here; upkeep reviews use
-  the cheaper Medium tier. Not the Gate, worklist,
-  report or notification turns themselves: those are Builder.
+- **Pulse** (`pulse_llm`): the Pulse review turns, including Goal Work, run
+  in the Pulse conversation itself on the retained coding CLI, so they use that
+  conversation's model; a retained CLI cannot switch model mid-conversation.
+  Not the Gate, worklist, report or notification turns: those are Builder.
 
 The config has two modes:
 

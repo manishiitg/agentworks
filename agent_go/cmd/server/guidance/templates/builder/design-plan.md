@@ -8,7 +8,7 @@ When a parent Pulse prompt explicitly loads this guidance as a read-only checkli
 
 ## PHASE 1 — COMPREHENSIVE CRITICAL REVIEW
 
-Use this checklist directly when you are already a parent review executor. Otherwise, call `run_in_background(name="Read-only plan review", access_mode="read_only", instruction=...)` once with `instruction` containing this checklist, the user's focus, and an explicit read-only restriction: do not edit artifacts, invoke mutation tools, run workflow/evaluation steps, or persist findings. The parent owns findings and any later user-authorized edits. This reviews for plan structure, step descriptions, context flow, validation, skills, learnings, saved scripts, knowledgebase notes, `db/db.sqlite` contracts, reports, variables, evaluation coverage, portability, and alignment with `soul/soul.md` objective and success criteria.
+Do this review yourself with this checklist and the user's focus. It is read-only: do not edit artifacts, invoke mutation tools, run workflow/evaluation steps, or persist findings. You own the findings and any later user-authorized edits. You may give parts of it to your own subagents with the same read-only restriction, then confirm nothing changed. This reviews for plan structure, step descriptions, context flow, validation, skills, learnings, saved scripts, knowledgebase notes, `db/db.sqlite` contracts, reports, variables, evaluation coverage, portability, and alignment with `soul/soul.md` objective and success criteria.
 
 The reviewer returns analysis, never HTML: `module` (see the attribution rule above — `technical_review`, `strategic_review`, or the manual `goal_advisor` alias), `verdict`,
 `next_check`, decisions that look sound, and ordered findings. Each finding needs
@@ -18,11 +18,11 @@ evidence, bounded `recommended_fix`, verification, and
 
 Do not load presentation guidance for the reviewer or ask it to format cards.
 
-`run_in_background` returns an `execution_id`. Capture it. Do not babysit it with `sleep`, repeated `list_executions`, or repeated `query_step` calls. If it is still running, stop and rely on `[AUTO-NOTIFICATION]` to resume. Do not continue to Phase 2 or write the review log until the review completes and you have its findings.
+Do not continue to Phase 2 or write the review log until the review is complete and you have its findings.
 
 Treat the completed review as evidence, not as the final answer. Group its real findings by severity, preserve decisions it found sound, and use those findings in the design analysis below. Do not repeat the same artifact scan unless you need a specific fact to draw the map or explain a recommendation.
 
-The read-only reviewer never writes persistent state; that is deliberate. When its completion notification arrives, the command is not finished: Phase 2 and the coordinating agent's typed Pulse finding write below still remain. Do not report the command complete merely because the read-only reviewer completed.
+The read-only reviewer never writes persistent state; that is deliberate. When the read-only review is complete, the command is not finished: Phase 2 and your typed Pulse finding write below still remain. Do not report the command complete merely because the read-only review is done.
 
 ## PHASE 2 — DESIGN SYNTHESIS
 

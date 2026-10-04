@@ -151,7 +151,7 @@ func TestFocusedScheduledPulseReferencesStayComplete(t *testing.T) {
 		},
 		"pulse-review-fixer": {
 			wants: []string{
-				"exactly once", "durable evidence", "automatic-notification prose", `get_pulse_state(view="backlog", detail="compact")`,
+				"exactly once", "durable evidence", "from prose", `get_pulse_state(view="backlog", detail="compact")`,
 				"normal Workflow Builder tools", "terminal", "cannot erase or block other due work", "priority-ordered Fix queue",
 				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "read-only access justified per step",
 				"proposal_only", "there is no evidence-wait route", "strategic-proposal-", "No mandatory Markdown checkpoint",
@@ -203,7 +203,7 @@ func TestManualPulseCommandsKeepRunSetupReviewAndFixBoundariesSeparate(t *testin
 		"ops-review": {
 			"STANDALONE TECHNICAL REVIEW — CORRECTNESS FOCUS",
 			"does the current approved design",
-			"Do not call",
+			"Do not launch another reviewer",
 			"edit files or configuration",
 			"structural improvements to Architecture",
 			"A no-issue conclusion is valid",
@@ -279,7 +279,7 @@ func TestStandaloneOpsReviewRunsDirectlyAndRequiresTerminalModuleResult(t *testi
 	}
 	prompt := string(raw)
 	for _, want := range []string{
-		"Perform the review in this current background agent",
+		"Perform the review yourself in this turn",
 		"record_pulse_finding",
 		`source="technical_review"`,
 		`human_input_id`,
@@ -322,7 +322,7 @@ func TestStandaloneStrategyAuditRunsDirectlyAndRequiresTerminalModuleResult(t *t
 	}
 	prompt := string(raw)
 	for _, want := range []string{
-		"Perform the review in this current background agent",
+		"Perform the review yourself in this turn",
 		"record_pulse_finding",
 		"record_pulse_result",
 		"module=strategic_review",
@@ -963,7 +963,6 @@ func TestReviewArtifactDriftSharesPlanDriftReviewMechanismAndStaysReadOnlyElsewh
 		// Part 2: unchanged read-only checklist, own completion writer.
 		"stays strictly read-only",
 		"Part 2 — the read-only checklist",
-		"run_in_background",
 		"Never launch another reviewer",
 		"mark_changelog_artifact_reviewed",
 	} {
@@ -1098,7 +1097,7 @@ func TestImprovementAndPlanGuidanceIncludesAssumptionAudit(t *testing.T) {
 		t.Fatalf("render design-plan: %v", err)
 	}
 	for _, want := range []string{
-		"access_mode=\"read_only\"",
+		"It is read-only",
 		"dependent artifacts",
 		"VISUAL MAP",
 		"PRIORITIES",

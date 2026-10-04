@@ -4,9 +4,9 @@
 
 The scheduler dispatches one module per blocking lifecycle step, in order:
 Drift Check, Architecture, Technical QA, Strategy. Handle ONLY the module named
-in the current dispatch. Never launch another module from its child. Architecture
-uses `architecture-review.md`; Strategy uses `strategy-auditor.md` and both use
-`run_in_background(review_module=..., pulse_run_id=...)` research scope.
+in the current dispatch. Never run another module in this turn. Architecture
+uses `architecture-review.md`; Strategy uses `strategy-auditor.md`, both in
+research scope.
 Technical Review diagnoses and repairs correctness failures. General prompt,
 learning/KB, report/DB design, scripting and orchestration optimization belong
 to Architecture. Existing correctness focus keys/history stay readable.
@@ -21,21 +21,21 @@ as a defect. Diagnose actual auth, quota, availability, or generation failures.
 Scheduled Pulse uses this after Gate. Manual commands follow their own
 module-due and review/fix instructions without running Gate. Pulse uses one
 sequenced Review + Fix parent turn. Technical Review and bounded repair run as
-ordered messages in one retained background executor. Architecture and
-Strategic Review each remain separate read-only sequences when due.
-The technical executor is not authorized to repair while it is a reviewer.
+ordered messages in this one Pulse conversation. Architecture and
+Strategic Review are each their own dispatch turn when due.
+You are not authorized to repair while you are acting as the reviewer.
 Persist its completed `technical_review` receipt before the repair phase.
-Background executors share the Builder toolset; tool availability does not
+You hold the Builder toolset in every review turn; tool availability does not
 grant repair authority. The caller supplies the follow-up Fix instruction
 when using ordered messages; the backend does not invent a missing Fix message.
 
 Read `get_pulse_state(view="module", pulse_run_id=<current Pulse run>)` before
-dispatching any child. Its `gate_mode` is the contract for this pass:
+starting any module. Its `gate_mode` is the contract for this pass:
 
 - In `backlog_drain`, repair retained active roots and handle newly reproduced
   failures. Successfully applied technical fixes are closed, including
   `changed_unverified`; do not revisit them just to collect stronger proof.
-  Do not run broad discovery. Launch the Strategic Review child only when
+  Do not run broad discovery. Run the Strategic Review only when
   retained strategic work has matured verification/disposition evidence, and
   omit its opportunity phase. A new finding is
   allowed only when the repair/verification work uncovers a genuinely different
@@ -73,11 +73,12 @@ authorization.
 
 ## Sequenced Review + Fix dispatch
 
-The parent turn is a launcher, not a long-running parent review or Fixer.
-Use `run_in_background` for every selected child. When `technical_review` is
-due, use one `agent_type="executor"` child. Put the exact parent `pulse_run_id`
-in its instruction. The retained child reviews and repairs in the same task;
-use message_sequence only for genuinely useful reasoning, never bookkeeping.
+You do each module review yourself in its own dispatch turn; there is no
+separately launched reviewer. You may use your own subagents for parallel
+reading or analysis, but you stay responsible for the result and only you record
+it. Name the exact `pulse_run_id` in every record. When `technical_review` is
+due, review and repair in the same turn; use extra reasoning only when it is
+genuinely useful, never as bookkeeping.
 Read get_pulse_state(view="review_notes", module=<owned module>) once alongside
 relevant typed records. Finish with one record_pulse_result; reason is the short
 conclusion and optional review_note contains only new reasoning and next steps.
@@ -146,16 +147,16 @@ coverage record or report.
    and select only the diagnostic checks relevant to the current question.
    They are conditional guides, not a mandatory whole-workflow checklist.
    Expand for evidence of a wider material problem, not to complete categories.
-   Apply the relevant guidance in this existing executor
-   sequence. The parent sequence overrides only the reference's standalone
-   dispatch/read-only wrapper; do not launch another Operations reviewer.
+   Apply the relevant guidance in this existing turn. This
+   turn overrides only the reference's standalone dispatch/read-only wrapper; do
+   not launch another Operations reviewer.
 4. **Classify observations** — for every selected workflow observation, link it
    to an existing issue, promote it with evidence, or reject it as non-issue.
 5. **Finish** — update canonical issues as the work happens. After bounded
    repairs and checks, save one terminal result with the brief
    conclusion and optional new reasoning. Do not add a consolidation or reporting turn.
 
-When `strategic_review` is due, launch one separate executor sequence:
+When `strategic_review` is due, do it as its own dispatch turn, in these steps:
 
 1. **Independent strategic investigation** — load `strategy-auditor` and act as
    the Workflow Strategy Advisor. Understand the goal and people served. Start with
@@ -184,15 +185,14 @@ It does not inherit technical repair authority. An experiment is optional. Multi
 their declared interference domains do not overlap; proposed or approved but
 not started experiments do not consume an active slot.
 
-Give each child the Pulse run ID, selected lens, Gate evidence and clear authority. The Technical Maintenance task owns its typed review
+Name the Pulse run ID, selected lens, Gate evidence and authority in every record you write. Technical Maintenance owns its typed review
 writes, bounded repair, proportional verification, terminal result, and
 completed receipt before it ends. Strategic Review may write its own terminal
 receipt because it never mutates implementation.
-Launch all selected children, then end the parent turn without polling. The
-runtime waits for registered children. The parent validates saved review and
-module-result state after the sequence completes; it must not reconstruct
-findings from truncated automatic-notification prose. If a child dies before
-persistence, record that module as incomplete instead of inventing findings.
+Finish each module in its own turn. The scheduler validates saved review and
+module-result state after the turn completes; it does not reconstruct findings
+from prose. If a module cannot be completed, record it as incomplete instead of
+inventing findings.
 
 ## Same-task bounded repair
 
@@ -207,7 +207,7 @@ requires no broad rediscovery, has an independently clear proof boundary, and
 fits the retained context plus targeted evidence. Do not batch different
 public-action risk, user-decision, route-context, or unresolved-design work.
 
-Do not launch a fresh Fixer. The same retained executor may modify safe owned
+Do not launch a fresh Fixer. You may modify safe owned
 targets, record exact attempts and dispositions, run proportional proof, then persist its terminal `technical_review` receipt.
 The receipt and repair outcome remain separate facts, but the receipt is no
 longer a permission switch. Unselected issues remain durable. If no safe
@@ -262,10 +262,9 @@ smallest sufficient value (bounded by the platform maximum). Do not lower an
 explicit owner-selected value. Record the configuration change and its evidence
 coverage reason in the same maintenance pass.
 
-Strategic Review is one product/business sequence. Its child may run in
-parallel with the Engineering/Ops child.
-Do not mutate the same artifacts in competing children; the Engineering/Ops
-sequence owns its technical repair phase.
+Strategic Review is one product/business sequence in its own turn, after the
+Engineering/Ops turn. Do not mutate the same artifacts in two reviews; the
+Engineering/Ops review owns its technical repair phase.
 Engineering and Operations remain independent in meaning but intentionally
 share evidence.
 An unreliable evidence window is classified inside the affected review as an
@@ -351,7 +350,7 @@ answer. Broken evaluation wiring belongs to Technical Review. Successful reports
 alone do not prove effectiveness. Reject maintenance- or instrumentation-only
 strategic results that omit the goal-level assessment; an honest uncertain assessment
 is valid and does not require inventing a proposal.
-Read-only child reviewers never edit, publish, notify, ask the user, write HTML, or mark state. The coordinating review sequence retains only the typed persistence and repair authority explicitly assigned to its current phase above; a read-only checklist does not inherit that authority.
+Read-only reviews (and any read-only subagents you use) never edit, publish, notify, ask the user, write HTML, or mark state. The coordinating review turn retains only the typed persistence and repair authority explicitly assigned to its current phase above; a read-only checklist does not inherit that authority.
 
 The **Stores Health** turn reviews learnings, knowledgebase, and database health
 from their evidence packs when selected by Gate evidence. It is an Engineering Review
@@ -583,13 +582,12 @@ approval. Preserve each reviewer's conclusion under its owning module. Operation
 may be cross-referenced to the matching module during consolidation, but never
 rewritten as a dependency or used to suppress that module's result.
 Strategic operational findings remain out-of-scope observations.
-Only the retained Technical Maintenance executor mutates workflow state. It
-reviews, consolidates, repairs, and verifies in its one retained task; it must
-not create a duplicate Fixer, recovery agent, or separately scoped repair
-child. The parent continuation only records typed receipts
-from completed children and never mutates workflow artifacts. Neither reviewer
-nor executor writes a separate Pulse presentation artifact; the Pulse popup reads
-the typed records directly.
+Only the Technical Maintenance review mutates workflow state. It reviews,
+consolidates, repairs, and verifies in its one turn; it must not create a
+duplicate Fixer, recovery agent, or separately scoped repair agent. A
+continuation turn only records typed receipts and never mutates workflow
+artifacts. No review writes a separate Pulse presentation artifact; the Pulse
+popup reads the typed records directly.
 
 Do not create a separate impact or assessment record. Workflow steps and
 measurement/collector steps own metric observations. A later review compares

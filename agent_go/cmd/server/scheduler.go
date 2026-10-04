@@ -2795,13 +2795,18 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			// Plan Drift is a prerequisite for Architecture only, which resumes
 			// on the next Pulse cycle rather than judging a plan already known
 			// to drift. Technical and Goal Work still run after it (Goal Work
-			// without its Run permission, enforced in the background review scope).
+			// without its Run permission, held by the agent from the permission text in
+			// its step).
 			for _, module := range pulsemodules.PostDriftExecutionOrder() {
 				if planDriftDue && !pulsemodules.RunsWhileDriftDue(module) {
 					continue
 				}
 				if due, err := pulseWorklistModulesDue(ctx, sctx.WorkspacePath, pulseRunID, module); err != nil || due {
-					steps = append(steps, pulseLifecycleModuleReviewStep(pulseRunID, module))
+					step := pulseLifecycleModuleReviewStep(pulseRunID, module)
+					if module == pulseModuleStrategicReview {
+						step.query += "\n\n" + goalWorkAutonomyText(ctx, sctx.WorkspacePath)
+					}
+					steps = append(steps, step)
 				}
 			}
 			steps = append(steps, pulseLifecycleFinalSteps(pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))...)
@@ -2837,14 +2842,10 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 				continue
 			}
 		}
-		// A due reviewer is started by the runtime itself, from the Gate's
-		// worklist, instead of asking this conversation's agent to launch it
-		// (pulse_direct_dispatch.go). A session with no workshop yet (a fix
-		// run's first reviewer) still uses the dispatch turn, which creates it.
-		result, direct := s.runPulseReviewerDirect(ctx, sctx, sessionID, pulseRunID, st.label)
-		if !direct {
-			result = runStep(st)
-		}
+		// The Pulse conversation's own agent does each module review in its own
+		// turn, using its own subagents if it wants; there is no separately
+		// launched background reviewer.
+		result := runStep(st)
 		contractupgrade.Revoke(sessionID)
 		if abortIfInterrupted(st, result) {
 			return
@@ -2990,7 +2991,15 @@ func isPulseLifecycleFinalStep(label string) bool {
 	return label == "finalize"
 }
 
+// A module review runs inside this step's own turn (there is no separately
+// launched reviewer whose child work extended the wait), so it gets a longer
+// quiet period than the Gate or the finalizer (PLAT-452).
+var schedulerPulseReviewMaxInactivity = 30 * time.Minute
+
 func (st pulseLifecycleStep) idleMaxInactivity() time.Duration {
+	if st.label == "plan-drift-review" || pulsemodules.ForStepLabel(st.label) != "" {
+		return schedulerPulseReviewMaxInactivity
+	}
 	return schedulerWorkshopMaxInactivity
 }
 
@@ -3129,25 +3138,17 @@ func pulseReviewBacklogFolderLine(folder RunFolderInfo) string {
 }
 
 // pulseLifecyclePlanDriftReviewStep runs plan_drift_review as its own
-// lifecycle step, sequenced strictly BEFORE pulseLifecycleAgenticReviewStep's
-// technical_review dispatch. Both used to be launched as sibling
-// run_in_background children of one combined step, which let technical_review
-// read the Pulse finding backlog for repair candidates before
-// plan_drift_review's own async handoff finding had necessarily been written
-// — a real drift finding could then sit unrepaired for a full extra Pulse
-// cycle even though plan_drift_review had already run. runStep blocks until
-// a step's turn (and everything it dispatches in the background) fully
-// completes, so making this its own preceding step is what actually
-// guarantees the ordering; reordering text within one shared prompt would
-// not, since same-step dispatches still run concurrently with each other.
+// lifecycle step, sequenced strictly BEFORE the technical_review step, so
+// technical_review only ever reads a Pulse backlog that already reflects this
+// run's plan_drift_review findings. The Pulse agent does the review itself in
+// this turn (using its own subagents if it wants) and the step does not return
+// until the turn completes.
 func pulseLifecyclePlanDriftReviewStep(pulseRunID string) pulseLifecycleStep {
 	return pulseLifecycleStep{
 		label: "plan-drift-review",
-		query: fmt.Sprintf(`PULSE PLAN DRIFT REVIEW DISPATCH. pulse_run_id=%q. Read the durable Gate worklist via get_pulse_state(view="module", pulse_run_id=<this id>). If plan_drift_review is not due, do nothing and end this turn immediately.
+		query: fmt.Sprintf(`PULSE PLAN DRIFT REVIEW. pulse_run_id=%q. Read the durable Gate worklist via get_pulse_state(view="module", pulse_run_id=<this id>). If plan_drift_review is not due, do nothing and end this turn immediately.
 
-		When plan_drift_review is due, launch exactly one executor with run_in_background. Its instruction must name exact pulse_run_id=%q, and tell it to load read_skill(skills=[{"name":"builder-reference","path":"references/plan-drift-review.md"}]) and follow it exactly. In that one retained turn it establishes ground truth per due step, applies and verifies safe workflow-owned fixes directly, and only routes what it cannot safely fix itself — a genuine human decision, a platform-owned boundary, or (rarely, as a last resort) a fixer_handoff for technical_review to pick up.
-
-		After dispatch, end this parent turn immediately; the runtime waits for the registered child, and this step does not return until it completes — that is the point: technical_review's own dispatch in the next lifecycle step must only ever see a Pulse backlog that already reflects this run's plan_drift_review findings, never a race with them. Do not do review or repair in this parent, render a dashboard, back up, publish, or notify.`, pulseRunID, pulseRunID),
+When it is due, do the review yourself in this turn. You may use your own subagents for parallel reading or analysis, but you stay responsible for the result and only you record it. %s`, pulseRunID, pulseReviewerInstruction(pulseRunID, pulseModulePlanDriftReview)),
 	}
 }
 
@@ -3156,14 +3157,14 @@ func pulseLifecyclePlanDriftReviewStep(pulseRunID string) pulseLifecycleStep {
 // Architecture proposes against the clean baseline, Technical repairs concrete
 // behavior, and Strategic evaluates outcomes.
 func pulseLifecycleModuleReviewStep(pulseRunID, module string) pulseLifecycleStep {
-	label, reference, contract := pulseModuleReviewParts(module)
-	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW DISPATCH. pulse_run_id=%q. This step owns ONLY module=%q. Earlier lifecycle steps have finished; later modules must not be dispatched here.
-Read the durable Gate worklist. If this module is not due or already has a terminal result, stop. Otherwise launch exactly one run_in_background executor with review_module=%q, pulse_run_id=%q, and an instruction to read get_pulse_state(view="review_notes", module=%q) once for relevant prior reasoning. Load read_skill(skills=[{"name":"builder-reference","path":"references/%s.md"}]). %s
-%sAfter dispatch end this parent turn. The runtime waits for the child before proceeding to the next module. Do not render a dashboard, back up, publish or notify here.`, pulseRunID, module, module, pulseRunID, module, reference, contract, pulseReviewerRecordRules)}
+	label, _, _ := pulseModuleReviewParts(module)
+	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW. pulse_run_id=%q. This step owns ONLY module=%q. Earlier lifecycle steps have finished; later modules are not yours.
+Read the durable Gate worklist. If this module is not due or already has a terminal result, do nothing and end this turn. Otherwise do the review yourself in this turn. You may use your own subagents for parallel reading or analysis, but you stay responsible for the result and only you record it.
+
+%s`, pulseRunID, module, pulseReviewerInstruction(pulseRunID, module))}
 }
 
-// pulseModuleReviewParts is one module's review contract, shared by the
-// reviewer the runtime starts directly and the fallback dispatch turn.
+// pulseModuleReviewParts is one module's review contract.
 func pulseModuleReviewParts(module string) (label, reference, contract string) {
 	label, reference, contract = "technical-review", "technical-review", "First close every open workflow issue in get_pulse_state(view=\"backlog\"): fix it, close it as not a problem with the check that shows it, ask the user through a decision with the exact change, or hand a platform defect off. Nothing stays open waiting: an old next_check that waits for a future run or more evidence is not a reason to wait (check whether the fix is already in place and close it, or fix it now), and a due or failed Plan Drift is not a reason to leave issues open. Then investigate new correctness failures and apply safe workflow-owned repairs. Do not perform a general optimization audit."
 	switch module {
@@ -4454,8 +4455,8 @@ func requestWithWorkshopMode(base map[string]interface{}, mode string) map[strin
 
 // markPulseLifecycleTurn tags a Pulse lifecycle turn (Gate, review dispatch,
 // Finalize) and elevates that turn to Workshop mode. It keeps the workflow's
-// Builder model; pulse_llm applies to the fresh background review agents this
-// turn launches (plan drift, technical and strategic review) and KB maintenance.
+// Builder model. Reviews run in this turn on that model; pulse_llm no longer
+// applies to them (a retained CLI cannot switch model mid-conversation).
 func markPulseLifecycleTurn(reqMap map[string]interface{}) {
 	if reqMap == nil {
 		return
@@ -5075,4 +5076,16 @@ func ValidateCronExpression(expr string) error {
 func lockedScheduleCapabilities(caps WorkflowCapabilities) WorkflowCapabilities {
 	caps.LLMConfig = lockedPresetLLMConfig(caps.LLMConfig)
 	return caps
+}
+
+// goalWorkAutonomyText is the workflow's Goal Work permission levels as text for
+// the strategic review turn. A manifest that cannot be read gives the defaults.
+func goalWorkAutonomyText(ctx context.Context, workspacePath string) string {
+	manifestJSON := ""
+	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found {
+		if encoded, marshalErr := json.Marshal(manifest); marshalErr == nil {
+			manifestJSON = string(encoded)
+		}
+	}
+	return stepworkflow.GoalWorkAutonomyInstructions(manifestJSON)
 }

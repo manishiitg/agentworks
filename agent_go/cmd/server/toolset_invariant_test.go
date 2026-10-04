@@ -43,7 +43,7 @@ func knownWorkshopRegisteredToolNamesOutsideWorkflowPool() map[string]string {
 	)
 	add("workshop execution tools",
 		"execute_step", "query_step", "send_step_message", "debug_step", "list_executions",
-		"stop_step", "stop_all_executions", "run_in_background",
+		"stop_step", "stop_all_executions",
 		"run_full_workflow",
 	)
 	add("workshop review/maintenance tools",
