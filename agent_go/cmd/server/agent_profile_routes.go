@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/presentations"
@@ -649,6 +650,11 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 }
 
 func initializeProductConversationWorkspace(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) error {
+	if profile.ID == caplayerproduct.ProfileID {
+		if err := ensureVaultChatWorkspace(ctx, userID); err != nil {
+			return err
+		}
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
 	// Work projects have a conventional source-code home. Creating it here is
 	// idempotent and also upgrades projects created before the convention was

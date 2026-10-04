@@ -41,6 +41,10 @@ the current behavior. The product remains a single-user, loopback alpha.
   Available MCPs, Secrets, People, Audit, Models and Connect.
 - The model selector is in the shared right-side Models panel. The obsolete
   composer model selector and extra new-chat button were removed.
+- Vault inherits Crew's default provider/model and runs native tools in its own
+  `vault` CLI mode. Opening or sending to its chat idempotently creates the
+  authenticated user's `Chats/CapLayer` workspace through the workspace API,
+  including accounts and restored tabs that predate native CLI isolation.
 - Shared `hideHeader` and unboxed settings options reduce repeated headings,
   subtitles and nested borders in Vault. Shared titles become larger when no
   subtitle is present. The blue, black and white theme stays consistent across

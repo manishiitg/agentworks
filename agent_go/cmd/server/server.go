@@ -5603,6 +5603,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if resolvedProfile != nil && resolvedProfile.Definition.ID == caplayerproduct.ProfileID {
+			if err := ensureVaultChatWorkspace(streamCtx, currentUserID); err != nil {
+				sendError(err.Error(), true)
+				return
+			}
 			var isolationErr error
 			chatWorkingDir, isolationErr = linkedProjectCLIWorkingDir(chatWorkingFolder, currentUserID, sessionID, finalProvider, "vault")
 			if isolationErr != nil {
