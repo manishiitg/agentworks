@@ -19,6 +19,14 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relays share the workflow migrations except goal-driven ones
+
+A Relay reuses the workflow runtime, so it owes the same contract migrations for
+steps, scripts, code layout and the database, run from its own Builder. It skips
+migrations about schedules, Pulse, reports and notifications, and is runnable
+when no shared migration is pending.
+Ticket: [PLAT-431](bugs/pulse_platform/plans-contracts/plat-431.md).
+
 ### 2026-10-04 — Costs shows numbers and short labels
 
 Workflow Costs removes explanatory copy entirely at the user's request. Token

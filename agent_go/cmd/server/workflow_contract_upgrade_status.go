@@ -82,7 +82,7 @@ func workflowContractUpgradeLists(manifest *WorkflowManifest) (pending, applied 
 		}
 	}
 
-	if workflowContractVersionIsExecutionCompatible(current) && manifest.CodeLayoutVersion != 1 {
+	if manifestContractIsExecutionCompatible(manifest) && manifest.CodeLayoutVersion != 1 {
 		pending = append(pending, workflowContractUpgradeListItem{
 			Label:         "upgrade-nested-agent-code-layout",
 			TargetVersion: WorkflowContractCurrentVersion,
@@ -124,7 +124,7 @@ func describeWorkflowContractUpgrades(ctx context.Context, workspacePath string)
 
 	pending := workflowVersionUpgradePlan(manifest)
 	if len(pending) == 0 {
-		if workflowContractVersionIsExecutionCompatible(current) && manifest.CodeLayoutVersion != 1 {
+		if manifestContractIsExecutionCompatible(manifest) && manifest.CodeLayoutVersion != 1 {
 			sb.WriteString("## Manual code-layout migration required\n\n")
 			sb.WriteString("The contract version is current, but `code_layout_version` is not `1`. Inspect every scripted bundle and authored path assumption, migrate scripts to the canonical `code/<step-id>/` tree, run focused checks without executing external side effects, then call `set_code_layout_version(code_layout_version=1)`. Re-read `workflow.json` and the migrated files before finishing. Do not stamp another contract version; this workflow already has the current version.\n")
 			return sb.String(), nil

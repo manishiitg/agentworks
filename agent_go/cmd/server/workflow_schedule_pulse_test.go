@@ -40,7 +40,7 @@ func TestRetiredMarkersStillRequireCurrentNestedArtifactMigration(t *testing.T) 
 			t.Errorf("older contract marker %s unexpectedly remained execution-compatible", version)
 		}
 		turns, err := manualWorkflowUpgradeTurns(&WorkflowManifest{Version: version}, []string{"run normal work"}, "Workflow/demo")
-		if err != nil || len(turns) != 2 || turns[0].label != "upgrade-nested-agent-artifacts" || turns[1].label != "schedule-message-1" {
+		if err != nil || len(turns) != 3 || turns[0].label != "upgrade-nested-agent-artifacts" || turns[1].label != "upgrade-managed-db-scripts" || turns[2].label != "schedule-message-1" {
 			t.Fatalf("older marker %s did not inject the required migration turn: turns=%+v err=%v", version, turns, err)
 		}
 	}

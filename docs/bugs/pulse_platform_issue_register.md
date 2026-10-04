@@ -1,3 +1,9 @@
+## Relays reuse workflow migrations, minus goal-driven ones — PLAT-431
+
+[PLAT-431](pulse_platform/plans-contracts/plat-431.md), fixed on `main`, not
+deployed: a Relay owes only the shared migrations and its Builder can run them;
+the 1.0.45 bump no longer strands Relays without migration tools.
+
 ## Workflow Costs emphasizes numbers and removes explanatory copy — PLAT-430
 
 [PLAT-430](pulse_platform/cost-telemetry/plat-430.md), fixed on main; deployment

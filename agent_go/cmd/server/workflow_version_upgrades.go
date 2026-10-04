@@ -31,6 +31,52 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 	return strings.TrimSpace(version) == workflowContractManagedDBScriptsVersion
 }
 
+// goalsOnlyWorkflowUpgrades are migrations about the goal-driven product:
+// schedules, Pulse, reports, notifications and run summaries. A Relay shares the
+// workflow runtime (steps, scripts, code layout, database) and therefore every
+// other migration, but never these (PLAT-431).
+var goalsOnlyWorkflowUpgrades = map[string]bool{
+	"upgrade-notification-config":            true,
+	"upgrade-current-artifact-contract":      true,
+	"upgrade-direct-html-reports":            true,
+	"upgrade-schedule-execution-model":       true,
+	"upgrade-dedicated-pulse-schedule":       true,
+	"upgrade-schedule-prompt-contract":       true,
+	"upgrade-schedule-finalizer-ownership":   true,
+	"upgrade-report-activity-section":        true,
+	"upgrade-report-activity-tab":            true,
+	"upgrade-pulse-lifecycle-reconciliation": true,
+	"upgrade-pulse-backlog-triage":           true,
+	"upgrade-pulse-actionable-backlog":       true,
+	"upgrade-activity-tab-from-run-summary":  true,
+	"upgrade-route-summaries":                true,
+	"upgrade-explicit-schedule-pulse":        true,
+	"upgrade-eval-verdict-schema":            true,
+}
+
+func manifestIsRelay(manifest *WorkflowManifest) bool {
+	return manifest != nil && manifest.Kind == "relay"
+}
+
+// manifestContractIsExecutionCompatible reports whether a manifest's contract
+// version lets it run. A Goals workflow must be on the current version. A Relay
+// must be on a version this server knows with no shared migration pending: a
+// Goals-only migration it skipped never blocks it. Callers still require
+// code_layout_version 1.
+func manifestContractIsExecutionCompatible(manifest *WorkflowManifest) bool {
+	version := workflowContractVersionForUpgrade(manifest)
+	if workflowContractVersionIsExecutionCompatible(version) {
+		return true
+	}
+	if !manifestIsRelay(manifest) {
+		return false
+	}
+	if _, known := workflowContractVersionRank(version); !known {
+		return false
+	}
+	return len(workflowVersionUpgradePlan(manifest)) == 0
+}
+
 // workflowContractVersionRank is intentionally a closed set. A workflow made
 // by a newer server must never be silently "upgraded" backwards by an older
 // server: manualWorkflowUpgradeTurns treats an unknown version as having no path.
@@ -393,7 +439,23 @@ func bindWorkflowUpgradeWorkspacePath(query, workspacePath string) string {
 // retired, but preserves the independent behavioral/data migrations older
 // workflows still need. They are deliberately grouped into bounded,
 // blocking preflight turns rather than replaying the old 21-turn HTML chain.
+// workflowVersionUpgradePlan is the ordered list of migrations a workflow owes.
+// A Relay owes only the shared ones (see goalsOnlyWorkflowUpgrades).
 func workflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
+	plan := fullWorkflowVersionUpgradePlan(manifest)
+	if !manifestIsRelay(manifest) {
+		return plan
+	}
+	shared := plan[:0:0]
+	for _, upgrade := range plan {
+		if !goalsOnlyWorkflowUpgrades[upgrade.label] {
+			shared = append(shared, upgrade)
+		}
+	}
+	return shared
+}
+
+func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersionUpgrade {
 	version := workflowContractVersionForUpgrade(manifest)
 	rank, known := workflowContractVersionRank(version)
 	if !known || workflowContractVersionIsExecutionCompatible(version) {

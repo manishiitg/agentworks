@@ -15,7 +15,7 @@ import (
 type directWebhookExecutionKey struct{}
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
-	if manifest == nil || !workflowContractVersionIsExecutionCompatible(workflowContractVersionForUpgrade(manifest)) || manifest.CodeLayoutVersion != 1 {
+	if manifest == nil || !manifestContractIsExecutionCompatible(manifest) || manifest.CodeLayoutVersion != 1 {
 		return fmt.Errorf("manually update the workflow contract in Workshop before invoking its webhook: %w", errWorkflowContractMigrationRequired)
 	}
 	return nil
