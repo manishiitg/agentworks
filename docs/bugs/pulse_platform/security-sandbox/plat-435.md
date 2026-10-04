@@ -52,3 +52,5 @@ PLAT-434 fixed the Code/Crew UI-control instance.
   caller's own (the `_users/` prefix test missed it); `crewProjectOwnerID` read the owner from an uncleaned
   `_users/alice/../bob/...`. Both now go through `Parse`.
 - Also failing on main, unrelated: TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration.
+- Migrated (commit 4, cmd/server/services): `routeWorkspaceUserID`, `SameSlackScopePath` (owner-agnostic only when one
+  side is logical, as before), `physicalBotScopeOwner`; test `services/workspaceref_sites_test.go`.

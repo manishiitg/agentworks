@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"strings"
 )
 
@@ -70,24 +71,11 @@ func (r SlackConnectionRoute) SameDestination(workspacePath, profileID string) b
 // equals the physical path with the same suffix. Two physical paths must match
 // exactly, so different owners' folders never compare equal.
 func SameSlackScopePath(a, b string) bool {
-	a, b = cleanSlackScopePath(a), cleanSlackScopePath(b)
-	if a == b {
-		return true
+	ra, rb := workspaceref.MustParse(a), workspaceref.MustParse(b)
+	if ra.HasOwner() == rb.HasOwner() {
+		return ra.SameAs(rb)
 	}
-	aPhysical, bPhysical := strings.HasPrefix(a, "_users/"), strings.HasPrefix(b, "_users/")
-	if aPhysical == bPhysical {
-		return false
-	}
-	physical, logical := a, b
-	if bPhysical {
-		physical, logical = b, a
-	}
-	parts := strings.SplitN(physical, "/", 3)
-	return logical != "" && len(parts) == 3 && parts[2] == logical
-}
-
-func cleanSlackScopePath(path string) string {
-	return strings.Trim(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
+	return ra.Logical() != "" && ra.Logical() == rb.Logical()
 }
 
 // NormalizeSlackChannelID canonicalizes a channel ID used as a route key.

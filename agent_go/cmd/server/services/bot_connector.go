@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // newBotSessionID mints a session ID for a bot-initiated chat. Encoding the
@@ -3728,12 +3728,8 @@ func routeWorkspaceUserID(route ChannelRoute, fallback string) string {
 	if userID := strings.TrimSpace(route.WorkspaceUserID); userID != "" {
 		return userID
 	}
-	clean := strings.Trim(filepath.ToSlash(filepath.Clean(strings.TrimSpace(route.WorkspacePath))), "/")
-	if strings.HasPrefix(clean, "_users/") {
-		parts := strings.Split(clean, "/")
-		if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
-			return strings.TrimSpace(parts[1])
-		}
+	if owner := strings.TrimSpace(workspaceref.MustParse(route.WorkspacePath).Owner()); owner != "" {
+		return owner
 	}
 	return strings.TrimSpace(fallback)
 }
