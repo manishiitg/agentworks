@@ -709,3 +709,12 @@ access through another group or a direct grant.
 Group MCP panels show assigned connectors by default. Unassigned connectors
 remain available behind **Add MCPs**, labelled **Not in this group**; removing
 a group grant does not disconnect the MCP server.
+
+### Local launcher
+
+Vault's MCP gateway starts automatically alongside the local backend.
+`./run_agentworks --with-workspace` starts the agent, workspace and Vault;
+plain `./run_agentworks` also starts the frontend and Electron. No gateway
+flag is needed. The optional `--with-gateway` flag makes a gateway startup
+failure fatal; otherwise the launcher reports the failure and continues.
+`--only-frontend` and MCP connection-test mode do not start backend services.

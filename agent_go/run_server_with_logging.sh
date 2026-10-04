@@ -85,7 +85,7 @@ BACKGROUND_MODE=false
 WITH_WORKSPACE=false
 WITH_FRONTEND=false
 ONLY_FRONTEND=false
-WITH_GATEWAY=false
+WITH_GATEWAY=true
 ONLY_GATEWAY=false
 GATEWAY_EXPLICIT=false
 UPDATE_MMX_CLI=false
@@ -101,13 +101,13 @@ POSITIONAL_ARGS=()
 print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
-    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend.'
+    printf '%s\n' 'Default (no composition flags): agent + workspace + Vault + frontend.'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
-    printf '%s\n' '  --with-gateway                Start the local MCP Gateway service.'
+    printf '%s\n' '  --with-gateway                Require Vault startup to succeed (already starts by default).'
     printf '%s\n' '  --only-gateway                Start only the MCP Gateway service.'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
     printf '%s\n' '  --without-electron            Do not launch Electron.'
@@ -184,8 +184,9 @@ for arg in "$@"; do
     esac
 done
 
-# Default composition runs the existing AgentWorks stack. --with-gateway is
-# additive, so an explicit alpha run gets the full stack plus CapLayer.
+# Vault starts with the local backend by default. --with-gateway makes a
+# gateway startup failure fatal; frontend-only and connection-test modes exit
+# before backend services are started.
 if [ "$WITH_WORKSPACE" != true ] && [ "$WITH_FRONTEND" != true ] && [ "$ONLY_FRONTEND" != true ] && [ "$ONLY_GATEWAY" != true ] && [ "$TEST_CONNECTIONS" != true ]; then
     WITH_WORKSPACE=true
     WITH_FRONTEND=true

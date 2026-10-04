@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # AgentWorks local launcher.
 #
-# Runs the local stack (agent + workspace + frontend + Electron):
+# Runs the local stack (agent + workspace + Vault + frontend + Electron):
 #   ./run_agentworks
 #
 # All arguments are forwarded to agent_go/run_server_with_logging.sh, so
 # partial stacks and modifiers work too, e.g.:
-#   ./run_agentworks --with-workspace        # agent + workspace, no frontend
+#   ./run_agentworks --with-workspace        # agent + workspace + Vault, no frontend
 #   ./run_agentworks --only-frontend         # frontend only
 #   ./run_agentworks --only-frontend --debug-memory  # + heap snapshots (:9333) & RSS log
-#   ./run_agentworks --with-gateway          # stack + MCP Gateway alpha
+#   ./run_agentworks --with-gateway          # full stack; require Vault startup to succeed
 #   ./run_agentworks --only-gateway          # MCP Gateway only
 #   ./run_agentworks --background            # full stack, detached
 #   ./run_agentworks --help                  # all options
