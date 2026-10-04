@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -203,6 +204,7 @@ func externalTools() ([]externalTool, error) {
 		// Code review (code:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
 		externalBuilderDefinitions(add)
+		externalRelayDefinitions(add)
 		// Membership comes from product.yaml's run mode: external_tools
 		// first, in yaml order, then every run.tools name (the single
 		// source of truth for the run surface) that has no native
@@ -218,9 +220,18 @@ func externalTools() ([]externalTool, error) {
 		for _, name := range agentworksproduct.RunExternalDenylist() {
 			denied[name] = true
 		}
+		relayTools, err := relayproduct.BuilderExternalTools()
+		if err != nil {
+			externalCatalogErr = err
+			return
+		}
 		admitted := append(agentworksproduct.RunExternalTools(), agentworksproduct.BuilderExternalTools()...)
+		admitted = append(admitted, relayTools...)
 		seen := make(map[string]bool, len(admitted))
 		for _, name := range admitted {
+			if seen[name] {
+				continue
+			}
 			if denied[name] {
 				externalCatalogErr = fmt.Errorf("product.yaml both admits and withholds external tool %q", name)
 				return
@@ -356,6 +367,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
+	if tool.Name == "create_relay" {
+		api.externalCreateRelay(w, r, call.Arguments)
+		return
+	}
 	discovered, err := DiscoverWorkflowManifests(r.Context())
 	if err != nil {
 		externalError(w, 502, "workspace_unavailable", err.Error())
@@ -418,6 +433,15 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		externalError(w, 403, "forbidden", "Workflow write access is required.")
 		return
 	}
+	if isExternalRelayTool(tool.Name) {
+		api.externalRelayCall(w, r, tool.Name, args, *selected)
+		return
+	}
+	// Relay chat is Builder-only; direct API tools handle published execution.
+	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
+		externalError(w, 400, "relay_builder_only", "Use builder_chat to edit a Relay, test_relay for draft tests, or run_relay for published versions.")
+		return
+	}
 	// Conversation access follows the builder runtime: workflow readers may
 	// chat with its existing read-only tool policy, and control their own turns.
 	if strings.HasPrefix(tool.Name, "builder_") {
@@ -468,6 +492,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if tool.executes {
+		if selected.Manifest.Kind == "relay" {
+			externalError(w, 400, "relay_builder_only", "Use test_relay or run_relay; Relay does not expose Run chat tools.")
+			return
+		}
 		api.externalRunProxy(w, r, tool.Name, args, *selected)
 		return
 	}

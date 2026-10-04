@@ -27,7 +27,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -159,7 +159,7 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 		}
 		seen[scope] = true
 	}
-	if seen["builder:chat"] && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
+	if (seen["builder:chat"] || seen["relays:write"]) && (!seen["workflows:read"] || !seen["files:read"] || !seen["runs:execute"]) {
 		return nil, false
 	}
 	return scopes, true
@@ -226,6 +226,9 @@ func builderConsentWorkflows(ctx context.Context, claims *UserClaims) ([]map[str
 }
 
 func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, scopes, ids []string) error {
+	if slices.Contains(scopes, "relays:write") && (!externalBuilderEnabled() || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "relays")) {
+		return errors.New("Relay authoring is not available to this account or deployment")
+	}
 	if !slices.Contains(scopes, "builder:chat") {
 		if len(ids) != 0 {
 			return errors.New("workflow selection requires explicitly requested Builder permission")

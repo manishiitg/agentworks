@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -132,7 +131,7 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initResult := initializeExternalMCP(t, ctx, cli)
 	// A session login holds every scope, so Crew authoring is announced too.
-	if initResult.Instructions != externalMCPInstructions+" "+externalMCPCrewAuthoringInstructions {
+	if initResult.Instructions != externalMCPInstructions+" "+externalMCPCrewAuthoringInstructions+externalMCPRelayInstructions {
 		t.Fatalf("run-capable connection got read-only instructions: %q", initResult.Instructions)
 	}
 
@@ -171,10 +170,13 @@ func TestExternalMCPStreamableSpecAndCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The Code review tools are listed only for admins and Code reviewers.
-	want := len(catalog) - len(agentworksproduct.BuilderExternalTools())
-	if !claimsCanReviewCode(&UserClaims{UserID: "owner", Username: "owner"}) {
-		want -= len(externalCodeReviewTools)
+	want := 0
+	for _, tool := range catalog {
+		if externalTokenAllows(&UserClaims{UserID: "owner", Username: "owner"}, tool) {
+			want++
+		}
 	}
+
 	if decoded.Count != want {
 		t.Fatalf("spec count %d, want %d", decoded.Count, want)
 	}

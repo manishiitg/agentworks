@@ -93,3 +93,30 @@ func TestRelayCommandCatalog(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayMCPAdmissionIsOwnedByBuilderManifest(t *testing.T) {
+	names, err := BuilderExternalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if seen[name] {
+			t.Fatalf("duplicate %s", name)
+		}
+		seen[name] = true
+	}
+	for _, name := range []string{"create_relay", "builder_chat", "test_relay", "publish_relay", "run_relay", "get_relay_run"} {
+		if !seen[name] {
+			t.Fatalf("missing %s", name)
+		}
+	}
+	names[0] = "changed"
+	again, _ := BuilderExternalTools()
+	if again[0] == "changed" {
+		t.Fatal("caller mutated manifest")
+	}
+	if _, err := ChatTools("run"); err == nil {
+		t.Fatal("MCP added Run chat")
+	}
+}

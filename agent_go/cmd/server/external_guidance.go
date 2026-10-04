@@ -179,6 +179,7 @@ func externalPreparation(claims *UserClaims) []string {
 		steps[0] = "This connection can build selected workflows where you currently have write access: builder_chat continues your existing workflow chat. Poll builder_status and reply with builder_reply_input using the operation_id. Native shell/account tools are unavailable. Changes use the configured Builder model."
 	}
 	if claims != nil && claims.AccessToken != nil {
+		steps = append(steps, "For Relays (kind=relay), use builder_chat for editing, test_relay for draft testing, publish_relay for an immutable version, and run_relay/get_relay_run for published execution. There is no Relay Run chat. create_relay requires explicit relays:write consent covering all accessible workflows.")
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}
 	return steps

@@ -180,12 +180,21 @@ func validateBuilderGrant(ctx context.Context, claims *UserClaims, workflow, wor
 	if err != nil {
 		return nil, err
 	}
-	if live.UserID != claims.UserID || !live.AccessToken.BuilderAccess() || !live.AccessToken.AllowsWorkflow(workflow) || !userAllowedWorkflowID(live, workflow) || !userAllowedProduct(live, "agentworks") {
+	if live.UserID != claims.UserID || !live.AccessToken.AllowsWorkflow(workflow) || !userAllowedWorkflowID(live, workflow) {
 		return nil, errors.New("Builder grant no longer authorizes this workflow")
 	}
 	level, manifest := workflowAccessForWorkspacePath(ctx, live, workspace)
 	if manifest == nil || manifest.ID != workflow || (level != WorkflowAccessOwner && level != WorkflowAccessWrite) {
 		return nil, errors.New("workflow write access is required")
+	}
+	product := "agentworks"
+	authorized := live.AccessToken.BuilderAccess()
+	if manifest.Kind == "relay" {
+		product = "relays"
+		authorized = authorized || live.AccessToken.RelayBuilderAccess()
+	}
+	if !authorized || !userAllowedProduct(live, product) {
+		return nil, errors.New("Builder grant does not authorize this product")
 	}
 	return live, nil
 }

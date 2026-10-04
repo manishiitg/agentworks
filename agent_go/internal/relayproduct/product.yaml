@@ -13,6 +13,9 @@ prompt:
 
 chat:
   builder:
+    # Platform MCP uses the same Builder operation lifecycle. Direct Relay
+    # calls test the draft or run an immutable version without Run chat.
+    external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, publish_relay, test_relay, run_relay, get_relay_run]
     prompt:
       file: prompts/builder.md
     skills: [relay-builder]

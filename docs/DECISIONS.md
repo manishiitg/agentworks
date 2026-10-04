@@ -19,6 +19,15 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — Relay MCP authoring is explicit and execution uses direct graph runs
+
+Relay product.yaml admits its external tools. A relays:write grant can create
+Relays when it covers all accessible workflows and the account may create;
+editing/publishing still require live owner/editor access. This grant does not
+authorize AgentWorks Builder. Shared Builder operations edit drafts; direct
+scheduler calls test drafts or execute frozen versions without Relay Run chat.
+Ticket: [PLAT-427](bugs/pulse_platform/mcp/plat-427.md).
+
 ### 2026-10-04 — A provider change is a runtime change: it waits for the running turn, then the chat relaunches on the new provider — PLAT-425
 
 Changing the coding provider of a chat (Models page) never sends the next message into the old provider's CLI. A running turn finishes first, the message waits in the turn queue, then the old CLI is closed and the turn runs on the selected provider

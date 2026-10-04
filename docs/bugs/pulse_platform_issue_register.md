@@ -1,3 +1,9 @@
+## Relay creation, Builder editing and versioned runs through platform MCP — PLAT-427
+
+[PLAT-427](pulse_platform/mcp/plat-427.md), fixed on main; deployment pending.
+Relay product manifest owns MCP tools; explicit authoring consent, shared Builder
+operations/publisher/scheduler, draft tests and immutable version calls.
+
 ## Build a release once, deploy everywhere — PLAT-426
 
 [PLAT-426](pulse_platform/scheduler-runs/plat-426.md), P3, open (planned). Deploys take about 5 min on the Hetzner box and 7 min on RTS because every server builds the same source.
