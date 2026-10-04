@@ -1,6 +1,6 @@
 # PLAT-435 — One workspace path type: stop the `_users/<id>/` prefix bugs from coming back
 
-Status: open (proposal, nothing built). Opened 2026-10-04 after PLAT-434, the latest of a long series.
+Status: in progress (owner approved 2026-10-04; package built, migration under way). Opened 2026-10-04 after PLAT-434, the latest of a long series.
 
 ## Why it keeps coming back
 
@@ -27,3 +27,10 @@ a7eff2376, e4937721d, 3363fefc5), PLAT-324 (tabs lost on reload), the 2026-09 se
 ## Done so far
 
 PLAT-434 fixed the Code/Crew UI-control instance.
+
+## Progress (2026-10-04)
+
+- `agent_go/pkg/workspaceref` built: `Ref`, `Parse`, `MustParse`, `Logical()` (strips ANY owner: which product/project),
+  `SameFor(user, other)` / `SameAs` / `OwnedBy` / `OwnedByOrUnowned` (identity for access), `Physical(user)`,
+  `PhysicalKeepOwner(user)`, `Project()` / `IsProject()` over the single `ProjectRoots` table, `SanitizeUserID` (one
+  implementation). Table tests for every spelling; `reftest.BothSpellings` shared helper.
