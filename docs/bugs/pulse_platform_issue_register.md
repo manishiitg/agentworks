@@ -27,8 +27,8 @@ servers, needs a restart: dynamic client registration now names the app AgentWor
 
 [PLAT-473](pulse_platform/coding-agent-bridge/plat-473.md), fixed on `main` for the prompt
 (all CLIs) and Muse, not deployed: a platform curl in Muse's native bash is refused with
-the instruction to use the bridge shell. Hooks for Codex, Claude Code, Cursor and Agy
-are still to do.
+the instruction to use the bridge shell; Claude Code, Cursor and Agy have the same hook
+(Agy not checked live), Codex has none (trust issue, owner decision).
 
 ## Workflow chat panel stays disconnected after a backend restart — PLAT-472
 

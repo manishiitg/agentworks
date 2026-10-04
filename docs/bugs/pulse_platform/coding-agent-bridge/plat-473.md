@@ -4,7 +4,7 @@
 
 | Coordination | Value |
 |---|---|
-| State | fixed on `main` for the prompt (all CLIs) and the Muse hook; Codex, Claude Code, Cursor and Agy hooks not built; needs a rebuild and restart |
+| State | fixed on `main` for the prompt (all CLIs) and the hooks of Muse, Claude Code, Cursor and Agy; Codex has no hook; needs a rebuild and restart |
 | Date | 2026-10-04 |
 | Owner | coding-agent-bridge |
 | Related | PLAT-468 (Muse had no bridge at all), PLAT-364 (Full CLI) |
@@ -38,9 +38,33 @@ shell and nothing told it so.
 - Builder `go.mod` pins mcpagent `0a493e1` and provider `7fcad95` (a library change only
   reaches the app through these pins).
 
+## Hooks for the other CLIs (built by subagents, provider pinned `32d93ff`)
+
+- **Claude Code** (`345dd4f`): a node `PreToolUse` hook on `Bash` (`tool_input.command`),
+  added to the per-launch `--settings` in the tmux and structured launches whenever the
+  bridge is mounted; names `mcp__api-bridge__execute_shell_command`. Real Claude Code
+  2.1.289: platform curl blocked with the message, `echo`/`ls` ran. The Go-built launches
+  and the Landlock path were not run live.
+- **Cursor** (`32d93ff`): the adapter's existing `.cursor/hooks.json` shell hook
+  (`mlp-allow-shell.sh`, which only allowed) now refuses a platform command in Full CLI
+  mode (event `beforeShellExecution`, field `command`); a bash script, no node. Real
+  cursor-agent 2026.10.01: platform curl blocked, `echo hi` ran, bridge calls not blocked.
+  The adapter replaces a person's own `hooks.json` for the session and restores it; it
+  does not merge theirs in (unchanged behaviour).
+- **Agy** (`5aaec25`): the existing workspace `PreToolUse` gate also denies a native
+  `run_command` platform call in Full mode, naming `call_mcp_tool` with
+  `execute_shell_command`. NOT checked against real Agy: the CLI on the machine is not
+  logged in; the hook was run as a subprocess against realistic payloads, the real
+  payload's argument key is unconfirmed.
+
 ## Left
 
-- The same hook for Codex (`.codex/hooks.json`), Claude Code, Cursor and Agy, each with
-  its own shell-tool name and payload shape, each needing a live check. Pi has no hooks;
-  it relies on the prompt text.
+- **Codex has no hook.** On Codex 0.160.0 a config-file hook does not run unless trusted;
+  the only automatic route is `--dangerously-bypass-hook-trust` (trust off for every hook
+  Codex loads, including a project's), which was not used. Decision for the owner:
+  persist trust for our hook (needs Codex's trust hash) or stay with the prompt line.
+  Native-tools mode also passes `--disable hooks`.
+- Pi has no hook support; it relies on the prompt text.
+- Agy's hook needs one live run (logged in, Full CLI, Seatbelt) to confirm the deny text
+  reaches the agent.
 - Chats started before the restart keep the old prompt.
