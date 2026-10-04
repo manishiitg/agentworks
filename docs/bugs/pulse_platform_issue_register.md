@@ -1,3 +1,14 @@
+## Work chat selection test fails before running tests — PLAT-459
+
+[PLAT-459](pulse_platform/frontend-chat/plat-459.md), open: the suite fails
+in API/store module initialization; reproduced on unmodified main `83c5d4c6d`.
+
+## Persistent chat tabs show the workflow or project name — PLAT-458
+
+[PLAT-458](pulse_platform/frontend-chat/plat-458.md), fixed on `main`, not deployed:
+Workflow/Relay tabs use their workflow name; Crew, Code and Vault tabs use their
+project name, with truncation and the full name on hover.
+
 ## A symlink in a user's own tree into config/ or Workflow/<id> is followed — PLAT-457
 
 [PLAT-457](pulse_platform/security-sandbox/plat-457.md), P1, open. The workspace service's link guard only closes links into other users' trees; a link into

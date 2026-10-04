@@ -19,6 +19,13 @@ Design references for the linked runtime decisions:
 
 ## Decisions
 
+### 2026-10-04 — The persistent chat tab names its workflow or project
+
+Show the workflow/Relay name or Crew/Code/Vault project name on the persistent
+chat tab so its context remains visible with the workspace pane closed. Keep
+the full name on hover when the pill truncates it.
+Ticket: [PLAT-458](bugs/pulse_platform/frontend-chat/plat-458.md).
+
 ### 2026-10-04 — A chat switch scrolls to the bottom once, after the list settles; a pane message keeps a reader's place
 
 - Switching chats or workflows asks for the bottom through one request that is performed once the chat content has stopped changing (capped at 0.8 s)

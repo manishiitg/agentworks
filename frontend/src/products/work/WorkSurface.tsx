@@ -474,7 +474,7 @@ function useWorkChatTab(
   }
 }
 
-function WorkChatTabs({ projectId, canonicalTabId }: { projectId: string; canonicalTabId: string }) {
+function WorkChatTabs({ projectId, projectName, canonicalTabId }: { projectId: string; projectName: string; canonicalTabId: string }) {
   const { chatTabs, activeTabId, closeTab } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
@@ -501,7 +501,8 @@ function WorkChatTabs({ projectId, canonicalTabId }: { projectId: string; canoni
         isActive={tab.tabId === activeTabId}
         canClose={tab.tabId !== canonicalTabId}
         isBlank={false}
-        displayName={tab.tabId === canonicalTabId ? 'Chat' : tab.name}
+        displayName={tab.tabId === canonicalTabId ? projectName : tab.name}
+        titleOverride={tab.tabId === canonicalTabId ? projectName : undefined}
         onTabClick={selectTab}
         onCloseTab={closeHistoryTab}
       />)}
@@ -1091,7 +1092,7 @@ export function WorkSurface({ product = CREW_PRODUCT }: { product?: ProjectProdu
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={splitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
+              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={Boolean(selected.shared)} showShell={showShell} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}

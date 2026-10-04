@@ -45,6 +45,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   const setShowChatArea = useWorkflowStore(state => state.setShowChatArea)
   const setFocusedPane = useWorkflowStore(state => state.setFocusedPane)
   const activePresetId = useGlobalPresetStore(state => state.activePresetIds.workflow)
+  const workflowPresets = useGlobalPresetStore(state => state.workflowPresets)
   const isRelaySurface = useProductSurfaceStore(state => state.productSurface === 'relays')
 
   // Repair tabs already corrupted by the old Restore path. The durable
@@ -208,6 +209,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
           {activeWorkflowTabs.map((tab) => {
             const isBlank = isBlankWorkflowBuilderTab(tab, activePresetId || '', tabEvents)
             const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder'
+            const workflowName = workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.label?.trim()
+              || (isRelaySurface ? 'Relay' : 'Workflow')
             return (
               <AgentWorksChatTabItem
                 key={tab.tabId}
@@ -216,8 +219,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 // The persistent Chat is never closeable.
                 canClose={!isPersistentChat && activeWorkflowTabs.length > 1}
                 isBlank={false}
-                displayName={isPersistentChat ? 'Chat' : workflowTabDisplayName(tab, isBlank)}
-                titleOverride={isPersistentChat && isRelaySurface ? 'Relay Builder' : undefined}
+                displayName={isPersistentChat ? workflowName : workflowTabDisplayName(tab, isBlank)}
+                titleOverride={isPersistentChat ? workflowName : undefined}
                 onTabClick={handleTabClick}
                 onCloseTab={handleCloseTab}
                 onMakeInteractive={handleMakeInteractive}
