@@ -41,6 +41,7 @@ Ticket: [PLAT-427](bugs/pulse_platform/mcp/plat-427.md).
 
 Changing the coding provider of a chat (Models page) never sends the next message into the old provider's CLI. A running turn finishes first, the message waits in the turn queue, then the old CLI is closed and the turn runs on the selected provider
 (the native conversation resumes across providers). It applies to every retained coding CLI. Before, only a definition change counted, so a provider switch killed the running turn and the next sends were rejected as uncertain.
+An uncertain earlier submission is reconciled even while a terminal is live, if that terminal started after the submission (it cannot hold it); a terminal that started before it keeps it uncertain.
 
 ### 2026-10-04 — Product model panels show the short provider list without search
 

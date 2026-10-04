@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
 	"net/http"
@@ -317,6 +318,60 @@ func TestCanRetryUncertainChatSubmissionUsesClosedNativeTranscriptProof(t *testi
 	})
 	if api.canRetryUncertainChatSubmission(context.Background(), record) {
 		t.Fatal("receipt was reopened after the native transcript contained the message")
+	}
+}
+
+// A live terminal that started before the submission may hold it (uncertain); one that started after it cannot, whatever CLI it is, so the transcript proof can
+// reconcile the old submission (Code on Excellence, 2026-10-04: an old uncertain message answered 409 forever once the chat ran on another provider).
+func TestCanRetryUncertainChatSubmissionIgnoresALiveTerminalThatStartedLater(t *testing.T) {
+	home := t.TempDir()
+	docs := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	const owner = "default"
+	const sessionID = "closed-native-session-later-terminal"
+	const project = "Workflow/retry-proof-later"
+	const nativeSessionID = "native-before-receipt-later"
+	workingDir := filepath.Join(home, "runtime", "retry-proof-later")
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	transcriptDir := filepath.Join(home, ".claude", "projects", claudeNativeTranscriptProjectSlug(workingDir))
+	if err := os.MkdirAll(transcriptDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTranscriptFixture(t, filepath.Join(transcriptDir, nativeSessionID+".jsonl"), []string{
+		`{"type":"user","timestamp":"2026-09-19T08:00:00Z","message":{"role":"user","content":"earlier message"}}`,
+		`{"type":"assistant","timestamp":"2026-09-19T08:01:00Z","message":{"role":"assistant","content":"earlier answer"}}`,
+	})
+	conversationPath := filepath.Join(docs, filepath.FromSlash(project), "builder", "conversation", "users", owner, "2026-09-19", "session-"+sessionID+"-conversation.json")
+	if err := os.MkdirAll(filepath.Dir(conversationPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	conversation := fmt.Sprintf(`{"session_id":%q,"user_id":%q,"runtime":{"provider":"claude-code","external_session_id":%q,"workspace_path":%q,"agent_session_handle":{"provider":{"provider":"claude-code","native_session_id":%q,"working_dir":%q}}}}`,
+		sessionID, owner, nativeSessionID, workingDir, nativeSessionID, workingDir)
+	if err := os.WriteFile(conversationPath, []byte(conversation), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	record := chatSubmissionRecord{Owner: owner, Session: sessionID, Project: project, Message: "message sent to the old provider", UpdatedAt: "2026-09-19T09:00:00Z"}
+
+	for name, tc := range map[string]struct {
+		tmuxStartedAt string
+		want          bool
+	}{
+		"live terminal started before the submission may hold it": {"2026-09-19T08:30:00Z", false},
+		"live terminal started after the submission cannot":       {"2026-09-19T09:05:00Z", true},
+	} {
+		started, err := time.Parse(time.RFC3339, tc.tmuxStartedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := terminals.NewStore()
+		store.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(started, sessionID, "main:"+sessionID, "mlp-codex-cli-int-later"))
+		api := &StreamingAPI{terminalStore: store}
+		if got := api.canRetryUncertainChatSubmission(context.Background(), record); got != tc.want {
+			t.Errorf("%s: canRetry = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 

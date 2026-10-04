@@ -32,8 +32,19 @@ This is not Muse specific: the delivery, queue and fallback code is shared by ev
 Tests: `TestProviderSwitchDuringARunningTurnQueuesTheMessage` (through `handleQuery`: a live Muse terminal, a turn in progress, a request for Codex; fails without the fix because the running turn is cancelled),
 `TestRetainedCLIProviderDiffersFromTheRequestedProvider`, `TestRetainedTerminalGoneStartsANewTurnInsteadOfDeliveryUncertain`.
 
+## Part 3: an old uncertain submission was never reconciled once the chat ran on another CLI
+
+The first message of the incident ("hi", submission `dfa6ed5b`, 06:22:56) stayed `delivery_uncertain`. The browser re-sent it (same Idempotency-Key) and after its 3 automatic retries (2, 5 and 10 s waits, 30 s each on the server) showed
+"Request failed with status code 409 ... Reconcile this submission before sending it again" at 06:40-06:42, while the owner's new Codex messages were confirmed (200).
+`canRetryUncertainChatSubmission` proves "not delivered" from the native transcript only when the chat has no live terminal, no running turn and no retained session; the chat had a live Codex terminal, so the old record stayed uncertain for good.
+
+Fix (any CLI, no schema change): a live main terminal that started after the submission was recorded (`snapshot.CreatedAt` after the record's time) cannot hold it, so it and its turns no longer block the proof; a terminal that started before it still keeps it uncertain.
+The transcript check stays the proof (the exact prompt present means delivered). Test `TestCanRetryUncertainChatSubmissionIgnoresALiveTerminalThatStartedLater` (fails without the change).
+
 ## Left
 
 - Deploy and check on Excellence: start a long Muse turn, change the provider on the Models page, send a message; it must queue (answer `queued_for_turn`), the Muse turn must finish, then Codex answers.
 - The earlier "a model or effort change waits for the running turn" rule (`ad3956735`) had no test; the new request-level test covers the same path for a provider change.
 - A provider change made while no turn is running closes the old CLI at the next message; nothing closes it earlier.
+- After the deploy the stale `hi` record reconciles on its next retry (the proof sees no `hi` in the Codex transcript) and is re-sent as a normal message; the two stale `accepted` records ('ok', 'do you know what are functions we have') are not touched.
+- The reconciliation compares only the CURRENT runtime's transcript; a submission sent to a provider that was then replaced is judged by absence there. The record does not store the provider it went to (a field for it would let the old provider's own transcript decide).
