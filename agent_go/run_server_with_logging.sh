@@ -1215,6 +1215,17 @@ if [ -z "$FRONTEND_PORT_EXPLICIT" ] && [ "$FRONTEND_PORT" != "51733" ]; then
 fi
 FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
 
+# Agent-started OAuth sign-ins (MCP connections) take their callback address from PUBLIC_URL. The
+# callback must land on the frontend this run serves (it proxies /api to the server); a stale value
+# in agent_go/.env (the old Vite default, 5173) sends the browser to a port nothing listens on.
+# The server's .env loader never overrides an exported variable, so exporting it here wins. A
+# PUBLIC_URL already exported in the shell (a deployment) is left alone. Providers that check the
+# callback exactly (Upwork, Google) need http://localhost:<this port>/api/oauth/callback registered.
+if [ "$WITH_FRONTEND" = true ] && [ -z "${PUBLIC_URL:-}" ]; then
+    export PUBLIC_URL="http://localhost:${FRONTEND_PORT}"
+    echo "🔗 OAuth callback address (PUBLIC_URL): $PUBLIC_URL/api/oauth/callback"
+fi
+
 # Device approval needs the current React app. The API server's static bundle
 # may be older during local development, so use Vite when it belongs to this
 # agent server. A frontend started by this script comes up after the API.
