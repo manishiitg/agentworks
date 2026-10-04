@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -300,6 +301,27 @@ func (a *Admin) AddConnectorCustom(ctx context.Context, provider, label, slug, u
 }
 
 func (a *Admin) AddConnectorCustomWithBearer(ctx context.Context, provider, label, slug, upstreamURL, bearerToken string) (store.Connector, error) {
+	return a.AddConnectorCustomWithCredential(ctx, provider, label, slug, upstreamURL, bearerToken, "Bearer")
+}
+
+func validateConnectorCredential(token, scheme string) error {
+	if strings.ContainsAny(token, "\r\n") || len(token) > 8192 || (scheme != "" && scheme != "Bearer" && scheme != "Basic") {
+		return errors.New("invalid connector credential")
+	}
+	if scheme == "Basic" {
+		decoded, err := base64.StdEncoding.DecodeString(token)
+		if err != nil || !bytes.Contains(decoded, []byte(":")) {
+			return errors.New("invalid Basic credential")
+		}
+	}
+	return nil
+}
+
+// The scheme is public metadata; credential bytes stay in the encrypted store.
+func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, label, slug, upstreamURL, bearerToken, scheme string) (store.Connector, error) {
+	if err := validateConnectorCredential(bearerToken, scheme); err != nil {
+		return store.Connector{}, err
+	}
 	key := catalog.Key(provider)
 	if key == "" {
 		return store.Connector{}, errors.New("invalid provider name")
@@ -312,10 +334,12 @@ func (a *Admin) AddConnectorCustomWithBearer(ctx context.Context, provider, labe
 	if err != nil {
 		return store.Connector{}, err
 	}
-	if strings.ContainsAny(bearerToken, "\r\n") || len(bearerToken) > 8192 {
+	if c.OAuthServer != "" && scheme == "Basic" {
 		a.Store.DeleteConnector(c.ID)
-		return store.Connector{}, errors.New("invalid bearer token")
+		return store.Connector{}, errors.New("OAuth connectors cannot use Basic credentials")
 	}
+	c.AuthScheme = scheme
+	a.Store.AddConnector(c)
 	a.Store.SetConnectorBearer(c.ID, bearerToken)
 	if c.OAuthCredentialID != "" {
 		return c, nil
@@ -763,7 +787,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/connectors", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var in struct {
-				Provider, Label, Slug, URL, BearerToken string
+				Provider, Label, Slug, URL, BearerToken, AuthScheme string
 			}
 			if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 				writeErr(w, 400, err)
@@ -774,7 +798,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			var c store.Connector
 			var err error
 			if in.URL != "" {
-				c, err = a.AddConnectorCustomWithBearer(ctx, in.Provider, in.Label, in.Slug, in.URL, in.BearerToken)
+				c, err = a.AddConnectorCustomWithCredential(ctx, in.Provider, in.Label, in.Slug, in.URL, in.BearerToken, in.AuthScheme)
 			} else {
 				c, err = a.AddConnectorFromCatalog(ctx, in.Provider, in.Label, in.Slug)
 			}
@@ -817,7 +841,7 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		if strings.ContainsAny(in.BearerToken, "\r\n") || len(in.BearerToken) > 8192 {
+		if validateConnectorCredential(in.BearerToken, c.AuthScheme) != nil {
 			writeErr(w, http.StatusBadRequest, errors.New("invalid bearer token"))
 			return
 		}

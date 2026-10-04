@@ -48,6 +48,7 @@ type Connector struct {
 	UpstreamURL       string
 	OAuthServer       string // catalog provider; never an access/refresh token
 	OAuthCredentialID string // connection-scoped identity; empty preserves legacy provider credentials
+	AuthScheme        string // empty/Bearer or Basic; credential bytes are stored separately
 	Status            string
 }
 

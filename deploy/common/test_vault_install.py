@@ -129,8 +129,9 @@ class VaultInstallTest(unittest.TestCase):
         for expected in re.findall(r"grep -Fq '([^']+)' ", script[:script.index('RELEASE_ID=')]):
             self.assertIn(expected, runtime + unit + (rts / 'rootless/video-studio-workspace.service').read_text())
         command = 'source "$1"; for snippet in "${RUNTIME_CONFIG_REQUIRED_SNIPPETS[@]}"; do grep -Fq "$snippet" "$2" || exit 1; done'
-        agents = repo / 'deploy/rootless-linux/products/agents'
-        subprocess.run(['bash', '-c', command, 'test', str(agents / 'product.env'), str(agents / 'runtime-config.js')], check=True)
+        for product in ('agents', 'confida'):
+            directory = repo / 'deploy/rootless-linux/products' / product
+            subprocess.run(['bash', '-c', command, 'test', str(directory / 'product.env'), str(directory / 'runtime-config.js')], check=True)
 
     def test_both_deployments_build_bootstrap_and_health_check(self):
         repo = ROOT.parents[1]
