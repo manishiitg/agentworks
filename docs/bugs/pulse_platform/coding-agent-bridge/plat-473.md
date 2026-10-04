@@ -82,6 +82,34 @@ them. Results, each against the real CLI unless noted:
   token (it never enters those shells); the hooks only turn a call that cannot succeed
   into a clear instruction.
 
+## Third round: credential probing, platform address, fuller message, resume note (provider pinned `72a81a9`)
+
+Trigger: the resumed jobsearch Muse chat checked for credentials in its native `bash`
+(`for v in MCP_AUTH ...; do [ -n "${!v}" ] ...`, a `curl` to the server root) and concluded
+the bridge was missing, although the bridge was up and the tools were in its list. The hook
+let it through because it names no `$MCP_*` and no `/tools/` route.
+
+- **Muse** (`72a81a9`), **Claude Code** (`f36bdaf`), **Cursor** (`df1ab0a`): the shell hooks
+  also refuse (a) a command containing the platform's own host:port and (b) credential
+  probing (a command that names MCP_CUSTOM/MCP_AUTH/MCP_MCP/MCP_API_TOKEN and reads the
+  environment: printenv, env, echo $…, ${!v}, test/[ -n/-z, compgen -e, declare -p,
+  os.environ…). `grep -rn MCP_AUTH code/`, `cat` of the helper, `python3 code/x/main.py`,
+  `ls`, `git status` and other sites still run. The deny reason (about 500–640 chars) says
+  the variables exist only in the bridge shell, that their absence is expected, that the
+  `mcp__<server>__*` tools in the list are the working bridge, and to use
+  `execute_shell_command`, `search_tools` and `get_api_spec`.
+- **Muse hooks run with a scrubbed environment** (found with a real `curl 127.0.0.1:18743`
+  that got through): the hook process had no `MCP_API_URL`. The mounted bridge's host:port
+  are therefore passed to the hook as command-line arguments (hosts only, never a token).
+  Claude Code's and Cursor's hooks inherit the CLI's environment (checked with real runs).
+- **Muse resume note**: when a Muse terminal is launched with `muse resume` and the bridge is
+  mounted, the first real message carries a one-line note that the bridge is mounted and any
+  earlier "no bridge" statement is out of date (once per terminal; never on fresh runs; the
+  `exec --session-id` lane adds it on every resumed call). It goes into the text sent to Muse,
+  not into the stored user message; Muse's own transcript contains it.
+- Real-CLI results: the exact failing probe refused with the new message in Muse, Claude Code
+  and Cursor; normal commands ran. Resume note: unit-tested only.
+
 ## Muse Full CLI: refuse every native tool not on the list (provider `7ee3932`)
 
 Audit: Claude Code has an explicit tool list and a strict MCP config; Codex disables
