@@ -174,7 +174,7 @@ def list_builds(builds_dir):
         except ValueError:
             continue
         found.append((manifest.parent.name, data, manifest.stat().st_mtime))
-    return sorted(found, key=lambda item: item[0], reverse=True)
+    return sorted(found, key=lambda item: item[0].rsplit("-", 1)[-1], reverse=True)
 
 
 def find_build(builds_dir, query):

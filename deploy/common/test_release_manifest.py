@@ -33,6 +33,13 @@ def make_build(root, name="aaaaaaaa-20261004000000"):
 
 
 class ManifestTest(unittest.TestCase):
+    def test_build_listing_orders_by_build_time_instead_of_commit_hash(self):
+        with tempfile.TemporaryDirectory() as root:
+            make_build(root, "ffffffff-20261001000000")
+            make_build(root, "00000000-20261004000000")
+            self.assertEqual([name for name, _, _ in manifest.list_builds(root)],
+                             ["00000000-20261004000000", "ffffffff-20261001000000"])
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)

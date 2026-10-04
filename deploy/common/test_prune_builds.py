@@ -54,6 +54,12 @@ class PruneBuildsTest(unittest.TestCase):
         self.prune()
         self.assertEqual(self.remaining(), ["bbbbbbbb-20260102000000"])
 
+    def test_newest_build_is_kept_when_its_commit_hash_sorts_before_an_older_one(self):
+        self.make("ffffffff-20260101000000", 10000)
+        self.make("00000000-20260104000000", 2000)
+        self.prune()
+        self.assertEqual(self.remaining(), ["00000000-20260104000000"])
+
     def test_keep_can_be_raised_and_other_folders_are_left_alone(self):
         self.make("aaaaaaaa-20260101000000", 7200)
         self.make("bbbbbbbb-20260102000000", 7200)
