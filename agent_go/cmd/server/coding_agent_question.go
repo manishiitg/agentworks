@@ -25,12 +25,11 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 	var req struct {
 		Provider string `json:"provider"`
 		PromptID string `json:"prompt_id"`
-		// Auto answers with the first option of every question, the same
-		// choice an unattended run makes.
+		// Auto is the user's explicit request to submit the first options.
 		Auto    bool                             `json:"auto"`
 		Answers []codingAgentQuestionAnswerInput `json:"answers"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024)).Decode(&req); err != nil {
 		http.Error(w, "Invalid question answer", http.StatusBadRequest)
 		return
 	}
@@ -46,6 +45,15 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 	if provider == "" && strings.HasSuffix(r.URL.Path, "/muse-question/answer") {
 		provider = "muse-cli"
 	}
+	if strings.HasPrefix(req.PromptID, clarificationPromptPrefix) {
+		if err := api.submitCodingAgentClarification(sessionID, provider, req.PromptID, req.Auto, req.Answers); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "prompt_id": req.PromptID})
+		return
+	}
 	if provider != "muse-cli" {
 		http.Error(w, "Question choice delivery is not available for this provider", http.StatusNotImplemented)
 		return
@@ -56,11 +64,11 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 		return
 	}
 	if err := musecli.SubmitQuestionAnswers(ctx, sessionID, req.PromptID, answers); err != nil {
-		// "Let Muse choose" is the way out of a question; if even that cannot
-		// be entered, interrupt the run rather than leave the chat waiting.
+		// If the first options cannot be submitted, interrupt the native
+		// question rather than leave the chat waiting.
 		if req.Auto && !strings.Contains(err.Error(), "no longer pending") {
 			if interruptErr := musecli.InterruptPendingQuestion(ctx, sessionID); interruptErr == nil {
-				http.Error(w, "Muse could not take its first option, so the run was stopped. Send your message again.", http.StatusConflict)
+				http.Error(w, "The first options could not be submitted, so the run was stopped. Send your message again.", http.StatusConflict)
 				return
 			}
 		}
@@ -75,6 +83,7 @@ type codingAgentQuestionAnswerInput = struct {
 	ID             string   `json:"id"`
 	SelectedLabels []string `json:"selected_labels"`
 	SelectedLabel  string   `json:"selected_label"` // Legacy Muse client.
+	OtherText      string   `json:"other_text,omitempty"`
 }
 
 // museQuestionAnswers shapes the request for the prompt's own question kinds:

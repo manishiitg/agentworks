@@ -20,7 +20,7 @@ export interface CleanConversationSurfaceProps {
   streamingText: string
   landingContent?: ReactNode
   onRetryLastMessage?: () => void | Promise<void>
-  onAnswerCodingAgentQuestion?: (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[] }>, auto?: boolean) => Promise<void>
+  onAnswerCodingAgentQuestion?: (provider: string, promptId: string, answers: Array<{ id: string; selectedLabels: string[]; otherText?: string }>, auto?: boolean) => Promise<void>
 }
 
 function messageTime(timestamp?: string): string {

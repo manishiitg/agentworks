@@ -981,6 +981,7 @@ export interface CodingAgentQuestionPrompt {
   header?: string;
   question?: string;
   multi_select?: boolean;
+  allow_other?: boolean;
   min_selections?: number;
   max_selections?: number;
   options?: CodingAgentQuestionOption[];
@@ -992,6 +993,7 @@ export interface CodingAgentQuestionOption {
 export interface CodingAgentQuestionAnswer {
   id?: string;
   selected_labels?: string[];
+  other_text?: string;
 }
 export interface SyntheticTurnReadyEvent {
   timestamp?: string;

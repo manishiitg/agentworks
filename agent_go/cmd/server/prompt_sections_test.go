@@ -351,3 +351,21 @@ func TestNativeSubagentsGuidanceOnlyWithNativeTools(t *testing.T) {
 		}
 	}
 }
+
+func TestClarificationGuidanceOnlyAdvertisesRegisteredTool(t *testing.T) {
+	section := sectionByName(t, "clarification")
+	if section.Applies(promptContext{}) {
+		t.Fatal("unattended or unregistered tool must not be advertised")
+	}
+	ctx := promptContext{ClarificationAvailable: true}
+	if !section.Applies(ctx) || !strings.Contains(section.Build(ctx), "request_clarification") {
+		t.Fatal("attended chat is missing selectable question guidance")
+	}
+	if strings.Contains(section.Build(ctx), "AskUserQuestion") {
+		t.Fatal("native Claude tool advertised without its answer hook")
+	}
+	ctx.NativeClaudeQuestionsAvailable = true
+	if !strings.Contains(section.Build(ctx), "use AskUserQuestion") {
+		t.Fatal("native Claude clarification guidance missing")
+	}
+}

@@ -49,7 +49,7 @@ describe('coding_agent_question in the detailed view', () => {
   it('shows what the agent asked, not the raw event', async () => {
     const text = await render(requested)
     expect(text).not.toContain('Unknown Event Type')
-    expect(text).toContain('Muse asked')
+    expect(text).toContain('Clarification needed')
     expect(text).toContain('Which invoice fields should the Relay return as JSON?')
     expect(text).toContain('Standard set (Recommended)')
   })
@@ -57,7 +57,7 @@ describe('coding_agent_question in the detailed view', () => {
   it('shows what was chosen once answered', async () => {
     const text = await render(settled)
     expect(text).not.toContain('Unknown Event Type')
-    expect(text).toContain("Muse's question answered")
+    expect(text).toContain("Clarification answered")
     expect(text).toContain('fields: Standard set (Recommended)')
   })
 })

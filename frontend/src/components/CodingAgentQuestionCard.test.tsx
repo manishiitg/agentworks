@@ -12,7 +12,7 @@ const base: CodingAgentQuestionPrompt = {
 describe('CodingAgentQuestionCard', () => {
   it('shows Muse single-choice options as radios', () => {
     const html = renderToStaticMarkup(<CodingAgentQuestionCard prompt={base} onAnswer={async () => {}} />)
-    expect(html).toContain('Muse needs your choice')
+    expect(html).toContain('Clarification needed')
     expect(html).toContain('type="radio"')
     expect(html).toContain('Wide')
   })
@@ -23,7 +23,7 @@ describe('CodingAgentQuestionCard', () => {
       questions: [{ ...base.questions[0], multiSelect: true }],
     }
     const html = renderToStaticMarkup(<CodingAgentQuestionCard prompt={prompt} onAnswer={async () => {}} />)
-    expect(html).toContain('Claude needs your choice')
+    expect(html).toContain('Clarification needed')
     expect(html).toContain('Select all that apply.')
     expect(html).toContain('type="checkbox"')
   })
@@ -35,6 +35,6 @@ describe('CodingAgentQuestionCard', () => {
         options: [{ label: 'A', description: '' }, { label: 'B', description: '' }, { label: 'C', description: '' }, { label: 'D', description: '' }] }],
     }} onAnswer={async () => {}} />)
     expect(html).toContain('Choose up to 3.')
-    expect(html).toContain('Let Muse choose')
+    expect(html).toContain('Use first options')
   })
 })

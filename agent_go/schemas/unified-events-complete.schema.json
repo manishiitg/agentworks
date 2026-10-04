@@ -467,6 +467,9 @@
         "id": {
           "type": "string"
         },
+        "other_text": {
+          "type": "string"
+        },
         "selected_labels": {
           "items": {
             "type": "string"
@@ -564,6 +567,9 @@
     "CodingAgentQuestionPrompt": {
       "additionalProperties": false,
       "properties": {
+        "allow_other": {
+          "type": "boolean"
+        },
         "header": {
           "type": "string"
         },

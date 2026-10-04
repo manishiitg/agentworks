@@ -225,9 +225,11 @@ export interface CodingAgentQuestionEvent {
 }
 export interface CodingAgentQuestionAnswer {
   id?: string;
+  other_text?: string;
   selected_labels?: string[];
 }
 export interface CodingAgentQuestionPrompt {
+  allow_other?: boolean;
   header?: string;
   id?: string;
   max_selections?: number;

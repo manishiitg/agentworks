@@ -78,15 +78,17 @@ type promptContext struct {
 
 	// Prebuilt text for sections whose construction needs a request context or
 	// other state the registry deliberately does not carry.
-	CapabilitySection   string
-	WorkflowMode        string
-	WorkflowUIAvailable bool
-	WorkflowContext     string
-	WorkFolders         string
-	ChannelFormatting   string
-	BrowserPointer      string
-	GrantSections       []string
-	CLIToolEnvironment  string
+	CapabilitySection              string
+	WorkflowMode                   string
+	WorkflowUIAvailable            bool
+	WorkflowContext                string
+	WorkFolders                    string
+	ChannelFormatting              string
+	BrowserPointer                 string
+	GrantSections                  []string
+	CLIToolEnvironment             string
+	ClarificationAvailable         bool
+	NativeClaudeQuestionsAvailable bool
 	// FeatureExtensions come from the trusted feature catalog resolved from
 	// product.yaml. They extend the product prompt; they never replace it.
 	FeatureExtensions []string
@@ -208,6 +210,18 @@ var promptSections = []promptSection{
 		Name:    "cli-tool-environment",
 		Applies: func(c promptContext) bool { return c.CLIToolEnvironment != "" && !c.NativeCodingTools },
 		Build:   func(c promptContext) string { return c.CLIToolEnvironment },
+	},
+	{
+		Name:    "clarification",
+		Applies: func(c promptContext) bool { return c.ClarificationAvailable },
+		Build: func(c promptContext) string {
+			if c.NativeClaudeQuestionsAvailable {
+				return `## Clarification choices
+When a real user decision needs a choice between options, use AskUserQuestion. Its native questions are connected to selectable cards in this chat, including multi-select and custom text answers. Put related questions in one call and wait for the user's submitted answers before acting. The shared request_clarification bridge tool is also available. An interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
+			}
+			return `## Clarification choices
+When a real user decision needs a choice between options, call the available request_clarification bridge tool so the user can select answers in this chat. Put related questions in one call, with unique question IDs. Use this shared tool instead of a native terminal question menu or listing options in ordinary prose. Wait for the returned answers before acting; an interrupted or expired prompt is not approval. Do not ask for routine implementation choices you can resolve from the user's instructions.`
+		},
 	},
 	{
 		// Full CLI has its own subagents for parallel work. There is no separate
