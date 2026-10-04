@@ -74,7 +74,14 @@ func (c *payloadCapture) copy(v reflect.Value, depth int) any {
 		v = v.Elem()
 	}
 	if v.Type() == reflect.TypeOf(json.Number("")) {
-		return json.Number(c.text(v.String()))
+		number := v.String()
+		if len(number) > c.remaining {
+			c.truncated = true
+			c.remaining = 0
+			return "[truncated]"
+		}
+		c.remaining -= len(number)
+		return json.Number(number)
 	}
 	if v.Type() == reflect.TypeOf(json.RawMessage{}) {
 		raw := v.Interface().(json.RawMessage)

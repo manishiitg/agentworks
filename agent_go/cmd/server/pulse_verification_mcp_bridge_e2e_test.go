@@ -174,10 +174,16 @@ func buildPulseTestMCPBridge(t *testing.T) string {
 	if output, err := initWork.CombinedOutput(); err != nil {
 		t.Fatalf("init mcpbridge workspace: %v\n%s", err, output)
 	}
-	replaceProvider := exec.Command("go", "work", "edit", "-replace=github.com/manishiitg/multi-llm-provider-go="+providerDir)
-	replaceProvider.Dir = workDir
-	if output, err := replaceProvider.CombinedOutput(); err != nil {
-		t.Fatalf("replace mcpbridge provider module: %v\n%s", err, output)
+	workFile := filepath.Join(workDir, "go.work")
+	workData, err := os.ReadFile(workFile)
+	if err != nil {
+		t.Fatalf("read mcpbridge workspace: %v", err)
+	}
+	// go work edit -replace parses @ in a module-cache directory as a version
+	// separator. A quoted directory in the workspace file preserves the path.
+	workData = append(workData, []byte(fmt.Sprintf("\nreplace github.com/manishiitg/multi-llm-provider-go => %q\n", providerDir))...)
+	if err := os.WriteFile(workFile, workData, 0600); err != nil {
+		t.Fatalf("replace mcpbridge provider module: %v", err)
 	}
 	source := filepath.Join(moduleDir, "cmd", "mcpbridge")
 	binary := filepath.Join(workDir, "mcpbridge")

@@ -42,3 +42,36 @@ func TestSchemaPathMustBeExplicitString(t *testing.T) {
 		t.Fatal("unknown or object path allowed")
 	}
 }
+
+func TestPolicyRegexPreparedAndReusedWithoutStaleEdits(t *testing.T) {
+	p := Clone(Package{Rules: []ToolRule{{Conditions: []Condition{{Path: "/id", Op: "matches", Value: "prod-[0-9]+"}}}}})
+	c := p.Rules[0].Conditions[0]
+	if c.compiled == nil {
+		t.Fatal("policy clone did not prepare regex")
+	}
+	cloned := Clone(p)
+	if cloned.Rules[0].Conditions[0].compiled != c.compiled {
+		t.Fatal("runtime clone recompiled unchanged regex")
+	}
+	c.Value = "dev-[0-9]+"
+	if Match(c, map[string]any{"id": "prod-1"}) || !Match(c, map[string]any{"id": "dev-1"}) {
+		t.Fatal("edited condition used stale compiled regex")
+	}
+	c.Value = "["
+	if Match(c, map[string]any{"id": "prod-1"}) || ValidateCondition(c) == nil {
+		t.Fatal("invalid edited regex did not fail closed")
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Package
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	restored = Clone(restored)
+	c = restored.Rules[0].Conditions[0]
+	if c.compiled == nil || !Match(c, map[string]any{"id": "prod-1"}) || Match(c, map[string]any{"id": "prod-1-extra"}) {
+		t.Fatal("restored regex not prepared or full-string matching changed")
+	}
+}
