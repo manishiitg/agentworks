@@ -64,7 +64,8 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   hideInput?: boolean
   compact?: boolean
   workflowLandingContent?: React.ReactNode
-}>(({ onNewChat, hideHeader, hideInput, compact, workflowLandingContent }, ref) => {
+  showNewChatAction?: boolean
+}>(({ onNewChat, hideHeader, hideInput, compact, workflowLandingContent, showNewChatAction }, ref) => {
   // Prefer the active workflow tab when one is selected. The tab strip keeps
   // active workflow tabs visible even while preset metadata is catching up
   // after reload; ChatArea must use the same rule or the input area disappears.
@@ -96,6 +97,7 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
       hideInput={effectiveHideInput}
       compact={compact}
       workflowLandingContent={workflowLandingContent}
+      showNewChatAction={showNewChatAction}
       // Pass null (not undefined) when no tab matches the active workflow preset.
       // Otherwise ChatArea falls back to the global activeTabId and can briefly
       // render the previous workflow's blocking human-feedback/auth prompt.
@@ -2454,6 +2456,9 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   hideHeader
                   compact
                   workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}
+                  // Writers only: a reader of a shared workflow has no Builder chat to replace. The previous
+                  // conversation stays in Previous chats (each Builder session keeps its own transcript file).
+                  showNewChatAction={activeWorkflowAccess !== 'read'}
                 />
               </div>
             </div>

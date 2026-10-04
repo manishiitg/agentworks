@@ -50,6 +50,12 @@ scroll wins) replace the timed `chat-scroll-to-bottom` bursts.
 a step with no platform stores gets no database/KB/learnings text at all; the Relay
 Builder prompt and skill say how data moves instead of what is missing.
 
+## "New chat" button in the workflow chat — PLAT-463
+
+[PLAT-463](pulse_platform/frontend-chat/plat-463.md), fixed on `main`, not deployed:
+the workflow chat composer shows the same "New chat" button as Code, for anyone who
+can write the workflow; the old conversation stays in Previous chats.
+
 ## Plan and Browser move into the workflow toolbar's Ops group — PLAT-453
 
 [PLAT-453](pulse_platform/frontend-chat/plat-453.md), fixed on `main`, not deployed:
